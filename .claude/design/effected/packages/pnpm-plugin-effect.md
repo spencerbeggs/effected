@@ -3,11 +3,12 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-21
+last-synced: 2026-08-21
 completeness: 90
 related:
   - ../architecture.md
+  - ../catalog-sync.md
   - ../effect-standards.md
   - ../package-inventory.md
   - ../releases.md
@@ -17,14 +18,16 @@ related:
 
 ## Overview
 
-`@effected/pnpm-plugin-effect` is the kit's [companion](../effect-standards.md#companion-packages-published-but-not-a-library) package — published and installable, but not a library. It is a pnpm **config dependency** (installed with `pnpm add --config`, not as a normal dependency) that centralizes Effect-ecosystem versioning by publishing pnpm [catalogs](https://pnpm.io/catalogs). It is the single source of truth for what "the current Effect version" means: every `@effected/*` package references `catalog:effect` / `catalog:effect:peers`, and once published, so can any external workspace that installs it.
+`@effected/pnpm-plugin-effect` is the kit's [companion](../effect-standards.md#companion-packages-published-but-not-a-library) package — published and installable, but not a library. It is a pnpm **config dependency** (installed with `pnpm add --config`, not as a normal dependency) that centralizes Effect-ecosystem versioning by publishing pnpm [catalogs](https://pnpm.io/catalogs). It is the single source of truth for what "the current Effect version" means: every `@effected/*` package references `catalog:effect` / `catalog:effect:peers`, and once published, so can any external workspace that installs it. Since 2026-08-21 it carries the kit's own version surface too, so one installed config dependency pins both halves of what a consumer builds against.
 
 The catalogs consumers pin against:
 
 - **`effect`** — every `effect` / `@effect/*` package on the v4 line, pinned to the current prerelease.
 - **`effect:peers`** — the same package set as the advertised peer range.
+- **`effected`** — the kit's own packages, at the version each will next publish; see [the effected catalog](#the-effected-catalog-the-kits-own-version-surface).
+- **`effected:peers`** — the same set as the advertised peer range.
 
-These two are the whole set. The Effect v3 interop catalogs and the camelCase aliases are gone; see [the retired effect3 interop catalogs](#the-retired-effect3-interop-catalogs).
+These four are the whole set. The Effect v3 interop catalogs and the camelCase aliases are gone; see [the retired effect3 interop catalogs](#the-retired-effect3-interop-catalogs).
 
 ## Classification: companion
 
@@ -46,6 +49,19 @@ The catalog strategy is declared in [`savvy.build.ts`](../../../../packages/pnpm
 ### Absence means absorbed
 
 The v4 `effect` catalog deliberately carries **no** entries for the packages Effect v4 absorbed into core: `@effect/platform`, `@effect/cluster`, `@effect/rpc`, `@effect/sql`, `@effect/workflow` and `@effect/experimental`. That absence **is** the removal signal — a consumer or migration agent looking one of these up and finding nothing should read it as "this package no longer exists on the v4 line; its functionality lives in `effect` core", not as an oversight. Do not confuse them with the suffixed packages that still ship on v4 and are in the catalog (`@effect/platform-node`, the `@effect/sql-*` drivers); only the bare absorbed names are gone.
+
+## The `effected` catalog: the kit's own version surface
+
+The `effected` / `effected:peers` catalogs list **every publishable kit package but one**, in object form with a `range`, a `peer`, `strategy: "lock-minor"` and `source: "workspace"`. They exist for consumers, not for this workspace: internal edges stay `workspace:*`, and the catalogs are not exported into the root `pnpm-workspace.yaml` the way the Effect ones are.
+
+Four properties are load-bearing.
+
+- **`@effected/pnpm-plugin-effect` is deliberately absent from its own catalog, and must stay absent.** It is the package the catalog ships inside: catalogue it and every rewrite bumps the plugin, which invalidates the catalog, which writes another changeset — a release loop with no termination condition. The omission *is* the termination condition. Two tests in [`__test__/catalog.test.ts`](../../../../packages/pnpm-plugin-effect/__test__/catalog.test.ts) pin it.
+- **Publishability is `publishConfig.access === "public"`, never `private === false`.** All thirty source manifests here are `private: true` and the bundler's `publishConfig` transform emits the publishable one at build time ([package-setup.md](../package-setup.md)). Any membership check written against `private` classifies the entire kit as unpublishable and silently produces an empty catalog.
+- **The literal must stay inline at the `PnpmConfigPlugin(...)` call site.** `rolldown-pnpm-config`'s `upgrade` CLI finds it by statically walking that call argument for `.catalogs.<name>.packages`; hoisting it into an exported `const` makes it invisible to the rewriter. `savvy.build.ts` is a top-level `await build({...})`, so a test cannot import it either — the test reads the source the same way the CLI does, which is why that parsing exists at all.
+- **Entries hold next-release versions.** See [catalog-sync.md](../catalog-sync.md#catalog-entries-hold-next-release-versions) for what follows from that, including why a first sync flooring a peer patch is correct rather than drift.
+
+Keeping the catalog current is automated; the machinery, and the release gate that is not yet wired, are in [catalog-sync.md](../catalog-sync.md).
 
 ## The retired effect3 interop catalogs
 
@@ -73,6 +89,8 @@ Three root scripts drive catalog maintenance. They regenerate the plugin's defin
 - **`pnpm pnpm:preview`** — previews the generated output without writing.
 
 Advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`, and the submodule is re-pinned in the same commit ([architecture.md](../architecture.md#re-pinning-when-the-effect-catalog-bumps)).
+
+The two `catalog:` scripts are a different class and are **not** in the user-run-only set: `pnpm catalog:sync` and `pnpm catalog:check` touch only `savvy.build.ts` and one fixed-name changeset, never the lockfile or `pnpm-workspace.yaml`, and CI runs the first of them on every push to `main` ([catalog-sync.md](../catalog-sync.md)).
 
 ## Consumer usage
 

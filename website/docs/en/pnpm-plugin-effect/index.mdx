@@ -1,11 +1,11 @@
 ---
 title: "@effected/pnpm-plugin-effect"
-description: "A pnpm config dependency that centralizes Effect-ecosystem versioning through two pnpm catalogs."
+description: "A pnpm config dependency that centralizes Effect and @effected versioning through four pnpm catalogs."
 ---
 
 # @effected/pnpm-plugin-effect
 
-A pnpm config dependency that centralizes Effect-ecosystem versioning through two [pnpm catalogs](https://pnpm.io/catalogs). The `effect` catalog pins every `effect` and `@effect/*` package to the current [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release. The `effect:peers` catalog resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries do not over-constrain the projects that depend on them.
+A pnpm config dependency that centralizes versioning through four [pnpm catalogs](https://pnpm.io/catalogs), in two pairs. The `effect` catalog pins every `effect` and `@effect/*` package to the current [Effect v4](https://effect.website/blog/releases/effect/40-beta/) release, and `effect:peers` resolves the same packages down to a calculated shared floor — the lowest common version safe to declare as a peer range — so your libraries do not over-constrain the projects that depend on them. The `effected` and `effected:peers` catalogs do the same for the kit's own packages, covering every published `@effected/*` package.
 
 ## Where it fits
 
@@ -13,9 +13,9 @@ It is not an app-kit library. The three-tier taxonomy that classifies the other 
 
 It is still a public package on npm, and it [publishes the same way](/docs) the libraries do.
 
-Every `@effected/*` package pins its Effect versions through these catalogs, and the plugin exists so your workspace can do the same. Installing it is **optional**, and what it buys you is version agreement: your `effect` dependencies and peer floors sit at exactly the values this kit was built and tested against, rather than at whatever your own resolution produces. That pays off most when you adopt the kit itself — an application wiring up `@effected/*` packages takes their pinned Effect versions in one step instead of reconstructing them by hand.
+Every `@effected/*` package pins its Effect versions through these catalogs, and the plugin exists so your workspace can do the same. What it buys you is version agreement: your `effect` dependencies, your `@effected/*` dependencies and both sets of peer floors sit at exactly the values this kit was built and tested against, rather than at whatever your own resolution produces. That pays off most when you adopt the kit itself — an application wiring up `@effected/*` packages takes the whole set, and their pinned Effect versions, in one step instead of reconstructing a dozen ranges by hand.
 
-For consumers it is a **convenience, entirely optional**. It mattered most under Effect v3, where computing peer-dependency floors by hand was genuinely painful. Under v4 it is less necessary. Treat it as a nicety, not a requirement.
+Installing it stays **optional**. The Effect half mattered most under v3, where computing peer-dependency floors by hand was genuinely painful; under v4, with the whole ecosystem on one prerelease, it is closer to a nicety. The kit half is the opposite: on `0.x` there is no range you can write by hand that keeps working, so `catalog:effected` is doing real work from the first install.
 
 ## Install
 
@@ -36,7 +36,7 @@ Requires pnpm >=11. There is no npm or yarn equivalent — config dependencies a
 
 ## Usage
 
-Installing the config dependency gives your workspace both catalogs. How you reference them depends on whether you are building an application or a library.
+Installing the config dependency gives your workspace all four catalogs. How you reference them depends on whether you are building an application or a library.
 
 An application pins the versions directly in `dependencies`:
 
@@ -44,7 +44,8 @@ An application pins the versions directly in `dependencies`:
 {
   "dependencies": {
     "effect": "catalog:effect",
-    "@effect/ai-openai": "catalog:effect"
+    "@effect/ai-openai": "catalog:effect",
+    "@effected/workspaces": "catalog:effected"
   }
 }
 ```
@@ -55,20 +56,36 @@ A library pins the same versions for development and declares the **calculated f
 {
   "devDependencies": {
     "effect": "catalog:effect",
-    "@effect/ai-openai": "catalog:effect"
+    "@effect/ai-openai": "catalog:effect",
+    "@effected/workspaces": "catalog:effected"
   },
   "peerDependencies": {
     "effect": "catalog:effect:peers",
-    "@effect/ai-openai": "catalog:effect:peers"
+    "@effect/ai-openai": "catalog:effect:peers",
+    "@effected/workspaces": "catalog:effected:peers"
   }
 }
 ```
 
 That split is the whole value proposition. Developing against a pinned version while advertising the widest peer range you can safely support are two different questions, and answering the second one by hand across a dozen `@effect/*` packages is the part nobody wants to do twice.
 
+## The kit's own catalog
+
+`catalog:effected` and `catalog:effected:peers` carry every published `@effected/*` package, so an application or library that consumes the kit names the catalog instead of maintaining a range per package. The plugin itself is deliberately left out of them — it is the package the catalogs ship inside.
+
+On `0.x` a caret does not cross a minor, so `"@effected/workspaces": "^0.14.0"` stops resolving anything current the moment that package cuts its next minor, and nothing warns you. Repeat that across a dozen manifests and the ranges rot independently. The catalog replaces them with one name and one upgrade:
+
+```bash
+pnpm update --config @effected/pnpm-plugin-effect
+pnpm install
+# every catalog: specifier in the workspace re-resolves to the new pins
+```
+
+The `effected` catalogs are rebuilt automatically as kit packages release, so each version of the plugin carries the kit's current versions. The dependency entry tracks a package's exact release; the peer entry is floored to the minor, which is why the two halves of the pair routinely differ.
+
 ## Advancing the pin
 
-Two commands, run in order, upgrade every package to its latest v4 release, recompute the `effect:peers` floor, and write the result into `pnpm-workspace.yaml`:
+Advancing the Effect pin is a deliberate, human-run upgrade — unlike the `effected` catalogs, it is never automated. Two commands, run in order, upgrade every package to its latest v4 release, recompute the `effect:peers` floor, and write the result into `pnpm-workspace.yaml`:
 
 ```bash
 pnpm pnpm:up

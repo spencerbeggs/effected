@@ -73,7 +73,7 @@ A **companion** package is published and installable but is **not a library**: i
 
 **Companion is a category, not a fourth tier.** The three tiers above sit on one axis — dependency surface — and answer "what does depending on this cost you?". That question is *meaningless* for a package nothing can depend on, so a companion is not ranked against pure, boundary and integrated; it sits off the axis entirely. The three tiers continue to classify **libraries only**, and a companion has no tier rather than a fourth one.
 
-`@effected/pnpm-plugin-effect` is the only companion today: it ships two pnpm catalogs and a pnpmfile — configuration, not code — and installing it pins a consumer's `effect` versions and peer floors to the values the kit was built and tested against. See [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md).
+`@effected/pnpm-plugin-effect` is the only companion today: it ships the pnpm catalogs and a pnpmfile — configuration, not code — and installing it pins a consumer's `effect` versions and peer floors, and the kit's own package versions, to the values the kit was built and tested against. See [packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md).
 
 **Why `companion` and not `infrastructure`.** "Infrastructure" names the package's relationship to *this repo* and reads as internal-only tooling, which invites the inference that it is not a real shipped package — but it is one, a public package consumers install and rely on. `companion` names the relationship to the consumer instead — ships alongside the kit, optional, no API — and makes that wrong reading harder.
 

@@ -162,6 +162,194 @@ await build({
 						},
 					},
 				},
+				/**
+				 * The kit's own version surface, consumed across the ecosystem as
+				 * `catalog:effected` and `catalog:effected:peers`.
+				 *
+				 * `@effected/pnpm-plugin-effect` is deliberately ABSENT and must stay absent. It is
+				 * the package this catalog ships inside: catalogue it, and every catalog rewrite
+				 * bumps the plugin, which invalidates the catalog, which writes another changeset —
+				 * an infinite release loop. The omission is the termination condition, not an
+				 * oversight.
+				 */
+				effected: {
+					packages: {
+						"@effected/app": {
+							range: "^0.11.1",
+							peer: "^0.11.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/cli": {
+							range: "^0.2.0",
+							peer: "^0.2.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/commands": {
+							range: "^0.5.0",
+							peer: "^0.5.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/config-file": {
+							range: "^0.5.0",
+							peer: "^0.5.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/git": {
+							range: "^0.9.0",
+							peer: "^0.9.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/github": {
+							range: "^0.7.0",
+							peer: "^0.7.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/github-actions": {
+							range: "^0.9.2",
+							peer: "^0.9.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/github-references": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/glob": {
+							range: "^0.4.0",
+							peer: "^0.4.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/jsonc": {
+							range: "^0.7.0",
+							peer: "^0.7.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/jsonl": {
+							range: "^0.3.0",
+							peer: "^0.3.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/lockfiles": {
+							range: "^0.6.2",
+							peer: "^0.6.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/markdown": {
+							range: "^0.6.0",
+							peer: "^0.6.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/memfs": {
+							range: "^0.5.0",
+							peer: "^0.5.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/npm": {
+							range: "^0.11.1",
+							peer: "^0.11.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/package-json": {
+							range: "^0.10.2",
+							peer: "^0.10.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/runtimes": {
+							range: "^0.4.3",
+							peer: "^0.4.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/sbom": {
+							range: "^0.4.1",
+							peer: "^0.4.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/schemastore": {
+							range: "^0.4.0",
+							peer: "^0.4.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/semver": {
+							range: "^0.5.0",
+							peer: "^0.5.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/spdx": {
+							range: "^0.4.0",
+							peer: "^0.4.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/store": {
+							range: "^0.4.0",
+							peer: "^0.4.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/templates": {
+							range: "^0.4.0",
+							peer: "^0.4.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/toml": {
+							range: "^0.5.0",
+							peer: "^0.5.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/tsconfig-json": {
+							range: "^0.6.0",
+							peer: "^0.6.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/walker": {
+							range: "^0.5.0",
+							peer: "^0.5.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/workspaces": {
+							range: "^0.17.1",
+							peer: "^0.17.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/xdg": {
+							range: "^0.3.0",
+							peer: "^0.3.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/yaml": {
+							range: "^0.10.0",
+							peer: "^0.10.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+					},
+				},
 			},
 			minimumReleaseAgeExclude: ["@effect/tsgo-*"],
 		}),
