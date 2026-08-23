@@ -50,10 +50,13 @@ const scriptGit = (
  * filesystem carries the root marker (`WorkspaceRoot` walks the live tree); the
  * ref content comes from `git`.
  */
-const snapshotsLayer = (git: Layer.Layer<Git>, tree: Tree, cwd = "/repo") => {
+const snapshotsLayer = (git: Layer.Layer<Git>, tree: Tree, cwd = "/repo", seedCatalogs?: CatalogSet) => {
 	const base = platform(tree);
 	const core = Workspaces.layer({ cwd });
-	const snapshots = WorkspaceSnapshots.layer({ cwd }).pipe(Layer.provide(git), Layer.provide(core));
+	const snapshots = WorkspaceSnapshots.layer({ cwd, ...(seedCatalogs === undefined ? {} : { seedCatalogs }) }).pipe(
+		Layer.provide(git),
+		Layer.provide(core),
+	);
 	return Layer.mergeAll(core, snapshots).pipe(Layer.provideMerge(base));
 };
 
@@ -376,6 +379,83 @@ describe("WorkspaceSnapshots — hook-injected catalog symmetry", () => {
 				const live = yield* snapshots.worktree();
 				assert.strictEqual(atRef.importerVersions?.["."]?.effect, "4.0.0-beta.101");
 				assert.strictEqual(live.importerVersions?.["."]?.effect, "4.0.0-beta.101");
+			}),
+		);
+	});
+});
+
+// ── The `seedCatalogs` option: the ref side of the hook-catalog gap ─────────
+//
+// A catalog injected by a config-dependency pnpmfile hook is declared in no
+// committed source, so `at(ref)` — which never replays hooks, deliberately —
+// cannot see it. The layer-level seed lets a consumer who already holds the
+// live set share it with the ref side without executing anything.
+
+const HOOKED_REF: RefTrees = {
+	HEAD: {
+		"pnpm-workspace.yaml": ["packages:", "  - packages/*", "catalog:", "  effect: ^4.0.0", ""].join("\n"),
+		"package.json": rootManifest(["packages/*"]),
+		"packages/alpha/package.json": manifest("@x/alpha", {
+			dependencies: { effect: "catalog:", "hooked-dep": "catalog:" },
+		}),
+	},
+};
+
+const HOOKED_MARKER: Tree = {
+	"/repo/pnpm-workspace.yaml": ["packages:", "  - packages/*", "catalog:", "  effect: ^4.0.0", ""].join("\n"),
+	"/repo/package.json": rootManifest(["packages/*"]),
+	"/repo/packages/alpha/package.json": manifest("@x/alpha", {
+		dependencies: { effect: "catalog:", "hooked-dep": "catalog:" },
+	}),
+};
+
+// What a config-dependency hook injects — the shape `hook-pnpmfile.cjs` adds.
+const HOOK_INJECTED = CatalogSet.make({ entries: { default: { "hooked-dep": "^9.9.9" } } });
+
+describe("WorkspaceSnapshots — without a seed, the hook-injected catalog is invisible at a ref", () => {
+	layer(snapshotsLayer(scriptGit(HOOKED_REF), HOOKED_MARKER))((it) => {
+		it.effect("resolves the committed catalog and abstains on the hook-injected one", () =>
+			Effect.gen(function* () {
+				const snapshots = yield* WorkspaceSnapshots;
+				const atRef = yield* snapshots.at("HEAD");
+				// The control: committed catalogs work, so a `none` below is about the
+				// hook, not about assembly having silently failed.
+				assert.deepStrictEqual(atRef.resolve("effect", "catalog:"), Option.some("^4.0.0"));
+				assert.deepStrictEqual(atRef.resolve("hooked-dep", "catalog:"), Option.none());
+			}),
+		);
+	});
+});
+
+describe("WorkspaceSnapshots — seedCatalogs", () => {
+	layer(snapshotsLayer(scriptGit(HOOKED_REF), HOOKED_MARKER, "/repo", HOOK_INJECTED))((it) => {
+		it.effect("reaches at(ref)", () =>
+			Effect.gen(function* () {
+				const snapshots = yield* WorkspaceSnapshots;
+				const atRef = yield* snapshots.at("HEAD");
+				assert.deepStrictEqual(atRef.resolve("hooked-dep", "catalog:"), Option.some("^9.9.9"));
+			}),
+		);
+
+		it.effect("reaches worktree() too, so the two sides of a diff agree", () =>
+			Effect.gen(function* () {
+				const snapshots = yield* WorkspaceSnapshots;
+				const atRef = yield* snapshots.at("HEAD");
+				const live = yield* snapshots.worktree();
+				// Asymmetry here is the bogus-row bug in the other direction: a seeded
+				// `at` diffed against an unseeded `worktree` reports the hook-injected
+				// catalog as newly removed on every run.
+				assert.deepStrictEqual(live.resolve("hooked-dep", "catalog:"), atRef.resolve("hooked-dep", "catalog:"));
+			}),
+		);
+
+		it.effect("never overrides what the ref itself committed", () =>
+			Effect.gen(function* () {
+				const snapshots = yield* WorkspaceSnapshots;
+				const atRef = yield* snapshots.at("HEAD");
+				assert.deepStrictEqual(atRef.resolve("effect", "catalog:"), Option.some("^4.0.0"));
+				// And the field still reports the ref's own declaration alone.
+				assert.deepStrictEqual(atRef.catalogs.rangeOf("hooked-dep", Option.none()), Option.none());
 			}),
 		);
 	});

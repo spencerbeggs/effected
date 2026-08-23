@@ -78,6 +78,32 @@ export interface WorkspaceSnapshotsOptions {
 	 *   first call is honoured.
 	 */
 	readonly cwd?: string;
+	/**
+	 * Catalogs every snapshot this service produces carries as its
+	 * `seededCatalogs` — consulted only where the snapshot's own catalogs cannot
+	 * answer.
+	 *
+	 * @remarks
+	 * The layer-level spelling of `WorkspaceStateSnapshot.withSeededCatalogs`,
+	 * for the common case where the seed is the same for every read: a consumer
+	 * diffing many refs against one live workspace seeds once here instead of
+	 * remembering to call `withSeededCatalogs` at each site — and a forgotten
+	 * call is a silently missing diff row, not a type error.
+	 *
+	 * **This executes nothing.** The caller supplies the set; `at(ref)` still
+	 * never replays config-dependency hooks and still never fetches. The
+	 * deliberate at/worktree asymmetry is unchanged — this only lets a consumer
+	 * who has already paid for the live set share it with the ref side.
+	 *
+	 * Applied to `worktree()` too, for symmetry. There it is usually inert: a
+	 * live set assembled under a config-dependency layer already contains the
+	 * hook-injected catalogs at full precedence, so the seed answers nothing the
+	 * snapshot could not answer itself.
+	 *
+	 * @defaultValue absent — no seed, and resolution behaves exactly as before
+	 *   this option existed.
+	 */
+	readonly seedCatalogs?: CatalogSet;
 }
 
 /**
@@ -213,6 +239,14 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 			const discovery = yield* WorkspaceDiscovery;
 			const catalogsService = yield* WorkspaceCatalogs;
 
+			// One seed for the layer's life, applied to every snapshot this service
+			// hands back. Kept as a function rather than inlined so `at` and
+			// `worktree` cannot drift on whether they seed — a seeded `at` diffed
+			// against an unseeded `worktree` is precisely the asymmetric-resolution
+			// bug the seam exists to remove.
+			const seeded = (snapshot: WorkspaceStateSnapshot): WorkspaceStateSnapshot =>
+				options?.seedCatalogs === undefined ? snapshot : snapshot.withSeededCatalogs(options.seedCatalogs);
+
 			/**
 			 * What a manager's lockfile records at the ref: its catalog set and its
 			 * importer versions, from ONE parse. Empty on both counts when the
@@ -340,7 +374,9 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						if (Option.isSome(member)) packages.push(member.value);
 					}
 
-					return WorkspaceStateSnapshot.make({ packages, catalogs, importerVersions: recorded.importerVersions });
+					return seeded(
+						WorkspaceStateSnapshot.make({ packages, catalogs, importerVersions: recorded.importerVersions }),
+					);
 				});
 
 			// Per-`(root, ref)` memo of the success-only invalidating cell. A failed
@@ -397,7 +433,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						optionalDependencies: pkg.optionalDependencies,
 					}),
 				);
-				return WorkspaceStateSnapshot.make({ packages: snapshotPackages, catalogs, importerVersions });
+				return seeded(WorkspaceStateSnapshot.make({ packages: snapshotPackages, catalogs, importerVersions }));
 			});
 
 			return { at, worktree };

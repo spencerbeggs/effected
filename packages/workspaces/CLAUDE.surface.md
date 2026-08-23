@@ -35,7 +35,9 @@ Read the module for its types; this is the index, not the API.
 
 ## Composites
 
-`Workspaces.ts` exposes `layer`, `layerWithConfigDependencies`, `layerWithConfigDependenciesSubprocess`, `layerWithGit`, `resolvers`, the one-call manifest path (`resolverLayer`, `resolveManifest`) and `localExecLayer`.
+`Workspaces.ts` exposes `layer`, `layerWithConfigDependencies`, `layerWithConfigDependenciesSubprocess`, `layerWithGit`, `layerWithGitAndConfigDependencies`, `layerWithGitAndConfigDependenciesSubprocess`, `resolvers`, the one-call manifest path (`resolverLayer`, `resolveManifest`) and `localExecLayer`.
+
+**The matrix is git-tier × catalogs-layer, and all four cells now exist.** `layerWithGit` wires the NO-OP catalogs layer; wanting snapshots + change detection + hook replay used to mean hand-rebuilding the whole graph, and a downstream copy of it rotted against the composite it duplicated. Every git composite is one internal `withGit(core, options)` over a core passed as a value, so the three cannot drift. **On the git composites the subprocess variant costs nothing** — its `ChildProcessSpawner` is already required for `Git` — so a bundled consumer should just take `layerWithGitAndConfigDependenciesSubprocess`. The git composites take `WorkspacesGitOptions` (`WorkspacesOptions` + `WorkspaceSnapshotsOptions`), which is how `seedCatalogs` reaches `at(ref)` without hand-composing.
 
 `Workspaces` is a static class with a private constructor, **not an `as const` namespace object** — an `as const` object's member types are inferred in the built `.d.ts` and lose their TSDoc; `static readonly` keeps it, and call syntax is unaffected.
 

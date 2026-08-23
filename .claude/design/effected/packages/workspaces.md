@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-20
-last-synced: 2026-08-20
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 95
 related:
   - ../effect-standards.md
@@ -167,6 +167,14 @@ Three services, each with its layer in the same file.
 **Root finding runs over [@effected/walker](walker.md)**, inheriting per-probe error absorption. Markers, in priority order: the pnpm workspace file, then a manifest with a workspaces field.
 
 **Discovery** reads the packages list from whichever source the workspace uses, enumerates it, reads each manifest, and absorbs the longest-prefix file-to-package lookup.
+
+**Discovery is bound to one root, and `listPackagesIn` / `infoIn` are the escape from that** — not a convenience. A long-lived host (an MCP server, a language server) resolves its root once at startup and then serves calls scoped to a git worktree of the same repository, a nested repository, or another project entirely; the layer-bound methods answer about the startup root and cannot vary per call without building a fresh layer. These two take a directory, resolve ITS root by the same upward walk, and **re-read everything beneath it**.
+
+**The re-read is the point, and the cheap alternative is the trap.** Re-rooting the layer's existing package list — rewriting each `path` onto the caller's directory — produces correct-looking paths over the ORIGINAL root's manifests, so a worktree whose branch adds, removes or renames a package reports the other branch's membership with no error at all. Names and versions are wrong in exactly the same silent way. A downstream consumer shipped that workaround and documented the limitation; these methods exist to lift it. The test fixture accordingly holds two workspaces that DISAGREE on both membership and versions, because a fixture whose roots agree cannot tell the two implementations apart.
+
+Memoization is per RESOLVED root, so many directories inside one workspace share one discovery, and the map is deliberately separate from the layer-bound memo — folding them together would make every layer-bound call re-run the root ascent. It grows one entry per distinct root, which is the intended behavior for a host serving many worktrees, and `refresh()` clears all of them along with the layer-bound one.
+
+**Both per-root methods die unstubbed on the double.** Deriving `listPackagesIn` from `listPackages` would model a world in which every root holds the same members — precisely the confusion the method exists to remove — so a double that fabricated it could not discriminate a consumer calling the wrong one.
 
 All three ship `makeTest` / `layerTest` doubles, so **the whole discovery path stands up with no filesystem at all**. The defaults model an empty workspace, and derived methods run over the *effective* package list, so stubbing only the enumeration yields a consistent double.
 
@@ -573,6 +581,17 @@ The rejected alternatives matter more than the accepted one:
 - **Rejected — warn and emit no row.** Leaves the changeset missing, which is the reported defect.
 - **Accepted — the lockfile importer fallback.** Both lockfiles are committed, so both read paths answer identically with no hook replay and no network. Scoped to catalog specifiers only; a plain range is already its own answer.
 
+**The seeded-catalog seam closes the remaining half, and it is a FOURTH option rather than a reversal of the two rejected above.** The importer-version fallback answers with a concrete *version*, which is enough to make a specifier resolve but not enough to see a **range** move: two refs that installed the same version report the same string, so a real bump of a hook-injected catalog's declared range produces no diff row. `WorkspaceStateSnapshot` therefore carries `seededCatalogs`, a set supplied by the CALLER and consulted strictly below the snapshot's own catalogs, with the whole chain reading: this moment's own catalogs, then the seed (a range), then the importer-version fallback (a version).
+
+Why this does not reopen what was rejected: **nothing is replayed and nothing is fetched.** The consumer already holds a live set — it paid for it by choosing a config-dependency layer — and simply hands it to the ref side. `at(ref)` still executes no historical code, which was the entire content of the first rejection.
+
+Two shape decisions carry the weight:
+
+- **The seed is its own field, never merged into `catalogs`.** `catalogs` means "the set assembled at this moment", and a snapshot is a serializable value consumers store and diff; blending an external set into it would silently redefine the field with nothing downstream able to tell the halves apart. Kept separate, the ref's own declaration always wins and both remain readable. This is a deliberate deviation from the literal downstream ask, which proposed merging.
+- **Lower precedence is what makes seeding safe to do unconditionally.** A seed can only ever ADD an answer where there was none, so an over-broad seed cannot corrupt a diff, and a genuine range change between two refs that both declare the catalog still reads as a change.
+
+`WorkspaceStateSnapshot.crossSeed(before, after)` gives each side the other's catalogs — the two-ref symmetry — and `WorkspaceSnapshotsOptions.seedCatalogs` is the layer-level spelling, applied to `at(ref)` and `worktree()` alike so the two sides of a diff cannot drift on whether they seed. **The inherent limitation is documented and pinned by a test rather than worked around**: a range change made purely by bumping the config dependency BETWEEN two refs stays suppressed, because neither committed source declares the catalog and each side then falls back to the other's value. The only committed evidence of that case is `configDependencies` in `pnpm-workspace.yaml`, which a consumer diffs directly.
+
 Two properties are load-bearing and easy to break: **the join is by dependency name across every field**, because pnpm writes a peer into the importer block only when it is also installed, so a peer's concrete version can sit on a different row than expected; and **recorded versions must be normalized**, because lockfiles stores the importer version verbatim including pnpm's peer suffix, which unstripped renders the whole parenthesized chain as a version.
 
 **Workspace-wide resolution answers only when every importer recording that dependency agrees** — divergence is `None`, never a guess. The importer-scoped form is the precise variant for callers holding a package's relative path, and the live index comes off the **same** memoized read, keeping the one-shared-read-path rule intact.
@@ -582,6 +601,8 @@ Two properties are load-bearing and easy to break: **the join is by dependency n
 A contract service with three layers: an in-process one that dynamically imports each config dependency's pnpmfile and replays its config hooks over the inline-catalog seed, a [subprocess twin](#layersubprocess--the-same-replay-where-a-bundler-cannot-reach-it), and a no-execution stand-in.
 
 - **Opt-in by layer choice.** The default composites wire the no-op — they **never** execute config-dependency code. Opting in is an explicit composite.
+- **Opting in must not cost the git tier.** `layerWithGit` hard-wires the no-op catalogs layer, so a consumer wanting snapshots + change detection + hook replay had to rebuild the whole service graph by hand — a copy that then rots against the composite it duplicates, which is exactly what happened downstream. `layerWithGitAndConfigDependencies` and its `…Subprocess` twin close the matrix; internally every git composite is now one `withGit(core, options)` helper over a core passed as a value, so the three variants cannot drift.
+- **On the git composites the subprocess variant is free.** Its extra requirement is core's `ChildProcessSpawner`, which the git tier already requires for `Git`. So unlike the git-free pair — where the R-widening is the reason the two exist separately — there is nothing to weigh here, and a bundled consumer should simply take the subprocess form.
 - **Assembly precedence** is lockfile < inline < hook-injected, merged per-dependency within a catalog, with the hooks seeded by the inline catalogs — matching pnpm's own behavior.
 - **Failure is typed, never silent.** A config dependency that fails to load or replay fails with a hooks-sourced assembly error.
 - **The security guard rejects a dependency name containing a `..` path segment before building the import target**, so a malicious entry cannot escape the intended directory.

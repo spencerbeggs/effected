@@ -28,6 +28,16 @@ It does not embed `@effected/package-json`'s `Package`: that model requires a st
 
 `workspaceRoot` is a **required carried field**, not a derived getter. Discovery resolved the root before enumerating and the sync entry point is handed it, so dropping it was pure information loss — consumers were reconstructing it by counting `relativePath` segments and re-ascending that many `..`. Required is the one breaking change here: a `WorkspacePackage` serialized before the field existed now fails decode. The asymmetry with `manifestRecord` is deliberate — `{}` is an honest "no record", but there is no honest default root, and a placeholder would hand back a wrong absolute path that consumers resolve config against, silently reading the wrong `.changeset/config.json`. Both halves are asserted in `WorkspacePackage.test.ts`; failing decode is the conservative direction because re-running discovery is cheap.
 
+## One layer, many roots: `listPackagesIn` / `infoIn`
+
+The layer-bound methods answer about the root resolved from `options.cwd`. A **long-lived host** — an MCP or language server — resolves that once at startup and then serves calls scoped to a git worktree of the same repo, a nested repo, or another project; it cannot vary the root per call without a fresh layer. `listPackagesIn(directory)` and `infoIn(directory)` resolve THAT directory's root by the same upward walk and re-read everything beneath it.
+
+**They re-read; they do not re-root — and the cheap alternative is the trap.** Rewriting the layer's package `path`s onto the caller's directory yields correct-looking paths over the ORIGINAL root's manifests, so a worktree whose branch adds, removes or renames a package silently reports the other branch's membership, with names and versions wrong the same way. A downstream consumer shipped exactly that workaround and documented the limitation; these methods lift it. `__test__/WorkspaceDiscoveryPerRoot.test.ts` fixtures two workspaces that **disagree** on membership and versions, because roots that agree cannot discriminate the two implementations.
+
+Memoization is per **resolved** root (so sibling directories in one workspace share one discovery), in a map deliberately separate from the layer-bound memo — folding them together would make every layer-bound call re-run the root ascent. It grows one entry per distinct root, which is the point for a multi-worktree host; `refresh()` clears all of them plus the layer-bound one.
+
+**Both die unstubbed on the double.** Deriving `listPackagesIn` from `listPackages` would model every root as identical — the exact confusion the method removes — so a fabricated default could not discriminate a consumer calling the wrong one.
+
 ## `PackageManagerDetector` refuses to guess
 
 Its chain runs three tiers: the workspace markers, then a standalone tier (`pnpm-lock.yaml`, `package-lock.json`, and the bun/yarn lockfiles under the **same** manifest conjunction the workspace tier uses), then a declaration tier (`packageManager` / `devEngines.packageManager` with no lockfile at all — a fresh clone before its first install). Nothing matching is `PackageManagerDetectionError`.

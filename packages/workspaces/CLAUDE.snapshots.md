@@ -24,7 +24,11 @@ Failure unions: `WorkspaceSnapshotAtFailure` (git errors + `CatalogAssemblyError
 
 `resolve` is workspace-wide and has no importer context, so it answers only when **every** importer recording that dependency agrees; divergence yields `Option.none()` rather than a wrong answer. `resolveIn(importerPath, …)` is the precise form when the caller knows the importer (`PackageStateSnapshot.relativePath`, `"."` for root).
 
-When the catalog set cannot answer a `catalog:` specifier, both fall back to the version that ref's own lockfile importer entry recorded — the shape, and why a hook replay must never be used instead, is in [catalogs](./CLAUDE.catalogs.md).
+A `catalog:` specifier resolves in **three** steps and the order is the contract: this moment's own `catalogs`, then `seededCatalogs`, then the importer-version fallback. The first two answer with a declared RANGE, the third with a concrete version — which is why a seeded snapshot reports a range change where an unseeded one can only report a version, and why an unseeded pair of refs that installed the same version yields no diff row. Why a hook replay must never be used instead is in [catalogs](./CLAUDE.catalogs.md).
+
+`seededCatalogs` is catalogs supplied from OUTSIDE the moment — the live hook-injected set, or the other side of a diff. **Never merge it into `catalogs`**: that field means "the set assembled at this moment", a snapshot is a value consumers store and diff, and blending would redefine it with nothing able to tell the halves apart. Its LOWER precedence is what makes seeding safe unconditionally — a seed can only add an answer where there was none, so an over-broad seed cannot corrupt a diff. `withSeededCatalogs(seed)` returns a new snapshot and REPLACES any existing seed (merging would make precedence depend on call order); `WorkspaceStateSnapshot.crossSeed(before, after)` is the two-ref form; `WorkspaceSnapshotsOptions.seedCatalogs` is the layer-level spelling, applied to `at(ref)` **and** `worktree()` so the two sides of a diff cannot drift on whether they seed.
+
+**The cross-seed limitation is intended and pinned by a test** — a range change made purely by bumping the config dependency between refs stays suppressed, because neither committed source declares the catalog. Do not "fix" it; diff `configDependencies` in `pnpm-workspace.yaml`, the only committed evidence.
 
 ## Change detection runs on `@effected/git`
 
