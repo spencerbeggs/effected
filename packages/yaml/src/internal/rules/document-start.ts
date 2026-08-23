@@ -9,8 +9,9 @@
 
 import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
-import type { YamlRule } from "../../YamlLintRule.js";
-import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import type { LintContext, YamlRule } from "../../YamlLintRule.js";
+import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import type { YamlToken } from "../../YamlToken.js";
 
 /** Options for `document-start`: require (`true`, default) or forbid the marker. */
 export const documentStartOptions = Schema.Struct({
@@ -20,14 +21,20 @@ export const documentStartOptions = Schema.Struct({
 
 const TRIVIA = new Set(["newline", "whitespace", "comment", "byte-order-mark", "directive"]);
 
+/** True when the stream carries `%YAML`/`%TAG` directives — which REQUIRE `---`. */
+const hasDirectives = (ctx: LintContext): boolean => ctx.tokens.some((t) => t.kind === "directive");
+
+/** The first non-trivia token: it decides whether the stream is headed by `---`. */
+const headToken = (ctx: LintContext): YamlToken | undefined => ctx.tokens.find((t) => !TRIVIA.has(t.kind));
+
 /** The `---` marker at the head of the stream. */
 export const documentStart: YamlRule = {
 	id: "document-start",
 	check: (ctx, options) => {
 		const present = (options as { readonly present?: boolean } | undefined)?.present ?? true;
 		// The first non-trivia token decides: is the stream headed by `---`?
-		const hasDirectives = ctx.tokens.some((t) => t.kind === "directive");
-		const first = ctx.tokens.find((t) => !TRIVIA.has(t.kind));
+		const directives = hasDirectives(ctx);
+		const first = headToken(ctx);
 		const headed = first?.kind === "document-start";
 		if (present && !headed && ctx.text.trim() !== "") {
 			return [
@@ -41,7 +48,7 @@ export const documentStart: YamlRule = {
 					character: 0,
 					// A stream with %directives cannot take a synthesized `---` at
 					// offset 0 (directives precede the marker); no fix there.
-					...(hasDirectives ? {} : { fix: YamlEdit.make({ offset: 0, length: 0, content: "---\n" }) }),
+					...(directives ? {} : { fix: YamlEdit.make({ offset: 0, length: 0, content: "---\n" }) }),
 				}),
 			];
 		}
@@ -50,7 +57,7 @@ export const documentStart: YamlRule = {
 			// splice the content line. A stream with %directives REQUIRES the
 			// marker, so removing it would invalidate the directives: no fix.
 			const lineText = ctx.lines[first.line]?.text ?? "";
-			const alone = !hasDirectives && lineText.trim() === "---";
+			const alone = !directives && lineText.trim() === "---";
 			// The fix removes the marker line whole: marker plus its terminator
 			// (two characters under CRLF, one under LF).
 			const terminator = ctx.text.startsWith("\r\n", first.offset + first.length) ? 2 : 1;
@@ -70,5 +77,33 @@ export const documentStart: YamlRule = {
 			];
 		}
 		return [];
+	},
+	// Inference (#345): a non-empty stream votes `present` — headed by `---`
+	// or not. An unmarked file IS evidence of the no-marker style (the
+	// workflow-file corpus above all), so absence votes `false` rather than
+	// saying nothing.
+	infer: (ctx) => {
+		if (ctx.text.trim() === "") return [];
+		const first = headToken(ctx);
+		if (first === undefined) return [];
+		const headed = first.kind === "document-start";
+		// A %directive-headed stream REQUIRES the marker (check refuses to
+		// synthesize or remove one there): an unmarked directive stream is
+		// malformed input, not evidence of the no-marker style — no vote.
+		if (!headed && hasDirectives(ctx)) return [];
+		return [
+			StyleVote.make(
+				headed
+					? {
+							dimension: "present",
+							value: true,
+							offset: first.offset,
+							length: first.length,
+							line: first.line,
+							character: first.character,
+						}
+					: { dimension: "present", value: false, offset: 0, length: 0, line: 0, character: 0 },
+			),
+		];
 	},
 };

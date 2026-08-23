@@ -478,20 +478,20 @@
 		{
 			"source": "packages/yaml/CLAUDE.lint.md",
 			"target": ".claude/design/effected/yaml-lint.md",
-			"hash": "1fef2b8c729120f38196c57fde23bd23530f13aa2abf56d948a7e492befe5edd",
-			"recordedAt": "2026-08-16"
+			"hash": "b4be0f1cc2e978220c5c95f7d11ebf54b6d53db648207428d7a9c57c85b539aa",
+			"recordedAt": "2026-08-23"
 		},
 		{
 			"source": "packages/yaml/CLAUDE.md",
 			"target": ".claude/design/effected/packages/yaml.md",
-			"hash": "36ae7f6529c91c87df4e6361e8825db7d54c7de913abccc8e700109c73bfcd6b",
-			"recordedAt": "2026-08-16"
+			"hash": "d38c4cf705b3fe3928a8b417504a99acfb432a90223b4c1fb13cae5059e9f87d",
+			"recordedAt": "2026-08-23"
 		},
 		{
 			"source": "packages/yaml/CLAUDE.md",
 			"target": ".claude/design/effected/yaml-lint.md",
-			"hash": "1fef2b8c729120f38196c57fde23bd23530f13aa2abf56d948a7e492befe5edd",
-			"recordedAt": "2026-08-16"
+			"hash": "b4be0f1cc2e978220c5c95f7d11ebf54b6d53db648207428d7a9c57c85b539aa",
+			"recordedAt": "2026-08-23"
 		}
 	]
 }

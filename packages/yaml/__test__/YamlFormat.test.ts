@@ -345,6 +345,148 @@ describe("YamlFormat", () => {
 		});
 	});
 
+	describe("requoteScalars (#347)", () => {
+		const requoteDouble = YamlFormattingOptions.make({ quoteStyle: "double", requoteScalars: true });
+		const requoteSingle = YamlFormattingOptions.make({ quoteStyle: "single", requoteScalars: true });
+
+		it("single→double: a simple single-quoted scalar is re-quoted", () => {
+			assert.strictEqual(YamlFormat.formatToString("k: 'a'\n", undefined, requoteDouble), 'k: "a"\n');
+		});
+
+		it("single→double: content needing escaping gets proper double-quote escapes", () => {
+			// An inner double quote must be escaped as \" — the conservative lint
+			// fix skips this shape; the format path escapes it.
+			assert.strictEqual(
+				YamlFormat.formatToString("k: 'say \"hi\"'\n", undefined, requoteDouble),
+				'k: "say \\"hi\\""\n',
+			);
+			// A literal backslash (literal in single-quoted YAML) becomes \\.
+			assert.strictEqual(YamlFormat.formatToString("k: 'a\\b'\n", undefined, requoteDouble), 'k: "a\\\\b"\n');
+			// A doubled '' (the one single-quote escape) decodes to ' and re-encodes plainly.
+			assert.strictEqual(YamlFormat.formatToString("k: 'it''s'\n", undefined, requoteDouble), 'k: "it\'s"\n');
+		});
+
+		it("double→single: a simple double-quoted scalar is re-quoted", () => {
+			assert.strictEqual(YamlFormat.formatToString('k: "a"\n', undefined, requoteSingle), "k: 'a'\n");
+		});
+
+		it("double→single: applies under the default quoteStyle (single) when quoteStyle is omitted", () => {
+			const options = YamlFormattingOptions.make({ requoteScalars: true });
+			assert.strictEqual(YamlFormat.formatToString('k: "a"\n', undefined, options), "k: 'a'\n");
+		});
+
+		it("double→single: an inner single quote is doubled", () => {
+			assert.strictEqual(YamlFormat.formatToString('k: "it\'s"\n', undefined, requoteSingle), "k: 'it''s'\n");
+		});
+
+		it("double→single: content single quotes cannot express is skipped, never corrupted", () => {
+			// \n, \t escapes and control characters have no single-quoted spelling.
+			assert.strictEqual(YamlFormat.formatToString('k: "a\\nb"\n', undefined, requoteSingle), 'k: "a\\nb"\n');
+			assert.strictEqual(YamlFormat.formatToString('k: "a\\tb"\n', undefined, requoteSingle), 'k: "a\\tb"\n');
+			// A control character (BEL): the scalar must stay double-quoted. Its
+			// escape spelling may normalize (\x07 → \a), so compare against the
+			// no-requote baseline rather than the raw source bytes.
+			const bel = 'k: "\\x07"\n';
+			assert.strictEqual(YamlFormat.formatToString(bel, undefined, requoteSingle), YamlFormat.formatToString(bel));
+		});
+
+		it("plain scalars stay plain — quote-style normalization, not quote forcing", () => {
+			assert.strictEqual(YamlFormat.formatToString("k: a\n", undefined, requoteDouble), "k: a\n");
+			assert.strictEqual(YamlFormat.formatToString("k: a\n", undefined, requoteSingle), "k: a\n");
+		});
+
+		it("tagged and anchored quoted scalars stay untouched", () => {
+			assert.strictEqual(YamlFormat.formatToString("k: !!str 'a'\n", undefined, requoteDouble), "k: !!str 'a'\n");
+			assert.strictEqual(YamlFormat.formatToString("k: &x 'a'\n", undefined, requoteDouble), "k: &x 'a'\n");
+		});
+
+		it("block scalars stay untouched", () => {
+			const text = "k: |\n  a\n";
+			assert.strictEqual(YamlFormat.formatToString(text, undefined, requoteDouble), text);
+		});
+
+		it("a multi-line quoted scalar is skipped", () => {
+			const text = "k: 'a\n  b'\n";
+			assert.strictEqual(YamlFormat.formatToString(text, undefined, requoteDouble), YamlFormat.formatToString(text));
+		});
+
+		it("a quoted scalar folded on CR-only line breaks is skipped too", () => {
+			// A lone \r is a YAML line break (b-carriage-return): the scalar is
+			// multi-line even though its raw slice carries no \n, and re-quoting
+			// it from the folded value would collapse the layout.
+			const text = "k: 'a\r  b'\n";
+			assert.strictEqual(YamlFormat.formatToString(text, undefined, requoteDouble), YamlFormat.formatToString(text));
+		});
+
+		it("quoted mapping keys and sequence items re-quote too", () => {
+			assert.strictEqual(YamlFormat.formatToString("'k': 1\n", undefined, requoteDouble), '"k": 1\n');
+			assert.strictEqual(YamlFormat.formatToString("- 'a'\n- b\n", undefined, requoteDouble), '- "a"\n- b\n');
+		});
+
+		it("scalars inside flow collections re-quote", () => {
+			const text = "k: {a: 'x'}\n";
+			assert.strictEqual(
+				YamlFormat.formatToString(text, undefined, requoteDouble),
+				YamlFormat.formatToString(text).replace("'x'", '"x"'),
+			);
+		});
+
+		it("comment and byte fidelity is preserved around requoted spans", () => {
+			const text = "# top\na: 'x' # trail\nb: 2\n";
+			assert.strictEqual(YamlFormat.formatToString(text, undefined, requoteDouble), '# top\na: "x" # trail\nb: 2\n');
+			// The computed edits are surgical: each one falls inside a quoted
+			// scalar's source span, touching nothing around it.
+			const edits = YamlFormat.format(text, undefined, requoteDouble);
+			assert.isAbove(edits.length, 0);
+			const span = { offset: text.indexOf("'x'"), length: "'x'".length };
+			for (const edit of edits) {
+				assert.isAtLeast(edit.offset, span.offset);
+				assert.isAtMost(edit.offset + edit.length, span.offset + span.length);
+			}
+		});
+
+		it("default-off inertness: absent and explicit false are byte-identical to today (regression)", () => {
+			const text = "a: 'x'\nb: \"y\"\nc: z\n";
+			assert.strictEqual(YamlFormat.formatToString(text), text);
+			assert.strictEqual(
+				YamlFormat.formatToString(text, undefined, YamlFormattingOptions.make({ quoteStyle: "double" })),
+				text,
+			);
+			assert.strictEqual(
+				YamlFormat.formatToString(
+					text,
+					undefined,
+					YamlFormattingOptions.make({ quoteStyle: "double", requoteScalars: false }),
+				),
+				text,
+			);
+		});
+
+		it("multi-document streams re-quote every document", () => {
+			assert.strictEqual(
+				YamlFormat.formatToString("a: 'x'\n---\nb: 'y'\n", undefined, requoteDouble),
+				'a: "x"\n---\nb: "y"\n',
+			);
+		});
+
+		it.effect("round-trip: requoted output parses to the identical value", () =>
+			Effect.gen(function* () {
+				const text = "a: 'x'\nb: \"it's\"\nc: 'say \"hi\"'\nd: plain\ne:\n  - 'a\\b'\n  - \"tab\\there\"\n";
+				const doubled = YamlFormat.formatToString(text, undefined, requoteDouble);
+				const singled = YamlFormat.formatToString(text, undefined, requoteSingle);
+				const original = yield* Yaml.parse(text);
+				assert.deepStrictEqual(yield* Yaml.parse(doubled), original);
+				assert.deepStrictEqual(yield* Yaml.parse(singled), original);
+			}),
+		);
+
+		it("YamlFormattingOptions.make validates the requoteScalars field", () => {
+			const options = YamlFormattingOptions.make({ requoteScalars: true });
+			assert.strictEqual(options.requoteScalars, true);
+			assert.throws(() => YamlFormattingOptions.make({ requoteScalars: "yes" as unknown as boolean }));
+		});
+	});
+
 	describe("modify — replace", () => {
 		it.effect("updates an existing mapping value", () =>
 			Effect.gen(function* () {

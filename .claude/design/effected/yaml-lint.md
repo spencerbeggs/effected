@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 95
 related:
   - formatter-convention.md
@@ -116,8 +116,11 @@ The public rule interface — built-ins and custom rules are the same shape:
 interface YamlRule {
   readonly id: string;
   readonly check: (ctx: LintContext, options: unknown) => Iterable<YamlLintDiagnostic>;
+  readonly infer?: (ctx: LintContext) => Iterable<StyleObservation>;
 }
 ```
+
+*(shipped 2026-08-23: the optional `infer` hook is #345's config-inference surface — the mirror image of `check`. See [config inference](#config-inference-shipped-2026-08-23--issue-345).)*
 
 Built-ins are just rules; a consumer registers a custom rule by putting it in the array alongside them; config references any rule — built-in or custom — by `id`. There is no privileged built-in mechanism a custom rule cannot reach.
 
@@ -159,6 +162,7 @@ This sidestepped [issue #127](https://github.com/spencerbeggs/effected/issues/12
 - `YamlLint.run(text, rules, config): ReadonlyArray<YamlLintDiagnostic>` — sorted by position.
 - `YamlLint.fix(text, rules, config): Result<string, YamlParseError>` — applies non-overlapping fixes.
 - `YamlLint.builtins: ReadonlyArray<YamlRule>` — the built-in catalog.
+- `YamlLint.observe` / `.resolveStrict` / `.resolveLenient` / `.inferStrict` / `.inferLenient` — the [config-inference surface](#config-inference-shipped-2026-08-23--issue-345) (shipped 2026-08-23).
 
 Custom usage is array concatenation, nothing more:
 
@@ -243,6 +247,48 @@ Three pieces, and **no Python-yamllint differential**.
 **Shipped: the harness guards its own fixtures.** Every fixture input is asserted to parse cleanly, with an explicit `expectsParseErrors: true` opt-out for the fixtures that are *about* malformed input. The guard is bidirectional — declaring the opt-out on an input that parses fine fails too. Without it, a fixture with an accidental syntax error tests the rule against a document the composer never built, and the rule passes for the wrong reason; the opt-out being checked in both directions is what stops it decaying into a blanket suppression pasted onto every fixture.
 
 A differential against Python yamllint is **explicitly rejected**. It would install a Python toolchain into a TypeScript monorepo's test path, and it would bind our diagnostics to another tool's message text and off-by-one conventions — pinning us to bug-for-bug agreement with an implementation whose config schema we just decided not to copy. The mutation proofs give the falsifiability that a differential was wanted for, without the second toolchain.
+
+## Config inference (shipped 2026-08-23 — issue #345)
+
+The design below was fully decided in the 2026-08-12 discussion and **shipped 2026-08-23** ([issue #345](https://github.com/spencerbeggs/effected/issues/345)) on the #129 rule catalog and the eager [`LintContext`](#lintcontext). Where implementation refined the sketch, the refinement is marked *(shipped: …)* in place; the reasoning is kept. The suite stands at ~1966 tests with conformance unmoved at 1226/1226.
+
+The inverse of `YamlLint.run`: parse existing YAML and produce the `YamlLintConfig` its style already follows. This is the adoption story for a repo that has never had a lint config — point the linter at your workflows, get the config out — and the machinery it needs (the eager context, rule-owned option semantics) is exactly what #129 built.
+
+### One primitive, two resolution policies
+
+The earlier sketch had **three modes**; the decided shape collapses them into **one primitive and two resolvers**, and the collapse is the load-bearing decision — recorded here so a later pass does not drift back to a mode enum:
+
+- **`YamlLint.observe(text, rules) → StyleEvidence`** — pure, per-dimension evidence: histograms and measurements (quote types seen, indent widths, marker presence, spacing before `#`, longest line, max blank run). **Evidence is a monoid**: observing N files and merging their evidence gives multi-file inference for free, and the N-file loop stays the caller's — so [the governing constraint](#the-governing-constraint-v1-is-the-pure-half-only) holds untouched: strings in, config out, no IO enters the package.
+- **Strict resolver** — `YamlLint.resolveStrict`, every *observed* dimension must be unanimous → exact config. Conflicting evidence fails with a typed error naming the dimension, both spellings, and positions. The old "mode that fails" is this resolver's **error channel**, not a separate mode — which is why three modes were two too many. One nuance is pinned explicitly: **unobserved ≠ conflicting**. A document with no comments says nothing about `comments-spacing`; it falls back to defaults rather than failing. *(shipped: a sync `Result`, per the [sync primitive policy](sync-primitive-policy.md); the error is `YamlStyleConflictError`, a `Schema.TaggedError` carrying structured `StyleConflict`s, dominant spelling first.)*
+- **Lenient resolver** — `YamlLint.resolveLenient`, dominant style per dimension, base-config defaults for the unobserved rest. *(shipped: **total, and no thresholding** — plurality wins outright, and ties break deterministically to canonical value order rather than by a tunable cutoff.)* The residual report — the diagnostics the inferred config would still produce, "here is your config, and the three places that do not match it" — lives on the `infer*` pair: `YamlLint.inferStrict` / `.inferLenient` return `YamlLintInference { config, residual }`, where `residual` reuses the same context and engine, so the whole round costs one tokenize/compose.
+
+*(shipped: the evidence vocabulary is Schema classes across the two lint modules. `YamlLintRule.ts` holds the per-occurrence side — `StyleVote` (dimension, value: string|number|boolean, offset/length/line/character) and `StyleFloor` (dimension, value), with `StyleObservation` their union. Both are `Schema.TaggedClass`, not plain `Schema.Class`, and `fromObservations` branches on the runtime `_tag`, never `instanceof` — Schema class instances are structurally assignable, so a custom rule returning a plain object that type-checks as a `StyleVote` would fail `instanceof` and silently fall into the floor branch; `.make` call sites are unchanged (the tag has a constructor default) and only the encoded shape gains `_tag`. `YamlLint.ts` holds the aggregate side — `StyleVoteTally` / `StyleFloorTally` / `StyleEvidence`, canonically-sorted tallies with statics `empty`, associative `combine` — counts add, left first-seen position wins, floors max, output canonicalized — and `fromObservations`, the homomorphism from observation lists into the monoid. Monoid laws are generative tests via `it.effect.prop` over Schema-derived arbitraries. Value keys are type-discriminating: `"2"` ≠ `2`.)*
+
+### Ownership: an `infer` hook on the rule
+
+Detection logic lives beside check logic. The `YamlRule` interface grows an **optional `infer?: (ctx: LintContext) => Iterable<StyleObservation>` hook** — the mirror image of `check` — so each rule owns its own style detection with the same fixtures its `check` already has, and custom rules participate in inference for free, on the same no-privileged-built-ins principle as [the rule model](#yamlrule).
+
+*(shipped: the key refinement is that a vote's `dimension` IS the rule's option key and its `value` IS the option value — so the resolvers turn votes into config entries with **zero per-rule knowledge**, and a custom rule's hook feeds the same machinery untranslated. An emergent property rode in for free: `YamlLintConfig`'s rule-aware validation means a hook voting a bogus dimension on a built-in fails config validation loudly — the overlay path got correctness without a line written for it.)*
+
+*(shipped: strict overlay semantics, pinned. Unanimity is required per **observed** dimension; unobserved dimensions fall to the base config; base `"off"` outranks inference; a base `"warning"` severity survives the overlay; observed rules absent from the base are added.)*
+
+### Honesty about detectability
+
+Some rules have no detectable *style* and must say so rather than guess:
+
+- **`truthy`** and **`key-duplicates`** are policy rules — their only evidence is violations, so nothing about a clean corpus reveals what the policy should be.
+- **`line-length`** is inferable only as a **floor** — the longest observed line proves the limit is *at least* N, not what N is.
+- **`empty-lines`** is floor-only too. *(shipped: this settles an ambiguity the original section left open — the evidence list above named "max blank run" but this honesty list named only `line-length` as floor-only. `empty-lines`'s `max` is resolved floor-only by the same fabrication argument: the longest observed blank run proves the limit is at least N, not what N is.)*
+
+Floor-only dimensions stay default-driven under **both** resolvers — floors are informational, never resolved into config. An inference surface that fabricated a `line-length` max from the longest line it happened to see would be lying with a straight face.
+
+*(shipped: full per-rule coverage. Vote-emitting hooks: `quoted-strings` (quoteType), `indentation` (spaces + indentSequences — sharing helpers with its `check` so the two cannot disagree), `document-start` / `document-end` (present — absence IS evidence; both share their detection helpers between `check` and `infer` the same way — `hasDirectives`/`headToken` and `tailToken`/`endOfStreamPosition` respectively — and `document-start`'s hook mirrors check's `hasDirectives` guard, so a directive-headed stream with no `---` marker yields no observation at all: directives *require* the marker, making that input malformed rather than evidence of no-marker style), `comments-spacing` (requireSpaceAfter + minSpacesBefore). Floor-only: `line-length` (max) and `empty-lines` (max). No hook, default-driven: `truthy` and `key-duplicates` (policy), `parse-validity` (no options), and `trailing-spaces` / `eof-newline` / `colon-spacing` / `hyphen-spacing` — max-constraints whose only evidence is violations.)*
+
+*(shipped: the [shared rule harness](#3-testing-approach) grew `testRuleInference` with an automated **dead-infer mutant** per rule set — the inference analog of the dead-rule mutant, so a hook that silently stops observing fails its fixtures.)*
+
+### Dogfood bonus
+
+Strict-mode inference over our own emitted output is a **self-consistency test of the stringifier** — unanimous evidence out of our own emit, or the stringifier is inconsistent with itself. *(shipped: `__test__/e2e/inference-self-consistency.e2e.test.ts`, pinning the stringifier's voice.)*
 
 ## Sequencing: behind #127
 

@@ -14,7 +14,7 @@ import { builtinOptionsSchemas, builtinRules } from "./internal/rules/catalog.js
 import { YamlParseError } from "./Yaml.js";
 import { documentFromRaw } from "./YamlDocument.js";
 import { YamlEdit } from "./YamlEdit.js";
-import type { LintContext, LintLine, YamlLintSeverity, YamlRule } from "./YamlLintRule.js";
+import type { LintContext, LintLine, StyleObservation, YamlLintSeverity, YamlRule } from "./YamlLintRule.js";
 import { YamlLintDiagnostic } from "./YamlLintRule.js";
 import { YamlTokens } from "./YamlToken.js";
 
@@ -186,6 +186,295 @@ const buildContext = (text: string): LintContext => {
 	};
 };
 
+// ── Style evidence (#345) ───────────────────────────────────────────────────
+
+/**
+ * An accumulated tally of one {@link StyleVote} spelling: how many times a
+ * `value` was voted for a `(rule, dimension)` pair, and the position of the
+ * FIRST occurrence seen (merging keeps the left operand's position, so on a
+ * multi-file merge the first file that exhibited the spelling names it).
+ *
+ * @public
+ */
+export class StyleVoteTally extends Schema.Class<StyleVoteTally>("StyleVoteTally")({
+	rule: Schema.String,
+	dimension: Schema.String,
+	value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
+	count: Schema.Number,
+	offset: Schema.Number,
+	length: Schema.Number,
+	line: Schema.Number,
+	character: Schema.Number,
+}) {}
+
+/**
+ * An accumulated {@link StyleFloor} for a `(rule, dimension)` pair: the
+ * largest value the observed sources prove the limit is AT LEAST. Merging
+ * takes the maximum. Floors are informational — never resolved into config
+ * options (see {@link StyleFloor}).
+ *
+ * @public
+ */
+export class StyleFloorTally extends Schema.Class<StyleFloorTally>("StyleFloorTally")({
+	rule: Schema.String,
+	dimension: Schema.String,
+	value: Schema.Number,
+}) {}
+
+/** Canonical histogram key for a vote value — type-discriminating (`"2"` ≠ `2`, `"true"` ≠ `true`). */
+const valueKey = (value: string | number | boolean): string => `${typeof value}:${String(value)}`;
+
+const byTallyOrder = (
+	a: { readonly rule: string; readonly dimension: string },
+	b: { readonly rule: string; readonly dimension: string },
+	aKey: string,
+	bKey: string,
+): number =>
+	a.rule < b.rule
+		? -1
+		: a.rule > b.rule
+			? 1
+			: a.dimension < b.dimension
+				? -1
+				: a.dimension > b.dimension
+					? 1
+					: aKey < bKey
+						? -1
+						: aKey > bKey
+							? 1
+							: 0;
+
+/**
+ * Per-dimension style evidence (#345): what the observed sources say about
+ * each inferable `(rule, dimension)` — vote histograms with first-seen
+ * positions, and measured floors.
+ *
+ * Evidence is a MONOID: {@link StyleEvidence.empty} is the identity and
+ * {@link StyleEvidence.combine} is associative, so multi-file inference is
+ * observe-per-file, merge, resolve — and the N-file loop stays the caller's
+ * (no IO enters the package). `combine` normalizes: counts of the same
+ * `(rule, dimension, value)` add, the left operand's first-seen position
+ * wins, floors take the maximum, and the result is canonically sorted — so
+ * every value `observe`/`combine`/`fromObservations` produces is canonical
+ * and the monoid laws hold structurally over them.
+ *
+ * @public
+ */
+export class StyleEvidence extends Schema.Class<StyleEvidence>("StyleEvidence")({
+	votes: Schema.Array(StyleVoteTally),
+	floors: Schema.Array(StyleFloorTally),
+}) {
+	/** The monoid identity: no observations. */
+	static readonly empty: StyleEvidence = StyleEvidence.make({ votes: [], floors: [] });
+
+	/**
+	 * Merge two bodies of evidence (associative; {@link StyleEvidence.empty}
+	 * is the identity). Vote counts add, the left operand's first-seen
+	 * position wins per spelling, floors take the maximum.
+	 */
+	static combine(a: StyleEvidence, b: StyleEvidence): StyleEvidence {
+		const votes = new Map<string, StyleVoteTally>();
+		for (const tally of [...a.votes, ...b.votes]) {
+			const key = `${tally.rule} ${tally.dimension} ${valueKey(tally.value)}`;
+			const seen = votes.get(key);
+			votes.set(key, seen === undefined ? tally : StyleVoteTally.make({ ...seen, count: seen.count + tally.count }));
+		}
+		const floors = new Map<string, StyleFloorTally>();
+		for (const floor of [...a.floors, ...b.floors]) {
+			const key = `${floor.rule} ${floor.dimension}`;
+			const seen = floors.get(key);
+			floors.set(key, seen === undefined || floor.value > seen.value ? floor : seen);
+		}
+		return StyleEvidence.make({
+			votes: [...votes.values()].sort((x, y) => byTallyOrder(x, y, valueKey(x.value), valueKey(y.value))),
+			floors: [...floors.values()].sort((x, y) => byTallyOrder(x, y, "", "")),
+		});
+	}
+
+	/**
+	 * Build canonical evidence from one rule's raw observations — the
+	 * homomorphism from observation lists into the monoid
+	 * (`fromObservations(r, [...a, ...b])` equals
+	 * `combine(fromObservations(r, a), fromObservations(r, b))`). `observe`
+	 * uses it per rule; it is public so custom tooling can construct evidence
+	 * without a {@link LintContext}.
+	 */
+	static fromObservations(rule: string, observations: Iterable<StyleObservation>): StyleEvidence {
+		let acc = StyleEvidence.empty;
+		for (const observation of observations) {
+			// Branch on the `_tag` discriminator, never `instanceof`: class
+			// instances are structurally assignable, so a custom rule may yield a
+			// PLAIN OBJECT shaped like a vote, and it must still tally as one.
+			acc = StyleEvidence.combine(
+				acc,
+				observation._tag === "StyleVote"
+					? StyleEvidence.make({
+							votes: [
+								StyleVoteTally.make({
+									rule,
+									count: 1,
+									dimension: observation.dimension,
+									value: observation.value,
+									offset: observation.offset,
+									length: observation.length,
+									line: observation.line,
+									character: observation.character,
+								}),
+							],
+							floors: [],
+						})
+					: StyleEvidence.make({
+							votes: [],
+							floors: [StyleFloorTally.make({ rule, dimension: observation.dimension, value: observation.value })],
+						}),
+			);
+		}
+		return acc;
+	}
+}
+
+/**
+ * One strict-resolution conflict: a `(rule, dimension)` whose observed
+ * spellings disagree. `candidates` carries every spelling with its count and
+ * first-seen position, ordered by count descending (dominant first).
+ *
+ * @public
+ */
+export class StyleConflict extends Schema.Class<StyleConflict>("StyleConflict")({
+	rule: Schema.String,
+	dimension: Schema.String,
+	candidates: Schema.Array(StyleVoteTally),
+}) {}
+
+/**
+ * Raised by strict config inference when observed evidence is not unanimous:
+ * carries every conflicting `(rule, dimension)` as a structured
+ * {@link StyleConflict} — dimension, all spellings, counts and positions —
+ * never a collapsed `reason` string (the structure-preserving-errors house
+ * rule). Unobserved dimensions never conflict: they fall back to the base
+ * config's defaults.
+ *
+ * @public
+ */
+export class YamlStyleConflictError extends Schema.TaggedError<YamlStyleConflictError>()("YamlStyleConflictError", {
+	conflicts: Schema.Array(StyleConflict),
+}) {
+	override get message(): string {
+		return this.conflicts
+			.map(
+				(conflict) =>
+					`Conflicting style for ${conflict.rule}.${conflict.dimension}: ${conflict.candidates
+						.map((c) => `${JSON.stringify(c.value)} (${c.count}×, first at ${c.line}:${c.character})`)
+						.join(" vs ")}`,
+			)
+			.join("; ");
+	}
+}
+
+/** Group canonical vote tallies by rule, then dimension (order-preserving). */
+const groupVotes = (evidence: StyleEvidence): Map<string, Map<string, Array<StyleVoteTally>>> => {
+	const byRule = new Map<string, Map<string, Array<StyleVoteTally>>>();
+	for (const tally of evidence.votes) {
+		const dims = byRule.get(tally.rule) ?? new Map<string, Array<StyleVoteTally>>();
+		const tallies = dims.get(tally.dimension) ?? [];
+		tallies.push(tally);
+		dims.set(tally.dimension, tallies);
+		byRule.set(tally.rule, dims);
+	}
+	return byRule;
+};
+
+/**
+ * Overlay resolved option picks onto the base config. A base entry keeps its
+ * severity (a bare `"warning"` becomes `{ severity: "warning", ...picks }`);
+ * an explicit `"off"` outranks inference and is left untouched; a rule the
+ * base does not mention is added as a plain options entry.
+ */
+const overlayConfig = (
+	base: YamlLintConfig,
+	picks: Map<string, Map<string, string | number | boolean>>,
+): YamlLintConfig => {
+	const rules: Record<string, YamlLintRuleSetting> = { ...base.rules };
+	for (const [ruleId, dims] of picks) {
+		const entry = rules[ruleId];
+		if (entry === "off") continue;
+		const merged: Record<string, unknown> = {};
+		if (typeof entry === "object") Object.assign(merged, entry);
+		else if (entry === "warning") merged.severity = "warning";
+		for (const [dimension, value] of dims) merged[dimension] = value;
+		rules[ruleId] = merged as YamlLintRuleSetting;
+	}
+	return YamlLintConfig.make({ rules });
+};
+
+/** The observation loop shared by `observe` and the infer conveniences. */
+const observeContext = (ctx: LintContext, rules: ReadonlyArray<YamlRule>): StyleEvidence => {
+	let evidence = StyleEvidence.empty;
+	for (const rule of rules) {
+		if (rule.infer === undefined) continue;
+		evidence = StyleEvidence.combine(evidence, StyleEvidence.fromObservations(rule.id, rule.infer(ctx)));
+	}
+	return evidence;
+};
+
+const resolveStrictEvidence = (
+	evidence: StyleEvidence,
+	base: YamlLintConfig,
+): Result.Result<YamlLintConfig, YamlStyleConflictError> => {
+	const conflicts: Array<StyleConflict> = [];
+	const picks = new Map<string, Map<string, string | number | boolean>>();
+	for (const [ruleId, dims] of groupVotes(evidence)) {
+		for (const [dimension, tallies] of dims) {
+			if (tallies.length > 1) {
+				conflicts.push(
+					StyleConflict.make({
+						rule: ruleId,
+						dimension,
+						candidates: [...tallies].sort((a, b) => b.count - a.count),
+					}),
+				);
+				continue;
+			}
+			const only = tallies[0] as StyleVoteTally;
+			const dimPicks = picks.get(ruleId) ?? new Map<string, string | number | boolean>();
+			dimPicks.set(dimension, only.value);
+			picks.set(ruleId, dimPicks);
+		}
+	}
+	if (conflicts.length > 0) return Result.fail(new YamlStyleConflictError({ conflicts }));
+	return Result.succeed(overlayConfig(base, picks));
+};
+
+const resolveLenientEvidence = (evidence: StyleEvidence, base: YamlLintConfig): YamlLintConfig => {
+	const picks = new Map<string, Map<string, string | number | boolean>>();
+	for (const [ruleId, dims] of groupVotes(evidence)) {
+		for (const [dimension, tallies] of dims) {
+			// Dominant = plurality: highest count wins; a tie breaks to the first
+			// tally in canonical (value-key) order, so the pick is deterministic.
+			let dominant = tallies[0] as StyleVoteTally;
+			for (const tally of tallies) {
+				if (tally.count > dominant.count) dominant = tally;
+			}
+			const dimPicks = picks.get(ruleId) ?? new Map<string, string | number | boolean>();
+			dimPicks.set(dimension, dominant.value);
+			picks.set(ruleId, dimPicks);
+		}
+	}
+	return overlayConfig(base, picks);
+};
+
+/**
+ * A lenient inference report: the inferred config plus the residual — the
+ * diagnostics that config still produces on the observed text ("here is your
+ * config, and the places that do not match it").
+ *
+ * @public
+ */
+export interface YamlLintInference {
+	readonly config: YamlLintConfig;
+	readonly residual: ReadonlyArray<YamlLintDiagnostic>;
+}
+
 // ── Facade ──────────────────────────────────────────────────────────────────
 
 /** Resolve the effective severity of a configured entry. */
@@ -305,5 +594,79 @@ export class YamlLint {
 			lastOffset = fix.offset;
 		}
 		return Result.succeed(YamlEdit.applyAll(text, fixes));
+	}
+
+	/**
+	 * Observe the style `text` already follows (#345): run every rule's
+	 * optional `infer` hook over one eagerly-built context and merge the
+	 * observations into canonical {@link StyleEvidence}. Pure and total —
+	 * strings in, evidence out; observing N files is N `observe` calls merged
+	 * with {@link StyleEvidence.combine}, and the N-file loop stays the
+	 * caller's (no IO enters the package).
+	 */
+	static observe(text: string, rules: ReadonlyArray<YamlRule>): StyleEvidence {
+		return observeContext(buildContext(text), rules);
+	}
+
+	/**
+	 * Strict resolution: every OBSERVED dimension must be unanimous, and the
+	 * unanimous picks overlay `base` (default {@link YamlLintConfig.default})
+	 * into an exact config. Conflicting evidence fails with
+	 * {@link YamlStyleConflictError} naming every conflicting dimension, all
+	 * spellings, counts and first-seen positions. Unobserved is NOT
+	 * conflicting: a corpus with no comments says nothing about
+	 * `comments-spacing`, so that dimension falls back to `base` rather than
+	 * failing. A rule `base` sets to `"off"` stays off — an explicit disable
+	 * outranks inference.
+	 */
+	static resolveStrict(
+		evidence: StyleEvidence,
+		base: YamlLintConfig = YamlLintConfig.default,
+	): Result.Result<YamlLintConfig, YamlStyleConflictError> {
+		return resolveStrictEvidence(evidence, base);
+	}
+
+	/**
+	 * Lenient resolution: the dominant (plurality) spelling per observed
+	 * dimension overlays `base` (default {@link YamlLintConfig.default}); a
+	 * tie breaks deterministically to the first candidate in canonical
+	 * value order. Total — lenient resolution cannot fail; the places that do
+	 * not match the inferred config surface as the residual report (run the
+	 * lint with the inferred config, or use {@link YamlLint.inferLenient}).
+	 */
+	static resolveLenient(evidence: StyleEvidence, base: YamlLintConfig = YamlLintConfig.default): YamlLintConfig {
+		return resolveLenientEvidence(evidence, base);
+	}
+
+	/**
+	 * Single-text strict inference: `observe` then {@link YamlLint.resolveStrict}
+	 * in one step. Multi-file callers observe each file and merge with
+	 * {@link StyleEvidence.combine} before resolving.
+	 */
+	static inferStrict(
+		text: string,
+		rules: ReadonlyArray<YamlRule>,
+		base: YamlLintConfig = YamlLintConfig.default,
+	): Result.Result<YamlLintConfig, YamlStyleConflictError> {
+		return resolveStrictEvidence(YamlLint.observe(text, rules), base);
+	}
+
+	/**
+	 * Single-text lenient inference: `observe`, resolve dominant picks over
+	 * `base`, then run the lint with the inferred config — returning the
+	 * config AND the residual diagnostics it still produces ("here is your
+	 * config, and the places that do not match it"). One context serves both
+	 * the observation and the residual run. Multi-file callers compose the
+	 * primitives instead: observe each file, {@link StyleEvidence.combine},
+	 * {@link YamlLint.resolveLenient}, then {@link YamlLint.run} per file.
+	 */
+	static inferLenient(
+		text: string,
+		rules: ReadonlyArray<YamlRule>,
+		base: YamlLintConfig = YamlLintConfig.default,
+	): YamlLintInference {
+		const ctx = buildContext(text);
+		const config = resolveLenientEvidence(observeContext(ctx, rules), base);
+		return { config, residual: runRules(ctx, rules, config) };
 	}
 }

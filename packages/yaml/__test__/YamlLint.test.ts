@@ -274,6 +274,23 @@ describe("YamlLint.fix", () => {
 	});
 });
 
+/**
+ * Every import/export module specifier in `source`: comments stripped first
+ * (a comment merely NAMING a module is not an import), then the `from "..."`
+ * paths plus bare side-effect `import "..."` specifiers.
+ */
+const importSpecifiers = (source: string): ReadonlyArray<string> => {
+	// Line comments first: a `/*` inside a `//` comment (a glob like
+	// `src/internal/rules/*`) must not open a phantom block comment.
+	const stripped = source.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+	const out: Array<string> = [];
+	for (const match of stripped.matchAll(/\bfrom\s+["']([^"']+)["']|^\s*import\s+["']([^"']+)["']/gm)) {
+		const specifier = match[1] ?? match[2];
+		if (specifier !== undefined) out.push(specifier);
+	}
+	return out;
+};
+
 describe("fix routes only through YamlEdit.applyAll — structural pin", () => {
 	it("neither the facade nor any rule imports YamlFormat", () => {
 		const srcDir = new URL("../src/", import.meta.url);
@@ -285,8 +302,16 @@ describe("fix routes only through YamlEdit.applyAll — structural pin", () => {
 				.map((f) => `internal/rules/${f}`),
 		];
 		for (const file of files) {
-			const source = readFileSync(new URL(file, srcDir), "utf8");
-			assert.notInclude(source, "YamlFormat", `${file} must not reach for the formatter`);
+			const specifiers = importSpecifiers(readFileSync(new URL(file, srcDir), "utf8"));
+			// Positive control: every checked module imports SOMETHING — a walker
+			// that finds no imports would pass vacuously.
+			assert.isAbove(specifiers.length, 0, `${file}: the import walker found no imports`);
+			for (const specifier of specifiers) {
+				assert.isFalse(
+					/(?:^|\/)YamlFormat(?:\.js|\.ts)?$/.test(specifier),
+					`${file} imports "${specifier}" — the lint layer must not reach for the formatter`,
+				);
+			}
 		}
 	});
 });

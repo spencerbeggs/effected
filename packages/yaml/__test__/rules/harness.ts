@@ -13,7 +13,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result } from "effect";
 import type { YamlLintRuleSetting, YamlRule } from "../../src/index.js";
-import { YamlLint, YamlLintConfig, YamlLintDiagnostic } from "../../src/index.js";
+import { StyleEvidence, YamlLint, YamlLintConfig, YamlLintDiagnostic } from "../../src/index.js";
 
 /** Positional subset-match expectation for one diagnostic. */
 export interface ExpectedDiagnostic {
@@ -150,5 +150,126 @@ export function testRule(rule: YamlRule, fixtures: ReadonlyArray<RuleFixture>): 
 				assert.isTrue(discriminates, "stripping fixes must change some fixture's fixed output");
 			});
 		}
+	});
+}
+
+// ── Inference harness (#345) ────────────────────────────────────────────────
+
+/** Expected strict-resolution outcome for one rule over an EMPTY base config. */
+export type InferenceExpectation =
+	| { readonly kind: "options"; readonly options: Record<string, unknown> }
+	| { readonly kind: "none" }
+	| { readonly kind: "conflict"; readonly dimension: string; readonly values: ReadonlyArray<unknown> };
+
+/**
+ * One inference fixture: N inputs observed and merged (the multi-file
+ * evidence path) → the strict outcome, an optional explicit lenient pick
+ * (required for conflict fixtures that assert a dominant), and optional
+ * expected floors.
+ */
+export interface InferenceFixture {
+	readonly name: string;
+	readonly inputs: ReadonlyArray<string>;
+	readonly strict: InferenceExpectation;
+	/** Expected lenient entry; defaults to the strict outcome for non-conflict fixtures. */
+	readonly lenient?: Record<string, unknown>;
+	/** Expected floor values carried in the evidence for this rule. */
+	readonly floors?: Record<string, number>;
+}
+
+const emptyBase = YamlLintConfig.make({ rules: {} });
+
+const evidenceFor = (impl: YamlRule, inputs: ReadonlyArray<string>): StyleEvidence =>
+	inputs.reduce((acc, input) => StyleEvidence.combine(acc, YamlLint.observe(input, [impl])), StyleEvidence.empty);
+
+/**
+ * Register the uniform inference fixture suite (and the dead-infer mutation
+ * proof) for one rule — the inference analog of {@link testRule}, so the
+ * inferable rules cannot drift into bespoke dialects of "tested" either.
+ */
+export function testRuleInference(rule: YamlRule, fixtures: ReadonlyArray<InferenceFixture>): void {
+	describe(`rule ${rule.id} inference`, () => {
+		for (const fixture of fixtures) {
+			it(fixture.name, () => {
+				const evidence = evidenceFor(rule, fixture.inputs);
+				if (fixture.floors !== undefined) {
+					for (const [dimension, value] of Object.entries(fixture.floors)) {
+						const floor = evidence.floors.find((f) => f.rule === rule.id && f.dimension === dimension);
+						assert.isDefined(floor, `expected a floor for ${rule.id}.${dimension}`);
+						assert.strictEqual(floor?.value, value, `floor ${rule.id}.${dimension}`);
+					}
+				}
+				const expectation = fixture.strict;
+				const strict = YamlLint.resolveStrict(evidence, emptyBase);
+				if (expectation.kind === "conflict") {
+					assert.isTrue(Result.isFailure(strict), "expected strict resolution to fail with a conflict");
+					if (Result.isFailure(strict)) {
+						const conflict = strict.failure.conflicts.find(
+							(c) => c.rule === rule.id && c.dimension === expectation.dimension,
+						);
+						assert.isDefined(conflict, `expected a conflict on ${rule.id}.${expectation.dimension}`);
+						if (conflict !== undefined) {
+							assert.sameDeepMembers(
+								conflict.candidates.map((c) => c.value),
+								[...expectation.values],
+								"conflicting spellings",
+							);
+							for (const candidate of conflict.candidates) {
+								// Every named spelling carries a real occurrence: a count and
+								// a position inside one of the observed inputs.
+								assert.isAtLeast(candidate.count, 1);
+								assert.isAtLeast(candidate.offset, 0);
+								assert.isTrue(
+									fixture.inputs.some((input) => candidate.offset <= input.length),
+									"candidate position must fall inside an observed input",
+								);
+							}
+						}
+					}
+				} else {
+					assert.isTrue(
+						Result.isSuccess(strict),
+						Result.isFailure(strict) ? `unexpected conflict: ${strict.failure.message}` : "",
+					);
+					if (Result.isSuccess(strict)) {
+						if (expectation.kind === "options") {
+							assert.deepStrictEqual(strict.success.rules[rule.id], expectation.options);
+						} else {
+							assert.isUndefined(strict.success.rules[rule.id], "unobserved must fall back to defaults, not infer");
+						}
+					}
+				}
+				// Lenient: an explicit expected pick, else it must agree with the
+				// strict outcome (unanimity implies the dominant IS the unanimous).
+				const lenient = YamlLint.resolveLenient(evidence, emptyBase);
+				if (fixture.lenient !== undefined) {
+					assert.deepStrictEqual(lenient.rules[rule.id], fixture.lenient);
+				} else if (expectation.kind === "options") {
+					assert.deepStrictEqual(lenient.rules[rule.id], expectation.options);
+				} else if (expectation.kind === "none") {
+					assert.isUndefined(lenient.rules[rule.id]);
+				}
+			});
+		}
+
+		it("mutation proof: the dead-infer mutant fails the fixture set", () => {
+			const dead: YamlRule = { id: rule.id, check: rule.check, infer: () => [] };
+			const discriminates = fixtures.some((fixture) => {
+				const evidence = evidenceFor(dead, fixture.inputs);
+				if (fixture.floors !== undefined && Object.keys(fixture.floors).length > 0 && evidence.floors.length === 0) {
+					return true;
+				}
+				const strict = YamlLint.resolveStrict(evidence, emptyBase);
+				if (fixture.strict.kind === "conflict") return Result.isSuccess(strict);
+				if (fixture.strict.kind === "options") {
+					return Result.isSuccess(strict) && strict.success.rules[rule.id] === undefined;
+				}
+				return false;
+			});
+			assert.isTrue(
+				discriminates,
+				"at least one fixture must expect inferred options, a conflict or a floor — a dead infer hook passes the set otherwise",
+			);
+		});
 	});
 }

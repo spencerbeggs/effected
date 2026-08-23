@@ -15,7 +15,7 @@
 
 import { Schema } from "effect";
 import type { LintContext, LintLine, YamlRule } from "../../YamlLintRule.js";
-import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 import { coveringToken, isScalarContinuationLine, nonNegativeIntegerOption } from "./util.js";
 
 /**
@@ -59,6 +59,53 @@ const flowDepthAtLineStarts = (ctx: LintContext): ReadonlyArray<number> => {
 	return depths;
 };
 
+/**
+ * The content lines block structure speaks about — shared by the check and
+ * the inference hook so the two read the same lines. Skips blanks, comment
+ * lines, directives, tab-indented lines (the parser's error), lines inside
+ * flow collections, scalar continuations and document markers.
+ */
+const contentLines = (ctx: LintContext): ReadonlyArray<ContentLine> => {
+	const flowDepths = flowDepthAtLineStarts(ctx);
+	const content: Array<ContentLine> = [];
+	for (const line of ctx.lines) {
+		const indent = line.text.length - line.text.trimStart().length;
+		const firstChar = line.text[indent];
+		if (firstChar === undefined) continue; // blank
+		if (firstChar === "#") continue; // comment lines are not block structure
+		if (firstChar === "%") continue; // directives
+		if (line.text.slice(0, indent).includes("\t")) continue; // tab indent is the parser's error
+		if ((flowDepths[line.number] ?? 0) > 0) continue; // inside a flow collection
+		if (isScalarContinuationLine(ctx.tokens, line.offset, line.offset + indent)) continue; // scalar content
+		if (line.text.slice(indent).startsWith("---") || line.text.slice(indent).startsWith("...")) continue;
+		content.push({ line, indent, firstChar });
+	}
+	return content;
+};
+
+/**
+ * True when consecutive content lines `prev` → `curr` are a mapping key
+ * followed by a sequence entry — the pair the `indentSequences` policy is
+ * about. Shared by the check and the inference hook.
+ */
+const isKeyThenSeqEntry = (
+	ctx: LintContext,
+	prev: ContentLine,
+	curr: ContentLine,
+	unit: number | undefined,
+): boolean => {
+	if (curr.firstChar !== "-") return false;
+	// A leading `-` is not necessarily a sequence entry: `-5` and `--flag`
+	// are plain scalars (YAML 1.2 §7.1). The lexer already knows — only a
+	// line whose first content token is `block-seq-entry` is one.
+	if (coveringToken(ctx.tokens, curr.line.offset + curr.indent)?.kind !== "block-seq-entry") return false;
+	// The previous content line must open a mapping key (ends with `:`
+	// after stripping a trailing comment).
+	const prevText = prev.line.text.replace(/ #.*$/, "").trimEnd();
+	if (!prevText.endsWith(":")) return false;
+	return curr.indent === prev.indent || curr.indent === prev.indent + (unit ?? curr.indent - prev.indent);
+};
+
 /** Block-structure indent style. */
 export const indentation: YamlRule = {
 	id: "indentation",
@@ -69,20 +116,7 @@ export const indentation: YamlRule = {
 		const out: Array<YamlLintDiagnostic> = [];
 
 		// The content lines this rule speaks about.
-		const flowDepths = flowDepthAtLineStarts(ctx);
-		const content: Array<ContentLine> = [];
-		for (const line of ctx.lines) {
-			const indent = line.text.length - line.text.trimStart().length;
-			const firstChar = line.text[indent];
-			if (firstChar === undefined) continue; // blank
-			if (firstChar === "#") continue; // comment lines are not block structure
-			if (firstChar === "%") continue; // directives
-			if (line.text.slice(0, indent).includes("\t")) continue; // tab indent is the parser's error
-			if ((flowDepths[line.number] ?? 0) > 0) continue; // inside a flow collection
-			if (isScalarContinuationLine(ctx.tokens, line.offset, line.offset + indent)) continue; // scalar content
-			if (line.text.slice(indent).startsWith("---") || line.text.slice(indent).startsWith("...")) continue;
-			content.push({ line, indent, firstChar });
-		}
+		const content = contentLines(ctx);
 
 		// Check 1: every new level indents by one consistent unit.
 		let unit = typeof spacesOpt === "number" ? spacesOpt : undefined;
@@ -120,16 +154,7 @@ export const indentation: YamlRule = {
 		for (let i = 1; i < content.length; i++) {
 			const prev = content[i - 1] as ContentLine;
 			const curr = content[i] as ContentLine;
-			if (curr.firstChar !== "-") continue;
-			// A leading `-` is not necessarily a sequence entry: `-5` and `--flag`
-			// are plain scalars (YAML 1.2 §7.1). The lexer already knows — only a
-			// line whose first content token is `block-seq-entry` is one.
-			if (coveringToken(ctx.tokens, curr.line.offset + curr.indent)?.kind !== "block-seq-entry") continue;
-			// The previous content line must open a mapping key (ends with `:`
-			// after stripping a trailing comment).
-			const prevText = prev.line.text.replace(/ #.*$/, "").trimEnd();
-			if (!prevText.endsWith(":")) continue;
-			if (curr.indent !== prev.indent && curr.indent !== prev.indent + (unit ?? curr.indent - prev.indent)) continue;
+			if (!isKeyThenSeqEntry(ctx, prev, curr, unit)) continue;
 			const indented = curr.indent > prev.indent;
 			if (seqIndented === undefined) {
 				seqIndented = indented;
@@ -148,6 +173,54 @@ export const indentation: YamlRule = {
 					}),
 				);
 			}
+		}
+
+		return out;
+	},
+	// Inference (#345): every indent INCREASE votes its delta for `spaces`,
+	// and every key-then-sequence-entry pair votes whether the sequence is
+	// indented for `indentSequences` — the same content lines and the same
+	// detection the check polices in "consistent" mode.
+	infer: (ctx) => {
+		const out: Array<StyleVote> = [];
+		const content = contentLines(ctx);
+
+		let unit: number | undefined;
+		const stack: Array<number> = [0];
+		for (const { line, indent } of content) {
+			const top = stack[stack.length - 1] as number;
+			if (indent > top) {
+				out.push(
+					StyleVote.make({
+						dimension: "spaces",
+						value: indent - top,
+						offset: line.offset,
+						length: indent,
+						line: line.number,
+						character: 0,
+					}),
+				);
+				if (unit === undefined) unit = indent - top;
+				stack.push(indent);
+			} else if (indent < top) {
+				while (stack.length > 1 && (stack[stack.length - 1] as number) > indent) stack.pop();
+			}
+		}
+
+		for (let i = 1; i < content.length; i++) {
+			const prev = content[i - 1] as ContentLine;
+			const curr = content[i] as ContentLine;
+			if (!isKeyThenSeqEntry(ctx, prev, curr, unit)) continue;
+			out.push(
+				StyleVote.make({
+					dimension: "indentSequences",
+					value: curr.indent > prev.indent,
+					offset: curr.line.offset,
+					length: curr.indent,
+					line: curr.line.number,
+					character: 0,
+				}),
+			);
 		}
 
 		return out;

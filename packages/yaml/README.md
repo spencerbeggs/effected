@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Zero-dependency YAML 1.2 parsing, editing, formatting and linting expressed as Effect schemas and pure functions. Parse a single document or a multi-document stream into plain values or an offset-preserving AST, resolve anchors and aliases, read and preserve per-node comments, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream` of AST events or positioned tokens, lint it against a rule catalog with surgical autofix, and decode straight into a validated domain schema.
+Zero-dependency YAML 1.2 parsing, editing, formatting and linting expressed as Effect schemas and pure functions. Parse a single document or a multi-document stream into plain values or an offset-preserving AST, resolve anchors and aliases, read and preserve per-node comments, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream` of AST events or positioned tokens, lint it against a rule catalog with surgical autofix — inferring the lint config from files you already have — and decode straight into a validated domain schema.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 prerelease. Packages graduate to
@@ -156,6 +156,23 @@ console.log(Result.isSuccess(fixed) ? fixed.success : "fatal parse error — not
 
 Positions are zero-based throughout, so the first finding above sits on the second line of the source. Fixes route through `YamlEdit.applyAll` rather than a reformat, so an autofix cannot move a comment it was not asked to touch, and a rule whose repair would need reflowing the document ships without a fix at all. `YamlLintConfig.default` and `YamlLintConfig.relaxed` are the presets; compose your own by spreading a preset's `rules` into `YamlLintConfig.make`. Config validation is rule-aware for the built-in catalog — a misspelled option key on a built-in rule or an attempt to switch off the always-on `parse-validity` rule fails schema validation instead of being quietly ignored — while an unknown (custom) rule id passes through with its options treated as opaque, left for the custom rule itself to validate. Custom rules are plain array concatenation — `YamlLint.run(text, [...YamlLint.builtins, myRule], config)` — and configuring `myRule` in that config works precisely because of the pass-through.
 
+A repo with no lint config yet can infer one from what its files already do. `YamlLint.inferLenient` observes a text's style — quote type, indentation width, document markers and the rest — and returns the config the dominant style implies, plus the residual: the diagnostics that config still produces on the same text.
+
+```ts
+import { YamlLint } from "@effected/yaml";
+
+const workflow = ["---", "name: ci", "on:", "  push:", "    branches: ['main']", "jobs:", "  build:", "    runs-on: ubuntu-latest", ""].join("\n");
+
+const { config, residual } = YamlLint.inferLenient(workflow, YamlLint.builtins);
+console.log(config.rules["quoted-strings"], config.rules["document-start"], config.rules.indentation);
+// { quoteType: 'single' } { present: true } { spaces: 2 }
+
+for (const d of residual) console.log(`${d.line}:${d.character} ${d.rule} ${d.message}`);
+// 2:0 truthy Truthy value "on" is not in the allowed spellings
+```
+
+`YamlLint.inferStrict` is the same step in `Result` form: it fails with a structured `YamlStyleConflictError` — naming every conflicting dimension, all observed spellings, counts and positions — when the observed style disagrees with itself, instead of picking a winner. Across many files, compose the primitives instead of the conveniences: `YamlLint.observe` each file, merge the `StyleEvidence` values with `StyleEvidence.combine` (evidence is a monoid, so the order does not matter), then resolve once with `YamlLint.resolveStrict` or `YamlLint.resolveLenient`. Dimensions never observed fall back to the base config rather than failing. Policy rules with no detectable style — `truthy`, `key-duplicates` — stay default-driven, as do `line-length` and `empty-lines`, whose observations are floor-only: the longest line proves the limit is at least that long, not what it should be, so the evidence is carried but never resolved into config. A custom rule participates by implementing the optional `infer` hook on `YamlRule`.
+
 ## Migrating from Prettier
 
 `YamlFormat.formatToString(text, undefined, options)` replaces a `prettier --write` over YAML files. The option mapping:
@@ -163,14 +180,14 @@ Positions are zero-based throughout, so the first finding above sits on the seco
 | Prettier | `YamlFormattingOptions` |
 | --- | --- |
 | `tabWidth` | `indent` |
-| `singleQuote` | `quoteStyle: "single" \| "double"` |
+| `singleQuote` | `quoteStyle: "single" \| "double"` + `requoteScalars: true` |
 | indented block sequences (always on) | `indentSequences: true` |
 | `printWidth` / `proseWrap` | no analog — see below |
 | comments (best-effort) | `preserveComments: true` (the default) |
 
 Two defaults differ from Prettier's output and are worth setting explicitly. The stringify default is `quoteStyle: "single"` for byte-compatibility with the kit's legacy form, so if you ran Prettier with its own default (`singleQuote: false`), set `quoteStyle: "double"`. Likewise `indentSequences` defaults to `false` — the flat legacy form with the `-` markers at the key's column — while Prettier always indented block sequences one level, so an ex-Prettier consumer almost certainly wants `indentSequences: true`.
 
-One expectation to reset when carrying over `singleQuote`: on the format path, `quoteStyle` governs quotes the stringifier *introduces* — it never re-quotes scalars that already carry quotes in your source. Formatting `a: 'x'` with `quoteStyle: "double"` leaves `'x'` untouched; Prettier would have rewritten it to `"x"`. Existing quote styles are source, and the formatter preserves source. If it looks like the option "does nothing" on an already-quoted corpus, this is why — the same class of format-path inertness as `lineWidth` below.
+The `requoteScalars: true` half of the `singleQuote` row is what buys full parity. By default, `quoteStyle` on the format path governs only quotes the stringifier *introduces* — a scalar already quoted in your source keeps its own quote style, so formatting `a: 'x'` with `quoteStyle: "double"` leaves `'x'` untouched, where Prettier would have rewritten it to `"x"`. With `requoteScalars: true` (default `false`), `quoteStyle` applies to already-quoted source scalars too. A re-quote happens only when it provably preserves the parsed value: single→double applies proper double-quote escaping, and double→single is skipped when the value carries characters single quotes cannot express. Plain scalars stay plain, block scalars stay block, and tagged, anchored and multi-line scalars are never touched. One interaction to watch: `quoteStyle` omitted defaults to `"single"`, so `requoteScalars: true` on its own converts `"x"` to `'x'` — an ex-Prettier consumer who ran with `singleQuote: false` wants `quoteStyle: "double"` alongside it.
 
 `printWidth` and `proseWrap` have no analog here: `lineWidth` folding is a value-path feature only (`Yaml.stringify` / `Yaml.stringifyResult`), and the option is deliberately inert on the format path by contract — `YamlFormat` never reflows scalar content (the `lineWidth` TSDoc on `YamlStringifyOptions` pins this). Comments, which Prettier handled best-effort, are preserved exactly by default.
 
@@ -186,11 +203,11 @@ Multi-document streams — a Kubernetes manifest, or the two-document `pnpm-lock
 - `Yaml.schema` / `Yaml.fromString` / `Yaml.YamlFromString` / `Yaml.allFromString` — string→domain schema factories that decode a single document or a whole stream into a validated Effect `Schema` value.
 - `YamlNode` — an offset-preserving AST (`YamlScalar`, `YamlMap`, `YamlSeq`, `YamlPair`, `YamlAlias`) for locating and reading nodes by position or path; every node class except `YamlPair` carries its own `commentBefore`, `comment` and `spaceBefore`, and a pair is just its `key` and `value`.
 - `YamlDocument` — the full parsed AST plus the recovered `errors` and `warnings` arrays, so a partially valid document is still inspectable, and the header and trailing comment blocks as `commentBefore` / `comment`, the same two names the node classes use.
-- `YamlEdit` / `YamlFormat` — compute byte-minimal edit arrays for formatting and path-based modification, so a change preserves every comment and byte you did not touch; `preserveComments: false` opts out. `format` handles multi-document streams whole, re-emitting every document and its framing; `modify` is single-document by contract (a path names no particular document of a stream) and fails typed with `MultiDocumentStream` rather than guessing.
+- `YamlEdit` / `YamlFormat` — compute byte-minimal edit arrays for formatting and path-based modification, so a change preserves every comment and byte you did not touch; `preserveComments: false` opts out, and opt-in `requoteScalars` applies `quoteStyle` to scalars already quoted in the source, semantics-preserving or skipped. `format` handles multi-document streams whole, re-emitting every document and its framing; `modify` is single-document by contract (a path names no particular document of a stream) and fails typed with `MultiDocumentStream` rather than guessing.
 - `YamlVisitor` — walk a parsed document as a `Stream` of a tagged-enum event union, with `Stream.take` early termination on large inputs and a `placement` on every comment event.
 - `YamlToken` / `YamlTokens` — the positioned token stream the lint rules read: `tokenize` is a synchronous `Result` that always succeeds, surfacing lexical problems as `error`-kind tokens, and `stream` derives an Effect `Stream` from the same walk.
-- `YamlLint` — `run`, `fix` and the `builtins` catalog: 14 rules covering parse validity, line length, trailing whitespace, blank lines, end-of-file newline, document markers, duplicate keys, quoting, truthy spellings, comment and colon and hyphen spacing, and indentation.
-- `YamlLintConfig` / `YamlLintRule` / `YamlLintDiagnostic` — the `default` and `relaxed` presets, a config schema validated against the rule catalog, and the model a custom rule implements.
+- `YamlLint` — `run`, `fix` and the `builtins` catalog: 14 rules covering parse validity, line length, trailing whitespace, blank lines, end-of-file newline, document markers, duplicate keys, quoting, truthy spellings, comment and colon and hyphen spacing, and indentation. Plus config inference for adopting the linter on an existing corpus: `observe` produces mergeable `StyleEvidence`, `resolveStrict` fails typed with `YamlStyleConflictError` on conflicting spellings, `resolveLenient` picks the dominant style, and `inferStrict` / `inferLenient` do it in one step per text.
+- `YamlLintConfig` / `YamlLintRule` / `YamlLintDiagnostic` — the `default` and `relaxed` presets, a config schema validated against the rule catalog, and the model a custom rule implements, including the optional `infer` hook that lets a custom rule participate in config inference.
 - `YamlParseError` / `YamlStringifyError` / `YamlModificationError` — tagged errors carrying structured, positional `YamlDiagnostic` arrays rather than opaque messages.
 
 ## License
