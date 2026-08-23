@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-21
-updated: 2026-08-21
-last-synced: 2026-08-21
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 85
 related:
   - architecture.md
@@ -52,6 +52,21 @@ The catalog resolves what each package's **next published version will be**, not
 - **The changeset has a fixed name.** Repeated runs overwrite one file rather than accumulating a pile of identical patch bumps.
 - **Biome runs scoped to the rewritten file only**, so an unfixable lint diagnostic elsewhere in the repo cannot abort the job.
 - **The verification run disables coverage.** This repo's vitest config enforces global thresholds a single-package subset run cannot meet, and the job would abort on them rather than on a real failure.
+
+## The reported check run
+
+The job's outcome is published as a **`Catalog Sync` check run**, written once, in a single `if: always()` step that already holds the conclusion. Three decisions there are load-bearing.
+
+- **One write, never create-early-then-complete-late.** A run opened as `in_progress` and closed by a later step stays `in_progress` **forever** whenever the job is cancelled or dies before reaching that step — and a hung check is indistinguishable from a slow one, with nothing timing it out. This repo has a live example of the shape sitting stuck. A run that is only ever written once cannot hang.
+- **The head SHA, never `github.sha`.** On a `pull_request` event `github.sha` is the ephemeral merge commit; a check run posted there does not appear in the PR's own status list and no branch-protection rule keyed on the check can see it, so the gate silently never applies. The step uses `github.event.pull_request.head.sha` and falls back to `github.sha` for `workflow_dispatch`. This is the same merge-ref blindness that makes head-scoped check *queries* lie.
+- **The conclusion is `catalog:check`'s exit code, and that step runs BEFORE the sync.** This is the fix for the defect that prompted the work: the job ran only `catalog:sync`, which repairs drift and then exits 0, so it reported success on a branch whose catalog was wrong. A check run placed after the mutation is worthless for the same reason — by then the catalog is in sync by construction. The gate is the read-only `catalog:check`, run first, with `continue-on-error: true` so its exit code survives as a signal while the remediation below still runs.
+- **Read `steps.catalog-check.outcome`, never `.conclusion`.** `continue-on-error` rewrites `conclusion` to `success`; `outcome` is the step's real result. Reading the wrong one reports green on exactly the drift runs the gate exists to catch.
+- **A repaired catalog still reports `failure`.** The check answers "was the catalog correct at this ref", not "did the automation cope". A run that silently fixes drift teaches nobody that the drift happened, and the summary says the repair landed and names the commit, so the failure is informative rather than obstructive. It goes green on a re-run once the sync commit is in the branch.
+- **`catalog:check` reporting drift while `catalog:sync` rewrites nothing is its own failure**, distinctly worded: the two halves disagree, so one is broken, and neither answer may be treated as a clean catalog.
+
+The step also exits non-zero on a failing conclusion, so the outcome is visible whether a consumer keys on the reported check run or on the job's own status. Writing the run needs `checks: write`, taken on `GITHUB_TOKEN` rather than the App token so the App's grants do not have to change.
+
+The commit URL reaches that step as a **step output** (`steps.commit.outputs.commit-url`) rather than only as stdout — the conclusion depends on whether a commit actually happened, and stdout is not readable from a later step.
 
 ## Not wired: the release gate
 

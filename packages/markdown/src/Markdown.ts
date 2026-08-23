@@ -257,7 +257,7 @@ export class Markdown {
 	 * | Bullet list marker | `-` |
 	 * | Ordered list delimiter | `.`, flipping to `)` to separate an immediately adjacent sibling list |
 	 * | Emphasis / strong | `*` / `**` |
-	 * | Code block | indented when the node carries neither `lang` nor `fenceChar`; otherwise fenced, with the fence grown past any interior backtick run |
+	 * | Code block | fenced when the node carries a `lang` or a `fenceChar`, with the fence grown past any interior backtick run; otherwise indented — **except where indenting would not re-parse as a code block**, which forces a fence (see below) |
 	 * | Block separation | exactly one blank line |
 	 * | Document | a single trailing newline |
 	 *
@@ -266,6 +266,20 @@ export class Markdown {
 	 * is how a parsed document re-serializes in its author's spelling. The
 	 * rows describe a synthesized node, which is the case a test asserting on
 	 * generated markdown actually has.
+	 *
+	 * **Representability wins over the table.** The canonical form never emits
+	 * text that would re-parse as something else, so a row yields where the two
+	 * conflict. The case that reaches a consumer is the indented code block: an
+	 * indented block directly after a list is absorbed as list content, so a
+	 * `Code` node with neither `lang` nor `fenceChar` emits **fenced** in that
+	 * position and indented everywhere else. A byte-level assertion over
+	 * synthesized code blocks therefore depends on the preceding sibling.
+	 *
+	 * **The posture that makes this a non-issue**, and the one a consumer
+	 * building trees for byte-level assertion should adopt: set `fenceChar` on
+	 * every `Code` node that carries neither a `lang` nor one already, in a
+	 * post-decode walk that reaches nested nodes. The choice then leaves the
+	 * emitter entirely and no output depends on a node's neighbours.
 	 *
 	 * To *normalize* a document to different choices — a `-` list rewritten to
 	 * `*`, setext headings rewritten to ATX — use `MarkdownFormat` with
@@ -312,6 +326,12 @@ export class Markdown {
 	 * against byte-for-byte; the choices it makes, and the reason changing one
 	 * is a breaking change, are documented on
 	 * {@link Markdown.stringifyResult}.
+	 *
+	 * **Fidelity fields must be set on the DECODED tree.** `Mdast.fromMdast`
+	 * admits spec mdast and strips everything outside it, so a `fenceChar`,
+	 * `headingStyle`, `markerChar` or `delimiter` placed on a plain mdast tree
+	 * before admission is silently dropped and the canonical default applies.
+	 * Set them on the nodes that come back.
 	 *
 	 * @param root - The document tree to serialize.
 	 * @returns An `Effect` that succeeds with markdown source, or fails with

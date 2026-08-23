@@ -42,6 +42,8 @@ modules with no public API change.
 
 `Markdown.stringify` takes no options, and its output is **documented as stable** on the TSDoc and in the README — a consumer is told they may assert on these bytes. `__test__/stringify.test.ts`'s "the documented canonical form" suite asserts every row of that published table.
 
+Two escapes the table states, both found by a consumer rather than by us. **Representability outranks a row** — a lang-less `Code` node fences directly after a list, because indenting there is absorbed as list content — so a byte assertion over synthesized code blocks depends on the preceding sibling. And **`Mdast.fromMdast` strips fidelity fields**, being a spec-mdast boundary, so they are settable only on the decoded tree; the drop is correct and silent, which is why both the boundary and the emitter document it.
+
 **Changing a canonical choice is a breaking change.** Update the table on `Markdown.stringifyResult`, the README table and that suite together, and bump accordingly. A row that moves silently breaks a promise consumers were invited to depend on.
 
 The configurable surface is `MarkdownFormat` + `MarkdownFormattingOptions`; this one is deliberately not.

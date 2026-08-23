@@ -18,6 +18,9 @@ concurrency:
 
 permissions:
   contents: read
+  # The reported check run below is written with GITHUB_TOKEN rather than the App
+  # token, so the App's grants do not have to change for this job to report.
+  checks: write
 
 jobs:
   catalog-sync:
@@ -51,6 +54,18 @@ jobs:
       - name: Setup Runtime
         id: runtime
         uses: savvy-web/silk-runtime-action@v1
+
+      - name: Check the catalog
+        id: catalog-check
+        # The GATE, and it has to run before `catalog:sync` mutates anything —
+        # afterwards the catalog is in sync by construction and a check would
+        # always pass, which is how this job came to report success on a branch
+        # whose catalog was wrong. `catalog:check` is read-only and exits non-zero
+        # on drift; `continue-on-error` keeps that exit code as a signal
+        # (`steps.catalog-check.outcome`) instead of ending the job here, because
+        # the sync below is the remediation and should still run.
+        continue-on-error: true
+        run: pnpm catalog:check
 
       - name: Sync the catalog
         # Resolves each catalogued package's next release version from the local
@@ -93,6 +108,7 @@ jobs:
           pnpm vitest run packages/pnpm-plugin-effect --coverage.enabled=false
 
       - name: Commit the sync
+        id: commit
         if: steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -176,7 +192,12 @@ jobs:
                 }
               }
             }' \
-            | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.url'
+            > /tmp/commit-mutation.json
+
+          commit_url=$(gh api graphql --input /tmp/commit-mutation.json \
+            --jq '.data.createCommitOnBranch.commit.url')
+          echo "$commit_url"
+          echo "commit-url=$commit_url" >> "$GITHUB_OUTPUT"
 
           if [ "$OPEN_PR" = "true" ]; then
             gh pr create \
@@ -188,3 +209,72 @@ jobs:
 
             gh pr merge "$BRANCH" --auto --squash
           fi
+
+      - name: Report the catalog check run
+        # `always()`, and ONE call that both creates and concludes the run. The
+        # create-early-then-complete-late shape is what leaves a check run stuck
+        # `in_progress` forever when a job is cancelled or dies before its closing
+        # step — a hung check is indistinguishable from a slow one, and nothing
+        # times it out. A run that is only ever written once, with a conclusion
+        # already in hand, cannot hang.
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          # The PR's HEAD sha, not `github.sha`. On a `pull_request` event
+          # `github.sha` is the ephemeral MERGE commit; a check run posted there is
+          # invisible to the PR's own status list and to any branch-protection rule
+          # keyed on this check, so the gate silently never applies.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          JOB_STATUS: ${{ job.status }}
+          # `outcome` is the step's own result BEFORE continue-on-error masks it;
+          # `conclusion` would read `success` on exactly the drift runs this gate
+          # exists to catch.
+          CATALOG_CHECK: ${{ steps.catalog-check.outcome }}
+          CHANGED: ${{ steps.changes.outputs.changed }}
+          COMMIT_URL: ${{ steps.commit.outputs.commit-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          if [ "$CATALOG_CHECK" = "success" ]; then
+            conclusion=success
+            title="Catalog is up to date"
+            summary="\`catalog:check\` found no drift: every catalogued package's next release version already matches the \`effected\` catalog literal."
+          elif [ "$JOB_STATUS" != "success" ]; then
+            conclusion=failure
+            title="Catalog is out of date and the sync did not complete"
+            summary="\`catalog:check\` reported drift and the job then ended \`$JOB_STATUS\`, so the catalog is still wrong and nothing has been committed. See the run log."
+          elif [ -n "${COMMIT_URL:-}" ]; then
+            # The catalog WAS wrong. It has been repaired, and that is worth
+            # saying out loud rather than swallowing: a run that silently fixes
+            # drift teaches nobody that the drift happened.
+            conclusion=failure
+            title="Catalog was out of date — synced"
+            summary="\`catalog:check\` reported drift, so the catalog literal was rewritten and committed: $COMMIT_URL"$'\n\n'"This check reports failure because the catalog was wrong at this ref, not because the repair failed. Re-run once the sync commit is in the branch and it goes green."
+          elif [ "$CHANGED" != "true" ]; then
+            # Drift reported but the rewrite produced nothing to commit — the two
+            # halves disagree, which means one of them is broken.
+            conclusion=failure
+            title="Catalog check and sync disagree"
+            summary="\`catalog:check\` reported drift but \`catalog:sync\` rewrote nothing, so no commit was produced. One of the two is wrong; do not treat this as a clean catalog."
+          else
+            conclusion=failure
+            title="Catalog is out of date and was not synced"
+            summary="\`catalog:sync\` rewrote the catalog literal but no commit was produced, so the drift is still unresolved on the branch."
+          fi
+
+          gh api "repos/$REPO/check-runs" \
+            -f name='Catalog Sync' \
+            -f head_sha="$HEAD_SHA" \
+            -f status=completed \
+            -f conclusion="$conclusion" \
+            -f details_url="$RUN_URL" \
+            -f output[title]="$title" \
+            -f output[summary]="$summary" >/dev/null
+
+          echo "::notice::Catalog Sync check run: $conclusion — $title"
+
+          # Fail the job too, so the outcome is visible whether the consumer keys
+          # on the reported check run or on this job's own status.
+          [ "$conclusion" = "success" ]
