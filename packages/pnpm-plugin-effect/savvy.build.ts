@@ -343,8 +343,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/yaml": {
-							range: "^0.10.0",
-							peer: "^0.10.0",
+							range: "^0.11.0",
+							peer: "^0.11.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
