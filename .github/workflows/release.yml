@@ -20,7 +20,7 @@ concurrency:
 jobs:
   workflow:
     name: Workflow
-    uses: spencerbeggs/.github/.github/workflows/release.yml@main
+    uses: spencerbeggs/.github/.github/workflows/release.yml@dev
     permissions:
       contents: write
       pull-requests: write
@@ -33,4 +33,8 @@ jobs:
       dry-run: ${{ inputs.dry_run || false }}
       auto-merge: "squash"
       skip-claude-review: false
+      # Fails the validation phase when the effected catalog has drifted from
+      # the kit's next release versions. Exit-code only: the gate's own non-zero
+      # exit is the sole failure signal; stderr is not inspected.
+      on-build: pnpm catalog:check
     secrets: inherit
