@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-21
-updated: 2026-08-21
-last-synced: 2026-08-21
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 85
 related:
   - architecture.md
@@ -52,6 +52,18 @@ The catalog resolves what each package's **next published version will be**, not
 - **The changeset has a fixed name.** Repeated runs overwrite one file rather than accumulating a pile of identical patch bumps.
 - **Biome runs scoped to the rewritten file only**, so an unfixable lint diagnostic elsewhere in the repo cannot abort the job.
 - **The verification run disables coverage.** This repo's vitest config enforces global thresholds a single-package subset run cannot meet, and the job would abort on them rather than on a real failure.
+
+## The reported check run
+
+The job's outcome is published as a **`Catalog Sync` check run**, written once, in a single `if: always()` step that already holds the conclusion. Three decisions there are load-bearing.
+
+- **One write, never create-early-then-complete-late.** A run opened as `in_progress` and closed by a later step stays `in_progress` **forever** whenever the job is cancelled or dies before reaching that step — and a hung check is indistinguishable from a slow one, with nothing timing it out. This repo has a live example of the shape sitting stuck. A run that is only ever written once cannot hang.
+- **The head SHA, never `github.sha`.** On a `pull_request` event `github.sha` is the ephemeral merge commit; a check run posted there does not appear in the PR's own status list and no branch-protection rule keyed on the check can see it, so the gate silently never applies. The step uses `github.event.pull_request.head.sha` and falls back to `github.sha` for `workflow_dispatch`. This is the same merge-ref blindness that makes head-scoped check *queries* lie.
+- **Drift found but not committed reports `failure`, even though every step succeeded.** That is the "green check that did nothing" class this whole design exists to eliminate, and it is the one outcome no individual step can express by exiting non-zero.
+
+The step also exits non-zero on a failing conclusion, so the outcome is visible whether a consumer keys on the reported check run or on the job's own status. Writing the run needs `checks: write`, taken on `GITHUB_TOKEN` rather than the App token so the App's grants do not have to change.
+
+The commit URL reaches that step as a **step output** (`steps.commit.outputs.commit-url`) rather than only as stdout — the conclusion depends on whether a commit actually happened, and stdout is not readable from a later step.
 
 ## Not wired: the release gate
 

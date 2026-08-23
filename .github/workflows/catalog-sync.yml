@@ -18,6 +18,9 @@ concurrency:
 
 permissions:
   contents: read
+  # The reported check run below is written with GITHUB_TOKEN rather than the App
+  # token, so the App's grants do not have to change for this job to report.
+  checks: write
 
 jobs:
   catalog-sync:
@@ -93,6 +96,7 @@ jobs:
           pnpm vitest run packages/pnpm-plugin-effect --coverage.enabled=false
 
       - name: Commit the sync
+        id: commit
         if: steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -176,7 +180,12 @@ jobs:
                 }
               }
             }' \
-            | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.url'
+            > /tmp/commit-mutation.json
+
+          commit_url=$(gh api graphql --input /tmp/commit-mutation.json \
+            --jq '.data.createCommitOnBranch.commit.url')
+          echo "$commit_url"
+          echo "commit-url=$commit_url" >> "$GITHUB_OUTPUT"
 
           if [ "$OPEN_PR" = "true" ]; then
             gh pr create \
@@ -188,3 +197,62 @@ jobs:
 
             gh pr merge "$BRANCH" --auto --squash
           fi
+
+      - name: Report the catalog check run
+        # `always()`, and ONE call that both creates and concludes the run. The
+        # create-early-then-complete-late shape is what leaves a check run stuck
+        # `in_progress` forever when a job is cancelled or dies before its closing
+        # step — a hung check is indistinguishable from a slow one, and nothing
+        # times it out. A run that is only ever written once, with a conclusion
+        # already in hand, cannot hang.
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          # The PR's HEAD sha, not `github.sha`. On a `pull_request` event
+          # `github.sha` is the ephemeral MERGE commit; a check run posted there is
+          # invisible to the PR's own status list and to any branch-protection rule
+          # keyed on this check, so the gate silently never applies.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          JOB_STATUS: ${{ job.status }}
+          CHANGED: ${{ steps.changes.outputs.changed }}
+          COMMIT_URL: ${{ steps.commit.outputs.commit-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          if [ "$JOB_STATUS" != "success" ]; then
+            conclusion=failure
+            title="Catalog sync did not complete"
+            summary="The job ended \`$JOB_STATUS\` before it could decide whether the catalog was in sync. Treat this as drift of unknown size, not as a clean catalog."
+          elif [ "$CHANGED" != "true" ]; then
+            conclusion=success
+            title="Catalogs are in sync"
+            summary="No catalogued package's next release version moved, so the \`effected\` catalog literal needed no rewrite."
+          elif [ -n "${COMMIT_URL:-}" ]; then
+            conclusion=success
+            title="Catalog synced"
+            summary="The catalog literal moved and was committed: $COMMIT_URL"
+          else
+            # Drift was found and the commit did not happen. Silence here is the
+            # exact failure this design exists to eliminate — a green check that
+            # did nothing — so it reports failure even though every step passed.
+            conclusion=failure
+            title="Catalog drifted and was not synced"
+            summary="\`catalog:sync\` rewrote the catalog literal but no commit was produced, so the drift is still unresolved on the branch."
+          fi
+
+          gh api "repos/$REPO/check-runs" \
+            -f name='Catalog Sync' \
+            -f head_sha="$HEAD_SHA" \
+            -f status=completed \
+            -f conclusion="$conclusion" \
+            -f details_url="$RUN_URL" \
+            -f output[title]="$title" \
+            -f output[summary]="$summary" >/dev/null
+
+          echo "::notice::Catalog Sync check run: $conclusion — $title"
+
+          # Fail the job too, so the outcome is visible whether the consumer keys
+          # on the reported check run or on this job's own status.
+          [ "$conclusion" = "success" ]
