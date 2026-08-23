@@ -1,11 +1,16 @@
 name: Catalog Sync
 
 on:
-  push:
-    branches:
-      - main
-      - changeset-release/main
+  pull_request:
+    branches: [main, changeset-release/main]
+    types: [opened, synchronize, reopened]
+
   workflow_dispatch:
+    inputs:
+      open-pr:
+        description: Open an auto-merging PR instead of committing directly to main
+        type: boolean
+        default: false
 
 concurrency:
   group: catalog-sync
@@ -87,11 +92,15 @@ jobs:
           # the job.
           pnpm vitest run packages/pnpm-plugin-effect --coverage.enabled=false
 
-      - name: Open auto-merging PR
+      - name: Commit the sync
         if: steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
+          # Automated runs commit straight back to main; only a manual dispatch
+          # with open-pr=true goes through the branch + auto-merging-PR flow.
+          # (inputs.* is empty on non-dispatch events, so this resolves false.)
+          OPEN_PR: ${{ inputs.open-pr == true }}
           BRANCH: chore/catalog-sync
           BASE_BRANCH: main
           HEADLINE: "chore(pnpm-plugin-effect): sync the effected catalog"
@@ -126,23 +135,31 @@ jobs:
             exit 0
           fi
 
-          # createCommitOnBranch cannot force-push, so reset the branch pointer to
-          # the current base tip first — the old `git push --force` semantics of one
-          # fresh commit on top of main. Moving a ref creates no commit, so nothing
-          # unsigned enters history.
           base_oid=$(gh api "repos/$REPO/git/ref/heads/$BASE_BRANCH" --jq '.object.sha')
 
-          if gh api "repos/$REPO/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
-            gh api -X PATCH "repos/$REPO/git/refs/heads/$BRANCH" \
-              -f sha="$base_oid" -F force=true >/dev/null
+          if [ "$OPEN_PR" = "true" ]; then
+            # createCommitOnBranch cannot force-push, so reset the branch pointer to
+            # the current base tip first — the old `git push --force` semantics of one
+            # fresh commit on top of main. Moving a ref creates no commit, so nothing
+            # unsigned enters history.
+            if gh api "repos/$REPO/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+              gh api -X PATCH "repos/$REPO/git/refs/heads/$BRANCH" \
+                -f sha="$base_oid" -F force=true >/dev/null
+            else
+              gh api -X POST "repos/$REPO/git/refs" \
+                -f ref="refs/heads/$BRANCH" -f sha="$base_oid" >/dev/null
+            fi
+            target_branch="$BRANCH"
           else
-            gh api -X POST "repos/$REPO/git/refs" \
-              -f ref="refs/heads/$BRANCH" -f sha="$base_oid" >/dev/null
+            # Default path: commit the signed sync directly onto main. The
+            # expectedHeadOid guard makes the mutation fail cleanly if main moved
+            # between the read above and the commit, instead of clobbering it.
+            target_branch="$BASE_BRANCH"
           fi
 
           jq -n \
             --arg repo "$REPO" \
-            --arg branch "$BRANCH" \
+            --arg branch "$target_branch" \
             --arg oid "$base_oid" \
             --arg headline "$HEADLINE" \
             --arg body "$SIGNOFF" \
@@ -161,11 +178,13 @@ jobs:
             }' \
             | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.url'
 
-          gh pr create \
-            --base "$BASE_BRANCH" \
-            --head "$BRANCH" \
-            --title "$HEADLINE" \
-            --body "Automated sync of the \`effected\` catalog to the next release versions resolved from this repo's manifests and pending changesets." \
-            || echo "::notice::PR already open for $BRANCH"
+          if [ "$OPEN_PR" = "true" ]; then
+            gh pr create \
+              --base "$BASE_BRANCH" \
+              --head "$BRANCH" \
+              --title "$HEADLINE" \
+              --body "Automated sync of the \`effected\` catalog to the next release versions resolved from this repo's manifests and pending changesets." \
+              || echo "::notice::PR already open for $BRANCH"
 
-          gh pr merge "$BRANCH" --auto --squash
+            gh pr merge "$BRANCH" --auto --squash
+          fi
