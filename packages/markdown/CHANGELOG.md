@@ -1,5 +1,19 @@
 # @effected/markdown
 
+## 0.6.1
+
+### Performance
+
+* Reduced the work `MarkdownDocument.sections` performs when computing section boundaries by indexing root-level headings first and deriving boundaries from that index instead of rescanning non-heading root blocks for each section.
+
+  * Output stays identical: section ranges, ordering, heading matching behavior, and body spans are unchanged. [#469][#469]
+
+### Patch Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#469]: https://github.com/spencerbeggs/effected/pull/469
+
 ## 0.6.0
 
 ### Dependencies
