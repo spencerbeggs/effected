@@ -63,7 +63,7 @@ catalogs:
     "@effect/vitest": 4.0.0-rc.109
     effect: 4.0.0-rc.109
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.29.0+sha512-yBzMO7jjjHGjs+YhcQiakmNCFq0s54hsvBlVKBdbU/o8/dlrUPNU8DY5OTD9sfWLoa2FQ1uQ4+AbBhH9pT6Pow==
+  "@savvy-web/pnpm-plugin-silk": 0.29.1+sha512-1VrIzvk6ZalpHpvNBehyNwJdTwDblNWdeSNgDecc0RiTlxQpEvuCY8mOxI03MseOR7fNcAXqran5siwyJVYNag==
 loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/tsgo-*"
