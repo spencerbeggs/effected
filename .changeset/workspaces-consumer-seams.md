@@ -38,6 +38,8 @@ Resolution order in `resolve`, `resolveIn` and the snapshot-scoped `catalogResol
 
 They re-read: patterns, member manifests, names and versions all come from beneath the named root, so a worktree branch that adds, removes or renames a package is visible. `directory` may be the root or anything inside it, and results memoize per resolved root.
 
+`WorkspaceDiscovery.refreshIn(directory)` drops the memo for one root, leaving the layer-bound memo and every other root's intact — for a host refreshing the worktree that changed without discarding the siblings that did not.
+
 ## Breaking Changes
 
 `WorkspaceDiscovery.makeTest` and `layerTest` die with an instructive defect when `listPackagesIn` or `infoIn` is called without an override. Deriving them from `listPackages` would model every root as holding the same members, which is the confusion these methods exist to remove.

@@ -349,10 +349,17 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * detected, diff `configDependencies` in `pnpm-workspace.yaml` directly; it
 	 * is the only committed evidence that the injection changed.
 	 *
-	 * @param before - The earlier snapshot.
-	 * @param after - The later snapshot.
-	 * @returns The pair in the same order, each carrying the other's catalogs as
-	 *   its seed.
+	 * **The seeding relationship is symmetric; the RETURN ORDER is not.** Each
+	 * snapshot is seeded with the other's catalogs, so neither argument is
+	 * privileged and swapping them produces the same two values — but they come
+	 * back mirroring the order they went in, so destructure in the order you
+	 * passed. The `before`/`after` names describe the intended calling
+	 * convention for a two-ref diff, not a constraint on what may be passed.
+	 *
+	 * @param before - One snapshot, conventionally the earlier one.
+	 * @param after - The other snapshot, conventionally the later one.
+	 * @returns Both snapshots in the order given, each carrying the other's
+	 *   catalogs as its seed.
 	 *
 	 * @example
 	 * ```ts

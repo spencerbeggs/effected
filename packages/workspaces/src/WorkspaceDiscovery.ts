@@ -205,6 +205,26 @@ export interface WorkspaceDiscoveryShape {
 	 * — so the next call re-reads the filesystem.
 	 */
 	readonly refresh: () => Effect.Effect<void>;
+	/**
+	 * Drop only the memo for the workspace containing `directory`, leaving the
+	 * layer-bound memo and every other root's untouched.
+	 *
+	 * @remarks
+	 * The precise counterpart to {@link WorkspaceDiscoveryShape.refresh} for a
+	 * host serving several roots: refreshing one worktree because it changed
+	 * should not discard sibling worktrees that did not, which is all `refresh`
+	 * can do.
+	 *
+	 * **Fails typed on a directory in no workspace**, exactly as
+	 * {@link WorkspaceDiscoveryShape.listPackagesIn} does for the same input —
+	 * the three per-root methods answer a bad path the same way, and a caller
+	 * that would rather treat it as a no-op writes `Effect.ignore`. Refreshing a
+	 * root that HAS no memo is an ordinary no-op and not an error.
+	 *
+	 * @param directory - Absolute path to the workspace root, or to any
+	 *   directory inside it.
+	 */
+	readonly refreshIn: (directory: string) => Effect.Effect<void, WorkspaceRootNotFoundError>;
 }
 
 /**
@@ -579,6 +599,18 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 					return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
 				}),
 
+				refreshIn: Effect.fn("WorkspaceDiscovery.refreshIn")(function* (directory: string) {
+					const root = yield* roots.find(directory);
+					const cell = rootMemos.get(root);
+					if (cell === undefined) return;
+					// Invalidate the cell BEFORE dropping the reference: a fiber already
+					// holding this memo keeps its own reference, and leaving the cached
+					// value live would let that fiber replay a discovery this call was
+					// asked to discard.
+					yield* cell.invalidate;
+					rootMemos.delete(root);
+				}),
+
 				refresh: () =>
 					Effect.flatMap(
 						Effect.forEach([...rootMemos.values()], (cell) => cell.invalidate, { discard: true }),
@@ -714,6 +746,9 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 					),
 				),
 			refresh: () => Effect.void,
+			// Nothing is memoized in a double, so dropping one root's memo is honestly
+			// a no-op — unlike the two reads above, which have no honest default.
+			refreshIn: () => Effect.void,
 			...overrides,
 		};
 	};

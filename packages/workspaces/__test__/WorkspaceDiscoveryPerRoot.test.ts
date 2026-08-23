@@ -171,6 +171,63 @@ describe("WorkspaceDiscovery.refresh — with per-root memos live", () => {
 	});
 });
 
+describe("WorkspaceDiscovery.refreshIn", () => {
+	layer(discoveryOver(TREE))((it) => {
+		it.effect("drops only the named root's memo", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const worktreeBefore = yield* discovery.listPackagesIn("/worktree");
+				const primaryBefore = yield* discovery.listPackagesIn("/primary");
+
+				yield* discovery.refreshIn("/worktree");
+
+				// The named root re-discovers...
+				assert.notStrictEqual(yield* discovery.listPackagesIn("/worktree"), worktreeBefore);
+				// ...and its siblings do not. A `refreshIn` that cleared the whole map
+				// would be indistinguishable from `refresh` and pass the line above.
+				assert.strictEqual(yield* discovery.listPackagesIn("/primary"), primaryBefore);
+			}),
+		);
+
+		it.effect("accepts a directory inside the workspace", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const before = yield* discovery.listPackagesIn("/worktree");
+				yield* discovery.refreshIn("/worktree/packages/gamma");
+				assert.notStrictEqual(yield* discovery.listPackagesIn("/worktree"), before);
+			}),
+		);
+
+		it.effect("leaves the layer-bound memo alone", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const before = yield* discovery.listPackages();
+				yield* discovery.listPackagesIn("/worktree");
+				yield* discovery.refreshIn("/worktree");
+				assert.strictEqual(yield* discovery.listPackages(), before);
+			}),
+		);
+
+		it.effect("is a no-op for a root with no memo", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				// Never discovered, so there is nothing to drop — an ordinary fact,
+				// not an error.
+				yield* discovery.refreshIn("/worktree");
+				assert.deepStrictEqual(names(yield* discovery.listPackagesIn("/worktree")), ["@x/alpha", "@x/gamma", "root"]);
+			}),
+		);
+
+		it.effect("fails typed on a directory in no workspace, like the other per-root methods", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const error = yield* Effect.flip(discovery.refreshIn("/nowhere"));
+				assert.instanceOf(error, WorkspaceRootNotFoundError);
+			}),
+		);
+	});
+});
+
 describe("WorkspaceDiscovery.makeTest — the per-root methods", () => {
 	it.effect("dies unstubbed rather than deriving from listPackages", () =>
 		Effect.gen(function* () {
@@ -193,6 +250,9 @@ describe("WorkspaceDiscovery.makeTest — the per-root methods", () => {
 				listPackagesIn: () => Effect.succeed([]),
 			});
 			assert.deepStrictEqual(yield* double.listPackagesIn("/anywhere"), []);
+			// `refreshIn` DOES have an honest default: a double memoizes nothing, so
+			// dropping one root's memo really is a no-op.
+			yield* WorkspaceDiscovery.makeTest({}).refreshIn("/anywhere");
 		}),
 	);
 });

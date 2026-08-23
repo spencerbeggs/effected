@@ -55,7 +55,7 @@ That is a correctness fix, not ergonomics: when the composite supplied npm seman
 
 ## Testing and building
 
-507 tests, on core's `Path.layer` + `@effected/memfs` (a devDependency) — a real virtual filesystem, no platform package (`__test__/fixtures.ts` seeds one from a `Tree` record and injects its three misbehaviors as faults).
+512 tests, on core's `Path.layer` + `@effected/memfs` (a devDependency) — a real virtual filesystem, no platform package (`__test__/fixtures.ts` seeds one from a `Tree` record and injects its three misbehaviors as faults).
 
 - A suite-boundary `layer(...)` cannot vary per test, so **each distinct tree gets its own `layer(...)` block**.
 - `__test__/integration/self.int.test.ts` is the one exception: it discovers **this repository** through `@effect/platform-node` (a devDependency), the only proof the stack composes against a real pnpm workspace.
