@@ -382,21 +382,47 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	get sections(): ReadonlyArray<DocumentSection> {
 		const blocks = this.root.children;
 		const sections: Array<DocumentSection> = [];
+		const headings: Array<{ readonly index: number; readonly node: Heading }> = [];
 		for (let index = 0; index < blocks.length; index += 1) {
 			const block = blocks[index];
-			if (block === undefined || block.type !== "heading") {
-				continue;
+			if (block !== undefined && block.type === "heading") {
+				headings.push({ index, node: block });
 			}
-			let boundary = this.source.length;
-			let end = blocks.length;
-			for (let next = index + 1; next < blocks.length; next += 1) {
-				const candidate = blocks[next];
-				if (candidate !== undefined && candidate.type === "heading" && candidate.depth <= block.depth) {
-					boundary = candidate.position.start.offset;
-					end = next;
-					break;
+		}
+		// `sections` boundaries are defined by ROOT headings only. Building that
+		// index once lets the boundary pass scan heading-to-heading instead of
+		// re-walking non-heading blocks for every section.
+		const nextByDepth: Array<number | undefined> = [
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+		];
+		const boundaryByHeading = new Array<number | undefined>(headings.length);
+		for (let index = headings.length - 1; index >= 0; index -= 1) {
+			const current = headings[index]?.node;
+			if (current === undefined) continue;
+			let boundary: number | undefined;
+			for (let depth = 1; depth <= current.depth; depth += 1) {
+				const candidate = nextByDepth[depth];
+				if (candidate !== undefined && (boundary === undefined || candidate < boundary)) {
+					boundary = candidate;
 				}
 			}
+			boundaryByHeading[index] = boundary;
+			nextByDepth[current.depth] = index;
+		}
+		for (let index = 0; index < headings.length; index += 1) {
+			const current = headings[index];
+			if (current === undefined) continue;
+			const block = current.node;
+			const boundaryHeading = boundaryByHeading[index];
+			const boundaryNode = boundaryHeading === undefined ? undefined : headings[boundaryHeading]?.node;
+			const boundary = boundaryNode === undefined ? this.source.length : boundaryNode.position.start.offset;
+			const end = boundaryHeading === undefined ? blocks.length : (headings[boundaryHeading]?.index ?? blocks.length);
 			const start = block.position.start.offset;
 			const bodyStart = block.position.end.offset;
 			sections.push(
@@ -404,7 +430,9 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 					heading: block,
 					depth: block.depth,
 					range: MarkdownRange.make({ offset: start, length: boundary - start }),
-					children: blocks.slice(index + 1, end).filter((child): child is FlowContent => child.type !== "frontmatter"),
+					children: blocks
+						.slice(current.index + 1, end)
+						.filter((child): child is FlowContent => child.type !== "frontmatter"),
 					text: phrasingText(block.children),
 					// The body starts where the heading NODE ends, which is what makes
 					// this correct for setext headings too: their node span covers the
