@@ -20,7 +20,7 @@ concurrency:
 jobs:
   workflow:
     name: Workflow
-    uses: spencerbeggs/.github/.github/workflows/release.yml@main
+    uses: spencerbeggs/.github/.github/workflows/release.yml@dev
     permissions:
       contents: write
       pull-requests: write
