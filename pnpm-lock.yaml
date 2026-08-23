@@ -85,8 +85,8 @@ importers:
         specifier: ^3.9.1
         version: 3.9.1(@changesets/cli@3.0.1)(@commitlint/cli@21.2.2(@types/node@26.2.0)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.2)(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/bun@1.4.0)(@types/node@26.2.0)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(husky@9.1.7)(lint-staged@17.3.0)(markdownlint-cli2-formatter-codequality@0.0.7(markdownlint-cli2@0.23.2(supports-color@9.4.0)))(markdownlint-cli2@0.23.2(supports-color@9.4.0))(redis@6.2.1)(supports-color@9.4.0)(tsx@4.23.12)(turbo@2.10.11)(typescript@7.0.2)(vitest@4.1.11)
       '@vitest-agent/plugin':
-        specifier: ^2.4.4
-        version: 2.4.4(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)
+        specifier: ^2.4.5
+        version: 2.4.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)
 
   packages/app:
     devDependencies:
@@ -558,8 +558,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109
       rolldown-pnpm-config:
-        specifier: ^0.7.0
-        version: 0.7.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(redis@6.2.1)(rolldown@1.2.5)
+        specifier: ^0.7.1
+        version: 0.7.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(redis@6.2.1)(rolldown@1.2.5)
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -2901,28 +2901,28 @@ packages:
     peerDependencies:
       react: '>=18.3.1'
 
-  '@vitest-agent/cli@2.2.5':
-    resolution: {integrity: sha512-/VQPvyMjz7hZelCb5K4BH3UpxC6jKPzjGMBEHvD6rynTdlChMqwkbWiAr86plbip/YM4NN+YWLzAh2yuJ0Ng8A==}
+  '@vitest-agent/cli@2.2.6':
+    resolution: {integrity: sha512-D2fQD6n9qWDNiUiTiP4Uxe1/FBiMrh3wRO2XLdVDs/BVttkaEjHvfTcJwoqET/mkM1ndaj4sEh32Clk95LKanA==}
     engines: {node: '>=24.11.0'}
     hasBin: true
 
-  '@vitest-agent/mcp@2.4.1':
-    resolution: {integrity: sha512-IaowX8DvfdQ27KQuDpbtbQ7txao3kU1+GIsV+pVUpUvgx3aYk6G51gSqNQ7TBIoYmIRTfRT8eTPxK/jk65ZgPQ==}
+  '@vitest-agent/mcp@2.4.2':
+    resolution: {integrity: sha512-cwT4+3oFH8PIJwQxsniong75LLU+PODz22L9Nk7JVJi3Khih3KYts7g7ThSYUNKxoyWSqkRuFSay1e+Ow9kSlA==}
     engines: {node: '>=24.11.0'}
     hasBin: true
     peerDependencies:
       vitest: ^4.1.0
 
-  '@vitest-agent/plugin@2.4.4':
-    resolution: {integrity: sha512-SLvEEdHtwCf03MMjPXljDrbz8OcSh5+z1mpufd+POuqnZJh64axkot2XqKGDt1hTUJYGk+KAdXFAshX8PDDnYg==}
+  '@vitest-agent/plugin@2.4.5':
+    resolution: {integrity: sha512-GDFb6OkG4cjd4FjSJFECKKTfoiKwd0ilICMqdleIpJBl/ilQcbax9yR0+48xW8C07ZDyJgRb/0KHwtRng6JWXA==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@vitest/coverage-istanbul': ^4.1.0
       '@vitest/coverage-v8': ^4.1.0
       vitest: ^4.1.0
 
-  '@vitest-agent/reporter@2.1.6':
-    resolution: {integrity: sha512-zeA3LIB2cSbRU+Uc6jDXryKlDk65ynEle8Rxb6WD5ZjU7kP9axtpv5gS+KUOmy0KA/YxFDNyFzkj/h1cC1eB2A==}
+  '@vitest-agent/reporter@2.1.7':
+    resolution: {integrity: sha512-vdQSmbIE+6JPb5lNI1Xq9rB4R+H3hhpPWl3uOc8beV/9oOApcRLFDzWbVYRH1RSmDUdxMZgEDBX9SPFMD3M3jw==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@vitest/coverage-istanbul': ^4.1.0
@@ -2934,40 +2934,40 @@ packages:
       '@vitest/coverage-v8':
         optional: true
 
-  '@vitest-agent/sdk@2.4.5':
-    resolution: {integrity: sha512-R042qUnP070f9XIiRtlTcbNEVYGMEGcB2SCYLz0gVGTlD1mA1mhqutZIR1t+IECamWczAqxvedI1yrCY3MjPww==}
+  '@vitest-agent/sdk@2.4.6':
+    resolution: {integrity: sha512-XC4Swvx/t+ijbGMq62vxD+ZDujzFOtVtJrPMGTvWD0G3h9P24lVu3vhpL8/vYSaP3ESGZh+7mXciSmS/DNYVlg==}
     engines: {node: '>=24.11.0'}
 
-  '@vitest-agent/sidecar-darwin-arm64@2.1.5':
-    resolution: {integrity: sha512-sZv3tgCEzRwKObWi4lhTTl+AkYrt8RAUw45tuanYlrfAWlTNZ3T/aN7pr2fXP3kSgJJJiY1/pyGUu/LAJ9TTmQ==}
+  '@vitest-agent/sidecar-darwin-arm64@2.1.6':
+    resolution: {integrity: sha512-v/PGwacxIRcKBOVj0LBBTvNzEh2c/HlROqD1YHlEPHmpYuSNE2M/cLoTW0HhKDzsKWNRwDH6HCVaezy+gm7+4g==}
     engines: {node: '>=24.11.0'}
     cpu: [arm64]
     os: [darwin]
 
-  '@vitest-agent/sidecar-linux-arm64@2.1.5':
-    resolution: {integrity: sha512-Rm25ipKKAAohy9mR0HwyLTt1TDIPUP6R3oHF3aRwVxWSW9ME6Mf6WY94L9mNZuHjKV5+271Mo6UXyektTIz7tQ==}
+  '@vitest-agent/sidecar-linux-arm64@2.1.6':
+    resolution: {integrity: sha512-AWdQrbds1A5bE8AgPix9Orxqm+AE1xn+gl6SjdqNJZUcIpP7e5HBzXZ+fYypD7R9f2JUJYcSUHRx28BYWOY6yQ==}
     engines: {node: '>=24.11.0'}
     cpu: [arm64]
     os: [linux]
 
-  '@vitest-agent/sidecar-linux-x64@2.1.5':
-    resolution: {integrity: sha512-4nyFOLCi9PS+UA/jwZKTCl6dlXZmEGJsBeXkWmfBK6XSSf/ggxCXG1lk8u6EzsqeqYuQo/kfWGn13kk0jo2veg==}
+  '@vitest-agent/sidecar-linux-x64@2.1.6':
+    resolution: {integrity: sha512-zMkIFPEx+QFJtO9eKxL9OdL/5Wo9FVnhF77s7zzh2minhmRPQrJXCN442US5LWPIoVIxYWt6I8u0se1yDaimBA==}
     engines: {node: '>=24.11.0'}
     cpu: [x64]
     os: [linux]
 
-  '@vitest-agent/sidecar-win32-x64@2.1.5':
-    resolution: {integrity: sha512-SAaELBGIqHWMPYHWcbbgp2bm91rjiVaEd0WldAjIkno4Xp586oQST+86GqGSUl2GxrHj5/EgPMjIDCpU3B4UhA==}
+  '@vitest-agent/sidecar-win32-x64@2.1.6':
+    resolution: {integrity: sha512-5kbe5c585edRdSbkJC/T0JN+u2iS+eun/G3jDojkP0PUzueEzEp+jX17UMYEP/K8flWDZTAe/2h+43maenjbAA==}
     engines: {node: '>=24.11.0'}
     cpu: [x64]
     os: [win32]
 
-  '@vitest-agent/sidecar@2.1.5':
-    resolution: {integrity: sha512-l8il4wIOcxBGFcZN+poymYYdfHuHSlzUtLEglNuvZqtK8ZmOC9vsaNVJ/lx+bkNAgsZpmTby8bG8RDtt5iAV7w==}
+  '@vitest-agent/sidecar@2.1.6':
+    resolution: {integrity: sha512-ODd/ezYqyH5EkSU301lfDYDU27qCIOhLhr03EFUTqnBbljMmQ3KogkqWnh9o2q7v5Rw0J04R0gsxknQsSrXpGg==}
     engines: {node: '>=24.11.0'}
 
-  '@vitest-agent/ui@2.2.5':
-    resolution: {integrity: sha512-b02WEgsLpNeY6G1tMgqFz1/AAgyv8pyR7Htx/h3akDLSkrZOm+N66MJklyZv2rY1/3tVRMTBxZm8Eeop4OQZgw==}
+  '@vitest-agent/ui@2.2.6':
+    resolution: {integrity: sha512-TcLy+wJRzKzjUsLK4lfDpA6KMRnNBaUZvJRoo817+BFErDXk/67vWco+8oLg49AV4233K/ePbYShwXtBwipMEw==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       ink: ^7.1.0
@@ -5274,8 +5274,8 @@ packages:
       vue-tsc:
         optional: true
 
-  rolldown-pnpm-config@0.7.0:
-    resolution: {integrity: sha512-MOA6BJO+32GFtmMY12ma2J13z8qB+XjJBs4/7rEa7lIrbY21FjyKNEMmPL5jbkN+OXi+Pc5l1pDRaUr3qU3COQ==}
+  rolldown-pnpm-config@0.7.1:
+    resolution: {integrity: sha512-Du8zrf67Nprf4w1mItCruylTAmWd0zHBNENZ5N/acZz2yHm1aK/LZFt6GsLMegG2YhRFxY3qQyVo3DABOQ6Kuw==}
     engines: {node: '>=24.11.0'}
     hasBin: true
     peerDependencies:
@@ -8389,13 +8389,13 @@ snapshots:
       react: 19.2.8
       unhead: 2.1.17
 
-  '@vitest-agent/cli@2.2.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(redis@6.2.1)':
+  '@vitest-agent/cli@2.2.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(redis@6.2.1)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.109(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.17.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@vitest-agent/sdk': 2.4.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
-      '@vitest-agent/sidecar': 2.1.5
+      '@vitest-agent/sdk': 2.4.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
+      '@vitest-agent/sidecar': 2.1.6
       effect: 4.0.0-rc.109
     transitivePeerDependencies:
       - '@effected/glob'
@@ -8404,13 +8404,13 @@ snapshots:
       - redis
       - utf-8-validate
 
-  '@vitest-agent/mcp@2.4.1(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)':
+  '@vitest-agent/mcp@2.4.2(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.109(effect@4.0.0-rc.109)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@9.4.0)(zod@4.4.3)
       '@trpc/server': 11.18.0(typescript@7.0.2)
-      '@vitest-agent/sdk': 2.4.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
+      '@vitest-agent/sdk': 2.4.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
       effect: 4.0.0-rc.109
       vitest: 4.1.11(@types/node@26.2.0)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.12)(yaml@2.9.0))
       zod: 4.4.3
@@ -8423,15 +8423,15 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@vitest-agent/plugin@2.4.4(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)':
+  '@vitest-agent/plugin@2.4.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.109(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.17.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@vitest-agent/cli': 2.2.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(redis@6.2.1)
-      '@vitest-agent/mcp': 2.4.1(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)
-      '@vitest-agent/reporter': 2.1.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(vitest@4.1.11)
-      '@vitest-agent/sdk': 2.4.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
+      '@vitest-agent/cli': 2.2.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(redis@6.2.1)
+      '@vitest-agent/mcp': 2.4.2(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)
+      '@vitest-agent/reporter': 2.1.7(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(vitest@4.1.11)
+      '@vitest-agent/sdk': 2.4.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
       '@vitest/coverage-istanbul': 4.1.11(supports-color@9.4.0)(vitest@4.1.11)
       '@vitest/coverage-v8': 4.1.11(vitest@4.1.11)
       effect: 4.0.0-rc.109
@@ -8449,12 +8449,12 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@vitest-agent/reporter@2.1.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(vitest@4.1.11)':
+  '@vitest-agent/reporter@2.1.7(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(vitest@4.1.11)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.109(effect@4.0.0-rc.109)
-      '@vitest-agent/sdk': 2.4.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
-      '@vitest-agent/ui': 2.2.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)(redis@6.2.1)
+      '@vitest-agent/sdk': 2.4.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
+      '@vitest-agent/ui': 2.2.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)(redis@6.2.1)
       effect: 4.0.0-rc.109
       ink: 7.1.1(@types/react@19.2.18)(react@19.2.8)
       react: 19.2.8
@@ -8470,7 +8470,7 @@ snapshots:
       - redis
       - utf-8-validate
 
-  '@vitest-agent/sdk@2.4.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)':
+  '@vitest-agent/sdk@2.4.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.109(effect@4.0.0-rc.109)
@@ -8492,28 +8492,28 @@ snapshots:
       - redis
       - utf-8-validate
 
-  '@vitest-agent/sidecar-darwin-arm64@2.1.5':
+  '@vitest-agent/sidecar-darwin-arm64@2.1.6':
     optional: true
 
-  '@vitest-agent/sidecar-linux-arm64@2.1.5':
+  '@vitest-agent/sidecar-linux-arm64@2.1.6':
     optional: true
 
-  '@vitest-agent/sidecar-linux-x64@2.1.5':
+  '@vitest-agent/sidecar-linux-x64@2.1.6':
     optional: true
 
-  '@vitest-agent/sidecar-win32-x64@2.1.5':
+  '@vitest-agent/sidecar-win32-x64@2.1.6':
     optional: true
 
-  '@vitest-agent/sidecar@2.1.5':
+  '@vitest-agent/sidecar@2.1.6':
     optionalDependencies:
-      '@vitest-agent/sidecar-darwin-arm64': 2.1.5
-      '@vitest-agent/sidecar-linux-arm64': 2.1.5
-      '@vitest-agent/sidecar-linux-x64': 2.1.5
-      '@vitest-agent/sidecar-win32-x64': 2.1.5
+      '@vitest-agent/sidecar-darwin-arm64': 2.1.6
+      '@vitest-agent/sidecar-linux-arm64': 2.1.6
+      '@vitest-agent/sidecar-linux-x64': 2.1.6
+      '@vitest-agent/sidecar-win32-x64': 2.1.6
 
-  '@vitest-agent/ui@2.2.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)(redis@6.2.1)':
+  '@vitest-agent/ui@2.2.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)(redis@6.2.1)':
     dependencies:
-      '@vitest-agent/sdk': 2.4.5(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
+      '@vitest-agent/sdk': 2.4.6(@effected/glob@0.4.0(effect@4.0.0-rc.109))(redis@6.2.1)
       effect: 4.0.0-rc.109
       ink: 7.1.1(@types/react@19.2.18)(react@19.2.8)
       react: 19.2.8
@@ -11354,7 +11354,7 @@ snapshots:
     transitivePeerDependencies:
       - oxc-resolver
 
-  rolldown-pnpm-config@0.7.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(redis@6.2.1)(rolldown@1.2.5):
+  rolldown-pnpm-config@0.7.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(redis@6.2.1)(rolldown@1.2.5):
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effected/npm': 0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
