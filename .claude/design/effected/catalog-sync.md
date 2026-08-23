@@ -66,6 +66,10 @@ The job's outcome is published as a **`Catalog Sync` check run**, written once, 
 
 The step also exits non-zero on a failing conclusion, so the outcome is visible whether a consumer keys on the reported check run or on the job's own status. Writing the run needs `checks: write`, taken on `GITHUB_TOKEN` rather than the App token so the App's grants do not have to change.
 
+- **The run link lives in the summary, not `details_url`.** GitHub silently ignores `details_url` on a check run created with the Actions `GITHUB_TOKEN` and substitutes the check run's own URL, so passing it yielded a check with no route back to the log explaining it. Verified on a live run rather than taken from the docs.
+
+**Fork PRs skip the job rather than failing it.** A `pull_request` from a fork gets no secrets, so the App-token step cannot mint a token and the job dies at step 1 with an opaque credential error, having never looked at the catalog. Skipping is also the safer semantic: the remediation path commits straight to `main`, which a fork PR must never be able to reach for. This is the only workflow in the repo that runs on `pull_request` **and** depends on `secrets`, which is why the guard is local rather than shared.
+
 The commit URL reaches that step as a **step output** (`steps.commit.outputs.commit-url`) rather than only as stdout — the conclusion depends on whether a commit actually happened, and stdout is not readable from a later step.
 
 ## Not wired: the release gate

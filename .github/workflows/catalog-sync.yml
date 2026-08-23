@@ -24,6 +24,16 @@ permissions:
 
 jobs:
   catalog-sync:
+    # A `pull_request` from a FORK gets no secrets, so the App-token step below
+    # cannot mint a token and the job dies at step 1 with an opaque credential
+    # error — before it has looked at the catalog at all. Skipping is both
+    # honester and safer: this job's remediation path commits straight to `main`,
+    # which is not something a fork PR should ever be able to reach for, and a
+    # skipped job reports as skipped rather than as a spurious red check.
+    #
+    # This is the only workflow here that runs on `pull_request` AND depends on
+    # `secrets`, which is why the guard lives here and not in a shared place.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Generate App Token
@@ -264,12 +274,18 @@ jobs:
             summary="\`catalog:sync\` rewrote the catalog literal but no commit was produced, so the drift is still unresolved on the branch."
           fi
 
+          # The run link goes in the SUMMARY, not `details_url`. GitHub silently
+          # ignores `details_url` on a check run created with the Actions
+          # `GITHUB_TOKEN` and substitutes the check run's own URL, so passing it
+          # produced a check with no route back to the log that explains it
+          # (community#26757).
+          summary="$summary"$'\n\n'"[Run log]($RUN_URL)"
+
           gh api "repos/$REPO/check-runs" \
             -f name='Catalog Sync' \
             -f head_sha="$HEAD_SHA" \
             -f status=completed \
             -f conclusion="$conclusion" \
-            -f details_url="$RUN_URL" \
             -f output[title]="$title" \
             -f output[summary]="$summary" >/dev/null
 
