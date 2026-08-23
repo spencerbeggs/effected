@@ -558,8 +558,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109
       rolldown-pnpm-config:
-        specifier: ^0.7.1
-        version: 0.7.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(redis@6.2.1)(rolldown@1.2.5)
+        specifier: ^0.7.2
+        version: 0.7.2(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(redis@6.2.1)(rolldown@1.2.5)
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1520,12 +1520,6 @@ packages:
     peerDependencies:
       '@effected/config-file': ^0.5.0
       '@effected/walker': ^0.5.0
-      effect: 4.0.0-rc.109
-
-  '@effected/yaml@0.10.0':
-    resolution: {integrity: sha512-6iXMf2mTyy+boIroYfBiyVdnA8OKum50aWmxTe+r2idzmYPr5iJ/3qTBt0eRw5uqRlQwaTlVCHOmNJE5S0Eixg==}
-    engines: {node: '>=24.11.0'}
-    peerDependencies:
       effect: 4.0.0-rc.109
 
   '@effected/yaml@0.11.0':
@@ -5280,8 +5274,8 @@ packages:
       vue-tsc:
         optional: true
 
-  rolldown-pnpm-config@0.7.1:
-    resolution: {integrity: sha512-Du8zrf67Nprf4w1mItCruylTAmWd0zHBNENZ5N/acZz2yHm1aK/LZFt6GsLMegG2YhRFxY3qQyVo3DABOQ6Kuw==}
+  rolldown-pnpm-config@0.7.2:
+    resolution: {integrity: sha512-vfOk8ma4SjW8GidM3RJkcLufIz7h8ue8FDC60jHUkwkv0BEtRKyqHyQETIoxuNXqR9Qn2dblCIPmO7pNbcAMYg==}
     engines: {node: '>=24.11.0'}
     hasBin: true
     peerDependencies:
@@ -6663,10 +6657,6 @@ snapshots:
     dependencies:
       '@effected/config-file': 0.5.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/yaml@0.11.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/walker': 0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      effect: 4.0.0-rc.109
-
-  '@effected/yaml@0.10.0(effect@4.0.0-rc.109)':
-    dependencies:
       effect: 4.0.0-rc.109
 
   '@effected/yaml@0.11.0(effect@4.0.0-rc.109)':
@@ -11364,13 +11354,13 @@ snapshots:
     transitivePeerDependencies:
       - oxc-resolver
 
-  rolldown-pnpm-config@0.7.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(redis@6.2.1)(rolldown@1.2.5):
+  rolldown-pnpm-config@0.7.2(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(redis@6.2.1)(rolldown@1.2.5):
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effected/npm': 0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/semver': 0.5.0(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.17.2(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@effected/yaml': 0.10.0(effect@4.0.0-rc.109)
+      '@effected/yaml': 0.11.0(effect@4.0.0-rc.109)
       effect: 4.0.0-rc.109
       ink: 7.1.1(@types/react@19.2.18)(react@19.2.8)
       ink-tab: 5.2.0(@types/react@19.2.18)(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)
