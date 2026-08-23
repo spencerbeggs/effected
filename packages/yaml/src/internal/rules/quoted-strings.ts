@@ -11,8 +11,9 @@
 import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { LintContext, YamlRule } from "../../YamlLintRule.js";
-import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 import type { YamlScalar } from "../../YamlNode.js";
+import { requoteScalarText } from "../requote.js";
 import { positionAt, walkScalars } from "./util.js";
 
 /**
@@ -31,20 +32,16 @@ interface QuotedStringsOptions {
 	readonly required?: boolean;
 }
 
-/** A value-preserving requote/wrap edit, or undefined when none is safe. */
+/**
+ * A value-preserving requote/wrap edit, or undefined when none is safe.
+ * Delegates to the shared helper's CONSERVATIVE mode (#347) — the shipped
+ * fix behavior stays exactly as released; the escaping-capable mode belongs
+ * to the format path's opt-in `requoteScalars`, not the lint fix.
+ */
 const safeQuoteFix = (ctx: LintContext, scalar: YamlScalar, quote: '"' | "'"): YamlEdit | undefined => {
-	if (scalar.tag !== undefined || scalar.anchor !== undefined) return undefined;
-	if (typeof scalar.value !== "string") return undefined;
-	const raw = ctx.text.slice(scalar.offset, scalar.offset + scalar.length);
-	if (raw.includes("\n")) return undefined;
-	const inner = scalar.style === "plain" ? raw : raw.slice(1, -1);
-	// Only when the raw inner text IS the value (no escapes, no doubled
-	// quotes) and the target quote never appears in it does requoting
-	// provably preserve the value.
-	if (inner !== scalar.value) return undefined;
-	if (inner.includes(quote)) return undefined;
-	if (quote === '"' && inner.includes("\\")) return undefined;
-	return YamlEdit.make({ offset: scalar.offset, length: scalar.length, content: `${quote}${inner}${quote}` });
+	const content = requoteScalarText(ctx.text, scalar, quote, "conservative");
+	if (content === undefined) return undefined;
+	return YamlEdit.make({ offset: scalar.offset, length: scalar.length, content });
 };
 
 /** Quote-style policy for string value scalars. */
@@ -93,6 +90,29 @@ export const quotedStrings: YamlRule = {
 					}),
 				);
 			}
+		});
+		return out;
+	},
+	// Inference (#345): every already-quoted string VALUE scalar votes its
+	// quote style for `quoteType` — the same scope the check polices (keys
+	// excluded, plain scalars say nothing about quote preference).
+	infer: (ctx) => {
+		const out: Array<StyleVote> = [];
+		walkScalars(ctx.document.contents, "root", (scalar, role) => {
+			if (role === "key") return;
+			if (typeof scalar.value !== "string") return;
+			if (scalar.style !== "single-quoted" && scalar.style !== "double-quoted") return;
+			const pos = positionAt(ctx.lines, scalar.offset);
+			out.push(
+				StyleVote.make({
+					dimension: "quoteType",
+					value: scalar.style === "single-quoted" ? "single" : "double",
+					offset: scalar.offset,
+					length: scalar.length,
+					line: pos.line,
+					character: pos.character,
+				}),
+			);
 		});
 		return out;
 	},

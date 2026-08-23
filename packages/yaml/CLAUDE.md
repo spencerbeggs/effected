@@ -1,6 +1,6 @@
 # @effected/yaml
 
-Zero-dependency YAML 1.2 parsing, editing, formatting and linting as Effect schemas. 47 source files, 22 test modules, ~1,900 tests — the repo's largest package. **Tier: pure** — peer-depends on `effect` only, zero runtime deps, no IO, no services.
+Zero-dependency YAML 1.2 parsing, editing, formatting and linting as Effect schemas. 48 source files, 25 test modules, ~1,950 tests. **Tier: pure** — peer-depends on `effect` only, zero runtime deps, no IO, no services.
 
 **Design docs:**
 
@@ -11,9 +11,9 @@ Zero-dependency YAML 1.2 parsing, editing, formatting and linting as Effect sche
 
 ## Engine and facade
 
-`src/internal/` holds a **vendored engine** (~20 files, ~11,100 lines) ported with attribution from the `yaml` package. House policy: a pure package owns its parser — never add `yaml` as a dependency.
+`src/internal/` holds a **vendored engine** ported with attribution from the `yaml` package. House policy: a pure package owns its parser — never add `yaml` as a dependency.
 
-It is the lex → CST → compose → stringify pipeline (`lexer.ts`, `cst-parser.ts`, `cst-visitor.ts`, `composer/`, `stringifier.ts`); `internal/rules/` holds one file per built-in lint rule plus the catalog.
+It is the lex→CST→compose→stringify pipeline (`lexer.ts`, `cst-parser.ts`, `cst-visitor.ts`, `composer/`, `stringifier.ts`); `internal/rules/` holds one file per built-in lint rule plus the catalog.
 
 ### Cycle firewall
 
@@ -31,7 +31,7 @@ Re-exported from `src/index.ts`; nothing else is public.
 - `YamlNode.ts` — the co-located mutually-recursive AST: `YamlScalar`, `YamlMap`, `YamlSeq`, `YamlPair`, `YamlAlias`, the union, the `ScalarStyle`/`CollectionStyle`/`ScalarChomp` sets. Co-location breaks the AST import cycle. **Comments live on nodes, never on pairs**: every class *except* `YamlPair` carries the triple — `commentBefore` (own-line block above), `comment` (strictly **trailing**), `spaceBefore` (a blank line preceded it). `YamlPair` is `key` and `value`, nothing else; `YamlAlias` carries the triple like the rest.
 - `YamlDocument.ts` — `YamlDocument` and `YamlDirective`: full AST plus recovered `errors`/`warnings`. `commentBefore` is the header block sitting **ahead of a `---` marker**, `comment` the trailing one — the same two names the node classes use. A header after the marker leads the root node; a header with no marker leads the first entry's key.
 - `YamlEdit.ts` — `YamlEdit`, `YamlRange`, `YamlPath`, `YamlSegment`. `applyAll(text, edits)` applies in reverse-offset order and **rejects overlapping edits as a thrown defect** — a programmer-error guard on hand-built arrays (parity with jsonc/toml/markdown); `YamlFormat` and `YamlLint.fix` never emit overlaps.
-- `YamlFormat.ts` — non-mutating `format`/`modify` edits preserving comments and whitespace. Owns `YamlFormattingOptions`, `YamlModificationError`.
+- `YamlFormat.ts` — non-mutating `format`/`modify` edits preserving comments and whitespace. Owns `YamlFormattingOptions`, `YamlModificationError`. Opt-in `requoteScalars` applies `quoteStyle` to already-quoted scalars via shared `src/internal/requote.ts` (semantics-preserving-or-skip; modes: design doc).
 - `YamlVisitor.ts` — SAX-style AST events as `Stream<YamlVisitorEvent>`. Infallible: diagnostics surface as `Error` events, never a stream failure; `Comment` events carry `placement: "leading" | "trailing"`.
 - `YamlToken.ts`, `YamlLintRule.ts`, `YamlLint.ts` — token stream and lint system; see `@./CLAUDE.lint.md`.
 
@@ -55,7 +55,7 @@ Malformed and adversarial input **fails typed, never as a defect**. Four regress
 
 ## Testing and building
 
-Tests live in `__test__/`, never in `src/`. Use `@effect/vitest` with `it.effect`; assert with `assert.*`, never `expect`. Three e2e suites run from `__test__/e2e/`: the 1,226-assertion yaml-test-suite harness, which must stay at 100% with empty skip maps; token position fidelity; and format properties, whose idempotence ledger is 5 pinned ids — a new one is a loss bug to fix, not to park. Lint rule tests go through the shared harness (both: child file), never a bespoke suite.
+Test conventions follow the root context file (`__test__/`, `it.effect`, `assert.*` never `expect`). Four e2e suites run from `__test__/e2e/`: the 1,226-assertion yaml-test-suite harness (100%, empty skip maps, always); token position fidelity; format properties, whose idempotence ledger is 5 pinned ids — a new one is a loss bug to fix, not to park; and strict-inference self-consistency over our own emitted output. Lint rule tests go through the shared harness (both: child file), never a bespoke suite.
 
 ```bash
 pnpm vitest run packages/yaml            # this package's tests

@@ -6,7 +6,7 @@
 import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { LintContext, YamlRule } from "../../YamlLintRule.js";
-import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import { StyleFloor, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 import { insideScalarSpan, nonNegativeIntegerOption } from "./util.js";
 
 /**
@@ -84,5 +84,28 @@ export const emptyLines: YamlRule = {
 			i = end;
 		}
 		return out;
+	},
+	// Inference (#345): the max blank run is inferable only as a FLOOR — a
+	// corpus whose longest body run is N proves `max` must be at least N to
+	// accept it, not that the author would forbid N+1. The floor rides in
+	// the evidence; the caps stay default-driven under both resolvers. Same
+	// segmentation as the check: body runs only (start/end runs are the
+	// `maxStart`/`maxEnd` caps' business), scalar content skipped.
+	infer: (ctx) => {
+		let longest = 0;
+		const lines = ctx.lines;
+		let i = 0;
+		while (i < lines.length) {
+			const line = lines[i];
+			if (line === undefined || line.text !== "" || insideScalarSpan(ctx.tokens, line.offset)) {
+				i++;
+				continue;
+			}
+			let end = i;
+			while (end < lines.length && (lines[end]?.text ?? "x") === "") end++;
+			if (i !== 0 && end !== lines.length && end - i > longest) longest = end - i;
+			i = end;
+		}
+		return longest > 0 ? [StyleFloor.make({ dimension: "max", value: longest })] : [];
 	},
 };

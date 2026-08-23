@@ -10,7 +10,7 @@
 import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
-import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 
 /** Options for `document-start`: require (`true`, default) or forbid the marker. */
 export const documentStartOptions = Schema.Struct({
@@ -70,5 +70,29 @@ export const documentStart: YamlRule = {
 			];
 		}
 		return [];
+	},
+	// Inference (#345): a non-empty stream votes `present` — headed by `---`
+	// or not. An unmarked file IS evidence of the no-marker style (the
+	// workflow-file corpus above all), so absence votes `false` rather than
+	// saying nothing.
+	infer: (ctx) => {
+		if (ctx.text.trim() === "") return [];
+		const first = ctx.tokens.find((t) => !TRIVIA.has(t.kind));
+		if (first === undefined) return [];
+		const headed = first.kind === "document-start";
+		return [
+			StyleVote.make(
+				headed
+					? {
+							dimension: "present",
+							value: true,
+							offset: first.offset,
+							length: first.length,
+							line: first.line,
+							character: first.character,
+						}
+					: { dimension: "present", value: false, offset: 0, length: 0, line: 0, character: 0 },
+			),
+		];
 	},
 };

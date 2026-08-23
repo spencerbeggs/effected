@@ -211,7 +211,7 @@ function hasNonAscii(s: string): boolean {
  * (or `\UXXXXXXXX` for supplementary plane) and C0 control characters use
  * named escapes where YAML 1.2 defines them (`\b`, `\0`, `\a`, `\v`, `\e`).
  */
-function renderDoubleQuoted(s: string, canonical = false): string {
+export function renderDoubleQuoted(s: string, canonical = false): string {
 	let escaped = s
 		.replace(/\\/g, "\\\\")
 		.replace(/"/g, '\\"')
@@ -262,7 +262,7 @@ function renderDoubleQuoted(s: string, canonical = false): string {
 /**
  * Renders a string scalar using single-quote style.
  */
-function renderSingleQuoted(s: string): string {
+export function renderSingleQuoted(s: string): string {
 	return `'${s.replace(/'/g, "''")}'`;
 }
 

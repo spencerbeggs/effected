@@ -19,6 +19,7 @@ import type { RawDiagnostic } from "./internal/diagnostics.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import { computeEdits } from "./internal/diff.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
+import { requoteScalarText } from "./internal/requote.js";
 import { stringifyDocument, stripNodeComments } from "./internal/stringifier.js";
 import { YamlStringifyOptions } from "./Yaml.js";
 import { YamlDiagnostic } from "./YamlDiagnostic.js";
@@ -40,9 +41,25 @@ export type YamlRangeLike = YamlRange | { readonly offset: number; readonly leng
  * Options controlling formatting behavior: every {@link YamlStringifyOptions}
  * field (derived, not hand-duplicated — including `indentSequences` and
  * `quoteStyle`) plus
- * `preserveComments` (default `true`) and `range` (restrict edits to a
+ * `preserveComments` (default `true`), `range` (restrict edits to a
  * region; see the module-level remarks on the `range` parameter vs. this
- * field).
+ * field) and `requoteScalars` (default `false`).
+ *
+ * `requoteScalars` makes `quoteStyle` apply to scalars **already quoted in
+ * the source** on the format path — by default formatting preserves an
+ * existing scalar's own quote style, and `quoteStyle` governs only quotes the
+ * stringifier introduces. When enabled, a re-quote happens only when it
+ * provably preserves the parsed value: single→double applies proper
+ * double-quote escaping, double→single is skipped whenever the value carries
+ * characters single quotes cannot express (newlines, tabs, control and other
+ * non-printable characters — single-quoted style can escape nothing but
+ * `'`). Plain scalars stay plain, block scalars stay block, and scalars
+ * carrying a tag or anchor — or spanning multiple source lines — are left
+ * untouched. The option exists only where a source quote exists to re-quote:
+ * it is read by {@link YamlFormat.format} / {@link YamlFormat.formatToString}
+ * and is deliberately absent from `Yaml.stringify` (which serializes plain
+ * values) and {@link YamlFormat.modify} (which takes a bare
+ * {@link YamlStringifyOptions}).
  *
  * Construct with the validated `YamlFormattingOptions.make({ ... })` static —
  * the kit convention (never `new`). Call sites that take a
@@ -65,6 +82,7 @@ export class YamlFormattingOptions extends Schema.Class<YamlFormattingOptions>("
 	...YamlStringifyOptions.fields,
 	preserveComments: Schema.optionalKey(Schema.Boolean),
 	range: Schema.optionalKey(YamlRange),
+	requoteScalars: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 /**
@@ -146,6 +164,66 @@ function definedFields<T extends Record<string, unknown>>(fields: T): Partial<T>
 	return out;
 }
 
+// ── format: opt-in re-quoting (#347) ────────────────────────────────────────
+
+/**
+ * Walk a composed AST and flip the `style` of every scalar the shared
+ * escaping-mode helper deems re-quotable to the target quote's style. The
+ * stringifier then emits those scalars through the very renderers the helper
+ * used to prove the replacement value-preserving, so flip-and-stringify and
+ * the helper's replacement text cannot disagree. Everything the helper skips
+ * — plain scalars, block scalars, tagged/anchored nodes, multi-line source
+ * spans, impossible double→single escapes — keeps its node untouched, and
+ * the surrounding diff keeps the edit surgical per scalar span.
+ */
+function requoteNode(node: YamlNode, text: string, quote: '"' | "'"): YamlNode {
+	if (node instanceof YamlScalar) {
+		if (requoteScalarText(text, node, quote, "escaping") === undefined) return node;
+		return YamlScalar.make({
+			value: node.value,
+			style: quote === '"' ? "double-quoted" : "single-quoted",
+			...definedFields({
+				commentBefore: node.commentBefore,
+				comment: node.comment,
+				spaceBefore: node.spaceBefore,
+				raw: node.raw,
+				sourceMultiline: node.sourceMultiline,
+			}),
+			offset: node.offset,
+			length: node.length,
+		});
+	}
+	if (node instanceof YamlMap) {
+		return rebuildMap(
+			node,
+			node.items.map((pair) =>
+				YamlPair.make({
+					key: requoteNode(pair.key, text, quote),
+					value: pair.value === null ? null : requoteNode(pair.value, text, quote),
+				}),
+			),
+		);
+	}
+	if (node instanceof YamlSeq) {
+		return rebuildSeq(
+			node,
+			node.items.map((item) => requoteNode(item, text, quote)),
+		);
+	}
+	return node;
+}
+
+/** Apply the opt-in re-quoting pass to a composed document's contents. */
+function requoteDocument(
+	doc: RawYamlDocument,
+	text: string,
+	options: YamlFormattingOptions | undefined,
+): RawYamlDocument {
+	if (options?.requoteScalars !== true || doc.contents === null) return doc;
+	const quote = (options.quoteStyle ?? "single") === "double" ? '"' : "'";
+	return { ...doc, contents: requoteNode(doc.contents, text, quote) };
+}
+
 // ── format ───────────────────────────────────────────────────────────────────
 
 /** Rebuild a composed document for re-emission, stripping comments when asked. */
@@ -179,13 +257,16 @@ function formatDocument(text: string, options: YamlFormattingOptions | undefined
 	// time (behavior-neutral — each document keeps its single-document
 	// fields, `hasDocumentStart`/`hasDocumentEnd`/`hasDocumentStartTab`).
 	const { documents, streamErrors } = composeAllDocuments(text, {});
-	if (documents.length > 1) return formatStream(documents, streamErrors, options);
+	if (documents.length > 1) return formatStream(text, documents, streamErrors, options);
 	if (streamErrors.some((e) => isFatalCode(e.code))) return undefined;
 	const doc = documents[0] ?? EMPTY_DOCUMENT;
 	if (doc.errors.some((e) => isFatalCode(e.code))) return undefined;
 	if (doc.directives.length > 0) return undefined;
 
-	return stringifyDocument(toOutputDocument(doc, options?.preserveComments ?? true), toStringifyInput(options));
+	return stringifyDocument(
+		toOutputDocument(requoteDocument(doc, text, options), options?.preserveComments ?? true),
+		toStringifyInput(options),
+	);
 }
 
 /**
@@ -208,6 +289,7 @@ function formatDocument(text: string, options: YamlFormattingOptions | undefined
  * output (probe-verified downstream against an independent oracle).
  */
 function formatStream(
+	text: string,
 	documents: ReadonlyArray<RawYamlDocument>,
 	streamErrors: ReadonlyArray<RawDiagnostic>,
 	options: YamlFormattingOptions | undefined,
@@ -229,7 +311,7 @@ function formatStream(
 		// document's framing to start on its own line; the caller's
 		// `finalNewline` applies only to the last document.
 		const docOptions = i < documents.length - 1 ? { ...base, finalNewline: true } : base;
-		parts.push(stringifyDocument(toOutputDocument(doc, preserveComments), docOptions));
+		parts.push(stringifyDocument(toOutputDocument(requoteDocument(doc, text, options), preserveComments), docOptions));
 	}
 	return parts.join("");
 }
@@ -438,6 +520,12 @@ export class YamlFormat {
 	 * `options?.range` when both are given; either accepts a plain
 	 * `{ offset, length }` object as well as a {@link YamlRange} instance, so
 	 * callers do not need `YamlRange.make(...)` for the common case.
+	 *
+	 * Formatting preserves an existing scalar's own quote style by default —
+	 * `quoteStyle` governs only quotes the stringifier introduces. The opt-in
+	 * `options.requoteScalars` makes `quoteStyle` apply to already-quoted
+	 * source scalars too, re-quoting only where the parsed value is provably
+	 * preserved; see {@link YamlFormattingOptions} for the exact skip rules.
 	 *
 	 * A plain `<<` mapping key is preserved unquoted, keeping its merge-key
 	 * meaning (`tag:yaml.org,2002:merge`) — quoting it to `'<<'` would produce

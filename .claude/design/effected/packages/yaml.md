@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 95
 related:
   - ../architecture.md
@@ -159,6 +159,24 @@ The default is `0` — never wrap — and as with `indentSequences` the default 
 
 **Value-path-only is the documented contract, not a gap** ([issue #105](https://github.com/spencerbeggs/effected/issues/105)). Only `Yaml.stringify` and `Yaml.stringifyResult` fold. The document and node path threads `lineWidth` into its render context but never reads it, and the schema factories encode with default stringify options, so neither ever folds. The TSDoc states the boundary and steers node-path callers to `Yaml.stringify(doc.toValue(), options)`, and a regression test pins the node path's inertness — so folding cannot land there without failing that test and rewriting the docs with it.
 
+### `requoteScalars` — opt-in re-quoting on the format path (issue #347)
+
+Shipped 2026-08-23 ([issue #347](https://github.com/spencerbeggs/effected/issues/347)), as designed with the refinements marked below.
+
+**Background.** On the format path, `quoteStyle` governs only quotes the stringifier *introduces* — it never re-quotes scalars already quoted in the source (documented as of PR #338's `fb6d7f6b`; discovered in the effected⇄savvy-web-systems dogfood loop when `quoteStyle: "double"` moved 0/18 downstream files). That source-preserving default is a contract consumers now rely on and **does not change** — but an ex-Prettier consumer had no way to get Prettier's behavior, where `singleQuote: false` rewrote existing `'x'` to `"x"`.
+
+**Decision: a companion boolean, not a widened value space.** The opt-in companion option `requoteScalars` (default `false`) on `YamlFormattingOptions` makes `quoteStyle` apply to already-quoted source scalars. The widened-value-space alternative (`"double-requote"`) is explicitly rejected: option values should not encode two axes. *(shipped: when `quoteStyle` is omitted the fallback is `"single"`, so `requoteScalars` alone converts double→single — documented in the option's TSDoc.)*
+
+**Semantics-preserving or skip.** Re-quoting never changes the parsed value. Single→double applies double-quote escaping to the content; double→single is impossible when the content needs escapes single quotes cannot express (control characters etc.) — such scalars stay **untouched rather than corrupted**. Plain scalars stay plain: this is quote-style normalization, not forcing quotes.
+
+**Fidelity.** Comment and byte fidelity elsewhere is unchanged — the edit is surgical per scalar span, composing with the existing minimal-edit machinery (`YamlEdit`).
+
+**Lint symmetry — the sub-question is settled: the lint fix stays conservative.** The shared helper is `src/internal/requote.ts`: `requoteScalarText(text, scalar, quote, mode)` with two modes. `"conservative"` is the `quoted-strings` lint fix's exact shipped semantics, extracted byte-for-byte — it still bails whenever escapes are in play, so the fix's behavior did not move under existing consumers. `"escaping"` is the format path's wider transform, applying proper escaping for single→double. The two surfaces agree on what "re-quotable" means because both delegate to the one helper; the escaping mode belongs only to the format path.
+
+**Composition guarantee.** Escaping mode's replacement text comes from the stringifier's own `renderDoubleQuoted` / `renderSingleQuoted` (now exported from `internal/stringifier.ts`), and the format path uses the helper as the re-quotable predicate and flips the node's `style` — the stringifier then emits through those same renderers, so flip-and-stringify and the helper's replacement cannot disagree.
+
+The README "Migrating from Prettier" table maps `singleQuote` to `quoteStyle` plus the companion for full parity.
+
 ## Multi-document support
 
 A yaml-specific surface with no jsonc analog. YAML's `---`/`...` document-stream model gets first-class support at both the value and document layers. This is genuinely yaml's own concern — anchors, aliases, pairs-versus-properties, multi-document — and no shared tree abstraction is extracted across jsonc and yaml: the trees differ enough that a shared abstraction would be premature and leaky.
@@ -225,7 +243,7 @@ Per-node comments round-trip ([issue #127](https://github.com/spencerbeggs/effec
 
 ## Lint system
 
-`@effected/yaml` ships a yamllint-class lint system ([issue #129](https://github.com/spencerbeggs/effected/issues/129)): a rule engine whose rule #1 is parse-validity, 14 built-in rules, a rule-aware `YamlLintConfig` with `default` / `relaxed` presets, and surgical autofix that routes only through `YamlEdit.applyAll`.
+`@effected/yaml` ships a yamllint-class lint system ([issue #129](https://github.com/spencerbeggs/effected/issues/129)): a rule engine whose rule #1 is parse-validity, 14 built-in rules, a rule-aware `YamlLintConfig` with `default` / `relaxed` presets, surgical autofix that routes only through `YamlEdit.applyAll`, and config inference ([issue #345](https://github.com/spencerbeggs/effected/issues/345)) — `YamlLint.observe` / `.resolve*` / `.infer*` derive the config a document's style already follows.
 
 **Its design doc is [yaml-lint.md](../yaml-lint.md)** and is not duplicated here. Three things matter at this doc's level:
 

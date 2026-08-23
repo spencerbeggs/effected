@@ -88,6 +88,52 @@ export interface LintContext {
 }
 
 /**
+ * One categorical style observation (#345): a single occurrence of a style
+ * choice in the source, voting a `value` for an inference `dimension`.
+ *
+ * The `dimension` IS the rule's option key and the `value` IS that option's
+ * value (`"double"` for `quoteType`, `2` for `spaces`, `false` for
+ * `present`), so the inference resolvers can turn unanimous or dominant
+ * votes into a config entry with no per-rule knowledge — which is what lets
+ * custom rules participate in inference for free. The position points at the
+ * occurrence that voted, so a strict-resolution conflict can name where each
+ * spelling was seen.
+ *
+ * @public
+ */
+export class StyleVote extends Schema.Class<StyleVote>("StyleVote")({
+	dimension: Schema.String,
+	value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
+	offset: Schema.Number,
+	length: Schema.Number,
+	line: Schema.Number,
+	character: Schema.Number,
+}) {}
+
+/**
+ * One measured style floor (#345): a value the source PROVES is at least
+ * `value`, without proving what the configured limit should be — the longest
+ * observed line proves `line-length.max` is at least that long, not what it
+ * is. Floors are carried in the evidence for callers that want them and are
+ * never resolved into config options; fabricating a max from the largest
+ * value one happened to see would be lying with a straight face.
+ *
+ * @public
+ */
+export class StyleFloor extends Schema.Class<StyleFloor>("StyleFloor")({
+	dimension: Schema.String,
+	value: Schema.Number,
+}) {}
+
+/**
+ * What a rule's `infer` hook yields per occurrence: a categorical
+ * {@link StyleVote} or a measured {@link StyleFloor}.
+ *
+ * @public
+ */
+export type StyleObservation = StyleVote | StyleFloor;
+
+/**
  * The public rule interface — built-ins and custom rules are the same
  * shape, and config references either by `id`; there is no privileged
  * built-in mechanism a custom rule cannot reach.
@@ -97,9 +143,17 @@ export interface LintContext {
  * rules receive options already validated against their exported options
  * schema, custom rules validate their own.
  *
+ * `infer` is the optional config-inference hook (#345): it reports the style
+ * the source already follows as per-occurrence {@link StyleObservation}s, so
+ * detection logic lives beside the check logic that polices the same
+ * dimension (and shares its fixtures). Rules with no detectable style — the
+ * policy rules, whose only evidence is violations — simply omit the hook and
+ * stay default-driven under every resolver.
+ *
  * @public
  */
 export interface YamlRule {
 	readonly id: string;
 	readonly check: (ctx: LintContext, options: unknown) => Iterable<YamlLintDiagnostic>;
+	readonly infer?: (ctx: LintContext) => Iterable<StyleObservation>;
 }

@@ -7,8 +7,8 @@ The lexical half of the package: the public positioned token stream and the yaml
 ## Public modules
 
 - `YamlToken.ts` — 22 `YamlTokenKind`s, `YamlToken`, and `YamlTokens.tokenize`/`.stream`. `tokenize` is a sync `Result` primitive that **always succeeds** — lexical errors arrive as `"error"`-kind tokens and the failure channel is reserved; do not start using it. `stream` is derived from `tokenize`, not a second walk. `line`/`character` derive from `offset` and `text` is the raw source slice — never surface the internal `column`/`value`, which mean something else.
-- `YamlLintRule.ts` — the lint **model**: `LintContext`, `LintLine`, `YamlRule`, `YamlLintSeverity`, `YamlLintDiagnostic`. Imports nothing back.
-- `YamlLint.ts` — the **config and facade**: `YamlLintRuleSetting`, `YamlLintConfig` (presets as the statics `default`/`relaxed`) and `YamlLint.run`/`.fix`/`.builtins`.
+- `YamlLintRule.ts` — the lint **model**: `LintContext`, `LintLine`, `YamlRule`, `YamlLintSeverity`, `YamlLintDiagnostic`, plus the per-occurrence inference vocabulary `StyleVote`/`StyleFloor`/`StyleObservation` and the optional `infer?: (ctx) => Iterable<StyleObservation>` hook on `YamlRule` — the mirror image of `check`, so custom rules participate in inference for free. Imports nothing back.
+- `YamlLint.ts` — the **config and facade**: `YamlLintRuleSetting`, `YamlLintConfig` (presets as the statics `default`/`relaxed`), `YamlLint.run`/`.fix`/`.builtins`, and the config-inference surface (#345): the `StyleEvidence` monoid (`empty`/`combine`/`fromObservations`, with `StyleVoteTally`/`StyleFloorTally`), `StyleConflict`/`YamlStyleConflictError`, and `YamlLint.observe`/`.resolveStrict` (sync `Result`)/`.resolveLenient`/`.inferStrict`/`.inferLenient` → `YamlLintInference { config, residual }`. Semantics (strict overlay, unobserved ≠ conflicting, floors never resolved into config) live in the design doc.
 
 The model is split from the facade for the cycle firewall: rules construct `YamlLintDiagnostic` while `YamlLint.ts` imports the rule catalog, so one module would close `YamlLint → rules → YamlLint`. Do not merge them.
 
@@ -18,7 +18,8 @@ The model is split from the facade for the cycle firewall: rules construct `Yaml
 - **`fix` routes only through `YamlEdit.applyAll`** — surgical, comment-safe edits, never a reflow. A structural test asserts `YamlLint.ts` never imports `YamlFormat`; keep it that way. Same-offset fixes apply deterministically.
 - **No second parser.** Rules read one materialized token array, the composed document and the source lines; the engine tokenizes and composes once per run.
 - Rule context carries `uniqueKeys: false` — `key-duplicates` owns duplicate policy, not the composer.
-- The 14 built-ins live one-per-file under `src/internal/rules/`, registered in `catalog.ts` alongside their option schemas. Layout rules skip scalar content; marker rules (`document-start`/`document-end`) stay outside both presets; `line-length` defaults to 120; `quoted-strings` defaults to double; `indentation` is style-only and offers **no fix**.
+- The 14 built-ins live one-per-file under `src/internal/rules/`, registered in `catalog.ts` alongside their option schemas. Layout rules skip scalar content; marker rules (`document-start`/`document-end`) stay outside both presets; `line-length` defaults to 120; `quoted-strings` defaults to double, and its fix delegates to `src/internal/requote.ts` in conservative mode (the format path's `requoteScalars` shares the helper in escaping mode); `indentation` is style-only and offers **no fix**.
+- Seven built-ins carry `infer` hooks: five vote (`quoted-strings`, `indentation`, `document-start`, `document-end`, `comments-spacing`), two emit floor-only evidence (`line-length`, `empty-lines`). The rest stay default-driven — do not add a hook a rule's evidence cannot honestly support.
 
 ## Testing
 
@@ -26,5 +27,7 @@ Rules are tested through the shared `__test__/rules/harness.ts` (input → expec
 
 - Every fixture input must **parse cleanly** unless it declares `expectsParseErrors`, checked **bidirectionally** so the opt-out cannot decay into a pasted suppression.
 - Automated **dead-rule** and **unfixing** mutants prove each rule falsifiable; the second catches correct diagnostics with an inert `fix`.
+
+`infer` hooks are tested the same way: the harness's `testRuleInference` runner (input → expected observations) rides a **dead-infer** mutant, so a hook that silently stops observing fails its fixtures.
 
 `__test__/e2e/token-fidelity.e2e.test.ts` runs the whole yaml-test-suite corpus through the token stream: tokens must **tile** the source — ordered, non-overlapping, `text` equal to the source slice, gaps horizontal-whitespace-only — with a floor assertion so a silently-empty walk cannot pass green. Every diagnostic position and fix span rests on that invariant.

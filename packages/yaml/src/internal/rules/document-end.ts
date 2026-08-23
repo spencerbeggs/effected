@@ -9,7 +9,7 @@
 import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
 import type { YamlRule } from "../../YamlLintRule.js";
-import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 
 /** Options for `document-end`: require (`true`, default) or forbid the marker. */
 export const documentEndOptions = Schema.Struct({
@@ -74,5 +74,38 @@ export const documentEnd: YamlRule = {
 			];
 		}
 		return [];
+	},
+	// Inference (#345): a non-empty stream votes `present` — tailed by `...`
+	// or not; absence votes `false` (mirroring document-start).
+	infer: (ctx) => {
+		if (ctx.text.trim() === "") return [];
+		const tail = [...ctx.tokens].reverse().find((t) => !TRIVIA.has(t.kind));
+		if (tail === undefined) return [];
+		const ended = tail.kind === "document-end";
+		if (ended) {
+			return [
+				StyleVote.make({
+					dimension: "present",
+					value: true,
+					offset: tail.offset,
+					length: tail.length,
+					line: tail.line,
+					character: tail.character,
+				}),
+			];
+		}
+		// Same end-of-stream position math as the missing-marker diagnostic.
+		const lastLine = ctx.lines[ctx.lines.length - 1];
+		const trailingNewline = ctx.text.endsWith("\n");
+		return [
+			StyleVote.make({
+				dimension: "present",
+				value: false,
+				offset: ctx.text.length,
+				length: 0,
+				line: (lastLine?.number ?? 0) + (trailingNewline ? 1 : 0),
+				character: trailingNewline ? 0 : (lastLine?.text.length ?? 0),
+			}),
+		];
 	},
 };

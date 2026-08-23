@@ -4,7 +4,7 @@
 
 import { Schema } from "effect";
 import type { YamlRule } from "../../YamlLintRule.js";
-import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import { StyleFloor, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
 import { nonNegativeIntegerOption } from "./util.js";
 
 /**
@@ -41,5 +41,16 @@ export const lineLength: YamlRule = {
 			}
 		}
 		return out;
+	},
+	// Inference (#345): line length is inferable only as a FLOOR — the
+	// longest observed line proves `max` is at least that long, never what
+	// it is. The floor rides in the evidence for callers that want it; the
+	// option stays default-driven under both resolvers.
+	infer: (ctx) => {
+		let longest = 0;
+		for (const line of ctx.lines) {
+			if (line.text.length > longest) longest = line.text.length;
+		}
+		return longest > 0 ? [StyleFloor.make({ dimension: "max", value: longest })] : [];
 	},
 };

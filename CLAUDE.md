@@ -59,7 +59,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 
 - `semver` — strict SemVer 2.0.0 schemas; the repo's DX north star (pure).
 - `jsonc` — zero-dependency JSONC parse/edit/format schemas (pure).
-- `yaml` — zero-dependency YAML 1.2 parse/edit/format schemas, per-node comment fidelity, a public token stream and a yamllint-class lint system with autofix; largest package in the repo (pure).
+- `yaml` — zero-dependency YAML 1.2 parse/edit/format schemas, per-node comment fidelity, a public token stream and a yamllint-class lint system with autofix and config inference; the repo's largest (pure).
 - `toml` — TOML parse/edit/format on a from-scratch engine (pure). `parse` accepts TOML 1.1.0, `stringify` emits 1.0.0 spellings — deliberate; never "fix" either side to match.
 - `markdown` — CommonMark 0.31.2 + GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format, mdast projection, frontmatter codecs; second in size only to `yaml` (pure).
 - `glob` — the full minimatch dialect as pure string→predicate schemas; vendored, hardened engine (pure).

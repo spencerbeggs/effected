@@ -7,8 +7,9 @@
 
 import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
-import type { YamlRule } from "../../YamlLintRule.js";
-import { YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import type { LintContext, YamlRule } from "../../YamlLintRule.js";
+import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import type { YamlToken } from "../../YamlToken.js";
 import { nonNegativeIntegerOption } from "./util.js";
 
 /**
@@ -27,6 +28,27 @@ interface CommentsSpacingOptions {
 	readonly requireSpaceAfter?: boolean;
 }
 
+/**
+ * The horizontal whitespace run directly before a comment token, and whether
+ * line content precedes it (a TRAILING comment) — shared by the check and
+ * the inference hook so the two cannot disagree about what "before" means.
+ */
+const spacingBefore = (
+	ctx: LintContext,
+	token: YamlToken,
+): { readonly spaces: number; readonly hasContentBefore: boolean } => {
+	let i = token.offset - 1;
+	let spaces = 0;
+	while (i >= 0 && (ctx.text[i] === " " || ctx.text[i] === "\t")) {
+		spaces++;
+		i--;
+	}
+	return { spaces, hasContentBefore: i >= 0 && ctx.text[i] !== "\n" && ctx.text[i] !== "\r" };
+};
+
+/** Shebang exemption: `#!` at the very start of the stream. */
+const isShebang = (token: YamlToken): boolean => token.offset === 0 && token.text.startsWith("#!");
+
 /** Comment spacing: after the `#`, and before a trailing comment's `#`. */
 export const commentsSpacing: YamlRule = {
 	id: "comments-spacing",
@@ -37,8 +59,7 @@ export const commentsSpacing: YamlRule = {
 		const out: Array<YamlLintDiagnostic> = [];
 		for (const token of ctx.tokens) {
 			if (token.kind !== "comment") continue;
-			// Shebang exemption: `#!` at the very start of the stream.
-			if (token.offset === 0 && token.text.startsWith("#!")) continue;
+			if (isShebang(token)) continue;
 			// Space after `#`: a bare `#` is fine, `#text` is not.
 			if (requireAfter && token.text.length > 1 && !/[ \t]/.test(token.text[1] as string)) {
 				out.push(
@@ -57,13 +78,7 @@ export const commentsSpacing: YamlRule = {
 			// Space before a TRAILING comment's `#`: only when content precedes
 			// the comment on its line (own-line comments are indentation's
 			// business).
-			let i = token.offset - 1;
-			let spaces = 0;
-			while (i >= 0 && (ctx.text[i] === " " || ctx.text[i] === "\t")) {
-				spaces++;
-				i--;
-			}
-			const hasContentBefore = i >= 0 && ctx.text[i] !== "\n" && ctx.text[i] !== "\r";
+			const { spaces, hasContentBefore } = spacingBefore(ctx, token);
 			if (hasContentBefore && spaces < minBefore) {
 				out.push(
 					new YamlLintDiagnostic({
@@ -79,6 +94,44 @@ export const commentsSpacing: YamlRule = {
 							length: 0,
 							content: " ".repeat(minBefore - spaces),
 						}),
+					}),
+				);
+			}
+		}
+		return out;
+	},
+	// Inference (#345): every non-shebang comment with content after its `#`
+	// votes `requireSpaceAfter` (does a space follow?), and every TRAILING
+	// comment votes its observed spacing for `minSpacesBefore`. A bare `#`
+	// says nothing about after-spacing; own-line comments say nothing about
+	// before-spacing (their leading run is indentation).
+	infer: (ctx) => {
+		const out: Array<StyleVote> = [];
+		for (const token of ctx.tokens) {
+			if (token.kind !== "comment") continue;
+			if (isShebang(token)) continue;
+			if (token.text.length > 1) {
+				out.push(
+					StyleVote.make({
+						dimension: "requireSpaceAfter",
+						value: /[ \t]/.test(token.text[1] as string),
+						offset: token.offset,
+						length: token.length,
+						line: token.line,
+						character: token.character,
+					}),
+				);
+			}
+			const { spaces, hasContentBefore } = spacingBefore(ctx, token);
+			if (hasContentBefore) {
+				out.push(
+					StyleVote.make({
+						dimension: "minSpacesBefore",
+						value: spaces,
+						offset: token.offset - spaces,
+						length: spaces,
+						line: token.line,
+						character: token.character - spaces,
 					}),
 				);
 			}
