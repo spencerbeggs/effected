@@ -25,7 +25,7 @@ before.resolve("hooked-dep", "catalog:"); // Option.some("^9.9.9")
 ```
 
 * `withSeededCatalogs(seed)` returns a new snapshot; it replaces any existing seed rather than merging
-* `WorkspaceStateSnapshot.crossSeed(before, after)` seeds each side of a two-ref diff with the other's catalogs
+* `WorkspaceStateSnapshot.crossSeed(before, after)` seeds each side of a two-ref diff with the other's catalogs, keeping any seed already present (a layer-level `seedCatalogs`, for instance) beneath them
 * `WorkspaceSnapshotsOptions.seedCatalogs` is the layer-level form, applied to `at(ref)` and `worktree()` alike
 
 Resolution order in `resolve`, `resolveIn` and the snapshot-scoped `catalogResolver` is the snapshot's own catalogs, then the seed, then the existing `importerVersions` fallback. The first two answer with a declared range and the third with a concrete version, so a seeded snapshot reports a range change where an unseeded one can only report a version.

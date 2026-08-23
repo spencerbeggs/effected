@@ -122,8 +122,13 @@ describe("Markdown.stringify — the documented canonical form", () => {
 		// states it: two adjacent ordered lists that both emitted `.` would reparse
 		// as ONE list.
 		const emitted = out(rootOf(list("a"), list("b")));
-		assert.include(emitted, "1. a");
-		assert.include(emitted, "1) b");
+		assert.strictEqual(emitted, "1. a\n\n1) b\n");
+		// The delimiter flip only earns its place if the emitted text actually
+		// reparses as TWO lists — substring assertions pass even when it does not.
+		const reparsed = Result.getOrThrow(Markdown.parseResult(emitted));
+		assert.strictEqual(reparsed.children.length, 2);
+		assert.strictEqual(reparsed.children[0]?.type, "list");
+		assert.strictEqual(reparsed.children[1]?.type, "list");
 	});
 
 	it("emphasis * and strong **", () => {

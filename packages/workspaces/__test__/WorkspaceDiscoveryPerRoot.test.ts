@@ -10,7 +10,7 @@
 // roots hold the same packages.
 
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { WorkspaceDiscovery, WorkspaceRoot, WorkspaceRootNotFoundError } from "../src/index.js";
 import type { Tree } from "./fixtures.js";
 import { manifest, platform, rootManifest } from "./fixtures.js";
@@ -211,6 +211,11 @@ describe("WorkspaceDiscovery.refreshIn", () => {
 		it.effect("is a no-op for a root with no memo", () =>
 			Effect.gen(function* () {
 				const discovery = yield* WorkspaceDiscovery;
+				// The precondition is stated rather than inherited: `layer(...)` builds
+				// ONE service for the whole block, so without this the test only holds
+				// because a sibling happened to end with a refresh — and a reorder or
+				// an inserted test would make it pass vacuously.
+				yield* discovery.refresh();
 				// Never discovered, so there is nothing to drop — an ordinary fact,
 				// not an error.
 				yield* discovery.refreshIn("/worktree");
@@ -237,10 +242,14 @@ describe("WorkspaceDiscovery.makeTest — the per-root methods", () => {
 			// Deriving would model every root as identical — the exact confusion
 			// `listPackagesIn` exists to remove — so a test that forgets to stub it
 			// must fail loudly rather than quietly agree with `listPackages`.
+			// A DIE specifically: a bare failure check also passes for a typed error
+			// or an interrupt, which would not discriminate the behaviour the test
+			// name claims — and a double that failed typed instead of dying is
+			// exactly the absorbable-by-catch mistake this default exists to avoid.
 			const exit = yield* Effect.exit(double.listPackagesIn("/anywhere"));
-			assert.isTrue(exit._tag === "Failure");
+			assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause));
 			const infoExit = yield* Effect.exit(double.infoIn("/anywhere"));
-			assert.isTrue(infoExit._tag === "Failure");
+			assert.isTrue(Exit.isFailure(infoExit) && Cause.hasDies(infoExit.cause));
 		}),
 	);
 

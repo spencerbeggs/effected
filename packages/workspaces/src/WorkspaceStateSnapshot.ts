@@ -291,7 +291,9 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * Returns a NEW snapshot; the receiver is untouched, and the seed REPLACES
 	 * any seed already present rather than merging with it (a snapshot is a
 	 * value, and an accumulating seed would make precedence depend on call
-	 * order). `catalogs`, `packages` and `importerVersions` are carried through
+	 * order). {@link WorkspaceStateSnapshot.crossSeed} is the deliberate
+	 * exception: it composes the two seeds explicitly, precisely because a bare
+	 * replace would discard a layer-level seed. `catalogs`, `packages` and `importerVersions` are carried through
 	 * unchanged, so what the ref declared is still exactly what it declared.
 	 *
 	 * The two seeds worth reaching for: the LIVE hook-injected catalog set (from
@@ -356,6 +358,13 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * passed. The `before`/`after` names describe the intended calling
 	 * convention for a two-ref diff, not a constraint on what may be passed.
 	 *
+	 * **A seed already present on either snapshot is preserved**, beneath the
+	 * other side's catalogs — which matters because
+	 * `WorkspaceSnapshotsOptions.seedCatalogs` puts one there on every snapshot
+	 * the service returns. Composing the two surfaces is therefore safe: the
+	 * layer-level seed keeps answering what neither ref declared, while the
+	 * other ref's committed declaration wins where it has one.
+	 *
 	 * @param before - One snapshot, conventionally the earlier one.
 	 * @param after - The other snapshot, conventionally the later one.
 	 * @returns Both snapshots in the order given, each carrying the other's
@@ -380,7 +389,20 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 		before: WorkspaceStateSnapshot,
 		after: WorkspaceStateSnapshot,
 	): readonly [WorkspaceStateSnapshot, WorkspaceStateSnapshot] {
-		return [before.withSeededCatalogs(after.catalogs), after.withSeededCatalogs(before.catalogs)] as const;
+		// A seed already on the receiver is KEPT, beneath the other side's
+		// catalogs. `withSeededCatalogs` replaces, and `WorkspaceSnapshots` applies
+		// a layer-level `seedCatalogs` to every snapshot it returns — so a
+		// replace-only cross-seed dropped that seed on BOTH sides at once and
+		// silently reopened the hook-catalog gap these surfaces exist to close.
+		// The other ref's committed declaration still outranks the carried seed,
+		// which is the whole point of cross-seeding; the carried seed only answers
+		// what neither ref declared.
+		const seedFor = (self: WorkspaceStateSnapshot, other: WorkspaceStateSnapshot): CatalogSet =>
+			self.seededCatalogs === undefined ? other.catalogs : CatalogSet.merge(self.seededCatalogs, other.catalogs);
+		return [
+			before.withSeededCatalogs(seedFor(before, after)),
+			after.withSeededCatalogs(seedFor(after, before)),
+		] as const;
 	}
 
 	/**

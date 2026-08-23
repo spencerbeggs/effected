@@ -163,6 +163,34 @@ describe("WorkspaceStateSnapshot.crossSeed", () => {
 		assert.notDeepEqual(seededBefore.resolve("effect", "catalog:"), seededAfter.resolve("effect", "catalog:"));
 	});
 
+	it("keeps an existing seed instead of discarding it", () => {
+		// The interaction that made the two seeding surfaces cancel each other out.
+		// `WorkspaceSnapshots.make` applies a layer-level `seedCatalogs` to every
+		// snapshot it returns, so both sides arrive already seeded; a `crossSeed`
+		// that REPLACED that seed dropped the hook-injected catalog on both sides
+		// at once and silently reopened the gap this feature closes.
+		const live = catalogs({ default: { "hooked-dep": "^9.9.9" } });
+		const before = snapshot({ catalogs: catalogs({ default: { effect: "^4.0.0" } }) }).withSeededCatalogs(live);
+		const after = snapshot({ catalogs: catalogs({ default: { effect: "^5.0.0" } }) }).withSeededCatalogs(live);
+
+		const [seededBefore, seededAfter] = WorkspaceStateSnapshot.crossSeed(before, after);
+
+		assert.deepStrictEqual(seededBefore.resolve("hooked-dep", "catalog:"), Option.some("^9.9.9"));
+		assert.deepStrictEqual(seededAfter.resolve("hooked-dep", "catalog:"), Option.some("^9.9.9"));
+	});
+
+	it("lets the other side's catalogs win over the receiver's existing seed", () => {
+		// Ordering within the merged seed. The other ref's committed declaration is
+		// the cross-seed's whole point, so it outranks a carried-over seed; the
+		// carried seed only fills what neither ref declared.
+		const before = snapshot({ catalogs: CatalogSet.empty() }).withSeededCatalogs(
+			catalogs({ default: { effect: "^1.0.0" } }),
+		);
+		const after = snapshot({ catalogs: catalogs({ default: { effect: "^5.0.0" } }) });
+		const [seededBefore] = WorkspaceStateSnapshot.crossSeed(before, after);
+		assert.deepStrictEqual(seededBefore.resolve("effect", "catalog:"), Option.some("^5.0.0"));
+	});
+
 	it("suppresses a change neither ref declared — the documented limitation, pinned", () => {
 		// Both sides get the catalog only from the other, so they agree by
 		// construction. This is inherent to cross-seeding, not a defect: recovering

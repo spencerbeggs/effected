@@ -391,16 +391,6 @@ describe("WorkspaceSnapshots — hook-injected catalog symmetry", () => {
 // cannot see it. The layer-level seed lets a consumer who already holds the
 // live set share it with the ref side without executing anything.
 
-const HOOKED_REF: RefTrees = {
-	HEAD: {
-		"pnpm-workspace.yaml": ["packages:", "  - packages/*", "catalog:", "  effect: ^4.0.0", ""].join("\n"),
-		"package.json": rootManifest(["packages/*"]),
-		"packages/alpha/package.json": manifest("@x/alpha", {
-			dependencies: { effect: "catalog:", "hooked-dep": "catalog:" },
-		}),
-	},
-};
-
 const HOOKED_MARKER: Tree = {
 	"/repo/pnpm-workspace.yaml": ["packages:", "  - packages/*", "catalog:", "  effect: ^4.0.0", ""].join("\n"),
 	"/repo/package.json": rootManifest(["packages/*"]),
@@ -408,6 +398,11 @@ const HOOKED_MARKER: Tree = {
 		dependencies: { effect: "catalog:", "hooked-dep": "catalog:" },
 	}),
 };
+
+// Derived, never a second spelling. The suite asserts that `at("HEAD")` and
+// `worktree()` AGREE about `hooked-dep`; two hand-written copies of the same
+// tree could drift and make that agreement pass for the wrong reason.
+const HOOKED_REF: RefTrees = refFromTree(HOOKED_MARKER);
 
 // What a config-dependency hook injects — the shape `hook-pnpmfile.cjs` adds.
 const HOOK_INJECTED = CatalogSet.make({ entries: { default: { "hooked-dep": "^9.9.9" } } });
