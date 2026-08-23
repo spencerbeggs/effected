@@ -117,7 +117,12 @@ export {
 	type WorkspaceSnapshotsShape,
 } from "./WorkspaceSnapshots.js";
 export { PackageStateSnapshot, WorkspaceStateSnapshot } from "./WorkspaceStateSnapshot.js";
-export { Workspaces, type WorkspacesOptions, type WorkspacesServices } from "./Workspaces.js";
+export {
+	Workspaces,
+	type WorkspacesGitOptions,
+	type WorkspacesOptions,
+	type WorkspacesServices,
+} from "./Workspaces.js";
 export {
 	type GetWorkspacePackagesSyncOptions,
 	type SyncDirectoryEntry,

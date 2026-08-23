@@ -27,6 +27,7 @@ import { PackageManagerDetector } from "./PackageManagerName.js";
 import { WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
+import type { WorkspaceSnapshotsOptions } from "./WorkspaceSnapshots.js";
 import { WorkspaceSnapshots } from "./WorkspaceSnapshots.js";
 
 /**
@@ -45,6 +46,21 @@ export interface WorkspacesOptions {
 	/** Descent cap for segment-crossing `packages:` patterns. Defaults to 32. */
 	readonly maxDepth?: number;
 }
+
+/**
+ * Options for the composites that additionally provide {@link WorkspaceSnapshots}
+ * — {@link Workspaces.layerWithGit} and the two config-dependency variants.
+ *
+ * @remarks
+ * {@link WorkspacesOptions} plus whatever {@link WorkspaceSnapshotsOptions}
+ * adds, so `seedCatalogs` reaches `at(ref)` through the composite instead of
+ * forcing a consumer to hand-compose the graph just to pass one option. The
+ * two interfaces agree on `cwd`, which stays one explicit concern applied
+ * uniformly.
+ *
+ * @public
+ */
+export interface WorkspacesGitOptions extends WorkspacesOptions, WorkspaceSnapshotsOptions {}
 
 /**
  * Every service the git-free composite layer provides.
@@ -100,15 +116,28 @@ const layer = (
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
 	compose<never>(options, WorkspaceCatalogs.layer);
 
-// Implementation of Workspaces.layerWithGit; the public contract lives on the static.
-const layerWithGit = (
-	options?: WorkspacesOptions,
+/**
+ * The git half, over an ALREADY-BUILT core composite.
+ *
+ * @remarks
+ * Taking the core as a parameter rather than building it is what lets the
+ * config-dependency composites exist at all: the git services are identical
+ * across all three, and only the catalogs layer underneath differs. Copying
+ * this graph per variant is exactly what a consumer had to do downstream
+ * before `layerWithGitAndConfigDependencies` existed.
+ *
+ * `core` is threaded in as a value, so the caller's single `layer(options)`
+ * reference is shared by `ChangeDetector`, `WorkspaceSnapshots` and the merge —
+ * building it twice here would defeat layer memoization inside one composite.
+ */
+const withGit = <R>(
+	core: Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path | R>,
+	options: WorkspacesGitOptions | undefined,
 ): Layer.Layer<
 	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
 	never,
-	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner | R
 > => {
-	const core = layer(options);
 	const git = Git.layer;
 	return Layer.mergeAll(
 		core,
@@ -117,6 +146,15 @@ const layerWithGit = (
 		WorkspaceSnapshots.layer(options).pipe(Layer.provide(git), Layer.provide(core)),
 	);
 };
+
+// Implementation of Workspaces.layerWithGit; the public contract lives on the static.
+const layerWithGit = (
+	options?: WorkspacesGitOptions,
+): Layer.Layer<
+	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
+	never,
+	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+> => withGit<never>(layer(options), options);
 
 // Implementation of Workspaces.resolvers; the public contract lives on the static.
 const resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver, never, WorkspaceCatalogs | WorkspaceDiscovery> =
@@ -136,6 +174,26 @@ const layerWithConfigDependenciesSubprocess = (
 	never,
 	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
 > => compose<ChildProcessSpawner.ChildProcessSpawner>(options, WorkspaceCatalogs.layerWithConfigDependenciesSubprocess);
+
+// Implementation of Workspaces.layerWithGitAndConfigDependencies; the public
+// contract lives on the static.
+const layerWithGitAndConfigDependencies = (
+	options?: WorkspacesGitOptions,
+): Layer.Layer<
+	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
+	never,
+	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+> => withGit<never>(layerWithConfigDependencies(options), options);
+
+// Implementation of Workspaces.layerWithGitAndConfigDependenciesSubprocess; the
+// public contract lives on the static.
+const layerWithGitAndConfigDependenciesSubprocess = (
+	options?: WorkspacesGitOptions,
+): Layer.Layer<
+	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
+	never,
+	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+> => withGit<ChildProcessSpawner.ChildProcessSpawner>(layerWithConfigDependenciesSubprocess(options), options);
 
 // Implementation of Workspaces.resolverLayer; the public contract lives on the static.
 const resolverLayer = (
@@ -303,6 +361,70 @@ export class Workspaces {
 	 * unstubbed members die named — and needs no repository on disk.
 	 */
 	static readonly layerWithGit = layerWithGit;
+
+	/**
+	 * {@link Workspaces.layerWithGit} over
+	 * {@link Workspaces.layerWithConfigDependencies} — snapshots, change
+	 * detection and git, with catalog assembly that **replays config dependency
+	 * `pnpmfile.cjs` hooks**.
+	 *
+	 * @remarks
+	 * The composite that did not exist. `layerWithGit` hard-wires the no-op
+	 * catalogs layer, so a consumer wanting snapshots + git + hook replay had to
+	 * rebuild the entire service graph by hand — which is exactly what
+	 * `@savvy-web/silk-effects` did, and the copy this static deletes.
+	 *
+	 * Requirements are unchanged from {@link Workspaces.layerWithGit}: a
+	 * filesystem, a path service, and core's `ChildProcessSpawner` (behind
+	 * `Git`). The in-process replay adds no requirement of its own — it is a
+	 * dynamic `import()`, not a subprocess. **If the consumer is bundled, reach
+	 * for {@link Workspaces.layerWithGitAndConfigDependenciesSubprocess}
+	 * instead**; the computed import does not survive a bundler, and the
+	 * `ChildProcessSpawner` the subprocess variant needs is already required
+	 * here for git, so on this composite the subprocess form costs nothing extra.
+	 *
+	 * Opt in deliberately: this executes config-dependency code in process, and
+	 * {@link Workspaces.layerWithGit} never does.
+	 *
+	 * **Bind the result to a `const`.** A parameterized factory mints a fresh
+	 * reference per call and layers memoize by reference.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Workspaces } from "@effected/workspaces";
+	 *
+	 * const KitLayer = Workspaces.layerWithGitAndConfigDependencies();
+	 * ```
+	 */
+	static readonly layerWithGitAndConfigDependencies = layerWithGitAndConfigDependencies;
+
+	/**
+	 * {@link Workspaces.layerWithGitAndConfigDependencies}, with the hook replay
+	 * in a `node` **child process** rather than in process.
+	 *
+	 * @remarks
+	 * Same typed semantics; the difference is mechanism, and it decides whether
+	 * catalog assembly works at all in a **bundled** consumer — see
+	 * {@link Workspaces.layerWithConfigDependenciesSubprocess} for why the
+	 * in-process computed `import()` dies under a bundler.
+	 *
+	 * **This composite's requirement set is identical to the in-process one.**
+	 * The subprocess replay needs core's `ChildProcessSpawner`, which this
+	 * composite already requires for `Git` — so unlike the git-free pair, there
+	 * is no R-widening to weigh here and a bundled consumer pays nothing to be
+	 * correct. Prefer this variant whenever the program ships as a bundle.
+	 *
+	 * **Bind the result to a `const`.**
+	 *
+	 * @example
+	 * ```ts
+	 * import { Workspaces } from "@effected/workspaces";
+	 *
+	 * // A bundled CLI or MCP server: the computed import never enters the graph.
+	 * const KitLayer = Workspaces.layerWithGitAndConfigDependenciesSubprocess();
+	 * ```
+	 */
+	static readonly layerWithGitAndConfigDependenciesSubprocess = layerWithGitAndConfigDependenciesSubprocess;
 
 	/**
 	 * This package's implementation of `@effected/commands`' `LocalExec`

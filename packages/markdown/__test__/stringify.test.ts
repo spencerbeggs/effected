@@ -73,6 +73,115 @@ const reparses = (root: Root, expectType: string): void => {
 	assert.strictEqual(reparsed.children[0]?.type, expectType, `emitted: ${JSON.stringify(emitted)}`);
 };
 
+// The canonical-form table published on `Markdown.stringifyResult`'s TSDoc is a
+// STABILITY COMMITMENT: consumers are told they may assert against these bytes,
+// and that changing one is a breaking change. A published promise that no test
+// pins is a promise that drifts, so each row of that table is asserted here in
+// the same order it is documented.
+//
+// If you change a row, you are making a breaking change — update the table, the
+// package README and this suite together, and bump accordingly.
+describe("Markdown.stringify — the documented canonical form", () => {
+	it("heading: ATX at every depth", () => {
+		for (const depth of [1, 2, 3, 4, 5, 6] as const) {
+			const heading = Heading.make({ depth, children: [text("T")], position: span() });
+			assert.strictEqual(out(rootOf(heading)), `${"#".repeat(depth)} T\n`);
+		}
+	});
+
+	it("thematic break: ***", () => {
+		assert.strictEqual(out(rootOf(ThematicBreak.make({ position: span() }))), "***\n");
+	});
+
+	it("bullet list marker: -", () => {
+		const list = List.make({
+			ordered: false,
+			spread: false,
+			children: [ListItem.make({ spread: false, children: [paragraph(text("a"))], position: span() })],
+			position: span(),
+		});
+		assert.strictEqual(out(rootOf(list)), "- a\n");
+	});
+
+	it("ordered list delimiter: .", () => {
+		const list = List.make({
+			ordered: true,
+			spread: false,
+			children: [ListItem.make({ spread: false, children: [paragraph(text("a"))], position: span() })],
+			position: span(),
+		});
+		assert.strictEqual(out(rootOf(list)), "1. a\n");
+	});
+
+	it("ordered list delimiter flips to ) to separate an adjacent sibling list", () => {
+		const item = (value: string) =>
+			ListItem.make({ spread: false, children: [paragraph(text(value))], position: span() });
+		const list = (child: string) =>
+			List.make({ ordered: true, spread: false, children: [item(child)], position: span() });
+		// The one documented exception to the row above, and the reason the table
+		// states it: two adjacent ordered lists that both emitted `.` would reparse
+		// as ONE list.
+		const emitted = out(rootOf(list("a"), list("b")));
+		assert.strictEqual(emitted, "1. a\n\n1) b\n");
+		// The delimiter flip only earns its place if the emitted text actually
+		// reparses as TWO lists — substring assertions pass even when it does not.
+		const reparsed = Result.getOrThrow(Markdown.parseResult(emitted));
+		assert.strictEqual(reparsed.children.length, 2);
+		assert.strictEqual(reparsed.children[0]?.type, "list");
+		assert.strictEqual(reparsed.children[1]?.type, "list");
+	});
+
+	it("emphasis * and strong **", () => {
+		const tree = rootOf(
+			paragraph(
+				Emphasis.make({ children: [text("em")], position: span() }),
+				text(" "),
+				Strong.make({ children: [text("st")], position: span() }),
+			),
+		);
+		assert.strictEqual(out(tree), "*em* **st**\n");
+	});
+
+	it("code block: indented with neither lang nor fenceChar", () => {
+		const code = Code.make({ value: "let x = 1;", position: span() });
+		assert.strictEqual(out(rootOf(code)), "    let x = 1;\n");
+	});
+
+	it("code block: fenced once a lang is present, and the fence grows past interior backticks", () => {
+		const plain = Code.make({ value: "x", lang: "js", position: span() });
+		assert.strictEqual(out(rootOf(plain)), "```js\nx\n```\n");
+
+		const nested = Code.make({ value: "a ``` b", lang: "js", position: span() });
+		const emitted = out(rootOf(nested));
+		// A fence that did not grow would terminate the block early — the emitted
+		// text must re-parse as ONE code node carrying the whole value.
+		const reparsed = Result.getOrThrow(Markdown.parseResult(emitted));
+		assert.strictEqual(reparsed.children.length, 1);
+		assert.strictEqual(reparsed.children[0]?.type, "code");
+	});
+
+	it("block separation: exactly one blank line", () => {
+		assert.strictEqual(out(rootOf(paragraph(text("a")), paragraph(text("b")))), "a\n\nb\n");
+	});
+
+	it("document: a single trailing newline", () => {
+		const emitted = out(rootOf(paragraph(text("a"))));
+		assert.isTrue(emitted.endsWith("\n"));
+		assert.isFalse(emitted.endsWith("\n\n"));
+	});
+
+	it("a fidelity field overrides its row", () => {
+		// The table describes a SYNTHESIZED node; a parsed one re-serializes in its
+		// author's spelling. Both halves are load-bearing for the promise.
+		const setext = Heading.make({ depth: 1, children: [text("T")], position: span(), headingStyle: "setext" });
+		// The underline is sized to the heading text, so a one-character heading
+		// gets a one-character rule.
+		assert.strictEqual(out(rootOf(setext)), "T\n=\n");
+		const dashBreak = ThematicBreak.make({ position: span(), markerChar: "_" });
+		assert.strictEqual(out(rootOf(dashBreak)), "___\n");
+	});
+});
+
 describe("Markdown.stringify", () => {
 	describe("blocks, canonical defaults", () => {
 		it("paragraph", () => {

@@ -4,6 +4,7 @@
 		"design-docs@spencerbeggs": true,
 		"effected@spencerbeggs": true,
 		"silk@savvy-web-systems": true,
+		"superpowers@claude-plugins-official": true,
 		"vitest-agent@spencerbeggs": true
 	},
 	"permissions": {

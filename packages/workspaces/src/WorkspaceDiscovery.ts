@@ -164,8 +164,67 @@ export interface WorkspaceDiscoveryShape {
 	readonly resolveFiles: (
 		filePaths: ReadonlyArray<string>,
 	) => Effect.Effect<ReadonlyArray<WorkspacePackage>, WorkspaceDiscoveryFailure>;
-	/** Drop the memoized discovery so the next call re-reads the filesystem. */
+	/**
+	 * Facts about the workspace containing `directory`, discovered against THAT
+	 * root rather than the layer-bound one.
+	 */
+	readonly infoIn: (directory: string) => Effect.Effect<WorkspaceInfo, WorkspaceDiscoveryFailure>;
+	/**
+	 * Every package of the workspace containing `directory`, discovered against
+	 * THAT root rather than the layer-bound one.
+	 *
+	 * @remarks
+	 * For a **long-lived host serving many roots** — an MCP server or a language
+	 * server that resolves one workspace at startup and then answers calls
+	 * scoped to a git worktree, a nested repository, or another project
+	 * entirely. The layer-bound {@link WorkspaceDiscoveryShape.listPackages}
+	 * answers about the root discovered from `options.cwd`, which such a host
+	 * has no way to vary per call without building a fresh layer.
+	 *
+	 * **This re-reads; it does not re-root.** The tempting cheap fix — take the
+	 * layer's package list and rewrite each `path` onto the caller's directory —
+	 * produces correct-looking paths over the ORIGINAL root's manifests, so a
+	 * worktree whose branch adds, removes or renames a package reports the other
+	 * branch's membership with no error. Patterns, member manifests, names and
+	 * versions all come from beneath `directory`'s own root here.
+	 *
+	 * `directory` may be the workspace root or anything inside it: the root is
+	 * resolved by the same upward walk the layer-bound path uses, and results are
+	 * memoized per RESOLVED root, so many directories in one workspace share one
+	 * discovery. The memo holds one entry per distinct root for the layer's
+	 * lifetime; {@link WorkspaceDiscoveryShape.refresh} drops all of them.
+	 *
+	 * @param directory - Absolute path to the workspace root, or to any
+	 *   directory inside it.
+	 */
+	readonly listPackagesIn: (
+		directory: string,
+	) => Effect.Effect<ReadonlyArray<WorkspacePackage>, WorkspaceDiscoveryFailure>;
+	/**
+	 * Drop every memoized discovery — the layer-bound one and each per-root memo
+	 * — so the next call re-reads the filesystem.
+	 */
 	readonly refresh: () => Effect.Effect<void>;
+	/**
+	 * Drop only the memo for the workspace containing `directory`, leaving the
+	 * layer-bound memo and every other root's untouched.
+	 *
+	 * @remarks
+	 * The precise counterpart to {@link WorkspaceDiscoveryShape.refresh} for a
+	 * host serving several roots: refreshing one worktree because it changed
+	 * should not discard sibling worktrees that did not, which is all `refresh`
+	 * can do.
+	 *
+	 * **Fails typed on a directory in no workspace**, exactly as
+	 * {@link WorkspaceDiscoveryShape.listPackagesIn} does for the same input —
+	 * the three per-root methods answer a bad path the same way, and a caller
+	 * that would rather treat it as a no-op writes `Effect.ignore`. Refreshing a
+	 * root that HAS no memo is an ordinary no-op and not an error.
+	 *
+	 * @param directory - Absolute path to the workspace root, or to any
+	 *   directory inside it.
+	 */
+	readonly refreshIn: (directory: string) => Effect.Effect<void, WorkspaceRootNotFoundError>;
 }
 
 /**
@@ -309,6 +368,75 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 					);
 				});
 
+			/**
+			 * Discovery for ONE already-resolved root — the whole read, with the root
+			 * as a parameter rather than a closed-over constant.
+			 *
+			 * Everything derived here (patterns, member manifests, names, versions) is
+			 * read beneath `root`, which is what makes the per-call-root methods
+			 * honest: re-rooting an already-discovered package list onto a different
+			 * directory rewrites paths but keeps the ORIGINAL root's manifests, so a
+			 * branch that adds or removes a package stays invisible. This re-reads.
+			 */
+			const discoverAt = (
+				root: string,
+			): Effect.Effect<
+				{ readonly info: WorkspaceInfo; readonly packages: ReadonlyArray<WorkspacePackage> },
+				WorkspaceDiscoveryFailure
+			> =>
+				Effect.gen(function* () {
+					const patterns = yield* readPatterns(root).pipe(
+						Effect.mapError(
+							(failure) =>
+								new WorkspaceDiscoveryError({
+									root,
+									path: failure.path,
+									kind: failure.kind,
+									cause: failure.cause,
+								}),
+						),
+					);
+
+					const globs = yield* GlobSet.compile(patterns).pipe(
+						Effect.mapError(
+							(error) =>
+								new WorkspacePatternError({
+									root,
+									pattern: error.pattern,
+									kind: "uncompilable",
+									detail: error.message,
+								}),
+						),
+					);
+
+					const directories = yield* enumerate(root, globs, { maxDepth: options?.maxDepth ?? 32 }).pipe(
+						Effect.mapError(
+							(failure) =>
+								new WorkspacePatternError({
+									root,
+									pattern: failure.pattern,
+									kind: patternKindOf(failure.kind),
+									detail: failure.detail,
+								}),
+						),
+					);
+
+					const members = yield* Effect.forEach(
+						directories.filter((entry) => entry.relativePath !== "." && entry.path !== root),
+						(entry) => readPackage(root, entry.path, entry.relativePath),
+						{ concurrency: 10 },
+					);
+
+					const rootPackage = yield* readPackage(root, root, ".");
+					const packages = [rootPackage, ...members];
+
+					yield* Effect.logDebug("Workspace packages discovered").pipe(
+						Effect.annotateLogs({ "workspace.root": root, "workspace.packages.count": packages.length }),
+					);
+
+					return { info: WorkspaceInfo.make({ root, patterns }), packages };
+				}).pipe(Effect.provideService(FileSystem.FileSystem, fs), Effect.provideService(Path.Path, path));
+
 			const discover: Effect.Effect<
 				{ readonly info: WorkspaceInfo; readonly packages: ReadonlyArray<WorkspacePackage> },
 				WorkspaceDiscoveryFailure
@@ -316,63 +444,57 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				// `Effect.suspend` so the ambient cwd is read at first use, not at
 				// layer construction.
 				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
-
-				const patterns = yield* readPatterns(root).pipe(
-					Effect.mapError(
-						(failure) =>
-							new WorkspaceDiscoveryError({
-								root,
-								path: failure.path,
-								kind: failure.kind,
-								cause: failure.cause,
-							}),
-					),
-				);
-
-				const globs = yield* GlobSet.compile(patterns).pipe(
-					Effect.mapError(
-						(error) =>
-							new WorkspacePatternError({
-								root,
-								pattern: error.pattern,
-								kind: "uncompilable",
-								detail: error.message,
-							}),
-					),
-				);
-
-				const directories = yield* enumerate(root, globs, { maxDepth: options?.maxDepth ?? 32 }).pipe(
-					Effect.mapError(
-						(failure) =>
-							new WorkspacePatternError({
-								root,
-								pattern: failure.pattern,
-								kind: patternKindOf(failure.kind),
-								detail: failure.detail,
-							}),
-					),
-				);
-
-				const members = yield* Effect.forEach(
-					directories.filter((entry) => entry.relativePath !== "." && entry.path !== root),
-					(entry) => readPackage(root, entry.path, entry.relativePath),
-					{ concurrency: 10 },
-				);
-
-				const rootPackage = yield* readPackage(root, root, ".");
-				const packages = [rootPackage, ...members];
-
-				yield* Effect.logDebug("Workspace packages discovered").pipe(
-					Effect.annotateLogs({ "workspace.root": root, "workspace.packages.count": packages.length }),
-				);
-
-				return { info: WorkspaceInfo.make({ root, patterns }), packages };
-			}).pipe(Effect.provideService(FileSystem.FileSystem, fs), Effect.provideService(Path.Path, path));
+				return yield* discoverAt(root);
+			});
 
 			// Success-only memoization. See the class remarks: a bare `Effect.cached`
 			// would memoize an interrupt and permanently brick the layer.
 			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(discover, Duration.infinity);
 			const memo = Effect.onExit(resolveOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate));
+
+			/**
+			 * Per-resolved-root memos for the `…In` methods, each success-only on the
+			 * same discipline as the layer-bound one above.
+			 *
+			 * Deliberately SEPARATE from that memo rather than replacing it: the
+			 * layer-bound path resolves its root once, at first use, and folding it
+			 * into this map would make every call re-run the root ascent. A caller
+			 * that asks for the layer's own root through `listPackagesIn` pays one
+			 * extra discovery — the honest price for not changing what the existing
+			 * methods do.
+			 *
+			 * The map grows one entry per distinct root, which is the point for a
+			 * long-lived host serving many worktrees, and is why `refresh()` clears
+			 * it wholesale rather than invalidating one cell.
+			 */
+			const rootMemos = new Map<
+				string,
+				{
+					readonly memo: Effect.Effect<
+						{ readonly info: WorkspaceInfo; readonly packages: ReadonlyArray<WorkspacePackage> },
+						WorkspaceDiscoveryFailure
+					>;
+					readonly invalidate: Effect.Effect<void>;
+				}
+			>();
+
+			/** The memoized discovery for the workspace root containing `directory`. */
+			const memoIn = Effect.fn("WorkspaceDiscovery.memoIn")(function* (directory: string) {
+				// Resolved FIRST, so two directories inside one workspace share a
+				// single memo — keying on the caller's path would discover the same
+				// workspace once per subdirectory it happens to ask from.
+				const root = yield* roots.find(directory);
+				const existing = rootMemos.get(root);
+				if (existing !== undefined) return yield* existing.memo;
+				const [resolveOnce, invalidateOne] = yield* Effect.cachedInvalidateWithTTL(discoverAt(root), Duration.infinity);
+				const built = Effect.onExit(resolveOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidateOne));
+				// Re-check under the benign concurrent-miss race: keep whichever cell
+				// landed first so callers dedupe onto one.
+				const raced = rootMemos.get(root);
+				if (raced !== undefined) return yield* raced.memo;
+				rootMemos.set(root, { memo: built, invalidate: invalidateOne });
+				return yield* built;
+			});
 
 			const packages = memo.pipe(Effect.map((state) => state.packages));
 
@@ -456,6 +578,16 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 					return ownerOf(filePath, owners(all));
 				}),
 
+				infoIn: Effect.fn("WorkspaceDiscovery.infoIn")(function* (directory: string) {
+					const state = yield* memoIn(directory);
+					return state.info;
+				}),
+
+				listPackagesIn: Effect.fn("WorkspaceDiscovery.listPackagesIn")(function* (directory: string) {
+					const state = yield* memoIn(directory);
+					return state.packages;
+				}),
+
 				resolveFiles: Effect.fn("WorkspaceDiscovery.resolveFiles")(function* (filePaths: ReadonlyArray<string>) {
 					const all = yield* packages;
 					const index = owners(all);
@@ -467,7 +599,26 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 					return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
 				}),
 
-				refresh: () => invalidate,
+				refreshIn: Effect.fn("WorkspaceDiscovery.refreshIn")(function* (directory: string) {
+					const root = yield* roots.find(directory);
+					const cell = rootMemos.get(root);
+					if (cell === undefined) return;
+					// Invalidate the cell BEFORE dropping the reference: a fiber already
+					// holding this memo keeps its own reference, and leaving the cached
+					// value live would let that fiber replay a discovery this call was
+					// asked to discard.
+					yield* cell.invalidate;
+					rootMemos.delete(root);
+				}),
+
+				refresh: () =>
+					Effect.flatMap(
+						Effect.forEach([...rootMemos.values()], (cell) => cell.invalidate, { discard: true }),
+						() => {
+							rootMemos.clear();
+							return invalidate;
+						},
+					),
 			};
 		});
 
@@ -576,7 +727,28 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 					}
 					return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
 				}),
+			// Both per-root methods DIE unstubbed rather than deriving from
+			// `listPackages`. Deriving would model a world in which every root holds
+			// the same members — which is exactly the confusion these methods exist to
+			// remove, so a double that fabricated it could not discriminate a consumer
+			// calling the wrong one. There is no honest default for "what does that
+			// OTHER workspace contain".
+			infoIn: () =>
+				Effect.die(
+					new Error(
+						"WorkspaceDiscovery.makeTest: infoIn() was called but not stubbed — a double cannot know what another root's workspace looks like; pass an `infoIn` override.",
+					),
+				),
+			listPackagesIn: () =>
+				Effect.die(
+					new Error(
+						"WorkspaceDiscovery.makeTest: listPackagesIn() was called but not stubbed — deriving it from `listPackages` would model every root as identical, which is the bug this method exists to prevent; pass a `listPackagesIn` override.",
+					),
+				),
 			refresh: () => Effect.void,
+			// Nothing is memoized in a double, so dropping one root's memo is honestly
+			// a no-op — unlike the two reads above, which have no honest default.
+			refreshIn: () => Effect.void,
 			...overrides,
 		};
 	};

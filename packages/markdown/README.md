@@ -261,6 +261,27 @@ if (Result.isSuccess(parsed)) {
 
 `Mdast.fromMdast` goes the other way as a checked admission boundary: it validates a foreign tree and synthesizes zero-width sentinel positions where one is absent or incomplete. Trees admitted that way serve tree-level workflows and canonical `stringify`; offset-splice editing needs the real positions only a parse produces.
 
+## The canonical form is stable
+
+`Markdown.stringify` takes no options. It emits one canonical form, that form is pinned by byte-level tests, the engine behind it is cross-checked against commonmark.js over the full CommonMark 0.31.2 corpus, and **changing any of it is a breaking change to this package rather than a patch**. So a test may assert on these bytes, and a pipeline that needs stable rendered markdown should serialize through here instead of a third-party stringifier whose defaults are free to move between releases.
+
+For a node carrying no fidelity field:
+
+| Construct | Canonical form |
+| --- | --- |
+| Heading | ATX (`## x`), at every depth |
+| Thematic break | `***` |
+| Bullet list marker | `-` |
+| Ordered list delimiter | `.`, flipping to `)` to separate an immediately adjacent sibling list |
+| Emphasis / strong | `*` / `**` |
+| Code block | indented when the node carries neither `lang` nor `fenceChar`; otherwise fenced, with the fence grown past any interior backtick run |
+| Block separation | exactly one blank line |
+| Document | a single trailing newline |
+
+A node that carries a fidelity field overrides the matching row — `headingStyle`, `markerChar`, `fenceChar`, `delimiter` — which is how a parsed document re-serializes in its author's spelling. The table describes a synthesized node, which is what a test asserting on generated markdown actually holds.
+
+To *normalize* an existing document to different choices, use `MarkdownFormat` with `MarkdownFormattingOptions`. That is the configurable surface; this one deliberately is not.
+
 ## Features
 
 - `Markdown` — `parse`/`stringify` as `Effect`s with typed `MarkdownParseError`/`MarkdownStringifyError` channels, the pure `parseResult`/`stringifyResult` twins for synchronous callers, and the `MarkdownFromString` two-way codec.

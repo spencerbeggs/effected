@@ -247,7 +247,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/markdown": {
-							range: "^0.6.2",
+							range: "^0.6.3",
 							peer: "^0.6.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -331,8 +331,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/workspaces": {
-							range: "^0.17.2",
-							peer: "^0.17.0",
+							range: "^0.18.0",
+							peer: "^0.18.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},

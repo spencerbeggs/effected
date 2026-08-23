@@ -3,9 +3,18 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
+import { ScriptedSpawner } from "@effected/commands";
+import { Git } from "@effected/git";
 import { CatalogAssemblyError } from "@effected/npm";
 import { Effect, Layer, Option } from "effect";
-import { ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../../src/index.js";
+import {
+	CatalogSet,
+	ChangeDetector,
+	ConfigDependencyHooks,
+	WorkspaceCatalogs,
+	WorkspaceSnapshots,
+	Workspaces,
+} from "../../src/index.js";
 import type { Tree } from "../fixtures.js";
 import { manifest, platform } from "../fixtures.js";
 
@@ -246,6 +255,94 @@ describe("Workspaces.layer default — provably never executes a config dependen
 				}),
 			),
 		);
+	});
+});
+
+// The composite that did not exist before: snapshots + change detection + git,
+// over catalog assembly that REPLAYS config-dependency hooks. A consumer wanting
+// all four had to rebuild `layerWithGit`'s whole service graph by hand, because
+// `layerWithGit` hard-wires the no-op catalogs layer.
+//
+// The pair of tests below is the discrimination: the same tree, the same fixture
+// config dependency, the same assertions — and the ONLY difference is which
+// composite is provided. A `layerWithGitAndConfigDependencies` that quietly wired
+// the no-op catalogs would pass every "is the service present" check and fail
+// exactly one of these.
+// Git is PROVIDED here but never invoked: these tests ask about catalogs and
+// about which services exist, and none of them runs a command. A script that
+// throws on any spawn turns that assumption into an assertion — if a future
+// change makes composing this layer shell out, these tests fail loudly instead
+// of quietly spawning during an assembly test.
+const noSpawns = ScriptedSpawner.make((command, args) => {
+	throw new Error(`unexpected spawn: ${command} ${args.join(" ")}`);
+});
+
+describe("Workspaces.layerWithGitAndConfigDependencies", () => {
+	const hookedTree = (): Tree => ({
+		[`${root}/pnpm-workspace.yaml`]: [
+			"packages:",
+			"  - packages/*",
+			"catalog:",
+			"  effect: ^4.0.0",
+			"configDependencies:",
+			`  ${DEP_NAME}: '1.0.0'`,
+			"",
+		].join("\n"),
+		[`${root}/package.json`]: JSON.stringify({ name: "root", version: "0.0.0", private: true }),
+		[`${root}/packages/a/package.json`]: manifest("@x/a", { dependencies: { effect: "catalog:" } }),
+	});
+
+	it.effect("assembles the hook-injected catalog AND provides the git tier in one composite", () => {
+		const appLayer = Workspaces.layerWithGitAndConfigDependencies({ cwd: root }).pipe(
+			Layer.provideMerge(platform(hookedTree())),
+			Layer.provideMerge(noSpawns.layer),
+		);
+		return Effect.gen(function* () {
+			const catalogs = yield* WorkspaceCatalogs;
+			const set = yield* catalogs.set();
+			// The inline catalog — the control proving assembly ran at all.
+			assert.deepStrictEqual(set.rangeOf("effect", Option.none()), Option.some("^4.0.0"));
+			// The hook-injected one — proof the REPLAYING catalogs layer is wired,
+			// not the no-op `layerWithGit` uses.
+			assert.deepStrictEqual(set.rangeOf("hooked-dep", Option.none()), Option.some("^9.9.9"));
+			// ...and the three services the git composite adds are all reachable from
+			// the same layer. Resolving them is the whole point: before this
+			// composite existed, having both halves at once meant hand-composing.
+			assert.isDefined(yield* WorkspaceSnapshots);
+			assert.isDefined(yield* ChangeDetector);
+			assert.isDefined(yield* Git);
+		}).pipe(Effect.provide(appLayer));
+	});
+
+	it.effect("layerWithGit over the same tree sees no hook-injected catalog — the control", () => {
+		const appLayer = Workspaces.layerWithGit({ cwd: root }).pipe(
+			Layer.provideMerge(platform(hookedTree())),
+			Layer.provideMerge(noSpawns.layer),
+		);
+		return Effect.gen(function* () {
+			const catalogs = yield* WorkspaceCatalogs;
+			const set = yield* catalogs.set();
+			assert.deepStrictEqual(set.rangeOf("effect", Option.none()), Option.some("^4.0.0"));
+			// The default composite executes no config-dependency code, and this is
+			// the assertion that keeps it that way.
+			assert.deepStrictEqual(set.rangeOf("hooked-dep", Option.none()), Option.none());
+		}).pipe(Effect.provide(appLayer));
+	});
+
+	it.effect("threads seedCatalogs through to the snapshots it provides", () => {
+		// The two seams compose: a consumer that opts into hook replay can hand the
+		// live set straight to the ref side through the same options bag, instead of
+		// building `WorkspaceSnapshots` separately just to pass one option.
+		const seedCatalogs = CatalogSet.make({ entries: { default: { "seeded-dep": "^1.0.0" } } });
+		const appLayer = Workspaces.layerWithGitAndConfigDependencies({ cwd: root, seedCatalogs }).pipe(
+			Layer.provideMerge(platform(hookedTree())),
+			Layer.provideMerge(noSpawns.layer),
+		);
+		return Effect.gen(function* () {
+			const snapshots = yield* WorkspaceSnapshots;
+			const live = yield* snapshots.worktree();
+			assert.deepStrictEqual(live.resolve("seeded-dep", "catalog:"), Option.some("^1.0.0"));
+		}).pipe(Effect.provide(appLayer));
 	});
 });
 
