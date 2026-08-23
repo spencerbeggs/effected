@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 90
 related:
   - effect-standards.md
@@ -134,6 +134,12 @@ The lesson generalizes past these two: **Direction A tests the emitter against t
 **F4 — identity on non-handled input**, per [P4](#the-rules). Assert it: input the formatter cannot process comes back byte-identical.
 
 **F5 — idempotence.** `format(format(t)) === format(t)`. Cheap to assert, and it catches a distinct class — an emitter stable on its own output but not on the author's.
+
+### Discharged where it is stated, not where it is merely true
+
+`@effected/markdown` satisfied F1, F4 and F5 for a long time and told nobody. `Markdown.stringify` takes no options, its canonical output was pinned by byte-level tests, and the engine was cross-checked against commonmark.js over the full CommonMark 0.31.2 corpus — and a consumer read the surface, could not tell any of that, and kept `remark-stringify` on the grounds that our output might move. They reported the resulting brittleness as *their* problem.
+
+**A fidelity guarantee a consumer cannot see is not a guarantee they can use.** So the obligation has a second half: the package states the commitment on the surface — the TSDoc of the emitting entry point and the README — including the canonical choices a byte-level assertion depends on, and says plainly that changing one is a breaking change. `@effected/markdown` is the worked example (`Markdown.stringifyResult`'s canonical-form table, mirrored in its README and asserted row-by-row by the "documented canonical form" suite, so the promise and the code cannot drift). Filed as spencerbeggs/effected#486.
 
 A related constraint on evidence lives in [effect-standards.md](effect-standards.md#the-oracle-for-a-ported-algorithm-is-external): never pin your own output as the fixture. F1–F5 constrain what a round trip must preserve; that rule constrains what a fixture is allowed to be evidence of.
 

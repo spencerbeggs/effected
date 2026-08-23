@@ -38,6 +38,14 @@ features.** HTML is test-harness machinery only
 registry composition, nothing more, and a future one lands as new construct
 modules with no public API change.
 
+## The canonical form is a published commitment
+
+`Markdown.stringify` takes no options, and its output is **documented as stable** on the TSDoc and in the README — a consumer is told they may assert on these bytes. `__test__/stringify.test.ts`'s "the documented canonical form" suite asserts every row of that published table.
+
+**Changing a canonical choice is a breaking change.** Update the table on `Markdown.stringifyResult`, the README table and that suite together, and bump accordingly. A row that moves silently breaks a promise consumers were invited to depend on.
+
+The configurable surface is `MarkdownFormat` + `MarkdownFormattingOptions`; this one is deliberately not.
+
 ## Non-negotiables
 
 Each line is the rule; its reasoning is in the child beside it.

@@ -238,6 +238,40 @@ export class Markdown {
 	 * contract — but is not a byte-level round-trip of any original source;
 	 * surgical editing goes through the offset-splice edit layer instead.
 	 *
+	 * **The canonical form is a stability commitment, so a test may assert
+	 * against these bytes.** There are no options to configure and therefore
+	 * nothing to drift, the choices below are pinned by byte-level tests, and
+	 * the engine is cross-checked against commonmark.js over the full
+	 * CommonMark 0.31.2 corpus. Changing any of them is a **breaking** change
+	 * to this package, never a patch. A consumer asserting on rendered
+	 * markdown should serialize through here rather than through a third-party
+	 * stringifier whose defaults are free to move.
+	 *
+	 * The canonical choices a byte-level assertion depends on, for a node
+	 * carrying no fidelity field:
+	 *
+	 * | Construct | Canonical form |
+	 * | --- | --- |
+	 * | Heading | ATX (`## x`), at every depth |
+	 * | Thematic break | `***` |
+	 * | Bullet list marker | `-` |
+	 * | Ordered list delimiter | `.`, flipping to `)` to separate an immediately adjacent sibling list |
+	 * | Emphasis / strong | `*` / `**` |
+	 * | Code block | indented when the node carries neither `lang` nor `fenceChar`; otherwise fenced, with the fence grown past any interior backtick run |
+	 * | Block separation | exactly one blank line |
+	 * | Document | a single trailing newline |
+	 *
+	 * A node carrying a fidelity field overrides the corresponding row —
+	 * `headingStyle: "setext"`, `markerChar`, `fenceChar`, `delimiter` — which
+	 * is how a parsed document re-serializes in its author's spelling. The
+	 * rows describe a synthesized node, which is the case a test asserting on
+	 * generated markdown actually has.
+	 *
+	 * To *normalize* a document to different choices — a `-` list rewritten to
+	 * `*`, setext headings rewritten to ATX — use `MarkdownFormat` with
+	 * `MarkdownFormattingOptions`. That is the configurable surface; this one
+	 * deliberately is not.
+	 *
 	 * Failure is rare by design, symmetric with parse: only a hardening-guard
 	 * trip on a tree nesting past the depth cap fails, and only synthesized
 	 * or decoded trees can nest that far.
@@ -272,6 +306,12 @@ export class Markdown {
 	 * Serialize a {@link Root} tree to canonical markdown. Defined in terms of
 	 * {@link Markdown.stringifyResult} — synchronous callers can use that
 	 * variant directly.
+	 *
+	 * @remarks
+	 * The canonical form is a **stability commitment** and safe to assert
+	 * against byte-for-byte; the choices it makes, and the reason changing one
+	 * is a breaking change, are documented on
+	 * {@link Markdown.stringifyResult}.
 	 *
 	 * @param root - The document tree to serialize.
 	 * @returns An `Effect` that succeeds with markdown source, or fails with
