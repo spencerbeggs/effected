@@ -160,6 +160,35 @@ describe("Markdown.stringify — the documented canonical form", () => {
 		assert.strictEqual(reparsed.children[0]?.type, "code");
 	});
 
+	it("code block: representability forces a fence where indenting would not reparse", () => {
+		// The documented exception to the row above, and a REAL split in the
+		// canonical form: an indented block directly after a list is absorbed as
+		// list content, so the emitter fences instead. A byte assertion over
+		// synthesized code blocks therefore depends on the preceding sibling.
+		const bare = Code.make({ value: "A", position: span() });
+		const list = List.make({
+			ordered: false,
+			spread: false,
+			children: [ListItem.make({ spread: false, children: [paragraph(text("item"))], position: span() })],
+			position: span(),
+		});
+
+		// Alone, and after a paragraph: indented, per the row.
+		assert.strictEqual(out(rootOf(bare)), "    A\n");
+		assert.strictEqual(out(rootOf(paragraph(text("p")), bare)), "p\n\n    A\n");
+
+		// Directly after a list: fenced.
+		const afterList = out(rootOf(list, bare));
+		assert.strictEqual(afterList, "- item\n\n```\nA\n```\n");
+
+		// And the reason it must: the emitted text has to reparse as a list
+		// followed by a SEPARATE code node, which indenting would not give.
+		const reparsed = Result.getOrThrow(Markdown.parseResult(afterList));
+		assert.strictEqual(reparsed.children.length, 2);
+		assert.strictEqual(reparsed.children[0]?.type, "list");
+		assert.strictEqual(reparsed.children[1]?.type, "code");
+	});
+
 	it("block separation: exactly one blank line", () => {
 		assert.strictEqual(out(rootOf(paragraph(text("a")), paragraph(text("b")))), "a\n\nb\n");
 	});

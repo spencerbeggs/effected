@@ -385,6 +385,14 @@ export class Mdast {
 	 * decode into the {@link Frontmatter} capture. Unknown node types fail
 	 * typed.
 	 *
+	 * **This package's fidelity fields are among the fields dropped**, because
+	 * they are not spec mdast. A `fenceChar`, `headingStyle`, `markerChar` or
+	 * `delimiter` set on the tree BEFORE admission is silently discarded, and
+	 * the node then serializes with the canonical default — set them on the
+	 * decoded nodes this returns instead. The drop is correct (the boundary
+	 * admits spec mdast and nothing else) but it is silent, which is why it is
+	 * called out here.
+	 *
 	 * @param input - A plain mdast tree, typically a `root`.
 	 * @returns A `Result` succeeding with the decoded {@link Root}, or
 	 *   failing with {@link MdastDecodeError} carrying the structured issue.

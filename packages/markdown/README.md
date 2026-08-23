@@ -274,9 +274,13 @@ For a node carrying no fidelity field:
 | Bullet list marker | `-` |
 | Ordered list delimiter | `.`, flipping to `)` to separate an immediately adjacent sibling list |
 | Emphasis / strong | `*` / `**` |
-| Code block | indented when the node carries neither `lang` nor `fenceChar`; otherwise fenced, with the fence grown past any interior backtick run |
+| Code block | fenced when the node carries a `lang` or a `fenceChar`, with the fence grown past any interior backtick run; otherwise indented — except where indenting would not re-parse as a code block, which forces a fence |
 | Block separation | exactly one blank line |
 | Document | a single trailing newline |
+
+**Representability wins over the table.** The canonical form never emits text that would re-parse as something else, so a row yields where the two conflict. The case that reaches a consumer is the indented code block: an indented block directly after a list is absorbed as list content, so a `Code` node with neither `lang` nor `fenceChar` emits fenced in that position and indented everywhere else. A byte-level assertion over synthesized code blocks therefore depends on the preceding sibling — set `fenceChar` on the node to take the choice out of the emitter's hands.
+
+Fidelity fields must be set on the **decoded** tree: `Mdast.fromMdast` admits spec mdast and strips everything outside it, so a `fenceChar` placed on a plain mdast tree before admission is silently dropped.
 
 A node that carries a fidelity field overrides the matching row — `headingStyle`, `markerChar`, `fenceChar`, `delimiter` — which is how a parsed document re-serializes in its author's spelling. The table describes a synthesized node, which is what a test asserting on generated markdown actually holds.
 
