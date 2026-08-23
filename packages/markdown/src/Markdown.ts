@@ -273,8 +273,13 @@ export class Markdown {
 	 * indented block directly after a list is absorbed as list content, so a
 	 * `Code` node with neither `lang` nor `fenceChar` emits **fenced** in that
 	 * position and indented everywhere else. A byte-level assertion over
-	 * synthesized code blocks therefore depends on the preceding sibling — set
-	 * `fenceChar` on the node to take the choice out of the emitter's hands.
+	 * synthesized code blocks therefore depends on the preceding sibling.
+	 *
+	 * **The posture that makes this a non-issue**, and the one a consumer
+	 * building trees for byte-level assertion should adopt: set `fenceChar` on
+	 * every `Code` node that carries neither a `lang` nor one already, in a
+	 * post-decode walk that reaches nested nodes. The choice then leaves the
+	 * emitter entirely and no output depends on a node's neighbours.
 	 *
 	 * To *normalize* a document to different choices — a `-` list rewritten to
 	 * `*`, setext headings rewritten to ATX — use `MarkdownFormat` with
