@@ -410,6 +410,14 @@ describe("YamlFormat", () => {
 			assert.strictEqual(YamlFormat.formatToString(text, undefined, requoteDouble), YamlFormat.formatToString(text));
 		});
 
+		it("a quoted scalar folded on CR-only line breaks is skipped too", () => {
+			// A lone \r is a YAML line break (b-carriage-return): the scalar is
+			// multi-line even though its raw slice carries no \n, and re-quoting
+			// it from the folded value would collapse the layout.
+			const text = "k: 'a\r  b'\n";
+			assert.strictEqual(YamlFormat.formatToString(text, undefined, requoteDouble), YamlFormat.formatToString(text));
+		});
+
 		it("quoted mapping keys and sequence items re-quote too", () => {
 			assert.strictEqual(YamlFormat.formatToString("'k': 1\n", undefined, requoteDouble), '"k": 1\n');
 			assert.strictEqual(YamlFormat.formatToString("- 'a'\n- b\n", undefined, requoteDouble), '- "a"\n- b\n');

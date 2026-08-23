@@ -15,7 +15,7 @@ import { YamlParseError } from "./Yaml.js";
 import { documentFromRaw } from "./YamlDocument.js";
 import { YamlEdit } from "./YamlEdit.js";
 import type { LintContext, LintLine, StyleObservation, YamlLintSeverity, YamlRule } from "./YamlLintRule.js";
-import { StyleVote, YamlLintDiagnostic } from "./YamlLintRule.js";
+import { YamlLintDiagnostic } from "./YamlLintRule.js";
 import { YamlTokens } from "./YamlToken.js";
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -302,10 +302,27 @@ export class StyleEvidence extends Schema.Class<StyleEvidence>("StyleEvidence")(
 	static fromObservations(rule: string, observations: Iterable<StyleObservation>): StyleEvidence {
 		let acc = StyleEvidence.empty;
 		for (const observation of observations) {
+			// Branch on the `_tag` discriminator, never `instanceof`: class
+			// instances are structurally assignable, so a custom rule may yield a
+			// PLAIN OBJECT shaped like a vote, and it must still tally as one.
 			acc = StyleEvidence.combine(
 				acc,
-				observation instanceof StyleVote
-					? StyleEvidence.make({ votes: [StyleVoteTally.make({ rule, count: 1, ...observation })], floors: [] })
+				observation._tag === "StyleVote"
+					? StyleEvidence.make({
+							votes: [
+								StyleVoteTally.make({
+									rule,
+									count: 1,
+									dimension: observation.dimension,
+									value: observation.value,
+									offset: observation.offset,
+									length: observation.length,
+									line: observation.line,
+									character: observation.character,
+								}),
+							],
+							floors: [],
+						})
 					: StyleEvidence.make({
 							votes: [],
 							floors: [StyleFloorTally.make({ rule, dimension: observation.dimension, value: observation.value })],

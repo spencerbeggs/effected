@@ -99,9 +99,15 @@ export interface LintContext {
  * occurrence that voted, so a strict-resolution conflict can name where each
  * spelling was seen.
  *
+ * The `_tag` literal is the RUNTIME discriminator between the two
+ * observation kinds: class instances are structurally assignable, so a
+ * custom rule may yield a plain object shaped like a vote, and the evidence
+ * builder must still sort it into the right tally without `instanceof`.
+ * `.make` defaults it — construction sites never pass `_tag`.
+ *
  * @public
  */
-export class StyleVote extends Schema.Class<StyleVote>("StyleVote")({
+export class StyleVote extends Schema.TaggedClass<StyleVote>()("StyleVote", {
 	dimension: Schema.String,
 	value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
 	offset: Schema.Number,
@@ -118,9 +124,12 @@ export class StyleVote extends Schema.Class<StyleVote>("StyleVote")({
  * never resolved into config options; fabricating a max from the largest
  * value one happened to see would be lying with a straight face.
  *
+ * The `_tag` literal discriminates a floor from a {@link StyleVote} at
+ * runtime (see there); `.make` defaults it.
+ *
  * @public
  */
-export class StyleFloor extends Schema.Class<StyleFloor>("StyleFloor")({
+export class StyleFloor extends Schema.TaggedClass<StyleFloor>()("StyleFloor", {
 	dimension: Schema.String,
 	value: Schema.Number,
 }) {}

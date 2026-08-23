@@ -102,6 +102,19 @@ describe("config inference (#345)", () => {
 			lenient: { present: false }, // 1-1 tie breaks to canonical value order
 		},
 		{
+			name: "a directive-headed unmarked stream observes nothing — the directive MANDATES the marker",
+			// `%YAML 1.2` without `---` is malformed input, not evidence of the
+			// no-marker style: voting `present: false` here would infer a config
+			// that forbids a marker the stream requires.
+			inputs: ["%YAML 1.2\na: 1\n"],
+			strict: { kind: "none" },
+		},
+		{
+			name: "a directive-headed marked stream still votes present true",
+			inputs: ["%YAML 1.2\n---\na: 1\n"],
+			strict: { kind: "options", options: { present: true } },
+		},
+		{
 			name: "empty input observes nothing",
 			inputs: [""],
 			strict: { kind: "none" },

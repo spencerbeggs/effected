@@ -8,8 +8,9 @@
 
 import { Schema } from "effect";
 import { YamlEdit } from "../../YamlEdit.js";
-import type { YamlRule } from "../../YamlLintRule.js";
+import type { LintContext, YamlRule } from "../../YamlLintRule.js";
 import { StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "../../YamlLintRule.js";
+import type { YamlToken } from "../../YamlToken.js";
 
 /** Options for `document-end`: require (`true`, default) or forbid the marker. */
 export const documentEndOptions = Schema.Struct({
@@ -19,29 +20,45 @@ export const documentEndOptions = Schema.Struct({
 
 const TRIVIA = new Set(["newline", "whitespace", "comment", "byte-order-mark"]);
 
+/** The last non-trivia token: it decides whether the stream ends with `...`. */
+const tailToken = (ctx: LintContext): YamlToken | undefined =>
+	[...ctx.tokens].reverse().find((t) => !TRIVIA.has(t.kind));
+
+/**
+ * The end-of-stream position, shared by the missing-marker diagnostic and
+ * the absent-marker vote so the two cannot drift apart. `line`/`character`
+ * must agree with `offset` (= text length): when the text ends with a
+ * newline, that offset sits at the head of the line AFTER the last content
+ * line `buildLines` kept.
+ */
+const endOfStreamPosition = (
+	ctx: LintContext,
+): { readonly offset: number; readonly length: number; readonly line: number; readonly character: number } => {
+	const lastLine = ctx.lines[ctx.lines.length - 1];
+	const trailingNewline = ctx.text.endsWith("\n");
+	return {
+		offset: ctx.text.length,
+		length: 0,
+		line: (lastLine?.number ?? 0) + (trailingNewline ? 1 : 0),
+		character: trailingNewline ? 0 : (lastLine?.text.length ?? 0),
+	};
+};
+
 /** The `...` marker at the tail of the stream. */
 export const documentEnd: YamlRule = {
 	id: "document-end",
 	check: (ctx, options) => {
 		const present = (options as { readonly present?: boolean } | undefined)?.present ?? true;
 		// The last non-trivia token decides: does the stream end with `...`?
-		const tail = [...ctx.tokens].reverse().find((t) => !TRIVIA.has(t.kind));
+		const tail = tailToken(ctx);
 		const ended = tail?.kind === "document-end";
 		if (present && !ended && ctx.text.trim() !== "") {
-			// `line`/`character` must agree with `offset` (= text length): when
-			// the text ends with a newline, that offset sits at the head of the
-			// line AFTER the last content line `buildLines` kept.
-			const lastLine = ctx.lines[ctx.lines.length - 1];
-			const trailingNewline = ctx.text.endsWith("\n");
 			return [
 				new YamlLintDiagnostic({
 					rule: "document-end",
 					severity: "error",
 					message: 'Missing "..." document end marker',
-					offset: ctx.text.length,
-					length: 0,
-					line: (lastLine?.number ?? 0) + (trailingNewline ? 1 : 0),
-					character: trailingNewline ? 0 : (lastLine?.text.length ?? 0),
+					...endOfStreamPosition(ctx),
 					// The fix appends the marker line; a missing final newline is
 					// eof-newline's business, so insert one first when needed.
 					fix: YamlEdit.make({
@@ -79,7 +96,7 @@ export const documentEnd: YamlRule = {
 	// or not; absence votes `false` (mirroring document-start).
 	infer: (ctx) => {
 		if (ctx.text.trim() === "") return [];
-		const tail = [...ctx.tokens].reverse().find((t) => !TRIVIA.has(t.kind));
+		const tail = tailToken(ctx);
 		if (tail === undefined) return [];
 		const ended = tail.kind === "document-end";
 		if (ended) {
@@ -95,17 +112,6 @@ export const documentEnd: YamlRule = {
 			];
 		}
 		// Same end-of-stream position math as the missing-marker diagnostic.
-		const lastLine = ctx.lines[ctx.lines.length - 1];
-		const trailingNewline = ctx.text.endsWith("\n");
-		return [
-			StyleVote.make({
-				dimension: "present",
-				value: false,
-				offset: ctx.text.length,
-				length: 0,
-				line: (lastLine?.number ?? 0) + (trailingNewline ? 1 : 0),
-				character: trailingNewline ? 0 : (lastLine?.text.length ?? 0),
-			}),
-		];
+		return [StyleVote.make({ dimension: "present", value: false, ...endOfStreamPosition(ctx) })];
 	},
 };

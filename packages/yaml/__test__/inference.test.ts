@@ -166,6 +166,34 @@ describe("YamlLint.resolveStrict", () => {
 			assert.deepStrictEqual(resolved.success.rules["my-rule"], { style: "x" });
 		}
 	});
+
+	it("a PLAIN-OBJECT vote from a custom rule tallies as a vote, never as a floor", () => {
+		// Class instances are structurally assignable: a custom rule may yield
+		// an object that type-checks as StyleVote without being an instance.
+		// The evidence builder must branch on the `_tag` discriminator, not
+		// `instanceof` — instanceof would drop this into the floor branch and
+		// feed a string `value` to StyleFloorTally.
+		const plainVote: StyleVote = {
+			_tag: "StyleVote",
+			dimension: "style",
+			value: "x",
+			offset: 0,
+			length: 0,
+			line: 0,
+			character: 0,
+		} as StyleVote;
+		assert.isFalse(plainVote instanceof StyleVote, "the fixture must NOT be a class instance");
+		const custom: YamlRule = { id: "my-rule", check: () => [], infer: () => [plainVote] };
+		const evidence = YamlLint.observe("a: 1\n", [custom]);
+		assert.strictEqual(evidence.floors.length, 0, "a plain-object vote must not land in the floor tally");
+		assert.strictEqual(evidence.votes.length, 1);
+		assert.strictEqual(evidence.votes[0]?.value, "x");
+		const resolved = YamlLint.resolveStrict(evidence, YamlLintConfig.make({ rules: {} }));
+		assert.isTrue(Result.isSuccess(resolved));
+		if (Result.isSuccess(resolved)) {
+			assert.deepStrictEqual(resolved.success.rules["my-rule"], { style: "x" });
+		}
+	});
 });
 
 describe("YamlLint.resolveLenient / inferLenient", () => {

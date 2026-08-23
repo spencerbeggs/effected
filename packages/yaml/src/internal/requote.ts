@@ -82,7 +82,9 @@ export function requoteScalarText(
 	const raw = text.slice(scalar.offset, scalar.offset + scalar.length);
 	// A multi-line source scalar folds line breaks into its value; re-quoting
 	// it from the value would collapse the layout, so it is skipped whole.
-	if (raw.includes("\n")) return undefined;
+	// A lone `\r` is a YAML line break too (b-carriage-return), so a scalar
+	// folded on CR-only breaks is just as multi-line as an LF one.
+	if (raw.includes("\n") || raw.includes("\r")) return undefined;
 
 	if (mode === "conservative") {
 		const inner = scalar.style === "plain" ? raw : raw.slice(1, -1);
