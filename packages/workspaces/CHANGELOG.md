@@ -1,5 +1,14 @@
 # @effected/workspaces
 
+## 0.17.2
+
+### Dependencies
+
+| Dependency          | Type       | Action  | From   | To     |
+| ------------------- | ---------- | ------- | ------ | ------ |
+| @effected/lockfiles | dependency | updated | 0.6.2  | 0.6.3  |
+| @effected/yaml      | dependency | updated | 0.10.0 | 0.11.0 |
+
 ## 0.17.1
 
 ### Performance

@@ -1,5 +1,13 @@
 # @effected/lockfiles
 
+## 0.6.3
+
+### Dependencies
+
+| Dependency     | Type       | Action  | From   | To     |
+| -------------- | ---------- | ------- | ------ | ------ |
+| @effected/yaml | dependency | updated | 0.10.0 | 0.11.0 |
+
 ## 0.6.2
 
 ### Bug Fixes

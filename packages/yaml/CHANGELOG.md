@@ -1,5 +1,44 @@
 # @effected/yaml
 
+## 0.11.0
+
+### Features
+
+* Added lint config inference: `YamlLint` can now infer a `YamlLintConfig` from existing YAML documents instead of requiring one to be hand-written.
+
+  * `YamlLint.observe(text, rules)` runs every rule's optional `infer` hook over `text` and returns `StyleEvidence` — a monoid (`StyleEvidence.empty` / `StyleEvidence.combine`) so multi-file evidence merges with an `observe`-per-file, `combine`, resolve loop.
+  * `YamlLint.resolveStrict(evidence, base?)` overlays unanimous picks onto `base` (default `YamlLintConfig.default`), failing with the new `YamlStyleConflictError` when an observed dimension disagrees across the corpus. Unobserved dimensions fall back to `base`, and an explicit `"off"` in `base` always outranks inference.
+  * `YamlLint.resolveLenient(evidence, base?)` picks the dominant (plurality) spelling per observed dimension and cannot fail.
+  * `YamlLint.inferStrict(text, rules, base?)` and `YamlLint.inferLenient(text, rules, base?)` are single-text conveniences combining `observe` and the matching resolver; `inferLenient` also returns `residual` — the diagnostics the inferred config still produces against `text`.
+
+  ```ts
+  import { YamlLint } from "@effected/yaml";
+
+  const evidence = YamlLint.observe(text, YamlLint.builtins);
+  const result = YamlLint.resolveStrict(evidence);
+  // Result.Result<YamlLintConfig, YamlStyleConflictError>
+  ```
+
+  Custom rules opt into inference by implementing the new optional `infer` hook on `YamlRule`, yielding `StyleVote` or `StyleFloor` observations. Rules with no detectable style (`truthy`, `key-duplicates`, `line-length`, …) stay default-driven. [#476][#476]
+
+- Added an opt-in `requoteScalars` option to `YamlFormattingOptions`, read by `YamlFormat.format` / `YamlFormat.formatToString`. By default, formatting preserves an already-quoted scalar's own quote style and `quoteStyle` only governs quotes the stringifier introduces. Setting `requoteScalars: true` makes `quoteStyle` apply to scalars already quoted in the source, but only when the re-quote provably preserves the parsed value: single→double applies proper double-quote escaping, and double→single is skipped whenever the value carries characters single-quoted style cannot express (newlines, tabs, control and other non-printable characters). Plain scalars, block scalars, and scalars carrying a tag, anchor, or spanning multiple source lines are left untouched.
+
+  ```ts
+  import { YamlFormat, YamlFormattingOptions } from "@effected/yaml";
+
+  const options = YamlFormattingOptions.make({ quoteStyle: "double", requoteScalars: true });
+  const formatted = YamlFormat.formatToString("key: 'value'\n", undefined, options);
+  // key: "value"
+  ```
+
+  The option is deliberately absent from `Yaml.stringify` (which serializes plain values) and `YamlFormat.modify` (which takes a bare `YamlStringifyOptions`) — it only applies where a source quote exists to re-quote. [#476][#476]
+
+### Minor Changes
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#476]: https://github.com/spencerbeggs/effected/pull/476
+
 ## 0.10.0
 
 ### Dependencies
