@@ -184,6 +184,32 @@ console.log(Effect.runSync(program));
 
 The `workspace:` range modifier is honored: `workspace:*` takes the bare version, `workspace:^` and `workspace:~` prefix it, and an explicit modifier is used as-is. The projection is `@effected/npm`'s `DependencySpecifier` statics with full pnpm publish semantics: the alias form `workspace:<name>@<range>` resolves the *target* package's version and becomes the `npm:<name>@<range>` alias pnpm publishes, and a blank catalog name selects the default catalog. A failed catalog assembly surfaces typed as `@effected/npm`'s `CatalogAssemblyError`, alongside the contracts' `DependencyResolutionError`.
 
+## Lenient discovery
+
+`Package.decode` and `PackageManifest` are strict: a malformed field fails the whole document. That is the right behavior for a manifest you are about to write or publish, and the wrong one for a manifest you are only sniffing — a fetched tarball, a `node_modules` walk, a registry response — where the document is someone else's data and one bad field should not sink the read. `LenientManifest` is that discovery tier: every `Package` field decodes to its plain permissive JSON shape (`name` and `version` accept any string, not the branded npm grammar; `license` accepts any string, no SPDX check; the dependency maps are plain records, not `HashMap`s). A field present but not even that shape degrades to absence instead of failing the document, its raw value is preserved verbatim in `rest` (a malformed known field is treated exactly like an unknown one), and the degradation is reported on `issues`:
+
+```ts
+import { LenientManifest } from "@effected/package-json";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const sniffed = yield* LenientManifest.decode({ name: "JSONStream", version: "1.0", license: 42 });
+  return [sniffed.name, sniffed.version, sniffed.issues, sniffed.rest?.license] as const;
+});
+
+console.log(Effect.runSync(program));
+// [
+//   "JSONStream",
+//   "1.0",
+//   [{ field: "license", expected: "a string", value: 42 }],
+//   42,
+// ]
+```
+
+Leniency is per-field, never per-syntax: `decodeResult`/`decode` still fail typed with `PackageDecodeError` when the input is not a JSON object at all (`null`, an array, a scalar), and `parseResult`/`parse` — the pair that also handles the raw `JSON.parse` — fail typed with `PackageJsonSyntaxError` when the text is not valid JSON or does not parse to an object. Each pair follows the package's usual shape: `decodeResult`/`parseResult` are the synchronous `Result` primitives, `decode`/`parse` are their `Effect` forms with a tracing span.
+
+An empty `issues` array is not a validity guarantee — the permissive shapes check JSON shape, not npm semantics, so a `LenientManifest` with no issues can still fail `Package.decode`. `LenientManifest` carries no mutation statics and no write path; once you need to validate or edit, re-decode the *original* input through `PackageManifest.decode` (presence-lenient, shape-on-presence strict) or `Package.decode` (strict, publishable).
+
 ## Resolving an entry point
 
 `resolveEntryPoint` answers one question about a manifest — which file is the package's `"."` entry — and it is pure, IO-free and `Result`-returning, so it works against a plain object with no package on disk:
@@ -236,6 +262,7 @@ Every failure is a `Schema.TaggedError` routed with `Effect.catchTag`. Causes ar
 - `PackageJsonFile` — the IO surface: `read` and `write` over core `FileSystem` / `Path`, with the platform implementation supplied at the edge.
 - `PackageValidator` — rule-based validation aggregating every failure, with the default rule set, a parameterized `layerRules` factory, and the publish-gate rules `noUnresolvedDepsRule` and `noLocalDepsRule`.
 - `resolveEntryPoint` — the pure, `Result`-returning entry-point resolver over a manifest's `exports`/`main`, honoring `exports` encapsulation rather than falling through to `main`, with `EntryPointManifest` as its tolerant input shape.
+- `LenientManifest` — the shape-lenient discovery tier below `PackageManifest`: malformed known fields degrade to absence, are preserved verbatim in `rest` and reported on `issues`, rather than failing the document; `decodeResult`/`decode` and `parseResult`/`parse` in the package's usual `Result`/`Effect` pairing.
 - `Package.resolve` — `catalog:` and `workspace:` expansion over the `@effected/npm` contracts with pnpm's publish-time projection (alias form included), as an explicit step that `write` never performs for you.
 - `PackageName`, `DependencySpecifier`, `Dependency`, `SpdxLicense`, `PackageManager`, `Person`, `Repository`, `Bugs`, `DevEngine` — the leaf concepts, each owning its own statics, brand and error, usable independently of `Package`. `Repository` and `Bugs` decode the `repository` and `bugs` fields from either their shorthand or object form, the same way `Person` does for `author`, `contributors` and `maintainers`; `Repository` also exposes `browseUrl` and `gitUrl` getters that normalize a shorthand or SSH form to `https://`.
 - `Package` also types `keywords`, `maintainers` and `homepage` directly, alongside the existing `author` and `contributors`.

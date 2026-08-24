@@ -33,6 +33,7 @@ import type {
 	FrontmatterFormat,
 	List,
 	MarkdownNode,
+	MdxJsxAttributeContent,
 	PhrasingContent,
 	Position,
 } from "./MarkdownNode.js";
@@ -233,7 +234,46 @@ const projectNode = (node: AnyNode): Record<string, unknown> => {
 			};
 		case "frontmatter":
 			return { type: node.format, value: node.value, position };
+		case "mdxJsxFlowElement":
+		case "mdxJsxTextElement":
+			return {
+				type: node.type,
+				name: node.name,
+				attributes: node.attributes.map((attribute) => projectMdxAttribute(attribute)),
+				children: projectChildren(node.children),
+				position,
+			};
+		case "mdxFlowExpression":
+		case "mdxTextExpression":
+		case "mdxjsEsm":
+			return { type: node.type, value: node.value, position };
 	}
+};
+
+// mdast-util-mdx spells a bare attribute's value as explicit `null` (its
+// parser writes it, "as it serializes in JSON"), and puts NO position on an
+// attribute value expression — both mirrored here so the output deep-equals
+// the reference utilities' trees.
+const projectMdxAttribute = (attribute: MdxJsxAttributeContent): Record<string, unknown> => {
+	if (attribute.type === "mdxJsxExpressionAttribute") {
+		return {
+			type: "mdxJsxExpressionAttribute",
+			value: attribute.value,
+			position: projectPosition(attribute.position),
+		};
+	}
+	const value = attribute.value;
+	return {
+		type: "mdxJsxAttribute",
+		name: attribute.name,
+		value:
+			value === undefined || value === null
+				? null
+				: typeof value === "string"
+					? value
+					: { type: "mdxJsxAttributeValueExpression", value: value.value },
+		position: projectPosition(attribute.position),
+	};
 };
 
 /** The frontmatter literal node types foreign mdast spells per format. */
@@ -275,6 +315,9 @@ const admittedFields: Readonly<Record<string, ReadonlyArray<string>>> = {
 	list: ["ordered", "start", "spread"],
 	listItem: ["spread", "checked"],
 	table: ["align"],
+	mdxFlowExpression: ["value"],
+	mdxTextExpression: ["value"],
+	mdxjsEsm: ["value"],
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -317,6 +360,20 @@ const normalizeNode = (value: unknown): unknown => {
 			position: normalizePosition(value.position),
 		};
 	}
+	// The JSX elements need their own admission: a `null` name is meaningful
+	// (a fragment) so the null-equals-absent normalization must not touch it,
+	// and the attributes array carries nested attribute nodes whose positions
+	// (and value-expression positions) need the same sentinel synthesis as
+	// tree nodes. `data.estree` is dropped like every foreign `data` field.
+	if (type === "mdxJsxFlowElement" || type === "mdxJsxTextElement") {
+		return {
+			type,
+			name: typeof value.name === "string" ? value.name : null,
+			attributes: Array.isArray(value.attributes) ? value.attributes.map(normalizeMdxAttribute) : [],
+			children: Array.isArray(value.children) ? value.children.map(normalizeNode) : [],
+			position: normalizePosition(value.position),
+		};
+	}
 	const admitted = admittedFields[type];
 	if (admitted === undefined) {
 		return value;
@@ -339,6 +396,42 @@ const normalizeNode = (value: unknown): unknown => {
 	}
 	normalized.position = normalizePosition(value.position);
 	return normalized;
+};
+
+// One foreign JSX attribute node: positions synthesized like tree nodes,
+// a string/null value passed through (both spellings are the contract), a
+// value-expression object rebuilt with only its contract fields.
+const normalizeMdxAttribute = (value: unknown): unknown => {
+	if (!isRecord(value) || typeof value.type !== "string") {
+		return value;
+	}
+	if (value.type === "mdxJsxExpressionAttribute") {
+		return {
+			type: "mdxJsxExpressionAttribute",
+			value: value.value,
+			position: normalizePosition(value.position),
+		};
+	}
+	if (value.type === "mdxJsxAttribute") {
+		const raw = value.value;
+		const normalized: Record<string, unknown> = {
+			type: "mdxJsxAttribute",
+			name: value.name,
+			position: normalizePosition(value.position),
+		};
+		if (raw !== undefined) {
+			normalized.value =
+				isRecord(raw) && raw.type === "mdxJsxAttributeValueExpression"
+					? {
+							type: "mdxJsxAttributeValueExpression",
+							value: raw.value,
+							position: normalizePosition(raw.position),
+						}
+					: raw;
+		}
+		return normalized;
+	}
+	return value;
 };
 
 const decodeRoot = Schema.decodeUnknownResult(Root);

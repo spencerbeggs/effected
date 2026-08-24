@@ -24,8 +24,8 @@ Consumers of store are tier 3 by [R2](../../.claude/design/effected/effect-stand
 Both services expose the same three statics, and the split is load-bearing:
 
 - `layer(options)` — driver-agnostic; requires an abstract `SqlClient` in `R`. Any Effect SQL driver satisfies it. This is the seam.
-- `layerSqlite(options & { filename })` — batteries included, provides the sqlite driver itself.
-- `layerTest(options)` — `layerSqlite` at `:memory:`. Hermetic; what the suites use.
+- `layerSqlite(options & { filename })` — batteries included, provides the sqlite driver itself. Also takes `client` (driver-option passthrough — everything but `filename` and the two name-transform options, which would rewrite the ledger queries' result names and break `status`) and `checkpointOnClose` (a best-effort `PRAGMA wal_checkpoint(TRUNCATE)` finalizer that runs before the driver closes; sqlite layers only — the PRAGMA is not driver-agnostic). The checkpoint helper in `src/internal/sqlite.ts` is a per-call factory on purpose: a shared layer const would memoize by reference and checkpoint only the first of two databases.
+- `layerTest(options)` — `layerSqlite` at `:memory:`. Hermetic; what the suites use. Never checkpoints.
 
 The statics are **parameterized factories**, so calling one twice builds two layers: bind the result to a `const` and reuse it, or Layer memoization-by-reference is lost and the database is opened twice.
 

@@ -122,6 +122,45 @@
 				},
 				"startHere": "test/fixtures/*.json are the position-complete mdast trees the Mdast projection is asserted against (P5 corpus). test/index.js shows the normalized-HTML conformance technique for a library that ships no HTML renderer — the pattern __test__/e2e reimplements."
 			}
+		},
+		"mdast-util-mdx-jsx": {
+			"url": "https://github.com/syntax-tree/mdast-util-mdx-jsx.git",
+			"ref": "3.2.0",
+			"purpose": "Oracle for @effected/markdown MDX support: the mdxJsxFlowElement/mdxJsxTextElement node contract and the reference toMarkdown serialization (attribute quoting, expression braces) the kit's MDX vocabulary and stringify must match",
+			"orientation": {
+				"keyPaths": {
+					"serializer-and-node-model": "lib/index.js",
+					"type-contract": "complex-types.d.ts",
+					"fixtures": "test"
+				},
+				"startHere": "lib/index.js holds the node model (fromMarkdown assembly) and the toMarkdown handlers — attribute quoting, value-expression braces, printWidth handling — that the @effected/markdown MDX stringify must match; index.d.ts / complex-types.d.ts state the exact node/attribute type shapes; test/ carries serialization fixtures usable as a conformance corpus."
+			}
+		},
+		"mdast-util-mdx-expression": {
+			"url": "https://github.com/syntax-tree/mdast-util-mdx-expression.git",
+			"ref": "2.0.1",
+			"purpose": "Oracle for @effected/markdown MDX support: the mdxFlowExpression/mdxTextExpression node contract and reference serialization ({expression} braces) for the kit's MDX expression nodes",
+			"orientation": {
+				"keyPaths": {
+					"serializer-and-node-model": "lib/index.js",
+					"type-contract": "complex-types.d.ts",
+					"fixtures": "test"
+				},
+				"startHere": "lib/index.js is the whole reference (node assembly + toMarkdown handlers for both expression nodes); complex-types.d.ts states the node type shapes; test/ has round-trip fixtures."
+			}
+		},
+		"mdast-util-mdxjs-esm": {
+			"url": "https://github.com/syntax-tree/mdast-util-mdxjs-esm.git",
+			"ref": "2.0.1",
+			"purpose": "Oracle for @effected/markdown MDX support: the mdxjsEsm node contract and reference serialization (raw ESM value passthrough) for the kit's MDX ESM node",
+			"orientation": {
+				"keyPaths": {
+					"serializer-and-node-model": "lib/index.js",
+					"type-contract": "complex-types.d.ts",
+					"fixtures": "test"
+				},
+				"startHere": "lib/index.js is the whole reference (node assembly + toMarkdown handler for mdxjsEsm); complex-types.d.ts states the node type shape; test/ has round-trip fixtures."
+			}
 		}
 	}
 }

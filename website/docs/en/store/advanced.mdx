@@ -46,6 +46,26 @@ const StateLive = Layer.provide(Layer.merge(StoreLive, CacheLive), SqliteLive);
 
 The `const` binding is load-bearing, exactly as the overview warns: the layer statics are parameterized factories, and it is memoization by *reference* that collapses two `SqlClient` requirements onto one connection. Inline `SqliteClient.layer(...)` twice and you get two file handles to the same database — the ledger tables still keep the services from colliding, but you have paid for a connection you did not need.
 
+## Tuning the SQLite driver
+
+You do not have to drop to the abstract seam just to tune the driver. Both `layerSqlite` statics take the rest of the driver's configuration through `client`, plus a `checkpointOnClose` convenience:
+
+```ts with-api
+import { Store, type StoreMigration } from "@effected/store";
+
+declare const migrations: ReadonlyArray<StoreMigration>;
+
+const StoreLive = Store.layerSqlite({
+	filename: "release.db",
+	migrations,
+	client: { disableWAL: true, prepareCacheSize: 50 },
+	checkpointOnClose: true,
+});
+```
+
+- **`client`** passes through everything `SqliteClient.layer` accepts except `filename` — the layer owns that — and the two name-transform options: `transformResultNames` / `transformQueryNames` would rewrite the result names of the migration ledger's own queries and silently report every migration pending. If you genuinely need name transforms, wire your own driver under the abstract `layer`.
+- **`checkpointOnClose: true`** registers a best-effort `PRAGMA wal_checkpoint(TRUNCATE)` finalizer that runs against the still-open connection, before the driver closes it — the WAL is folded into the main file eagerly, for the database another process may open next, and a failing checkpoint never turns a clean shutdown into a failed one. It is SQLite-specific by nature, so it lives on the sqlite layers only; `layerTest` (`:memory:`) has no WAL and never checkpoints.
+
 ## Pattern: schema evolution with rollback
 
 A release tool's schema grows. `Store` runs every pending migration when its layer is built, but the three operations on the service let you drive the ledger deliberately — project it, unwind it, re-apply it. A migration's `up`/`down` return the raw statement effect (the engine discards the value), and `down` is optional: omit it to declare a step irreversible, and `rollback` skips over it while still removing its ledger row.
@@ -91,6 +111,40 @@ Effect.runPromise(program.pipe(Effect.provide(StoreLive)));
 ```
 
 `store.status` is the projection your resume logic reads to decide what already happened; `store.client` is the same `SqlClient` for your own schema-aware queries against the tables the migrations created. See [`StoreShape`](/store/api/interface/storeshape) for the whole surface.
+
+## Adopting a database migrated by effect's Migrator
+
+`Store`'s ledger is its own. A database previously migrated by `effect/unstable/sql/Migrator` records what ran in `effect_sql_migrations` (`migration_id`, `name`, `created_at`), which `Store` never reads — so the first `Store` layer built over such a file sees an empty `_store_migrations` ledger and re-runs every migration. If your migrations are idempotent (`CREATE TABLE IF NOT EXISTS …`), the re-run is harmless and you can skip this section. If they are not — a bare `CREATE TABLE`, a seeding `INSERT` — seed the ledger **before** the first layer is built, because layer construction itself runs whatever looks pending.
+
+Detect the old ledger, then copy it across. This is a one-time step against the closed database file, so plain `node:sqlite` is the right tool:
+
+```ts
+import { DatabaseSync } from "node:sqlite";
+
+const db = new DatabaseSync("release.db");
+
+const oldLedger = db
+	.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'")
+	.get();
+
+if (oldLedger !== undefined) {
+	db.exec(`
+		CREATE TABLE IF NOT EXISTS _store_migrations (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			applied_at TEXT NOT NULL
+		);
+		INSERT INTO _store_migrations (id, name, applied_at)
+		SELECT migration_id, name, strftime('%Y-%m-%dT%H:%M:%fZ', created_at)
+		FROM effect_sql_migrations
+		WHERE migration_id NOT IN (SELECT id FROM _store_migrations);
+	`);
+}
+
+db.close();
+```
+
+Two things must hold across the adoption: the `id`s in your `StoreMigration` list must equal the `migration_id`s the old Migrator recorded (it derived them from the migration file names), and the migration *contents* must describe the schema the database already has — the seed only tells `Store` "these already ran"; it verifies nothing. The old `effect_sql_migrations` table can be dropped afterwards or left in place; `Store` never touches it.
 
 ## Pattern: the cache event stream
 

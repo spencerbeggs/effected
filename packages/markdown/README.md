@@ -174,6 +174,8 @@ The three codecs — `YamlFrontmatter` (`---`), `TomlFrontmatter` (`+++`) and `J
 
 Frontmatter blocks can also describe their own schema. `SchemaResolver.classify` sorts a `$schema` value into a tagged union — `ByUrl`, `ByPath`, `Inline` and `ByName` — and `SchemaResolver.fromRegistry` resolves `ByName` declarations like `skill@2.1.0` against schemas you register. URLs, paths and inline documents are carried as data and never fetched: this is a pure package and it performs no IO.
 
+When the body should not go through the CommonMark engine at all — an MDX page, a template, a snapshot-hash contract that needs byte-exact boundaries — `FrontmatterSource.split` runs the same closed fence grammar over the raw string and nothing else. It is total: it returns the block's format, the exact bytes between the fence lines and the body remainder (`body` is always exactly `source.slice(bodyOffset)`), with absence a representable result rather than an error. `FrontmatterSource.join` serializes the parts back, reproducing the original bytes for an unmodified round-trip; the frontmatter value and the body are never parsed at this level — decoding stays the codec modules' business.
+
 ## Working with the tree
 
 `MarkdownDocument` derives its navigation accessors from the tree, so they can never disagree with it. `links` collects every URL-bearing node and passes `url` through exactly as written — bundle-relative hrefs are never normalized:
@@ -261,6 +263,37 @@ if (Result.isSuccess(parsed)) {
 
 `Mdast.fromMdast` goes the other way as a checked admission boundary: it validates a foreign tree and synthesizes zero-width sentinel positions where one is absent or incomplete. Trees admitted that way serve tree-level workflows and canonical `stringify`; offset-splice editing needs the real positions only a parse produces.
 
+## MDX trees
+
+The MDX node vocabulary — `MdxJsxFlowElement` and `MdxJsxTextElement` (with `MdxJsxAttribute`, `MdxJsxExpressionAttribute` and `MdxJsxAttributeValueExpression` as their attribute carriers), `MdxFlowExpression`, `MdxTextExpression` and `MdxjsEsm` — is shaped exactly to the `mdast-util-mdx` contracts and constructs like every other node class. The parser does not read MDX syntax; these nodes exist so a **synthesized** tree can carry JSX and serialize to valid MDX instead of joining strings:
+
+```ts
+import { Markdown, MdxJsxAttribute, MdxJsxAttributeValueExpression, MdxJsxFlowElement, Root } from "@effected/markdown";
+import { Result } from "effect";
+
+const page = Root.make({
+  children: [
+    MdxJsxFlowElement.make({
+      name: "ApiSignature",
+      attributes: [
+        MdxJsxAttribute.make({
+          name: "code",
+          value: MdxJsxAttributeValueExpression.make({ value: JSON.stringify({ lang: "ts" }) }),
+        }),
+      ],
+      children: [],
+    }),
+  ],
+});
+
+const mdx = Markdown.stringifyResult(page);
+if (Result.isSuccess(mdx)) {
+  console.log(mdx.success); // <ApiSignature code={{"lang":"ts"}} />
+}
+```
+
+Serialization matches `mdxJsxToMarkdown`'s defaults — `"` quotes, spaced self-closing `<a />`, `<></>` fragments, flow children indented two spaces per JSX ancestor, `{expr}` expressions, ESM values verbatim — and a tree containing any MDX node escapes `{` in text the way MDX requires, while a tree with none serializes byte-identically to the table below. The shapes that have no MDX spelling are unconstructible rather than serialization errors: a fragment cannot carry attributes and an attribute requires a non-empty name, refused at `make` and at decode.
+
 ## The canonical form is stable
 
 `Markdown.stringify` takes no options. It emits one canonical form, that form is pinned by byte-level tests, the engine behind it is cross-checked against commonmark.js over the full CommonMark 0.31.2 corpus, and **changing any of it is a breaking change to this package rather than a patch**. So a test may assert on these bytes, and a pipeline that needs stable rendered markdown should serialize through here instead of a third-party stringifier whose defaults are free to move between releases.
@@ -278,6 +311,8 @@ For a node carrying no fidelity field:
 | Block separation | exactly one blank line |
 | Document | a single trailing newline |
 
+MDX nodes are part of the same commitment: the serialization choices listed under [MDX trees](#mdx-trees) are pinned the same way, and only trees that actually carry an MDX node pay the extra `{` escape.
+
 **Representability wins over the table.** The canonical form never emits text that would re-parse as something else, so a row yields where the two conflict. The case that reaches a consumer is the indented code block: an indented block directly after a list is absorbed as list content, so a `Code` node with neither `lang` nor `fenceChar` emits fenced in that position and indented everywhere else. A byte-level assertion over synthesized code blocks therefore depends on the preceding sibling.
 
 The posture that makes this a non-issue — and the one to adopt if you build trees and assert on their bytes — is to set `fenceChar` on every `Code` node carrying neither a `lang` nor one already, in a post-decode walk that reaches nested nodes. The choice then leaves the emitter entirely and no output depends on a node's neighbours.
@@ -291,8 +326,11 @@ To *normalize* an existing document to different choices, use `MarkdownFormat` w
 ## Features
 
 - `Markdown` — `parse`/`stringify` as `Effect`s with typed `MarkdownParseError`/`MarkdownStringifyError` channels, the pure `parseResult`/`stringifyResult` twins for synchronous callers, and the `MarkdownFromString` two-way codec.
+- `Markdown.parsePhrasing`/`parsePhrasingResult` — parse a prose fragment as a single paragraph's inline content, without a full document parse and a paragraph splice: blank lines stay inline, references never form (no reference context), and positions are correct relative to the input string.
 - `MarkdownDocument` — source, tree, diagnostics and the link-definition index, plus the derived `headings`, `sections` and `links` accessors, the `firstSection`/`sectionByHeading` finders over a `DocumentSection` (heading, depth, range, body), the `find`/`findAll` tree queries over type-narrowed selectors, and the `frontmatter` capture with `hasFrontmatterBlock` to tell an absent block from an uncaptured one.
 - The mdast-shaped node classes — the CommonMark types plus GFM's `delete`, `table`, `tableRow`, `tableCell`, `footnoteDefinition`, `footnoteReference` and task-list `checked`, each carrying unist positions with byte offsets and this package's fidelity fields. `position` defaults to the zero-width synthetic sentinel, so a replacement fragment constructs in one line — `Text.make({ value: "shipped" })`.
+- The MDX node vocabulary — `MdxJsxFlowElement`/`MdxJsxTextElement` with their attribute carriers, `MdxFlowExpression`/`MdxTextExpression` and `MdxjsEsm`, shaped to the `mdast-util-mdx` contracts for construction and serialization (the parser reads no MDX syntax).
+- `FrontmatterSource` — string-level frontmatter `split`/`join` over the same closed fence grammar, byte-exact boundaries, no parsing of value or body; for bodies the CommonMark engine should not touch.
 - `MarkdownEdit` / `MarkdownRange` (with `applyAll`) — the non-mutating text-edit vocabulary, field-identical to `@effected/jsonc`'s, `@effected/yaml`'s and `@effected/toml`'s.
 - `MarkdownFormat` — `format`/`formatToString` compute conservative marker-normalization edits; `modify`/`modifyToString` replace a node by identity through the canonical stringifier.
 - `MarkdownVisitor` — walk a parsed tree as a lazy `Stream` of `Enter`/`Exit` events with child-index paths and depth.

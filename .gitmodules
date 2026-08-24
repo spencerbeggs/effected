@@ -22,3 +22,15 @@
 	path = .repos/mdast-util-from-markdown
 	url = https://github.com/syntax-tree/mdast-util-from-markdown.git
 	shallow = true
+[submodule ".repos/mdast-util-mdx-jsx"]
+	path = .repos/mdast-util-mdx-jsx
+	url = https://github.com/syntax-tree/mdast-util-mdx-jsx.git
+	shallow = true
+[submodule ".repos/mdast-util-mdx-expression"]
+	path = .repos/mdast-util-mdx-expression
+	url = https://github.com/syntax-tree/mdast-util-mdx-expression.git
+	shallow = true
+[submodule ".repos/mdast-util-mdxjs-esm"]
+	path = .repos/mdast-util-mdxjs-esm
+	url = https://github.com/syntax-tree/mdast-util-mdxjs-esm.git
+	shallow = true

@@ -89,6 +89,24 @@ Both services expose the same three statics, and the split is the seam:
 
 The SQL core lives in `effect` itself, under `effect/unstable/sql` — there is no `@effect/sql` package on the v4 line, so `SqlClient` is imported from `effect/unstable/sql/SqlClient`.
 
+### Driver options
+
+`layerSqlite` takes the rest of the driver's configuration through `client`, so tuning the SQLite client no longer means dropping to the abstract `layer` with a hand-wired driver:
+
+```ts
+const StoreLive = Store.layerSqlite({
+  filename: "state.db",
+  migrations,
+  client: { disableWAL: true, prepareCacheSize: 50 },
+  checkpointOnClose: true,
+});
+```
+
+- **`client`** passes through everything `SqliteClient.layer` accepts except `filename` (owned by this layer) and the two name-transform options — `transformResultNames`/`transformQueryNames` would rewrite the result names of the migration ledger's own queries and silently report every migration pending. If you need name transforms, wire your own client under the abstract `layer`.
+- **`checkpointOnClose: true`** registers a `PRAGMA wal_checkpoint(TRUNCATE)` finalizer that runs against the still-open connection, before the driver closes it — the finalizer every durable-SQLite consumer was writing by hand. Best-effort: a failing checkpoint never turns a clean shutdown into a failed one. SQLite-specific, so it lives on the sqlite layers only; `layerTest` (`:memory:`) has no WAL and never checkpoints.
+
+`Cache.layerSqlite` takes the same two options.
+
 ## Migrations
 
 Migrations are a list you own: a positive-integer `id`, a `name` recorded in the ledger, an `up`, and an optional `down`. Both return `Effect<unknown, SqlError>`, so a tagged SQL template goes back as-is — the engine discards the value, and a `CREATE TABLE` that already describes itself needs no `Effect.asVoid` wrapped around it. Layer construction ensures the ledger table and applies everything pending, so a freshly built `Store` is already migrated. `migrate` re-runs pending migrations, `rollback(toId)` unwinds everything with `id > toId` newest-first (`rollback(0)` unwinds all of it), and `status` projects the full list with each migration's `appliedAt`:
@@ -106,6 +124,38 @@ const program = Effect.gen(function* () {
 ```
 
 Duplicate ids, non-positive-integer ids and a non-integer `toId` are wiring errors, not data conditions: they die at layer construction rather than failing typed. A migration that *throws* stays a defect too, and the surrounding transaction rolls back.
+
+### Adopting a database migrated by effect's Migrator
+
+`Store` is your schema — migrations create your tables, `client` queries them — but its ledger is its own. A database previously migrated by `effect/unstable/sql/Migrator` records what ran in `effect_sql_migrations` (`migration_id`, `name`, `created_at`), which `Store` does not read: on first construction over such a file, `Store` sees an empty `_store_migrations` ledger and re-runs every migration. If your migrations are idempotent (`CREATE TABLE IF NOT EXISTS …`), that re-run is harmless and you can skip all of this. If they are not — a bare `CREATE TABLE`, a seeding `INSERT` — seed the ledger **before** the first `Store` layer is built, because layer construction itself runs pending migrations.
+
+Detect the old ledger:
+
+```sql
+SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations';
+```
+
+Seed `_store_migrations` from it — this is a one-time step against the closed database file, so plain `node:sqlite` is the right tool:
+
+```ts
+import { DatabaseSync } from "node:sqlite";
+
+const db = new DatabaseSync("state.db");
+db.exec(`
+  CREATE TABLE IF NOT EXISTS _store_migrations (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at TEXT NOT NULL
+  );
+  INSERT INTO _store_migrations (id, name, applied_at)
+  SELECT migration_id, name, strftime('%Y-%m-%dT%H:%M:%fZ', created_at)
+  FROM effect_sql_migrations
+  WHERE migration_id NOT IN (SELECT id FROM _store_migrations);
+`);
+db.close();
+```
+
+Two things to hold constant across the adoption: the `id`s in your `StoreMigration` list must equal the `migration_id`s the old Migrator recorded (it derived them from the migration file names), and the migration *contents* must describe the schema the database already has — the seed only tells `Store` "these already ran", it does not verify them. The old `effect_sql_migrations` table can be dropped afterwards or left in place; `Store` never touches it.
 
 ## Cache
 

@@ -8,7 +8,7 @@
 // formatting with support for block/flow styles, scalar quoting rules, and
 // round-trip preservation of AST node styles.
 
-import type { CollectionStyle, QuoteStyle, ScalarStyle, YamlNode } from "../YamlNode.js";
+import type { CollectionStyle, QuoteCompat, QuoteStyle, ScalarStyle, YamlNode } from "../YamlNode.js";
 import { YamlAlias, YamlMap, YamlPair, YamlScalar, YamlSeq } from "../YamlNode.js";
 import { MAX_NESTING_DEPTH } from "./composer/state.js";
 import {
@@ -137,6 +137,47 @@ function wouldBeResolved(s: string): boolean {
 	return false;
 }
 
+// ---------------------------------------------------------------------------
+// YAML 1.1 type-conflict detection (`quoteCompat: "yaml-1.1"`)
+// ---------------------------------------------------------------------------
+//
+// Implicit-resolver patterns from the YAML 1.1 type repository
+// (yaml.org/type: bool.html, int.html, float.html, timestamp.html), covering
+// what a 1.1 parser (js-yaml, PyYAML, libyaml) coerces that the 1.2 Core
+// Schema above does not: the extended boolean spellings, underscore digit
+// separators, base-2/8/16 integer forms, sexagesimal numbers and timestamps.
+// Where the spec and lenient real-world resolvers differ slightly (optional
+// exponent sign, colon-less timezone offsets, `0o` octals) the patterns
+// accept the union — over-quoting is the safe direction for a compat mode.
+
+const BOOL_11_RE = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF)$/;
+// Base 2 / base 8 (legacy `0` and `0o` prefixes) / base 10 / base 16, all
+// with `_` digit separators, plus base-60 (sexagesimal) integers.
+const INT_11_RE = /^[-+]?(?:0b[0-1_]+|0o?[0-7_]+|(?:0|[1-9][0-9_]*)|0x[0-9a-fA-F_]+|[1-9][0-9_]*(?::[0-5]?[0-9])+)$/;
+// Decimal floats with `_` separators (dotted, leading-dot and exponent-only
+// forms) and base-60 (sexagesimal) floats. `.inf`/`.nan` are already caught
+// by the 1.2 patterns above.
+const FLOAT_11_RE =
+	/^[-+]?(?:[0-9][0-9_]*(?:\.[0-9_]*)?(?:[eE][-+]?[0-9]+)?|\.[0-9_]+(?:[eE][-+]?[0-9]+)?|[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*)$/;
+// Date-only form (strict ymd) and the full form: 1-2 digit month/day, `T`/`t`
+// or whitespace separator, optional fraction and timezone (`Z` or an offset).
+const TIMESTAMP_11_RE =
+	/^(?:[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]|[0-9][0-9][0-9][0-9]-[0-9][0-9]?-[0-9][0-9]?(?:[Tt]|[ \t]+)[0-9][0-9]?:[0-9][0-9]:[0-9][0-9](?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9][0-9]?(?::?[0-9][0-9])?))?)$/;
+
+/**
+ * Returns true if a string value would be resolved as a non-string type by a
+ * YAML 1.1 parser. The delta over {@link wouldBeResolved}: null spellings are
+ * identical in both editions (and already covered), so only the boolean,
+ * integer, float and timestamp families are tested here.
+ */
+function wouldBeResolved11(s: string): boolean {
+	if (BOOL_11_RE.test(s)) return true;
+	if (INT_11_RE.test(s)) return true;
+	if (FLOAT_11_RE.test(s)) return true;
+	if (TIMESTAMP_11_RE.test(s)) return true;
+	return false;
+}
+
 /**
  * Returns true if a string requires quoting to be safely represented as a plain scalar.
  *
@@ -144,14 +185,20 @@ function wouldBeResolved(s: string): boolean {
  * embedded newlines, leading indicator characters or whitespace, and inline
  * comment/mapping-value patterns (`: `, ` #`). This is the single gate that
  * decides whether a plain scalar is safe or must be wrapped in quotes.
+ *
+ * `quoteCompat` is strictly additive: `"yaml-1.1"` additionally quotes
+ * strings a YAML 1.1 parser would coerce ({@link wouldBeResolved11}) and can
+ * never un-quote anything the 1.2 rules require quoted.
  */
-function requiresQuoting(s: string, ignoreType = false): boolean {
+function requiresQuoting(s: string, ignoreType = false, quoteCompat?: QuoteCompat): boolean {
 	// Empty string must be quoted
 	if (s === "") return true;
 	// Contains newlines — use block literal instead
 	if (s.includes("\n")) return true;
 	// Would be resolved as a non-string type (skip when a tag overrides resolution)
 	if (!ignoreType && wouldBeResolved(s)) return true;
+	// Would be coerced by the requested foreign dialect (same tag exemption)
+	if (!ignoreType && quoteCompat === "yaml-1.1" && wouldBeResolved11(s)) return true;
 	// Starts with whitespace (space/tab)
 	const first = s[0];
 	if (first === " " || first === "\t") return true;
@@ -288,6 +335,7 @@ function renderString(
 	parentPosition?: "block-map-value" | "block-seq-item",
 	quoteStyle: QuoteStyle = "single",
 	explicitIndent?: number,
+	quoteCompat?: QuoteCompat,
 ): string {
 	// Fidelity mode (everything but canonical) re-emits the EXPLICIT header
 	// indicators the source spelled — a redundant `+` keep-chomp or `|2`
@@ -356,7 +404,7 @@ function renderString(
 	}
 	switch (style) {
 		case "plain":
-			if (requiresQuoting(s, ignoreType)) {
+			if (requiresQuoting(s, ignoreType, quoteCompat)) {
 				// Chars needing YAML escapes (tab, CR, control chars) force
 				// double-quoted under either quoteStyle — single quotes cannot
 				// express them. Backslashes are literal in single-quoted YAML
@@ -448,6 +496,8 @@ interface StringifyContext {
 	indentSequences: boolean;
 	/** Fallback quote style for plain scalars that require quoting. */
 	quoteStyle: QuoteStyle;
+	/** Foreign dialect whose implicit coercions additionally force quoting. */
+	quoteCompat: QuoteCompat | undefined;
 	forceDefaultStyles: boolean;
 	seen: Set<object>;
 	/**
@@ -473,6 +523,9 @@ function createContext(options?: StringifyOptionsInput): StringifyContext {
 		// Default "single" = the released fallback: byte-identical output for every
 		// caller that does not opt into the `yaml`-npm-compatible double-quoted form.
 		quoteStyle: options?.quoteStyle ?? "single",
+		// Default absent = no extra quoting: byte-identical output for every
+		// caller not targeting a YAML 1.1 consumer.
+		quoteCompat: options?.quoteCompat,
 		forceDefaultStyles: options?.forceDefaultStyles ?? false,
 		seen: new Set(),
 	};
@@ -518,6 +571,8 @@ function stringifyLines(value: unknown, ctx: StringifyContext, depth: number, al
 			undefined,
 			undefined,
 			ctx.quoteStyle,
+			undefined,
+			ctx.quoteCompat,
 		);
 		// Column-based folding only fires in block contexts (not flow items, whose
 		// lines are re-joined with spaces) and only for a positive lineWidth. The
@@ -627,7 +682,7 @@ function stringifyObjectLines(obj: Record<string, unknown>, ctx: StringifyContex
 	// fallback as plain values — a key like `@types/acorn` requires quoting and
 	// must honor the caller's preference, not a hardcoded single quote.
 	const renderPlainKey = (k: string): string =>
-		renderString(k, "plain", "", false, false, undefined, undefined, ctx.quoteStyle);
+		renderString(k, "plain", "", false, false, undefined, undefined, ctx.quoteStyle, undefined, ctx.quoteCompat);
 
 	if (ctx.defaultCollectionStyle === "flow") {
 		const pairs = keys.map((k) => {
@@ -997,6 +1052,7 @@ function stringifyScalarNodeLines(node: YamlScalar, ctx: StringifyContext): stri
 			ctx.parentPosition,
 			ctx.quoteStyle,
 			node.blockIndent,
+			ctx.quoteCompat,
 		);
 		lines = rendered.split("\n");
 	} else {

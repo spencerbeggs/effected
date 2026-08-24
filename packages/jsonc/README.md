@@ -145,6 +145,42 @@ console.log(Result.isFailure(bad) ? bad.failure.code : "");
 
 Preserving comments requires the original source text, which is exactly what `JsoncModifier` and `JsoncFormatter` take. If you need to write a JSONC file back out with its comments intact, edit the text: parse for reading, and modify for writing.
 
+## Canonical JSON and content fingerprints
+
+`JsoncFingerprint` produces RFC 8785 canonical JSON (the JSON Canonicalization Scheme) and SHA-256 fingerprints over it: compact output, object keys sorted by UTF-16 code units, ECMAScript number serialization. Two values that differ only in key order canonicalize — and fingerprint — identically. Unlike `Jsonc.stringify`, which follows `JSON.stringify`'s drop/null semantics for nested unrepresentables, canonicalization refuses to alter the document: an `undefined`, a function, a symbol, a `bigint`, a non-finite number or a non-plain object (a `Date`, a `Map`, a class instance) fails typed with a `JsoncCanonicalizeError` naming the JSON-pointer `path` to fix, rather than being silently dropped or nulled. `toJSON` methods are ignored on purpose — encode `Schema` classes and `Date`s to plain JSON first:
+
+```ts
+import { JsoncFingerprint } from "@effected/jsonc";
+import { Result } from "effect";
+
+const ok = JsoncFingerprint.canonicalizeResult({ b: 2, a: 1 });
+console.log(Result.isSuccess(ok) ? ok.success : "");
+// {"a":1,"b":2}
+
+const bad = JsoncFingerprint.canonicalizeResult({ a: { b: undefined } });
+console.log(Result.isFailure(bad) ? `${bad.failure.code} at "${bad.failure.path}"` : "");
+// UnrepresentableValue at "/a/b"
+```
+
+`hash` and `hashText` carry that canonicalization through to a content digest: the lowercase-hex SHA-256 of the UTF-8 bytes of the canonical text (`hash`) or of raw text as given (`hashText`). Both require core's `Crypto.Crypto` service in `R` — this package owns no backend, so provide `@effect/platform-node`'s `NodeCrypto.layer` (or any `Crypto` layer) at the application edge:
+
+```ts
+import { JsoncFingerprint } from "@effected/jsonc";
+import { NodeCrypto } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const a = yield* JsoncFingerprint.hash({ b: 2, a: 1 });
+  const b = yield* JsoncFingerprint.hash({ a: 1, b: 2 });
+  return a === b;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NodeCrypto.layer))).then(console.log);
+// true
+```
+
+Digests are always exactly 64 lowercase hexadecimal characters, with no `sha256:` or other algorithm prefix — the same format `@effected/sbom`'s `Sha256Digest` schema decodes, so a fingerprint flows straight into an attestation subject without this package taking a dependency edge on `sbom`. `hashText`'s `normalizeEol: true` option normalizes `\r\n` and bare `\r` to `\n` before hashing — reach for it when the same file content must fingerprint identically across checkouts with different line-ending settings; `JsoncFingerprint.normalizeEol` exposes the same normalization as a pure, total function.
+
 ## Features
 
 - `Jsonc.parse` / `Jsonc.parseTree` — error-recovery parsing to a plain value or an offset-preserving `JsoncNode` AST, aggregating every recovered error into one `JsoncParseError` rather than failing on the first.
@@ -155,6 +191,7 @@ Preserving comments requires the original source text, which is exactly what `Js
 - `Jsonc.schema` / `Jsonc.fromString` / `Jsonc.JsoncFromString` — string→domain schema factories that decode JSONC directly into a validated Effect `Schema` value.
 - `JsoncFormatter` / `JsoncModifier` — compute byte-minimal `JsoncEdit` arrays for formatting and path-based modification, so callers apply the smallest possible diff instead of re-serializing the document.
 - `JsoncVisitor` — walk a parsed document as a `Stream` of visitor events, with `Stream.take` early termination on large inputs.
+- `JsoncFingerprint` — RFC 8785 canonical JSON (`canonicalize` / `canonicalizeResult`) and SHA-256 content fingerprints over it (`hash`, `hashText`), failing typed with `JsoncCanonicalizeError` rather than silently dropping or altering non-JSON values; `hash`/`hashText` require core's `Crypto.Crypto` service.
 - `JsoncParseError` / `JsoncModificationError` — tagged errors carrying structured, positional payloads rather than opaque messages. Hostile input (deep nesting, unterminated literals) fails through the error channel, never as a stack overflow.
 
 ## License

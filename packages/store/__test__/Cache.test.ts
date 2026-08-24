@@ -1,5 +1,9 @@
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
-import { assert, describe, it, layer } from "@effect/vitest";
+import { afterAll, assert, describe, it, layer } from "@effect/vitest";
 import { Cause, Duration, Effect, Exit, Layer, Option, PubSub, Ref, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -440,6 +444,52 @@ describe("Cache", () => {
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(Schema.encodeEffect(Uint8ArrayFromUtf8)(new Uint8Array([0xff, 0xfe])));
 				assert.include(String(error), "UTF-8");
+			}),
+		);
+	});
+
+	describe("sqlite driver options", () => {
+		const dir = mkdtempSync(join(tmpdir(), "effected-cache-sqlite-options-"));
+		afterAll(() => {
+			rmSync(dir, { recursive: true, force: true });
+		});
+
+		it.effect("client passthrough reaches the driver: disableWAL leaves no WAL file", () =>
+			Effect.gen(function* () {
+				// The WAL file only exists while the database is open, so the
+				// probe runs inside the provided program, not after it.
+				const walExistsAfterSet = (filename: string, client?: { readonly disableWAL?: boolean }) =>
+					Effect.provide(
+						Effect.gen(function* () {
+							const cache = yield* Cache;
+							yield* cache.set({ key: "k", value: bytes("v") });
+							return existsSync(`${filename}-wal`);
+						}),
+						Cache.layerSqlite({ filename, ...(client !== undefined ? { client } : {}) }),
+					);
+				assert.isTrue(yield* walExistsAfterSet(join(dir, "wal-default.db")));
+				assert.isFalse(yield* walExistsAfterSet(join(dir, "wal-disabled.db"), { disableWAL: true }));
+			}),
+		);
+
+		// The ordering mechanism (finalizer before the driver's close) is shared
+		// with Store via internal/sqlite.ts, where the Store suite carries the
+		// no-checkpoint control; this pins the Cache wiring end to end.
+		it.effect("checkpointOnClose truncates the WAL before the client closes", () =>
+			Effect.gen(function* () {
+				const filename = join(dir, "checkpointed.db");
+				let second: DatabaseSync | undefined;
+				yield* Effect.provide(
+					Effect.gen(function* () {
+						const cache = yield* Cache;
+						yield* cache.set({ key: "k", value: bytes("v") });
+						second = new DatabaseSync(filename);
+						second.prepare("SELECT count(*) AS n FROM cache_entries").get();
+					}),
+					Cache.layerSqlite({ filename, checkpointOnClose: true }),
+				);
+				assert.strictEqual(statSync(`${filename}-wal`).size, 0);
+				second?.close();
 			}),
 		);
 	});

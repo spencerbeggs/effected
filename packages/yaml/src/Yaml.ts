@@ -23,7 +23,14 @@ import type { RawYamlDocument } from "./internal/raw-document.js";
 import { StringifyDepthExceeded, StringifyFailure, stringifyValue } from "./internal/stringifier.js";
 import { YamlDiagnostic } from "./YamlDiagnostic.js";
 import type { YamlNode } from "./YamlNode.js";
-import { AliasExpansionBudgetExceeded, CollectionStyle, QuoteStyle, ScalarStyle, nodeToJsValue } from "./YamlNode.js";
+import {
+	AliasExpansionBudgetExceeded,
+	CollectionStyle,
+	QuoteCompat,
+	QuoteStyle,
+	ScalarStyle,
+	nodeToJsValue,
+} from "./YamlNode.js";
 
 /**
  * Options controlling parse behavior. All fields are omissible; absent fields
@@ -55,8 +62,9 @@ export class YamlParseOptions extends Schema.Class<YamlParseOptions>("YamlParseO
  * Options controlling stringify behavior. All fields are omissible; absent
  * fields resolve to `indent` `2`, `lineWidth` `0`, `defaultScalarStyle`
  * `"plain"`, `defaultCollectionStyle` `"block"`, `sortKeys` `false`,
- * `indentSequences` `false`, `quoteStyle` `"single"`, `finalNewline` `true`
- * and `forceDefaultStyles` `false`.
+ * `indentSequences` `false`, `quoteStyle` `"single"`, `quoteCompat` absent
+ * (no dialect-compat quoting), `finalNewline` `true` and `forceDefaultStyles`
+ * `false`.
  *
  * `lineWidth` controls column-based scalar folding. The default `0` (and any
  * value `<= 0`) never wraps, emitting byte-identical output to the historic
@@ -134,6 +142,31 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
 	 * `"double-quoted"` is unaffected.
 	 */
 	quoteStyle: Schema.optionalKey(QuoteStyle),
+	/**
+	 * Additionally quote plain scalars a foreign resolution dialect would
+	 * coerce to a non-string. Absent (the default) adds no quoting beyond the
+	 * YAML 1.2 Core Schema rules — byte-identical to the released output.
+	 *
+	 * `"yaml-1.1"` quotes every plain scalar a YAML 1.1 parser (js-yaml,
+	 * PyYAML, libyaml) would implicitly resolve to a non-string: the extended
+	 * boolean spellings (`y`/`yes`/`on`/`off` and case variants — the "Norway
+	 * problem"), timestamps (`2024-01-15`, `2001-12-15T02:59:43.1Z`, the
+	 * space-separated 1.1 forms), sexagesimal numbers (`1:30`,
+	 * `190:20:30.15`), underscore-separated numbers (`1_000`) and the
+	 * base-2/8/16 integer forms (`0b1010_0111`, `0777`, `0x_FF`). Use it when
+	 * emitted output is parsed downstream by a YAML 1.1 consumer and blanket
+	 * `defaultScalarStyle` quoting is too noisy.
+	 *
+	 * Strictly additive: it never un-quotes anything the 1.2 rules require
+	 * quoted, strings no 1.1 parser coerces stay plain, and the quote
+	 * character stays governed by `quoteStyle`. Scalars carrying an explicit
+	 * tag are exempt, exactly like the 1.2 type-conflict check. Applies
+	 * wherever the plain fallback renders — values, mapping keys, flow items —
+	 * on both the value path ({@link Yaml.stringify},
+	 * {@link Yaml.stringifyResult}) and the node path (`YamlDocument#stringify`
+	 * and the `YamlFormat` helpers).
+	 */
+	quoteCompat: Schema.optionalKey(QuoteCompat),
 	finalNewline: Schema.optionalKey(Schema.Boolean),
 	forceDefaultStyles: Schema.optionalKey(Schema.Boolean),
 }) {}
@@ -200,6 +233,7 @@ const toStringifyInput = (options?: YamlStringifyOptions): StringifyOptionsInput
 				sortKeys: options.sortKeys,
 				indentSequences: options.indentSequences,
 				quoteStyle: options.quoteStyle,
+				quoteCompat: options.quoteCompat,
 				finalNewline: options.finalNewline,
 				forceDefaultStyles: options.forceDefaultStyles,
 			};

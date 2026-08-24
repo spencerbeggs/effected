@@ -193,10 +193,29 @@ The `requoteScalars: true` half of the `singleQuote` row is what buys full parit
 
 Multi-document streams — a Kubernetes manifest, or the two-document `pnpm-lock.yaml` pnpm 11 writes under `configDependencies` — format whole: every document is re-emitted in order with its own `---`/`...` framing and comments, so no document is ever dropped. Document detection is CST-level, so a `---` inside a block scalar or quoted string is content and formats normally. The formatter leaves input byte-identical rather than corrupting it in exactly two cases: a fatal parse error in any document, and a stream carrying `%YAML`/`%TAG` directives (which the emitter cannot re-emit faithfully). Validate a whole stream with `Yaml.parseAllResult`, which fails typed when any document carries a fatal diagnostic; `YamlFormat.modify` stays single-document, since a path names no particular document of a stream.
 
+## Emitting for a YAML 1.1 consumer
+
+YAML 1.2's Core Schema resolves fewer plain scalars to non-strings than YAML 1.1 does. A plain `on` or `yes` round-trips as a string under this package's own parser but becomes a boolean the moment a YAML 1.1 consumer — js-yaml, PyYAML, libyaml, most CI systems' native YAML support — reads it back: the "Norway problem". `quoteCompat: "yaml-1.1"` closes that gap on the way out, quoting every plain scalar a 1.1 resolver would re-type: the extended booleans (`y`/`yes`/`no`/`on`/`off` and case variants), 1.1 timestamps, sexagesimal numbers (`1:30`), underscore-grouped numbers (`1_000`) and the octal/hex/binary integer forms (`0777`, `0x_FF`, `0b1010_0111`). It is strictly additive — nothing the 1.2 rules already quote loses a quote, and no string outside that list gains one — and composes with `quoteStyle` for the quote character and `lineWidth` for folding:
+
+```ts
+import { Yaml, YamlStringifyOptions } from "@effected/yaml";
+import { Effect } from "effect";
+
+const frontmatter = { node: "on", released: "2024-01-15", port: "yes" };
+const options = YamlStringifyOptions.make({ lineWidth: 0, quoteCompat: "yaml-1.1", quoteStyle: "double" });
+
+Effect.runPromise(Yaml.stringify(frontmatter, options)).then(console.log);
+// node: "on"
+// released: "2024-01-15"
+// port: "yes"
+```
+
+That combination — `lineWidth: 0` (no folding), `quoteCompat: "yaml-1.1"`, `quoteStyle: "double"` — is the shape to reach for when stringifying frontmatter destined for YAML-1.1 tooling: Markdown frontmatter parsers and most static-site generators still resolve on the older rules. The option applies on both the value path (`Yaml.stringify`, `Yaml.stringifyResult`) and the node path (`YamlDocument#stringify`, `YamlFormat`), and scalars carrying an explicit tag are exempt, exactly like the 1.2 type-conflict check it extends.
+
 ## Features
 
 - `Yaml.parse` / `Yaml.parseAll` — error-recovery parsing of a single document or a `---`-separated stream into plain values, resolving anchors and aliases and aggregating every diagnostic into one `YamlParseError`.
-- `Yaml.stringify` — serialize a plain value back to YAML, failing typed with `YamlStringifyError` on circular references or on excessively deep nesting; a block-mapping key too long to render on one line spills into explicit-key form (`? key` / `: value`) so strict parsers still accept the output.
+- `Yaml.stringify` — serialize a plain value back to YAML, failing typed with `YamlStringifyError` on circular references or on excessively deep nesting; a block-mapping key too long to render on one line spills into explicit-key form (`? key` / `: value`) so strict parsers still accept the output; `quoteCompat: "yaml-1.1"` additionally quotes plain scalars a YAML 1.1 resolver would re-type.
 - `Yaml.parseResult` / `Yaml.parseAllResult` / `Yaml.stringifyResult` — the pure synchronous counterparts, returning a `Result` instead of an `Effect` for config-time callers that cannot await; each runs the same engine call as its `Effect` variant, so the two forms cannot diverge, and a fatal diagnostic, a duplicate key, an alias bomb or a circular reference still fails typed rather than throwing. `parseAllResult` doubles as a whole-stream validity check: it fails when any document in the stream is invalid.
 - `Yaml.stripComments` — quote-aware comment removal that keeps line numbers stable, or every byte offset stable when given a replacement character.
 - `Yaml.equals` / `Yaml.equalsValue` — semantic equality that ignores comments, whitespace, formatting and mapping key order while keeping sequence order significant.

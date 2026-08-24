@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-23
-last-synced: 2026-08-23
-completeness: 94
+updated: 2026-08-24
+last-synced: 2026-08-24
+completeness: 95
 related:
   - ../architecture.md
   - ../effect-standards.md
@@ -37,6 +37,7 @@ related:
 Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept). Each concept file owns its `Schema.Class` models, the errors that concept raises and — if it is a service — the `Context.Service` class plus its layers.
 
 - `Package.ts` — the core model, the wire transform and `.extend()` story, and the reusable `@public` field codecs.
+- `LenientManifest.ts` — the shape-lenient discovery tier; see [the tolerance ladder](#the-tolerance-ladder-and-lenientmanifest).
 - The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `Repository.ts`, `DevEngines.ts`, `Dependency.ts`. `Repository.ts` holds both location models, because they share the shorthand-or-object encoding and the wire-provenance machinery and splitting them would duplicate it.
 - `PackageValidator.ts` — the validation service, its rule interface, the default rule set and a parameterized layer factory.
 - `PackageJsonFile.ts` — **the only IO module**: one service, read and write over core `FileSystem`/`Path`, plus its error tags.
@@ -110,6 +111,24 @@ An edited shorthand **re-emits as a shorthand**; the object form is the fallback
 The modeled field set is scoped to **every manifest field the CycloneDX 1.6 plus NTIA-minimum-elements mapping reads**, derived from [`@effected/sbom`](sbom.md)'s metadata-source mapping rather than from a general sweep of npm's documentation. Each field is present because something consumes it: name and version (which the `purl` also derives from), description, license, author, contributors, maintainers, keywords, repository, bugs and homepage.
 
 **`funding` was evaluated and deliberately NOT added.** npm documents it, but CycloneDX 1.6 has no funding external-reference type — verified by enumerating the published type set, not from memory. A field with no target in the mapping would be exactly the arbitrary growth this scope rule exists to prevent; it earns its place the day a consumer names a target for it.
+
+## The tolerance ladder and `LenientManifest`
+
+The kit's package.json tolerance ladder, from strictest to most permissive, is documented once in `PackageManifest.ts`'s header comment and reproduced here because it is load-bearing for choosing between four surfaces that all decode the same document:
+
+- **`Package`** — strict, publishable: `name`/`version` required, every present field shape-validated against its npm grammar.
+- **`PackageManifest`** — presence-lenient: fields may be absent (the private workspace-root shape), but a present field is still shape-validated exactly as strictly as `Package`'s.
+- **`LenientManifest`** — shape-lenient discovery/sniffing (this section): a present field that fails even its permissive shape check **degrades to absence** rather than failing the document.
+- **`@effected/npm`'s `Manifest`** — shape-blind outside the four dependency fields, for mid-build resolution.
+- **`PackageJsonFormat`** — the decode-free text path: anything syntactically JSON, no field validation at all.
+
+`LenientManifest` exists for the discovery use case neither strict tier can serve: probing a fetched tarball's manifest, walking a `node_modules` tree, listing candidate packages — where the document is other people's data and one malformed field must not fail the whole read. Every field shares its name with `Package`, but is typed as its **plain permissive JSON shape** rather than the branded/validated one: `name` and `version` are any string (a legacy uppercase name or a non-semver `"1.0"` is recovered, not rejected), `license` is any string with no SPDX check, and the dependency maps, `scripts` and `engines` are plain `Record<string, string>` rather than the strict tiers' `HashMap`.
+
+**Leniency is per-field, never per-syntax, and degradation is per-top-level-field.** Text that fails to `JSON.parse` fails typed as `PackageJsonSyntaxError`; a parsed value that is not a JSON object at all fails typed as `PackageDecodeError` — leniency does not cover either. Within an object, each top-level key is sifted independently against a `Map<string, FieldGuard>` of permissive-shape predicates: an unknown key or a known key whose value fails its guard both flow verbatim into `rest` (a malformed known field is treated exactly like an unknown one), and every degradation is additionally recorded on `issues` as a `LenientFieldIssue { field, expected, value }` so a caller can report what was ignored. One junk entry degrades its whole field — there is no per-array-element or per-map-entry leniency.
+
+**An empty `issues` array does not imply the strict tiers would accept the document.** The permissive guards check JSON *shape*, not npm *semantics* (no SPDX validity, no semver grammar, no npm name grammar) — `LenientManifest` is a sniffing tier, not a validation bypass. The upgrade path when validation is actually wanted is re-decoding the *original* input through `PackageManifest.decode` (presence-lenient, shape-strict) or `Package.decode` (strict, publishable). Consistent with that posture, the class carries **no mutation statics and no write path** — editing belongs to the strict tiers and to `PackageJsonFormat.modifyToString` / `PackageJsonFile.modify`.
+
+Sync primitives (`decodeResult`/`parseResult`) with `Effect.fn`-derived spans (`decode`/`parse`) follow the package-wide wrapping policy exactly like every other fallible surface here. Born from the tsdoctor-monorepo dogfood ask (round 1, item 3).
 
 ## The `rest` catch-all and `.extend()` story
 

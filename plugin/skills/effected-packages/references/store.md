@@ -1,6 +1,6 @@
 # @effected/store
 
-Durable local state: `Store` is a schema-versioned, migrated SQLite `SqlClient`; `Cache` is a `key → Uint8Array` TTL cache with tags, eviction and an event stream. Integrated tier: it owns the one real backend dependency in the kit (`@effect/sql-sqlite-node`), and depending on it makes YOUR package integrated too.
+Durable local state: `Store` is a schema-versioned, migrated SQLite `SqlClient`; `Cache` is a `key → Uint8Array` TTL cache with tags, eviction and an event stream. **Store is your schema — migrations create your tables, `client` queries them.** It is not a key-value store; the KV shape is `Cache` (or core's `KeyValueStore`). Integrated tier: it owns the one real backend dependency in the kit (`@effect/sql-sqlite-node`), and depending on it makes YOUR package integrated too.
 
 ## Import
 
@@ -14,7 +14,8 @@ Single entrypoint; no subpaths.
 
 ## Core API
 
-- **`Store`** (`Context.Service`) — `client: SqlClient` (tagged-template SQL), `migrate`, `rollback(toId)`, `status`. Layers: `Store.layer(options)` (abstract — needs a `SqlClient` in `R`), `Store.layerSqlite(options & { filename })` (batteries included), `Store.layerTest(options)` (`:memory:`). A `StoreMigration`'s `up`/`down` return `Effect<unknown, SqlError>`.
+- **`Store`** (`Context.Service`) — `client: SqlClient` (tagged-template SQL), `migrate`, `rollback(toId)`, `status`. Layers: `Store.layer(options)` (abstract — needs a `SqlClient` in `R`), `Store.layerSqlite(options & { filename })` (batteries included; the parent directory of `filename` must already exist — see Gotchas), `Store.layerTest(options)` (`:memory:`). A `StoreMigration`'s `up`/`down` return `Effect<unknown, SqlError>`.
+- **Sqlite layer options** (`Store.layerSqlite` and `Cache.layerSqlite` alike) — `client` passes the remaining driver options through (`disableWAL`, `busyTimeout`, `prepareCacheSize`/`prepareCacheTTL`, `readonly`, `spanAttributes`; NOT the name-transform options, which would break the internal ledger queries), and `checkpointOnClose: true` registers the `PRAGMA wal_checkpoint(TRUNCATE)` finalizer that runs before the driver closes the connection.
 - **`Cache`** (`Context.Service`) — `get`, `set`, `has`, `entries` (metadata only; never loads BLOBs), `invalidate`/`invalidateByTag`/`invalidateAll`/`prune` (each with an optional transactional `onRemoved` callback), `events: PubSub<CacheEvent>`. Same layer trio: `Cache.layer` / `Cache.layerSqlite` / `Cache.layerTest`.
 - **`Cache.through(key, schema, options?)(onMiss)`** and **`Cache.throughVerbose`** — read-through caching in one call. `get` → decode → run `onMiss` → encode → `set` was ~25 lines every consumer wrote for itself. **Statics, not shape members**: they take `Cache` from context, so `R` includes `Cache` and no test double needs an implementation. `throughVerbose` returns `{ value, hit }` for a caller that wants to print *(cached)* — the `CacheEvent` PubSub is telemetry and the wrong channel for that. Two policies the package owns: **a stored value that fails to decode (or is not valid UTF-8) is a MISS, not a failure**, and is overwritten; **`CacheError` is surfaced, not swallowed** — catch it yourself with `catchTag` if a broken cache should not stop you.
 - **`Uint8ArrayFromUtf8`** — a `Schema.Codec<Uint8Array, string>`. Cache values are bytes, and core's Schema ships only `Uint8ArrayFromBase64` / `…Base64Url` / `…FromHex` — **nothing for UTF-8** — so "encode through a schema" could not be completed and every consumer hand-wired a `TextEncoder`. Encoding fails on malformed UTF-8 rather than substituting `U+FFFD`. Prefer a core equivalent if one ever ships.
@@ -67,3 +68,4 @@ const program = Effect.gen(function* () {
 - `invalidateByTag` matches JSON-encoded tags with escaped LIKE metacharacters — tags containing backslashes/quotes won't match raw-string comparisons.
 - Eviction is least-recently-WRITTEN (rowid order), not LRU-read.
 - There is no `@effect/sql` package on v4 — `SqlClient`/`SqlError` live in `effect/unstable/sql`.
+- A database previously migrated by `effect/unstable/sql/Migrator` keeps its ledger in `effect_sql_migrations`, which Store does not read — first construction re-runs every migration. Harmless if they are idempotent; otherwise seed `_store_migrations` before the first layer build (exact SQL in the package README's "Adopting a database migrated by effect's Migrator").

@@ -26,8 +26,10 @@ const reCmarkSpace = /[ \t\n\r]/;
 /**
  * Trim `text` the way commonmark.js does before inline parsing, carrying the
  * segment table along so the surviving characters keep their source offsets.
+ * Exported for the phrasing-level parse entry point (`phrasing.ts`), which
+ * prepares content the same way a paragraph does.
  */
-const trimWithSegments = (
+export const trimWithSegments = (
 	text: string,
 	segments: ReadonlyArray<RawInlineSegment>,
 	whitespace: RegExp,

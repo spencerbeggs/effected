@@ -26,6 +26,7 @@ import type {
 	LinkReference,
 	List,
 	ListItem,
+	MdxjsEsm,
 	Paragraph,
 	PhrasingContent,
 	Root,
@@ -151,13 +152,14 @@ export const normalizeLabel = (label: string): string =>
  * anywhere flow content can nest" traversal.
  */
 const walkFlowContainers = (
-	nodes: ReadonlyArray<Frontmatter | FlowContent>,
+	nodes: ReadonlyArray<Frontmatter | MdxjsEsm | FlowContent>,
 	visit: (node: FlowContent) => void,
 ): void => {
 	for (const node of nodes) {
 		// A frontmatter head is raw metadata, not flow content — it renders to
-		// nothing and contains nothing to collect.
-		if (node.type === "frontmatter") {
+		// nothing and contains nothing to collect. An MDX ESM head is likewise
+		// not flow content (and the parser never produces one).
+		if (node.type === "frontmatter" || node.type === "mdxjsEsm") {
 			continue;
 		}
 		visit(node);

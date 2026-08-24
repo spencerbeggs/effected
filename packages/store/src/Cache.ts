@@ -6,6 +6,7 @@ import * as SqlError from "effect/unstable/sql/SqlError";
 import { bytesToUtf8, utf8ToBytes } from "./Bytes.js";
 import type { MigratorMigration } from "./internal/migrator.js";
 import { ensureLedger, runPending } from "./internal/migrator.js";
+import { walCheckpointOnClose } from "./internal/sqlite.js";
 
 /**
  * A stored cache entry: its key, value and bookkeeping fields.
@@ -326,6 +327,32 @@ export interface CacheSqliteOptions extends CacheOptions {
 	 * from the driver, not a typed failure.
 	 */
 	readonly filename: string;
+	/**
+	 * Remaining driver options, passed through to `SqliteClient.layer`.
+	 *
+	 * @remarks
+	 * `filename` is owned by this layer and cannot be overridden here. The two
+	 * name-transform options (`transformResultNames`, `transformQueryNames`)
+	 * are deliberately excluded: every cache query is package-internal and
+	 * reads snake_case columns, so a name transform silently breaks the whole
+	 * surface. Consumers who need one wire their own client under the abstract
+	 * {@link Cache.layer}.
+	 */
+	readonly client?: Omit<SqliteClient.SqliteClientConfig, "filename" | "transformResultNames" | "transformQueryNames">;
+	/**
+	 * Register a `PRAGMA wal_checkpoint(TRUNCATE)` finalizer that runs before
+	 * the driver closes the connection.
+	 *
+	 * @remarks
+	 * Useful when another process may open the database file after this scope
+	 * closes: the WAL is folded into the main file eagerly rather than on the
+	 * next open. The checkpoint is best-effort — a failure is ignored so a
+	 * clean shutdown never turns into a failed one. SQLite-specific by nature,
+	 * so the option lives here and not on the driver-agnostic
+	 * {@link Cache.layer}; {@link Cache.layerTest} (`:memory:`) has no WAL and
+	 * never checkpoints.
+	 */
+	readonly checkpointOnClose?: boolean;
 }
 
 const CACHE_LEDGER_TABLE = "_cache_migrations";
@@ -726,7 +753,12 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 
 	/** The batteries-included layer over `@effect/sql-sqlite-node`. */
 	static layerSqlite(options: CacheSqliteOptions): Layer.Layer<Cache, CacheError> {
-		return Layer.provide(Cache.layer(options), SqliteClient.layer({ filename: options.filename }));
+		// `filename` last: the layer owns it, whatever the passthrough says.
+		const client = SqliteClient.layer({ ...options.client, filename: options.filename });
+		const cache = Layer.provide(Cache.layer(options), client);
+		return options.checkpointOnClose === true
+			? Layer.merge(cache, Layer.provide(walCheckpointOnClose(), client))
+			: cache;
 	}
 
 	/** An in-memory (`:memory:`) layer for tests. */

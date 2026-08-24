@@ -3,12 +3,14 @@
 CommonMark 0.31.2 + GFM as pure Effect schemas: parse into mdast-shaped nodes
 with byte offsets, compute offset-splice edits, format, modify by node, project
 to and from plain mdast, walk as a `Stream`, and read and write frontmatter
-through free-standing codecs.
+through free-standing codecs. Plus the MDX node vocabulary (construct +
+serialize only — the parser reads no MDX syntax), a phrasing-level parse entry
+point, and string-level frontmatter split/join.
 
 **Tier: pure.** Peer-depends on `effect` plus **optional** kit peers
 `@effected/yaml`, `@effected/toml` and `@effected/jsonc`
 (`peerDependenciesMeta`), consumed only by the three frontmatter codec modules.
-Zero runtime deps, no IO. ~11.2k src LOC across 14 public modules plus the
+Zero runtime deps, no IO. ~13k src LOC across 15 public modules plus the
 `src/internal/` engine — second in size only to `yaml`. Not a migration: designed
 here, built in five phases. **P1–P5 are complete; P6 (docs and adoption) remains**
 — the api-extractor model plus website docs, dogfooded via the
@@ -47,6 +49,8 @@ Two escapes the table states, both found by a consumer rather than by us. **Repr
 **Changing a canonical choice is a breaking change.** Update the table on `Markdown.stringifyResult`, the README table and that suite together, and bump accordingly. A row that moves silently breaks a promise consumers were invited to depend on.
 
 The configurable surface is `MarkdownFormat` + `MarkdownFormattingOptions`; this one is deliberately not.
+
+**MDX serialization is part of the same commitment, and its escaping is presence-keyed, never an option**: a tree carrying any MDX node escapes `{` in text; a tree with none serializes byte-identically to the table. That keying is what keeps stringify option-free while the corpora stay byte-stable — do not replace it with a stringify option.
 
 ## Non-negotiables
 

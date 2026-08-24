@@ -55,6 +55,20 @@ re-exports below it).
   (`DependencyMapField`, `StringMapField`, `BinField`, `ExportsField`,
   `PublishConfigField`, `PeerDependenciesMetaField`, `RepositoryField`) — these
   are genuine reusable API on their own merit, not scaffolding.
+- **`LenientManifest.ts`** — the shape-lenient discovery/sniffing tier of the
+  tolerance ladder (below `PackageManifest`, above `PackageJsonFormat`): every
+  `Package` field name, permissively typed as its plain JSON shape (any string
+  `name`/`version`/`license`, plain records not `HashMap`s). A present field
+  that is not even that shape **degrades to absence**, is preserved verbatim in
+  `rest` (a malformed known field is treated as an unknown key) and is reported
+  on `issues` (`LenientFieldIssue`); degradation granularity is the top-level
+  field. Leniency is per-field, never per-syntax — non-object values fail typed
+  as `PackageDecodeError`, malformed text as `PackageJsonSyntaxError`. Sync
+  primitives `decodeResult` / `parseResult` with `Effect.fn`-spanned `decode` /
+  `parse` derived from them. No mutation statics, no write path — zero issues
+  does NOT imply strict validity; the upgrade path is re-decoding the original
+  input through `PackageManifest.decode` / `Package.decode`. Born from the
+  tsdoctor-monorepo dogfood ask (round 1, item 3).
 - **`DependencySpecifier`** — the specifier taxonomy (one `protocolOf` classifier over eleven protocols, `range` | `tag` | `git` | `url` | `npm` | `file` | `link` | `portal` | `catalog` | `workspace` | `unknown`, plus predicate statics). **Relocated to `@effected/npm`** when lockfiles became its second consumer; `src/DependencySpecifier.ts` was deleted and `index.ts` **re-exports** it (with `DependencyKind`, `DependencyProtocol`, `DependencySpecifierBrand`, `InvalidDependencySpecifierError`, `isValidDependencySpecifier`) from there. This package no longer owns the file.
 - **`EntryPoint.ts`** — `resolveEntryPoint`, answering "which file is this
   manifest's `"."` entry?" **pure, IO-free and `Result`-returning**, over a

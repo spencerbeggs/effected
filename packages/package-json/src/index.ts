@@ -18,9 +18,11 @@
  * {@link PackageManifest} is the presence-lenient model — `name` / `version`
  * optional, `packageManager` accepting the range spelling as
  * {@link PackageManagerRange} — for the private workspace-root shape the
- * strict `Package` rejects; and `PackageJsonFormat.modify` /
- * `PackageJsonFile.modify` are the surgical, byte-preserving field edits for
- * tools that mutate other people's manifests.
+ * strict `Package` rejects; {@link LenientManifest} is the shape-lenient
+ * discovery tier below it, degrading malformed fields to absence (preserved
+ * in `rest`, reported on `issues`) instead of failing the document; and
+ * `PackageJsonFormat.modify` / `PackageJsonFile.modify` are the surgical,
+ * byte-preserving field edits for tools that mutate other people's manifests.
  *
  * @packageDocumentation
  */
@@ -42,6 +44,7 @@ export {
 	UnresolvedEntryPointError,
 	resolveEntryPoint,
 } from "./EntryPoint.js";
+export { type LenientFieldIssue, LenientManifest } from "./LenientManifest.js";
 export { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx } from "./License.js";
 export {
 	BinField,
