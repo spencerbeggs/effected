@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 95
 related:
   - github-actions.md
@@ -51,6 +51,8 @@ Inputs are read through a `ConfigProvider` that owns the `INPUT_` name mangling,
 
 Beyond the toolkit-faithful accessors, two shapes existed only as consumer hand-rolls and are now one implementation with one set of tests: a **list** accessor absorbing the whole union grammar consumers had reinvented (JSON arrays, bullet lists, comma-separated values) rather than shipping a variant per shape, and a **key-value pairs** accessor. A schema-decoding accessor covers everything else.
 
+**The pairs accessor validates the key, always; the value, on request.** An **empty key** (`=value`, or a bare `=`) is rejected unconditionally: `{ "": v }` cannot be what a workflow meant, and the damage lands far from the typo — an empty key became a repository filter that matched nothing, and the run reported zero results with no indication why. An empty **value** (`key=`) is accepted by default, because setting a property to the empty string is legitimate, and `requireValue` opts into rejecting it. **Every rejection names the offending line**, which is the difference between a fixable `ConfigError` and one that says a multi-line input is bad somewhere.
+
 **Absence is one rule across every accessor**: a missing input and an input set to empty are both *missing data*, because the runner writes an empty string for an input the workflow omitted. An optional input therefore needs a default or an option wrapper at the call site, or the read fails outright.
 
 **An input whose contract is "empty disables it" needs the option form, not a default.** Empty is classified missing *before* a default is consulted, so the default substitutes and the disable state is unreachable; only the option form distinguishes the states. This is confirmed against the runner's own source and a live probe rather than inferred, and two consequences follow: the runner publishes a variable for **every** declared input, so "absent" is a state a runner never actually produces, and an input declaring no manifest default arrives set-and-empty when unsupplied — so deleting a manifest default does not restore a fallback, it silently flips every unsupplied run onto the disabled branch.
@@ -91,6 +93,8 @@ Log annotations use the **readable** property vocabulary rather than the wire na
 **Reporting a failure emits the annotation but does not set the exit code.** That belongs to `Action.run`, so an action that reports a failure and then recovers is not doomed by a side effect it cannot undo.
 
 **Runner-file delimiters are derived, not random.** GitHub's own toolkit uses a random UUID and accepts a collision chance; deriving one and extending it until it is absent from the value makes collision *impossible* rather than improbable, needs no crypto service, and is deterministic under test. A value containing the delimiter would otherwise terminate its block early — a value-controlled injection into the runner's own file.
+
+**Both error sets are now [per-reason tagged unions](github-actions.md#errors)** — `ActionOutputError` is `RunnerFileUnavailableError | RunnerFileWriteError | InvalidOutputNameError | OutputEncodeError | DetachedOutputError`, and `DetachedProcessError` likewise across its five failures. The names survive as union aliases, so nothing in the surface moved; what changed is that "the runner file is not there" and "the output name is invalid" are separately recoverable, which is the distinction a `pre`/`post` phase actually acts on.
 
 **State round-trips through the real runner file in tests**, in a temp directory, because the phase boundary is the thing under test and an in-memory double would assert the double.
 

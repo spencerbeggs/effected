@@ -1,6 +1,6 @@
 # @effected/package-json
 
-package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged — the consolidation is the point: 12 `src/` modules, down from 34 v3 files. (Test counts move every commit and are not tracked here; run `pnpm test --filter @effected/package-json`.)
+package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged — the consolidation is the point: a module per concept in `src/`, down from 34 v3 files. (Test counts move every commit and are not tracked here; run `pnpm test --filter @effected/package-json`.)
 
 **Design doc:** `@../../.claude/design/effected/packages/package-json.md` — load when
 changing the public surface, the `rest` wire transform, or the error taxonomy.
@@ -56,6 +56,19 @@ re-exports below it).
   `PublishConfigField`, `PeerDependenciesMetaField`, `RepositoryField`) — these
   are genuine reusable API on their own merit, not scaffolding.
 - **`DependencySpecifier`** — the specifier taxonomy (one `protocolOf` classifier over eleven protocols, `range` | `tag` | `git` | `url` | `npm` | `file` | `link` | `portal` | `catalog` | `workspace` | `unknown`, plus predicate statics). **Relocated to `@effected/npm`** when lockfiles became its second consumer; `src/DependencySpecifier.ts` was deleted and `index.ts` **re-exports** it (with `DependencyKind`, `DependencyProtocol`, `DependencySpecifierBrand`, `InvalidDependencySpecifierError`, `isValidDependencySpecifier`) from there. This package no longer owns the file.
+- **`EntryPoint.ts`** — `resolveEntryPoint`, answering "which file is this
+  manifest's `"."` entry?" **pure, IO-free and `Result`-returning**, over a
+  *structural* `EntryPointManifest` (`{ exports?, main? }`) rather than a
+  `Package`, so a manifest read straight out of a tarball resolves with nothing
+  else validated. It honours the string shorthand, the subpath map and root
+  conditions with no `"."` key, and conditions **recurse**. The condition list
+  is caller-supplied and **ordered** — the order IS the policy. **A present
+  `exports` encapsulates the package**: a root entry matching none of the
+  requested conditions **fails** and does **not** fall through to `main` (Node's
+  own rule; a test pins it, because the lenient reading is what a future reader
+  would "fix" it back to). `UnresolvedEntryPointError` carries a discriminated
+  `reason` — `noRootExport`, `noConditionMatched` (naming the conditions tried),
+  `unsupportedExportsForm`; never collapse it to one sentinel.
 - **`Dependency.ts`** — one class with a `kind` field (typed against `@effected/npm`'s kit-wide `DependencyKind`), replacing v3's four copy-pasted tagged classes; the protocol getters delegate to npm's `DependencySpecifier`.
 - **`PackageName.ts`**, **`License.ts`**, **`PackageManager.ts`**,
   **`Person.ts`**, **`DevEngines.ts`** — leaf concepts, each owning its own

@@ -7,6 +7,14 @@ and `effect` is pinned by `catalog:effect`, so a probe here type-checks against
 the exact prerelease the kit builds with — the silent Result-accessor misread
 class of probe bug dies at compile time.
 
+**This is not the agent harness's own scratch directory.** Most sessions are
+also handed a private scratch *directory* under `/tmp`, named in the system
+prompt; it has no `node_modules`, so a probe written there dies with
+`ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` — reached by a route that
+feels like *following* the probe-venue rule. The venue is this `scratchpad/`
+directory **inside the repo**, resolved from the repo root (re-proven
+2026-08-23).
+
 ## Where to write, how to run
 
 Two working areas, both **gitignored and disposable**:

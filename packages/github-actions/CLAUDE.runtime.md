@@ -47,6 +47,21 @@ does not install a provider" probe is superseded by the 2026-07-25 ruling below
 it. Only flat single-segment paths get the `INPUT_` derivation; nested and
 numeric paths pass through untouched.
 
+**`list` splits on commas as well as newlines** — the separator is `/[\n,]/`
+(`ActionInput.ts:302`), so a single-line `a,b` input is TWO entries, not one.
+Neither the member's own summary nor its `@remarks` says so; they describe the
+bullet and comment handling only. A reader who takes the docs at face value
+will not expect it, and a value that legitimately contains a comma cannot be
+passed through `list` at all.
+
+**The `pairs` accessor validates the key always, the value on request**
+(2026-08-23). An **empty key** (`=value`, or a bare `=`) is rejected
+unconditionally — `{ "": v }` cannot be what a workflow meant, and the damage
+lands far from the typo: an empty key became a repository filter matching
+nothing, and the run reported zero results with no indication why. An empty
+*value* is legitimate (setting a property to `""`), so `requireValue` opts into
+rejecting it. Every rejection **names the offending line**.
+
 **Absence is one rule across every accessor**: a missing input and an input set
 to `""` are both *missing data*, because the runner writes `""` for an input the
 workflow omitted. An **optional** input therefore needs `Config.withDefault` (or
@@ -90,6 +105,14 @@ demonstrate the failure path with a test or delete it from the signature — eve
 error reason in this package currently has a test that fires it.
 
 `ActionInputError` does not survive: input failures are `ConfigError`.
+
+`ActionOutputError` and `DetachedProcessError` are now **per-reason tagged
+unions** (see the parent's non-negotiables): `RunnerFileUnavailableError |
+RunnerFileWriteError | InvalidOutputNameError | OutputEncodeError |
+DetachedOutputError`, and five likewise for the detached spawner. The names
+survive as union aliases, so nothing in the surface moved; what changed is that
+"the runner file is not there" and "the output name is invalid" are separately
+recoverable — the distinction a `pre`/`post` phase actually acts on.
 
 **`Config.withDefault` reads the *issue*, not the combinator.** An
 `InvalidValue` whose `actual` is `None` is classified as *missing data* and

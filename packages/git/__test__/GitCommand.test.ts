@@ -626,6 +626,18 @@ describe("GitCommand", () => {
 		it("configList / configGetAll pin -z and scope to -f when a file is given", () => {
 			assertGitCommand(GitCommand.configList(), ["config", "--list", "-z"]);
 			assertGitCommand(GitCommand.configList(".gitmodules"), ["config", "-f", ".gitmodules", "--list", "-z"]);
+		});
+
+		it("emits a scope flag only when one is asked for, so the default stays the merged read", () => {
+			// No scope must NOT become --local: the merged read is the documented
+			// default and silently narrowing it would change every existing
+			// caller's answer.
+			assertGitCommand(GitCommand.configList(undefined, "local"), ["config", "--local", "--list", "-z"]);
+			assertGitCommand(GitCommand.configList(undefined, "global"), ["config", "--global", "--list", "-z"]);
+			assertGitCommand(GitCommand.configList(undefined, "system"), ["config", "--system", "--list", "-z"]);
+			assertGitCommand(GitCommand.configList(undefined, "worktree"), ["config", "--worktree", "--list", "-z"]);
+			assertGitCommand(GitCommand.configGet("user.name", "local"), ["config", "--local", "--get", "user.name"]);
+			assertGitCommand(GitCommand.configGet("user.name"), ["config", "--get", "user.name"]);
 			assertGitCommand(GitCommand.configGetAll("remote.origin.fetch"), [
 				"config",
 				"--get-all",

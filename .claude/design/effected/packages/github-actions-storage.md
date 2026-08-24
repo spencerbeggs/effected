@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
-completeness: 93
+updated: 2026-08-23
+last-synced: 2026-08-23
+completeness: 94
 related:
   - github-actions.md
   - github-actions-runtime.md
@@ -31,6 +31,10 @@ A raw get/put/has store over byte arrays has **no metadata channel**, so the con
 - **The version lives in the blob, not in the key.** A format change is detected on read and the entry is simply a miss, so **keys stay stable across format revisions** and old entries age out naturally.
 - **Metadata is the caller's schema, not a fixed shape.** The package owns *framing*; the consumer owns *meaning*.
 - **The primitives are `Result`-returning**, per the [sync-primitive policy](../sync-primitive-policy.md): framing is pure computation.
+
+**The stored value is `StoredBlob<A>`, renamed from `Blob<A>`.** The old name collided with the DOM's global `Blob` — harmlessly in source, and *not* harmlessly in the published docs model, where API Extractor disambiguated it to `Blob_2`. A generated name with a numeric suffix is a name no consumer can search for, so the rename is a documentation fix as much as a clarity one.
+
+**The envelope's failures are a [per-reason tagged union](github-actions.md#errors)**: `BlobEnvelopeError` aliases `NotABlobEnvelopeError | TruncatedBlobEnvelopeError | UnsupportedBlobEnvelopeVersionError | BlobMetadataDecodeError | BlobMetadataEncodeError`. The split matters most precisely here, because the framing failures are the ones a caller *recovers from selectively* — "not an envelope" and "unsupported version" are both ordinary cache misses on a migrating consumer, while a truncated frame or a metadata decode failure is a corrupt entry worth reporting.
 
 **The service takes the schema per call**, which is not a new idiom — it is exactly the shape the state service already has, which is the consistency argument for choosing it over a layer-baked or type-parameterized service. There is **no list and no delete**: eviction is the backend's, no consumer wants them, and adding them would mean designing an eviction story for two backends that both already have one.
 
@@ -68,6 +72,10 @@ Three properties earned their tests, and each is a way the obvious implementatio
 - **A one-segment key gets no rung at all.** An empty prefix matches every cache in the repository.
 - **Branch-aware derivation orders the segments so the first fallback stays on the branch.** Reversed, a feature branch warms itself from the default branch and never finds its own cache.
 
+**`withNamespace` is the cache-bust primitive, and it drops the ladder deliberately.** A busted run must match nothing an unbusted run wrote, *and* its own entries must be invisible to unbusted runs — one intent, and spelling the two halves separately is what makes getting it wrong undetectable. Restore keys are **prefix matches**, so folding a bust token in after the retained prefix leaves an ordinary run's rung prefix-matching busted entries: the cache still appears to work while quietly serving poisoned entries into unrelated runs. Two decisions make the combinator safe for *any* segment value, with no prefix reasoning at the call site: the segment goes **first**, so a namespaced key shares no prefix with an unnamespaced one, and the ladder is **dropped**, so no rung can reach outside the namespace even when the segment happens to equal an ordinary leading segment — which a prepend alone would not survive. Dropping the ladder is a safe default rather than a prohibition: the segments are all still there, so a caller who wants one busted run to warm from another follows with `withRestoreDepths` and gets an in-namespace ladder **deliberately**.
+
+`CacheKeyError` also became a [per-reason union](github-actions.md#errors) — `CacheKeyReadError` carries a required `path`, `CacheKeyBadPatternError` a required `pattern` — which is the case where the old shape's optional fields were most visibly wrong: half the messages could render `"undefined"`.
+
 **File hashing is byte-compatible with the official glob action**: sorted, de-duplicated, and each file's digest fed into the accumulator as **binary, not hex**. A hex-fed accumulator produces a perfectly plausible digest that never matches a cache entry written by any other action, so the test pins the digest as a literal.
 
 **Discovery and matching are two halves, deliberately.** [`@effected/glob`](glob.md) is a **matcher, not a walker** — pure string-to-predicate by construction — so it cannot supply file discovery. The walk is therefore core's recursive directory read, which is the better half of the deal: it makes the whole pairing testable through a noop filesystem with no temp directory and no real IO. The alternative, a platform glob call, was rejected on a **correctness** argument rather than a weight one: it welds discovery and matching into one non-stubbable call, and node's glob dialect is not the minimatch dialect the official action uses — a dialect divergence surfaces as a *silent cache-key difference* from every other action in the same workflow, which is the worst failure mode a cache key has.
@@ -79,6 +87,8 @@ The two halves are separate statics rather than one, which is what lets a caller
 ## Tool and package-manager installation
 
 Downloading, extracting and caching a toolchain, plus exact-version provisioning of the four package managers keyed by [`@effected/npm`](npm.md)'s pin model.
+
+**`ToolInstallerError.subject` is required**, not optional. Every construction site had one, and an optional field on an error is a message that renders `"undefined"` on whichever path forgets — the same reasoning that drove the per-reason splits above, applied without needing a split.
 
 **Downloads go through core's HTTP client and stream to disk** rather than buffering, and extraction requires core's subprocess contract in `R` — no spawner backend here, per the [commands invariant](commands.md#the-one-rule). The platform branch reads the **runner's own OS variable**, not the process platform.
 

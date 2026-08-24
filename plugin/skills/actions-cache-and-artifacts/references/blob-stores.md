@@ -212,22 +212,26 @@ magic would be a second version channel that can disagree with the real
 one; the magic identifies the frame *family*, the version byte identifies
 the *revision*.
 
-The failure union is sized to what a caller actually branches on:
+The failure union is sized to what a caller actually branches on.
+`BlobEnvelopeError` is a **union type alias**, not a class with a `reason`
+field — one class per failure, so you construct the member and
+discriminate on `_tag`, and `Effect.catchTag` recovers from exactly one of
+them rather than all five:
 
-| `reason` | Fires when |
+| `_tag` | Fires when |
 | --- | --- |
-| `notAnEnvelope` | The 4-byte magic is absent — a legacy, unframed blob, or garbage |
-| `unsupportedVersion` | The version byte doesn't match what this build writes |
-| `truncated` | The buffer ends mid-header or mid-metadata |
-| `metadataDecodeFailed` | The framed metadata JSON doesn't satisfy the caller's schema |
-| `metadataEncodeFailed` | The value being stored doesn't satisfy the schema on the way out |
+| `NotABlobEnvelopeError` | The 4-byte magic is absent — a legacy, unframed blob, or garbage |
+| `UnsupportedBlobEnvelopeVersionError` | The version byte doesn't match what this build writes |
+| `TruncatedBlobEnvelopeError` | The buffer ends mid-header or mid-metadata |
+| `BlobMetadataDecodeError` | The framed metadata JSON doesn't satisfy the caller's schema |
+| `BlobMetadataEncodeError` | The value being stored doesn't satisfy the schema on the way out |
 
-**A legacy raw blob decodes as a typed `notAnEnvelope` clean miss, on
+**A legacy raw blob decodes as a typed `NotABlobEnvelopeError` clean miss, on
 purpose.** A consumer migrating an existing cache from a hand-rolled
 binary frame to this envelope gets a decode failure it can treat as "not
 cached yet," not a corrupt read of garbage metadata — the magic check runs
 before anything else on decode. **The version lives in the blob, not in
-the key**: a format revision is detected on read (`unsupportedVersion`)
+the key**: a format revision is detected on read (`UnsupportedBlobEnvelopeVersionError`)
 and reported typed, so keys stay stable across revisions and stale
 entries simply age out rather than needing a hand-rolled namespace prefix.
 
@@ -238,7 +242,7 @@ returned body would corrupt the envelope it was read from.
 `GitHubCacheBlobStore`'s Twirp `version` field is a **constant hash**
 rather than `ActionCache`'s path-derived version — a blob store has no
 archived paths to hash, so every key maps to one reproducible Twirp slot,
-and a **format** change stays inside the envelope (`unsupportedVersion`)
+and a **format** change stays inside the envelope (`UnsupportedBlobEnvelopeVersionError`)
 rather than becoming a second version channel that can disagree with the
 real one.
 

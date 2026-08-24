@@ -246,8 +246,28 @@ const repoRoot = (): GitInvocation => git(["rev-parse", "--show-toplevel"]);
 // Implementation of GitCommand.commitInfo; the public contract lives on the static.
 const commitInfo = (ref = "HEAD"): GitInvocation => git(["log", "-1", "--format=%H%x00%G?%x00%B", ref]);
 
+/**
+ * Which configuration file a read is scoped to.
+ *
+ * @remarks
+ * Omitted, git reads the MERGED configuration — repository-local plus global
+ * plus system — which is what a consumer wants for "what is the effective
+ * value" and precisely wrong for "what does THIS checkout declare". A globally
+ * set key otherwise shadows a decision that is really about one repository, and
+ * an enumerate-then-remove flow reads at a different scope than
+ * `configRemoveSection` writes at.
+ *
+ * @public
+ */
+export type GitConfigScope = "local" | "global" | "system" | "worktree";
+
+/** The scope flag, or nothing for the merged read. */
+const scopeArgs = (scope: GitConfigScope | undefined): ReadonlyArray<string> =>
+	scope === undefined ? [] : [`--${scope}`];
+
 // Implementation of GitCommand.configGet; the public contract lives on the static.
-const configGet = (key: string): GitInvocation => git(["config", "--get", key]);
+const configGet = (key: string, scope?: GitConfigScope): GitInvocation =>
+	git(["config", ...scopeArgs(scope), "--get", key]);
 
 // Implementation of GitCommand.remoteUrl; the public contract lives on the static.
 const remoteUrl = (remote = "origin"): GitInvocation => git(["remote", "get-url", remote]);
@@ -412,8 +432,8 @@ const pull = (remote: string, ref?: string, rebase = false, ffOnly = false): Git
 	]);
 
 // Implementation of GitCommand.configList; the public contract lives on the static.
-const configList = (file?: string): GitInvocation =>
-	git(["config", ...(file !== undefined ? ["-f", file] : []), "--list", "-z"]);
+const configList = (file?: string, scope?: GitConfigScope): GitInvocation =>
+	git(["config", ...(file !== undefined ? ["-f", file] : []), ...scopeArgs(scope), "--list", "-z"]);
 
 // Implementation of GitCommand.configGetAll; the public contract lives on the static.
 const configGetAll = (key: string, file?: string): GitInvocation =>

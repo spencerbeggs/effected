@@ -34,8 +34,17 @@ derived**:
   depth is the count of leading segments kept, rungs emitted in the given
   order. Order *is* the policy: GitHub tries rungs in the order given.
 - `withoutRestoreKeys()` is the exact-match-only spelling — zero rungs.
+- `withNamespace(segment)` is the **cache-bust** spelling: it prepends
+  `segment` AND drops the ladder. Both halves are one intent — a restore
+  key is a prefix match, so folding a bust token in *after* the retained
+  prefix leaves an ordinary run's rung prefix-matching busted entries.
+  Segment-first means a namespaced key shares no prefix with an
+  unnamespaced one; the dropped ladder means no rung can reach outside the
+  namespace even when the segment equals an ordinary leading segment.
+  Follow it with `withRestoreDepths` to get an in-namespace ladder back
+  deliberately.
 
-All three ride the same schema field, survive an `ActionState` round trip,
+All four ride the same schema field, survive an `ActionState` round trip,
 and pass through `ActionCache.restore(paths, cacheKey)` untouched — never
 hand-build a ladder beside a typed key.
 

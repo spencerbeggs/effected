@@ -3,31 +3,53 @@ import { GlobSet } from "@effected/glob";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 
 /**
- * Raised when a cache key cannot be derived from the filesystem.
+ * Raised when a file or directory that was going to be hashed could not be
+ * read.
  *
  * @public
  */
-export class CacheKeyError extends Schema.TaggedError<CacheKeyError>()("CacheKeyError", {
-	/**
-	 * `readFailed` — a file or directory that was going to be hashed could not be
-	 * read. `badPattern` — a glob pattern would not compile. Key *derivation*
-	 * itself is pure and total once the bytes are in hand, so these are the only
-	 * two things that can go wrong.
-	 */
-	reason: Schema.Literals(["readFailed", "badPattern"]),
+export class CacheKeyReadError extends Schema.TaggedError<CacheKeyReadError>()("CacheKeyReadError", {
 	/** The path being read when it went wrong. */
-	path: Schema.optionalKey(Schema.String),
-	/** The pattern that would not compile. */
-	pattern: Schema.optionalKey(Schema.String),
+	path: Schema.String,
 	/** The underlying failure, preserved structurally. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
-		return this.reason === "readFailed"
-			? `Could not read "${this.path}" while deriving a cache key`
-			: `"${this.pattern}" is not a usable glob pattern`;
+		return `Could not read "${this.path}" while deriving a cache key`;
 	}
 }
+
+/**
+ * Raised when a glob pattern would not compile.
+ *
+ * @public
+ */
+export class CacheKeyBadPatternError extends Schema.TaggedError<CacheKeyBadPatternError>()("CacheKeyBadPatternError", {
+	/** The pattern that would not compile. */
+	pattern: Schema.String,
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
+	override get message(): string {
+		return `"${this.pattern}" is not a usable glob pattern`;
+	}
+}
+
+/**
+ * Anything that can go wrong deriving a cache key from the filesystem.
+ *
+ * @remarks
+ * Key *derivation* is pure and total once the bytes are in hand, so the two
+ * members here are the only things that can fail.
+ *
+ * **One class per failure, rather than one class with a `reason` field.** Each
+ * member carries exactly the fields its own message needs, so a value short a
+ * field is a compile error instead of a message reading `"undefined"` — and
+ * `Effect.catchTag` can recover from one of them without catching the other.
+ *
+ * @public
+ */
+export type CacheKeyError = CacheKeyReadError | CacheKeyBadPatternError;
 
 /**
  * The separator between key segments.
@@ -210,6 +232,46 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 		return CacheKey.make({ segments: this.segments, restoreDepths: [] });
 	}
 
+	/**
+	 * A copy of this key namespaced by `segment` — the whole key, ladder
+	 * included.
+	 *
+	 * @remarks
+	 * The cache-bust case: a run that must match nothing an unbusted run wrote,
+	 * and whose own entries must be invisible to unbusted runs. Both halves of
+	 * that are one intent, and spelling them separately is what makes the wrong
+	 * version undetectable — a restore key is a **prefix match**, so folding the
+	 * bust in *after* the retained prefix leaves an ordinary run's rung
+	 * prefix-matching busted entries. The cache still appears to work, and
+	 * quietly serves poisoned entries into unrelated runs.
+	 *
+	 * Two decisions make this safe for **any** segment value, with no prefix
+	 * reasoning at the call site. The segment goes **first**, so the namespaced
+	 * key shares no prefix with an unnamespaced one. And the ladder is
+	 * **dropped**, so no rung of this key can reach outside the namespace even
+	 * when the segment happens to equal an ordinary leading segment — which a
+	 * prepend alone would not survive.
+	 *
+	 * Dropping the ladder is the safe default, not a prohibition: the segments
+	 * are all still there, so a caller who wants one busted run to warm from
+	 * another can follow with {@link CacheKey.withRestoreDepths} and get an
+	 * in-namespace ladder deliberately.
+	 *
+	 * @example
+	 * ```ts
+	 * import { CacheKey } from "@effected/github-actions";
+	 *
+	 * const key = CacheKey.of("Linux", "pnpm-store", "abc123").withNamespace("bust7");
+	 * key.key;          // "bust7-Linux-pnpm-store-abc123"
+	 * key.restoreKeys;  // []
+	 * ```
+	 *
+	 * @param segment - The namespace, e.g. a cache-bust token.
+	 */
+	withNamespace(segment: string): CacheKey {
+		return CacheKey.make({ segments: [segment, ...this.segments], restoreDepths: [] });
+	}
+
 	/** Build a key from its segments. */
 	static of(...segments: readonly [string, ...ReadonlyArray<string>]): CacheKey {
 		return CacheKey.make({ segments });
@@ -323,7 +385,7 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 		const digests = yield* Effect.all(
 			ordered.map((path) =>
 				fs.readFile(path).pipe(
-					Effect.mapError((cause) => new CacheKeyError({ reason: "readFailed", path, cause })),
+					Effect.mapError((cause) => new CacheKeyReadError({ path, cause })),
 					Effect.map((bytes) => createHash("sha256").update(bytes).digest()),
 				),
 			),
@@ -375,11 +437,11 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 		const set = yield* GlobSet.compile(options.patterns).pipe(
-			Effect.mapError((cause) => new CacheKeyError({ reason: "badPattern", pattern: cause.pattern, cause })),
+			Effect.mapError((cause) => new CacheKeyBadPatternError({ pattern: cause.pattern, cause })),
 		);
 		const entries = yield* fs
 			.readDirectory(options.workspace, { recursive: true })
-			.pipe(Effect.mapError((cause) => new CacheKeyError({ reason: "readFailed", path: options.workspace, cause })));
+			.pipe(Effect.mapError((cause) => new CacheKeyReadError({ path: options.workspace, cause })));
 
 		const matched: Array<string> = [];
 		for (const entry of entries) {
@@ -391,7 +453,7 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 			const absolute = path.join(options.workspace, entry);
 			const info = yield* fs
 				.stat(absolute)
-				.pipe(Effect.mapError((cause) => new CacheKeyError({ reason: "readFailed", path: absolute, cause })));
+				.pipe(Effect.mapError((cause) => new CacheKeyReadError({ path: absolute, cause })));
 			if (info.type === "File") {
 				matched.push(absolute);
 			}

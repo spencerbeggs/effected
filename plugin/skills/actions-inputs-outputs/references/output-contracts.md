@@ -14,10 +14,27 @@
 | `setFailed` | `(message) => Effect<void>` | stdout, `::error::` workflow command |
 | `setSecret` | `(value) => Effect<void>` | stdout, `::add-mask::` workflow command |
 
-`ActionOutputError` carries a closed `reason`: `unavailable` (the runner-file
-variable itself is unset — usually means the code isn't running on a
-runner), `writeFailed`, `invalidName`, or `encodeFailed` (a `setJson` value
-didn't satisfy its schema).
+`ActionOutputError` is a **union type alias, not a class** — one exported
+`Schema.TaggedError` class per failure, discriminated by `_tag`:
+
+| Class | Fires when | Carries |
+| --- | --- | --- |
+| `RunnerFileUnavailableError` | the runner-file variable itself is unset — usually means the code isn't running on a runner | `file` |
+| `RunnerFileWriteError` | the file exists but could not be appended to | `file` |
+| `InvalidOutputNameError` | the name would corrupt the block structure (`""`, or containing `\r`/`\n`) | `name`, `file?` |
+| `OutputEncodeError` | a `setJson` value didn't satisfy its schema | `name` |
+| `DetachedOutputError` | any member was called under `ActionOutputs.layerDetached` | `file`, `name?` |
+
+**Match on `error._tag`, never `error.reason`** — the old
+one-class-with-a-`reason`-field shape is gone, and a `reason` read on one of
+these no longer type-checks. The required fields differ per arm on purpose:
+the runner file is required only on the arms that name one, so a value short
+a field is a compile error rather than a message reading `"undefined"`. The
+practical gain is recovery granularity — `Effect.catchTag("OutputEncodeError",
+…)` now recovers from exactly that failure and leaves a write failure
+propagating, where the single class made every catch all-or-nothing.
+`ActionOutputError` itself is unchanged as a signature: every member still
+returns `Effect<void, ActionOutputError>`.
 
 ### Where the runner files come from
 
@@ -26,9 +43,9 @@ asking `ActionEnvironment` for the runner-file **variable name** —
 `"GITHUB_OUTPUT"`, `"GITHUB_ENV"`, `"GITHUB_PATH"`, `"GITHUB_STEP_SUMMARY"`.
 `ActionEnvironment` is the one reader of `process.env` in the package,
 snapshotted once into an immutable map when its layer builds; a lookup
-fails typed (`reason: "unavailable"`) rather than resolving to `undefined`
-when a variable is unset — exactly what happens when this code runs off a
-real runner.
+fails typed (`RunnerFileUnavailableError`) rather than resolving to
+`undefined` when a variable is unset — exactly what happens when this code
+runs off a real runner.
 
 ### Runner-file delimiters are derived, never random
 
@@ -41,9 +58,10 @@ way makes a collision **impossible** rather than improbable, needs no
 un-derived, fixed delimiter would terminate its own block early and
 corrupt every entry written after it in the same file — a
 value-controlled injection into the runner's own file. The same discipline
-applies to the output **name**: a name containing `\r` or `\n` is refused
-(`reason: "invalidName"`) before anything is written, rather than
-corrupting the block structure.
+applies to the output **name**: an empty name, or one containing `\r` or
+`\n`, is refused (`InvalidOutputNameError`) before anything is written,
+rather than corrupting the block structure. `addPath` and `summary` write no
+name, so neither can raise it.
 
 ### `exportVariable` targets subsequent steps, not this one
 

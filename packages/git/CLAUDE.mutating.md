@@ -15,6 +15,12 @@ The 2026-08-05 slice closed silk-release-action's raw-spawn census. These are de
 - **`fetchUnshallow` is a distinct mode, and the CALLER guards.** git rejects `--unshallow` in a non-shallow repo and the method does not tolerate that (tolerating would swallow every other fetch failure shape) — probe with `isShallow` first. `fetch`'s `unshallow: true` option (added for the CI shape that unshallows and fetches a refspec in one invocation) follows the same caller-guards rule; combining it with `depth` is refused typed pre-spawn, exactly as git rejects the pair.
 - **`fetch`'s `ref` accepts a full refspec, passed through VERBATIM** (`src:dst`, optionally `+`-prefixed — the guard refuses only a leading `-`). Never guess-transform a bare ref into a refspec: under a single-branch clone (actions/checkout's default) a bare-ref fetch updates only `FETCH_HEAD`, and `+refs/heads/<b>:refs/remotes/origin/<b>` is the caller's own decision.
 - **`fetchAny` is the shipped tag-then-branch fallback**: tag-form `fetch` first, retrying as a plain `fetch` on `UnknownRefError` or a `GitCommandError` — EXCEPT one whose `kind` is `"refused"` (a pre-spawn guard rejection), which re-fails immediately, since the plain form would reject it identically. `NotARepositoryError` propagates from the tag attempt. When both attempts fail, the PLAIN fetch's error surfaces.
+- `configSet` writes the checkout's own `.git/config` — a bare
+  `git config <key> <value>`, no scope flag, and no scope option offered. The
+  asymmetry with the scopeable reads is deliberate: a read has a defensible
+  "effective value" default, a write does not, and a global or system write
+  leaks onto a shared machine or a CI runner for every unrelated step. The TSDoc
+  says so, because the absence of an option is not self-explaining.
 - `configSet` guards all three string inputs — `key`, `value` AND `options.file` — through `rejectOptionLikeRefs`, because git config has no documented `--` separator. Consequence: a legitimate config value starting with `-` cannot be written through this method. Refused typed, before any spawn.
 
 **Related:** [surface](./CLAUDE.surface.md) · [classification](./CLAUDE.classification.md)

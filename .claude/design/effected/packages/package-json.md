@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-12
-last-synced: 2026-08-12
-completeness: 93
+updated: 2026-08-23
+last-synced: 2026-08-23
+completeness: 94
 related:
   - ../architecture.md
   - ../effect-standards.md
@@ -40,6 +40,7 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 - The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `Repository.ts`, `DevEngines.ts`, `Dependency.ts`. `Repository.ts` holds both location models, because they share the shorthand-or-object encoding and the wire-provenance machinery and splitting them would duplicate it.
 - `PackageValidator.ts` — the validation service, its rule interface, the default rule set and a parameterized layer factory.
 - `PackageJsonFile.ts` — **the only IO module**: one service, read and write over core `FileSystem`/`Path`, plus its error tags.
+- `EntryPoint.ts` — [entry-point resolution](#resolveentrypoint-exports-encapsulates-the-package), pure and IO-free, and the one module whose input is deliberately *structural* rather than a `Package`.
 - `PackageJsonFormat.ts` — the **decode-free** formatting seam. See [the formatting seam](#the-decode-free-formatting-seam).
 - `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions shared by the write options, the model's serializer and the format seam. Holds the key order and its provenance comment.
 
@@ -175,6 +176,18 @@ The text path returns `Result`, not `Effect`: lint hosts are synchronous, and an
 `__test__/fixtures/` holds real manifests from this repo paired with frozen oracle output for the same input, and the format test asserts byte equality. **`sort-package-json` is deliberately not a dependency** — the oracle's *output* is committed, not the tool, so the parity claim is checked without taking a runtime edge on the thing being matched.
 
 The **re-baseline rule** is that the fixtures, the recorded version in the fixture README and the key-order provenance comment move **together**, in one deliberate act. Regenerating fixtures alone would silently ratify whatever a newer version changed, turning the oracle test from a check into a rubber stamp.
+
+## `resolveEntryPoint`: `exports` encapsulates the package
+
+`resolveEntryPoint` answers one question — given a manifest, which file is the package's `"."` entry? — and it is **pure, IO-free and `Result`-returning**, per the [sync-primitive policy](../sync-primitive-policy.md). Nothing here touches a filesystem, so it is testable against plain manifest objects with no package on disk and it composes with a directory that arrived by any route. The route that motivated it is [`@effected/npm`](npm.md#packagetarball--reading-a-published-package-back)'s extracted tarball: read a published package's entry point before any install has run.
+
+Three shapes are honoured because all three appear in real published packages — the string shorthand, the subpath map, and root conditions with no `"."` key — and conditions **recurse**, because `{ "import": { "node": "./n.js" } }` is legal and a non-recursive reader answers an object where a path belongs. The condition list is caller-supplied and **ordered**, so the order *is* the policy: `["require", "import"]` and `["import", "require"]` resolve the same manifest to different files, on purpose.
+
+**The load-bearing semantic: a present `exports` encapsulates the package.** A root entry that matches none of the requested conditions is a **failure**, and does not fall through to `main`. That is Node's own rule, and it diverges from the lenient reading a consumer had shipped — under which a `require`-only package read with `["import"]` quietly resolved to a `main` Node itself would refuse to load. Because the divergence is the kind a future reader would "fix", **it is pinned by a test rather than only a docstring.**
+
+**`UnresolvedEntryPointError` carries a discriminated `reason`** — `noRootExport`, `noConditionMatched` (naming the conditions tried) and `unsupportedExportsForm` — for the reason recorded on npm's side of the same composition: the three shapes call for different responses, and collapsing them into one sentinel is the same class of quiet wrong answer as an untyped error channel.
+
+**The input type is structural, not `Package`.** `EntryPointManifest` is `{ exports?, main? }`, so a caller can resolve from a manifest parsed straight out of a tarball with nothing else validated yet. Requiring the strict model here would make the strictest decode in the package a precondition for its most tolerant use.
 
 ## Resolution belongs to @effected/npm
 

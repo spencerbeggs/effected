@@ -126,9 +126,9 @@ but that is style, not the rule.
 the same ref** — `Console.Console` *is* `effect.ConsoleRef` (`Console.ts:83`),
 `TestConsole.layer` sets that exact reference (`testing/TestConsole.ts:294`), and
 `Logger.ts:269`, `:309`, `:363` all read
-`options.fiber.getRef(effect.ConsoleRef)` (line numbers at beta.107). So
-`Effect.log` / `logWarning` /
-`logError` are intercepted identically to `Console.*`. One repo's audit cleared
+`options.fiber.getRef(effect.ConsoleRef)` (line numbers re-checked at rc.109 —
+unchanged since beta.107). So `Effect.log` / `logWarning` / `logError` are
+intercepted identically to `Console.*`. One repo's audit cleared
 a package by grepping `Console.*` and missed three live `Effect.logWarning`
 sites.
 

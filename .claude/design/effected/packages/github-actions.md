@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 95
 related:
   - ../effect-standards.md
@@ -78,7 +78,17 @@ Module-per-concept, no barrels, `src/index.ts` re-exports only. See `src/`, and 
 
 ## Errors
 
-One typed error per concept module, each carrying a `reason` literal union plus the one or two fields a caller branches on, with ergonomic statics for construction and foreign failures wrapped structurally rather than stringified. Input failures are **`ConfigError`**, not a bespoke error class, because inputs are `Config`-backed — one fewer error class and a strictly better message, since `ConfigError` names the missing key.
+Typed errors per concept module, with foreign failures wrapped structurally rather than stringified. Input failures are **`ConfigError`**, not a bespoke error class, because inputs are `Config`-backed — one fewer error class and a strictly better message, since `ConfigError` names the missing key.
+
+**The `reason`-field shape is being retired in favour of per-reason tagged unions.** The original convention was one class per module carrying a `reason` literal plus the one or two fields a caller branches on. Four modules — `ActionOutputs`, `BlobEnvelope`, `CacheKey` and `DetachedProcess` — have moved, and the reasoning generalizes to any error whose reasons do not share a field set:
+
+- **Every member carries exactly the fields its own message needs**, non-optional. Under the collapsed shape those fields are all `optionalKey`, so a value constructed short a field is not a compile error — it is a message that renders `"undefined"` at the moment someone is reading logs to find out what broke.
+- **`Effect.catchTag` can recover from one reason without catching the others.** Under the collapsed shape a caller recovering from one reason writes a `catchTag` plus an inner `reason` check plus a re-fail, and the re-fail is the part that gets forgotten.
+- **The migration cost is zero for consumers, by construction.** Every exported *name* survives as a union type alias — `CacheKeyError` is now `CacheKeyReadError | CacheKeyBadPatternError` — so no signature changed and no import broke; a consumer that never matched on `reason` never notices. That is what made this admissible as a batch rather than one module at a time.
+
+The judgement, so this does not become a ritual: **split when the reasons carry different fields, or when a caller plausibly recovers from one alone.** An error whose reasons are a closed set over one shared field set stays one class — there the discriminant is the whole information and splitting buys nothing but names.
+
+**The kit is mid-migration and says so.** [`TarballError`](npm.md#packagetarball--reading-a-published-package-back) shipped in the same wave still carrying a `reason` field, and by the test above it is a split candidate: its reasons do carry different fields. It stays collapsed for now because it is new API whose consumers are one, and moving it later is the same zero-cost alias move performed here. Read the divergence as sequencing, not as a second convention.
 
 **Audit every ported error channel for whether it can actually fire.** The package this replaced had at least two structurally unreachable channels — a pure body wrapped in `Effect.try`, so the catch arm was dead. A channel that cannot fire is worse than no channel: it forces every caller to handle a case that does not exist and makes the type a lie about the operation. When porting a member, either demonstrate the failure path with a test or delete it from the signature.
 

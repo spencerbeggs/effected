@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { DateTime, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/unstable/http";
@@ -200,6 +201,38 @@ describe("NpmRegistry — the registry dimension", () => {
 		}),
 	);
 
+	it("keeps a `token` tripwire on RegistryTarget so the rename cannot fail silently", () => {
+		// Removing the field outright would be a SILENT break: callers pass it
+		// through a conditional spread, and a spread of an unknown property is
+		// not an excess-property error, so an authenticated probe would quietly
+		// become an anonymous one — 401, read as "not published", republish.
+		// Typed `never`, the same spread is a compile error. Asserted on the
+		// source because the guarantee IS the type, which erases at runtime.
+		const source = readFileSync(new URL("../src/NpmRegistry.ts", import.meta.url), "utf-8");
+		assert.include(source, "readonly token?: never;");
+		assert.include(source, "@deprecated");
+	});
+
+	it.effect("sends Basic, not Bearer, for a basic credential", () =>
+		// The probe and the publish must agree about the scheme for one registry:
+		// a bearer probe against a basic-auth registry answers 401, which this
+		// service reads as "not published" — a wrong answer, not an error. The
+		// blob goes out verbatim, matching what npm does with an npmrc `_auth`.
+		Effect.gen(function* () {
+			const client = stub(() => ({ status: 200, body: versionManifest }));
+			yield* run(
+				Effect.gen(function* () {
+					const r = yield* registry;
+					yield* r.version("pkg", "1.1.0", {
+						credential: { kind: "basic", encoded: Redacted.make("dXNlcjpwYXNz") },
+					});
+				}),
+				client,
+			);
+			assert.strictEqual(client.requests[0]?.authorization, "Basic dXNlcjpwYXNz");
+		}),
+	);
+
 	it.effect("sends a bearer token when one is supplied, and none when not", () =>
 		Effect.gen(function* () {
 			const client = stub(() => ({ status: 200, body: versionManifest }));
@@ -207,7 +240,7 @@ describe("NpmRegistry — the registry dimension", () => {
 				Effect.gen(function* () {
 					const r = yield* registry;
 					yield* r.version("pkg", "1.1.0");
-					yield* r.version("pkg", "1.1.0", { token: Redacted.make("s3cr3t") });
+					yield* r.version("pkg", "1.1.0", { credential: { kind: "token", token: Redacted.make("s3cr3t") } });
 				}),
 				client,
 			);
@@ -252,7 +285,7 @@ describe("NpmRegistry.version — registries without the per-version endpoint", 
 				Effect.flatMap(registry, (r) =>
 					r.version("@savvy-web/standalone-package", "0.10.9", {
 						registry: "https://npm.pkg.github.com",
-						token: Redacted.make("ghp_token"),
+						credential: { kind: "token", token: Redacted.make("ghp_token") },
 					}),
 				),
 				client,

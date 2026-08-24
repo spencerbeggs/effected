@@ -9,18 +9,26 @@
 static readonly reap = Effect.fn("DetachedProcess.reap")(function* (pid: number, signal: NodeJS.Signals = "SIGTERM") {
   yield* Effect.annotateCurrentSpan({ pid });
   if (!Number.isInteger(pid) || pid <= 0) {
-    return yield* Effect.fail(new DetachedProcessError({ reason: "invalidPid", pid }));
+    return yield* Effect.fail(new InvalidPidError({ pid }));
   }
   return yield* Effect.suspend(() => {
     try {
       process.kill(pid, signal);
       return Effect.succeed(true);
     } catch (cause) {
-      return isErrno(cause, "ESRCH") ? Effect.succeed(false) : Effect.fail(new DetachedProcessError({ reason: "signalFailed", pid, cause }));
+      return isErrno(cause, "ESRCH") ? Effect.succeed(false) : Effect.fail(new DetachedSignalFailedError({ pid, cause }));
     }
   });
 });
 ```
+
+`DetachedProcessError` is a **union type alias**, not a class: one class
+per failure (`DetachedLogUnavailableError`, `DetachedSpawnFailedError`,
+`InvalidPidError`, `DetachedSignalFailedError`, `DetachedNotReadyError`).
+Construct the member, never `new DetachedProcessError({ reason })`, and
+discriminate on `_tag` rather than a `reason` field — which also means
+`Effect.catchTag` recovers from **one** of these failures at a time, not
+all five.
 
 The value arrives as **text**, read back out of `GITHUB_STATE` by a `post`
 phase that holds no `ChildProcess` handle to the child it started in
@@ -43,8 +51,7 @@ it.effect("refuses pid 0 WITHOUT signalling anything", () =>
     (calls) =>
       Effect.gen(function* () {
         const error = yield* Effect.flip(DetachedProcess.reap(0));
-        assert.instanceOf(error, DetachedProcessError);
-        assert.strictEqual(error.reason, "invalidPid");
+        assert.instanceOf(error, InvalidPidError);
         assert.lengthOf(calls, 0, "process.kill must not have been called at all");
       }),
   ),

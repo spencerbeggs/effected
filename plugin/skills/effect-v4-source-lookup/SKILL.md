@@ -95,11 +95,18 @@ fi
 ```
 
 **The version gate is the load-bearing line, and it must refuse rather than report.**
-`effect@3` also publishes `src/`, so from the workspace root `require.resolve` finds
-`node_modules/.pnpm/effect@3.21.4/.../src` — a complete, confident, *wrong* rung-2
+`effect@3` also publishes `src/`, so wherever a v3 is installed, `require.resolve`
+finds `node_modules/.pnpm/effect@3.x/.../src` — a complete, confident, *wrong* rung-2
 source. An earlier draft of this block merely *printed* the resolved version; it
 resolved v3 source at the repo root and reported it in passing. Print a version and a
 reader skims past it. Refuse, and the trap cannot spring.
+
+**Do not read that history as "the root gives you v3" today.** In *this* repo the
+lockfile now carries exactly one `effect` — `4.0.0-rc.109` — and the workspace root
+resolves **nothing**: a bare `effect` import there dies with `ERR_MODULE_NOT_FOUND`
+(checked 2026-08-23). Which failure you get depends on what a given repo has
+installed, so the gate must key on the *resolved version*, never on a remembered
+answer for a particular directory.
 
 **Rung 1 has no fallback.** The npm package ships no `migration/`, no `ai-docs/`, no
 `LLMS.md` — they are not in its `files` array. That degrades honestly rather than
@@ -123,7 +130,7 @@ So: **a removal is never settled by rung 1.** If the docs are silent on a symbol
 
 ### Rung 1 also asserts things source refutes
 
-Silence is the *gentler* failure. The migration notes also make positive claims that the tree contradicts, in both directions — and a confident wrong answer costs more than an absent one. Both of these were found in one audit at beta.107:
+Silence is the *gentler* failure. The migration notes also make positive claims that the tree contradicts, in both directions — and a confident wrong answer costs more than an absent one. Both of these were found in one audit at beta.107 and both still hold at rc.109:
 
 - **A method that does not exist.** `migration/yieldable.md` documents the `Yieldable` trait as `asEffect(): Effect<A, E, R>` and states the runtime calls `.asEffect()` internally. **`asEffect` has zero occurrences in the entire source tree.** A design built on it fails at the first call.
 - **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:142`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
@@ -150,20 +157,20 @@ of the global `Array` type, so core defines the symbol under a private name and
 renames it in an `export {}` block:
 
 ```ts
-// Schema.ts:4598 — the real definition, under a name you did not grep for
+// Schema.ts:4617 — the real definition, under a name you did not grep for
 const ArraySchema = Struct_.lambda<ArrayLambda>((schema) => …)
 
-// Schema.ts:4602 — the export, in a block your grep pattern never matches
-export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4619
+// Schema.ts:4621 — the export, in a block your grep pattern never matches
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4638
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
-nothing. The confirmed occurrences of this pattern at beta.101 —
-`Schema.ts:4619`, `Equivalence.ts:620`, `Order.ts:578`, `Config.ts:1072` — are all
+nothing. The confirmed occurrences of this pattern at rc.109 —
+`Schema.ts:4638`, `Equivalence.ts:620`, `Order.ts:578`, `Config.ts:1072` — are all
 `Array`, but treat the *class* of names as suspect, not just that one:
 `Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
 `Symbol`, `Function`, `Boolean`. (Some of them do grep normally —
-`Schema.Record` is a plain `export function Record` at `Schema.ts:3929` — which
+`Schema.Record` is a plain `export function Record` at `Schema.ts:3948` — which
 is exactly why the inconsistency catches people.)
 
 **When a built-in-colliding name greps as absent, do not conclude it was
@@ -173,7 +180,7 @@ removed.** Settle it one of these ways instead:
   `export const` / `export function` lines.
 - **Grep for the use site, not the declaration**: `grep -rn 'Schema\.Array('`
   across this kit's `packages/*/src` proves the call compiles today against the
-  installed beta.
+  installed `effect`.
 - **Ask the runtime**, from inside a package on the v4 catalog:
   `node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.Array)"`.
 
@@ -238,7 +245,8 @@ conclusion.** Picking is how a stale read gets laundered into a verified fact.
 
 ### Worked example: the three rungs disagree
 
-`Context.Key`, checked against `effect@4.0.0-beta.94`:
+`Context.Key`, checked against `effect@4.0.0-beta.94` and re-confirmed at rc.109
+(`Context.ts:64`, same declaration, same line):
 
 - **Rung 1** — `migration/services.md` never mentions it. Reading harder produces nothing.
 - **A runtime check** says it does not exist: `typeof Context.Key` is `undefined` and `"Key" in Context` is `false`, because it is type-only.
@@ -267,6 +275,19 @@ Existence and signature do not tell you what a function *does*. Real examples wh
 A probe that cannot fail is worse than no probe. Every precondition below exists because it was violated.
 
 **Venue: a repo with a `scratchpad/` workspace sends probes there first.**
+
+> **"Scratchpad" names two unrelated places — do not confuse them.** The agent
+> harness hands most sessions a private scratch DIRECTORY for temporary files
+> (an absolute path under `/tmp` or similar, named in the system prompt). That
+> is **not** the repo's `scratchpad/` workspace, it has no `node_modules`, and a
+> probe written there dies with
+> `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` — precondition 3's
+> failure, reached by a route that feels like following this rule rather than
+> breaking it. The venue below means a `scratchpad/` DIRECTORY INSIDE THE REPO,
+> resolved relative to the repo root. Re-proven 2026-08-23: a probe written to
+> the harness scratchpad failed to resolve `effect`, and the identical file
+> copied into `packages/npm/` ran first try.
+
 Some kit repos (the effected monorepo among them) ship a private `scratchpad/`
 workspace member with every kit package at `workspace:*` and `effect` at the
 catalog pin. There, a probe is TYPED: write free-form probes as
@@ -290,8 +311,8 @@ imports resolve to each package's `dist/dev` build — after editing a
 package's `src/`, run `pnpm build --filter @effected/<pkg>` before trusting a
 tsx probe.
 
-1. **Run from inside the package, never the repo root.** The workspace root resolves `effect@3` and will describe the v3 surface with total confidence.
-2. **Print the resolved version inside every probe.** If it does not say `4.0.0-beta.<n>`, the probe measured v3 and every conclusion from it is void.
+1. **Run from inside the package, never the repo root.** A workspace root that has a v3 installed resolves it and will describe the v3 surface with total confidence; a root that has none — this repo today — fails with `ERR_MODULE_NOT_FOUND` instead. Both are the same rule: only `packages/<pkg>/` is guaranteed to resolve the pinned v4.
+2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once (it is `4.0.0-rc.109` in this repo today), so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
 3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
@@ -338,7 +359,7 @@ has no `await`.
 
 ```ts
 import pkg from "effect/package.json" with { type: "json" };
-console.log("resolved effect:", pkg.version); // must print 4.0.0-beta.<n>
+console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.109 today
 ```
 
 ## Portability

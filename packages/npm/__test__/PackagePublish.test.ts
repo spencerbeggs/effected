@@ -4,11 +4,13 @@ import { Effect, Exit, Layer, Redacted } from "effect";
 import { NpmExecutor } from "../src/NpmExecutor.js";
 import { PackagePublish, PackedTarball } from "../src/PackagePublish.js";
 import { PublishError } from "../src/PublishError.js";
+import { basicCredentialFromPair } from "../src/RegistryCredential.js";
 import type { ScriptResult } from "./publish-fixtures.js";
 import { fakeCrypto, recordingFs, scripted } from "./publish-fixtures.js";
 
 const NPMRC = "/home/runner/.npmrc";
 const TOKEN = Redacted.make("s3cr3t-token");
+const TOKEN_CREDENTIAL = { kind: "token", token: TOKEN } as const;
 
 /** `npm pack --json` output, as npm emits it (an array of one entry). */
 const packJson = JSON.stringify([
@@ -66,6 +68,55 @@ describe("NpmExecutor", () => {
 		}).pipe(Effect.provide(LocalExec.layerFor("pnpm"))),
 	);
 
+	it.effect("withCacheDir splices --cache into an ambient invocation", () =>
+		// GitHub's macOS runner images ship a partially root-owned
+		// ~/.npm/_cacache and npm hard-fails EACCES before doing any work, so
+		// every pack/publish there dies until the cache is redirected.
+		Effect.gen(function* () {
+			const command = yield* NpmExecutor.ambient.withCacheDir("/tmp/npm-cache").command(["pack", "--json"]);
+			assert.deepStrictEqual([...command.args], ["pack", "--json", "--cache", "/tmp/npm-cache"]);
+		}).pipe(Effect.provide(LocalExec.layerNone)),
+	);
+
+	it.effect("splices into the dlx form too, AFTER the spec", () =>
+		// The flags belong to npm, not to the launcher: `pnpm dlx npm@11 pack
+		// --cache X`, never `pnpm dlx --cache X npm@11 pack`.
+		Effect.gen(function* () {
+			const command = yield* NpmExecutor.dlx("npm@11").withCacheDir("/tmp/c").command(["pack"]);
+			assert.deepStrictEqual(
+				[command.command, ...command.args],
+				["pnpm", "dlx", "npm@11", "pack", "--cache", "/tmp/c"],
+			);
+		}).pipe(Effect.provide(LocalExec.layerFor("pnpm"))),
+	);
+
+	it.effect("appends extraArgs after the cache redirect", () =>
+		Effect.gen(function* () {
+			const command = yield* NpmExecutor.ambient
+				.withCacheDir("/tmp/c")
+				.withExtraArgs(["--loglevel", "warn"])
+				.command(["view", "pkg"]);
+			assert.deepStrictEqual([...command.args], ["view", "pkg", "--cache", "/tmp/c", "--loglevel", "warn"]);
+		}).pipe(Effect.provide(LocalExec.layerNone)),
+	);
+
+	it.effect("keeps the pin when copied, so a redirect cannot silently drop dlx", () =>
+		// A copy that lost `spec` would degrade a pinned npm to the ambient one —
+		// the exact OIDC failure the pin exists to avoid, reintroduced by an
+		// unrelated cache option.
+		Effect.gen(function* () {
+			const command = yield* NpmExecutor.dlx("npm@11").withExtraArgs(["--ignore-scripts"]).command(["pack"]);
+			assert.deepStrictEqual([command.command, ...command.args], ["pnpm", "dlx", "npm@11", "pack", "--ignore-scripts"]);
+		}).pipe(Effect.provide(LocalExec.layerFor("pnpm"))),
+	);
+
+	it.effect("adds nothing when neither option is set", () =>
+		Effect.gen(function* () {
+			const command = yield* NpmExecutor.ambient.command(["publish"]);
+			assert.deepStrictEqual([...command.args], ["publish"]);
+		}).pipe(Effect.provide(LocalExec.layerNone)),
+	);
+
 	it.effect("dlx without a local launcher fails typed rather than silently running ambient npm", () =>
 		// Degrading to the bundled npm here would reintroduce the exact bug the
 		// dlx dispatch exists to work around, and it would do it invisibly.
@@ -83,7 +134,7 @@ describe("PackagePublish.setupAuth", () => {
 			const h = harness();
 			yield* h.run(
 				Effect.flatMap(publisher, (p) =>
-					p.setupAuth({ registry: "https://registry.npmjs.org", token: TOKEN, npmrcPath: NPMRC }),
+					p.setupAuth({ registry: "https://registry.npmjs.org", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
 				),
 			);
 			const written = h.fs.files.get(NPMRC) ?? "";
@@ -100,7 +151,7 @@ describe("PackagePublish.setupAuth", () => {
 			const h = harness();
 			yield* h.run(
 				Effect.flatMap(publisher, (p) =>
-					p.setupAuth({ registry: "https://npm.pkg.github.com", token: TOKEN, npmrcPath: NPMRC }),
+					p.setupAuth({ registry: "https://npm.pkg.github.com", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
 				),
 			);
 			assert.include(h.fs.files.get(NPMRC) ?? "", "//npm.pkg.github.com/:_authToken=");
@@ -112,7 +163,11 @@ describe("PackagePublish.setupAuth", () => {
 			const h = harness();
 			yield* h.run(
 				Effect.flatMap(publisher, (p) =>
-					p.setupAuth({ registry: "https://example.com/artifactory/api/npm/repo", token: TOKEN, npmrcPath: NPMRC }),
+					p.setupAuth({
+						registry: "https://example.com/artifactory/api/npm/repo",
+						credential: TOKEN_CREDENTIAL,
+						npmrcPath: NPMRC,
+					}),
 				),
 			);
 			assert.include(h.fs.files.get(NPMRC) ?? "", "//example.com/artifactory/api/npm/repo/:_authToken=");
@@ -124,7 +179,7 @@ describe("PackagePublish.setupAuth", () => {
 			const h = harness({ files: { [NPMRC]: "registry=https://registry.npmjs.org\n" } });
 			yield* h.run(
 				Effect.flatMap(publisher, (p) =>
-					p.setupAuth({ registry: "https://registry.npmjs.org", token: TOKEN, npmrcPath: NPMRC }),
+					p.setupAuth({ registry: "https://registry.npmjs.org", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
 				),
 			);
 			const written = h.fs.files.get(NPMRC) ?? "";
@@ -390,4 +445,65 @@ describe("PackagePublish test double", () => {
 			assert.isTrue(exit.cause.reasons.some((reason) => reason._tag === "Die"));
 		}).pipe(Effect.provide(PackagePublish.layerTest())),
 	);
+});
+
+describe("PackagePublish.setupAuth with basic auth", () => {
+	it.effect("writes _auth rather than _authToken, carrying the blob verbatim", () =>
+		// npm reads BOTH keys per registry (npm-registry-fetch's `hasAuth` checks
+		// `_authToken` then `_auth`) and assigns the `_auth` value straight to an
+		// `Authorization: Basic` header with no decode. So the blob must land
+		// untouched — re-encoding it here would authenticate as nobody.
+		Effect.gen(function* () {
+			const h = harness();
+			yield* h.run(
+				Effect.flatMap(publisher, (p) =>
+					p.setupAuth({
+						registry: "https://registry.example.test",
+						credential: { kind: "basic", encoded: Redacted.make("dXNlcjpwYXNz") },
+						npmrcPath: NPMRC,
+					}),
+				),
+			);
+			const written = h.fs.files.get(NPMRC) ?? "";
+			assert.include(written, "//registry.example.test/:_auth=dXNlcjpwYXNz");
+			assert.notInclude(written, "_authToken");
+			assert.lengthOf(h.spawner.spawns, 0, "the credential stays off the process table");
+		}),
+	);
+
+	it.effect("nerf-darts the basic key with a trailing slash, same as the token key", () =>
+		Effect.gen(function* () {
+			const h = harness();
+			yield* h.run(
+				Effect.flatMap(publisher, (p) =>
+					p.setupAuth({
+						registry: "https://example.com/artifactory/api/npm/repo",
+						credential: { kind: "basic", encoded: Redacted.make("YWJj") },
+						npmrcPath: NPMRC,
+					}),
+				),
+			);
+			assert.include(h.fs.files.get(NPMRC) ?? "", "//example.com/artifactory/api/npm/repo/:_auth=YWJj");
+		}),
+	);
+});
+
+describe("basicCredentialFromPair", () => {
+	it("encodes the pair the way npm's own username/_password path does", () => {
+		const credential = basicCredentialFromPair("user", Redacted.make("pass"));
+		assert.strictEqual(credential.kind, "basic");
+		// base64("user:pass"), computed independently.
+		assert.strictEqual(Redacted.value(credential.encoded), "dXNlcjpwYXNz");
+	});
+
+	it("refuses a colon in the username rather than minting a mis-split credential", () => {
+		// The separator is positional and unescapable: "a:b" + ":" + "c" re-splits
+		// on the server as user "a", password "b:c".
+		assert.throws(() => basicCredentialFromPair("a:b", Redacted.make("c")), RangeError);
+	});
+
+	it("keeps the encoded credential out of any loggable value", () => {
+		const credential = basicCredentialFromPair("user", Redacted.make("pass"));
+		assert.notInclude(String(credential.encoded), "dXNlcjpwYXNz");
+	});
 });

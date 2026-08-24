@@ -531,6 +531,21 @@ describe("PackageManagerInstaller", () => {
 				assert.strictEqual(error.reason, "integrityMismatch");
 				assert.strictEqual(error.expected, `sha512.${wrong}`);
 				assert.strictEqual(error.actual, `sha512.${sha512Hex(archive)}`);
+				// A measured mismatch names both hashes...
+				assert.include(error.message, "Integrity mismatch");
+				assert.include(error.message, `sha512.${wrong}`);
+				// ...while a failure to compute the digest at all says THAT, rather
+				// than reporting a mismatch it never measured as
+				// "expected undefined, got undefined".
+				assert.include(
+					new PackageManagerInstallerError({
+						reason: "integrityMismatch",
+						name: "pnpm",
+						version: "1.0.1",
+						subject: "/tmp/pnpm.tgz",
+					}).message,
+					"Could not verify the integrity",
+				);
 				const destination = ToolInstaller.cachePath({ root, tool: "pnpm", version: "1.0.1", arch: process.arch });
 				assert.isFalse(existsSync(destination), "a failed verification must not leave anything in the cache");
 				rmSync(root, { recursive: true, force: true });

@@ -6,10 +6,10 @@ description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry t
 # Effect v4 observability
 
 Every Effect-core name below was verified to exist against the vendored
-`effect@4.0.0-beta.107` source, and every claimed absence verified absent there.
+`effect@4.0.0-rc.109` source, and every claimed absence verified absent there.
 `@effect/opentelemetry` is **not installed** in this monorepo — every
 `@effect/opentelemetry` example is *shape per the official guide; verify against
-the installed package when first adopted*. v4 betas move fast; when an API is not
+the installed package when first adopted*. The v4 release line moves fast; when an API is not
 listed here, probe it (`typeof`) before writing code. Module routing (what
 `Tracer`, `Logger`, `References` are) lives in `effect-v4-module-index`.
 
@@ -42,7 +42,7 @@ those never ran or cannot fail. The blind spot reads as signal.
 
 `Effect.fn`, `Effect.fnUntraced`, `Effect.withSpan`, `Effect.withSpanScoped`,
 `Effect.withParentSpan`, `Effect.annotateCurrentSpan`, `Effect.withLogSpan` — all
-still exported from `Effect.ts` at beta.107.
+still exported from `Effect.ts` at rc.109.
 
 ```ts
 import { Effect } from "effect"
@@ -107,7 +107,7 @@ const sync = Effect.fn("User.sync")(function* (id: string) {
 ## Structured logging
 
 `Effect.log`, `logTrace`, `logDebug`, `logInfo`, `logWarning`, `logError`,
-`logFatal`, `annotateLogs` — all still exported at beta.107. They flow through the
+`logFatal`, `annotateLogs` — all still exported at rc.109. They flow through the
 current fiber: span context, annotations, and log spans attach automatically.
 
 ```ts
@@ -123,7 +123,7 @@ through the engine — a public boundary may log, the hot path does not.
 
 ## Metrics
 
-The `Metric` surface at beta.107: `counter`, `gauge`, `histogram`, `frequency`,
+The `Metric` surface at rc.109: `counter`, `gauge`, `histogram`, `frequency`,
 `summary`, `timer`, `withAttributes`, `withConstantInput`, `linearBoundaries`,
 `exponentialBoundaries`, `boundariesFromIterable` — all exported from
 `Metric.ts`.
@@ -145,7 +145,7 @@ const loadUser = Effect.fn("loadUser")(
 )
 ```
 
-**v3 → v4 metric deltas** (each absence verified absent in the beta.107 source):
+**v3 → v4 metric deltas** (each absence verified absent in the rc.109 source):
 
 - `Metric.tagged` / `Metric.taggedWithLabels` are **gone**. Use
   `Metric.withAttributes({ ... })`; ambient attributes ride on

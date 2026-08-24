@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-21
-last-synced: 2026-08-21
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 88
 related:
   - effect-standards.md
@@ -90,7 +90,7 @@ The Effect catalogs — `effect` and `effect:peers` in `pnpm-workspace.yaml` —
 
 The `effect3` / `effect3:peers` interop catalogs that tracked the Effect v3 line for dual-version testing, and the camelCase `effectPeers` / `effect3Peers` compatibility aliases, were removed on the `rc.109` advance once nothing referenced them — ahead of the `1.0.0` graduation that was originally planned to retire them ([pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#the-retired-effect3-interop-catalogs)). No Effect v3 catalog exists now.
 
-The plugin also publishes an `effected` / `effected:peers` pair carrying the kit's own packages. Those are **consumer-facing only** — they are not exported into `pnpm-workspace.yaml`, because internal edges stay `workspace:*`, and unlike the Effect catalogs they carry caret ranges under a `lock-minor` strategy rather than exact pins. A push to `main` keeps them current automatically ([catalog-sync.md](catalog-sync.md)).
+The plugin also publishes an `effected` / `effected:peers` pair carrying the kit's own packages. Those are **consumer-facing only** — they are not exported into `pnpm-workspace.yaml`, because internal edges stay `workspace:*`, and unlike the Effect catalogs they carry caret ranges under a `lock-minor` strategy rather than exact pins. A workflow triggered by pull requests to `main` and to `changeset-release/main` keeps them current automatically, which is also what keeps a release from publishing out of step with them ([catalog-sync.md](catalog-sync.md#the-publish-ordering-the-catalog-imposes)).
 
 ### The temporary overrides bridge
 

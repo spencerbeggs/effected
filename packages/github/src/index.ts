@@ -75,8 +75,10 @@ export {
 	type GitHubRepositoryShape,
 	type OwnerType,
 	type RepositoryPatch,
+	type RepositoryPatchDraft,
 	type RepositorySettings,
 	SECURITY_ANALYSIS_STATUS_FIELDS,
+	repositoryPatch,
 	transformSecurityAndAnalysis,
 } from "./GitHubRepository.js";
 export {

@@ -74,7 +74,7 @@ green and **no hand-written annotations** on:
 
 - `Schema.Opaque`, `Schema.Class`, `TaggedClass`, `TaggedError`.
   (Naming trap: this list used to include `Schema.asClass`, which **does not
-  exist** — zero occurrences in `Schema.ts` at beta.107. To give a schema value
+  exist** — zero occurrences in `Schema.ts` at rc.109. To give a schema value
   a class identity you subclass it directly: `class MyString extends
   Schema.String {}`.)
 - **Recursive `Schema.Class` + `Schema.suspend`** (a node whose field
@@ -426,10 +426,12 @@ non-fatal `ae-incompatible-release-tags`, rejected 2026-07-07) and the
 retired 2026-07-08 once the inline form + scoped `_base` suppression was
 validated on the recursive and `Context.Service` cases).
 
-The inline factory + scoped `_base` suppression is the **single policy** — use
-it for all new code. The already-migrated packages (`semver`, `jsonc`, `yaml`,
-`package-json`, `npm`) still carry the old `@public X_base` form; that is a
-**transitional backlog to convert, not an alternative convention**. The
-conversion is a mechanical narrowing (delete the base const + annotation, inline
-the factory into the heritage clause, add the suppression line), not a redesign
-— do it when you next touch each file.
+The inline factory + scoped `_base` suppression is the **single policy**, and
+the transitional backlog is **drained**: as of 2026-08-23 no package in the kit
+carries a `@public X_base` const. `grep -rln "_base" packages/*/src/` returns a
+single hit — a *comment* in `runtimes/src/NodeResolver.ts` explaining why the
+suppression is scoped — and every building package's `savvy.build.ts` carries
+the suppression line except `app`, `cli` and `github-references`, which declare
+no class factory needing it. If you find a `@public X_base` const anywhere, it
+is new code written against the retired idiom, not residue: inline the factory
+into the heritage clause and delete the const.

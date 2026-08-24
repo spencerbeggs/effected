@@ -2,6 +2,7 @@ import { Context, DateTime, Effect, Layer, Option, Redacted, Schema } from "effe
 import type { HttpClientError } from "effect/unstable/http";
 import { HttpClient } from "effect/unstable/http";
 import { IntegrityHash } from "./IntegrityHash.js";
+import type { RegistryCredential } from "./RegistryCredential.js";
 import { classifyRegistry } from "./RegistryKind.js";
 
 /**
@@ -26,8 +27,31 @@ export const DEFAULT_REGISTRY = "https://registry.npmjs.org";
 export interface RegistryTarget {
 	/** Registry base URL. Defaults to {@link DEFAULT_REGISTRY}. */
 	readonly registry?: string | undefined;
-	/** Bearer token, for a registry that requires auth to read. */
-	readonly token?: Redacted.Redacted<string> | undefined;
+	/**
+	 * Renamed to {@link RegistryTarget.credential}.
+	 *
+	 * @deprecated Use `credential: { kind: "token", token }`. This field is
+	 * retained as `never` for one minor **as a tripwire, not as an alias**:
+	 * removing it outright would be a SILENT break rather than a loud one.
+	 * Callers commonly pass it through a conditional spread —
+	 * `...(token !== null ? { token } : {})` — and a spread of a no-longer-known
+	 * property is not an excess-property error, so the field would simply vanish
+	 * and an authenticated probe would become an anonymous one. Against a private
+	 * registry that answers 401, `NpmRegistry.version` reads that as "not
+	 * published", and a publish flow acting on it republishes a version that
+	 * already exists. Typed `never`, the same spread fails to compile.
+	 */
+	readonly token?: never;
+	/**
+	 * How to authenticate, for a registry that requires auth to read.
+	 *
+	 * @remarks
+	 * The same union `PackagePublish.setupAuth` writes into an npmrc, so the
+	 * read probe and the publish cannot disagree about the scheme for one
+	 * registry — a bearer probe against a basic-auth registry answers 401 and
+	 * reads as "not published".
+	 */
+	readonly credential?: RegistryCredential | undefined;
 }
 
 /**
@@ -102,6 +126,21 @@ export class RegistryReadError extends Schema.TaggedError<RegistryReadError>()("
 		}
 	}
 }
+
+/**
+ * The `Authorization` header for a credential, or none at all.
+ *
+ * @remarks
+ * The scheme follows the credential's kind rather than being fixed, matching
+ * what npm sends for the same npmrc entry: a `_authToken` goes out as `Bearer`
+ * and an `_auth` blob as `Basic`, used verbatim with no re-encoding.
+ */
+const authorizationHeader = (credential: RegistryCredential | undefined): Record<string, string> => {
+	if (credential === undefined) return {};
+	return credential.kind === "token"
+		? { authorization: `Bearer ${Redacted.value(credential.token)}` }
+		: { authorization: `Basic ${Redacted.value(credential.encoded)}` };
+};
 
 /** The version-manifest fields this package reads. Unknown keys are ignored. */
 const VersionManifest = Schema.Struct({
@@ -206,7 +245,7 @@ const make = Effect.fnUntraced(function* () {
 	): Effect.Effect<Option.Option<A>, RegistryReadError> =>
 		client
 			.get(url, {
-				headers: target?.token === undefined ? {} : { authorization: `Bearer ${Redacted.value(target.token)}` },
+				headers: authorizationHeader(target?.credential),
 			})
 			.pipe(
 				Effect.catch((cause: HttpClientError.HttpClientError) =>

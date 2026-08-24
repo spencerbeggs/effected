@@ -415,7 +415,11 @@ describe("ToolInstaller", () => {
 
 		it.live("classifies what is worth retrying", () => {
 			const of = (status?: number) =>
-				new ToolInstallerError({ reason: "downloadFailed", ...(status === undefined ? {} : { status }) });
+				new ToolInstallerError({
+					reason: "downloadFailed",
+					subject: "https://example.test/tool.tgz",
+					...(status === undefined ? {} : { status }),
+				});
 			assert.isTrue(of(500).retryable);
 			assert.isTrue(of(503).retryable);
 			assert.isTrue(of(408).retryable);
@@ -423,7 +427,7 @@ describe("ToolInstaller", () => {
 			assert.isTrue(of().retryable, "a transport fault with no status is the most retryable thing there is");
 			assert.isFalse(of(404).retryable);
 			assert.isFalse(of(401).retryable);
-			assert.isFalse(new ToolInstallerError({ reason: "extractFailed" }).retryable);
+			assert.isFalse(new ToolInstallerError({ reason: "extractFailed", subject: "tool.tgz" }).retryable);
 			return Effect.void;
 		});
 

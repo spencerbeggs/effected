@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
-import { GitHubRepository, transformSecurityAndAnalysis } from "../src/GitHubRepository.js";
+import { GitHubRepository, repositoryPatch, transformSecurityAndAnalysis } from "../src/GitHubRepository.js";
 import { Repo, RepoRef } from "../src/Repo.js";
 
 /**
@@ -352,4 +352,38 @@ describe("GitHubRepository.applySettings reporting", () => {
 			assert.deepStrictEqual([...value.rest], []);
 		}),
 	);
+});
+
+describe("repositoryPatch", () => {
+	it("drops explicitly-undefined fields rather than sending them", () => {
+		// PATCH treats an absent field as "leave it alone"; an explicit undefined
+		// is a value. Sending one would overwrite a setting the user never named.
+		const patch = repositoryPatch({ has_issues: true, has_wiki: undefined, description: "x" });
+		assert.deepStrictEqual(patch, { has_issues: true, description: "x" });
+		assert.isFalse("has_wiki" in patch, "an unset field must not reach the wire at all");
+	});
+
+	it("keeps a field whose value is legitimately false or empty", () => {
+		// The filter is on `undefined`, NOT on falsiness: `has_issues: false` is
+		// the whole point of a patch that disables a feature, and a truthiness
+		// check here would silently refuse to turn anything off.
+		const patch = repositoryPatch({ has_issues: false, description: "" });
+		assert.deepStrictEqual(patch, { has_issues: false, description: "" });
+	});
+
+	it("answers an empty patch when nothing was configured", () => {
+		assert.deepStrictEqual(repositoryPatch({ has_issues: undefined, has_wiki: undefined }), {});
+	});
+
+	it("accepts a draft built from a settings source, which is the shape that would not assign", () => {
+		// This is the case from the report: a value typed `boolean | undefined`
+		// does not satisfy octokit's `has_issues?: boolean` under
+		// exactOptionalPropertyTypes, so the draft type is the thing that makes
+		// the natural call site compile without a cast.
+		const configured: { has_issues?: boolean | undefined; has_projects?: boolean | undefined } = {
+			has_issues: true,
+		};
+		const patch = repositoryPatch({ has_issues: configured.has_issues, has_projects: configured.has_projects });
+		assert.deepStrictEqual(patch, { has_issues: true });
+	});
 });

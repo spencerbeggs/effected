@@ -6,9 +6,8 @@ store, OIDC, artifacts, tool install, the reporting suite and the
 `@effected/sbom` adapters.
 
 **Tier: integrated. Status: complete** (2026-07-25; `sbom` adapters and reporting
-suite 2026-07-26). Peers: `effect` and `@effect/platform-node`.
-Six `@effected/*` dependencies, every arrow inward. Program frame:
-`.claude/plans/2026-07-25-github-split-master.md`.
+suite 2026-07-26). Peers: `effect` and `@effect/platform-node`. Six `@effected/*`
+dependencies, every arrow inward.
 
 **Design doc:** `@../../.claude/design/effected/packages/github-actions.md` — the
 entry point, and the authority on what exists and why; read it before adding a
@@ -76,6 +75,17 @@ drags a tree larger than this package. Globbing is `@effected/glob`, never
 
 Each line is the rule; its reasoning is in the child beside it.
 
+**Errors are per-reason tagged unions, not one class carrying a `reason` field**
+— the old convention is retired. `ActionOutputError`, `BlobEnvelopeError`,
+`CacheKeyError` and `DetachedProcessError` moved (2026-08-23); each name survives
+as a union alias, so no signature moved. Members carry their own message's fields
+**non-optional** (collapsed, they are all `optionalKey`, and the miss renders
+`"undefined"`), and `catchTag` recovers from one reason without swallowing the
+rest. **The judgement: split when the reasons carry different fields, or when a
+caller plausibly recovers from one alone** — a closed set over one shared field
+set stays one class. Depth →
+`@../../.claude/design/effected/packages/github-actions.md#errors`.
+
 **Secrets and processes** → `@./CLAUDE.processes.md`
 
 - `Secret.ts` is the only place `Redacted.value` appears in `src/`; a structural
@@ -93,6 +103,8 @@ Each line is the rule; its reasoning is in the child beside it.
   nothing mutates it.
 - No caller spells a runner variable name: `ActionInput` for inputs,
   `ActionLogger.annotated` for annotations.
+- `ActionInput.pairs` rejects an **empty key** unconditionally and names the
+  offending line; an empty *value* is legitimate, and `requireValue` opts out.
 - **Never remove the default `ConfigProvider`** `Action.run` installs; the design
   doc's earlier "no provider" probe is superseded.
 - A missing input and `""` are both *missing data*; optional inputs need
@@ -103,7 +115,14 @@ Each line is the rule; its reasoning is in the child beside it.
 **Storage** → `@./CLAUDE.storage.md`
 
 - `ToolInstaller` stages under the cache root and **renames** into place; a
-  partial tool must never be a cache hit.
+  partial tool must never be a cache hit. `ToolInstallerError.subject` is
+  **required**.
+- `CacheKey.withNamespace` puts its segment **first** and **drops the ladder**:
+  restore keys are prefix matches, so a bust token folded in later leaves
+  ordinary runs prefix-matching busted entries. Want an in-namespace ladder?
+  Follow with `withRestoreDepths`.
+- The stored value is `StoredBlob<A>`, never `Blob<A>` — the old name collided
+  with the DOM global and shipped in the docs model as `Blob_2`.
 - `versionOf` hashes the **literal** pattern list on both sides; `save` resolves
   globs, `restore` does not.
 - `ActionState.save` proves the encoded form is plain JSON

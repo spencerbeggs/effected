@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { S3Config } from "../src/index.js";
-import { ActionOutputs, BlobStore } from "../src/index.js";
+import { ActionOutputs, BlobStore, BlobStoreError, NotABlobEnvelopeError } from "../src/index.js";
 import { canonicalize, digestHex, sign, signingKey, uriEncode } from "../src/internal/sigv4.js";
 
 class Meta extends Schema.Class<Meta>("Meta")({ tag: Schema.String, durationMs: Schema.Number }) {}
@@ -198,7 +198,7 @@ describe("BlobStore", () => {
 				const error = yield* Effect.flip(
 					Effect.flatMap(BlobStore, (store) => store.get("k", Meta)).pipe(Effect.provide(s3(fake))),
 				);
-				assert.strictEqual(error._tag, "BlobStoreError");
+				assert.instanceOf(error, BlobStoreError);
 				assert.strictEqual(error.reason === "refused" ? error.status : undefined, 403);
 			}),
 		);
@@ -243,7 +243,7 @@ describe("BlobStore", () => {
 				const error = yield* Effect.flip(
 					Effect.flatMap(BlobStore, (store) => store.get("legacy", Meta)).pipe(Effect.provide(s3(fake))),
 				);
-				assert.strictEqual(error._tag, "BlobEnvelopeError");
+				assert.instanceOf(error, NotABlobEnvelopeError);
 			}),
 		);
 

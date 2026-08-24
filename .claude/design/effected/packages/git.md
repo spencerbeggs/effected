@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-14
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 95
 related:
   - ../effect-standards.md
@@ -121,6 +121,14 @@ Two invariants sit alongside the taxonomy:
 - **Option-injection guard.** Every caller-supplied positional that is not protected by a literal `--` in the argv — refs, ranges, remotes, config keys, submodule urls and paths — is validated before any spawn: a leading-dash value fails typed as `GitCommandError` rather than reaching git's argv parser, where it would read as a flag (`checkout -b` being the dangerous case; a blanket `--` is not a safe alternative because it switches `checkout` into pathspec mode, which is also why `add` — a genuine pathspec operation — is the one constructor that does use a literal `--`). `configSet` has no documented `--` separator, so it guards all three of its string inputs — `key`, `value` **and** `options.file` — with the recorded limitation that a legitimate config value beginning with `-` is refused typed rather than risked. The pure `GitCommand` constructors deliberately do not validate; the service is the fallible boundary.
 
 The stderr matching is **unanchored substring matching** against `LC_ALL=C`-pinned phrases — a path or ref name that literally contains one of these phrases could misclassify. This is an accepted, recorded tradeoff (see the comment above `UNKNOWN_REF_PATTERNS` in `Git.ts`); anchoring is deferred until a real collision is observed.
+
+### Config reads are scopeable; config writes are not
+
+`configList` and `configGet` take an optional `scope` (`local`, `global`, `system`, `worktree`). **Omitted still means the MERGED read** — repository-local plus global plus system — because that is the right answer to "what is the effective value" and the compatible one for every existing caller.
+
+It is the wrong answer to "what does THIS checkout declare", and that mismatch was a live defect rather than a nicety: a globally set key shadows a decision that is really about one repository, and an enumerate-then-remove flow reads more broadly than `configRemoveSection` writes, which defaults to the local file — so the enumeration proposes removing entries the write cannot reach. `{ scope: "local" }` is the precise read. `file` and `scope` both select a source and git accepts only one, so passing both fails typed as a `GitCommandError` rather than silently preferring either.
+
+**`configSet` is repository-local, always, and takes no scope option.** A bare `git config <key> <value>` writes the checkout's own `.git/config`, and the method emits no scope flag. The asymmetry with the reads is deliberate: a read has a defensible "effective value" default and a write does not. Writing global or system config would leak a setting onto a shared machine or a CI runner for every unrelated step in the job, so it is **not offered at all** rather than hidden behind an option that is easy to pass by accident. The documentation says so on the method, because the absence of an option is not self-explaining.
 
 ## The pure git-config core
 

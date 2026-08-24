@@ -14,11 +14,23 @@ This writes a `configDependencies` entry into the workspace's `pnpm-workspace.ya
 
 ## What it ships
 
-Two catalog families and a pnpmfile:
+**Four catalogs** — two pairs with different jobs — and a pnpmfile.
 
-- **`catalog:effect`** — every `effect`/`@effect/*` package pinned to ONE exact Effect v4 beta (`lock` strategy — no caret; a caret on a prerelease floats across the beta line). Applications use it in `dependencies`; libraries in `devDependencies`.
-- **`catalog:effectPeers`** — the same package set at the computed shared peer floor; libraries declare it in `peerDependencies`.
-- **`catalog:effect3` / `catalog:effect3Peers`** — latest Effect v3 (`interop` strategy) for dual-version testing; these drop at this plugin's own `1.0.0`.
+The Effect pair, consumed by every `@effected/*` package:
+
+- **`catalog:effect`** — every `effect`/`@effect/*` package pinned to ONE exact Effect v4 prerelease (`lock` strategy — no caret; a caret on a prerelease floats across the release line and desynchronizes the installed `effect` from the vendored source). Applications use it in `dependencies`; libraries in `devDependencies`.
+- **`catalog:effect:peers`** — the same package set as the advertised peer range; libraries declare it in `peerDependencies`. Under `lock` it holds the same exact pin, not a caret floor.
+
+The kit pair, for consumers of the kit only. Internal edges stay `workspace:*`, and these are **not** exported into the root `pnpm-workspace.yaml`:
+
+- **`catalog:effected` / `catalog:effected:peers`** — every publishable kit package but one, `strategy: "lock-minor"`, `source: "workspace"`, holding each package's **next release** version.
+
+Two constraints on the kit pair that are load-bearing rather than incidental:
+
+- **`@effected/pnpm-plugin-effect` is deliberately absent from its own catalog and must stay absent.** Catalogue it and every rewrite bumps the plugin, which invalidates the catalog and writes another changeset — a release loop with no termination condition. The omission *is* the termination condition.
+- **Membership is `publishConfig.access === "public"`, never `private === false`.** Every source manifest in the kit is `"private": true`; a check written against `private` classifies the whole kit as unpublishable and silently emits an empty catalog.
+
+The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCase `effectPeers` alias were **removed** on the rc.109 advance. Do not reach for them and do not reintroduce them.
 
 ## Usage (in a consuming workspace's package manifests)
 

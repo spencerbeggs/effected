@@ -27,6 +27,7 @@ This table routes a capability to the package and skill that own it; it does not
 | emit a machine-readable output contract | `ActionOutputs.setJson` + a `Schema` codec | `actions-inputs-outputs` |
 | make the run log readable | `ActionLogger` (`group`, `withBuffer`, `notice`, `annotated`) | `actions-reporting` |
 | write the job summary | `ActionOutputs.summary` | `actions-reporting` |
+| read a published package's contents before installing it | `PackageTarball.extract` (scoped) + `resolveEntryPoint` | `release-and-publish` |
 | create a check run or annotate a PR | `CheckRun`, `CheckRun.withCheckRun` | `actions-reporting` |
 | post or update a sticky PR comment | `PullRequestComment.upsert` + `CommentMarker` | `actions-reporting` |
 | write GitHub-flavored markdown / a findings table | `GitHubMarkdown`, `GitHubMarkdown.tableFor` | `actions-reporting` |
@@ -78,6 +79,7 @@ This table routes a capability to the package and skill that own it; it does not
 | --- | --- | --- |
 | sign and store an attestation | `SlsaProvenance.forGitHubWorkflow` → `InTotoStatement.forSubject` → `SigstoreSigner.sign` → `Attestation.upload` | `sbom` + `github` |
 | publish a package, integrity-checked | `NpmRegistry.version` (already-published probe) → `PackagePublish.setupAuth` → `PackagePublish.pack` → `PackagePublish.publishTarball` | `npm` |
+| read a config dependency before install runs | `NpmRegistry.version` → `PackageTarball.extract` (scoped) → `resolveEntryPoint` | `npm` + `package-json` |
 | hold a token across the three phases | `GitHubToken.provision` (pre) → `GitHubToken.read` (main) → `GitHubToken.dispose` (post) | `github-actions` |
 | emit an SBOM and attest it | `Sbom.generate` → `Sbom.toJson` → `InTotoStatement.forSubject` → `SigstoreSigner.sign` → `Attestation.upload` | `sbom` + `github` |
 
@@ -86,7 +88,7 @@ This table routes a capability to the package and skill that own it; it does not
 - **Resolve an API claim in order**: the package's own `CLAUDE.md`, then its source — the source wins on disagreement. For Effect core itself, load `effect-v4-source-lookup`: the vendored source settles existence and signature, a probe settles semantics.
 - **The route is the key.** `client.request("GET /repos/{owner}/{repo}", …)` types the parameters and response from the literal alone; a cast in GitHub API code is a defect, not a shortcut.
 - **Every service ships `makeTest`/`layerTest`**, and an unstubbed member dies loudly, naming itself. A handful of recorded exceptions each carry a stated reason.
-- **Errors are `Schema.TaggedError` with a `kind` discriminant and ergonomic statics**, and every error reason has a test that fires it. When porting a channel, demonstrate its failure path or delete it from the signature.
+- **Errors are `Schema.TaggedError`, in one of two shapes — check which before writing a handler.** Most carry a discriminant field and are matched on it: `kind` (`GitHubError`, `PublishError`, `RegistryReadError`, `CommandFailedError`, `CheckDocumentError`, `ManagedDocumentError`, `TokenPermissionError`, `GitHubAppError`) or `reason` (`ActionEnvironmentError`, `GitHubTokenError`, `BlobTransferError`). Four in `@effected/github-actions` are instead **per-reason tagged unions**: `ActionOutputError`, `BlobEnvelopeError`, `CacheKeyError` and `DetachedProcessError` are `type` aliases over one exported class per failure, matched on `error._tag`, with `Effect.catchTag` recovering from one arm rather than all of them. Every name still appears in the same signatures, so a union is invisible until you reach for `.reason` — which no longer type-checks on those four. Every error reason has a test that fires it; when porting a channel, demonstrate its failure path or delete it from the signature.
 - **Read an input through `ActionInput`, never a bare `Config.*` read spelled by hand.** `ActionInput` carries the parsing and the typed `ConfigError`s a bare read cannot, and a test suite that injects its own `ConfigProvider` around a bare read can silently diverge from the runner's own key derivation.
 - **A consumer program never mentions the platform.** `ActionRuntime.layer` composes the platform and HTTP client internally with no requirements of its own, and an extra layer handed to `Action.run` may require anything the runtime already provides.
 - **`@effected/github-actions` is the one package in the kit with a required Node platform peer, and the only one where a raw `node:` import is sanctioned** — for digests and HMAC, reaping a bare pid, a file-descriptor-level detached spawn, and the cache/artifact codecs. Sanctioned is not unlimited: everything that can go through a core contract does.

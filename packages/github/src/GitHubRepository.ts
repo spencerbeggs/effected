@@ -28,6 +28,73 @@ export type RepositorySettings = Rest.Data<"GET /repos/{owner}/{repo}">;
 export type RepositoryPatch = Omit<Rest.Params<"PATCH /repos/{owner}/{repo}">, "owner" | "repo">;
 
 /**
+ * A {@link RepositoryPatch} under construction, where an absent field may be
+ * spelled as an explicit `undefined`.
+ *
+ * @remarks
+ * The shape you actually have when you are applying only what a user
+ * configured. Octokit's generated params spell an optional field as
+ * `has_issues?: boolean`, **not** `has_issues?: boolean | undefined`, so under
+ * `exactOptionalPropertyTypes` — on in this repo and in the silk tsconfig base
+ * — a `Partial<T>` built from your own settings schema does not assign to
+ * `RepositoryPatch` at all. This type does, and {@link repositoryPatch} turns
+ * it into one.
+ *
+ * @public
+ */
+export type RepositoryPatchDraft = {
+	readonly [K in keyof RepositoryPatch]?: RepositoryPatch[K] | undefined;
+};
+
+/**
+ * A {@link RepositoryPatch} from a draft, dropping every explicitly-`undefined`
+ * field.
+ *
+ * @remarks
+ * The supported spelling for "apply only what was configured" — the natural
+ * shape for a sync action, and the one the checker cannot follow on its own.
+ * Without it a consumer under the recommended tsconfig is quietly pushed toward
+ * `as`, which is a real cost in a package whose stated design property is that
+ * the route is the key and there are no casts.
+ *
+ * Dropping the key rather than sending `undefined` is what the wire needs:
+ * `PATCH` treats an absent field as "leave it alone", while an explicit `null`
+ * or `undefined` is a value.
+ *
+ * A key-by-key loop still defeats TypeScript's correlation between two indexed
+ * accesses (`draft[key] = source[key]` over a union `key`), which no helper can
+ * fix — build the draft as a literal where you can.
+ *
+ * @example
+ * ```ts
+ * import { repositoryPatch } from "@effected/github";
+ *
+ * // `config.has_issues` is `boolean | undefined`; absent fields drop out.
+ * const patch = repositoryPatch({
+ *   has_issues: config.has_issues,
+ *   has_wiki: config.has_wiki,
+ *   description: config.description,
+ * });
+ * ```
+ *
+ * @param draft - The fields to apply, any of which may be `undefined`.
+ * @returns A patch carrying only the fields that were actually set.
+ *
+ * @public
+ */
+export const repositoryPatch = (draft: RepositoryPatchDraft): RepositoryPatch => {
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(draft)) {
+		if (value !== undefined) out[key] = value;
+	}
+	// The one cast, owned here rather than at every call site: `out` holds a
+	// subset of `draft`'s keys with every `undefined` removed, which is exactly
+	// what `RepositoryPatch` describes and what TypeScript cannot narrow to
+	// through `Object.entries`.
+	return out as RepositoryPatch;
+};
+
+/**
  * Whether an account is a user or an organization.
  *
  * @public

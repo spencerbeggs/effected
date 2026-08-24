@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 95
 related:
   - ../effect-standards.md
@@ -111,6 +111,17 @@ Two things make it worth a design note rather than a changelog line:
 - **A consumer's own schema can mask it entirely.** The reporting consumer types those fields as `Schema.Literals(["enabled", "disabled"])`, so the bare string is the only shape that survives their decode and the defect could never reach them. That is precisely why it survived review on their side: *the consumer who wrote the normaliser cannot hit the bug, because their input is already normalised.* The next consumer, reading the types instead of the config, hits it first.
 
 So: when a boundary normalises, the typed form passes through untouched, and a test pins both forms producing identical output. Do not "simplify" that branch away — it looks redundant from inside the consumer that motivated the normaliser, and is not.
+
+### `repositoryPatch` owns the cast consumers were writing
+
+`RepositoryPatch` is octokit's generated parameter type, and octokit spells an optional field as `has_issues?: boolean` — **not** `has_issues?: boolean | undefined`. Under `exactOptionalPropertyTypes`, which is on in this repo and in the silk tsconfig base, a `Partial<T>` assembled from a consumer's own settings schema therefore does not assign to `RepositoryPatch` at all. Every consumer applying "only what the user configured" was writing the same `as`.
+
+`RepositoryPatchDraft` is that shape — every field optional *and* explicitly `undefined`-able — and `repositoryPatch(draft)` narrows it by **dropping keys whose value is `undefined`**. Dropping rather than sending is what the wire needs: `PATCH` reads an absent field as "leave it alone", while an explicit `null` or `undefined` is a value.
+
+Two things make it a design note rather than a helper:
+
+- **The one cast lives here, once.** This is a package whose stated property is that the route is the key and there are no casts; pushing every consumer toward `as` under the *recommended* tsconfig is a real cost, and absorbing it is what the boundary is for.
+- **The residual limitation is recorded, because a reader will try to fix it.** A key-by-key loop still defeats TypeScript's correlation between two indexed accesses (`draft[key] = source[key]` over a union `key`), and no helper can fix that — build the draft as a literal where you can.
 
 ## The repo coordinate
 

@@ -47,7 +47,7 @@ export class BlobStoreError extends Schema.TaggedError<BlobStoreError>()("BlobSt
  *
  * @public
  */
-export interface Blob<A> {
+export interface StoredBlob<A> {
 	/** The caller's own metadata, decoded through the caller's own schema. */
 	readonly metadata: A;
 	/** The payload, verbatim. */
@@ -64,11 +64,11 @@ export interface BlobStoreShape {
 	readonly get: <A, I>(
 		key: string,
 		schema: Schema.Codec<A, I>,
-	) => Effect.Effect<Option.Option<Blob<A>>, BlobStoreError | BlobEnvelopeError>;
+	) => Effect.Effect<Option.Option<StoredBlob<A>>, BlobStoreError | BlobEnvelopeError>;
 	/** Write a blob. */
 	readonly put: <A, I>(
 		key: string,
-		blob: Blob<A>,
+		blob: StoredBlob<A>,
 		schema: Schema.Codec<A, I>,
 	) => Effect.Effect<void, BlobStoreError | BlobEnvelopeError>;
 	/** Whether a key is present, without transferring the body. */
@@ -176,10 +176,10 @@ export class BlobStore extends Context.Service<BlobStore, BlobStoreShape>()("@ef
 				Effect.suspend(() => {
 					const stored = entries.get(key);
 					return stored === undefined
-						? Effect.succeed(Option.none<Blob<A>>())
+						? Effect.succeed(Option.none<StoredBlob<A>>())
 						: Effect.map(Effect.fromResult(BlobEnvelope.decodeResult(stored, schema)), Option.some);
 				}),
-			put: <A, I>(key: string, blob: Blob<A>, schema: Schema.Codec<A, I>) =>
+			put: <A, I>(key: string, blob: StoredBlob<A>, schema: Schema.Codec<A, I>) =>
 				Effect.suspend(() =>
 					Effect.map(Effect.fromResult(BlobEnvelope.encodeResult(blob.metadata, blob.body, schema)), (framed) => {
 						entries.set(key, framed);
@@ -247,7 +247,7 @@ const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClie
 					const response = yield* send("GET", key, new Uint8Array(0));
 					// A miss is not a failure: it is the answer the caller asked for.
 					if (response.status === 404) {
-						return Option.none<Blob<A>>();
+						return Option.none<StoredBlob<A>>();
 					}
 					if (response.status < 200 || response.status >= 300) {
 						return yield* Effect.fail(new BlobStoreError({ reason: "refused", key, status: response.status }));
@@ -258,7 +258,7 @@ const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClie
 					return Option.some(yield* Effect.fromResult(BlobEnvelope.decodeResult(new Uint8Array(buffer), schema)));
 				}),
 
-			put: <A, I>(key: string, blob: Blob<A>, schema: Schema.Codec<A, I>) =>
+			put: <A, I>(key: string, blob: StoredBlob<A>, schema: Schema.Codec<A, I>) =>
 				Effect.gen(function* () {
 					const framed = yield* Effect.fromResult(BlobEnvelope.encodeResult(blob.metadata, blob.body, schema));
 					const response = yield* send("PUT", key, framed);

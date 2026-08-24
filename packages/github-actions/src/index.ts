@@ -13,14 +13,23 @@ export {
 	GitHubContext,
 	RunnerContext,
 } from "./ActionEnvironment.js";
-export { ActionInput } from "./ActionInput.js";
+export { ActionInput, type PairsOptions } from "./ActionInput.js";
 export {
 	ActionLogger,
 	type ActionLoggerShape,
 	type WithBufferOptions,
 	type WithStepOptions,
 } from "./ActionLogger.js";
-export { ActionOutputError, ActionOutputs, type ActionOutputsShape } from "./ActionOutputs.js";
+export {
+	type ActionOutputError,
+	ActionOutputs,
+	type ActionOutputsShape,
+	DetachedOutputError,
+	InvalidOutputNameError,
+	OutputEncodeError,
+	RunnerFileUnavailableError,
+	RunnerFileWriteError,
+} from "./ActionOutputs.js";
 export { ActionState, ActionStateError, type ActionStateShape } from "./ActionState.js";
 export { ActionsIdentityToken } from "./ActionsIdentityToken.js";
 export { ActionsProvenance } from "./ActionsProvenance.js";
@@ -35,11 +44,19 @@ export {
 	type UploadOptions,
 	type UploadResult,
 } from "./Artifact.js";
-export { BlobEnvelope, BlobEnvelopeError } from "./BlobEnvelope.js";
+export {
+	BlobEnvelope,
+	type BlobEnvelopeError,
+	BlobMetadataDecodeError,
+	BlobMetadataEncodeError,
+	NotABlobEnvelopeError,
+	TruncatedBlobEnvelopeError,
+	UnsupportedBlobEnvelopeVersionError,
+} from "./BlobEnvelope.js";
 export { GitHubCacheBlobStore } from "./BlobStore.githubCache.js";
-export { type Blob, BlobStore, BlobStoreError, type BlobStoreShape, type S3Config } from "./BlobStore.js";
+export { BlobStore, BlobStoreError, type BlobStoreShape, type S3Config, type StoredBlob } from "./BlobStore.js";
 export { BlobTransferError, type DataBlobTransfer, type FileBlobTransfer } from "./BlobTransfer.js";
-export { CacheKey, CacheKeyError } from "./CacheKey.js";
+export { CacheKey, CacheKeyBadPatternError, type CacheKeyError, CacheKeyReadError } from "./CacheKey.js";
 export {
 	CheckDocument,
 	CheckDocumentError,
@@ -58,10 +75,15 @@ export {
 } from "./CheckState.js";
 export { ChildEnv, type PathPrependEnv, type PathPrependOptions } from "./ChildEnv.js";
 export {
+	DetachedLogUnavailableError,
+	DetachedNotReadyError,
 	DetachedProcess,
-	DetachedProcessError,
+	type DetachedProcessError,
 	type DetachedProcessOps,
+	DetachedSignalFailedError,
+	DetachedSpawnFailedError,
 	type DetachedSpawnOptions,
+	InvalidPidError,
 	ProcessId,
 	type ReadinessOptions,
 } from "./DetachedProcess.js";

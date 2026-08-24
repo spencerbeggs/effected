@@ -36,12 +36,21 @@ Thirty-two of `Git`'s seventy-two methods only read repository state without tou
 
 ## The other things that will bite you
 
-- **`LC_ALL=C` + `extendEnv: true` are pinned on every `GitCommand`, unconditionally.** Classification depends on stable, untranslated stderr text (`"not a git repository"`, `"unknown revision"`); a localized message would silently misclassify into `GitCommandError` instead of the typed domain error. `extendEnv: true` is required alongside it because its default is owned by whichever platform backend implements `ChildProcessSpawner`, not by core.
+- **`LC_ALL=C` + `extendEnv: true` are pinned on every `GitCommand`, unconditionally.** Classification depends on stable, untranslated stderr text (`"not a git repository"`, `"unknown revision"`); a localized message silently misclassifies into `GitCommandError` instead of the typed domain error. `extendEnv: true` is required alongside it because its default is owned by whichever platform backend implements `ChildProcessSpawner`, not by core.
 - **Classification happens once.** Every `Git` method funnels through the private `classify` step in `Git.ts`; nothing else in the package may inspect `stderr`, `stdout` or `exitCode`. `PlatformError` and `Cause.TimeoutError` are absorbed inside `runClassified` and never escape a method; the 30s `GIT_TIMEOUT` ceiling is owned here, not by the caller.
-- **The stderr matching is unanchored substring matching** against `LC_ALL=C`-pinned phrases, so a path or ref that literally contains one could misclassify. **Accepted as a deliberate tradeoff** — anchoring is deferred until a real collision is observed. Do not "fix" it without discussion.
+- **The stderr matching is unanchored substring matching** against `LC_ALL=C`-pinned phrases, so a path or ref containing one could misclassify. **A deliberate tradeoff** — anchoring is deferred until a real collision is observed. Do not "fix" it without discussion.
 - **The option-injection guard runs pre-spawn.** Every ref/range argument (`show`/`lsTree`/`refExists`/`revParse`/`checkout` refs, both sides of `mergeBase` and `changedFiles`) beginning with `-` fails typed as `GitCommandError` — git would parse it as a flag, and `checkout("-b")` would create a branch. A blanket `--` separator is deliberately NOT used (it flips `checkout` into pathspec mode). `GitCommand`'s pure constructors do not validate; the `Git` service is the guard's home, pinned including a never-spawn mock.
 - **The `-z` rule.** `lsTree`, `changedFiles` and the three working-tree constructors **always** use `-z` and split on `"\0"` via `parseNulSeparated` — never on `"\n"`, because git paths may contain newlines. `-z` is baked into the argv unconditionally; there is no non-`-z` code path to regress into.
 - **`NameStatusEntry` and `StatusEntry` order their rename token OPPOSITE each other** — `diff --name-status -z` emits old-path-then-new-path, `status --porcelain -z` emits new-path-then-old-path. `parseNameStatus` and `parseStatus` must never be conflated or refactored into one implementation; each is correct only for its own token order.
+- **Config reads are scopeable; config writes are not.** `configList` and
+  `configGet` take an optional `scope` (`local` | `global` | `system` |
+  `worktree`), and **omitting it still means the MERGED read** — the right answer
+  to "what is the effective value", the wrong one to "what does THIS checkout
+  declare": an enumerate-then-remove flow reads wider than `configRemoveSection`
+  writes. `{ scope: "local" }` is the precise read; `file` and `scope` both
+  select a source, so passing both fails typed. **`configSet` writes
+  repository-local, always, and offers no scope** — a global or system write
+  leaks onto a shared machine or a CI runner.
 - **Never widen the narrow `_base` build suppression**, and never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/git`.
 - **Do not delete the dual-stream backpressure integration test** — it is the sole regression guard for `runCollected`'s `{ concurrency: "unbounded" }`.
 
