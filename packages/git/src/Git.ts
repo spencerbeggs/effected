@@ -2999,11 +2999,11 @@ export interface GitShape {
 	 * (e.g. `.gitmodules`).
 	 *
 	 * @remarks
-	 * **The write is repository-LOCAL, always.** A bare `git config <key>
-	 * <value>` writes the checkout's own `.git/config`, and this method emits no
-	 * scope flag, so the setting applies to every later git command in that
-	 * checkout and reaches nothing outside it. That asymmetry with
-	 * {@link Git.configList} and {@link Git.configGet} — whose omitted `scope`
+	 * **The write is repository-LOCAL, always.** A bare
+	 * `git config <key> <value>` writes the checkout's own `.git/config`, and
+	 * this method emits no scope flag, so the setting applies to every later git
+	 * command in that checkout and reaches nothing outside it. That asymmetry with
+	 * `Git.configList` and `Git.configGet` — whose omitted `scope`
 	 * means the MERGED read — is deliberate rather than an oversight: a read
 	 * has a defensible "effective value" default, and a write does not. Writing
 	 * global or system config would leak a setting onto a shared machine or a
@@ -3080,7 +3080,7 @@ export interface GitShape {
 	 * With no `scope` this reads the MERGED configuration, so a globally set key
 	 * answers here even when this repository declares nothing. Pass
 	 * `{ scope: "local" }` to ask what this checkout itself declares — see
-	 * {@link Git.configList} for why the distinction matters.
+	 * `Git.configList` for why the distinction matters.
 	 */
 	readonly configGet: (
 		cwd: string,
@@ -3341,7 +3341,7 @@ export interface GitShape {
 	 * and wrong for "what does this checkout declare": a globally set key
 	 * otherwise shadows a decision that is really about one repository, and an
 	 * enumerate-then-remove flow reads more broadly than
-	 * {@link Git.configRemoveSection} writes, which defaults to the local file.
+	 * `Git.configRemoveSection` writes, which defaults to the local file.
 	 * Pass `{ scope: "local" }` for the precise read.
 	 *
 	 * `file` and `scope` both select a source and git accepts only one — passing

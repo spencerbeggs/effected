@@ -37,7 +37,7 @@ export interface RegistryTarget {
 	 * `...(token !== null ? { token } : {})` — and a spread of a no-longer-known
 	 * property is not an excess-property error, so the field would simply vanish
 	 * and an authenticated probe would become an anonymous one. Against a private
-	 * registry that answers 401, {@link NpmRegistry.version} reads that as "not
+	 * registry that answers 401, `NpmRegistry.version` reads that as "not
 	 * published", and a publish flow acting on it republishes a version that
 	 * already exists. Typed `never`, the same spread fails to compile.
 	 */
