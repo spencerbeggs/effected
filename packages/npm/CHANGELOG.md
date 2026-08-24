@@ -1,12 +1,51 @@
 # @effected/npm
 
+## 0.12.0
+
+### Breaking Changes
+
+#### `setupAuth` takes a `credential`, not a `token`
+
+- `PackagePublish.setupAuth` no longer accepts a bearer `token`. It now takes a `credential: RegistryCredential`, the same closed union `NpmRegistry`'s read probe already used — so a probe and a publish can no longer authenticate differently against the same registry.
+
+```ts
+// before
+yield* packagePublish.setupAuth({ registry, token, npmrcPath });
+
+// after
+yield* packagePublish.setupAuth({
+	registry,
+	credential: { kind: "token", token },
+	npmrcPath,
+});
+```
+
+- For HTTP basic auth, use `{ kind: "basic", encoded }` — or build one from a username/password pair with the new `basicCredentialFromPair`.
+
+#### `RegistryTarget.token` is a deprecated tripwire
+
+- `RegistryTarget.token` is now typed `never` for one minor rather than removed outright. Passing it through a conditional spread (`...(token ? { token } : {})`) now fails to compile instead of silently dropping the field — an untyped drop would have turned an authenticated read into an anonymous one against a private registry. Migrate to `RegistryTarget.credential: RegistryCredential`.
+
+### Features
+
+- `PackageTarball` — a new service that downloads, verifies and extracts a published tarball, returning the directory its `package/` root was unpacked into. Fails typed (`TarballError`) on a missing version, a transport error, an integrity mismatch, or an extraction failure.
+- `RegistryCredential` — the `TokenCredential` / `BasicCredential` union shared by `NpmRegistry` and `PackagePublish.setupAuth`, plus `basicCredentialFromPair` for building a basic credential from a username/password.
+- `registryShortLabel`, `registryDisplayName` and `registryHost` — label projections for a registry URL or bare host, for use in publish reports and summaries.
+- `NpmExecutor.withCacheDir` — redirects npm's cache directory (`--cache <dir>`), for runners whose default npm cache is partially root-owned.
+- `NpmExecutor.withExtraArgs` — appends extra flags to every generated invocation. [#497][#497]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#497]: https://github.com/spencerbeggs/effected/pull/497
+
 ## 0.11.1
 
 ### Performance
 
-* Speed up `CorepackIntegrityHash.FromSri` decoding by replacing per-character base64 alphabet scans with a precomputed ASCII lookup table.
-
-  * The conversion output and validation behavior stay the same; only the character-to-sextet lookup path changed. [#441][#441]
+- Speed up `CorepackIntegrityHash.FromSri` decoding by replacing per-character base64 alphabet scans with a precomputed ASCII lookup table.
+  - The conversion output and validation behavior stay the same; only the character-to-sextet lookup path changed. [#441][#441]
 
 ### Patch Changes
 
@@ -18,8 +57,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* `CorepackIntegrityHash` gains a bridge between npm's SRI integrity form and corepack's own spelling, via a new `FromSri` codec and its `fromSri` `Effect` convenience:
-
+- `CorepackIntegrityHash` gains a bridge between npm's SRI integrity form and corepack's own spelling, via a new `FromSri` codec and its `fromSri` `Effect` convenience:
   ```ts
   import { CorepackIntegrityHash } from "@effected/npm";
 
@@ -27,21 +65,20 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   CorepackIntegrityHash.fromSri("sha512-3q2+7w==...");
   // Effect.succeed("sha512.deadbeef...")
   ```
-
   `fromSri` converts npm's registry `sha512-<base64>` SRI form (what `NpmRegistry.version()` returns) into the corepack `sha512.<hex>` form a `packageManager` pin carries. It tolerates one layer of surrounding JSON quotes and fails typed with the new `InvalidSriIntegrityHashError` on any non-sha512 algorithm, non-canonical base64, a digest that isn't 64 bytes, or an input already in corepack form — the conversion is deliberately one-way from SRI. Encoding through the codec emits the canonical padded SRI spelling.
 
 ## 0.10.0
 
 ### Dependencies
 
-| Dependency         | Type       | Action  | From  | To    |
-| ------------------ | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/commands | dependency | updated | 0.4.0 | 0.5.0 |
-| @effected/semver   | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/semver | dependency | updated | 0.4.0 | 0.5.0 |
 
-* | Dependency | Type           | Action  | From           | To           |                                                                       |
-  | :--------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | :-- | :-- | :-- | :-- | :-- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -51,23 +88,20 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Bug Fixes
 
-* Construction/decode failures now throw a generic `"Schema validation failed"` message with the structured `SchemaIssue.Issue` available on `error.cause` — format it with `SchemaIssue.makeFormatterDefault()` for a human-readable report. [#322][#322]
+- Construction/decode failures now throw a generic `"Schema validation failed"` message with the structured `SchemaIssue.Issue` available on `error.cause` — format it with `SchemaIssue.makeFormatterDefault()` for a human-readable report. [#322][#322]
 
 ### Refactoring
 
-* Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required.
-* Updated `DependencySpecifier` and `PackageManagerPin`'s internal `SchemaIssue.InvalidValue` construction to the new `(annotations, input)` argument order (the `Option`-wrapped first argument is gone).
+- Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required.
+- Updated `DependencySpecifier` and `PackageManagerPin`'s internal `SchemaIssue.InvalidValue` construction to the new `(annotations, input)` argument order (the `Option`-wrapped first argument is gone).
 
 ### Dependencies
 
-| Dependency         | Type       | Action  | From  | To    |
-| ------------------ | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/commands | dependency | updated | 0.3.1 | 0.4.0 |
-| @effected/semver   | dependency | updated | 0.3.2 | 0.4.0 |
-
-* | Dependency | Type           | Action  | From           | To             |
-  | :--------- | :------------- | :------ | :------------- | :------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
+| @effected/semver | dependency | updated | 0.3.2 | 0.4.0 |
+| effect | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
 
 ### Patch Changes
 
@@ -79,34 +113,34 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency         | Type       | Action  | From  | To    |
-| ------------------ | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/commands | dependency | updated | 0.2.1 | 0.3.0 |
 
 ## 0.8.2
 
 ### Dependencies
 
-| Dependency       | Type       | Action  | From  | To    |
-| ---------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/semver | dependency | updated | 0.3.1 | 0.3.2 |
 
-* | Dependency       | Type           | Action  | From  | To    |                                                          |
-  | ---------------- | -------------- | ------- | ----- | ----- | -------------------------------------------------------- |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
   | @effected/semver | peerDependency | updated | 0.3.1 | 0.3.2 | Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ## 0.8.1
 
 ### Dependencies
 
-| Dependency         | Type       | Action  | From  | To    |
-| ------------------ | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/commands | dependency | updated | 0.2.0 | 0.2.1 |
-| @effected/semver   | dependency | updated | 0.3.0 | 0.3.1 |
+| @effected/semver | dependency | updated | 0.3.0 | 0.3.1 |
 
 ### Maintenance
 
-* Switching internal dependency versioning from `~` to `^` ranges.
+- Switching internal dependency versioning from `~` to `^` ranges.
 
 ### Patch Changes
 
@@ -116,11 +150,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* `PackageManagerCache.defaultDirectory(manager, { platform, home })` is a
+- `PackageManagerCache.defaultDirectory(manager, { platform, home })` is a
   pure, no-IO facts table answering where each package manager caches by
-  default: `npm`, `pnpm`, `yarn-classic`, `yarn-berry` (split from a bare
-  `yarn` because the two majors document different cache locations) and
-  `bun`. Every cell is verified against the manager's own documentation or
+  default: `npm`, `pnpm`, `yarn-classic`, `yarn-berry` (split from a bare&#10;`yarn` because the two majors document different cache locations) and&#10;`bun`. Every cell is verified against the manager's own documentation or
   source, cited on the member — two of the three rows this replaces in prior
   art were wrong (pnpm's macOS store is not the Linux XDG path, and yarn
   Classic's cache was never `~/.yarn/cache`).
@@ -156,8 +188,8 @@ PackageManagerCache.defaultDirectory("pnpm", { platform: "darwin", home: "/Users
 
 ### Dependencies
 
-| Dependency       | Type       | Action  | From  | To    |
-| ---------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/semver | dependency | updated | 0.2.1 | 0.3.0 |
 
 ### `PackageManagerPin`
@@ -174,10 +206,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Breaking Changes
 
-* `PublishOutcome.provenanceUrl` is now a plain optional field instead of an
-  `Option.Option<string>`. Read it as `outcome.provenanceUrl` (possibly
-  `undefined`), not `Option.getOrUndefined(outcome.provenanceUrl)`.
-
+- `PublishOutcome.provenanceUrl` is now a plain optional field instead of an&#10;`Option.Option<string>`. Read it as `outcome.provenanceUrl` (possibly&#10;`undefined`), not `Option.getOrUndefined(outcome.provenanceUrl)`.
   ```ts
   // Before
   const url = Option.getOrUndefined(outcome.provenanceUrl);
@@ -188,7 +217,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Bug Fixes
 
-* `NpmRegistry.version` now reads a `github-packages` target through the
+- `NpmRegistry.version` now reads a `github-packages` target through the
   packument instead of the per-version endpoint. GitHub Packages answers the
   per-version route with `405` regardless of credentials, so a lookup against a
   GitHub Packages registry previously failed outright. Any other registry that
@@ -197,8 +226,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency         | Type       | Action  | From  | To    |
-| ------------------ | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/commands | dependency | updated | 0.1.0 | 0.2.0 |
 
 ### Patch Changes
@@ -211,32 +240,20 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### `NpmRegistry` — registry reads over `HttpClient`
-
-  `version` / `versions` / `distTags` / `publishTimes`, each taking a per-call
-  `RegistryTarget` (`{ registry?, token? }`) so one program can probe two
+- ### `NpmRegistry` — registry reads over `HttpClient`
+  `version` / `versions` / `distTags` / `publishTimes`, each taking a per-call&#10;`RegistryTarget` (`{ registry?, token? }`) so one program can probe two
   registries for the same package. A 404 decodes to `Option.none()` rather than
-  being classified from response text. Test doubles: `NpmRegistry.layerTest`
-  (unstubbed members die) and `NpmRegistry.layerSeeded` (a working fake keyed by
-  `registries[registry][name][version]`).
-
+  being classified from response text. Test doubles: `NpmRegistry.layerTest`&#10;(unstubbed members die) and `NpmRegistry.layerSeeded` (a working fake keyed by&#10;`registries[registry][name][version]`).
   ### `PackagePublish` — pack and publish over `@effected/commands`
-
   `setupAuth` / `pack` / `publishTarball` / `dryRun`. The auth token is written
-  to a caller-supplied `.npmrc` path, never passed as an argv flag. `pack`
-  reports both an SRI `integrity` digest (compares against the registry) and a
+  to a caller-supplied `.npmrc` path, never passed as an argv flag. `pack`&#10;reports both an SRI `integrity` digest (compares against the registry) and a
   local `sha256Hex` digest (the attestation subject) — the two are not
   interchangeable. A failed `dryRun` is a result, not a thrown error.
-
   ### `NpmExecutor` — ambient npm or a pinned `dlx`
-
-  `NpmExecutor.ambient` or `NpmExecutor.dlx(spec)`, replacing repeated
-  `packageManager?:` options scattered across call sites. With no launcher
+  `NpmExecutor.ambient` or `NpmExecutor.dlx(spec)`, replacing repeated&#10;`packageManager?:` options scattered across call sites. With no launcher
   configured it fails typed rather than silently degrading to whatever `npm` is
   on `PATH`.
-
   ### `RegistryKind` and `PublishError`
-
   `classifyRegistry` sorts a registry URL into `npm | github-packages | jsr |
   custom` — subdomain matching requires a leading dot, so a lookalike host is
   never mistaken for the real registry. `PublishError` carries `kind: auth |
@@ -244,20 +261,20 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Bug Fixes
 
-* `PackagePublish` now extends the parent environment when passing caller
+- `PackagePublish` now extends the parent environment when passing caller
   environment variables to a spawned `npm`/`pnpm` process, rather than replacing
   it — a hermetic environment previously left the child unable to resolve its
   own executable through `PATH`. [#180][#180]
 
 ### Dependencies
 
-| Dependency         | Type       | Action  | From  | To    |
-| ------------------ | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/commands | dependency | updated | 0.0.0 | 0.1.0 |
 
-* | Dependency         | Type       | Action | From | To    |                                                                       |
-  | ------------------ | ---------- | ------ | ---- | ----- | --------------------------------------------------------------------- |
-  | @effected/commands | dependency | added  | —    | 0.0.0 | [#180][#180] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | @effected/commands | dependency | added | — | 0.0.0 | [#180][#180] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -269,12 +286,10 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Breaking Changes
 
-* ### `ReleaseAgeGate.combine` returns a sorted exclude union
-
+- ### `ReleaseAgeGate.combine` returns a sorted exclude union
   The combined gate previously preserved the order in which exclude patterns were contributed. It now returns them deduplicated and lexicographically sorted, so the union is a canonical value that does not depend on the order the contributions arrived in.
 
   Assertions written against an insertion-ordered union need updating:
-
   ```ts
   const combined = ReleaseAgeGate.combine({ exclude: ["c", "b"] }, { exclude: ["b", "a"] });
 
@@ -284,7 +299,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   // after — canonical order, whichever way the gates were combined
   assert.deepStrictEqual(combined.exclude, ["a", "b", "c"]);
   ```
-
   Consumers that only call `isExcluded` or `filterVersions` are unaffected. [#175][#175]
 
 ### Minor Changes
@@ -297,13 +311,13 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency       | Type       | Action  | From  | To    |
-| ---------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/semver | dependency | updated | 0.2.0 | 0.2.1 |
 
-* | Dependency | Type           | Action  | From          | To             |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -313,15 +327,12 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### `ReleaseAgeGate` / `PartialReleaseAgeGate`
-
-  Adds shared vocabulary for pnpm's publish-time release-age gate — the
-  `minimumReleaseAge` / `minimumReleaseAgeExclude` config pnpm uses to refuse
+- ### `ReleaseAgeGate` / `PartialReleaseAgeGate`
+  Adds shared vocabulary for pnpm's publish-time release-age gate — the&#10;`minimumReleaseAge` / `minimumReleaseAgeExclude` config pnpm uses to refuse
   installing a version younger than a cutoff
   (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`). A resolver that picks the highest
   in-range version with no publish-time awareness can pick a version pnpm then
   rejects; mirroring the gate at resolution time avoids that.
-
   ```ts
   import { ReleaseAgeGate } from "@effected/npm";
 
@@ -334,13 +345,10 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	Date.now(),
   );
   ```
-
   `ReleaseAgeGate.combine` merges partial contributions from multiple config
   sources strictest-wins: the maximum of the contributed ages (clamped
   non-negative), and the exclude sets unioned. `matchesExclude` mirrors pnpm's
-  own `@pnpm/matcher` name-matching semantics — a `*`-glob crosses `/`, unlike
-  `@effected/glob`'s minimatch dialect — so `isExcluded` and `filterVersions`
-  behave exactly like pnpm's own gate. `filterVersions` takes the caller's
+  own `@pnpm/matcher` name-matching semantics — a `*`-glob crosses `/`, unlike&#10;`@effected/glob`'s minimatch dialect — so `isExcluded` and `filterVersions`&#10;behave exactly like pnpm's own gate. `filterVersions` takes the caller's
   clock; a version with a missing or unparseable publish timestamp is dropped,
   matching pnpm's strict posture. [#139][#139]
 
@@ -354,8 +362,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Bug Fixes
 
-* ### Internal @effected edges float patches instead of pinning exact versions
-
+- ### Internal @effected edges float patches instead of pinning exact versions
   The kit's internal `@effected/*` dependency edges were declared as `workspace:*`, which the publish transform projects to an exact version pin. That coupled every kit release — a single sibling patch forced a coordinated re-release of every dependent, just to move the pin — and two paths pinning adjacent exact versions could not dedupe in a consumer's tree.
 
   Every internal `@effected/*` edge, both peer and regular dependency, is now declared `workspace:~`, which projects to a patch-floating `~0.x.y` range. A sibling patch flows into existing releases without a re-release, while a minor bump — the kit's breaking channel on the `0.x` line — still requires the intended coordinated release because `~` holds the minor. Floating the regular-dependency edges as well lets a consumer's paths dedupe onto one sibling copy, which matters where an integrated package surfaces a sibling's types across its API. The `effect` peer, the catalog specifiers, and the `devDependencies` mirrors are unchanged. [#134][#134]
@@ -370,21 +377,21 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency       | Type       | Action  | From  | To    |
-| ---------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/semver | dependency | updated | 0.1.1 | 0.2.0 |
 
 ## 0.2.1
 
 ### Dependencies
 
-| Dependency       | Type       | Action  | From  | To    |
-| ---------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/semver | dependency | updated | 0.1.0 | 0.1.1 |
 
-* | Dependency | Type           | Action  | From          | To            |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -394,10 +401,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Breaking Changes
 
-* ### `CatalogResolver.rangeOf` error channel widened
-
+- ### `CatalogResolver.rangeOf` error channel widened
   `CatalogResolver.rangeOf` can now fail with `CatalogAssemblyError` in addition to `DependencyResolutionError`. A resolver implementation that fails to assemble its catalogs (an unreadable or malformed catalog source) now surfaces that failure typed, rather than folding it into a `DependencyResolutionError` defect. Code that pattern-matches on the error channel (`Effect.catchTag`/`Effect.catchTags`) needs to add a case for `CatalogAssemblyError`:
-
   ```ts
   import { CatalogResolver } from "@effected/npm";
   import { Effect } from "effect";
@@ -415,10 +420,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### `Manifest` — a tolerant manifest model
-
+- ### `Manifest` — a tolerant manifest model
   A new `Manifest` `Schema.Class` models a mid-build manifest: the four dependency fields (`dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`) are typed as string→string records, and every other top-level field is preserved verbatim in `rest` (flattened back to the top level on encode — no literal `rest` key on the wire). Unlike `@effected/package-json`'s strict `Package`, `Manifest.decode` only validates the four dependency fields, so it never rejects a manifest for a field this module has no business validating.
-
   ```ts
   import { Default, Manifest } from "@effected/npm";
   import { Effect } from "effect";
@@ -432,20 +435,15 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   Effect.runPromise(Effect.provide(program, Default)).then(console.log);
   // => { dependencies: { effect: "^4.0.0" }, name: "app" }
   ```
-
-  * `Manifest.decode(input)` normalizes any `SchemaError` to a typed `ManifestDecodeError`.
-  * `manifest.needsResolution` is a pure fast-path check: does any dependency field carry a `catalog:` or `workspace:` specifier?
-  * `manifest.resolve()` projects every such specifier to a concrete range through `CatalogResolver` / `WorkspaceResolver`, returning a new `Manifest`. A specifier the resolvers cannot answer fails typed as `UnresolvedDependencyError`; mechanism failures surface as `CatalogAssemblyError` / `DependencyResolutionError`.
-  * `manifest.toRecord()` encodes back to the wire shape.
+  - `Manifest.decode(input)` normalizes any `SchemaError` to a typed `ManifestDecodeError`.
+  - `manifest.needsResolution` is a pure fast-path check: does any dependency field carry a `catalog:` or `workspace:` specifier?
+  - `manifest.resolve()` projects every such specifier to a concrete range through `CatalogResolver` / `WorkspaceResolver`, returning a new `Manifest`. A specifier the resolvers cannot answer fails typed as `UnresolvedDependencyError`; mechanism failures surface as `CatalogAssemblyError` / `DependencyResolutionError`.
+  - `manifest.toRecord()` encodes back to the wire shape.
 
   ### `CatalogAssemblyError` now lives here
-
   `CatalogAssemblyError` moved from `@effected/workspaces` to `@effected/npm`, next to the `CatalogResolver` contract that names it in its error channel. Import it from `@effected/npm` going forward.
-
   ### New `DependencySpecifier` statics and `WorkspaceSpecifier#resolve`
-
   `DependencySpecifier` gains statics covering the pnpm publish-time projection for `workspace:` specifiers, including the alias form:
-
   ```ts
   import { DependencySpecifier } from "@effected/npm";
 
@@ -458,7 +456,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   DependencySpecifier.workspaceTargetOf("workspace:foo@^1.0.0"); // Some("foo")
   DependencySpecifier.workspaceTargetOf("workspace:*"); // None (plain form)
   ```
-
   `WorkspaceSpecifier#resolve(version)` applies the same projection to an already-classified instance from `DependencySpecifier.FromString`, sharing one implementation with the `resolveWorkspace` static. [#83][#83]
 
 ### Minor Changes
@@ -471,12 +468,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers, plus the kit-wide dependency vocabulary. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts shipping a no-op default layer, and neither reads a file — the package is the seam, and something that can see the workspace supplies the implementation. An unmatched specifier is `Option.none()`, not an error; the error channel is reserved for the resolution mechanism failing.
-
+- Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers, plus the kit-wide dependency vocabulary. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts shipping a no-op default layer, and neither reads a file — the package is the seam, and something that can see the workspace supplies the implementation. An unmatched specifier is `Option.none()`, not an error; the error channel is reserved for the resolution mechanism failing.
   ### Resolver contracts
-
   The `Default` layer merges both no-op resolvers. Provide it when the contracts need satisfying but nothing should resolve.
-
   ```ts
   import { CatalogResolver, Default, WorkspaceResolver } from "@effected/npm";
   import { Effect, Option } from "effect";
@@ -493,17 +487,14 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   Effect.runPromise(Effect.provide(program, Default)).then(console.log);
   // => [Option.none(), Option.none()]
   ```
-
   A real resolver is a `Layer.succeed` over the shape — `@effected/workspaces` implements these against a discovered monorepo, but a fixed record is a legitimate implementation for a test or a tool that already knows its own catalog. Both contracts raise `DependencyResolutionError`, carrying the `specifier` and a structural `cause`.
-
   ### Dependency vocabulary
-
   The package also holds the shared vocabulary second consumers pulled in: `DependencySpecifier` (a branded string with an eleven-protocol taxonomy and a `FromString` codec decoding to a `ClassifiedSpecifier` union that re-encodes byte-for-byte), `DependencySection` (`DependencyKind` / `DependencyField` with the bidirectional `fieldOf` / `kindOf` mapping), and `IntegrityHash` (a brand over the SRI, corepack and yarn textual forms). [#81][#81]
 
 ### Dependencies
 
-| Dependency       | Type       | Action  | From  | To    |
-| ---------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/semver | dependency | updated | 0.0.0 | 0.1.0 |
 
 ### Patch Changes
