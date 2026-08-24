@@ -39,7 +39,7 @@
 		"@savvy-web/bundler": "^2.1.23",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"oxc-parser": "^0.144.0",
+		"oxc-parser": "^0.146.0",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
