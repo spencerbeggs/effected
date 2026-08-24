@@ -82,8 +82,8 @@ importers:
   .:
     devDependencies:
       '@savvy-web/silk':
-        specifier: ^3.10.1
-        version: 3.10.1(@changesets/cli@3.0.1)(@commitlint/cli@21.2.2(@types/node@26.2.0)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.2)(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@types/bun@1.4.0)(@types/node@26.2.0)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(husky@9.1.7)(lint-staged@17.3.0)(markdownlint-cli2-formatter-codequality@0.0.7(markdownlint-cli2@0.23.2(supports-color@9.4.0)))(markdownlint-cli2@0.23.2(supports-color@9.4.0))(redis@6.2.1)(supports-color@9.4.0)(tsx@4.23.12)(turbo@2.10.11)(typescript@7.0.2)(vitest@4.1.11)
+        specifier: ^3.10.2
+        version: 3.10.2(@changesets/cli@3.0.1)(@commitlint/cli@21.2.2(@types/node@26.2.0)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.2)(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@types/bun@1.4.0)(@types/node@26.2.0)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(husky@9.1.7)(lint-staged@17.3.0)(markdownlint-cli2-formatter-codequality@0.0.7(markdownlint-cli2@0.23.2(supports-color@9.4.0)))(markdownlint-cli2@0.23.2(supports-color@9.4.0))(redis@6.2.1)(supports-color@9.4.0)(tsx@4.23.12)(turbo@2.10.11)(typescript@7.0.2)(vitest@4.1.11)
       '@vitest-agent/plugin':
         specifier: ^2.4.8
         version: 2.4.8(@effected/glob@0.4.0(effect@4.0.0-rc.109))(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@types/react@19.2.18)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@4.1.11)
@@ -106,8 +106,8 @@ importers:
         specifier: workspace:*
         version: link:../xdg/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -128,8 +128,8 @@ importers:
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -150,8 +150,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -184,8 +184,8 @@ importers:
         specifier: workspace:*
         version: link:../yaml/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -206,8 +206,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -253,8 +253,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -300,8 +300,8 @@ importers:
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -319,8 +319,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -338,8 +338,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -360,8 +360,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -382,8 +382,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -413,8 +413,8 @@ importers:
         specifier: workspace:*
         version: link:../yaml/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -441,8 +441,8 @@ importers:
         specifier: workspace:*
         version: link:../yaml/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -469,8 +469,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -498,8 +498,8 @@ importers:
         specifier: workspace:*
         version: link:../semver/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -533,8 +533,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -552,8 +552,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -578,8 +578,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -616,8 +616,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -645,8 +645,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -664,8 +664,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -683,8 +683,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -718,8 +718,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -743,8 +743,8 @@ importers:
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -762,8 +762,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -793,8 +793,8 @@ importers:
         specifier: workspace:*
         version: link:../walker/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -818,8 +818,8 @@ importers:
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -883,8 +883,8 @@ importers:
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -911,8 +911,8 @@ importers:
         specifier: workspace:*
         version: link:../walker/dist/dev/pkg
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -930,8 +930,8 @@ importers:
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
       '@savvy-web/bundler':
-        specifier: ^2.1.23
-        version: 2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+        specifier: ^2.1.24
+        version: 2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
       '@types/node':
         specifier: catalog:build
         version: 26.2.0
@@ -1425,12 +1425,6 @@ packages:
     peerDependencies:
       effect: 4.0.0-rc.109
 
-  '@effected/git@0.9.0':
-    resolution: {integrity: sha512-XGIMF8ume41JnBNoxLQqq81vLCY77RMe++0QcjgusNTwyyqzK0trNhEHdIYpN/bRcXNgSH8/Ia6b9LU2z+rA6w==}
-    engines: {node: '>=24.11.0'}
-    peerDependencies:
-      effect: 4.0.0-rc.109
-
   '@effected/github-references@0.1.0':
     resolution: {integrity: sha512-3nm2ETVP8EyQJ/klI0yMRsULlvQnXiDPHNO/tT746wDVXnWSH/2yK9Bz1GCFRegU+XvccnCkrSigfRRlZh3adQ==}
     engines: {node: '>=24.11.0'}
@@ -1475,24 +1469,11 @@ packages:
       '@effected/yaml':
         optional: true
 
-  '@effected/npm@0.11.1':
-    resolution: {integrity: sha512-W0CSsSRIM6ysjGOqrKm15P1pebCnd5io6imciAFcLgLZiRS5HEQCK00BjlYvirLOfPj9mdpqRJAtIxdBXRHWuA==}
-    engines: {node: '>=24.11.0'}
-    peerDependencies:
-      '@effected/semver': ^0.5.0
-      effect: 4.0.0-rc.109
-
   '@effected/npm@0.12.0':
     resolution: {integrity: sha512-UrfEwGtoviEPDDdkybompmJKfAvNv9RAx1oUPSsjw0Rmevxqwyqmdmvr9Aw4/oPyfiYPXFMeHkv+tWY+/C1DuQ==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@effected/semver': ^0.5.0
-      effect: 4.0.0-rc.109
-
-  '@effected/package-json@0.10.2':
-    resolution: {integrity: sha512-+gdJpx1aiC3effNfTTMdibe2gW8+tMPaWqJJnYes7aIrtA2pWTGHklbC0CCYIi2VesqXcaMUp6VwCyAdfjBK1g==}
-    engines: {node: '>=24.11.0'}
-    peerDependencies:
       effect: 4.0.0-rc.109
 
   '@effected/package-json@0.11.0':
@@ -2491,8 +2472,8 @@ packages:
     resolution: {integrity: sha512-+jNbxhh8CkrZYxMk9X3GRYM2+Myr1xCCj+eHbJ9Vp+PCdNHS0TUl5QQFT6UbM/aTFRCzs5jiBTKYzBRpe5uYbQ==}
     engines: {node: '>=20.9.0'}
 
-  '@savvy-web/bundler@2.1.23':
-    resolution: {integrity: sha512-S/8mKP4PWCSpXEAL/zDyyqlZhqQ18ILAUh51t7PKp8LeZQhF1FV2YCjnCnc0QL/bQfKuzMDTqFyJyk14vjEnjg==}
+  '@savvy-web/bundler@2.1.24':
+    resolution: {integrity: sha512-sqZtD3ZrvImaKoseYUtouKrhFLudUbmp1PBnnoqfdvklyP81k+QO6PfJONBMJG1WYecQ4RQziknqLLUJk+s6+w==}
     peerDependencies:
       '@types/node': ^26.2.0
       '@types/react': ^19.2.0
@@ -2513,24 +2494,24 @@ packages:
   '@savvy-web/changelog@0.1.1':
     resolution: {integrity: sha512-UR0PEbLzFlLpz78jIDxTAfSc73TVQoZNZfGGzeBFP/s6wG8y3m5KUJwzY6CsisBxJrI44wOMBYdWztTM21PgJw==}
 
-  '@savvy-web/cli@2.7.3':
-    resolution: {integrity: sha512-Jshm7F7xPvPlaGGcHFTxmZ5KqD3CPFS5POVUCljheKROIA9PoV/m6J0FskgiTq05Wm3Bp/FkLqeR3TSqkfZ4zA==}
+  '@savvy-web/cli@2.7.4':
+    resolution: {integrity: sha512-r/bBcLST+q/5/xQ21BaKUpnMDSh8JAXbl0+73++g664mFE2bnsedlr9gbV4jL60eT5bhtcpIE7+ermqGu9T7NQ==}
     hasBin: true
 
-  '@savvy-web/mcp@2.6.0':
-    resolution: {integrity: sha512-Flxr4jki7AukNh+3APy8ahR0YdE4SjObYd0P/+zEXHEwqArJb/8UlY3ZQ+ntwy5BWnnh+Irpx053jJUG/0bnYA==}
+  '@savvy-web/mcp@2.6.1':
+    resolution: {integrity: sha512-puSR7Zdod5/3MMb91e4Hn/k0IldyWX7qliiMpPRkZmoLC1IxnDgalMyV4gP0+cP/x4aXl0vToofJZoVGZZcAzw==}
     hasBin: true
 
-  '@savvy-web/silk-effects@7.1.0':
-    resolution: {integrity: sha512-IU2zd/VZfT70O10gzzATRWwd/a8cWH3MUVOOAwYhZP91BI+Ks+8M4sfLqO5Ptmm3scUoESLhVa0IReDUYMaIrA==}
+  '@savvy-web/silk-effects@7.1.1':
+    resolution: {integrity: sha512-76IBjwLNRVZuz/3muyRwQ3PnD8LLhIr0xMEqBXm5UAu6/cYqs8TJnRpeKzxT3WR9HxO4Pol5UjIWDmY7Y32vRw==}
     peerDependencies:
       '@effected/commands': ^0.5.0
-      '@effected/git': ^0.9.0
+      '@effected/git': ^0.10.0
       '@effected/workspaces': ^0.18.0
       effect: 4.0.0-rc.109
 
-  '@savvy-web/silk@3.10.1':
-    resolution: {integrity: sha512-HdtgCKhcCFMS7hU7fhS5ehBKsuHGAoxvoALFWnxPtEqSaubSYMWg8ka6c9YYYxfkfYAUhKoepTSSvEXmOtjEzw==}
+  '@savvy-web/silk@3.10.2':
+    resolution: {integrity: sha512-2CvHmcPv7Cjrwa1z41ncgQQ150hDJAkJYNUG862Iv7O4AOOUnkmjUgP/zBVRyOaLsqdZ93p2lgPxV98vcbntUA==}
     peerDependencies:
       '@biomejs/biome': 2.5.9
       '@changesets/cli': ^3.0.1
@@ -2552,8 +2533,8 @@ packages:
       '@biomejs/biome':
         optional: true
 
-  '@savvy-web/tsdown-plugins@2.5.5':
-    resolution: {integrity: sha512-YrJW1ydaFaHprIcjF1oH7bWU2MFw5I0bORGXkAw8Hsy4wc2fCQJZvOkfEjz1WvF41FiVinHZIqL7ZAv9Ha5cqA==}
+  '@savvy-web/tsdown-plugins@2.5.6':
+    resolution: {integrity: sha512-KBfmgXO7Zr9qg6sG89ly6+EG5n079OI+2lVbB541xSMUnbMeBlY60jAWuWGbZvuoWvVFCJqXpn/24c8myKq4vQ==}
 
   '@shikijs/core@4.4.3':
     resolution: {integrity: sha512-QCR4q2ZO/ILJEuwiBMel4wdcTDb1JGwfjKTxPDF6x8ixOaluPrVqIn06C99AcRPhmYlBR56d/Fb+GN58GzExpg==}
@@ -6544,10 +6525,6 @@ snapshots:
     dependencies:
       effect: 4.0.0-rc.109
 
-  '@effected/git@0.9.0(effect@4.0.0-rc.109)':
-    dependencies:
-      effect: 4.0.0-rc.109
-
   '@effected/github-references@0.1.0(effect@4.0.0-rc.109)':
     dependencies:
       effect: 4.0.0-rc.109
@@ -6584,30 +6561,16 @@ snapshots:
       '@effected/toml': 0.5.0(effect@4.0.0-rc.109)
       '@effected/yaml': 0.11.0(effect@4.0.0-rc.109)
 
-  '@effected/npm@0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)':
-    dependencies:
-      '@effected/commands': 0.5.0(effect@4.0.0-rc.109)
-      '@effected/semver': 0.5.0(effect@4.0.0-rc.109)
-      effect: 4.0.0-rc.109
-
-  '@effected/npm@0.11.1(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-rc.109)':
-    dependencies:
-      '@effected/commands': 0.5.0(effect@4.0.0-rc.109)
-      '@effected/semver': link:packages/semver/dist/dev/pkg
-      effect: 4.0.0-rc.109
-
   '@effected/npm@0.12.0(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)':
     dependencies:
       '@effected/commands': 0.5.0(effect@4.0.0-rc.109)
       '@effected/semver': 0.5.0(effect@4.0.0-rc.109)
       effect: 4.0.0-rc.109
 
-  '@effected/package-json@0.10.2(effect@4.0.0-rc.109)':
+  '@effected/npm@0.12.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-rc.109)':
     dependencies:
-      '@effected/jsonc': 0.7.0(effect@4.0.0-rc.109)
-      '@effected/npm': 0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@effected/semver': 0.5.0(effect@4.0.0-rc.109)
-      '@effected/spdx': 0.4.0(effect@4.0.0-rc.109)
+      '@effected/commands': 0.5.0(effect@4.0.0-rc.109)
+      '@effected/semver': link:packages/semver/dist/dev/pkg
       effect: 4.0.0-rc.109
 
   '@effected/package-json@0.11.0(effect@4.0.0-rc.109)':
@@ -7465,9 +7428,9 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
 
-  '@savvy-web/bundler@2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
+      '@savvy-web/tsdown-plugins': 2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
       '@tsdown/exe': 0.22.14(tsdown@0.22.14)
       '@types/node': 26.2.0
       effect: 4.0.0-rc.109
@@ -7498,9 +7461,9 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/bundler@2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
+      '@savvy-web/tsdown-plugins': 2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
       '@tsdown/exe': 0.22.14(tsdown@0.22.14)
       '@types/node': 26.2.0
       effect: 4.0.0-rc.109
@@ -7531,9 +7494,9 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/bundler@2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
+      '@savvy-web/tsdown-plugins': 2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
       '@tsdown/exe': 0.22.14(tsdown@0.22.14)
       '@types/node': 26.2.0
       effect: 4.0.0-rc.109
@@ -7564,9 +7527,9 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/bundler@2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
+      '@savvy-web/tsdown-plugins': 2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
       '@tsdown/exe': 0.22.14(tsdown@0.22.14)
       '@types/node': 26.2.0
       effect: 4.0.0-rc.109
@@ -7597,9 +7560,9 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/bundler@2.1.23(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.1.24(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
+      '@savvy-web/tsdown-plugins': 2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
       '@tsdown/exe': 0.22.14(tsdown@0.22.14)
       '@types/node': 26.2.0
       effect: 4.0.0-rc.109
@@ -7630,9 +7593,9 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/bundler@2.1.23(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.1.24(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.5.5(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
+      '@savvy-web/tsdown-plugins': 2.5.6(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
       '@tsdown/exe': 0.22.14(tsdown@0.22.14)
       '@types/node': 26.2.0
       effect: 4.0.0-rc.109
@@ -7663,9 +7626,9 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/bundler@2.1.23(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.1.24(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.5.5(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
+      '@savvy-web/tsdown-plugins': 2.5.6(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
       '@tsdown/exe': 0.22.14(tsdown@0.22.14)
       '@types/node': 26.2.0
       effect: 4.0.0-rc.109
@@ -7696,9 +7659,9 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/bundler@2.1.23(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
+  '@savvy-web/bundler@2.1.24(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)':
     dependencies:
-      '@savvy-web/tsdown-plugins': 2.5.5(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
+      '@savvy-web/tsdown-plugins': 2.5.6(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)
       '@tsdown/exe': 0.22.14(tsdown@0.22.14)
       '@types/node': 26.2.0
       effect: 4.0.0-rc.109
@@ -7734,16 +7697,16 @@ snapshots:
       jju: 1.4.0
       semver: 7.8.5
 
-  '@savvy-web/cli@2.7.3(@effected/toml@0.5.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)':
+  '@savvy-web/cli@2.7.4(@effected/toml@0.5.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effected/commands': 0.5.0(effect@4.0.0-rc.109)
-      '@effected/git': 0.9.0(effect@4.0.0-rc.109)
+      '@effected/git': 0.10.0(effect@4.0.0-rc.109)
       '@effected/jsonc': 0.7.0(effect@4.0.0-rc.109)
       '@effected/templates': 0.4.0(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/yaml': 0.11.0(effect@4.0.0-rc.109)
-      '@savvy-web/silk-effects': 7.1.0(@effected/commands@0.5.0(effect@4.0.0-rc.109))(@effected/git@0.9.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/workspaces@0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)(supports-color@9.4.0)
+      '@savvy-web/silk-effects': 7.1.1(@effected/commands@0.5.0(effect@4.0.0-rc.109))(@effected/git@0.10.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/workspaces@0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)(supports-color@9.4.0)
       effect: 4.0.0-rc.109
     transitivePeerDependencies:
       - '@effected/toml'
@@ -7752,14 +7715,14 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@savvy-web/mcp@2.6.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)':
+  '@savvy-web/mcp@2.6.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effected/commands': 0.5.0(effect@4.0.0-rc.109)
-      '@effected/git': 0.9.0(effect@4.0.0-rc.109)
+      '@effected/git': 0.10.0(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@9.4.0)(zod@4.4.3)
-      '@savvy-web/silk-effects': 7.1.0(@effected/commands@0.5.0(effect@4.0.0-rc.109))(@effected/git@0.9.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/workspaces@0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)(supports-color@9.4.0)
+      '@savvy-web/silk-effects': 7.1.1(@effected/commands@0.5.0(effect@4.0.0-rc.109))(@effected/git@0.10.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/workspaces@0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)(supports-color@9.4.0)
       effect: 4.0.0-rc.109
       zod: 4.4.3
     transitivePeerDependencies:
@@ -7771,7 +7734,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@savvy-web/silk-effects@7.1.0(@effected/commands@0.5.0(effect@4.0.0-rc.109))(@effected/git@0.9.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/workspaces@0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)(supports-color@9.4.0)':
+  '@savvy-web/silk-effects@7.1.1(@effected/commands@0.5.0(effect@4.0.0-rc.109))(@effected/git@0.10.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/workspaces@0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)(supports-color@9.4.0)':
     dependencies:
       '@changesets/apply-release-plan': 8.0.0
       '@changesets/changelog-git': 1.0.0
@@ -7779,12 +7742,12 @@ snapshots:
       '@changesets/get-github-info': 1.0.0
       '@changesets/get-release-plan': 5.0.0
       '@effected/commands': 0.5.0(effect@4.0.0-rc.109)
-      '@effected/git': 0.9.0(effect@4.0.0-rc.109)
+      '@effected/git': 0.10.0(effect@4.0.0-rc.109)
       '@effected/github-references': 0.1.0(effect@4.0.0-rc.109)
       '@effected/glob': 0.4.0(effect@4.0.0-rc.109)
       '@effected/jsonc': 0.7.0(effect@4.0.0-rc.109)
       '@effected/markdown': 0.6.3(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/yaml@0.11.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/templates': 0.4.0(effect@4.0.0-rc.109)
       '@effected/walker': 0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
@@ -7804,19 +7767,19 @@ snapshots:
       - '@effected/toml'
       - supports-color
 
-  '@savvy-web/silk@3.10.1(@changesets/cli@3.0.1)(@commitlint/cli@21.2.2(@types/node@26.2.0)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.2)(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@types/bun@1.4.0)(@types/node@26.2.0)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(husky@9.1.7)(lint-staged@17.3.0)(markdownlint-cli2-formatter-codequality@0.0.7(markdownlint-cli2@0.23.2(supports-color@9.4.0)))(markdownlint-cli2@0.23.2(supports-color@9.4.0))(redis@6.2.1)(supports-color@9.4.0)(tsx@4.23.12)(turbo@2.10.11)(typescript@7.0.2)(vitest@4.1.11)':
+  '@savvy-web/silk@3.10.2(@changesets/cli@3.0.1)(@commitlint/cli@21.2.2(@types/node@26.2.0)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.2)(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@types/bun@1.4.0)(@types/node@26.2.0)(@vitest/coverage-istanbul@4.1.11)(@vitest/coverage-v8@4.1.11)(husky@9.1.7)(lint-staged@17.3.0)(markdownlint-cli2-formatter-codequality@0.0.7(markdownlint-cli2@0.23.2(supports-color@9.4.0)))(markdownlint-cli2@0.23.2(supports-color@9.4.0))(redis@6.2.1)(supports-color@9.4.0)(tsx@4.23.12)(turbo@2.10.11)(typescript@7.0.2)(vitest@4.1.11)':
     dependencies:
       '@changesets/cli': 3.0.1
       '@commitlint/cli': 21.2.2(@types/node@26.2.0)(conventional-commits-parser@7.1.2)(typescript@7.0.2)
       '@commitlint/config-conventional': 21.2.2
       '@effected/commands': 0.5.0(effect@4.0.0-rc.109)
-      '@effected/git': 0.9.0(effect@4.0.0-rc.109)
+      '@effected/git': 0.10.0(effect@4.0.0-rc.109)
       '@effected/templates': 0.4.0(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@savvy-web/changelog': 0.1.1
-      '@savvy-web/cli': 2.7.3(@effected/toml@0.5.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)
-      '@savvy-web/mcp': 2.6.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)
-      '@savvy-web/silk-effects': 7.1.0(@effected/commands@0.5.0(effect@4.0.0-rc.109))(@effected/git@0.9.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/workspaces@0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)(supports-color@9.4.0)
+      '@savvy-web/cli': 2.7.4(@effected/toml@0.5.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)
+      '@savvy-web/mcp': 2.6.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(redis@6.2.1)(supports-color@9.4.0)
+      '@savvy-web/silk-effects': 7.1.1(@effected/commands@0.5.0(effect@4.0.0-rc.109))(@effected/git@0.10.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/workspaces@0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)(supports-color@9.4.0)
       '@types/bun': 1.4.0
       '@types/node': 26.2.0
       '@vitest/coverage-istanbul': 4.1.11(supports-color@9.4.0)(vitest@4.1.11)
@@ -7840,12 +7803,12 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@savvy-web/tsdown-plugins@2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
+  '@savvy-web/tsdown-plugins@2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
-      '@effected/npm': 0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/npm': 0.12.0(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/tsconfig-json': 0.6.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@microsoft/api-extractor': 7.59.0(@types/node@26.2.0)
@@ -7877,12 +7840,12 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/tsdown-plugins@2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
+  '@savvy-web/tsdown-plugins@2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
-      '@effected/npm': 0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/npm': 0.12.0(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/tsconfig-json': 0.6.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@packages+glob+dist+dev+pkg)(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@microsoft/api-extractor': 7.59.0(@types/node@26.2.0)
@@ -7914,12 +7877,12 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/tsdown-plugins@2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
+  '@savvy-web/tsdown-plugins@2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
-      '@effected/npm': 0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/npm': 0.12.0(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/tsconfig-json': 0.6.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@microsoft/api-extractor': 7.59.0(@types/node@26.2.0)
@@ -7951,12 +7914,12 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/tsdown-plugins@2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
+  '@savvy-web/tsdown-plugins@2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
-      '@effected/npm': 0.11.1(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/npm': 0.12.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/tsconfig-json': 0.6.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@microsoft/api-extractor': 7.59.0(@types/node@26.2.0)
@@ -7988,12 +7951,12 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/tsdown-plugins@2.5.5(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
+  '@savvy-web/tsdown-plugins@2.5.6(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
-      '@effected/npm': 0.11.1(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/npm': 0.12.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/tsconfig-json': 0.6.0(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@0.7.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@microsoft/api-extractor': 7.59.0(@types/node@26.2.0)
@@ -8025,12 +7988,12 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/tsdown-plugins@2.5.5(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
+  '@savvy-web/tsdown-plugins@2.5.6(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
-      '@effected/npm': 0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/npm': 0.12.0(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/tsconfig-json': 0.6.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(effect@4.0.0-rc.109)
       '@microsoft/api-extractor': 7.59.0(@types/node@26.2.0)
@@ -8062,12 +8025,12 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/tsdown-plugins@2.5.5(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
+  '@savvy-web/tsdown-plugins@2.5.6(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@packages+walker+dist+dev+pkg)(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
-      '@effected/npm': 0.11.1(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/npm': 0.12.0(@effected/semver@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/tsconfig-json': 0.6.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/walker@packages+walker+dist+dev+pkg)(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(effect@4.0.0-rc.109)
       '@microsoft/api-extractor': 7.59.0(@types/node@26.2.0)
@@ -8099,12 +8062,12 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@savvy-web/tsdown-plugins@2.5.5(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
+  '@savvy-web/tsdown-plugins@2.5.6(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/semver@packages+semver+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@tsdown/exe@0.22.14)(@types/node@26.2.0)(redis@6.2.1)(tsx@4.23.12)':
     dependencies:
       '@changesets/get-release-plan': 5.0.0
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
-      '@effected/npm': 0.11.1(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-rc.109)
-      '@effected/package-json': 0.10.2(effect@4.0.0-rc.109)
+      '@effected/npm': 0.12.0(@effected/semver@packages+semver+dist+dev+pkg)(effect@4.0.0-rc.109)
+      '@effected/package-json': 0.11.0(effect@4.0.0-rc.109)
       '@effected/tsconfig-json': 0.6.0(@effected/jsonc@packages+jsonc+dist+dev+pkg)(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@effected/workspaces': 0.18.1(@effected/jsonc@packages+jsonc+dist+dev+pkg)(effect@4.0.0-rc.109)
       '@microsoft/api-extractor': 7.59.0(@types/node@26.2.0)
