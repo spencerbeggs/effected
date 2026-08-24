@@ -19,12 +19,16 @@ a cross-filesystem rename is not atomic.
 
 `ToolInstaller.provisionFile` (2026-08-02) packages the one composition with no
 per-tool variation — a single bare binary: `find` → `download` → chmod `0o755`
-(skipped when `RUNNER_OS` is Windows, and BEFORE caching, so the cache never
-holds a non-executable tool) → `cacheFile`, answering `{ directory, binDir }`
-where `binDir` IS the cached directory. A hit **missing the named binary** is a
-foreign/partial entry and is reinstalled over, not answered. The bun path in
+(skipped on Windows, and BEFORE caching, so the cache never holds a
+non-executable tool) → `cacheFile`, answering `{ directory, binDir }` where
+`binDir` IS the cached directory. A hit **missing the named binary** is a
+foreign/partial entry, reinstalled over rather than answered. The bun path in
 `PackageManagerInstaller` deliberately does not route through it — integrity
 verification and zip extraction sit between its download and chmod.
+
+`ToolInstallerError.subject` is **required**: every construction site had one,
+and an optional field on an error renders `"undefined"` on whichever path
+forgets.
 
 `PackageManagerInstaller` (exact-version npm/pnpm/yarn/bun provisioning over
 `ToolInstaller`, consuming `@effected/npm`'s `PackageManagerPin`) answers a
@@ -39,9 +43,9 @@ regenerated best-effort on a foreign cache hit), bun's own directory for bun.
 `tar`, with `actions/cache` parity: matched directories archive recursively,
 non-matching patterns (including absent literals) drop silently, an empty
 resolution fails typed, and `versionOf` hashes the **literal** pattern list on
-both save and restore — exactly as the toolkit's `getCacheVersion` does — so
-restore resolves nothing and the versions agree for free. Resolved paths stay
-absolute for the `-P` posture (a documented divergence from the toolkit's
+both save and restore — as the toolkit's `getCacheVersion` does — so restore
+resolves nothing and the versions agree for free. Resolved paths stay absolute
+for the `-P` posture (a documented divergence from the toolkit's
 workspace-relative entries). The engine is `@effected/glob`, never
 `@actions/glob`.
 
@@ -55,11 +59,37 @@ policy up through the same typed-key path; depths outside
 **zero rungs**, so an exact-match-only restore sends an empty `restore_keys` and
 never falls back; only *absence* means the default every-prefix ladder.
 
+`CacheKey.withNamespace` (2026-08-23) is the cache-bust primitive: the segment
+goes **first**, so a namespaced key shares no prefix with an unnamespaced one,
+and the ladder is **dropped**, so no rung reaches outside the namespace even when
+the segment equals an ordinary leading segment — which a prepend alone would not
+survive. Fold a bust token in after the retained prefix instead and ordinary runs
+prefix-match busted entries: the cache looks healthy while serving poisoned
+entries into unrelated runs. Dropping the ladder is a default, not a prohibition
+— `withRestoreDepths` afterwards gives an in-namespace ladder deliberately.
+
 `CacheKey.digest(input, length = 8)` (2026-08-02) is the segment-safe short digest
-for **non-file** key segments (a version list, a branch name) — sha256, lowercase
-hex, truncated, guaranteed to satisfy the segment grammar, so it drops into
-`CacheKey.of` unchecked. A length outside `1..64` (or a fractional one) is wiring,
-not data, and throws a `RangeError`. File content stays with `hashFiles`.
+for **non-file** segments (a version list, a branch name) — sha256, lowercase hex,
+truncated to satisfy the segment grammar, so it drops into `CacheKey.of`
+unchecked. A length outside `1..64` (or fractional) is wiring, not data, and
+throws a `RangeError`. File content stays with `hashFiles`.
+
+`CacheKeyError` is a [per-reason union](./CLAUDE.md#non-negotiables) —
+`CacheKeyReadError` carries a required `path`, `CacheKeyBadPatternError` a
+required `pattern` — the case where the collapsed shape was most visibly wrong:
+half its messages could render `"undefined"`.
+
+## The blob envelope
+
+The stored value is `StoredBlob<A>`, renamed from `Blob<A>` (2026-08-23): the old
+name collided with the DOM global, and API Extractor published it as `Blob_2`, a
+name no consumer can search for.
+
+`BlobEnvelopeError` is likewise a per-reason union, and the split earns most
+here, because framing failures are recovered from **selectively**: "not an
+envelope" and "unsupported version" are ordinary cache misses on a migrating
+consumer, while a truncated frame or a metadata decode failure is a corrupt entry
+worth reporting.
 
 ## The results backend is only reachable from a `uses:` step
 
@@ -74,18 +104,18 @@ distinguishes the two cases.
 The runtime token is wrapped in `Redacted` at the read and leaves only through
 `HttpClientRequest.bearerToken`, which accepts a `Redacted` directly — so the
 declassification seam is never involved and `Redacted.value` still appears only
-in `Secret.ts`. The artifact backend ids come from that token's own `scp` claim,
-decoded from the plaintext it arrives as, before it is wrapped.
+in `Secret.ts`. Artifact backend ids come from that token's own `scp` claim,
+decoded from the plaintext before it is wrapped.
 
 ## The transport seam
 
 The three Azure modules take their transport as an argument: `FileBlobTransfer`
 (whole files, for the cache and artifacts) and `DataBlobTransfer` (buffers, for
 the blob store), with `layerWith(transfer)` beside each `layer`. The protocol —
-the RPC sequence, conflict handling, version derivation, retry policy and framing
-— is what this package owns and what the tests execute; the pre-signed `PUT` is
-not. Same shape as `@effected/sbom`'s `SigstoreSigner.layerWith`, and it is also
-how an integration test points the real protocol at a local endpoint.
+RPC sequence, conflict handling, version derivation, retry policy, framing — is
+what this package owns and what the tests execute; the pre-signed `PUT` is not.
+Same shape as `@effected/sbom`'s `SigstoreSigner.layerWith`, and it is how an
+integration test points the real protocol at a local endpoint.
 
 Twirp retry lives **inside** `internal/twirp.ts`, keyed on a *structured* failure
 (`transport` / `status` / `malformed`), so no protocol can ship without it and a
@@ -96,10 +126,10 @@ disagree, and guessing wrong presents as "the cache silently never hits".
 ## Why each Azure module carries its own adapter
 
 No shared helper in `internal/` may import `@azure/storage-blob` — an internal
-helper is exactly how a heavy import leaks into a light module's import graph.
-That is why each of the three carries its **own** ~15-line Azure adapter instead
-of sharing one: the duplication *is* the invariant. The three are separate named
-re-exports in `index.ts`, never gathered into a namespace object.
+helper is exactly how a heavy import leaks into a light module's graph. That is
+why each of the three carries its **own** ~15-line Azure adapter: the duplication
+*is* the invariant. The three are separate named re-exports in `index.ts`, never
+a namespace object.
 
 Folding the cache into `ActionRuntime.layer` would put a blob-storage client in
 the import graph of every action that merely sets an output. Their requirements

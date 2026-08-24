@@ -10,38 +10,107 @@ import { ChildProcessSpawner } from "effect/unstable/process";
  *
  * @public
  */
-export class DetachedProcessError extends Schema.TaggedError<DetachedProcessError>()("DetachedProcessError", {
-	/**
-	 * `logUnavailable` — the log file could not be opened, so there is nowhere
-	 * for the child's output to go. `spawnFailed` — the child did not start.
-	 * `invalidPid` — a non-positive pid was handed to {@link DetachedProcess.reap};
-	 * see there for why this is the most important value in the module.
-	 * `signalFailed` — the signal was refused, e.g. the process belongs to
-	 * another user. `notReady` — the readiness probe never held.
-	 */
-	reason: Schema.Literals(["logUnavailable", "spawnFailed", "invalidPid", "signalFailed", "notReady"]),
-	/** The pid involved, when one is. */
-	pid: Schema.optionalKey(Schema.Number),
-	/** The path involved, when one is. */
-	path: Schema.optionalKey(Schema.String),
+export class DetachedLogUnavailableError extends Schema.TaggedError<DetachedLogUnavailableError>()(
+	"DetachedLogUnavailableError",
+	{
+		/** The log file that could not be opened. */
+		path: Schema.String,
+		/** The underlying failure, preserved structurally. */
+		cause: Schema.optionalKey(Schema.Defect()),
+	},
+) {
+	override get message(): string {
+		return `Could not open the detached log file "${this.path}"`;
+	}
+}
+
+/**
+ * Raised when the detached child did not start.
+ *
+ * @public
+ */
+export class DetachedSpawnFailedError extends Schema.TaggedError<DetachedSpawnFailedError>()(
+	"DetachedSpawnFailedError",
+	{
+		/** The underlying failure, preserved structurally. */
+		cause: Schema.optionalKey(Schema.Defect()),
+	},
+) {
+	override get message(): string {
+		return "The detached child did not start";
+	}
+}
+
+/**
+ * Raised when a non-positive pid was handed to {@link DetachedProcess.reap}.
+ *
+ * @remarks
+ * See {@link DetachedProcess.reap} for why this is the most important value in
+ * the module: a non-positive pid targets a process *group*, not a process.
+ *
+ * @public
+ */
+export class InvalidPidError extends Schema.TaggedError<InvalidPidError>()("InvalidPidError", {
+	/** The pid that was refused. */
+	pid: Schema.Number,
 	/** The underlying failure, preserved structurally. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
-		switch (this.reason) {
-			case "logUnavailable":
-				return `Could not open the detached log file "${this.path}"`;
-			case "spawnFailed":
-				return "The detached child did not start";
-			case "invalidPid":
-				return `Refusing to signal pid ${this.pid}: a non-positive pid targets a process group, not a process`;
-			case "signalFailed":
-				return `Could not signal pid ${this.pid}`;
-			default:
-				return "The detached child never became ready";
-		}
+		return `Refusing to signal pid ${this.pid}: a non-positive pid targets a process group, not a process`;
 	}
 }
+
+/**
+ * Raised when a signal was refused, e.g. the process belongs to another user.
+ *
+ * @public
+ */
+export class DetachedSignalFailedError extends Schema.TaggedError<DetachedSignalFailedError>()(
+	"DetachedSignalFailedError",
+	{
+		/** The pid that could not be signalled. */
+		pid: Schema.Number,
+		/** The underlying failure, preserved structurally. */
+		cause: Schema.optionalKey(Schema.Defect()),
+	},
+) {
+	override get message(): string {
+		return `Could not signal pid ${this.pid}`;
+	}
+}
+
+/**
+ * Raised when the readiness probe never held.
+ *
+ * @public
+ */
+export class DetachedNotReadyError extends Schema.TaggedError<DetachedNotReadyError>()("DetachedNotReadyError", {
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
+	override get message(): string {
+		return "The detached child never became ready";
+	}
+}
+
+/**
+ * Anything that can go wrong spawning, awaiting or reaping a detached child.
+ *
+ * @remarks
+ * **One class per failure, rather than one class with a `reason` field.** The
+ * pid is required on the two members that report one and the path on the one
+ * that does, so a value short a field is a compile error rather than a message
+ * reading `"undefined"`.
+ *
+ * @public
+ */
+export type DetachedProcessError =
+	| DetachedLogUnavailableError
+	| DetachedSpawnFailedError
+	| InvalidPidError
+	| DetachedSignalFailedError
+	| DetachedNotReadyError;
 
 /**
  * The schema a pid crosses the phase boundary through.
@@ -225,7 +294,7 @@ export class DetachedProcess {
 	static readonly spawn = Effect.fn("DetachedProcess.spawn")(function* (options: DetachedSpawnOptions) {
 		const descriptor = yield* Effect.try({
 			try: () => openSync(options.logFile, "a"),
-			catch: (cause) => new DetachedProcessError({ reason: "logUnavailable", path: options.logFile, cause }),
+			catch: (cause) => new DetachedLogUnavailableError({ path: options.logFile, cause }),
 		});
 
 		const pid = yield* Effect.try({
@@ -253,7 +322,7 @@ export class DetachedProcess {
 					closeSync(descriptor);
 				}
 			},
-			catch: (cause) => new DetachedProcessError({ reason: "spawnFailed", cause }),
+			catch: (cause) => new DetachedSpawnFailedError({ cause }),
 		});
 
 		yield* Effect.annotateCurrentSpan({ pid });
@@ -288,7 +357,7 @@ export class DetachedProcess {
 					return Effect.void;
 				}
 				if (remaining <= 0) {
-					return Effect.fail(new DetachedProcessError({ reason: "notReady" }));
+					return Effect.fail(new DetachedNotReadyError({}));
 				}
 				return Effect.flatMap(Effect.sleep(interval), () => poll(remaining - 1));
 			});
@@ -351,7 +420,7 @@ export class DetachedProcess {
 	static readonly reap = Effect.fn("DetachedProcess.reap")(function* (pid: number, signal: NodeJS.Signals = "SIGTERM") {
 		yield* Effect.annotateCurrentSpan({ pid });
 		if (!Number.isInteger(pid) || pid <= 0) {
-			return yield* Effect.fail(new DetachedProcessError({ reason: "invalidPid", pid }));
+			return yield* Effect.fail(new InvalidPidError({ pid }));
 		}
 		return yield* Effect.suspend(() => {
 			try {
@@ -362,7 +431,7 @@ export class DetachedProcess {
 				// has already exited — the normal ending, not a failure.
 				return isErrno(cause, "ESRCH")
 					? Effect.succeed(false)
-					: Effect.fail(new DetachedProcessError({ reason: "signalFailed", pid, cause }));
+					: Effect.fail(new DetachedSignalFailedError({ pid, cause }));
 			}
 		});
 	});

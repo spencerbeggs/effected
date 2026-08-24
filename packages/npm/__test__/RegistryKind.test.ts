@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { classifyRegistry } from "../src/RegistryKind.js";
+import { classifyRegistry, registryDisplayName, registryHost, registryShortLabel } from "../src/RegistryKind.js";
 
 describe("classifyRegistry", () => {
 	it("classifies the public npm registry, with or without a scheme or path", () => {
@@ -44,5 +44,56 @@ describe("classifyRegistry", () => {
 
 	it("classifies an unparseable value as custom rather than throwing", () => {
 		assert.strictEqual(classifyRegistry("::::"), "custom");
+	});
+});
+
+describe("registryHost", () => {
+	it("answers the host, port included, because a custom registry on a port must stay distinguishable", () => {
+		assert.strictEqual(registryHost("https://registry.example.test:4873/"), "registry.example.test:4873");
+	});
+
+	it("strips the scheme and path from a value that does not parse as a URL", () => {
+		// npm config values are written both ways, and a bare host must still
+		// render as a label rather than as the raw string.
+		assert.strictEqual(registryHost("registry.example.test/some/path"), "registry.example.test");
+	});
+});
+
+describe("the label projections", () => {
+	it("collapses the well-known registries to their short names", () => {
+		assert.strictEqual(registryShortLabel("https://registry.npmjs.org"), "npm");
+		assert.strictEqual(registryShortLabel("https://npm.pkg.github.com"), "github");
+		assert.strictEqual(registryShortLabel("https://jsr.io"), "jsr");
+	});
+
+	it("spells the well-known registries out as display names", () => {
+		assert.strictEqual(registryDisplayName("https://registry.npmjs.org"), "npm");
+		assert.strictEqual(registryDisplayName("https://npm.pkg.github.com"), "GitHub Packages");
+		assert.strictEqual(registryDisplayName("https://jsr.io"), "JSR");
+	});
+
+	it("falls back to the host for a custom registry — the case a lookup table cannot serve", () => {
+		// This is why the projections are functions over the registry string and
+		// not a RegistryKind -> string map: "custom" has no fixed label.
+		assert.strictEqual(registryShortLabel("https://registry.example.test"), "registry.example.test");
+		assert.strictEqual(registryDisplayName("https://registry.example.test"), "registry.example.test");
+	});
+
+	it("treats an absent or empty registry as the public npm registry", () => {
+		// Stated, rather than left to classifyRegistry("") happening to answer npm.
+		assert.strictEqual(registryDisplayName(undefined), "npm");
+		assert.strictEqual(registryDisplayName(null), "npm");
+		assert.strictEqual(registryDisplayName(""), "npm");
+		// registryShortLabel takes a plain string on purpose: its callers always
+		// have a registry, so a nullish value there is a wiring mistake the
+		// compile error should catch rather than a state to absorb.
+		assert.strictEqual(registryShortLabel(""), "npm");
+	});
+
+	it("does not label a look-alike host as a well-known registry", () => {
+		// The projections inherit classifyRegistry's leading-dot guard rather
+		// than matching on their own, so a look-alike cannot borrow a trusted label.
+		assert.strictEqual(registryShortLabel("https://evil-npmjs.org"), "evil-npmjs.org");
+		assert.strictEqual(registryDisplayName("https://evil-npmjs.org"), "evil-npmjs.org");
 	});
 });

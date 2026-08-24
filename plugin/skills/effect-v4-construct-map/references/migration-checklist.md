@@ -85,7 +85,7 @@ call sites; only reading finds the broken intent.
   Flag both for behavior review, not just array-wrapping.
 - **`Effect.ignoreLogged` → `Effect.ignore`** — the two collapse into one
   combinator, with logging **opt-in through an options object**:
-  `Effect.ignore(fx, { log: true })` (`migration/v3-to-v4.md:9705`; the options
+  `Effect.ignore(fx, { log: true })` (`migration/v3-to-v4.md:9709`; the options
   also take `log: Severity` and `message`). A bare `Effect.ignore(fx)` is still
   silent, so existing silent call sites are safe as-is — it is the
   `ignoreLogged` sites that change meaning if you rename them without adding
@@ -110,12 +110,14 @@ call sites; only reading finds the broken intent.
   removed (`effect/Differ` is live; `migration/fiberref.md:3` says otherwise and
   is contradicted by `migration/v3-to-v4.md:223`), and `currentConcurrency` has
   no `References.*` key at all — inherited concurrency was removed, so pass
-  `{ concurrency }` per combinator (`v3-to-v4.md:10517`).
+  `{ concurrency }` per combinator (`v3-to-v4.md:10521`).
 - `Runtime<R>` — use `Context<R>`; `Effect.runtime<R>()` →
   `Effect.context<R>()`; `Runtime.runFork(rt)` → `Effect.runForkWith(services)`.
   If `R` is `never`, just `Effect.runFork(effect)` — don't port the
-  extraction dance. The `Runtime` module now holds only `Teardown`,
-  `defaultTeardown`, `makeRunMain`.
+  extraction dance. The `Runtime` module now holds only run-main plumbing —
+  `Teardown`, `defaultTeardown`, `makeRunMain`, plus the `errorExitCode` /
+  `errorReported` marker keys and their `getErrorExitCode` / `getErrorReported`
+  readers — and nothing resembling a v3 `Runtime<R>`.
 - `Effect.catchSomeDefect`; `Cause.isSequentialType`/`isParallelType`;
   `Cause.RuntimeException`/`InterruptedException`/`InvalidPubSubCapacityException`
   — gone, no replacements.
@@ -191,7 +193,7 @@ call sites; only reading finds the broken intent.
   → `yield* Ref.get(ref)`; `yield* deferred` → `yield* Deferred.await(d)`;
   `yield* fiber` → `yield* Fiber.join(f)`.
 - **There is no `Yieldable` trait and no `.asEffect()`** — `asEffect` has zero
-  occurrences core-wide at beta.107. Only what extends `Effect` may be
+  occurrences core-wide at rc.109. Only what extends `Effect` may be
   `yield*`-ed: `Config` (`Config.ts:108`) and `Context.Key`/service tags
   (`Context.ts:64`) do; **`Option` and `Result` do NOT** (`Option.ts:75,128`,
   `Result.ts:96,158` — they extend only `Pipeable, Inspectable`).
@@ -231,11 +233,11 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
 - **Filter combinators** → `is*` used via `.check(...)`: `between`→`isBetween`,
   `int`→`isInt`, `minLength`→`isMinLength`, … Traps: `length`→`isLengthBetween`
   (not `isLength`), and **`isBetween` takes `{ minimum, maximum }` named
-  options, not positional `(min, max)`** (`Schema.ts:7775` — the shared
+  options, not positional `(min, max)`** (`Schema.ts:7794` — the shared
   `makeIsBetween` factory, so `isBetweenDate`/`isBetweenBigInt`/
   `isBetweenBigDecimal` are named-options too). **Do not generalize that to the
   whole family: `isLengthBetween(minimum, maximum, annotations?)` IS positional**
-  (`Schema.ts:8935`). The two adjacent-sounding checks disagree on argument
+  (`Schema.ts:8954`). The two adjacent-sounding checks disagree on argument
   shape, and each one type-errors in the other's style.
 - **Struct surgery** → `.mapFields(...)`: `pick`/`omit` →
   `Struct.pick`/`Struct.omit`, `partial` → `Struct.map(Schema.optional)`,
@@ -256,7 +258,7 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
 - **Failure model**: decode failures are `Schema.SchemaError` carrying a
   `SchemaIssue` in `.issue` — v3 `ParseResult`-based catches match nothing.
   `ArrayFormatter.formatError` → `SchemaIssue.makeFormatterStandardSchemaV1()`.
-- **beta.101 → beta.107 (v4-internal)**: if the code was written against an
+- **beta.101 → rc.109 (v4-internal)**: if the code was written against an
   earlier v4 beta, also sweep the internal moves — `TaggedErrorClass` /
   `ErrorClass` back to `TaggedError` / `Error` (same shapes; the instance
   schema is now `ErrorInstance`); `InvalidValue` to
@@ -278,13 +280,16 @@ Full rename tables live in [schema.md](./schema.md); the sweep order and traps:
   declared `inputs` cover only source files serves a stale CACHE HIT after a
   dependency advance — the bump touches neither source nor the task's inputs —
   so `typecheck` reports green against the OLD beta; force it
-  (`TURBO_FORCE=true`) once after any dependency advance. And
+  (`TURBO_FORCE=true`) once after any dependency advance. And the
+  root-vs-package-base tsconfig split is its own false negative: workspace bases
+  may set `skipLibCheck` where the repo-root tsconfig does not, so per-package
+  checks pass while root `tsc`/`tsgo` (often first seen in a lint-staged commit
+  hook, only when a `.ts` file is staged) fails on a `dist` d.ts — align the
+  root config with the bases. The instance of this that bit the beta.107 wave,
   Effect-TS/effect#7187 (`Schema.d.ts` referencing the `@internal`-stripped
-  `SchemaAST.Sentinel`) has a third outcome besides "base sets `skipLibCheck`"
-  and "patch the dist d.ts": workspace bases set it but the repo-root tsconfig
-  does not — per-package checks pass while root `tsc`/`tsgo` (often first seen
-  in a lint-staged commit hook, only when a `.ts` file is staged) fails
-  `TS2694`; align the root config with the bases.
+  `SchemaAST.Sentinel`, failing `TS2694`), is **fixed as of rc.109**: `Sentinel`
+  no longer appears anywhere in `dist/Schema.d.ts` or `dist/SchemaAST.d.ts`.
+  Expect the shape of the failure to recur, not that exact symbol.
 - `Schema.Schema<A, I>` (two params) → `Schema.Codec<A, I>`; `Schema.Schema`
   takes one.
 

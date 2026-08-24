@@ -138,7 +138,7 @@ phrasing and missed on its module name.
 | `Scheduler` | controls how runnable fiber tasks are queued, dispatched, and yielded | internal/advanced: tune or disable fiber scheduling and yields — usually skip |
 | `Schema` | validate/decode/encode data shapes with codecs, classes, refinements | the primary entry point for any schema, codec, or data validation |
 | `SchemaAST` | runtime tree representation of schemas (nodes, checks, annotations) | advanced machinery: inspect/build/rewrite schema ASTs programmatically |
-| `SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
+| `Schema.SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message`. **Not a module** — it is a class exported from `Schema.ts` (`Schema.ts:1176`), so `import … from "effect/SchemaError"` fails to resolve; there is no `src/SchemaError.ts` and no `./SchemaError` export. Import it as `Schema.SchemaError` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
 | `SchemaGetter` | one-way optional-in/optional-out conversions used inside transformations | consumer-facing when authoring a custom decode/encode direction |
 | `SchemaIssue` | describes and formats decode/encode/check failures with location | consumer-facing: inspect or format schema validation errors |
 | `SchemaParser` | runs a schema against values (decode/encode/validate) in many result styles | consumer-facing: execute a schema returning Effect/Exit/Option/Result/sync |
@@ -222,7 +222,9 @@ section.
 - Testing utilities live in core under `effect/testing/*` — no separate
   test-support package.
 - **"Core has `Crypto`" is a dependency decision, so read the shape first.** At
-  beta.101 the contract covers secure random, UUIDv4/v7 and SHA **digests** —
+  rc.109 the contract covers secure random (`randomBytes`, `random`,
+  `randomInt`, `randomShuffle`), UUIDv4/v7 and SHA **digests**
+  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:38`, `Crypto.ts:76-154`) —
   and stops there. There is **no HMAC, no signing, no key derivation, no
   `subtle`-style surface**. A design that reads the module name and concludes
   "hashing is handled" is right; one that concludes "crypto is handled" and then

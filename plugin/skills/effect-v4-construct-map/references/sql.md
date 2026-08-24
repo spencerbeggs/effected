@@ -1,7 +1,7 @@
 # SQL — v3 → v4
 
 **`@effect/sql` as a standalone package is gone.** The SQL core moved into `effect`
-itself, under `effect/unstable/sql/*` — the full module list at beta.107 is
+itself, under `effect/unstable/sql/*` — the full module list at rc.109 is
 `SqlClient`, `SqlConnection`, `SqlError`, `Statement`, `SqlSchema`, `SqlResolver`,
 `SqlModel`, `SqlStream`, `Migrator`. There is no `@effect/sql` to install; it does
 not resolve from a v4 package.
@@ -12,8 +12,8 @@ not resolve from a v4 package.
 | `@effect/sql` + a driver package + `@effect/platform` peer chain | the **driver alone**, peering on `effect` and nothing else |
 | `@effect/sql-sqlite-node` over `better-sqlite3` | over Node's built-in **`node:sqlite`** (`DatabaseSync`) — no native module to compile |
 
-Only the *driver* is a dependency: `@effect/sql-sqlite-node@4.0.0-beta.107` declares
-`peerDependencies: { effect: "^4.0.0-beta.107" }` and **no `dependencies` at all**
+Only the *driver* is a dependency: `@effect/sql-sqlite-node@4.0.0-rc.109` declares
+`peerDependencies: { effect: "^4.0.0-rc.109" }` and **no `dependencies` at all**
 (re-checked against the installed package). The v3 habit of also installing
 `@effect/sql` and `@effect/platform` is now wrong. Four behaviours worth knowing
 before you design against it:
@@ -33,7 +33,7 @@ before you design against it:
   (`:447`) are the un-escaped escape hatches.
 - **`sql.withTransaction` rolls back on DEFECTS and INTERRUPTS, not just typed
   failures.** It takes the `Exit` of the body and commits **only** on
-  `Exit.isSuccess` (`SqlClient.ts:223` `makeWithTransaction`) — every other exit rolls
+  `Exit.isSuccess` (`SqlClient.ts:224` `makeWithTransaction`) — every other exit rolls
   back. Probed live on `effect@4.0.0-beta.97` against a `:memory:` database, with a
   positive control proving the probe can observe a commit: typed failure, `Effect.die`
   and `Effect.interrupt` each rolled back. A defect will not leave a half-written

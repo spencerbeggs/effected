@@ -57,7 +57,13 @@ export class PackageManagerInstallerError extends Schema.TaggedError<PackageMana
 			case "extractFailed":
 				return `Could not extract ${pin}${this.subject === undefined ? "" : ` (${this.subject})`}`;
 			case "integrityMismatch":
-				return `Integrity mismatch for ${pin}: expected ${this.expected}, got ${this.actual}`;
+				// Both hashes are absent on the path where the digest itself could
+				// not be computed, which is a failure to VERIFY rather than a
+				// verified mismatch. Saying so beats "expected undefined, got
+				// undefined", which reads as a mismatch that was actually measured.
+				return this.expected === undefined || this.actual === undefined
+					? `Could not verify the integrity of ${pin}${this.subject === undefined ? "" : ` (${this.subject})`}`
+					: `Integrity mismatch for ${pin}: expected ${this.expected}, got ${this.actual}`;
 			case "integrityMissing":
 				return `The pin for ${pin} carries no integrity hash and requireIntegrity is set`;
 			case "unsupportedPlatform":

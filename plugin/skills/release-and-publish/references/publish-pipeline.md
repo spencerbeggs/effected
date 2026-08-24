@@ -10,7 +10,7 @@ macOS runner.
 `HttpClient` — no `ChildProcessSpawner`, no `@effected/commands` edge on
 this half of the package. Four methods (`version`, `versions`, `distTags`,
 `publishTimes`), each taking an **optional, per-call** `RegistryTarget {
-registry?, token? }` that defaults `registry` to the public npm registry
+registry?, credential? }` that defaults `registry` to the public npm registry
 (the exported `DEFAULT_REGISTRY` constant):
 
 ```ts
@@ -52,6 +52,27 @@ never a prose `reason` field to substring-match. `publishTimes` replaces
 (`{version, publishedAt}`), already excluding the packument's two
 non-version `time` keys.
 
+## Reading a published tarball back — `PackageTarball`
+
+`PackageTarball.extract(published: PublishedVersion)` →
+`Effect<string, TarballError, Scope>` — downloads one published version,
+**verifies it against the integrity the registry published**, unpacks it, and
+answers the directory its `package/` root landed in. The natural
+post-publish check ("did the tarball we shipped actually contain the files we
+think?") without shelling out to `npm pack`/`tar` yourself.
+
+- **It is `Scope`d, not owned.** The temp directory is removed when the calling
+  scope closes — read what you need inside the scope and never write cleanup.
+- Its input is a `PublishedVersion`, so it composes straight off
+  `NpmRegistry.version(...)`; the integrity check reuses the same
+  `IntegrityHash` brand rather than a string compare.
+- `TarballError` routes on `reason: "notFound" | "http" | "integrityMismatch"
+  | "extractFailed"` — a closed literal set, so it is routable like the `kind`
+  fields elsewhere here, not prose to substring-match. `integrityMismatch`
+  carries `expected`/`actual`.
+- Needs `FileSystem`, `Crypto`, `HttpClient` and `ChildProcessSpawner` in `R` —
+  more than the rest of this pipeline, because it writes to disk and unpacks.
+
 **The doubles:**
 
 - `NpmRegistry.layerTest(overrides?)` — every unstubbed member dies naming
@@ -76,13 +97,69 @@ core's `FileSystem | Crypto | ChildProcessSpawner` plus `@effected/commands`'
 `publishTarball(tarballPath, options: PublishOptions)` (`PublishOptions`
 extends `PackOptions`), `dryRun(packageDir, options?: PackOptions)`.
 
-**The auth token goes to a caller-supplied npmrc path, never argv.**
-`setupAuth` appends the token in nerf-dart key format to the npmrc path —
-trailing slash **required** or the token silently never applies.
+**The credential goes to a caller-supplied npmrc path, never argv.**
+`setupAuth({ registry, credential, npmrcPath })` appends it in nerf-dart key
+format — trailing slash **required** or the entry silently never applies.
+
+**Auth is a `RegistryCredential`, and it is the SAME union on both halves of
+the package** — the read probe's `RegistryTarget.credential` and
+`setupAuth`'s `credential`:
+
+- `{ kind: "token", token }` writes `_authToken` and probes with `Bearer`;
+- `{ kind: "basic", encoded }` writes `_auth` and probes with `Basic`.
+
+The basic arm holds the **already-encoded** blob rather than a
+username/password pair, because npm assigns an `_auth` value straight to the
+`Authorization` header with no decode step, and registry configuration in
+the wild already stores one. `basicCredentialFromPair(username, password)`
+is the convenience on top; it throws a `RangeError` on a colon in the
+username rather than minting a credential that re-splits on the server.
+
+One union on both halves is load-bearing: a probe and a publish that
+disagreed about the scheme would authenticate differently against one
+registry, and a 401 read by `NpmRegistry.version` becomes "not published" —
+which makes a publish flow republish.
+
+`RegistryTarget.token` still exists for one minor, typed **`never`**, as a
+deprecated tripwire. Do not treat it as an alias — it cannot be passed. It
+is retained because deleting it would be a *silent* break: callers pass it
+through a conditional spread, and a spread of a no-longer-known property is
+not an excess-property error, so the field would simply vanish and an
+authenticated probe would become an anonymous one.
+
 **Masking is the caller's job** — `PackagePublish` takes a `Redacted` and
 has **no** `ActionOutputs` edge anywhere in its layer requirements; masking
-the token in a CI log is deliberately left to the caller, who has an
+the credential in a CI log is deliberately left to the caller, who has an
 opinion about log output this package doesn't need.
+
+## Reading a published package back
+
+`NpmRegistry` reads metadata and `PackagePublish` sends a tarball out. **`PackageTarball` is the inbound half** — fetch, verify and extract a published tarball — and it exists for the case that has no other answer: reading something out of a published package **before any install has run**, which is what a tool reproducing a package manager's config-dependency workflow must do, since its output is the input the install then consumes.
+
+```ts
+import { NpmRegistry, PackageTarball } from "@effected/npm";
+import { resolveEntryPoint } from "@effected/package-json";
+import { Effect, Option, Result } from "effect";
+
+const read = Effect.gen(function* () {
+  const registry = yield* NpmRegistry;
+  const tarball = yield* PackageTarball;
+  const found = yield* registry.version("some-config", "1.2.3");
+  if (Option.isNone(found)) return Option.none();
+  const dir = yield* tarball.extract(found.value); // scoped: removed with the scope
+  const manifest = /* read `${dir}/package.json` */ {} as Record<string, unknown>;
+  return Option.some(resolveEntryPoint(manifest));
+}).pipe(Effect.scoped);
+```
+
+Four properties are load-bearing:
+
+- **It is SCOPED.** `extract` answers the directory the tarball's `package/` root unpacked into, and the temp directory dies with the calling scope. The caller reads what it needs and never owns the cleanup.
+- **Integrity is verified BEFORE extraction**, and a non-2xx is caught before anything reaches disk. A poisoned intermediary's bytes must never reach `tar`; and a 404 body piped to `tar` surfaces as a misleading "could not extract" rather than naming the real failure.
+- **`TarballError.reason` is discriminated** — `notFound | http | integrityMismatch | extractFailed` — and the `notFound` split is not cosmetic. A consumer that cannot separate "this version does not exist" from "something went wrong fetching one that does" routes both the same way; one that did exactly that silently downgraded a merge to a lossy algorithm and dropped a user's override on a run that reported success.
+- **It shells out to `tar`** through core's `ChildProcessSpawner` rather than taking a tarball-reader dependency. That is a TIER decision: a non-core runtime dependency here would make `@effected/npm` *integrated*, which propagates to `@effected/lockfiles`, which is pure.
+
+**Loading the extracted entry is deliberately not part of this surface.** A kit-level dynamic `import()` of a computed path is compiled into a context module by bundlers, so shipping the loader would hand every bundling consumer that problem with no seam to fix it. Entry *resolution* comes from `@effected/package-json`'s `resolveEntryPoint` — pure, IO-free, and returning a `Result` whose failure names which `exports` shape blocked resolution. Note its deliberate semantic: `exports` **encapsulates** the package, so a present-but-unmatched `exports` fails rather than falling through to `main`.
 
 **`pack` reports two digests and they are not interchangeable:**
 
@@ -140,10 +217,23 @@ An absent registry classifies as `"npm"`. **Subdomain matching requires a
 leading dot** — a bare suffix match would classify a look-alike hostname as
 the public registry, and that classification decides both whether a token
 is sent and whether `--provenance` is requested (npm rejects the flag
-against GitHub Packages). A canonical display-name helper was dropped on
-purpose after two call sites disagreed on the string for the same
-input — switch on the `RegistryKind` literal and choose your own words
-rather than reintroducing one.
+against GitHub Packages).
+
+Three label projections ship alongside it — **do not hand-roll registry
+strings any more** (a canonical display-name helper was once dropped after two
+call sites disagreed; these three replace it by naming the audience instead of
+pretending one string fits all):
+
+- **`registryHost(registry)`** → the bare host, URL-parsed with a
+  string-surgery fallback for an unparseable value.
+- **`registryShortLabel(registry)`** → `"npm"` / `"github"` / `"jsr"`, else the
+  host. For a log-tree row or anywhere a full name will not fit.
+- **`registryDisplayName(registry)`** → `"npm"` / `"GitHub Packages"` /
+  `"JSR"`, else the host. Human-facing prose. It is the only one of the three
+  that accepts `null`/`undefined`/`""`, all of which mean `"npm"`.
+
+Reach for the one matching the audience; switch on the `RegistryKind` literal
+only when you need behaviour, not a string.
 
 ## The macOS npm-cache hazard
 
@@ -154,11 +244,29 @@ a flaky retry candidate, a deterministic failure on every macOS run until
 the cache is redirected.
 
 **The redirect must be visible at the publish call site, never an invisible
-environment variable.** Set an explicit, package-local cache directory as
-part of the same options object that configures the pack/publish call
-itself — a global `npm_config_cache` environment variable set once, far
-from the call it protects, is exactly the shape of fix that silently stops
-protecting anything the day the call site moves or gains a second npm
-invocation that doesn't inherit the same environment. Prefer the explicit
-override every time this pipeline runs on a macOS runner, not only when a
-failure is first observed.
+environment variable.** `NpmExecutor.withCacheDir(dir)` is that fix, typed:
+a copy of the executor that passes `--cache <dir>` on every invocation, so the
+redirect travels with the value the call site already names.
+
+```ts
+const executor = NpmExecutor.dlx("npm@11").withCacheDir(`${runnerTemp}/npm-cache`);
+```
+
+A global `npm_config_cache` set once, far from the call it protects, is exactly
+the shape of fix that silently stops protecting anything the day the call site
+moves or gains a second npm invocation that doesn't inherit the same
+environment. Prefer the explicit override every time this pipeline runs on a
+macOS runner, not only when a failure is first observed.
+
+**`withCacheDir` is deliberately dumb — it reads no environment**, so it also
+overrides a self-hosted runner deliberately pointed at a warmed cache. The
+unconditional call is the one that silently wins: a caller wanting "redirect
+only if nothing else is configured" makes that check itself (e.g. apply it only
+when `npm_config_cache` is unset).
+
+**`NpmExecutor.withExtraArgs(args)`** is the generic vent for a flag this
+package has not named (`--loglevel`, `--ignore-scripts`, a registry-specific
+option), appended after `--cache` when one is set. It **replaces** previously
+set extra args rather than accumulating, so each copy is a complete statement
+of its own flags. Prefer `withCacheDir` for the cache — it is typed,
+discoverable, and carries the reason.

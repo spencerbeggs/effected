@@ -184,6 +184,32 @@ console.log(Effect.runSync(program));
 
 The `workspace:` range modifier is honored: `workspace:*` takes the bare version, `workspace:^` and `workspace:~` prefix it, and an explicit modifier is used as-is. The projection is `@effected/npm`'s `DependencySpecifier` statics with full pnpm publish semantics: the alias form `workspace:<name>@<range>` resolves the *target* package's version and becomes the `npm:<name>@<range>` alias pnpm publishes, and a blank catalog name selects the default catalog. A failed catalog assembly surfaces typed as `@effected/npm`'s `CatalogAssemblyError`, alongside the contracts' `DependencyResolutionError`.
 
+## Resolving an entry point
+
+`resolveEntryPoint` answers one question about a manifest — which file is the package's `"."` entry — and it is pure, IO-free and `Result`-returning, so it works against a plain object with no package on disk:
+
+```ts
+import { resolveEntryPoint } from "@effected/package-json";
+
+resolveEntryPoint({ exports: { import: "./esm.js", require: "./cjs.js" } });
+// Result.succeed("./esm.js")
+
+resolveEntryPoint({ exports: { require: "./cjs.js" } }, { conditions: ["require"] });
+// Result.succeed("./cjs.js")
+
+resolveEntryPoint({ main: "./legacy.js" });
+// Result.succeed("./legacy.js") — no exports field, so main applies
+
+resolveEntryPoint({ exports: { require: "./cjs.js" }, main: "./legacy.js" });
+// Result.fail(UnresolvedEntryPointError { reason: "noConditionMatched" })
+```
+
+All three legal `exports` spellings are honored — the string shorthand, a subpath map, and conditions at the root with no `"."` key — and conditions default to `["import", "default"]`, in priority order.
+
+The last case above is the semantic worth knowing: **`exports` encapsulates the package**, so a present-but-unmatched `exports` is a typed failure and `main` is *not* consulted. That is Node's rule. The lenient reading — falling through to `main`, then to `index.js` — answers a file the package deliberately does not export, and it loads and behaves plausibly instead of failing. Only an **absent** `exports` reaches `main`, and then the legacy `index.js` default. An `exports` form the resolver does not implement (an array fallback list, or a subpath map with no `"."` entry) fails for its own reason rather than being guessed at.
+
+Pair it with `@effected/npm`'s `PackageTarball` to find the entry file inside a tarball extracted before any install has run.
+
 ## Errors
 
 Every failure is a `Schema.TaggedError` routed with `Effect.catchTag`. Causes are preserved structurally on a `Schema.Defect` field — a `PackageDecodeError` hands you the `SchemaError` issue tree, not `String(error)`.
@@ -199,6 +225,7 @@ Every failure is a `Schema.TaggedError` routed with `Effect.catchTag`. Causes ar
 | `InvalidPackageNameError` | A string does not satisfy npm's naming rules. Raised by `Package.setName`. |
 | `InvalidSpdxLicenseError` | A string is not a valid SPDX license expression. Raised by `Package.setLicense`. |
 | `InvalidDependencySpecifierError` | A string is not a recognized dependency specifier. Raised by `DependencySpecifier.decode`. |
+| `UnresolvedEntryPointError` | No entry point could be resolved from a manifest. Returned in a `Result` by `resolveEntryPoint`, never raised, with `reason` telling `noConditionMatched`, `noRootExport` and `unsupportedExportsForm` apart. |
 
 `Package.setVersion` fails with `InvalidVersionError` from `@effected/semver`, which is where the version grammar lives.
 
@@ -208,6 +235,7 @@ Every failure is a `Schema.TaggedError` routed with `Effect.catchTag`. Causes ar
 - `Package.schema` / `Package.wireFor` — the open-JSON ↔ class wire codec, and the factory that builds one for a `.extend()`ed subclass so its custom fields decode as typed members instead of falling into `rest`.
 - `PackageJsonFile` — the IO surface: `read` and `write` over core `FileSystem` / `Path`, with the platform implementation supplied at the edge.
 - `PackageValidator` — rule-based validation aggregating every failure, with the default rule set, a parameterized `layerRules` factory, and the publish-gate rules `noUnresolvedDepsRule` and `noLocalDepsRule`.
+- `resolveEntryPoint` — the pure, `Result`-returning entry-point resolver over a manifest's `exports`/`main`, honoring `exports` encapsulation rather than falling through to `main`, with `EntryPointManifest` as its tolerant input shape.
 - `Package.resolve` — `catalog:` and `workspace:` expansion over the `@effected/npm` contracts with pnpm's publish-time projection (alias form included), as an explicit step that `write` never performs for you.
 - `PackageName`, `DependencySpecifier`, `Dependency`, `SpdxLicense`, `PackageManager`, `Person`, `Repository`, `Bugs`, `DevEngine` — the leaf concepts, each owning its own statics, brand and error, usable independently of `Package`. `Repository` and `Bugs` decode the `repository` and `bugs` fields from either their shorthand or object form, the same way `Person` does for `author`, `contributors` and `maintainers`; `Repository` also exposes `browseUrl` and `gitUrl` getters that normalize a shorthand or SSH form to `https://`.
 - `Package` also types `keywords`, `maintainers` and `homepage` directly, alongside the existing `author` and `contributors`.

@@ -70,7 +70,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `package-json` — package.json schemas, validation and file IO; delegates core SPDX validity to `@effected/spdx` (boundary).
 - `tsconfig-json` — tsconfig.json schemas, `extends`-chain resolution and config discovery (boundary).
 - `config-file` — composable config file loading: codec × resolver × strategy, the four codecs as free-standing named exports (boundary). Zero *external* runtime dependencies; peers on `jsonc`, `yaml` and `toml`.
-- `npm` — resolution contracts for `catalog:` / `workspace:` specifiers plus the `NpmRegistry` and `PackagePublish` services, which do their own IO through core contracts in `R` (boundary, deliberately — not integrated).
+- `npm` — resolution contracts for `catalog:` / `workspace:` specifiers plus the registry-read, tarball and publish services, which do their own IO through core contracts in `R` (boundary, deliberately — not integrated).
 - `walker` — upward path traversal; the one absorbing loop (boundary).
 - `xdg` — XDG Base Directory resolution: `AppDirs`, `NativeDirs`, `XdgPaths` and the config-file resolvers, over `walker` (boundary).
 - `commands` — structured command running (`Run`) and CLI tool discovery (`ToolDiscovery`) over core's `ChildProcessSpawner`; declares the narrow `LocalExec` contract `workspaces` implements, keeping zero `@effected/*` edges (boundary).
@@ -107,6 +107,13 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.buil
 **User-run only:** `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs, mutating the lockfile and the root `pnpm-workspace.yaml`. **Agents must not invoke them** — surface the command and let the user run it (advancing the Effect pin is `pnpm:up` then `pnpm:export`).
 
 **Agents may run** `pnpm catalog:check` (read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effect/savvy.build.ts` and one fixed-name changeset. They keep the published `effected` catalog current — do not lump them in with the `pnpm:*` class.
+
+**A release does not need a hand-run `catalog:sync` — CI guarantees it.** `.github/workflows/catalog-sync.yml` runs on every PR to `main` **and to `changeset-release/main`**, so opening the release PR is itself the trigger: the job syncs the catalog, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before publishing. The catalog therefore cannot publish out of step with the packages it names.
+
+Two properties of that job surprise readers, and neither is a bug:
+
+- **It checks out `ref: main` and commits to `main`, not to the PR head.** It uses the PR event as a trigger to keep *main's* catalog fresh; it is not validating the PR's own contents. A feature branch's pending changesets reach it only once merged.
+- **The reported check run goes RED when it found drift and repaired it** (`Catalog was out of date — synced`). That is deliberate — a run that silently fixes drift teaches nobody it happened — and it goes green on a re-run once the sync commit is in the branch. Do not read that red as a failed sync.
 
 ## Code Quality and Hooks
 

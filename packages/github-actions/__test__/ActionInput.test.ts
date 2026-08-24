@@ -13,6 +13,10 @@ const readFails = <A>(config: Config.Config<A>, env: Record<string, string>) =>
 		assert.strictEqual(exit._tag, "Failure", "expected the input to be rejected");
 	});
 
+/** The rendered failure text, for asserting that an error names its offending line. */
+const readErrorText = <A>(config: Config.Config<A>, env: Record<string, string>) =>
+	Effect.map(Effect.flip(read(config, env)), (error) => String(error));
+
 describe("ActionInput", () => {
 	describe("the INPUT_ name mangling", () => {
 		it.effect("PRESERVES dashes — the bug that shipped", () =>
@@ -249,6 +253,48 @@ describe("ActionInput", () => {
 
 		it.effect("rejects a line that is not a pair", () =>
 			readFails(ActionInput.pairs("vars"), { INPUT_VARS: "a=1\njust-a-word\n" }),
+		);
+
+		it.effect("rejects an empty key, which no workflow can have meant", () =>
+			// `{ "": v }` became a GitHub custom-property filter matching nothing,
+			// and the run reported "0 repositories discovered" with no reason why.
+			readFails(ActionInput.pairs("vars"), { INPUT_VARS: "a=1\n=orphan\n" }),
+		);
+
+		it.effect("rejects a bare equals", () => readFails(ActionInput.pairs("vars"), { INPUT_VARS: "=" }));
+
+		it.effect("names the offending line when the key is empty", () =>
+			Effect.gen(function* () {
+				const text = yield* readErrorText(ActionInput.pairs("vars"), { INPUT_VARS: "a=1\n=orphan\n" });
+				assert.include(text, "=orphan");
+			}),
+		);
+
+		it.effect("accepts an empty value by default, which is a legitimate empty string", () =>
+			Effect.gen(function* () {
+				const value = yield* readOk(ActionInput.pairs("vars"), { INPUT_VARS: "a=1\nb=\n" });
+				assert.deepStrictEqual(value, { a: "1", b: "" });
+			}),
+		);
+
+		it.effect("rejects an empty value under requireValue", () =>
+			readFails(ActionInput.pairs("vars", { requireValue: true }), { INPUT_VARS: "a=1\nb=\n" }),
+		);
+
+		it.effect("names the offending line when an empty value is rejected", () =>
+			Effect.gen(function* () {
+				const text = yield* readErrorText(ActionInput.pairs("vars", { requireValue: true }), {
+					INPUT_VARS: "a=1\nb=\n",
+				});
+				assert.include(text, "b=");
+			}),
+		);
+
+		it.effect("still accepts an empty value under requireValue when it is not empty", () =>
+			Effect.gen(function* () {
+				const value = yield* readOk(ActionInput.pairs("vars", { requireValue: true }), { INPUT_VARS: "b=0" });
+				assert.deepStrictEqual(value, { b: "0" });
+			}),
 		);
 	});
 

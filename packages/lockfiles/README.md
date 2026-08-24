@@ -135,11 +135,16 @@ A row in `lockfile.packages` is one package **instance**, not one package. A dep
 `resolved` maps each dependency name — and each peer name the lockfile records a resolution for — to the `instanceId` it actually resolved to, which is what lets a consumer walk the real graph rather than re-resolving ranges itself. `peerDependencies` and `peerDependenciesMeta` carry the declarations as written, defaulting to `{}`.
 
 ```ts
+import { Option } from "effect";
+
 const [instance] = lockfile.packagesNamed("react-dom");
 const reactId = instance?.resolved["react"];
-const react = lockfile.packages.find((p) => p.instanceId === reactId);
-// react?.version: the version this particular react-dom instance resolved to
+const react = reactId === undefined ? Option.none() : lockfile.packageByInstanceId(reactId);
+// Option.some(ResolvedPackage) — the version this particular react-dom instance resolved to
+// Option.none() when the lockfile records no row under that id
 ```
+
+`packageByInstanceId` is the lookup to reach for rather than a scan over `lockfile.packages`: it builds its index lazily on first call and reuses it, so walking a graph edge by edge stays linear instead of quadratic. A repeated id resolves to the first row, so a malformed lockfile gives a stable answer rather than an iteration-order one.
 
 `unresolvedEdges` names the edges the lockfile **records** but the model could not name. A name listed there is not absent — it is unanswered, so a missing `resolved` key must not be read as "nothing is there". A gate that cares about completeness checks that array before trusting an empty result.
 
@@ -147,7 +152,7 @@ const react = lockfile.packages.find((p) => p.instanceId === reactId);
 
 - `Lockfile.parse(content, { format })` — the package's only fallible boundary; fails with `LockfileParseError` or `LockfileFramingError`.
 - `Lockfile#withImporterNames(names)` — the pure second stage for pnpm: rewrites importer-path names and both ends of each dependency edge once the consumer has read the manifests.
-- `Lockfile#packagesNamed(name)` and `Lockfile#workspacePackages` — total lookups over the model.
+- `Lockfile#packagesNamed(name)`, `Lockfile#packageByInstanceId(id)` (`Option`-answering, over a lazily built index) and `Lockfile#workspacePackages` — total lookups over the model.
 - `LockfileFormat` with `filenameFor` / `fromFilename` — the format literal and its mapping to lockfile filenames.
 - `LockfileIntegrity.compare(lockfile, manifests)` — total, pure integrity checking with no error channel; the report carries `valid`, `missingWorkspaces`, `extraWorkspaces` and `unsatisfiedConstraints`. Constraint checking is best-effort by design: `workspace:` / `link:` / `file:` specifiers and rows whose range does not parse as SemVer are skipped.
 - `WorkspaceManifest` — the manifest input shape for integrity checking: a package name plus four optional dependency records. Deliberately a plain value rather than a strict manifest model, so consumers can derive it from anything.

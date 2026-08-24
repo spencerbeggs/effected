@@ -84,11 +84,31 @@ is one of `added/removed/modified/renamed/copied/changed/unchanged`.
 | Member | Signature | Notes |
 | --- | --- | --- |
 | `settings` | `Effect<RepositorySettings>` | The faithful generated payload, not a hand-picked projection — deliberately, so a caller needing sixteen fields never re-declares them |
-| `updateSettings` | `(patch) => Effect<RepositorySettings>` | |
+| `updateSettings` | `(patch: RepositoryPatch) => Effect<RepositorySettings>` | Build the patch with `repositoryPatch(draft)` — see below |
 | `defaultBranch` | `Effect<string>` | Derived from `settings` |
 | `nodeId` | `Effect<string>` | The repo's GraphQL node id, needed by `createLinkedBranch`/`createPullRequest`-family mutations |
 
 `settings`, `defaultBranch` and `nodeId` are properties, not functions.
+
+**Never cast into `RepositoryPatch`.** Octokit's generated params spell an
+optional field as `has_issues?: boolean`, *not* `boolean | undefined`, so
+under `exactOptionalPropertyTypes` (on in the silk tsconfig base) the
+`Partial`-shaped value you actually have — "apply only what the user
+configured" — does not assign to `RepositoryPatch` at all. `repositoryPatch`
+is the supported bridge: it takes a `RepositoryPatchDraft` (every field may
+be an explicit `undefined`) and drops the undefined keys, which is also what
+the wire needs — `PATCH` reads an absent field as "leave it alone", while an
+explicit `null` is a value.
+
+```ts
+import { repositoryPatch } from "@effected/github";
+
+const patch = repositoryPatch({ has_issues: config.has_issues, description: config.description });
+```
+
+Build the draft as an object literal. A key-by-key loop (`draft[key] =
+source[key]` over a union `key`) still defeats TypeScript's correlation
+between two indexed accesses, which no helper can fix.
 
 ## `GitHubContent`
 

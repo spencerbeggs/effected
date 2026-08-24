@@ -87,8 +87,21 @@ export {
 	type PublishOptions,
 	type PublishOutcome,
 } from "./PackagePublish.js";
+export { PackageTarball, type PackageTarballShape, TarballError } from "./PackageTarball.js";
 export { PublishError } from "./PublishError.js";
-export { RegistryKind, classifyRegistry } from "./RegistryKind.js";
+export {
+	type BasicCredential,
+	type RegistryCredential,
+	type TokenCredential,
+	basicCredentialFromPair,
+} from "./RegistryCredential.js";
+export {
+	RegistryKind,
+	classifyRegistry,
+	registryDisplayName,
+	registryHost,
+	registryShortLabel,
+} from "./RegistryKind.js";
 export { PartialReleaseAgeGate, ReleaseAgeGate } from "./ReleaseAgeGate.js";
 export { DependencyResolutionError, WorkspaceResolver } from "./WorkspaceResolver.js";
 

@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-17
-last-synced: 2026-08-17
-completeness: 94
+updated: 2026-08-23
+last-synced: 2026-08-23
+completeness: 95
 related:
   - ../architecture.md
   - ../effect-standards.md
@@ -15,6 +15,7 @@ related:
   - lockfiles.md
   - semver.md
   - commands.md
+  - memfs.md
 ---
 
 # @effected/npm design
@@ -26,7 +27,7 @@ related:
 - The **dependency-resolution contracts** a package.json-document library defines but cannot implement — `CatalogResolver` and `WorkspaceResolver`, resolving pnpm `catalog:` / `workspace:` specifiers to concrete versions.
 - The **cross-cutting npm vocabulary** that flows between the manifest, lockfile and workspace packages: `DependencySpecifier`, the dependency-section literals, `IntegrityHash`, `PackageManagerPin`, `PackageManagerCache` and the [`ReleaseAgeGate`](#releaseagegate).
 - The **[`Manifest` domain model](#manifest-tolerant-manifest-level-resolution)** — manifest-level resolution built on the per-specifier contracts.
-- The **[registry and publish services](#the-service-half-registry-reads-and-publishing)** — `NpmRegistry` and `PackagePublish`, which do their own IO through core contracts in `R`.
+- The **[registry, tarball and publish services](#the-service-half-registry-reads-tarballs-and-publishing)** — `NpmRegistry`, `PackageTarball` and `PackagePublish`, which do their own IO through core contracts in `R`.
 
 Resolution lives here rather than in package-json because it fundamentally requires workspace and catalog context that a manifest library cannot have; the full rationale is [resolution belongs to @effected/npm](package-json.md#resolution-belongs-to-effectednpm). The vocabulary lives here because these scalars are shared by three or more packages, and a single home stops each from prefix-sniffing its own reimplementation.
 
@@ -51,7 +52,9 @@ That holds only while two things stay true, and `__test__/reachability.test.ts` 
 
 The test is proven discriminating — adding a `commands` import to a vocabulary module fails it — and it exists because the guardrail was otherwise only prose. Do not weaken it, and do not "tidy" `index.ts` into a namespace.
 
-**The escalation, if it ever comes.** The moment either service takes a *non-core* runtime dependency — an npm client library, a tarball reader, a registry SDK — this package becomes **integrated**, and then R2 *does* propagate: `lockfiles` (pure) and `package-json` both move with it, and every consumer of those pays. The answer then is not "accept an integrated npm" but **split the services into their own package**, leaving the contracts and vocabulary pure here. That split was considered and rejected for now because the services' densest dependency is this package's own vocabulary, so splitting today buys a package boundary between two halves that talk constantly. **The trigger to revisit is the guardrail above, not taste.**
+**The escalation, if it ever comes.** The moment any service takes a *non-core* runtime dependency — an npm client library, a tarball reader, a registry SDK — this package becomes **integrated**, and then R2 *does* propagate: `lockfiles` (pure) and `package-json` both move with it, and every consumer of those pays. The answer then is not "accept an integrated npm" but **split the services into their own package**, leaving the contracts and vocabulary pure here. That split was considered and rejected for now because the services' densest dependency is this package's own vocabulary, so splitting today buys a package boundary between two halves that talk constantly. **The trigger to revisit is the guardrail above, not taste.**
+
+**The rule has since been tested under pressure and held.** [`PackageTarball`](#packagetarball--reading-a-published-package-back) needs to unpack a `.tgz`, and the obvious implementation takes a tarball-reader dependency — which is the *named* escalation trigger above, verbatim. It extracts by shelling out to `tar` through core's `ChildProcessSpawner` instead, so the tier is unmoved and `lockfiles` stays pure. That is a **tier decision, not a convenience**: the cost is that a consumer off a CI runner image needs both a spawner and the `tar` binary, and paying that cost is cheaper than moving three packages' tiers.
 
 ## Module layout
 
@@ -127,9 +130,9 @@ This is a **schema-first port of the gate vocabulary only**, and three behaviour
 
 **Consumer-side config readers are deliberately not resident here.** Reading the gate from workspace config keys or replayed hooks is config IO, a boundary concern; [@effected/workspaces](workspaces.md#configdependencyhooks--the-opt-in-replay-seam) owns that assembly, and this pure module is the vocabulary those readers combine into.
 
-## The service half: registry reads and publishing
+## The service half: registry reads, tarballs and publishing
 
-Two services replacing a shelled-out `npm` CLI wherever the work can be done structurally.
+Three services replacing a shelled-out `npm` CLI wherever the work can be done structurally.
 
 ### NpmRegistry — reads over core HttpClient
 
@@ -144,11 +147,53 @@ The publish-times read deserves its own note: the registry's time document mixes
 
 **A per-version read falls back to the packument on a 405.** GitHub Packages answers the per-version endpoint with 405 regardless of credentials — not 404, not 401 — so a perfectly valid read failed as a transport-shaped error. The read now routes through the whole packument for that registry kind up front and **falls back the same way on a 405 from anywhere else**: the routing is by *observed behavior*, not by a vendor list, so a self-hosted registry with the same gap works without a code change. Two smaller facts inside it: the version is selected with `Object.hasOwn`, not a bare index, because the version number is caller input and a lookup for `constructor` must not read the prototype and hand back a "published version" that is a function; and absence stays `None` on both paths.
 
+### PackageTarball — reading a published package back
+
+The **inbound half** of the registry surface. `NpmRegistry` reads *metadata* and `PackagePublish` sends a tarball out; nothing read a published one back. The need is real and not served elsewhere: reading something out of a published package **before any install has run**, which is what a tool reproducing a package manager's config-dependency workflow must do, since its output is the input the install then consumes.
+
+`extract` takes a `PublishedVersion` — the value `NpmRegistry` already answers — and yields the directory the tarball's fixed `package/` root unpacked into. Five decisions carry it:
+
+- **The resource is `Scope`d, not owned by the caller.** The temp directory is a scoped make, so a caller reads what it needs and never owns cleanup. `Scope.Scope` in `R` is the honest signature for "this produces a thing that must be released".
+- **Integrity is verified BEFORE extraction**, and before anything reads the contents. A poisoned intermediary — CDN edge, proxy, mirror — serving different bytes than the registry vouched for must never reach `tar` at all. Verification uses core's `Crypto` digest and core's `Encoding.encodeBase64`, so there is no module-private base64 encoder to drift.
+- **The compare is padding-insensitive.** SRI permits an unpadded value, and a padding difference is not a byte difference; refusing a valid tarball over one would be the worse of the two failures.
+- **An unverifiable integrity says so out loud.** The yarn cache-key form names no algorithm, and a registry may publish none at all — both log rather than silently pass, because a skipped verification and a passed one are otherwise indistinguishable in a log.
+- **A non-2xx is caught before anything reaches disk.** Piping a 404 error page into `tar` surfaces as a misleading "could not extract" instead of naming the real failure; a downstream paid for that one.
+
+**Loading the extracted file is deliberately not part of this surface.** A dynamic `import()` of a computed path is compiled into a context module by bundlers, and a kit-level loader would hand every bundling consumer that problem with no seam to fix it. The composition instead pairs this with [`resolveEntryPoint`](package-json.md#resolveentrypoint-exports-encapsulates-the-package) from package-json — pure, IO-free — and leaves the load to the consumer's own bundler-visible code.
+
+**`TarballError` carries a `reason` discriminant** (`notFound | http | integrityMismatch | extractFailed`), and the `notFound` split is load-bearing rather than cosmetic. A consumer that cannot tell "this version legitimately does not exist" from "something went wrong fetching a version that does" must treat both the same way, and the resulting failure is silent: a downstream handled an integrity mismatch as a missing merge base, which downgraded a merge to a lossy algorithm and dropped a user's override **on a run that reported success**. That incident is the standing argument in this package against collapsing a failure set to one sentinel; [`UnresolvedEntryPointError`](package-json.md#resolveentrypoint-exports-encapsulates-the-package) is discriminated for the same reason on the other side of the same composition.
+
+### RegistryCredential — the scheme is chosen once
+
+Authentication is a **closed union**, `{ kind: "token" }` or `{ kind: "basic" }`, and both the read probe (`RegistryTarget`) and the publish (`PackagePublish.setupAuth`) take it. That replaced a bare `token` on both — a breaking change taken deliberately, because a probe and a publish that disagreed about the scheme authenticate differently against the *same* registry, and the observable symptom is the worst kind: a bearer probe against a basic-auth registry answers 401, which reads as "not published", so the publish proceeds on a false premise.
+
+Three facts inside it:
+
+- **The basic arm holds the ALREADY-ENCODED blob**, not a user/password pair. That is what npm itself stores in `_auth` and what registry configuration in the wild already contains; npm assigns the value straight to the `Authorization: Basic …` header with no decode. Splitting it back into a pair to re-encode would decode a secret for no purpose and is lossy in principle for a password containing `:`. `basicCredentialFromPair` exists for the caller who genuinely holds a pair — and it refuses a username containing `:`, because that separator is positional and unescapable, so minting the credential would authenticate as someone else.
+- **The credential's kind picks the npmrc key.** npm reads both per registry — `_authToken` first, then `_auth` — so writing the wrong key is not an error, it is an unauthenticated publish. The header scheme follows the same discriminant.
+- **The kind is span-annotated; the value never is.** "Which scheme did we use" is exactly the diagnostic a failed auth needs, and it is not a secret.
+
+**`RegistryTarget.token` survives one minor as a deprecated `never` — a tripwire, not an alias.** Dropping the renamed field outright would have been a **silent** break rather than a loud one, which a consumer caught before it shipped: callers pass the field through a conditional spread (`...(token !== null ? { token } : {})`), and a spread of a no-longer-known property is *not* an excess-property error, so the field simply vanishes and an authenticated probe becomes an anonymous one. Against a private registry that answers 401, `NpmRegistry.version` reads that as "not published" — and a publish flow acting on it republishes a version that already exists. Typed `never`, the same spread fails to compile. An alias would have kept the silent path compiling, which is why this is `never` and not `Redacted<string>`; the generalizable rule is **rename a field to `never` when the old spelling can be dropped without a compile error at the call sites that actually have it.**
+
+### NpmExecutor — cache redirection as typed API
+
+`NpmExecutor` gained `withCacheDir` and a generic `withExtraArgs`. The cache redirect is API rather than tribal knowledge for a specific reason: **GitHub's macOS runner images ship a partially root-owned `~/.npm/_cacache`**, and current npm hard-fails with `EACCES` before doing any work when it sees root-owned files in its cache — so every `view` / `pack` / `publish` on such a runner dies until the cache is pointed somewhere the job owns. Setting `npm_config_cache` in the environment works identically and npm honours it in every dispatch form, but it is **invisible at the call site**, which is how the fix gets lost in a port and rediscovered the hard way. Naming it puts the reason in the `.d.ts`.
+
+**The redirect OVERRIDES a deliberately configured cache, and the combinator stays dumb about it.** A `--cache` flag in argv outranks both `npm_config_cache` and any npmrc setting, so an unconditional call also overrides a self-hosted runner pointed at a warmed cache on purpose. The alternative — consult the environment and only redirect when nothing else is set — was rejected: a value transformation that reads ambient state cannot be reasoned about from the call site, and `NpmExecutor` being an inspectable `Schema` class is worth more than the convenience. **The precedence is documented and the caller makes the check**, which is the same division the rest of this package takes between mechanism and policy.
+
+`withExtraArgs` is the generic vent for the flag this package has not named, so a consumer needing one does not wait for new API; it **replaces rather than accumulates**, so a copy is a complete statement of its own flags. Both are copy-returning, matching the rest of the value's shape.
+
 ### RegistryKind — one classification, not four predicates
 
 A single exhaustive classification replaces a family of boolean predicates, so a consumer `switch`es rather than composing booleans that can disagree — the prior art had one call site asking two in sequence and another negating a third to mean "everything else". **The domain match is exact-or-subdomain with a leading dot**, because a bare `endsWith` classifies a lookalike domain as the public registry, and that classification decides whether a token is sent. The same classifier decides which read path applies and whether the provenance flag is passed, since npm rejects that flag against non-npm registries and a release publishing to three registries should not lose two of them to one flag.
 
-A display-name helper is deliberately **not** provided: it is display-only, and consumers rendering the same input as "GitHub Packages" and as "github" prove a library-canonical string serves nobody.
+**The label projections ship, and the earlier refusal was wrong.** This doc previously recorded that a display-name helper was deliberately withheld, on the reasoning that consumers rendering the same registry as "GitHub Packages" and as "github" prove no library-canonical string serves anybody. What the second and third consumer actually showed is that both spellings are wanted, in *different places*, by the same consumer — so the disagreement was never about canonicity, it was two projections read as one. Three functions now ship: `registryShortLabel` (a table row: `npm`, `github`, `jsr`, else the host), `registryDisplayName` (prose: `npm`, `GitHub Packages`, `JSR`, else the host) and `registryHost`, the shared fallback.
+
+Three rulings inside them are the reason they are worth a note:
+
+- **The host fallback keeps the port**, unlike the hostname the classifier compares: two custom registries differing only by port are different registries, and a label that collapsed them would be actively misleading in a publish report. A value that will not parse as a URL degrades to scheme-and-path stripping, because npm config carries both URLs and bare hosts.
+- **They are functions over the registry string, not a `RegistryKind` lookup table.** That is forced rather than chosen — `"custom"` has no fixed label, it renders as its own host — and it is what keeps the leading-dot domain guard applying to the labels too, so a look-alike host cannot borrow the `npm` label in a report.
+- **The two differ on nullish input, deliberately.** `registryDisplayName` accepts absent-or-empty and answers `npm` explicitly, because "no registry configured" is a real state where prose is rendered. `registryShortLabel` takes a plain `string`, so a nullish value is a compile error rather than a silently absorbed wiring mistake — its callers always have a registry in hand.
 
 ### PackagePublish — the npm CLI through @effected/commands
 
@@ -156,7 +201,7 @@ A display-name helper is deliberately **not** provided: it is display-only, and 
 
 Every invocation goes through commands' `Run`, whose JSON form parses **and** schema-decodes so the two failure modes stay distinguishable. A non-zero exit is already a typed command failure; the dry run deliberately catches it and reports a negative result, because **a failed dry run is a valid answer rather than an error**.
 
-**Token masking is hoisted, and the npmrc write is kept.** Auth setup takes a `Redacted` and masks nothing — the caller masks, because an Actions edge inside a publish library is a layering smell. What is **not** dropped is writing the auth token into an npmrc rather than passing it on argv: redaction protects this kit's error messages, not the operating system's process table, so keeping the token off argv stays the security-correct choice. The npmrc path is a **caller-supplied argument**, because resolving a home directory needs a `node:` import a boundary package may not make.
+**Token masking is hoisted, and the npmrc write is kept.** Auth setup takes a [`RegistryCredential`](#registrycredential--the-scheme-is-chosen-once) carrying `Redacted` values and masks nothing — the caller masks, because an Actions edge inside a publish library is a layering smell. What is **not** dropped is writing the auth token into an npmrc rather than passing it on argv: redaction protects this kit's error messages, not the operating system's process table, so keeping the token off argv stays the security-correct choice. The npmrc path is a **caller-supplied argument**, because resolving a home directory needs a `node:` import a boundary package may not make.
 
 A fused probe-then-publish convenience is deliberately absent. The composition it would replace — pack once, then per target read the published version, compare integrity and publish the tarball — is consumer composition, and the fused form hardcoded one registry and could not recover from a partial multi-registry publish.
 
@@ -193,6 +238,8 @@ Suites in `__test__/` per concept. The resolver surface is contracts, so those t
 The vocabulary tests carry the weight — specifier classification across the protocol set, the round-trip property, the resolution projections, the section mapping, integrity across all three forms, and the release-age gate's strictest-wins/union/totality, matcher parity and cutoff boundary cases. The manifest suite drives the tolerance boundary in both directions, plus resolution over stub resolver layers.
 
 Registry reads run against a stubbed `HttpClient` — core-declared, no platform package — and publishing runs against commands' scripted-spawner fixture, which records argv, so **"the token never reached argv" is an assertion, not a hope**.
+
+The tarball suite is where [`@effected/memfs`](memfs.md) enters as a devDependency: verification and extraction are claims about bytes on a volume, and the fault-injectable in-memory volume is what lets a write failure be a *test input* rather than a stub body. Its discriminating claims are the ordering ones — that a mismatched digest fails **before** anything is written, and that a non-2xx never reaches the extractor — both of which pass against a naive implementation until the assertion is about ordering rather than outcome.
 
 The claims proven by deliberate mutation, each observed red: scoped-package URL encoding; 404-as-absence; the seeded double's registry axis; the npmrc auth-key trailing slash; a failed dry run staying a result; `dlx` degrading silently; the lookalike-domain guard; and the reachability test itself.
 

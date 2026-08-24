@@ -5,7 +5,7 @@ import { Effect, Layer, Option } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { BlobEnvelope } from "./BlobEnvelope.js";
-import type { Blob, BlobStoreShape } from "./BlobStore.js";
+import type { BlobStoreShape, StoredBlob } from "./BlobStore.js";
 import { BlobStore, BlobStoreError } from "./BlobStore.js";
 import type { DataBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";
@@ -111,13 +111,13 @@ const make = (
 				Effect.gen(function* () {
 					const url = yield* download(key);
 					if (Option.isNone(url)) {
-						return Option.none<Blob<A>>();
+						return Option.none<StoredBlob<A>>();
 					}
 					const bytes = yield* transfer.downloadToBuffer(url.value).pipe(moved(key));
 					return Option.some(yield* Effect.fromResult(BlobEnvelope.decodeResult(bytes, schema)));
 				}),
 
-			put: <A, I>(key: string, blob: Blob<A>, schema: Schema.Codec<A, I>) =>
+			put: <A, I>(key: string, blob: StoredBlob<A>, schema: Schema.Codec<A, I>) =>
 				Effect.gen(function* () {
 					const framed = yield* Effect.fromResult(BlobEnvelope.encodeResult(blob.metadata, blob.body, schema));
 					const created = yield* call("CreateCacheEntry", { key, version: VERSION }, key);

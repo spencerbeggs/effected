@@ -133,7 +133,7 @@ override fails with `notFound(<method>, path)` — a **typed `PlatformError`**,
 not a defect (`FileSystem.ts:764` for the `notFound` constructor, `:825` for
 `makeNoop`, `:873` / `:876` for the `readFile` / `readFileString` members;
 `layerNoop` at `:954` is `Layer.succeed(FileSystem)(makeNoop(fileSystem))`).
-Line numbers re-checked at beta.107.
+Line numbers re-checked at rc.109 — unchanged since beta.107.
 
 That is a false green for any package whose domain treats `NotFound` as
 "absent": a stub with `readFileString` overridden, code that later switches to
@@ -168,7 +168,7 @@ const body = JSON.parse((await new Response(init?.body ?? "{}").text()) || "{}")
 // For binary payloads: new Uint8Array(await new Response(init?.body).arrayBuffer())
 ```
 
-Working examples: `packages/github-actions/__test__/results.ts:63-70` (JSON
+Working examples: `packages/github-actions/__test__/results.ts:61-71` (JSON
 over Twirp) and `BlobStore.test.ts:212` (bytes). The general rule: **a double
 that mis-parses looks like the network being unreliable**, and every layer of
 retry between the two makes the diagnosis worse. When a virtual-clock suite
@@ -179,13 +179,22 @@ times out in several places at once, suspect the double before the clock.
 Three sharp edges, all clock-adjacent:
 
 - **`PubSub.takeAll` suspends on an empty subscription.** Its return type is
-  `Effect<NonEmptyArray<A>>` — that *is* the proof. Under the virtual clock it
-  hangs to the vitest timeout. Use `PubSub.takeUpTo(sub, n)`, which returns what
-  is there.
-- **`PubSub.subscribe` requires a `Scope`**, and there is no `it.scoped`. Pipe
-  `Effect.scoped` **before** `Effect.provide`.
-- **`Effect.fork` does not exist** — it is `forkChild` / `forkScoped` / `forkIn`
-  / `forkDetach`. And `Stream.fromQueue` rejects a `Subscription`.
+  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1192`, checked at rc.109) — that *is*
+  the proof. Under the virtual clock it hangs to the vitest timeout. Use
+  `PubSub.takeUpTo(sub, n)` (`PubSub.ts:1270`), which returns what is there.
+- **`PubSub.subscribe` requires a `Scope`** (`PubSub.ts:1077`) and there is no
+  `it.scoped` — but you do **not** need one. `it.effect` already runs its body
+  through `Effect.scoped`: at rc.109 it is
+  `makeTester<Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it)`
+  (`@effect/vitest` `internal/internal.ts:356`), and its type is
+  `Tester<R | Scope.Scope>` (`index.ts:101`), so a `Scope` requirement is
+  satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
+  harmless — it just closes the scope earlier, before the test ends — but it is
+  belt-and-braces, not a requirement.
+- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8492`) /
+  `forkIn` (`:8535`) / `forkScoped` (`:8578`) / `forkDetach` (`:8618`), still
+  the complete set at rc.109. And `Stream.fromQueue` takes a `Queue.Dequeue`
+  (`Stream.ts:1132`), so it rejects a `Subscription`.
 
 The clock-free drain: subscribe, run the operation, then `takeUpTo`.
 
@@ -218,7 +227,7 @@ only evidence for "parallel-safe".
 
 The discriminating shape forces **one fiber to read while the other's override
 is applied and unrestored** — which only a fiber-local implementation survives
-(`packages/github-actions/__test__/ActionEnvironment.test.ts:236-279`):
+(`packages/github-actions/__test__/ActionEnvironment.test.ts:277-303`):
 
 ```ts
 const rightApplied = yield* Latch.make();
@@ -248,7 +257,7 @@ assert.strictEqual(right, "right");
 `Effect.sleep` used to stage an interleaving hangs to the vitest timeout rather
 than interleaving. Three-way variants scale the same way — one latch per
 ordering constraint, each named for the constraint it enforces
-(`ActionLogger.test.ts:203` runs three).
+(`ActionLogger.test.ts:268-270` runs three).
 
 ## A spy restored in `try`/`finally` inside `Effect.gen` LEAKS
 
@@ -261,7 +270,7 @@ test pass that should have failed. The control that proves a guard is not
 simply refusing everything is exactly the test a leaked spy silently subverts.
 
 Acquire and release the spy instead, so the runtime owns the restore on every
-exit path (`packages/github-actions/__test__/DetachedProcess.test.ts:33-51`):
+exit path (`packages/github-actions/__test__/DetachedProcess.test.ts:55-63`):
 
 ```ts
 const withKillSpy = <A, E>(impl: () => true, use: (calls: ReadonlyArray<ReadonlyArray<unknown>>) => Effect.Effect<A, E>) =>
@@ -281,7 +290,7 @@ nonzero, which CI reads as a failure with no failing test to point at.
 
 Snapshot and restore it in a `finally` around any test that exercises such
 code, alongside the console spy and any env mutation
-(`packages/github-actions/__test__/Action.test.ts:31-52`):
+(`packages/github-actions/__test__/Action.test.ts:44-54`):
 
 ```ts
 const previousExit = process.exitCode;
@@ -303,7 +312,7 @@ correctly-reported failure for the very case that produced it. Only the
 reporter's `unhandledErrors` field showed it.
 
 The fix there was a documented no-op listener at the point the parent
-deliberately lets go of the child (`packages/github-actions/src/DetachedProcess.ts:196-204`);
+deliberately lets go of the child (`packages/github-actions/src/DetachedProcess.ts:309-315`);
 the durable lesson is the reading habit. **A run with `unhandledErrors`
 non-empty is not a clean run**, whatever the Tests line says — treat it exactly
 like `0 tests passed`: a signal the reporter is telling you something the pass

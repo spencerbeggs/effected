@@ -147,6 +147,9 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 	/** Lazily built importer-path → importer index; deliberately outside the schema, never encodes. */
 	#importerIndex: ReadonlyMap<string, LockfileImporter> | undefined;
 
+	/** Lazily built instance-id → package index; deliberately outside the schema, never encodes. */
+	#instanceIndex: ReadonlyMap<string, ResolvedPackage> | undefined;
+
 	/**
 	 * Parse lockfile content of a known format into the unified model — the
 	 * package's only fallible boundary.
@@ -282,6 +285,37 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 			this.#importerIndex = index;
 		}
 		return Option.fromUndefinedOr(this.#importerIndex.get(path));
+	}
+
+	/**
+	 * The resolved package with the given instance id, or `Option.none()` when
+	 * the lockfile records none. Backed by a lazily built index, so repeated
+	 * lookups are O(1) and a consumer that never walks edges pays nothing.
+	 *
+	 * @remarks
+	 * `ResolvedPackage.instanceId` is what a resolved edge points at, so peer and
+	 * dependency resolution is a lookup through this index rather than a scan.
+	 * Without it every consumer rebuilds the same map — `new Map(lockfile.packages.map((p) => [p.instanceId, p]))` —
+	 * which is O(n) per walk and one more place for the key choice to drift.
+	 *
+	 * The index is a `Map`, so an instance id that collides with an `Object`
+	 * member name (`__proto__`, `constructor`) neither pollutes nor
+	 * false-matches, exactly as for {@link Lockfile.importer}.
+	 *
+	 * @param instanceId - The instance id to look up.
+	 * @returns The matching {@link ResolvedPackage}, or `Option.none()`.
+	 */
+	packageByInstanceId(instanceId: string): Option.Option<ResolvedPackage> {
+		if (this.#instanceIndex === undefined) {
+			const index = new Map<string, ResolvedPackage>();
+			// First wins, so the answer is stable if a malformed lockfile repeats
+			// an id rather than depending on iteration order.
+			for (const pkg of this.packages) {
+				if (!index.has(pkg.instanceId)) index.set(pkg.instanceId, pkg);
+			}
+			this.#instanceIndex = index;
+		}
+		return Option.fromUndefinedOr(this.#instanceIndex.get(instanceId));
 	}
 
 	/** The workspace-local packages. */

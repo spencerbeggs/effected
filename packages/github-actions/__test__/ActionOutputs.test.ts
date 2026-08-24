@@ -2,7 +2,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, FileSystem, Layer, Redacted, Schema } from "effect";
 import { TestConsole } from "effect/testing";
-import { ActionEnvironment, ActionOutputError, ActionOutputs, Secret } from "../src/index.js";
+import {
+	ActionEnvironment,
+	ActionOutputs,
+	DetachedOutputError,
+	InvalidOutputNameError,
+	RunnerFileUnavailableError,
+	Secret,
+} from "../src/index.js";
 
 const FILES = {
 	GITHUB_OUTPUT: "/rf/output",
@@ -132,8 +139,7 @@ describe("ActionOutputs", () => {
 			const files = runnerFiles();
 			return Effect.gen(function* () {
 				const error = yield* Effect.flip((yield* ActionOutputs).set("a", "1"));
-				assert.strictEqual(error._tag, "ActionOutputError");
-				assert.strictEqual(error.reason, "unavailable");
+				assert.instanceOf(error, RunnerFileUnavailableError);
 				assert.strictEqual(error.file, "GITHUB_OUTPUT");
 			}).pipe(
 				Effect.provide(
@@ -147,7 +153,7 @@ describe("ActionOutputs", () => {
 			return live(
 				Effect.gen(function* () {
 					const error = yield* Effect.flip((yield* ActionOutputs).set("bad\nname", "1"));
-					assert.strictEqual(error.reason, "invalidName");
+					assert.instanceOf(error, InvalidOutputNameError);
 					assert.strictEqual(files.written.paths().length, 0, "nothing may be written when the name is refused");
 				}),
 				files,
@@ -251,8 +257,7 @@ describe("ActionOutputs", () => {
 				];
 				for (const [call, file] of cases) {
 					const error = yield* Effect.flip(call);
-					assert.instanceOf(error, ActionOutputError);
-					assert.strictEqual(error.reason, "detached", file);
+					assert.instanceOf(error, DetachedOutputError);
 					assert.strictEqual(error.file, file);
 					assert.include(error.message, "detached worker");
 				}

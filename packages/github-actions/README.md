@@ -139,6 +139,18 @@ const program = Effect.gen(function* () {
 await Action.run(program, { layer: ActionCache.layer });
 ```
 
+`CacheKey.withNamespace(segment)` is the cache-bust case — a run that must match nothing an unbusted run wrote, and whose own entries must be invisible to unbusted runs:
+
+```ts
+import { CacheKey } from "@effected/github-actions";
+
+const key = CacheKey.of("Linux", "pnpm-store", "abc123").withNamespace("bust7");
+console.log(key.key, key.restoreKeys);
+// bust7-Linux-pnpm-store-abc123 []
+```
+
+Two decisions make that safe for any segment value, with no prefix reasoning at the call site. The segment goes **first**, so the namespaced key shares no prefix with an unnamespaced one — a restore key is a prefix match, and folding a bust token in later leaves an ordinary run's rung prefix-matching busted entries. And the ladder is **dropped**, so no rung reaches outside the namespace even when the segment happens to equal an ordinary leading segment. It is a safe default rather than a prohibition: follow with `withRestoreDepths` for a deliberate in-namespace ladder.
+
 `CacheKey.hashFiles` is byte-compatible with `@actions/glob`'s `hashFiles`, and `OidcTokenIssuer.claims` decodes the runner's OIDC token for a SLSA provenance predicate without verifying its signature — the token arrived over TLS from the runner's own token service, so the transport is the trust boundary and nothing here branches on the claims for authorization.
 
 `ActionsProvenance.capture` turns those claims into an `@effected/sbom` `SlsaProvenance` predicate, and `ActionsIdentityToken.layer` serves that package's narrow `IdentityToken` contract from the same issuer — the inversion that keeps the Actions runtime out of every consumer that only wants to emit an SBOM:
@@ -228,6 +240,30 @@ Every region the run writes then carries its `at` and `runId`, and a pass whose 
 
 `CheckState` is the vocabulary both of them speak, and it is deliberately wider than GitHub's conclusion set — `running` is a state rather than the absence of one, and `user_interaction_required` names a pipeline waiting on a human. `projectCheckState` maps each onto the wire form GitHub wants, as a status plus a conclusion exactly when the status is `completed`.
 
+## Typed failures
+
+Four failure types in this package are **tagged unions of one error class per reason** rather than a single class carrying a `reason` field: `ActionOutputError`, `BlobEnvelopeError`, `CacheKeyError` and `DetachedProcessError`. Every one of those names still exists and still means the same set of outcomes, so no signature changed — each is now a type alias over its members:
+
+| Union | Members |
+| ----- | ------- |
+| `ActionOutputError` | `RunnerFileUnavailableError`, `RunnerFileWriteError`, `InvalidOutputNameError`, `OutputEncodeError`, `DetachedOutputError` |
+| `BlobEnvelopeError` | `NotABlobEnvelopeError`, `TruncatedBlobEnvelopeError`, `UnsupportedBlobEnvelopeVersionError`, `BlobMetadataDecodeError`, `BlobMetadataEncodeError` |
+| `CacheKeyError` | `CacheKeyReadError`, `CacheKeyBadPatternError` |
+| `DetachedProcessError` | `DetachedLogUnavailableError`, `DetachedSpawnFailedError`, `InvalidPidError`, `DetachedSignalFailedError`, `DetachedNotReadyError` |
+
+**Breaking, and how to migrate.** Code that branched on `error.reason` matches on `_tag` instead, which is what buys the split: one failure can be handled on its own with `Effect.catchTag`, and the rest stay in the error channel rather than being caught by a handler that only meant to answer one of them.
+
+```ts
+import { CacheKey } from "@effected/github-actions";
+import { Effect, Option } from "effect";
+
+const digest = CacheKey.hashMatching({ workspace: ".", patterns: ["**/pnpm-lock.yaml"] }).pipe(
+  Effect.catchTag("CacheKeyBadPatternError", () => Effect.succeed(Option.none<string>())),
+);
+// Effect<Option<string>, CacheKeyReadError, FileSystem | Path>
+// a bad pattern becomes "no digest"; a read failure stays in the error channel
+```
+
 ## Testing
 
 Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`, with unstubbed members dying loudly and naming themselves — three recorded exceptions state why they default instead: `ActionEnvironment.makeTest` seeds the twelve `GITHUB_*`/`RUNNER_*` variables, `ActionLogger.makeTest` defaults to silent, and `DryRun.makeTest` defaults to rehearsing, the safe direction. `ActionEnvironment.makeTest`/`layerTest` also take the webhook event payload as an optional second argument, serving it directly instead of routing it through a `GITHUB_EVENT_PATH` filesystem read the stubbed filesystem could never satisfy:
@@ -255,7 +291,7 @@ const TestOutputs = ActionOutputs.layerTest({
 ## Features
 
 - `Action.run` / `ActionRuntime.layer` — the entry point and default runtime: environment, logger, outputs, state, the Node platform and an `HttpClient`.
-- `ActionInput` — typed input accessors (`string`, `boolean`, `integer`, `redacted`, `lines`, `list`, `pairs`, `schema`) sharing one absence rule, plus the `INPUT_`-aware `ConfigProvider` `Action.run` installs by default.
+- `ActionInput` — typed input accessors (`string`, `boolean`, `integer`, `redacted`, `lines`, `list`, `pairs`, `schema`) sharing one absence rule, plus the `INPUT_`-aware `ConfigProvider` `Action.run` installs by default. `pairs` always rejects an empty key (`=value`, whose damage lands far from the typo) and takes `requireValue` to reject an empty value too.
 - `ActionOutputs` — step outputs, JSON outputs, the job summary, exported variables, `PATH` additions, failure annotations and log masking.
 - `ActionState` / `ActionEnvironment` — persisted `pre`/`main`/`post` state, and the fiber-local `GITHUB_*`/`RUNNER_*` context read once from `process.env`.
 - `ActionLogger` — collapsible groups, buffered step transcripts (`withBuffer({ onSuccess: "discard" })` drops a green step's transcript entirely, while a failure, defect or interruption still flushes it), `withStep(name, effect, options?)` for the same buffering plus one summary line on success and a `❌ <name>` header above the transcript on failure, `::notice::` annotations, and the `Logger` that renders every `Effect.log*` as a workflow command.
@@ -263,15 +299,15 @@ const TestOutputs = ActionOutputs.layerTest({
 - `Secret` — the one declassification seam between a `Redacted` value and a plain string, masking before it returns plaintext.
 - `GitHubToken` — the App-token lifecycle shaped like the `pre`/`main`/`post` workflow: mint, verify scopes, persist, read, revoke.
 - `ActionCache` / `Artifact` — the runner's cache and artifact protocols over Twirp v2, excluded from the default runtime so a consumer that skips them never links Azure.
-- `CacheKey` — cache keys and their restore-key ladder, plus `hashFiles`/`matchingFiles`/`hashMatching` byte-compatible with `@actions/glob`.
+- `CacheKey` — cache keys and their restore-key ladder, `withNamespace(segment)` for a bust token or a shared-runner prefix, plus `hashFiles`/`matchingFiles`/`hashMatching` byte-compatible with `@actions/glob`.
 - `OidcTokenIssuer` — the runner's OIDC token service, with unverified claim decoding for provenance predicates.
 - `ActionsIdentityToken` / `ActionsProvenance` — the `@effected/sbom` seam: `layer` serves that package's `IdentityToken` contract from the runner's issuer, and `capture` builds a `SlsaProvenance` predicate out of the runner's OIDC claims.
 - `GitHubMarkdown` — the escaping-safe writer for GitHub surfaces: `table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details` and `raw`, and the package's only importer of `@effected/markdown`.
 - `ManagedDocument` — marker-delimited named regions in text a human also edits, for a sticky comment or a managed pull request description; content outside the regions survives byte-for-byte, and each region can carry marker metadata that round-trips through `entry(key)` without ever addressing the region.
 - `CheckState` / `projectCheckState` — the kit's check vocabulary, wider than GitHub's conclusions, and its projection onto the check-run wire form.
 - `CheckDocument` — the debounced check-to-document reconciler: report states as they change, and one write lands carrying the final one. `stamp` plus a readable sink lets two runs share one document, dropping a strictly older run's pass instead of clobbering the newer one; `flush` reports `written`, `unchanged` or `stale`.
-- `ToolInstaller` — download, extract and cache a toolchain in the runner's tool cache, with no `@actions/tool-cache` dependency.
-- `BlobStore` — durable `get`/`put`/`has` over bytes plus a metadata channel, backed by `layerS3` (SigV4-signed, no `@aws-sdk/*` dependency) or `GitHubCacheBlobStore.layer` (the runner's own cache); `layerMemory` runs the real envelope framing for tests.
+- `ToolInstaller` — download, extract and cache a toolchain in the runner's tool cache, with no `@actions/tool-cache` dependency; `ToolInstallerError` always names its `subject`.
+- `BlobStore` — durable `get`/`put`/`has` over `StoredBlob<A>` values (bytes plus caller-schema metadata; the type was named `Blob<A>` before, which collided with the global), backed by `layerS3` (SigV4-signed, no `@aws-sdk/*` dependency) or `GitHubCacheBlobStore.layer` (the runner's own cache); `layerMemory` runs the real envelope framing for tests.
 
 ## License
 

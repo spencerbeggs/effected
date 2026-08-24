@@ -1,6 +1,9 @@
 # Schema — v3 → v4
 
-Verified against `effect@4.0.0-beta.107`. Idiomatic form → see `effect-v4-schema`.
+Names, signatures and source citations re-verified against `effect@4.0.0-rc.109`.
+Inline probe stamps (`beta.94`, `beta.105`, `beta.107`) mark **runtime-semantics**
+claims that were **not** re-probed on rc.109 — trust the name, re-probe the
+behaviour. Idiomatic form → see `effect-v4-schema`.
 
 **`Schema.Schema` takes ONE type argument in v4.** The two-sided form is
 `Schema.Codec`:
@@ -56,7 +59,8 @@ base names (`decode`/`decodeUnknown`/`encode`/`encodeUnknown` → `*Effect`) and
 the `*Either` variants (→ `*Result` / `*Exit`) are forced renames. The
 `*Sync` / `*Option` / `*Promise` variants **survive unchanged**, typed and
 `Unknown` flavors both — `decodeSync`, `decodeUnknownSync`, `encodeSync`,
-`encodeUnknownSync`, and friends (verified beta.98, `Schema.d.ts:1377–1738`).
+`encodeUnknownSync`, and friends (all nine still exported at rc.109,
+`Schema.ts:1726–2342`).
 Do not "migrate" `encodeSync` to `encodeUnknownSync`: both exist, and they
 differ by input type — `encodeSync` takes the typed `S["Type"]`,
 `encodeUnknownSync` takes `unknown`. Prefer `encodeSync` (and `decodeSync`)
@@ -135,18 +139,19 @@ there is no pre-composed non-negative anything.
 > NOT a `Schema.mapFields` static.
 >
 > Top-level `Schema.transform` / `Schema.transformOrFail` **do not exist as
-> callables** in beta.94 (`typeof` is `undefined`; calling throws
-> `Schema.transform is not a function`) — observed in the first boundary port.
+> callables** (`typeof` is `undefined`; calling throws
+> `Schema.transform is not a function` — observed in the first boundary port at
+> beta.94, and still zero `Schema.ts` exports under either name at rc.109).
 > The v4 form is always `Source.pipe(Schema.decodeTo(Target,
 > SchemaTransformation.transform({ decode, encode })))` (or `transformOrFail`);
 > `transform` lives on `SchemaTransformation`, not `Schema`.
 >
-> Open struct: **`Schema.Struct` takes exactly ONE parameter at beta.107**
-> (`Schema.ts:3549` — the body hard-codes `SchemaAST.struct(fields, undefined)`).
+> Open struct: **`Schema.Struct` takes exactly ONE parameter at rc.109**
+> (`Schema.ts:3568` — the body hard-codes `SchemaAST.struct(fields, undefined)`).
 > A second argument is a `tsc` error (TS2554, "Expected 1 arguments, but got 2");
 > from untyped JS it is *silently discarded*, yielding a plain closed struct with
 > the index signature dropped and no diagnostic. The v4 form is
-> `Schema.StructWithRest(schema, records)` (`Schema.ts:4163`) — note it takes a
+> `Schema.StructWithRest(schema, records)` (`Schema.ts:4182`) — note it takes a
 > built **schema** plus an array of `Record` schemas, not `(fields,
 > indexSignature)`. Or model an open remainder with `Schema.Record(key, value)`
 > or a `decodeTo` key-partition (first boundary port).
@@ -206,7 +211,14 @@ is what turns that into a message naming the field.
   `decode({ decode: SchemaGetter.checkEffect(...), encode: SchemaGetter.passthrough() })`.
 - `fromKey` / `rename({ a: "c" })` → `encodeKeys({ a: "c" })` (experimental).
 - `asserts(schema)(input)` → `asserts(schema, input)` (single call, no longer curried).
-- `format(schema)` → `SchemaRepresentation.fromAST(S.ast)` → `toMultiDocument` → `toCodeDocument`.
+- `format(schema)` → `SchemaRepresentation.toRepresentation(S.ast)` →
+  `toMultiDocument` → `toCodeDocument`. **There is no `SchemaRepresentation.fromAST`**
+  (`toRepresentation` at `SchemaRepresentation.ts:711`; the only `fromAST*` in the
+  tree is the private `fromASTs` in `internal/schema/toRepresentation.ts`). The
+  module's public `from*` names (`fromJson`, `fromRepresentation`,
+  `fromJsonSchemaDocument`) all run the *other* direction — document back to
+  schema — so reaching for `fromAST` lands on a plausible-looking neighbour that
+  does the opposite of what you want.
 - `ParseResult.ArrayFormatter.formatError(err)` →
   `SchemaIssue.makeFormatterStandardSchemaV1()(err.issue).issues` — a
   `SchemaError` carries its structured issue on `.issue`, not `.cause`
@@ -221,13 +233,13 @@ is what turns that into a message naming the field.
 | v3 import | v4 import |
 | --- | --- |
 | `ParseResult` (failure ctors: `InvalidValue`, `MissingKey`, `Composite`, `isIssue`) | `SchemaIssue` |
-| `ParseResult` (the thrown parse error) | `SchemaError` |
+| `ParseResult` (the thrown parse error) | `Schema.SchemaError` — **not its own module**: there is no `effect/SchemaError`, the class is exported from `effect/Schema` (`Schema.ts:1176`) |
 | `ParseResult` (getters: `transformOrFail`, `transformOptional`, `checkEffect`, `passthrough`, `String`) | `SchemaGetter` |
 | `ParseResult` (transformations: `transform`, `transformOrFail`, `capitalize`) | `SchemaTransformation` |
 | `ParseResult` (`format` machinery) | `SchemaRepresentation` |
 | `Either` | `Result` |
 
-## beta.101 → beta.107 (v4-internal)
+## beta.101 → rc.109 (v4-internal)
 
 Not v3→v4 rows — the v4 beta line moved under code written against beta.101
 and earlier. The Schema-error rows landed in beta.102–105 (verified against the
@@ -236,15 +248,15 @@ surface, with the one construct change in the last row):
 
 | beta.101 and earlier | beta.105+ |
 | --- | --- |
-| `Schema.TaggedErrorClass<E>()("Tag", fields)` | `Schema.TaggedError<E>()("Tag", fields)` — renamed **back** to the v3 name, identical curried shape (`Schema.ts:14469`); the old name fails with "TaggedErrorClass is not a function" |
-| `Schema.ErrorClass<E>("E")(fields)` | `Schema.Error<E>("E")(fields)` (`Schema.ts:14408`); the *instance* schema formerly at `Schema.Error` is now `Schema.ErrorInstance` (`Schema.ts:10650`) |
+| `Schema.TaggedErrorClass<E>()("Tag", fields)` | `Schema.TaggedError<E>()("Tag", fields)` — renamed **back** to the v3 name, identical curried shape (`Schema.ts:14488`); the old name fails with "TaggedErrorClass is not a function" |
+| `Schema.ErrorClass<E>("E")(fields)` | `Schema.Error<E>("E")(fields)` (`Schema.ts:14427`); the *instance* schema formerly at `Schema.Error` is now `Schema.ErrorInstance` (`Schema.ts:10669`) |
 | `new SchemaIssue.InvalidValue(Option.some(input), { message })` | `new SchemaIssue.InvalidValue({ message }, input)` — `(annotations?, input?, options?)`, no `Option` wrapper (`SchemaIssue.ts:572`); input retained on the issue only under `reportInput: true` parse option (`SchemaIssue.ts:159`). `InvalidType` is `(ast, input?, options?)` (`SchemaIssue.ts:511`) |
 | throwing constructor/adapter errors carry the constraint text in `.message` | `X.make` / class `new` / `Schema.asserts` / `SchemaParser`'s sync/promise adapters throw a plain `Error` with the generic `.message` `"Schema validation failed"` and the `SchemaIssue.Issue` on `.cause` — format with `SchemaIssue.makeFormatterDefault()(error.cause)` (probed beta.105). `Schema.decodeUnknownSync` still throws `SchemaError`, whose `.message` IS formatted and whose issue sits on `.issue` |
-| `<schema>.makeEffect` fails with `SchemaError` | fails with `SchemaIssue.Issue` directly; `Schema.withConstructorDefault` accepts an Effect failing with `SchemaIssue.Issue` (changelog PR #7093). Note the spelling: `makeEffect` is an INSTANCE method on every schema (`BottomWithoutNew.makeEffect`, `Schema.ts:257`) — there is no module-level `Schema.makeEffect` export; the module-level form is `SchemaParser.makeEffect(schema)` (`SchemaParser.ts:43`) |
-| `Schema.toArbitrary(S)` returns a fast-check `Arbitrary` directly; `Schema.toArbitraryLazy` for deferral | beta.106: `Schema.toArbitrary(S)` returns a FACTORY taking the fast-check module — `Schema.toArbitrary(S)(FastCheck)` (`Schema.ts:14554`); `Schema.toArbitraryLazy` is removed (changelog PR #7148). Passing the factory where an `Arbitrary` is expected fails to type-check |
+| `<schema>.makeEffect` fails with `SchemaError` | fails with `SchemaIssue.Issue` directly; `Schema.withConstructorDefault` accepts an Effect failing with `SchemaIssue.Issue` (changelog PR #7093). Note the spelling: `makeEffect` is an INSTANCE method on every schema (`BottomWithoutNew.makeEffect`, `Schema.ts:256`) — there is no module-level `Schema.makeEffect` export; the module-level form is `SchemaParser.makeEffect(schema)` (`SchemaParser.ts:43`) |
+| `Schema.toArbitrary(S)` returns a fast-check `Arbitrary` directly; `Schema.toArbitraryLazy` for deferral | beta.106: `Schema.toArbitrary(S)` returns a FACTORY taking the fast-check module — `Schema.toArbitrary(S)(FastCheck)` (`Schema.ts:14573`); `Schema.toArbitraryLazy` is removed (changelog PR #7148). Passing the factory where an `Arbitrary` is expected fails to type-check |
 
 One-line JSON Schema note: an encoded-side definition with no identifier of its
-own is now named `${typeIdentifier}Encoded` (`internal/schema/toRepresentation.ts:53`),
+own is now named `${typeIdentifier}Encoded` (`internal/schema/toRepresentation.ts:98`),
 so `$defs` keys for `Schema.Class`-based schemas changed (`Person` →
 `PersonEncoded`) — annotate the encoded side at the definition site if a stable
 name is needed.
@@ -254,8 +266,10 @@ name is needed.
 Exact names: `toJsonSchemaDocument` (**not** `toJsonSchema`), `toEquivalence`,
 `toFormatter`, `toStandardSchemaV1`.
 
-**`toJsonSchemaDocument(S)` returns `{ dialect, schema, definitions }`** — probed
-on beta.94. It does **not** hand you a bare JSON Schema: there is no top-level
+**`toJsonSchemaDocument(S)` returns `{ dialect, schema, definitions }`** — the
+declared return type is `JsonSchema.Document<"draft-2020-12">`, whose three
+fields are exactly those (`JsonSchema.ts:133`, still so at rc.109; first found
+by probe at beta.94). It does **not** hand you a bare JSON Schema: there is no top-level
 `$defs` and no top-level `properties`. The schema you want is under `.schema`,
 and the shared subschemas are under `.definitions` (not `$defs`). Code that
 reaches straight for `doc.properties` or `doc.$defs` reads `undefined` and, if it

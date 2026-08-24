@@ -37,6 +37,20 @@ const configError = (message: string, actual: unknown): Config.ConfigError =>
 const TRUE = new Set(["true", "True", "TRUE"]);
 const FALSE = new Set(["false", "False", "FALSE"]);
 
+/**
+ * Options for {@link ActionInput.pairs}.
+ *
+ * @public
+ */
+export interface PairsOptions {
+	/**
+	 * Reject a pair whose value is empty (`key=`).
+	 *
+	 * @defaultValue `false` — an empty value is a legitimate empty string.
+	 */
+	readonly requireValue?: boolean;
+}
+
 /** Strip a trailing `#` comment and surrounding whitespace from one line. */
 const stripComment = (line: string): string => {
 	const hash = line.indexOf("#");
@@ -304,10 +318,22 @@ export class ActionInput {
 	 * @remarks
 	 * Only the **first** `=` splits, so a value may contain one.
 	 *
+	 * An **empty key** (`=value`, or a bare `=`) is always rejected: `{ "": v }`
+	 * cannot be what a workflow meant, and the damage lands far from the typo —
+	 * an empty key became a repository filter that matched nothing, and the run
+	 * reported zero results with no indication why. An empty **value** (`key=`)
+	 * is accepted by default, because setting a property to the empty string is
+	 * legitimate; pass `requireValue` to reject it. Every rejection names the
+	 * offending line.
+	 *
 	 * Absent or `""` fails as missing data (see {@link ActionInput.string}) —
 	 * `Config.withDefault({})` is the idiom for an optional pairs input.
+	 *
+	 * @param name - The input name, unmangled.
+	 * @param options - `requireValue` rejects a pair whose value is empty.
 	 */
-	static pairs(name: string): Config.Config<Record<string, string>> {
+	static pairs(name: string, options?: PairsOptions): Config.Config<Record<string, string>> {
+		const requireValue = options?.requireValue ?? false;
 		return Config.string(inputVariable(name)).pipe(
 			Config.mapOrFail((raw) => {
 				const result: Record<string, string> = {};
@@ -320,7 +346,15 @@ export class ActionInput {
 					if (split === -1) {
 						return Effect.fail(configError(`Input "${name}" has a line that is not \`key=value\`: "${stripped}"`, raw));
 					}
-					result[stripped.slice(0, split).trim()] = stripped.slice(split + 1).trim();
+					const key = stripped.slice(0, split).trim();
+					const value = stripped.slice(split + 1).trim();
+					if (key === "") {
+						return Effect.fail(configError(`Input "${name}" has a line with an empty key: "${stripped}"`, raw));
+					}
+					if (requireValue && value === "") {
+						return Effect.fail(configError(`Input "${name}" has a line with an empty value: "${stripped}"`, raw));
+					}
+					result[key] = value;
 				}
 				return Effect.succeed(result);
 			}),

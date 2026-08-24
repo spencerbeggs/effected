@@ -36,6 +36,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
+		"@effected/memfs": "workspace:*",
 		"@effected/semver": "workspace:*",
 		"@savvy-web/bundler": "^2.1.23",
 		"@types/node": "catalog:build",

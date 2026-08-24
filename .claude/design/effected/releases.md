@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-21
-last-synced: 2026-08-21
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 88
 related:
   - architecture.md
@@ -61,7 +61,11 @@ The rule that follows: **a linked consumer must not derive its pin from the link
 
 `@effected/pnpm-plugin-effect` publishes with the kit, not apart from it. It is the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) — published and installable but not a library, exposing no API and carrying no tier. Its reason to exist is consumer-facing: it carries the Effect catalogs this repo pins against **and the `effected` catalog naming the kit's own next-release versions**, so a consumer can hold both halves of what the kit was built and tested against at the values the kit used ([packages/pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#the-effected-catalog-the-kits-own-version-surface)). **Installing it is optional for the consumer; shipping it is not optional for the release.** Do not read `"private": true` in a source manifest as evidence about release intent — every source manifest here is private, and the bundler's `publishConfig` transform emits the publishable manifest at build time ([architecture.md](architecture.md)). **The machine-checkable publishability signal is `publishConfig.access === "public"`**, and any tooling that asks the question must ask it that way; asking `private === false` classifies all thirty packages as unpublishable and fails open.
 
-The plugin's catalog carries the version each package will publish **next**, so a pending changeset alone moves an entry with no manifest edit anywhere. It is synced by automation on every push to `main`, and one changeset per sync bumps the plugin — the plugin's own absence from its catalog is what stops that from recurring forever ([catalog-sync.md](catalog-sync.md)).
+The plugin's catalog carries the version each package will publish **next**, so a pending changeset alone moves an entry with no manifest edit anywhere. One changeset per sync bumps the plugin — the plugin's own absence from its catalog is what stops that from recurring forever ([catalog-sync.md](catalog-sync.md)).
+
+**That catalog is what consumers resolve `@effected/*` ranges from — not any manifest in this repo — so it imposes an ordering on a cut: changesets, then the catalog sync, then the publish.** A catalog naming the previous versions while the packages publish new ones is green the whole way and wrong at the end: a downstream unlinking its local overrides resolves a registry copy without the new API, on ranges that look satisfied.
+
+**The ordering is enforced, not remembered.** The sync workflow triggers on pull requests to `main` **and to `changeset-release/main`**, so opening the release PR is itself the trigger and the catalog bump lands in the release PR before anything publishes. Nobody needs to run `catalog:sync` by hand ahead of a release, and treating it as a manual step is its own cost — it makes a release look blocked on a command, and invites promising a downstream a guarantee CI already keeps better. The full semantics, including the two properties of that job that make it look manual when it is not, are in [the publish ordering the catalog imposes](catalog-sync.md#the-publish-ordering-the-catalog-imposes).
 
 ## The five applications
 

@@ -5,9 +5,13 @@ answers from the wrong place is worse than no probe**, because it confirms a
 conclusion with total confidence. Five rules, each earned.
 
 **1. `cd` into the package. Print the resolved version inside the probe.**
-The repo root resolves `effect@3.x`; only `packages/<pkg>/` resolves the v4
-beta. A root-run probe reports the **v3** surface — and will sometimes *agree*
-with the v4 answer by luck, which no working-directory warning can catch.
+Only `packages/<pkg>/` resolves the v4 `effect`. What the repo root resolves has
+changed over time and is not something to rely on: it once resolved `effect@3.x`
+(a root-run probe then reported the **v3** surface, and would sometimes *agree*
+with the v4 answer by luck, which no working-directory warning can catch), and
+at rc.109 it resolves **no `effect` at all** — there is no `node_modules/effect`
+at the root. Both failure modes are silent enough to trust a wrong answer, so
+print the version rather than reasoning about which one is in force.
 
 ~~~bash
 cd packages/<pkg> && node --input-type=module -e "
@@ -18,10 +22,14 @@ console.log(typeof S.TheApiYouWant);
 "
 ~~~
 
-**2. `typeof x === 'undefined'` does NOT mean "removed".** Type-only exports
-(`Context.Key`, `Context.Tag`) are `undefined` at runtime while being perfectly
-alive in the `.d.ts`. For a type, read `node_modules/effect/dist/*.d.ts` —
-note the declarations are at `dist/`, **not** `dist/dts/`.
+**2. `typeof x === 'undefined'` does NOT mean "removed".** A type-only export
+such as `Context.Key` is `undefined` at runtime while being perfectly alive in
+the `.d.ts` (`Context.ts:64`). For a type, read
+`node_modules/effect/dist/*.d.ts` — note the declarations are at `dist/`,
+**not** `dist/dts/`. The converse case sits right next to it and reads
+identically to a probe: `Context.Tag` is *also* `undefined` at runtime, but at
+rc.109 it is genuinely gone — no declaration either. Same `typeof`, opposite
+answer; only the `.d.ts` separates them.
 
 **3. A probe file must LIVE inside the package.** Bare specifiers resolve from
 the file's location, not the cwd, so a probe copied to `/tmp` cannot resolve
@@ -39,6 +47,8 @@ import { Effect } from "effect";
 export const control = Effect.catchAll;   // v3 name; MUST error
 // probe.ts(2,31): error TS2339: Property 'catchAll' does not exist on type 'typeof Effect'
 ~~~
+
+(`Effect.catchAll` is still absent at rc.109, so this control still fires.)
 
 **For a type-level probe, `@ts-expect-error` needs its own control.** An
 *unused* `@ts-expect-error` is itself an error (TS2578) under tsgo — confirm

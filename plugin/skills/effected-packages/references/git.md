@@ -1,9 +1,9 @@
 # @effected/git
 
-Typed git over core's `ChildProcessSpawner`: **69 service members in two
-tiers** — a read tier (31 members) that reads a repository's state at any ref
+Typed git over core's `ChildProcessSpawner`: **72 service members in two
+tiers** — a read tier (32 members) that reads a repository's state at any ref
 without touching the working tree, including the one network read (`lsRemote`)
-and the index read (`lsFiles`), plus a clearly-marked mutating tier (38
+and the index read (`lsFiles`), plus a clearly-marked mutating tier (40
 members: checkout/fetch, the restore trio, stash, branches, tags, remotes,
 worktrees, `commit`/`push`/`pull`, submodules, sparse checkout, config writes
 and staging) that changes it — nothing serializes concurrent access, so a
@@ -18,7 +18,7 @@ the consumer's platform layer.
 
 ```ts
 import { Git, GitCommand, GitConfig, Gitmodules } from "@effected/git";
-import type { GitInvocation, GitShape } from "@effected/git";
+import type { GitConfigScope, GitInvocation, GitShape } from "@effected/git";
 ```
 
 Single entrypoint; no subpaths.
@@ -35,20 +35,20 @@ all; they are pure.
   explicitly; every failure is one of the typed errors below or a documented
   non-error degradation (`Option.none()`, `false`, `[]`).
 
-### Read tier (31 members; `R = never`)
+### Read tier (32 members; `R = never`)
 
 | Group | Members | Notes |
 | --- | --- | --- |
 | Content at a ref | `show` (`Option<string>` — absent-at-ref is `None`, never an error), `lsTree` (`LsTreeEntry[]`, optional pathspec) | NUL-safe parsing |
 | Index | `lsFiles` (`LsFilesEntry[]` from `ls-files --stage -z`) | the index-side sibling of `lsTree`; the only read that sees a staged-but-uncommitted `160000` gitlink |
-| Refs | `refExists` (`false` for an unresolvable OR unknown-syntax ref, never an error), `revParse`, `mergeBase`, `forEachRef` (`RefEntry[]`), `revList`, `branchList` (`BranchEntry[]`, `current` decodes the `*`), `tagList` | `mergeBase`'s `UnknownRefError.ref` carries the `"a...b"` range, not one side |
+| Refs | `refExists` (`false` for an unresolvable OR unknown-syntax ref, never an error), `revParse`, `mergeBase`, `mergeBaseOption` (`Option<string>`), `forEachRef` (`RefEntry[]`), `revList`, `branchList` (`BranchEntry[]`, `current` decodes the `*`), `tagList` | `mergeBase`'s `UnknownRefError.ref` carries the `"a...b"` range, not one side. `mergeBaseOption` is the PROBE sibling — disjoint histories answer `Option.none` instead of failing; an unknown ref still fails. `mergeBase` itself must never grow an `Option` |
 | Diffs | `changedFiles`, `nameStatus` (`NameStatusEntry[]`), `workingChanges` (deduplicated union of unstaged + staged + untracked; no ref, so never `UnknownRefError`), `unstagedChanges`, `stagedChanges`, `untrackedFiles`, `status` (`StatusEntry[]`) | `relative: false` adds `--full-name` to `untrackedFiles` so `workingChanges` unions one path base |
 | Repo facts | `repoRoot`, `currentBranch` (`None` on detached `HEAD`, never the literal `"HEAD"`), `defaultBranch` (`None` when `origin/HEAD` is unset), `isShallow`, `commitInfo` (`CommitInfo`; raw untrimmed message) | `isShallow` is a dedicated predicate, deliberately not folded into `revParse` |
-| Config reads | `configGet` (`None` when unset), `configGetAll` (`[]` when unset), `configList` (`ConfigListEntry[]`) | `configList` splits at the first newline so multi-line values survive |
+| Config reads | `configGet` (`None` when unset), `configGetAll` (`[]` when unset), `configList` (`ConfigListEntry[]`); `configGet` and `configList` take `{ scope?: GitConfigScope }` (`"local"` / `"global"` / `"system"` / `"worktree"`), `configGetAll` does NOT | **Omitted `scope` means the MERGED read** — repository plus global plus system — so a globally set key shadows what this checkout itself declares; pass `{ scope: "local" }` for the precise read. `configList` additionally takes `file`, and `file` + `scope` together fail typed (git accepts only one source). `configList` splits at the first newline so multi-line values survive |
 | Remotes / network | `remoteUrl` (`None` when the remote doesn't exist), `lsRemote` (`LsRemoteEntry[]` — the ONE network read, still a read) | `LsRemoteEntry.shortName` and `.nearMatches` are pure decode-side statics; the near-miss suggestion policy lives on the entry VALUE, not the service |
 | Misc | `stashList` (`StashEntry[]` — array position IS the current stash index), `worktreeList` (`WorktreeEntry[]`), `submoduleStatus` (`SubmoduleStatusEntry[]`), `checkIgnore` (`[]` when nothing is ignored) | |
 
-### Mutating tier (38 members) — nothing serializes concurrent access to the same `cwd`
+### Mutating tier (40 members) — nothing serializes concurrent access to the same `cwd`
 
 Every mutating method's TSDoc opens with the literal word `"Mutating:"`; that
 marker is the only signal a caller gets.
@@ -63,7 +63,7 @@ marker is the only signal a caller gets.
 | Remotes | `remoteAdd`, `remoteRemove`, `remoteSetUrl` | the `url` positional rides the redaction mask |
 | Worktrees | `worktreeAdd`, `worktreeRemove` | |
 | Submodules | `submoduleUpdate`, `submoduleAdd`, `submoduleInit`, `submoduleDeinit`, `submoduleSync`, `submoduleSetUrl`, `submoduleSetBranch`, `submoduleAbsorbgitdirs`, `submoduleForeach` | `submoduleStatus` is the tier's one READ; `submoduleForeach` is marked mutating because the shell command it runs can mutate anything |
-| Index / config / sparse | `add`, `rm`, `mv`, `configSet`, `configUnset`, `sparseCheckoutSet` | `configSet` guards `key`, `value` AND `options.file` against a leading `-` (git config has no `--` separator), so a legitimate value starting with `-` cannot be written through it |
+| Index / config / sparse | `add`, `rm`, `mv`, `configSet`, `configUnset`, `configRemoveSection`, `configRenameSection`, `sparseCheckoutSet` | **`configSet` writes repository-LOCAL, always** — it emits no scope flag and offers no `scope` option, deliberately asymmetric with the merged-by-default reads: a read has a defensible "effective value" default and a write does not, and a global write would leak onto a shared machine or CI runner. `configRemoveSection`/`configRenameSection` fail LOUDLY when the section is absent (git exits 128); both default to the local file, so an enumerate-then-remove flow built on a scope-less `configList` reads more broadly than it writes. `configSet` guards `key`, `value` AND `options.file` against a leading `-` (git config has no `--` separator), so a legitimate value starting with `-` cannot be written through it |
 
 - **`GitShape`** — the exported interface behind `Git`'s tag. Two uses beyond
   the obvious: `Pick<GitShape, "mergeBase" | "nameStatus" | ...>` narrows a

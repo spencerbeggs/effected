@@ -31,7 +31,7 @@ export {
 	UnknownRefError,
 	WorktreeEntry,
 } from "./Git.js";
-export { GitCommand, type GitInvocation } from "./GitCommand.js";
+export { GitCommand, type GitConfigScope, type GitInvocation } from "./GitCommand.js";
 export {
 	GitConfig,
 	GitConfigDiagnostic,

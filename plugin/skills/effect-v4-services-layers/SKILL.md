@@ -6,12 +6,12 @@ description: Use when defining Effect v4 services or wiring Layers — the `Cont
 # Services & Layers (Effect v4)
 
 **API surface** — existence, signatures and the source line citations below —
-verified against `effect@4.0.0-beta.107` on 2026-08-12 by reading
+re-verified against `effect@4.0.0-rc.109` on 2026-08-23 by reading
 `packages/effect/src`. The **behavioural** claims are older and were not
 re-probed: the memoize-by-reference resource-count result and the two
 temporal-dead-zone results are beta.94 probes, and the sync-facade /
 requirement-union notes are beta.97–98 probes, each dated where it appears.
-Treat those as unverified at beta.107.
+Treat those as unverified at rc.109.
 
 A service is a typed key into the runtime's context; a layer is the recipe that
 builds it. Get three things right — the one service form, provide-once
@@ -40,7 +40,8 @@ Argument order differs from v3: **type params first** via
 
 **What did NOT change: tags are still Effects.** A service key remains a
 first-class Effect — `Context.Key<Identifier, Shape> extends
-Effect<Shape, never, Identifier>` (`Context.ts:63` at beta.107) — so
+Effect<Shape, never, Identifier>` (`Context.ts:64` at rc.109 — line 63 is the
+closing comment delimiter, not the declaration) — so
 `yield* Database` works, and combinator-style consumer code like
 `Effect.flatMap(Database, (db) => …)` composes directly with no `.asEffect()`
 or unwrap step. Related gotcha when hunting the source: the module is

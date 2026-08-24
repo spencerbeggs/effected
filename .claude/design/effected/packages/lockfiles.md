@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-20
-last-synced: 2026-08-20
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 96
 related:
   - ../effect-standards.md
@@ -117,7 +117,9 @@ bun and yarn are ungated, recording no comparable format-version line.
 
 `Lockfile` is a `Schema.Class` carrying the format, the lockfile version, the resolved packages, the workspace dependency edges, the importers and an optional per-format extension. See `src/Lockfile.ts` for the full shape.
 
-`Lockfile.parse` is the package's **only fallible boundary**. Everything else is total: the importer-name rewrite, name and importer lookup (both backed by lazily built private indexes outside the schema — the array fields stay for serialization and iteration), the workspace-packages getter and integrity comparison.
+`Lockfile.parse` is the package's **only fallible boundary**. Everything else is total: the importer-name rewrite, name, importer and instance-id lookup (all backed by lazily built private indexes outside the schema — the array fields stay for serialization and iteration), the workspace-packages getter and integrity comparison.
+
+**`packageByInstanceId` is the index the edge-walking consumers were rebuilding.** `ResolvedPackage.instanceId` is what a resolved edge points at, so peer and dependency resolution is a *lookup*, not a scan — and without a resident index every consumer writes `new Map(lockfile.packages.map((p) => [p.instanceId, p]))`, which is O(n) per walk and one more place for the key choice to drift from the model's. It mirrors `importer` exactly, deliberately: lazily built so a consumer that never walks edges pays nothing, `Map`-backed so an id colliding with an `Object` member name (`__proto__`, `constructor`) neither pollutes nor false-matches, and **first-wins** on a duplicate id so a malformed lockfile gets a stable answer rather than one that depends on iteration order.
 
 Three vocabulary decisions point outward rather than re-declaring shapes: a resolved package's integrity is [npm](npm.md#the-vocabulary-modules)'s branded hash — an unparseable checksum is dropped rather than thrown, and the brand's yarn cache-key form is what keeps yarn Berry's checksums from silently vanishing; the dependency-type fields use npm's shared field literal; and the pnpm extension exports its catalog record type so workspaces types against it instead of re-declaring the shape.
 

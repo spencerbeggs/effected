@@ -189,6 +189,19 @@ const program = Effect.gen(function* () {
 // GitHub would reject, which is what a person reading a dry run is checking for.
 ```
 
+`updateSettings` takes octokit's own generated params, and those spell an optional field as `has_issues?: boolean` rather than `has_issues?: boolean | undefined` — so under `exactOptionalPropertyTypes` a `Partial<T>` built from your own settings schema does not assign to it at all. `repositoryPatch` is the supported way out, and it exists so the answer is never a cast:
+
+```ts
+import { repositoryPatch } from "@effected/github";
+
+declare const config: { has_issues?: boolean | undefined; description?: string | undefined };
+
+const patch = repositoryPatch({ has_issues: config.has_issues, description: config.description });
+// a RepositoryPatch carrying only the fields that were actually set
+```
+
+Dropping the key is what the wire needs: `PATCH` reads an absent field as "leave it alone", while an explicit `null` is a value. `RepositoryPatchDraft` is the input type — the same fields, each allowed to be an explicit `undefined`. Build the draft as an object literal where you can: a key-by-key loop defeats TypeScript's correlation between two indexed accesses, which no helper can repair.
+
 `security_and_analysis` accepts both the bare `"enabled"` a human writes in a config file and the `{ status: "enabled" }` GitHub's own parameter type declares. A map touching neither GraphQL-only setting never reads the node id, so the common case stays one request. `ownerType` answers `"User"` or `"Organization"` for the repository in `Repo`, which is how a shared settings template drops the fields GitHub accepts only on an organization-owned repository before applying itself to a personal one.
 
 ## GitHub App authentication
@@ -268,6 +281,7 @@ const TestClient = GitHubClient.layerFixture(fixtures);
 - `GitHubClient` — the typed transport: `request`, `requestDecoded` (a mandatory-schema escape hatch for routes outside the generated map), `paginate` / `paginateStream`, `graphql`, and `rateLimit` (observation only — nothing here throttles on your behalf).
 - `Repo` / `RepoRef` — the `{ owner, repo }` coordinate, resolved per call through `R`, with `Repo.provide` for multi-repository programs.
 - `GitHubRepository` — the repository's settings as GitHub's own generated type, plus `defaultBranch`, `nodeId`, `ownerType` for gating organization-only fields, and `applySettings` reporting the keys it actually sent.
+- `repositoryPatch` / `RepositoryPatchDraft` — build an `updateSettings` patch from fields that may be `undefined`, under `exactOptionalPropertyTypes`, without a cast.
 - `GitHubError` / `GitHubGraphQLError` — one error per transport, `kind`-routed with `hasKind` for `Effect.catchIf`.
 - `RetryPolicy` — the client's one retry policy: full-jitter backoff, server-advised delays honored up to a ceiling.
 - `GitHubApp` — App JWT signing, installation token minting/revocation, app and installation identity, and `clientLayer` for an App-authenticated `GitHubClient`.

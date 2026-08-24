@@ -14,9 +14,9 @@ statics, and derived tooling (`toArbitrary`, `toEquivalence`,
 `toJsonSchemaDocument`) in a single artifact. These patterns keep that artifact
 idiomatic and sound. The API surface below — every `Schema.*`,
 `SchemaTransformation.*`, `SchemaGetter.*` and `SchemaIssue.*` name it asserts,
-and every `file:line` citation — is verified against `effect@4.0.0-beta.107`.
+and every `file:line` citation — is verified against `effect@4.0.0-rc.109`.
 Individual runtime-behaviour claims carry their own probe stamps inline; where a
-stamp names an older beta, that claim was **not** re-run for beta.107 and the
+stamp names an older beta, that claim was **not** re-run at rc.109 and the
 stamp is the honest one. v4 betas move fast, so probe anything not shown here
 before writing it
 (`node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)"`).
@@ -89,11 +89,11 @@ member) so the instance type advertises it.
 ### `disableChecks` skips checks, not validation — and buys no speed
 
 `MakeOptions.disableChecks` reads like an escape hatch from validation. Its own
-docstring says "skip validation when you trust the data" (`Schema.ts:109`) and
-"skips constructor validation" (`Schema.ts:14246`). Both are misleading, and the
+docstring says "skip validation when you trust the data" (`Schema.ts:108`) and
+"skips constructor validation" (`Schema.ts:14265`). Both are misleading, and the
 vendored cluster code leans on it as the trusted-construction idiom
 (`unstable/cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129` —
-all three still exact at beta.107), so it looks blessed. What it actually does —
+all three still exact at rc.109), so it looks blessed. What it actually does —
 originally probed against `effect@4.0.0-beta.97`, every row re-probed unchanged
 at `effect@4.0.0-beta.107`:
 
@@ -104,8 +104,10 @@ at `effect@4.0.0-beta.107`:
 | the structural re-parse | **still runs** — it is not a fast path |
 
 It gates exactly the check phase (`SchemaParser.ts:1110,1136`; `SchemaAST.ts:1424`,
-`:1550`, `:1606`) and nothing else. Citation trap: the old `SchemaAST.ts:3527`
-pointer is stale — that line is now `decodeTo`, not a check gate.
+`:1550`, `:1606` — all five still exact at rc.109) and nothing else. Citation
+trap: the old `SchemaAST.ts:3527` pointer is stale and has drifted twice since;
+it is not a check gate, so re-derive it from `grep -n disableChecks` rather than
+trusting any absolute line for it.
 
 So it is a *semantic* switch for trusted data, never a *performance* one: at
 beta.107 a depth-20 recursive build measures 0.58 ms with `disableChecks: true`
@@ -149,7 +151,8 @@ If you do keep such a bypass, two corrections to the old recipe:
   prototype setter. A raw `Object.assign` bypass is therefore **not** an exact
   reproduction any more: it is a prototype-pollution hole on attacker-shaped
   props. Citation trap: the old `Data.ts:57` / "reproduces it exactly" pairing
-  was true of an earlier v4 beta and is not true at beta.107.
+  was true of an earlier v4 beta and is not true at rc.109 (`Data.ts:48-56` and
+  `internal/record.ts:16` both still exact).
 - **`TaggedClass` still needs `_tag` written by hand.** The constructor
   synthesizes it; a property copy does not. Omit it and `_tag === undefined`, so
   `Equal.equals` is `false` and every `_tag` match falls through. Pass
@@ -199,7 +202,7 @@ Three distinct tools — pick by intent:
   `isGreaterThanOrEqualTo`, `isLessThan`, `isLessThanOrEqualTo`, `isMultipleOf`,
   `isFinite`, `isMinLength`, `isMaxLength`, `isLengthBetween`, `isPattern`,
   `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized` — all sixteen re-verified
-  present at beta.107. (`positive`/`negative`/`nonNegative`/`nonPositive` were
+  present at rc.109. (`positive`/`negative`/`nonNegative`/`nonPositive` were
   **removed** and are still `undefined` — compose `isGreaterThan(0)` etc. The v3
   `Schema.filter` is likewise `undefined`.)
   Match the bounds to what your parser enforces (safe integers), or a
@@ -212,7 +215,7 @@ Three distinct tools — pick by intent:
   ```
 
 - **Inline predicates** → `Schema.check(Schema.makeFilter(pred))` (v3
-  `filter(predicate)`; `Schema.ts:6565`). `makeFilter`'s return shape is rich —
+  `filter(predicate)`; `Schema.ts:6584`). `makeFilter`'s return shape is rich —
   this is the tool for cross-field validation:
 
   | return | meaning |
@@ -241,7 +244,7 @@ Three distinct tools — pick by intent:
   `expected`, not `title`.** `makeFilter`'s second argument is an
   `Annotations.Filter`, and the formatter's `formatCheck` reads
   `check.annotations?.expected`, falling back to the literal string `<filter>`
-  (`SchemaIssue.ts:1099-1104`). Probed at beta.107:
+  (`SchemaIssue.ts:1099-1104`, still exact at rc.109). Probed at beta.107:
 
   ```text
   makeFilter(pred, { title: "a === b" })     -> "Expected <filter>"   <-- the trap
@@ -295,7 +298,7 @@ const BooleanFromString = Schema.Literals(["on", "off"]).pipe(
 );
 ```
 
-Fallible transform — **both spellings are still valid at beta.107**
+Fallible transform — **both spellings are still valid at rc.109**
 (`SchemaTransformation.transformOrFail` at `SchemaTransformation.ts:286`,
 `SchemaGetter.transformOrFail` at `SchemaGetter.ts:561`, and `SchemaGetter.String`);
 know both so
@@ -329,7 +332,7 @@ const NumberFromString = Schema.String.pipe(
 
 Failures come from `effect/SchemaIssue` — `InvalidValue` (ctor), `MissingKey`,
 `Composite`. Signature trap: since beta.102–105 `InvalidValue` is
-`(annotations?, input?, options?)` (`SchemaIssue.ts:572`) — the earlier v4 shape
+`(annotations?, input?, options?)` (`SchemaIssue.ts:572`, still exact at rc.109) — the earlier v4 shape
 `new SchemaIssue.InvalidValue(Option.some(s), { message })` no longer
 type-checks (the `Option` wrapper is gone, the argument order flipped, and the
 input is retained only under `reportInput: true`). A failed

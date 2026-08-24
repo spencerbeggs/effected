@@ -7,7 +7,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import { Lockfile } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
 import { filenameFor } from "../src/LockfileFormat.js";
@@ -50,6 +50,17 @@ describe("Lockfile.parse", () => {
 				assert.strictEqual(chalk[0]?.version, "5.6.2");
 				assert.isFalse(chalk[0]?.isWorkspace);
 				assert.isTrue(chalk[0]?.integrity?.startsWith("sha512-"));
+
+				// The instance-id index answers the same object a scan would, so a
+				// consumer walking resolved edges need not rebuild the map itself.
+				const byId = lockfile.packageByInstanceId(chalk[0]?.instanceId ?? "");
+				assert.isTrue(Option.isSome(byId));
+				assert.strictEqual(Option.getOrUndefined(byId)?.name, "chalk");
+
+				// A miss is None, not a throw and not a stray object member.
+				assert.isTrue(Option.isNone(lockfile.packageByInstanceId("nope@0.0.0")));
+				assert.isTrue(Option.isNone(lockfile.packageByInstanceId("__proto__")));
+				assert.isTrue(Option.isNone(lockfile.packageByInstanceId("constructor")));
 
 				assert.strictEqual(lockfile.workspaceDependencies.length, 1);
 				const edge = lockfile.workspaceDependencies[0];

@@ -5,42 +5,96 @@ import { Result, Schema } from "effect";
  *
  * @public
  */
-export class BlobEnvelopeError extends Schema.TaggedError<BlobEnvelopeError>()("BlobEnvelopeError", {
-	/**
-	 * `notAnEnvelope` — the magic prefix is absent, so these are raw bytes
-	 * written before this format existed (or by something else entirely).
-	 * `unsupportedVersion` — an envelope from a newer revision.
-	 * `truncated` — the frame ends mid-header or mid-metadata.
-	 * `metadataDecodeFailed` — the metadata is well-framed but does not satisfy
-	 * the caller's schema. `metadataEncodeFailed` — the value being stored does
-	 * not satisfy it.
-	 */
-	reason: Schema.Literals([
-		"notAnEnvelope",
-		"unsupportedVersion",
-		"truncated",
-		"metadataDecodeFailed",
-		"metadataEncodeFailed",
-	]),
-	/** The envelope version found, when one was readable. */
-	version: Schema.optionalKey(Schema.Number),
+export class NotABlobEnvelopeError extends Schema.TaggedError<NotABlobEnvelopeError>()("NotABlobEnvelopeError", {
+	/** The underlying failure, preserved structurally. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
-		switch (this.reason) {
-			case "notAnEnvelope":
-				return "Bytes are not an @effected/github-actions blob envelope";
-			case "unsupportedVersion":
-				return `Blob envelope version ${this.version} is not supported`;
-			case "truncated":
-				return "Blob envelope is truncated";
-			case "metadataDecodeFailed":
-				return "Blob envelope metadata did not satisfy the schema";
-			default:
-				return "Blob metadata could not be encoded";
-		}
+		return "Bytes are not an @effected/github-actions blob envelope";
 	}
 }
+
+/**
+ * Raised when the frame ends mid-header or mid-metadata.
+ *
+ * @public
+ */
+export class TruncatedBlobEnvelopeError extends Schema.TaggedError<TruncatedBlobEnvelopeError>()(
+	"TruncatedBlobEnvelopeError",
+	{
+		/** The underlying failure, preserved structurally. */
+		cause: Schema.optionalKey(Schema.Defect()),
+	},
+) {
+	override get message(): string {
+		return "Blob envelope is truncated";
+	}
+}
+
+/**
+ * Raised when the envelope came from a newer revision of the format.
+ *
+ * @public
+ */
+export class UnsupportedBlobEnvelopeVersionError extends Schema.TaggedError<UnsupportedBlobEnvelopeVersionError>()(
+	"UnsupportedBlobEnvelopeVersionError",
+	{
+		/** The envelope version found. */
+		version: Schema.Number,
+		/** The underlying failure, preserved structurally. */
+		cause: Schema.optionalKey(Schema.Defect()),
+	},
+) {
+	override get message(): string {
+		return `Blob envelope version ${this.version} is not supported`;
+	}
+}
+
+/**
+ * Raised when well-framed metadata does not satisfy the caller's schema.
+ *
+ * @public
+ */
+export class BlobMetadataDecodeError extends Schema.TaggedError<BlobMetadataDecodeError>()("BlobMetadataDecodeError", {
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
+	override get message(): string {
+		return "Blob envelope metadata did not satisfy the schema";
+	}
+}
+
+/**
+ * Raised when the value being stored does not satisfy its schema.
+ *
+ * @public
+ */
+export class BlobMetadataEncodeError extends Schema.TaggedError<BlobMetadataEncodeError>()("BlobMetadataEncodeError", {
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
+	override get message(): string {
+		return "Blob metadata could not be encoded";
+	}
+}
+
+/**
+ * Anything that can go wrong reading or writing a blob envelope.
+ *
+ * @remarks
+ * **One class per failure, rather than one class with a `reason` field.** Each
+ * member carries exactly the fields its own message needs — the version is
+ * required on the one member that reports it — so a value short a field is a
+ * compile error rather than a message reading `"undefined"`.
+ *
+ * @public
+ */
+export type BlobEnvelopeError =
+	| NotABlobEnvelopeError
+	| TruncatedBlobEnvelopeError
+	| UnsupportedBlobEnvelopeVersionError
+	| BlobMetadataDecodeError
+	| BlobMetadataEncodeError;
 
 /** Identifies the frame family. Four bytes: `E F B S`. */
 const MAGIC = Uint8Array.from([0x45, 0x46, 0x42, 0x53]);
@@ -95,7 +149,7 @@ export class BlobEnvelope {
 	): Result.Result<Uint8Array, BlobEnvelopeError> {
 		const encoded = Schema.encodeUnknownResult(schema)(metadata);
 		if (Result.isFailure(encoded)) {
-			return Result.fail(new BlobEnvelopeError({ reason: "metadataEncodeFailed", cause: encoded.failure }));
+			return Result.fail(new BlobMetadataEncodeError({ cause: encoded.failure }));
 		}
 		const metaBytes = new TextEncoder().encode(JSON.stringify(encoded.success));
 		const out = new Uint8Array(HEADER_BYTES + metaBytes.length + body.length);
@@ -113,29 +167,29 @@ export class BlobEnvelope {
 		schema: Schema.Codec<A, I>,
 	): Result.Result<{ readonly metadata: A; readonly body: Uint8Array }, BlobEnvelopeError> {
 		if (bytes.length < MAGIC.length || !MAGIC.every((byte, index) => bytes[index] === byte)) {
-			return Result.fail(new BlobEnvelopeError({ reason: "notAnEnvelope" }));
+			return Result.fail(new NotABlobEnvelopeError({}));
 		}
 		if (bytes.length < HEADER_BYTES) {
-			return Result.fail(new BlobEnvelopeError({ reason: "truncated" }));
+			return Result.fail(new TruncatedBlobEnvelopeError({}));
 		}
 		const version = bytes[MAGIC.length] ?? 0;
 		if (version !== VERSION) {
-			return Result.fail(new BlobEnvelopeError({ reason: "unsupportedVersion", version }));
+			return Result.fail(new UnsupportedBlobEnvelopeVersionError({ version }));
 		}
 		const metaLength = new DataView(bytes.buffer, bytes.byteOffset).getUint32(MAGIC.length + 1, false);
 		if (bytes.length < HEADER_BYTES + metaLength) {
-			return Result.fail(new BlobEnvelopeError({ reason: "truncated" }));
+			return Result.fail(new TruncatedBlobEnvelopeError({}));
 		}
 		const metaText = new TextDecoder().decode(bytes.subarray(HEADER_BYTES, HEADER_BYTES + metaLength));
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(metaText);
 		} catch (cause) {
-			return Result.fail(new BlobEnvelopeError({ reason: "metadataDecodeFailed", cause }));
+			return Result.fail(new BlobMetadataDecodeError({ cause }));
 		}
 		const decoded = Schema.decodeUnknownResult(schema)(parsed);
 		if (Result.isFailure(decoded)) {
-			return Result.fail(new BlobEnvelopeError({ reason: "metadataDecodeFailed", cause: decoded.failure }));
+			return Result.fail(new BlobMetadataDecodeError({ cause: decoded.failure }));
 		}
 		return Result.succeed({
 			metadata: decoded.success,

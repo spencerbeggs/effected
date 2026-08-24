@@ -1,10 +1,10 @@
 import { LocalExec, Run } from "@effected/commands";
-import type { Redacted } from "effect";
 import { Context, Crypto, Effect, FileSystem, Layer, Option, Redacted as Red, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { IntegrityHash } from "./IntegrityHash.js";
 import { NpmExecutor } from "./NpmExecutor.js";
 import { PublishError } from "./PublishError.js";
+import type { RegistryCredential } from "./RegistryCredential.js";
 import { classifyRegistry } from "./RegistryKind.js";
 
 /** npm prints its transparency-log URL on this notice line. */
@@ -19,10 +19,13 @@ const PROVENANCE_URL = /https:\/\/search\.sigstore\.dev\/\?logIndex=\d+/;
  * never does, and the publish goes out unauthenticated with no diagnostic. A
  * registry path is preserved (`//host/artifactory/api/npm/repo/:_authToken`).
  */
-const authTokenKey = (registry: string): string => {
+const authKey = (registry: string, credential: RegistryCredential): string => {
 	const withoutScheme = registry.replace(/^https?:/, "");
 	const withSlash = withoutScheme.endsWith("/") ? withoutScheme : `${withoutScheme}/`;
-	return `${withSlash}:_authToken`;
+	// npm reads BOTH keys per registry, checking `_authToken` first and then
+	// `_auth` (npm-registry-fetch's `hasAuth`), so the credential's own kind
+	// picks the key and neither shadows the other.
+	return `${withSlash}:${credential.kind === "token" ? "_authToken" : "_auth"}`;
 };
 
 /** What `npm pack --json` reports for one tarball. */
@@ -161,7 +164,7 @@ export interface PackagePublishShape {
 	 */
 	readonly setupAuth: (options: {
 		readonly registry: string;
-		readonly token: Redacted.Redacted<string>;
+		readonly credential: RegistryCredential;
 		readonly npmrcPath: string;
 	}) => Effect.Effect<void, PublishError>;
 	/** `npm pack --json` — writes the tarball and reports both digests. */
@@ -258,12 +261,18 @@ const make = Effect.fnUntraced(function* () {
 
 	const setupAuth = Effect.fn("PackagePublish.setupAuth")(function* (options: {
 		readonly registry: string;
-		readonly token: Redacted.Redacted<string>;
+		readonly credential: RegistryCredential;
 		readonly npmrcPath: string;
 	}) {
-		yield* Effect.annotateCurrentSpan({ registry: options.registry, npmrc: options.npmrcPath });
+		yield* Effect.annotateCurrentSpan({
+			registry: options.registry,
+			npmrc: options.npmrcPath,
+			// The KIND is safe to annotate and worth annotating; the value is not.
+			credential: options.credential.kind,
+		});
 		const existing = yield* fs.readFileString(options.npmrcPath).pipe(Effect.catch(() => Effect.succeed("")));
-		const line = `${authTokenKey(options.registry)}=${Red.value(options.token)}`;
+		const secret = options.credential.kind === "token" ? options.credential.token : options.credential.encoded;
+		const line = `${authKey(options.registry, options.credential)}=${Red.value(secret)}`;
 		const separator = existing === "" || existing.endsWith("\n") ? "" : "\n";
 		yield* fs
 			.writeFileString(options.npmrcPath, `${existing}${separator}${line}\n`)

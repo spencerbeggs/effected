@@ -1,6 +1,9 @@
 # Core idioms — v3 → v4
 
-Verified against `effect@4.0.0-beta.107`. Idiomatic form → see `effect-v4-idioms`.
+Surface (existence, signatures, source line citations) verified against
+`effect@4.0.0-rc.109`. Rows stamped `probed at beta.N` are runtime-behaviour
+claims carried forward at that stamp — plausible and previously measured, not
+re-probed at rc.109. Idiomatic form → see `effect-v4-idioms`.
 
 ## Constructor and validation semantics
 
@@ -33,14 +36,14 @@ This bites *pervasively* in v3→v4 ports.
 | `Either` module / `Effect.either(fx)` | **Gone.** `Effect.result(fx)` → `Effect<Result<A, E>>`; branch with `Result.isSuccess` / `Result.isFailure` (from `effect/Result`) |
 | `Runtime<R>` type | **Removed.** Use `Context<R>`. `Runtime` module now only holds `Teardown`, `defaultTeardown`, `makeRunMain` |
 | `FiberRef` / `FiberRefs` / `FiberRefsPatch` | **Removed.** Fiber-local state is now `Context.Reference`; built-ins moved to the `References` module |
-| `Differ` | **NOT removed** — `effect/Differ` is live at beta.107. `migration/fiberref.md:3` lists it among the removals and is wrong; the machine-readable import map disagrees with its own prose (`migration/v3-to-v4.md:223` maps `effect/Differ -> effect/Differ`). The interface survives, now unbranded/structural, with the patch application arity changed to `patch(oldValue, patch)` (`v3-to-v4.md:9389`). What *did* go is the `Chunk` patch namespace → RFC 6902 via `JsonPatch` |
+| `Differ` | **NOT removed** — `effect/Differ` is live at rc.109. `migration/fiberref.md:3` lists it among the removals and is wrong; the machine-readable import map disagrees with its own prose (`migration/v3-to-v4.md:223` maps `effect/Differ -> effect/Differ`). The interface survives, now unbranded/structural, with the patch application arity changed to `patch(oldValue, patch)` (`v3-to-v4.md:9393`). What *did* go is the `Chunk` patch namespace → RFC 6902 via `JsonPatch` |
 | `SortedSet` | **Removed entirely.** Use a sorted `ReadonlyArray` + `Order`, or `HashSet` when order is not needed |
 | `Hash.cached(this)(h)` | **Removed.** Hash without caching; a cheap canonical form is `Hash.string(canonicalString)` |
 | `effect/schema/Check` (guessed name) | Does not exist. Check combinators live on `Schema` itself as `Schema.is*` |
-| `Option.fromNullable(x)` | **Gone**, and split three ways — pick by what the value can actually be. `Option.fromNullishOr(x)` is the 1:1 replacement (`x == null`, so both `null` and `undefined` → `none`), and is what `migration/v3-to-v4.md:12122` maps it to. `Option.fromUndefinedOr(x)` (`x === undefined` only) and `Option.fromNullOr(x)` (`x === null` only) are narrower and return the tighter `Exclude<A, undefined>` / `Exclude<A, null>` rather than `NonNullable<A>` — prefer one of these when the type admits only one of the two, which is the common case (`Map.get`, an absent SQL row → `undefined`). The compiler names the module but not the replacement, so this is a guess without the table. Verified absent/present in `Option.ts` at beta.107 (`fromNullishOr:773`, `fromUndefinedOr:807`, `fromNullOr:841`) |
+| `Option.fromNullable(x)` | **Gone**, and split three ways — pick by what the value can actually be. `Option.fromNullishOr(x)` is the 1:1 replacement (`x == null`, so both `null` and `undefined` → `none`), and is what `migration/v3-to-v4.md:12128` maps it to. `Option.fromUndefinedOr(x)` (`x === undefined` only) and `Option.fromNullOr(x)` (`x === null` only) are narrower and return the tighter `Exclude<A, undefined>` / `Exclude<A, null>` rather than `NonNullable<A>` — prefer one of these when the type admits only one of the two, which is the common case (`Map.get`, an absent SQL row → `undefined`). The compiler names the module but not the replacement, so this is a guess without the table. Verified absent/present in `Option.ts` at rc.109 (`fromNullishOr:773`, `fromUndefinedOr:807`, `fromNullOr:841`) |
 | `Array.fromNullable(x)` | **Gone.** `Array.fromNullishOr(x)` (`Array.ts:4073`) — nullish → `[]`, anything else → a singleton |
 | `Either.fromNullable(x)` | **Gone** with the whole `Either` module. `Result.fromNullishOr(x, (a) => myError)` (`Result.ts:398`) — `onNullish` is a **function**, not a value, and the pair is `dual`, so the data-last form takes it alone |
-| `Effect.fromNullable(x)` | **Gone**, and the migration notes misroute it: `v3-to-v4.md:9691` maps it to `Effect.fromOption + Option.fromNullable`, but `Option.fromNullable` does not exist in v4 either. Compose `Effect.fromOption(Option.fromNullishOr(x))` — or the narrower `fromUndefinedOr` / `fromNullOr` per the row above. `Effect.fromOption` is live (`Effect.ts:1816`) and defaults its failure to `Cause.NoSuchElementError`, so the error type is not the one the v3 call site chose |
+| `Effect.fromNullable(x)` | **Gone**, and the migration notes misroute it: `v3-to-v4.md:9695` maps it to `Effect.fromOption + Option.fromNullable`, but `Option.fromNullable` does not exist in v4 either. Compose `Effect.fromOption(Option.fromNullishOr(x))` — or the narrower `fromUndefinedOr` / `fromNullOr` per the row above. `Effect.fromOption` is live (`Effect.ts:1816`) and defaults its failure to `Cause.NoSuchElementError`, so the error type is not the one the v3 call site chose |
 
 ## `Redacted` — the label is rendered, so a secret passed as its own label leaks completely
 
@@ -77,7 +80,7 @@ limit onto a backoff is the v3 habit; in v4 the limit is just another key.
 
 | v3 | v4 |
 | --- | --- |
-| `Effect.catchAll` | `Effect.catch` — **and you cannot find this by grepping the source.** It is declared `const catch_` and re-exported as `export { catch_ as catch }` (`Effect.ts:2598, 2634`), because `catch` is a reserved word, so `grep "export const catch"` returns every *other* member of this family and misses the one you want. A consumer concluded from that grep that v4 has nothing for "handle any typed error" and fell back to `Effect.result` + `Result.isSuccess` (reposets, 2026-08-13). Confirm with a runtime probe instead: `typeof Effect.catch === "function"`, `typeof Effect.catchAll === "undefined"` |
+| `Effect.catchAll` | `Effect.catch` — **and you cannot find this by grepping the source.** It is declared `const catch_` and re-exported as `export { catch_ as catch }` (`Effect.ts:2607, 2643`), because `catch` is a reserved word, so `grep "export const catch"` returns every *other* member of this family and misses the one you want. A consumer concluded from that grep that v4 has nothing for "handle any typed error" and fell back to `Effect.result` + `Result.isSuccess` (reposets, 2026-08-13). Confirm with a runtime probe instead: `typeof Effect.catch === "function"`, `typeof Effect.catchAll === "undefined"` |
 | `Effect.catchAllCause` | `Effect.catchCause` |
 | `Effect.catchAllDefect` | `Effect.catchDefect` (same shape, renamed) |
 | `Effect.catchSome` (Option-returning fn) | `Effect.catchFilter` (takes a `Filter`, e.g. `Filter.fromPredicate`) |
@@ -157,7 +160,7 @@ either import path works.)
 **`currentConcurrency` is the exception and has NO `References.*` key.**
 `References.CurrentConcurrency` does not exist, and no `Context.Reference` in core
 carries concurrency at all. Inherited concurrency was removed outright
-(`migration/v3-to-v4.md:10517` — "`FiberRef.currentConcurrency` -> `none`"); pass
+(`migration/v3-to-v4.md:10521` — "`FiberRef.currentConcurrency` -> `none`"); pass
 `{ concurrency }` explicitly to `Effect.all` / `Effect.forEach` / any combinator
 that fans out. Extrapolating the `current*` → `References.Current*` pattern here
 mints a name that reads as real and is `undefined` at runtime.
@@ -166,7 +169,7 @@ mints a name that reads as real and is `undefined` at runtime.
 
 v3 made many types Effect subtypes. **There is no `Yieldable` trait in v4** — no
 such interface is exported from core, and **`asEffect` has zero occurrences
-core-wide at beta.107**. Any `.asEffect()` you remember is a v4-beta artifact
+core-wide at rc.109**. Any `.asEffect()` you remember is a v4-beta artifact
 that no longer exists; calling it is `undefined is not a function`.
 
 What may be `yield*`-ed in `Effect.gen` is exactly *what extends `Effect`*:
@@ -186,7 +189,7 @@ the generator protocol is satisfied and `yield* Option.some(7)` compiles clean.
 At runtime the fiber loop rejects the value through `exitDie`
 (`internal/effect.ts:671`, `Fiber.runLoop: Not a valid effect: some(7)`) — a
 **defect**, not a typed failure, so it blows past every `Effect.catch` /
-`catchTag` and surfaces far from the `yield*`. Probed at beta.107.
+`catchTag` and surfaces far from the `yield*`. Probed at beta.107 (surface re-confirmed at rc.109).
 
 The bridges are explicit calls: `Effect.fromOption(o)` (`Effect.ts:1816`,
 defaulting `E = Cause.NoSuchElementError`) and `Effect.fromResult(r)`
@@ -217,7 +220,7 @@ Config.string("K").pipe(Effect.catchTag("ConfigError", () => Effect.succeed("def
 
 `Config.string("K").asEffect()` is **not** a function (`typeof` is `undefined`)
 and does not typecheck. **Nor is it a function on anything else** — `asEffect`
-has zero occurrences core-wide at beta.107, so the habit has no valid target
+has zero occurrences core-wide at rc.109, so the habit has no valid target
 left. `Config` is already an Effect; `Option`/`Result` need
 `Effect.fromOption` / `Effect.fromResult`.
 

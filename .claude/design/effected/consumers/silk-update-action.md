@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-23
+last-synced: 2026-08-23
 completeness: 88
 related:
   - README.md
@@ -41,9 +41,9 @@ It reaches `workspaces`, `npm`, `runtimes`, `lockfiles`, `semver`, `yaml`, `comm
 - **`@savvy-web/silk-effects` `Changesets`** — the engine is policy and stays downstream.
 - **`src/utils/runtime.ts`** — reading and rewriting `devEngines.runtime`. Deliberately pure and manifest-shaped: `@effected/runtimes` resolves versions and has no opinion about where they are written.
 - **`src/utils/catalogs.ts`, `src/utils/pnpm.ts`, `src/utils/deps.ts`** — pure catalog-map, pnpm-version and `configDependencies` helpers over the manifest's own shape.
-- **The fetch-a-config-dependency-tarball-and-import-it flow** (`src/services/module-catalogs.ts`, `src/services/catalog-config-deps.ts`).
+- **The fetch-a-config-dependency-tarball-and-import-it flow** (`src/services/module-catalogs.ts`, `src/services/catalog-config-deps.ts`) — **now only the import half.** Fetch-verify-extract is [`PackageTarball`](../packages/npm.md#packagetarball--reading-a-published-package-back) and entry resolution is [`resolveEntryPoint`](../packages/package-json.md#resolveentrypoint-exports-encapsulates-the-package); what stays here is the dynamic `import()` of the resolved path, deliberately, because a computed-path import is compiled into a context module by bundlers and the kit will not hand every bundling consumer that problem with no seam to fix it.
 
 ## Open questions
 
 1. **Catalog-field semantics are expressed twice.** `src/utils/catalogs.ts` coerces pnpm's `catalog`/`catalogs` fields into a plain record while `@effected/workspaces` ships `WorkspaceCatalogs` / `CatalogSet` over the same fields. The two serve different needs — one is a pure manifest-shaped helper, the other a discovered view — but whether that distinction is worth two implementations has never been decided.
-2. **The tarball fetch-extract-import pattern appears twice here**, and is the second call site wanting an archive package that has not been built. See [silk-release-action](silk-release-action.md#open-questions), which holds the first.
+2. **The tarball fetch-extract-import pattern appears twice here**, and it is **half-answered rather than closed**. `PackageTarball` absorbed fetch-verify-extract and `resolveEntryPoint` absorbed the entry lookup, both driven by this flow; the loading half stays downstream on purpose. What is still open is whether the two call sites here collapse onto one composition, and whether a general archive package is ever warranted — see [silk-release-action](silk-release-action.md#open-questions), which holds the other `tar` shell-out.

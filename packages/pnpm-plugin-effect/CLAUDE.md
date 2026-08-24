@@ -51,7 +51,7 @@ The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCa
 
 Advancing the pin is `pnpm pnpm:up` then `pnpm pnpm:export`.
 
-**Agents may run** the root `pnpm catalog:check` (read-only gate) and `pnpm catalog:sync` (rewrites only this package's `savvy.build.ts` plus one fixed-name changeset). CI syncs on every push to `main`. Mechanics → `@../../.claude/design/effected/catalog-sync.md` — Load when: touching the sync scripts, the catalog literal, or the workflow.
+**Agents may run** the root `pnpm catalog:check` (read-only gate) and `pnpm catalog:sync` (rewrites only this package's `savvy.build.ts` plus one fixed-name changeset). CI syncs on every **PR** to `main` and to `changeset-release/main` (plus `workflow_dispatch`) — there is no push trigger — so opening the release PR is itself the trigger and no hand-run sync is needed before a release. Mechanics → `@../../.claude/design/effected/catalog-sync.md` — Load when: touching the sync scripts, the catalog literal, or the workflow.
 
 **Builds must never write the catalog** — an earlier seam rewrote it from the build's freeze path, making every `build:dev` and CI build mutate the repo.
 

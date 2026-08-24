@@ -1,6 +1,6 @@
 import { Context, Duration, Effect, Layer, Option, PlatformError, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import type { GitInvocation } from "./GitCommand.js";
+import type { GitConfigScope, GitInvocation } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
 import type { Collected } from "./internal/run.js";
 import { runCollected } from "./internal/run.js";
@@ -1719,10 +1719,14 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		}
 	});
 
-	const configGet = Effect.fn("Git.configGet")(function* (cwd: string, key: string) {
-		yield* Effect.annotateCurrentSpan({ cwd, key });
+	const configGet = Effect.fn("Git.configGet")(function* (
+		cwd: string,
+		key: string,
+		options?: { readonly scope?: GitConfigScope },
+	) {
+		yield* Effect.annotateCurrentSpan({ cwd, key, scope: options?.scope ?? "(merged)" });
 		yield* rejectOptionLikeRefs(cwd, [key]);
-		const classified = yield* runFor(GitCommand.configGet(key), cwd, "quiet");
+		const classified = yield* runFor(GitCommand.configGet(key, options?.scope), cwd, "quiet");
 		switch (classified._tag) {
 			case "success":
 				return Option.some(classified.output.trim());
@@ -2340,12 +2344,19 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		}
 	});
 
-	const configList = Effect.fn("Git.configList")(function* (cwd: string, options?: { readonly file?: string }) {
-		yield* Effect.annotateCurrentSpan({ cwd, file: options?.file ?? "(repository config)" });
+	const configList = Effect.fn("Git.configList")(function* (
+		cwd: string,
+		options?: { readonly file?: string; readonly scope?: GitConfigScope },
+	) {
+		yield* Effect.annotateCurrentSpan({
+			cwd,
+			file: options?.file ?? "(repository config)",
+			scope: options?.scope ?? "(merged)",
+		});
 		yield* rejectOptionLikeRefs(cwd, options?.file !== undefined ? [options.file] : []);
 		return yield* runParsed(
 			"Git.configList",
-			GitCommand.configList(options?.file),
+			GitCommand.configList(options?.file, options?.scope),
 			cwd,
 			"config",
 			"generic",
@@ -2987,6 +2998,19 @@ export interface GitShape {
 	 * `key` into the repository config, or into `options.file` when given
 	 * (e.g. `.gitmodules`).
 	 *
+	 * @remarks
+	 * **The write is repository-LOCAL, always.** A bare `git config <key>
+	 * <value>` writes the checkout's own `.git/config`, and this method emits no
+	 * scope flag, so the setting applies to every later git command in that
+	 * checkout and reaches nothing outside it. That asymmetry with
+	 * {@link Git.configList} and {@link Git.configGet} — whose omitted `scope`
+	 * means the MERGED read — is deliberate rather than an oversight: a read
+	 * has a defensible "effective value" default, and a write does not. Writing
+	 * global or system config would leak a setting onto a shared machine or a
+	 * CI runner for every unrelated step in the job, so it is not offered here
+	 * at all rather than hidden behind an option that is easy to pass by
+	 * accident.
+	 *
 	 * The value never surfaces in an error: a failing `configSet` carries
 	 * `<redacted>` in `GitCommandError.args` and `.message`, and the method's
 	 * span annotates `key` and `file` only.
@@ -3048,10 +3072,20 @@ export interface GitShape {
 	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/** `git rev-parse --show-toplevel` — the absolute repository root path, trimmed. */
 	readonly repoRoot: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
-	/** `git config --get <key>` — the trimmed value, or `Option.none` when the key is unset. */
+	/**
+	 * `git config [--<scope>] --get <key>` — the trimmed value, or `Option.none`
+	 * when the key is unset.
+	 *
+	 * @remarks
+	 * With no `scope` this reads the MERGED configuration, so a globally set key
+	 * answers here even when this repository declares nothing. Pass
+	 * `{ scope: "local" }` to ask what this checkout itself declares — see
+	 * {@link Git.configList} for why the distinction matters.
+	 */
 	readonly configGet: (
 		cwd: string,
 		key: string,
+		options?: { readonly scope?: GitConfigScope },
 	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/** `git remote get-url <remote>` — the trimmed URL, or `Option.none` when the remote does not exist. */
 	readonly remoteUrl: (
@@ -3297,13 +3331,26 @@ export interface GitShape {
 		GitCommandError | NotARepositoryError | UnknownRefError | MergeConflictError | DirtyWorktreeError
 	>;
 	/**
-	 * `git config [-f <file>] --list -z` — every configuration entry in scope
-	 * (or in `options.file` only) as {@link ConfigListEntry} values. `-z`
-	 * keeps multi-line values lossless.
+	 * `git config [-f <file>] [--<scope>] --list -z` — every configuration entry
+	 * in scope (or in `options.file` only) as {@link ConfigListEntry} values.
+	 * `-z` keeps multi-line values lossless.
+	 *
+	 * @remarks
+	 * **With no `scope`, this reads the MERGED configuration** — repository-local
+	 * plus global plus system. That is right for "what is the effective value"
+	 * and wrong for "what does this checkout declare": a globally set key
+	 * otherwise shadows a decision that is really about one repository, and an
+	 * enumerate-then-remove flow reads more broadly than
+	 * {@link Git.configRemoveSection} writes, which defaults to the local file.
+	 * Pass `{ scope: "local" }` for the precise read.
+	 *
+	 * `file` and `scope` both select a source and git accepts only one — passing
+	 * both fails typed as a {@link GitCommandError} rather than silently
+	 * preferring either.
 	 */
 	readonly configList: (
 		cwd: string,
-		options?: { readonly file?: string },
+		options?: { readonly file?: string; readonly scope?: GitConfigScope },
 	) => Effect.Effect<ReadonlyArray<ConfigListEntry>, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * `git config [-f <file>] --get-all -z <key>` — every value of a

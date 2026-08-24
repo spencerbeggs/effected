@@ -19,7 +19,7 @@ export class ToolInstallerError extends Schema.TaggedError<ToolInstallerError>()
 	/** The HTTP status, when there was one. Drives the retry decision. */
 	status: Schema.optionalKey(Schema.Number),
 	/** What was being worked on — a url, an archive path, or a tool name. */
-	subject: Schema.optionalKey(Schema.String),
+	subject: Schema.String,
 	/** The extraction tool's own complaint, which is the only useful part of a tar failure. */
 	stderr: Schema.optionalKey(Schema.String),
 	/** The underlying failure, preserved structurally. */
@@ -231,7 +231,12 @@ const make = Effect.gen(function* () {
 		if (requested === undefined) {
 			return fs
 				.makeTempDirectory({ prefix: "effected-extract-" })
-				.pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "extractFailed", cause })));
+				.pipe(
+					Effect.mapError(
+						(cause) =>
+							new ToolInstallerError({ reason: "extractFailed", subject: "a temporary extraction directory", cause }),
+					),
+				);
 		}
 		return fs.makeDirectory(requested, { recursive: true }).pipe(
 			Effect.as(requested),

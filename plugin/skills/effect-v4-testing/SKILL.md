@@ -20,18 +20,21 @@ conversion has its own traps →
 **[references/migrating-a-repo.md](./references/migrating-a-repo.md)**.
 
 **Install it by exact version, matching your `effect` pin** — never bare, never
-`@beta`. The v4 line is published only under prerelease versions mirroring
-`effect`'s own beta numbering; neither default resolves to it (dist-tags checked
-2026-08-12):
+`@beta`, never `@rc`. The v4 line is published only under prerelease versions
+mirroring `effect`'s own numbering, and **the line moved from `beta` to `rc`**;
+no dist-tag resolves to your pin (dist-tags checked 2026-08-23):
 
 | Specifier | Resolves to | Peers on |
 | --- | --- | --- |
 | bare / `@latest` | `0.30.0` | `effect@^3.22.0`, `vitest@^3.2.0` — **the v3 line** |
-| `@beta` | the newest beta, whatever that is (`4.0.0-beta.107` today) | that same beta — it **floats off your pin** the moment upstream publishes |
-| `@4.0.0-beta.107` | `4.0.0-beta.107` | `effect@^4.0.0-beta.107`, `vitest@>=4.1.0 <5` ✅ |
+| `@beta` | `4.0.0-beta.107` — **frozen**, not floating | that beta. The v4 line moved to `rc`, so `@beta` is now a *stale* pin that silently mismatches an `rc` `effect` |
+| `@rc` | the newest rc, whatever that is (`4.0.0-rc.111` today) | that same rc — it **floats off your pin** the moment upstream publishes |
+| `@4.0.0-rc.109` | `4.0.0-rc.109` | `effect@^4.0.0-rc.109`, `vitest@>=4.1.0 <5` ✅ |
 
-The exact-pin row is not a recommendation of *this* beta — it is the shape:
-pin the same beta number your `effect` catalog pins.
+The exact-pin row is not a recommendation of *this* rc — it is the shape:
+pin the same prerelease number your `effect` catalog pins. The `@beta` row is
+the lesson: a dist-tag that tracked the line yesterday can be abandoned on it,
+and nothing warns you.
 
 The bare form is the dangerous one: it installs the **v3-line** package with no
 peer warning at all, failing only at runtime on the first `it.effect` call with
@@ -39,7 +42,8 @@ a message naming neither `@effect/vitest` nor a version —
 `Cannot find module '.../@effect/vitest/.../node_modules/effect/dist/Arbitrary.js'`,
 which reads as a broken install. Confirm with `npm view @effect/vitest
 dist-tags` before believing any resolution. **Inside this monorepo** the
-dependency comes from `catalog:effect`, which already pins the matching beta.
+dependency comes from `catalog:effect`, which already pins the matching rc
+(`@effect/vitest: 4.0.0-rc.109` in `pnpm-workspace.yaml`).
 
 **`vi.mock` is the one import that must NOT come from `@effect/vitest`.** Vitest
 hoists it above all imports, so a `vi` bound through the re-export is not yet
@@ -78,7 +82,7 @@ describe("Jsonc", () => {
   `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:356`). Its type is
   `Tester<R | Scope.Scope>`, so scoped effects (`Effect.acquireRelease`, scoped
   layers) run **directly** under `it.effect`.
-- **There is no `it.scoped`** (still true at beta.107; the v3→v4 migration guide
+- **There is no `it.scoped`** (still true at rc.109; the v3→v4 migration guide
   spells the replacement out — `it.scoped(...)` becomes `it.effect(...)`,
   `it.scopedLive(...)` becomes `it.live(...)`). The Tester surface is
   `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop` — **`it.effect.skipIf`
@@ -257,7 +261,7 @@ Worked failures → [references/migrating-a-repo.md](./references/migrating-a-re
 Where state must vary per test, keep the per-test provide, or use **distinct
 keys per test** and flush explicitly before asserting counts.
 
-Other `layer(...)` mechanics (surface re-checked at beta.107 against
+Other `layer(...)` mechanics (surface re-checked at rc.109 against
 `packages/vitest/src/index.ts:100-158`):
 
 - The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
@@ -323,7 +327,7 @@ calls.push(p); … } })` records a read that was only *described*. Worked probe 
 
 For "behaves like the real service except this one method fails on demand",
 `layerNoop` is the wrong tool (it stubs everything) and there is still no
-`FileSystem.layerWith` / `Layer.mapService` at beta.107. The house recipe is
+`FileSystem.layerWith` / `Layer.mapService` at rc.109. The house recipe is
 `Layer.effect` + spread the base + `Layer.provide(base)` — with
 `Layer.updateService` (`Layer.ts:2063`) as the shorter form when the subject is
 itself a layer, and `Layer.mock` (`Layer.ts:2304`) for partial stubs that die
@@ -333,7 +337,7 @@ loudly. Full scaffold and the three ways to get the spread wrong →
 ## Property testing with `it.effect.prop`
 
 Feed a Schema (or class — the class *is* the schema) directly as an arbitrary;
-`it.effect.prop` converts it via `Schema.toArbitrary` (`Schema.ts:14554`;
+`it.effect.prop` converts it via `Schema.toArbitrary` (`Schema.ts:14573`;
 called at `packages/vitest/src/internal/internal.ts:132`):
 
 ```ts
@@ -349,11 +353,11 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
   (non-Effect body) accepts a `Schema` in its *type* but **throws
   `Schemas are not supported yet`** at runtime, in both the array and record
   forms (`packages/vitest/src/internal/internal.ts:181,197` — still thrown at
-  beta.107). Hand-built arbitraries go to `it.prop` instead, importing
+  rc.109). Hand-built arbitraries go to `it.prop` instead, importing
   `FastCheck` from `effect/testing`:
   `it.prop("addition commutes", [FastCheck.integer(), FastCheck.integer()], ([a, b]) => a + b === b + a)`.
 - **The named-record form of `it.effect.prop` is FIXED** (since beta.101, still
-  so at beta.107) — `internal.ts:153` converts a Schema value inside the record
+  so at rc.109) — `internal.ts:153` converts a Schema value inside the record
   reducer, so both `[Schema]` and `{ n: Schema }` work. The array-form-only
   workaround for beta.94 is retired.
 - **`isPattern` regexes must be lookahead-free.** `Schema.toArbitrary` derives
@@ -361,8 +365,8 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
   throws `Assertions of kind Lookahead not implemented yet`. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`.
 - **`fc.fullUnicodeString` / `fc.fullUnicode` do not exist** in the FastCheck
-  `effect/testing` re-exports (probed 2026-07-18; re-confirmed at beta.107,
-  where `effect/testing/FastCheck` is a bare re-export of `fast-check@4.9.0`
+  `effect/testing` re-exports (probed 2026-07-18; re-confirmed at rc.109,
+  where `effect/testing/FastCheck` is a bare re-export of `fast-check@^4.9.0`
   and both names are `undefined` on the module). The v4 spelling for
   hostile-unicode strings is `FastCheck.string({ unit: "binary" })` — `unit` is
   `"grapheme" | "grapheme-composite" | "grapheme-ascii" | "binary" |
@@ -445,10 +449,10 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   `TestSchema`, not `@effect/vitest`.
 - **Do not manually provide `TestClock.layer()` under `it.effect`.** They
   compose — `Clock` is a `Context.Reference` (`Clock.ts:189`), `TestClock.layer()`
-  merely sets it via `Layer.effect(Clock.Clock)` (`TestClock.ts:423`), and
-  `adjust` (`:494`) resolves its clock through `testClockWith`, which reads
+  merely sets it via `Layer.effect(Clock.Clock)` (`TestClock.ts:436`), and
+  `adjust` (`:507`) resolves its clock through `testClockWith`, which reads
   whatever is ambient: `fiber.getRef(Clock.Clock) as TestClock`
-  (`TestClock.ts:458`). Nothing breaks, but drop the provide: a nested TestClock
+  (`TestClock.ts:471`). Nothing breaks, but drop the provide: a nested TestClock
   captures its `liveClock` at build time (`TestClock.ts:254`), so its "live"
   clock **is** the outer TestClock — `withLive` (`:278`) returns virtual time
   and the too-long-without-advancing warning fiber can never fire.
@@ -637,18 +641,21 @@ stale-dist signature.
 > **Version note — read the two halves separately.**
 >
 > **Surface** (existence, signatures, source line citations) re-verified against
-> `@effect/vitest@4.0.0-beta.107` on `effect@4.0.0-beta.107` on **2026-08-12**,
+> `@effect/vitest@4.0.0-rc.109` on `effect@4.0.0-rc.109` on **2026-08-23**,
 > by reading `packages/vitest/src` and `packages/effect/src`. That covers the
 > Tester surface, the `layer` options bags, `TestEnv`, the
 > `it.prop`-throws-on-Schema sites, `Path.layer` / `FileSystem.layerNoop`,
 > `Layer.updateService` / `mock` / `fresh`, the `Clock` / `TestClock` /
-> `Console` / `Logger` refs, and the `@effect/vitest` npm dist-tags.
+> `Console` / `Logger` refs, and the `@effect/vitest` npm dist-tags. The
+> `packages/vitest/src` citations did not move between beta.107 and rc.109;
+> `TestClock.ts` and `Schema.ts` did, and those line numbers were corrected.
 >
-> **Behaviour** was NOT re-probed at beta.107. Every semantic claim here still
-> rests on its original probe, dated inline: the nested-`Effect.provide`
-> memoization asymmetry (beta.101), `TestConsole.logLines` accumulation
-> (beta.94), the eager `layerNoop` recorder (beta.94), the epoch consequence for
-> `DateTime.now` (beta.94), the ~18× coverage timing factor, and the
-> single-vs-two-latch concurrency result. Treat those as **unverified at
-> beta.107** — plausible and previously measured, not re-stamped. Re-probe
-> before relying on one in a way a wrong answer would make expensive.
+> **Behaviour** was NOT re-probed at rc.109, or at beta.107 before it. Every
+> semantic claim here still rests on its original probe, dated inline: the
+> nested-`Effect.provide` memoization asymmetry (beta.101),
+> `TestConsole.logLines` accumulation (beta.94), the eager `layerNoop` recorder
+> (beta.94), the epoch consequence for `DateTime.now` (beta.94), the ~18×
+> coverage timing factor, and the single-vs-two-latch concurrency result. Treat
+> those as **unverified at rc.109** — plausible and previously measured, not
+> re-stamped. Re-probe before relying on one in a way a wrong answer would make
+> expensive.

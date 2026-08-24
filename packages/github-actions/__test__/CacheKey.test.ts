@@ -6,7 +6,7 @@ import { assert, describe, it } from "@effect/vitest";
 import type { Path } from "effect";
 import { Effect, FileSystem, Option, Schema } from "effect";
 import { systemError } from "effect/PlatformError";
-import { CacheKey, CacheKeyError } from "../src/index.js";
+import { CacheKey, CacheKeyBadPatternError, CacheKeyReadError } from "../src/index.js";
 
 /**
  * The digest of `alpha\n` + `beta\n` under `@actions/glob`'s algorithm, pinned
@@ -146,6 +146,55 @@ describe("CacheKey", () => {
 
 		it("does not change a key without a policy — absent still means the default ladder", () => {
 			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").restoreKeys, ["Linux-pnpm-store-", "Linux-"]);
+		});
+	});
+
+	describe("namespacing a whole key — the cache-bust case", () => {
+		it("prepends the segment, so the busted key shares no prefix with an unbusted one", () => {
+			// The whole point. An unbusted run writes "Linux-pnpm-store-abc123";
+			// a busted run must not be able to read it, and must not write
+			// anything an unbusted run can read.
+			const busted = CacheKey.of("Linux", "pnpm-store", "abc123").withNamespace("bust7");
+			assert.strictEqual(busted.key, "bust7-Linux-pnpm-store-abc123");
+		});
+
+		it("drops the ladder, so no rung can prefix-match outside the namespace", () => {
+			// This is the failure the ticket describes: folding the bust in AFTER
+			// the retained prefix left an ordinary run's rung prefix-matching
+			// busted entries, and every test still passed.
+			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").withNamespace("bust7").restoreKeys, []);
+		});
+
+		it("leaves an unbusted key's rungs unable to reach a busted entry", () => {
+			// The other direction, asserted explicitly rather than assumed: a
+			// restore key is a PREFIX match, so an ordinary rung must not be a
+			// prefix of the namespaced key.
+			const ordinary = CacheKey.of("Linux", "pnpm-store", "abc123");
+			const busted = ordinary.withNamespace("bust7");
+			for (const rung of ordinary.restoreKeys) {
+				assert.isFalse(busted.key.startsWith(rung), `"${rung}" must not match "${busted.key}"`);
+			}
+		});
+
+		it("is safe even when the namespace collides with an ordinary leading segment", () => {
+			// The adversarial case for a prepend-only design: if the ladder were
+			// kept, the rung "Linux-" would match every ordinary Linux entry.
+			// Dropping the ladder makes the guarantee hold for ANY segment value,
+			// with no prefix reasoning required at the call site.
+			assert.deepStrictEqual(CacheKey.of("Linux", "pnpm-store", "abc123").withNamespace("Linux").restoreKeys, []);
+		});
+
+		it("still allows an explicit in-namespace ladder for a caller who wants one", () => {
+			// Dropping the ladder is the safe DEFAULT, not a prohibition: the
+			// segments are all there, so a caller who has thought about it can
+			// still warm one busted run from another.
+			const key = CacheKey.of("Linux", "pnpm-store", "abc123").withNamespace("bust7").withRestoreDepths([3, 2]);
+			assert.deepStrictEqual(key.restoreKeys, ["bust7-Linux-pnpm-store-", "bust7-Linux-"]);
+		});
+
+		it("refuses a segment carrying a restore-key delimiter", () => {
+			// A comma would silently become two restore keys on the runner.
+			assert.throws(() => CacheKey.of("Linux", "pnpm-store").withNamespace("a,b"));
 		});
 	});
 
@@ -298,8 +347,7 @@ describe("CacheKey", () => {
 			hashing(
 				Effect.gen(function* () {
 					const error = yield* Effect.flip(CacheKey.hashFiles(["/w/alpha.txt", "/w/gone.txt"]));
-					assert.instanceOf(error, CacheKeyError);
-					assert.strictEqual(error.reason, "readFailed");
+					assert.instanceOf(error, CacheKeyReadError);
 					assert.strictEqual(error.path, "/w/gone.txt");
 				}),
 			),
@@ -390,8 +438,7 @@ describe("CacheKey", () => {
 				Effect.gen(function* () {
 					const hostile = "x".repeat(70_000);
 					const error = yield* Effect.flip(CacheKey.matchingFiles({ workspace: root, patterns: [hostile] }));
-					assert.instanceOf(error, CacheKeyError);
-					assert.strictEqual(error.reason, "badPattern");
+					assert.instanceOf(error, CacheKeyBadPatternError);
 					assert.strictEqual(error.pattern, hostile);
 				}),
 			),
@@ -402,7 +449,7 @@ describe("CacheKey", () => {
 				Effect.gen(function* () {
 					const absent = join(root, "not-here");
 					const error = yield* Effect.flip(CacheKey.matchingFiles({ workspace: absent, patterns: ["**"] }));
-					assert.strictEqual(error.reason, "readFailed");
+					assert.instanceOf(error, CacheKeyReadError);
 					assert.strictEqual(error.path, absent);
 				}),
 			),

@@ -52,8 +52,8 @@ its neighbour after a clean build (`__test__/crypto.test.ts` pins the set).
 **`@octokit/rest` and `@octokit/auth-app` are deliberately absent.** The rest
 wrapper adds only a request-log plugin we would silence and a 1.4 MB second
 spelling of endpoint types; `auth-app` re-exports `createOAuthUserAuth`, making
-~492 KB of OAuth machinery reachable from a package that only mints
-installation tokens. Do not reintroduce either.
+~492 KB of OAuth machinery reachable from a package that only mints installation
+tokens. Never reintroduce either.
 
 ## The route is the key
 
@@ -69,6 +69,14 @@ surface this replaced cost four consumer repos sixteen cast sites.
   schema)`. The schema is **mandatory**: the escape hatch is from the route
   table, never from typing. Two real cases: release-asset upload and the
   attestation reads (pinned api-version).
+- **The one cast lives here, once.** Octokit spells an optional field
+  `has_issues?: boolean`, so under `exactOptionalPropertyTypes` a consumer's
+  `Partial<T>` of "only what the user configured" does not assign to
+  `RepositoryPatch` at all — every consumer was writing the same `as`.
+  `RepositoryPatchDraft` accepts explicit `undefined`, and `repositoryPatch`
+  **drops undefined keys** (`PATCH` reads an absent field as "leave it alone").
+  A key-by-key loop still defeats TypeScript's correlation between two indexed
+  accesses; build the draft as a literal where you can.
 - **A hand-written route owns its query parameters in the template.** Outside
   the map nothing tells octokit that `name` is a query parameter, so
   `assets{?name}` must spell it or octokit drops it silently and GitHub answers

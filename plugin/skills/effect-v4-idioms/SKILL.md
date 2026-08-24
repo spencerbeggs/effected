@@ -1,6 +1,6 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Verified against effect@4.0.0-beta.107.
+description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Every identifier and source citation re-verified against effect@4.0.0-rc.109.
 ---
 
 # Effect v4 core idioms
@@ -12,7 +12,8 @@ patterns, not the map. This is the *how to write it well* companion to
 `effect-v4-construct-map` (which owns the flat v3→v4 rename tables and the
 `Context.Service` / `Schema.TaggedError` migration rows — cross-reference it
 rather than duplicate). Every identifier below was verified to exist against
-`effect@4.0.0-beta.107`; when you reach past this list, run one runtime probe
+`effect@4.0.0-rc.109`, and every `file:line` citation re-checked against the
+vendored tree at that tag; when you reach past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
 before writing — v4 betas move fast and muscle memory lies.
 
@@ -93,7 +94,7 @@ idiomatic recoveries:
   `catchTag` also accepts a non-empty tag ARRAY sharing one handler —
   `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
   which obviates `catchTags` boilerplate when several tags route to the same
-  recovery (verified at beta.98, `Effect.ts` `NonEmptyReadonlyArray<Tags<E>>`).
+  recovery (verified at rc.109, `Effect.ts:2695` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
 - **`Effect.catch(handler)`** — recover from any typed failure (the v3
   `catchAll`). **`Effect.catchCause(handler)`** for full-cause infra handling,
   **`Effect.catchDefect(handler)`** for defects.
@@ -154,7 +155,7 @@ Written once it looks like a typo — which is exactly why it gets replaced with
 house standard (never collapse errors to `string`/`unknown` early) when the
 precise type is one `import type` away. `fs.exists: (path: string) =>
 Effect.Effect<boolean, PlatformError>` (FileSystem.ts:143) — verified against
-beta.107. The `reason` field is where the detail lives: a `PlatformError` wraps
+rc.109. The `reason` field is where the detail lives: a `PlatformError` wraps
 a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
 carrying a normalized `SystemErrorTag`), `PlatformError.ts:36,109,157`.
 
@@ -180,13 +181,14 @@ narrower than the migration notes say. **The notes are the trap here.**
 `migration/yieldable.md` documents a `Yieldable` trait whose contract is
 `asEffect(): Effect<A, E, R>`, lists `Option` and `Result` as implementors, and
 states "the runtime calls `.asEffect()` internally when yielding". **None of
-that holds at beta.107**: `asEffect` has zero occurrences in the entire core
+that holds at rc.109**: `asEffect` has zero occurrences in the entire core
 source, in the vendored tree and in `node_modules` alike, and
 `typeof Option.some(1).asEffect` is `undefined`. Rung 1 is prescriptive and it
 has gone stale here; the source settles it.
 
-Directly yieldable at beta.107 — probed, with an `Effect.succeed` control that
-passed:
+Directly yieldable at rc.109 — **all five rows probed**, against two controls:
+a positive `Effect.succeed` that yielded, and a discriminating `Option.some(7)`
+that died, proving the harness could observe a failure to yield at all:
 
 | Value | `yield*` inside `Effect.gen` |
 | --- | --- |
@@ -199,9 +201,10 @@ passed:
 **`Option` and `Result` are both off the list, and both die the same way.**
 `yield* Option.some(7)` exits `Failure` with
 `Die("Fiber.runLoop: Not a valid effect: some(7)")`; `Option.none()`,
-`Result.succeed(42)` and `Result.fail("boom")` die identically (probed
-beta.107; the `Result` control reproduced the beta.99 record exactly, which is
-what proved the harness could observe a defect at all). Note the **success**
+`Result.succeed(42)` and `Result.fail("boom")` die identically (re-probed at
+rc.109: `yield* Result.succeed(42)` dies
+`"Fiber.runLoop: Not a valid effect: success(42)"`, against an
+`Effect.succeed` control that returned normally). Note the **success**
 cases die too: this is not "errors need a bridge", it is "these are not Effects
 at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
 rejects anything carrying no `evaluate` (`internal/effect.ts:671`).
@@ -381,8 +384,8 @@ interrupt behavior, because no consumer will guess it.
 
 ## The `Effect.timeout` family — three forms, and timing out interrupts
 
-Verified against beta.97: exactly three exist — `timeoutFail` and `timeoutTo`
-do **not**.
+Verified against rc.109: exactly three exist — `timeoutFail` and `timeoutTo`
+are both `undefined`.
 
 | Form | On timeout | Signature shape |
 | --- | --- | --- |
@@ -409,7 +412,7 @@ both a duplication and a subtle-drift risk (v3 ports carry several; retire
 them on contact).
 
 Beware the v3 names: **`Predicate.isRecord` and `Predicate.isPlainObject` do
-NOT exist on beta.98** (probed; the vendored `Predicate.ts` has neither). The
+NOT exist on rc.109** (probed; the vendored `Predicate.ts` has neither). The
 guards that DO ship: `isString`, `isNumber`, `isBoolean`, `isObject`,
 `isReadonlyObject`, `isObjectOrArray`, `isObjectKeyword`, `hasProperty`,
 `isTagged`, `isIterable`, `isNullish`/`isNotNullish`, `isTupleOf`, and
@@ -466,7 +469,8 @@ reporting, but it is no longer what keeps the event loop from draining.
 
 ## FiberRef is gone — use `Context.Reference`
 
-`FiberRef` and `FiberRefs` are removed (zero occurrences in core at beta.107).
+`FiberRef` and `FiberRefs` are removed (zero occurrences in core at rc.109,
+and `effect/FiberRef` does not resolve as a module).
 **`Differ` is not** — it survives as a top-level module (`Differ.ts:27`,
 `interface Differ<in out T, in out Patch>`) for patch-based value updates; it
 simply no longer has a `FiberRef` to serve. Fiber-local state is now a
@@ -492,7 +496,7 @@ Built-in fiber refs moved to the `References` module — read them the same way:
 
 **There is no `References.CurrentConcurrency`** — the module's own header prose
 says the references "cover concurrency, scheduling, logging, tracing"
-(`References.ts:4`), but no concurrency reference is exported at beta.107, and
+(`References.ts:4`), but no concurrency reference is exported at rc.109, and
 a `yield*` against the remembered v3 name gets `undefined`. Concurrency is an
 *option* in v4 (`{ concurrency }` on `Effect.all` and friends), not an ambient
 reference. The twelve that do exist: `CurrentLogAnnotations`, `CurrentLogLevel`,

@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Result, Schema } from "effect";
 import { FastCheck } from "effect/testing";
 import type { BlobEnvelopeError } from "../src/index.js";
-import { BlobEnvelope } from "../src/index.js";
+import { BlobEnvelope, UnsupportedBlobEnvelopeVersionError } from "../src/index.js";
 
 const Meta = Schema.Struct({ tag: Schema.String, durationMs: Schema.Number });
 type Meta = typeof Meta.Type;
@@ -12,7 +12,7 @@ const bytes = (...values: ReadonlyArray<number>) => Uint8Array.from(values);
 const encoded = (metadata: Meta, body: Uint8Array) => {
 	const result = BlobEnvelope.encodeResult(metadata, body, Meta);
 	if (!Result.isSuccess(result)) {
-		assert.fail(`expected encode to succeed: ${result.failure.reason}`);
+		assert.fail(`expected encode to succeed: ${result.failure._tag}`);
 	}
 	return result.success;
 };
@@ -69,18 +69,18 @@ describe("BlobEnvelope", () => {
 		it("reports raw unframed bytes as notAnEnvelope, not as corrupt metadata", () => {
 			// This is what lets a store holding pre-envelope entries produce a
 			// clean miss instead of a garbage read.
-			assert.strictEqual(failure(bytes(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)).reason, "notAnEnvelope");
+			assert.strictEqual(failure(bytes(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))._tag, "NotABlobEnvelopeError");
 		});
 
 		it("reports an empty blob as notAnEnvelope", () => {
-			assert.strictEqual(failure(bytes()).reason, "notAnEnvelope");
+			assert.strictEqual(failure(bytes())._tag, "NotABlobEnvelopeError");
 		});
 
 		it("reports a future version as unsupportedVersion, carrying the version", () => {
 			const frame = encoded({ tag: "t", durationMs: 1 }, bytes(1));
 			frame[4] = 99;
 			const error = failure(frame);
-			assert.strictEqual(error.reason, "unsupportedVersion");
+			assert.instanceOf(error, UnsupportedBlobEnvelopeVersionError);
 			assert.strictEqual(error.version, 99);
 		});
 
@@ -89,18 +89,21 @@ describe("BlobEnvelope", () => {
 			// consumer never has to namespace keys by format version.
 			const frame = encoded({ tag: "t", durationMs: 1 }, bytes(1));
 			frame[4] = 2;
-			assert.strictEqual(failure(frame).reason, "unsupportedVersion");
+			assert.strictEqual(failure(frame)._tag, "UnsupportedBlobEnvelopeVersionError");
 		});
 	});
 
 	describe("truncation", () => {
 		it("reports a frame cut off inside the header", () => {
-			assert.strictEqual(failure(encoded({ tag: "t", durationMs: 1 }, bytes(1)).slice(0, 6)).reason, "truncated");
+			assert.strictEqual(
+				failure(encoded({ tag: "t", durationMs: 1 }, bytes(1)).slice(0, 6))._tag,
+				"TruncatedBlobEnvelopeError",
+			);
 		});
 
 		it("reports a frame cut off inside the metadata", () => {
 			const frame = encoded({ tag: "a-fairly-long-tag", durationMs: 1 }, bytes(1, 2, 3));
-			assert.strictEqual(failure(frame.slice(0, frame.length - 12)).reason, "truncated");
+			assert.strictEqual(failure(frame.slice(0, frame.length - 12))._tag, "TruncatedBlobEnvelopeError");
 		});
 	});
 
@@ -112,7 +115,7 @@ describe("BlobEnvelope", () => {
 			if (!Result.isFailure(result)) {
 				assert.fail("expected decode to fail");
 			}
-			assert.strictEqual(result.failure.reason, "metadataDecodeFailed");
+			assert.strictEqual(result.failure._tag, "BlobMetadataDecodeError");
 		});
 
 		it("reports a value that cannot be encoded", () => {
@@ -120,7 +123,7 @@ describe("BlobEnvelope", () => {
 			if (!Result.isFailure(result)) {
 				assert.fail("expected encode to fail");
 			}
-			assert.strictEqual(result.failure.reason, "metadataEncodeFailed");
+			assert.strictEqual(result.failure._tag, "BlobMetadataEncodeError");
 		});
 	});
 

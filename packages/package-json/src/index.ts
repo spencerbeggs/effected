@@ -36,6 +36,12 @@ export {
 } from "@effected/npm";
 export { Dependency, type UnresolvedDependency, isUnresolvedDependency } from "./Dependency.js";
 export { DevEngine, DevEngineOrArray, type DevEngines, DevEnginesSchema } from "./DevEngines.js";
+export {
+	type EntryPointManifest,
+	type ResolveEntryPointOptions,
+	UnresolvedEntryPointError,
+	resolveEntryPoint,
+} from "./EntryPoint.js";
 export { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx } from "./License.js";
 export {
 	BinField,

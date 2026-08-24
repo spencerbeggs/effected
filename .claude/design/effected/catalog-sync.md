@@ -17,7 +17,7 @@ related:
 
 ## Overview
 
-The kit publishes its own version surface — the `effected` / `effected:peers` catalogs described in [pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#the-effected-catalog-the-kits-own-version-surface) — and this is the machinery that keeps that surface current without a human remembering to. A push to `main` resolves every catalogued package's **next release** version from the workspace, rewrites the catalog literal, writes one changeset and opens an auto-merging PR. The Effect catalogs are not in scope: those advance through the user-run `pnpm:up` / `pnpm:export` flow, which the automation never touches.
+The kit publishes its own version surface — the `effected` / `effected:peers` catalogs described in [pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#the-effected-catalog-the-kits-own-version-surface) — and this is the machinery that keeps that surface current without a human remembering to. A pull request to `main` — or to `changeset-release/main`, which is what makes the sync a release gate rather than only hygiene — resolves every catalogued package's **next release** version from the workspace, rewrites the catalog literal, writes one changeset and commits to `main`. The Effect catalogs are not in scope: those advance through the user-run `pnpm:up` / `pnpm:export` flow, which the automation never touches.
 
 This design came out of a cross-repo programme with `savvy-web/systems` and `spencerbeggs/rolldown-pnpm-config`. The originating spec lived under `docs/superpowers/`, which is gitignored here, so this document — not that spec — is the durable record.
 
@@ -44,6 +44,16 @@ The catalog resolves what each package's **next published version will be**, not
 
 - `.changeset/**` is a real version source. The plugin's `turbo.json` restates the root `inputs` list plus `$TURBO_ROOT$/packages/*/package.json` and `$TURBO_ROOT$/.changeset/**` on **both** `build:dev` and `build:prod`, because the plugin's build reads versions from outside its own directory and turbo's defaults do not describe that.
 - The `lock-minor` strategy floors peer patches, so a first sync normalizes a peer like `^0.11.1` down to `^0.11.0`. **That diff is correct, not drift** — do not "repair" it back.
+
+### The publish ordering the catalog imposes
+
+**Consumers take their `@effected/*` ranges from the published catalog, not from a manifest here** — which makes the sync a *release step*, not merely hygiene. Publishing a wave without running `catalog:sync` leaves the catalog naming the previous versions, so a downstream that unlinks its local overrides resolves a registry copy **without the new API**, on ranges that look satisfied. It is green the whole way and wrong at the end, which is this document's recurring failure class in its most expensive form: the consumer discovers it as a missing export in CI, one repo away from anything that could explain it.
+
+The correct order is therefore **changesets → `catalog:sync` → release**. Stated as an ordering rather than a checklist item because the middle step is the one with no local symptom: skipping it breaks nothing in this repo, and nothing in this repo will ever tell you.
+
+**CI enforces that ordering — do not re-derive it as a manual step.** The workflow triggers on PRs to `main` *and to `changeset-release/main`*, so opening the release PR is itself the trigger: the job syncs, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before anything publishes. The catalog cannot publish out of step with the packages it names.
+
+That guarantee is easy to miss, and missing it is expensive in the other direction: a maintainer who believes the sync is theirs to remember will offer a downstream a promise CI already keeps better, and will treat a release as blocked on a command nobody needs to run. Both happened on the wave that produced this section. Two properties of the job make it look manual when it is not — it checks out `ref: main` and commits to `main` rather than to the PR head, so a feature branch's pending changesets reach the catalog only once merged and its PR shows no catalog diff; and its check run reports **failure** when it found drift and repaired it, which reads as a broken sync rather than a working one.
 
 ## Workflow mechanics worth not re-deriving
 

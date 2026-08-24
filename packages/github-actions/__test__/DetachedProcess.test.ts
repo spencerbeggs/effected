@@ -9,7 +9,15 @@ import { Cause, Effect, Exit, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 import { vi } from "vitest";
-import { DetachedProcess, DetachedProcessError, ProcessId } from "../src/index.js";
+import {
+	DetachedLogUnavailableError,
+	DetachedNotReadyError,
+	DetachedProcess,
+	DetachedSignalFailedError,
+	DetachedSpawnFailedError,
+	InvalidPidError,
+	ProcessId,
+} from "../src/index.js";
 
 /** A fresh scratch directory per use, removed by the test that made it. */
 const scratch = () => mkdtempSync(join(tmpdir(), "effected-detached-"));
@@ -67,8 +75,7 @@ describe("DetachedProcess", () => {
 				(calls) =>
 					Effect.gen(function* () {
 						const error = yield* Effect.flip(DetachedProcess.reap(0));
-						assert.instanceOf(error, DetachedProcessError);
-						assert.strictEqual(error.reason, "invalidPid");
+						assert.instanceOf(error, InvalidPidError);
 						assert.lengthOf(calls, 0, "process.kill must not have been called at all");
 					}),
 			),
@@ -81,7 +88,7 @@ describe("DetachedProcess", () => {
 				(calls) =>
 					Effect.gen(function* () {
 						const error = yield* Effect.flip(DetachedProcess.reap(-1));
-						assert.strictEqual(error.reason, "invalidPid");
+						assert.instanceOf(error, InvalidPidError);
 						assert.lengthOf(calls, 0, "process.kill must not have been called at all");
 					}),
 			),
@@ -93,7 +100,7 @@ describe("DetachedProcess", () => {
 				(calls) =>
 					Effect.gen(function* () {
 						const error = yield* Effect.flip(DetachedProcess.reap(Number.NaN));
-						assert.strictEqual(error.reason, "invalidPid");
+						assert.instanceOf(error, InvalidPidError);
 						assert.lengthOf(calls, 0);
 					}),
 			),
@@ -135,7 +142,7 @@ describe("DetachedProcess", () => {
 				() =>
 					Effect.gen(function* () {
 						const error = yield* Effect.flip(DetachedProcess.reap(4242));
-						assert.strictEqual(error.reason, "signalFailed");
+						assert.instanceOf(error, DetachedSignalFailedError);
 						assert.strictEqual(error.pid, 4242);
 					}),
 			),
@@ -197,7 +204,7 @@ describe("DetachedProcess", () => {
 				yield* TestClock.adjust("10 millis");
 				yield* TestClock.adjust("10 millis");
 				const error = yield* Fiber.join(fiber);
-				assert.strictEqual(error.reason, "notReady");
+				assert.instanceOf(error, DetachedNotReadyError);
 			}),
 		);
 
@@ -411,7 +418,7 @@ describe("DetachedProcess", () => {
 						logFile: join(directory, "child.log"),
 					}),
 				);
-				assert.strictEqual(error.reason, "spawnFailed");
+				assert.instanceOf(error, DetachedSpawnFailedError);
 			}).pipe(Effect.ensuring(Effect.sync(() => rmSync(directory, { recursive: true, force: true }))));
 		});
 
@@ -425,7 +432,7 @@ describe("DetachedProcess", () => {
 						logFile: join(directory, "missing", "child.log"),
 					}),
 				);
-				assert.strictEqual(error.reason, "logUnavailable");
+				assert.instanceOf(error, DetachedLogUnavailableError);
 				assert.include(String(error.path), "child.log");
 			}).pipe(Effect.ensuring(Effect.sync(() => rmSync(directory, { recursive: true, force: true }))));
 		});

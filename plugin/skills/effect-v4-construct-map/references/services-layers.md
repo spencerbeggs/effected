@@ -1,6 +1,7 @@
 # Services & Layers — v3 → v4
 
-Verified against `effect@4.0.0-beta.107`. Idiomatic form → see
+Verified against `effect@4.0.0-rc.109` (every row re-checked against the
+vendored source, not inferred). Idiomatic form → see
 `effect-v4-services-layers`.
 
 `Context.Tag`, `Context.GenericTag`, `Effect.Tag`, and `Effect.Service` **all
@@ -23,8 +24,9 @@ arg order (the reverse of v3).
 
 > `Layer.effect` / `Layer.succeed` are **dual**: both the curried
 > `Layer.effect(Svc)(effect)` and data-first `Layer.effect(Svc, effect)`
-> compile — the two overloads are declared side by side at `Layer.ts`'s
-> `export const effect`, still true at beta.107.
+> compile — the two overloads are declared side by side at `Layer.ts:1014`,
+> with the `arguments.length === 1` dispatch right below them; still true at
+> rc.109.
 
 ## The tag's *parameter type* is `Context.Key`, not `Context.Tag`
 
@@ -41,8 +43,12 @@ const layer = <Self, A, I, RR = never>(
 Three facts that cost real debugging time:
 
 - **`Context.Key` is type-only.** `typeof Context.Key === "undefined"` at
-  runtime, indistinguishable from "removed" under the obvious probe. So is
-  `Context.Tag`. Check the `.d.ts`, not `typeof`.
+  runtime, indistinguishable from "removed" under the obvious probe — but it is
+  very much alive in the `.d.ts` (`Context.ts:64`). Check the `.d.ts`, not
+  `typeof`. **`Context.Tag` is the opposite case and the two are easy to
+  conflate**: at rc.109 it is genuinely gone — no value export *and* no type
+  declaration, in the source or in `dist/Context.d.ts`. A `typeof` probe cannot
+  tell the two apart; only the `.d.ts` can.
 - **`Key<out Identifier, out Shape>` — `Shape` is covariant** (`Context.ts:64`).
   A tag for a wider service satisfies a parameter typed for a narrower one.
   `Service` (`:98`) and `ServiceClass` (`:123`) are declared `in out Shape`, but
@@ -54,4 +60,4 @@ Three facts that cost real debugging time:
   `Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>`), so
   a tag goes straight into `Effect.flatMap(tag, f)` and `yield* tag` with no
   conversion. There is nothing to convert *with*: `asEffect` has zero
-  occurrences core-wide at beta.107.
+  occurrences core-wide at rc.109.

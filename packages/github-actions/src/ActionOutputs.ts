@@ -7,39 +7,106 @@ import { WorkflowCommand } from "./WorkflowCommand.js";
  *
  * @public
  */
-export class ActionOutputError extends Schema.TaggedError<ActionOutputError>()("ActionOutputError", {
-	/**
-	 * `unavailable` — the runner file variable is not set, which usually means
-	 * the code is running outside a GitHub runner. `writeFailed` — the file
-	 * exists but could not be appended to. `invalidName` — the name would
-	 * corrupt the file's block structure. `encodeFailed` — a value did not
-	 * satisfy its schema. `detached` — the member was called under
-	 * {@link ActionOutputs.layerDetached}, where the channel it writes cannot
-	 * reach the job that would read it.
-	 */
-	reason: Schema.Literals(["unavailable", "writeFailed", "invalidName", "encodeFailed", "detached"]),
-	/** Which runner file was involved, by environment variable name. */
+export class RunnerFileUnavailableError extends Schema.TaggedError<RunnerFileUnavailableError>()(
+	"RunnerFileUnavailableError",
+	{
+		/** The runner file involved, by environment variable name. */
+		file: Schema.String,
+		/** The underlying failure, preserved structurally. */
+		cause: Schema.optionalKey(Schema.Defect()),
+	},
+) {
+	override get message(): string {
+		return `Runner file "${this.file}" is not available; is this running on a GitHub runner?`;
+	}
+}
+
+/**
+ * Raised when a runner file exists but could not be appended to.
+ *
+ * @public
+ */
+export class RunnerFileWriteError extends Schema.TaggedError<RunnerFileWriteError>()("RunnerFileWriteError", {
+	/** The runner file involved, by environment variable name. */
+	file: Schema.String,
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
+	override get message(): string {
+		return `Failed to write to runner file "${this.file}"`;
+	}
+}
+
+/**
+ * Raised when a name would corrupt the runner file's block structure.
+ *
+ * @public
+ */
+export class InvalidOutputNameError extends Schema.TaggedError<InvalidOutputNameError>()("InvalidOutputNameError", {
+	/** The offending name. */
+	name: Schema.String,
+	/** The runner file involved, by environment variable name. */
 	file: Schema.optionalKey(Schema.String),
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
+	override get message(): string {
+		return `"${this.name}" is not a usable output name`;
+	}
+}
+
+/**
+ * Raised when a value did not satisfy its schema.
+ *
+ * @public
+ */
+export class OutputEncodeError extends Schema.TaggedError<OutputEncodeError>()("OutputEncodeError", {
+	/** The output or variable name whose value would not encode. */
+	name: Schema.String,
+	/** The underlying failure, preserved structurally. */
+	cause: Schema.optionalKey(Schema.Defect()),
+}) {
+	override get message(): string {
+		return `Failed to encode the value for "${this.name}"`;
+	}
+}
+
+/**
+ * Raised when an output member was called under
+ * {@link ActionOutputs.layerDetached}.
+ *
+ * @public
+ */
+export class DetachedOutputError extends Schema.TaggedError<DetachedOutputError>()("DetachedOutputError", {
+	/** The runner file involved, by environment variable name. */
+	file: Schema.String,
 	/** The output or variable name, when one is involved. */
 	name: Schema.optionalKey(Schema.String),
 	/** The underlying failure, preserved structurally. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
-		switch (this.reason) {
-			case "unavailable":
-				return `Runner file "${this.file}" is not available; is this running on a GitHub runner?`;
-			case "writeFailed":
-				return `Failed to write to runner file "${this.file}"`;
-			case "invalidName":
-				return `"${this.name}" is not a usable output name`;
-			case "detached":
-				return `Runner file "${this.file}" cannot be reached from a detached worker — it configures the parent job's later steps, and a worker has none and may outlive the job. Publish this from the parent process instead.`;
-			default:
-				return `Failed to encode the value for "${this.name}"`;
-		}
+		return `Runner file "${this.file}" cannot be reached from a detached worker — it configures the parent job's later steps, and a worker has none and may outlive the job. Publish this from the parent process instead.`;
 	}
 }
+
+/**
+ * Anything that can go wrong publishing an output, variable or summary.
+ *
+ * @remarks
+ * **One class per failure, rather than one class with a `reason` field.** The
+ * runner file is required on the members that name one and the output name on
+ * the members that name one, so a value short a field is a compile error rather
+ * than a message reading `"undefined"`.
+ *
+ * @public
+ */
+export type ActionOutputError =
+	| RunnerFileUnavailableError
+	| RunnerFileWriteError
+	| InvalidOutputNameError
+	| OutputEncodeError
+	| DetachedOutputError;
 
 /** The base delimiter for a heredoc block. */
 const BASE_DELIMITER = "EFFECTED_EOF";
@@ -108,17 +175,15 @@ const make = Effect.gen(function* () {
 
 	const append = (file: string, content: string): Effect.Effect<void, ActionOutputError> =>
 		Effect.gen(function* () {
-			const path = yield* env
-				.get(file)
-				.pipe(Effect.mapError(() => new ActionOutputError({ reason: "unavailable", file })));
+			const path = yield* env.get(file).pipe(Effect.mapError(() => new RunnerFileUnavailableError({ file })));
 			yield* fs
 				.writeFileString(path, content, { flag: "a" })
-				.pipe(Effect.mapError((cause) => new ActionOutputError({ reason: "writeFailed", file, cause })));
+				.pipe(Effect.mapError((cause) => new RunnerFileWriteError({ file, cause })));
 		});
 
 	const appendBlock = (file: string, name: string, value: string): Effect.Effect<void, ActionOutputError> => {
 		if (!isUsableName(name)) {
-			return Effect.fail(new ActionOutputError({ reason: "invalidName", file, name }));
+			return Effect.fail(new InvalidOutputNameError({ file, name }));
 		}
 		const delimiter = delimiterFor(value);
 		return append(file, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
@@ -130,7 +195,7 @@ const make = Effect.gen(function* () {
 		set,
 		setJson: <A, I>(name: string, value: A, schema: Schema.Codec<A, I>) =>
 			Schema.encodeUnknownEffect(schema)(value).pipe(
-				Effect.mapError((cause) => new ActionOutputError({ reason: "encodeFailed", name, cause })),
+				Effect.mapError((cause) => new OutputEncodeError({ name, cause })),
 				Effect.flatMap((encoded) => set(name, JSON.stringify(encoded))),
 			),
 		summary: (content: string) => append("GITHUB_STEP_SUMMARY", content),
@@ -207,11 +272,11 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 	 *   channel to fail through.
 	 */
 	static readonly layerDetached: Layer.Layer<ActionOutputs> = Layer.succeed(this, {
-		set: (name) => Effect.fail(new ActionOutputError({ reason: "detached", file: "GITHUB_OUTPUT", name })),
-		setJson: (name) => Effect.fail(new ActionOutputError({ reason: "detached", file: "GITHUB_OUTPUT", name })),
-		summary: () => Effect.fail(new ActionOutputError({ reason: "detached", file: "GITHUB_STEP_SUMMARY" })),
-		exportVariable: (name) => Effect.fail(new ActionOutputError({ reason: "detached", file: "GITHUB_ENV", name })),
-		addPath: () => Effect.fail(new ActionOutputError({ reason: "detached", file: "GITHUB_PATH" })),
+		set: (name) => Effect.fail(new DetachedOutputError({ file: "GITHUB_OUTPUT", name })),
+		setJson: (name) => Effect.fail(new DetachedOutputError({ file: "GITHUB_OUTPUT", name })),
+		summary: () => Effect.fail(new DetachedOutputError({ file: "GITHUB_STEP_SUMMARY" })),
+		exportVariable: (name) => Effect.fail(new DetachedOutputError({ file: "GITHUB_ENV", name })),
+		addPath: () => Effect.fail(new DetachedOutputError({ file: "GITHUB_PATH" })),
 		setFailed: (message) => Console.error(message),
 		setSecret: () => Effect.void,
 	} satisfies ActionOutputsShape);
