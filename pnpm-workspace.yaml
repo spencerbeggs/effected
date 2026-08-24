@@ -10,7 +10,7 @@ catalogs:
     "@effect/ai-openai-compat": 4.0.0-rc.109
     "@effect/ai-openrouter": 4.0.0-rc.109
     "@effect/atom-react": 4.0.0-rc.109
-    "@effect/atom-solid": 4.0.0-rc.109
+    "@effect/atom-solid": 4.0.0-rc.111
     "@effect/atom-vue": 4.0.0-rc.109
     "@effect/openapi-generator": 4.0.0-rc.109
     "@effect/opentelemetry": 4.0.0-rc.109
@@ -39,7 +39,7 @@ catalogs:
     "@effect/ai-openai-compat": 4.0.0-rc.109
     "@effect/ai-openrouter": 4.0.0-rc.109
     "@effect/atom-react": 4.0.0-rc.109
-    "@effect/atom-solid": 4.0.0-rc.109
+    "@effect/atom-solid": 4.0.0-rc.111
     "@effect/atom-vue": 4.0.0-rc.109
     "@effect/openapi-generator": 4.0.0-rc.109
     "@effect/opentelemetry": 4.0.0-rc.109
