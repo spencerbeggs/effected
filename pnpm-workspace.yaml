@@ -6,7 +6,7 @@ autoInstallPeers: true
 catalogs:
   effect:
     "@effect/ai-anthropic": 4.0.0-rc.109
-    "@effect/ai-openai": 4.0.0-rc.109
+    "@effect/ai-openai": 4.0.0-rc.111
     "@effect/ai-openai-compat": 4.0.0-rc.109
     "@effect/ai-openrouter": 4.0.0-rc.109
     "@effect/atom-react": 4.0.0-rc.109
@@ -35,7 +35,7 @@ catalogs:
     effect: 4.0.0-rc.109
   effect:peers:
     "@effect/ai-anthropic": 4.0.0-rc.109
-    "@effect/ai-openai": 4.0.0-rc.109
+    "@effect/ai-openai": 4.0.0-rc.111
     "@effect/ai-openai-compat": 4.0.0-rc.109
     "@effect/ai-openrouter": 4.0.0-rc.109
     "@effect/atom-react": 4.0.0-rc.109
