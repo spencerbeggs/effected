@@ -100,7 +100,17 @@ export const registryHost = (registry: string): string => {
 	try {
 		return new URL(registry).host;
 	} catch {
-		return registry.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+		// Scanned rather than matched. The obvious `.replace(/\/.*$/, "")` is a
+		// polynomial-backtracking regex over a value this package does not
+		// control, and CodeQL flags it; `indexOf` is linear and says the same
+		// thing.
+		const withoutScheme = registry.startsWith("https://")
+			? registry.slice(8)
+			: registry.startsWith("http://")
+				? registry.slice(7)
+				: registry;
+		const slash = withoutScheme.indexOf("/");
+		return slash === -1 ? withoutScheme : withoutScheme.slice(0, slash);
 	}
 };
 

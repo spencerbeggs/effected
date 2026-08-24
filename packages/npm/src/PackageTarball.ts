@@ -27,7 +27,7 @@ export class TarballError extends Schema.TaggedError<TarballError>()("TarballErr
 	 * downgraded a merge to a lossy algorithm and dropped a user's override on
 	 * a run that reported success.
 	 */
-	reason: Schema.Literals(["notFound", "http", "integrityMismatch", "extractFailed"]),
+	reason: Schema.Literals(["notFound", "http", "integrityMismatch", "integrityUnverifiable", "extractFailed"]),
 	/** The package being fetched. */
 	package: Schema.String,
 	/** The version being fetched. */
@@ -50,6 +50,8 @@ export class TarballError extends Schema.TaggedError<TarballError>()("TarballErr
 				return `Could not download the tarball for ${what}${this.status === undefined ? "" : ` (HTTP ${this.status})`}`;
 			case "integrityMismatch":
 				return `The tarball for ${what} did not match the integrity the registry published (expected ${this.expected ?? "unknown"}, got ${this.actual ?? "unknown"})`;
+			case "integrityUnverifiable":
+				return `Could not compute a digest to verify ${what}, so its integrity was never checked (expected ${this.expected ?? "unknown"})`;
 			default:
 				return `Could not extract the tarball for ${what}`;
 		}
@@ -103,7 +105,7 @@ const make = Effect.fnUntraced(function* () {
 		const name = published.name;
 		const version = published.version;
 		const fail = (
-			reason: "notFound" | "http" | "integrityMismatch" | "extractFailed",
+			reason: "notFound" | "http" | "integrityMismatch" | "integrityUnverifiable" | "extractFailed",
 			extra: { status?: number; expected?: string; actual?: string; cause?: unknown } = {},
 		): TarballError => new TarballError({ reason, package: name, version, ...extra });
 
@@ -148,7 +150,10 @@ const make = Effect.fnUntraced(function* () {
 			} else {
 				const digest = yield* crypto
 					.digest(algorithm.value, bytes)
-					.pipe(Effect.mapError((cause) => fail("integrityMismatch", { expected, cause })));
+					// NOT integrityMismatch: nothing was compared. See the reason
+					// docstring — a failure to verify presented as a measured
+					// mismatch is the exact class this package fixes elsewhere.
+					.pipe(Effect.mapError((cause) => fail("integrityUnverifiable", { expected, cause })));
 				const actual = `${expected.slice(0, expected.indexOf("-"))}-${Encoding.encodeBase64(digest)}`;
 				// Compared without base64 padding: the SRI grammar permits an
 				// unpadded value, and a padding difference is not a byte

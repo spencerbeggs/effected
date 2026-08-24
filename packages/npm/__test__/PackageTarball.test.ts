@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Crypto, Effect, Layer, Schema } from "effect";
+import { Crypto, Effect, Layer, PlatformError, Schema } from "effect";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/unstable/http";
 import type { TarballError } from "../src/index.js";
 import { PackageTarball, PublishedVersion } from "../src/index.js";
@@ -142,6 +142,43 @@ describe("PackageTarball", () => {
 				const run = scenario({ status: 200, body: new TextEncoder().encode("poisoned") });
 				yield* Effect.flip(run.extract(published({ ...WITH_TARBALL, integrity: INTEGRITY })));
 				assert.deepStrictEqual(run.spawns, []);
+			}),
+		);
+
+		it.effect("reports a digest that could not be COMPUTED as unverifiable, not as a mismatch", () =>
+			// A mismatch is a measurement: two digests exist and differ, which is what
+			// tampering looks like. A runtime refusing the algorithm (SHA-1 under a
+			// FIPS-configured Node) produces no digest at all, so nothing was
+			// compared. Reporting the second as the first routes a platform problem
+			// into tamper handling and renders "did not match (expected X, got
+			// unknown)" — evidence of an attack nobody observed. This is the same
+			// class the wave fixes in PackageManagerInstaller.
+			Effect.gen(function* () {
+				const refusingCrypto = Layer.succeed(
+					Crypto.Crypto,
+					Crypto.make({
+						digest: () =>
+							Effect.fail(
+								PlatformError.badArgument({ module: "Crypto", method: "digest", description: "algorithm refused" }),
+							),
+						randomBytes: (size) => new Uint8Array(size),
+					}),
+				);
+				const spawner = scripted(() => ({ exit: 0 }));
+				const layer = PackageTarball.layer.pipe(
+					Layer.provide(Layer.mergeAll(spawner.layer, MemoryFileSystem.layer, refusingCrypto, http({ status: 200 }))),
+				);
+				const error = yield* Effect.flip(
+					Effect.gen(function* () {
+						const tarball = yield* PackageTarball;
+						return yield* tarball.extract(published({ ...WITH_TARBALL, integrity: INTEGRITY }));
+					}).pipe(Effect.scoped, Effect.provide(layer)),
+				);
+				assert.strictEqual(error.reason, "integrityUnverifiable");
+				assert.strictEqual(error.actual, undefined, "nothing was measured, so there is no actual digest to report");
+				assert.include(error.message, "never checked");
+				assert.notInclude(error.message, "did not match");
+				assert.deepStrictEqual(spawner.spawns, [], "an unverified tarball must still never reach tar");
 			}),
 		);
 
