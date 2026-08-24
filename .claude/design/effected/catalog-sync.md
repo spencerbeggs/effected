@@ -51,6 +51,18 @@ The catalog resolves what each package's **next published version will be**, not
 
 The correct order is therefore **changesets → `catalog:sync` → release**. Stated as an ordering rather than a checklist item because the middle step is the one with no local symptom: skipping it breaks nothing in this repo, and nothing in this repo will ever tell you.
 
+**The chain does not end at the registry — it ends in the consumer's resolved tree, and the last link is theirs.** A consumer's `@effected/*` ranges come from the catalog; the catalog ships *inside* `@effected/pnpm-plugin-effect`; and that plugin is typically a pnpm **config dependency pinned by hash** in the consumer's own `pnpm-workspace.yaml`. So a consumer can be holding a stale catalog long after a correct one publishes:
+
+| check | answer |
+| --- | --- |
+| the packages published at the new versions | TRUE |
+| the published plugin's catalog names them | TRUE |
+| the consumer's tree resolves them | **FALSE** |
+
+Both green checks are observations of the *artifact*; only the third is about the tree that actually installs. A downstream hit exactly this on 2026-08-23: it removed its `file:` overrides after a verified-correct release, reinstalled, and resolved straight back to the previous versions with none of the new API — because its `configDependencies` pin still named the previous plugin build. The fix is to bump that pin (version **and** integrity) and reinstall.
+
+Two consequences worth holding. **A release mail cannot warn about this**, because the stale object lives in the consumer's repository, not in anything the upstream publishes or can see. And **the terminal verification is the resolved tree**, not the registry — `require('./node_modules/@effected/<pkg>/package.json').version` after installing, or grepping an adopted symbol out of the installed `.d.ts`. Treating "the published catalog names `^X`" as the last check is one step short.
+
 **CI enforces that ordering — do not re-derive it as a manual step.** The workflow triggers on PRs to `main` *and to `changeset-release/main`*, so opening the release PR is itself the trigger: the job syncs, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before anything publishes. The catalog cannot publish out of step with the packages it names.
 
 That guarantee is easy to miss, and missing it is expensive in the other direction: a maintainer who believes the sync is theirs to remember will offer a downstream a promise CI already keeps better, and will treat a release as blocked on a command nobody needs to run. Both happened on the wave that produced this section. Two properties of the job make it look manual when it is not — it checks out `ref: main` and commits to `main` rather than to the PR head, so a feature branch's pending changesets reach the catalog only once merged and its PR shows no catalog diff; and its check run reports **failure** when it found drift and repaired it, which reads as a broken sync rather than a working one.
