@@ -1,5 +1,13 @@
 # @effected/sbom
 
+## 0.4.3
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/package-json | dependency | updated | 0.11.0 | 0.12.0 |
+
 ## 0.4.2
 
 ### Dependencies

@@ -1,12 +1,53 @@
 # @effected/jsonc
 
+## 0.8.0
+
+### Features
+
+- Adds the `JsoncFingerprint` module: canonical JSON serialization (RFC 8785, the JSON Canonicalization Scheme) and SHA-256 content fingerprints over it.
+
+- `canonicalizeResult` (sync `Result`) and `canonicalize` (`Effect`) serialize a JSON value to compact, key-sorted canonical text, failing typed with `JsoncCanonicalizeError` on any value that isn't representable — deliberately stricter than `Jsonc.stringify`'s drop/null semantics, since a fingerprint of a silently altered document would be a lie:
+
+```ts
+import { JsoncFingerprint } from "@effected/jsonc";
+import { Result } from "effect";
+
+const ok = JsoncFingerprint.canonicalizeResult({ b: 2, a: 1 });
+if (Result.isSuccess(ok)) {
+	console.log(ok.success); // => '{"a":1,"b":2}'
+}
+```
+
+- `hash` and `hashText` compute the content fingerprint — a 64-character lowercase-hex SHA-256 digest with no algorithm prefix — of a JSON value or of raw text, via core's `Crypto.Crypto` service:
+
+```ts
+import { JsoncFingerprint } from "@effected/jsonc";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+	// Key order never matters: both values fingerprint identically.
+	const a = yield* JsoncFingerprint.hash({ b: 2, a: 1 });
+	const b = yield* JsoncFingerprint.hash({ a: 1, b: 2 });
+	return a === b; // true
+});
+// Provide a Crypto layer at the edge, e.g. NodeCrypto.layer from "@effect/platform-node".
+```
+
+- `hashText` accepts a `normalizeEol` option to make file-content hashes stable across checkout line-ending settings; `JsoncFingerprint.normalizeEol` exposes the same normalization as a standalone pure function. [#517][#517]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#517]: https://github.com/spencerbeggs/effected/pull/517
+
 ## 0.7.0
 
 ### Dependencies
 
-* | Dependency | Type           | Action  | From           | To           |                                                                       |
-  | :--------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | :-- | :-- | :-- | :-- | :-- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Minor Changes
 
@@ -16,18 +57,18 @@
 
 ### Bug Fixes
 
-* Construction/decode failures now throw a generic `"Schema validation failed"` message with the structured `SchemaIssue.Issue` available on `error.cause` — format it with `SchemaIssue.makeFormatterDefault()` for a human-readable report. [#322][#322]
+- Construction/decode failures now throw a generic `"Schema validation failed"` message with the structured `SchemaIssue.Issue` available on `error.cause` — format it with `SchemaIssue.makeFormatterDefault()` for a human-readable report. [#322][#322]
 
 ### Refactoring
 
-* Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required.
-* Updated `Jsonc`'s internal `SchemaIssue.InvalidValue` construction to the new `(annotations, input)` argument order (the `Option`-wrapped first argument is gone).
+- Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required.
+- Updated `Jsonc`'s internal `SchemaIssue.InvalidValue` construction to the new `(annotations, input)` argument order (the `Option`-wrapped first argument is gone).
 
 ### Dependencies
 
-* | Dependency | Type           | Action  | From           | To             |
-  | :--------- | :------------- | :------ | :------------- | :------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| effect | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
 
 ### Minor Changes
 
@@ -39,7 +80,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Maintenance
 
-* Switching internal dependency versioning from `~` to `^` ranges.
+- Switching internal dependency versioning from `~` to `^` ranges.
 
 ### Patch Changes
 
@@ -49,9 +90,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-* | Dependency | Type           | Action  | From          | To             |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -61,10 +102,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### `parseTreeResult`: the sync `Result` twin of `parseTree`
-
+- ### `parseTreeResult`: the sync `Result` twin of `parseTree`
   `Jsonc.parseTree` ran a synchronous parser behind an `Effect`, so the wrapper carried nothing but a tracing span and the error channel. A synchronous caller wanting the AST — a config editor in a lint hook, a non-Effect build script — had to build a runtime and write `Effect.runSync(Effect.result(Jsonc.parseTree(text)))` to get at it. It now has a sync twin returning `Result` directly:
-
   ```ts
   import { Jsonc } from "@effected/jsonc";
   import { Option, Result } from "effect";
@@ -74,7 +113,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	console.log(tree.success.value.type); // => "object"
   }
   ```
-
   The return type is `Result<Option<JsoncNode>, JsoncParseError>` — `Option.none()` for empty input under `allowEmptyContent`, the aggregate `JsoncParseError` for malformed input, exactly as `parseTree` behaves.
 
   This completes the package's own symmetry under the kit's sync-primitive convention: `parseResult` and `stringifyResult` have had this shape since they were introduced, and `parseTree` was the one remaining parse entry point reachable only through `Effect`. The `parseTree` signature, error channel and named span are unchanged; it is now defined in terms of `parseTreeResult` via `Effect.fromResult`, so the `Result` variant is the single engine path and the two forms cannot drift. [#132][#132]
@@ -89,12 +127,10 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Breaking Changes
 
-* ### `JsoncEdit.applyAll` rejects overlapping edits
-
+- ### `JsoncEdit.applyAll` rejects overlapping edits
   `applyAll` now throws when two edits cover the same span, instead of
   applying them in reverse-offset order and silently producing corrupted
   text:
-
   ```ts
   import { JsoncEdit } from "@effected/jsonc";
 
@@ -107,7 +143,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   // throws: JsoncEdit.applyAll received overlapping edits at offsets 0 and 3
   // — overlapping edits are a programmer error
   ```
-
   Overlapping edits are a programmer error on a hand-constructed array, not
   hostile input, so the guard is a thrown defect rather than a typed failure —
   the package's hardening invariant still holds for everything that comes off
@@ -117,11 +152,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### `Jsonc.stringify` / `Jsonc.stringifyResult`
-
+- ### `Jsonc.stringify` / `Jsonc.stringifyResult`
   The facade gained the emission direction it was missing. With no options the
   output is byte-identical to `JSON.stringify(value, null, 2)`:
-
   ```ts
   import { Jsonc } from "@effected/jsonc";
   import { Result } from "effect";
@@ -137,14 +170,10 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	// }
   }
   ```
-
   `stringify` is the `Effect` form (carrying a `Jsonc.stringify` tracing span)
   and `stringifyResult` the synchronous `Result` form the first is defined in
-  terms of — the same pairing as `parse`/`parseResult`. Failures carry a
-  `JsoncStringifyError` whose `code` is a `JsoncStringifyErrorCode`:
-  `CircularReference`, `BigIntValue` or `TopLevelUnrepresentable`, plus the
+  terms of — the same pairing as `parse`/`parseResult`. Failures carry a&#10;`JsoncStringifyError` whose `code` is a `JsoncStringifyErrorCode`:&#10;`CircularReference`, `BigIntValue` or `TopLevelUnrepresentable`, plus the
   engine's `detail` message and the offending `value`.
-
   ```ts
   const bad = Jsonc.stringifyResult(0n);
   if (Result.isFailure(bad)) {
@@ -152,7 +181,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	// "BigIntValue"
   }
   ```
-
   The typed channel is deliberately narrow. **Nested** unrepresentable values
   follow `JSON.stringify`'s documented semantics — `undefined`, functions and
   symbols are dropped from objects and become `null` in arrays — rather than
@@ -163,7 +191,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   `JsoncStringifyOptions` carries `tabSize` and `insertSpaces`, the same
   vocabulary as `JsoncFormattingOptions`. A `tabSize` of `0` produces compact
   single-line output; `insertSpaces: false` indents with tabs:
-
   ```ts
   const compact = Jsonc.stringifyResult({ port: 3000 }, { tabSize: 0 });
   if (Result.isSuccess(compact)) {
@@ -171,7 +198,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	// {"port":3000}
   }
   ```
-
   This is plain JSON emission, not JSONC. Comments live only in the
   document/edit layer (`JsoncNode`, `JsoncEdit`, `JsoncFormatter`), so no
   comment survives — or can be produced by — value-level stringification.
@@ -179,13 +205,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   `Jsonc.fromString` and `Jsonc.JsoncFromString` now ride this on their encode
   side, so a circular or `bigint` value fails as a schema issue during encode
   instead of throwing a defect out of the codec.
-
   ### `Jsonc.bind(target)`
-
-  `bind` composes a target schema with the JSONC codec once and hands back a
-  `JsoncBoundCodec` — the `schema` plus both directions pre-derived, so the use
+  `bind` composes a target schema with the JSONC codec once and hands back a&#10;`JsoncBoundCodec` — the `schema` plus both directions pre-derived, so the use
   site needs no generic `Schema` machinery:
-
   ```ts
   import { Jsonc } from "@effected/jsonc";
   import { Effect, Schema } from "effect";
@@ -201,10 +223,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	return [value, text] as const;
   });
   ```
-
-  Both directions fail with `Schema.SchemaError`, exactly as
-  `Schema.decodeEffect`/`Schema.encodeEffect` over `Jsonc.schema(target)`
-  would; `bind` adds no error taxonomy of its own. The target's decoding and
+  Both directions fail with `Schema.SchemaError`, exactly as&#10;`Schema.decodeEffect`/`Schema.encodeEffect` over `Jsonc.schema(target)`&#10;would; `bind` adds no error taxonomy of its own. The target's decoding and
   encoding service requirements flow through as `RD`/`RE`.
 
   Like `fromString` and `schema`, `bind` is schema-producing — each call
@@ -216,9 +235,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-* | Dependency | Type           | Action  | From          | To            |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -230,12 +249,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* Added `Jsonc.parseResult(text, options?)` — a pure, synchronous
-  `Result`-returning parse variant for callers that are not already inside an
-  `Effect`. It runs the same error-recovery engine as `Jsonc.parse`: every
-  parse error is collected and the failure side carries one aggregate
-  `JsoncParseError`.
-
+- Added `Jsonc.parseResult(text, options?)` — a pure, synchronous&#10;`Result`-returning parse variant for callers that are not already inside an&#10;`Effect`. It runs the same error-recovery engine as `Jsonc.parse`: every
+  parse error is collected and the failure side carries one aggregate&#10;`JsoncParseError`.
   ```ts
   import { Jsonc } from "@effected/jsonc";
   import { Result } from "effect";
@@ -250,12 +265,10 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	console.log(bad.failure._tag); // => "JsoncParseError"
   }
   ```
-
   `Jsonc.parse` is now defined in terms of `Jsonc.parseResult` — behavior is
   unchanged, and the `Effect` variant still carries the `Jsonc.parse` tracing
   span. Reach for `parseResult` at synchronous boundaries (a plain config
-  loader, a build script) instead of wrapping
-  `Effect.runSync(Effect.result(Jsonc.parse(text)))`. [#112][#112]
+  loader, a build script) instead of wrapping&#10;`Effect.runSync(Effect.result(Jsonc.parse(text)))`. [#112][#112]
 
 ### Minor Changes
 
@@ -267,10 +280,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### `JsoncFormattingOptionsLike` — plain literals accepted for `formattingOptions`
-
+- ### `JsoncFormattingOptionsLike` — plain literals accepted for `formattingOptions`
   `JsoncModifyOptions.formattingOptions` now accepts either a `JsoncFormattingOptions` instance or a structurally-matching plain literal, exported as `JsoncFormattingOptionsLike`:
-
   ```ts
   import { JsoncModifier } from "@effected/jsonc";
 
@@ -278,12 +289,11 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	formattingOptions: { insertSpaces: false, tabSize: 2 },
   });
   ```
-
   `JsoncFormattingOptions` remains the canonical decoded form; only the option fields are read from either shape.
 
 ### Documentation
 
-* Value spans for edits now cover exactly the value, byte-exact — a fix carried over from `jsonc-effect` 0.3.x, where spans over-reached trailing content and could swallow whitespace or comments after a value ([jsonc-effect#62](https://github.com/spencerbeggs/jsonc-effect/issues/62)). Consumers migrating from `jsonc-effect` can drop any downstream AST-plus-`trimEnd` workarounds. [#91][#91]
+- Value spans for edits now cover exactly the value, byte-exact — a fix carried over from `jsonc-effect` 0.3.x, where spans over-reached trailing content and could swallow whitespace or comments after a value ([jsonc-effect#62](https://github.com/spencerbeggs/jsonc-effect/issues/62)). Consumers migrating from `jsonc-effect` can drop any downstream AST-plus-`trimEnd` workarounds. [#91][#91]
 
 ### Minor Changes
 
@@ -295,12 +305,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* Zero-dependency JSONC parsing, editing and formatting expressed as Effect schemas and pure functions. JSONC is JSON with comments and trailing commas — the format behind `tsconfig.json` and VS Code settings — and this package treats the source text as the document: modifications are computed as byte-minimal edits against the original bytes, so a change to one key leaves every comment, blank line and indentation choice untouched. Parsing recovers from errors and aggregates every diagnostic into one `JsoncParseError` rather than throwing on the first. No IO, no services, no runtime dependency other than `effect`.
-
+- Zero-dependency JSONC parsing, editing and formatting expressed as Effect schemas and pure functions. JSONC is JSON with comments and trailing commas — the format behind `tsconfig.json` and VS Code settings — and this package treats the source text as the document: modifications are computed as byte-minimal edits against the original bytes, so a change to one key leaves every comment, blank line and indentation choice untouched. Parsing recovers from errors and aggregates every diagnostic into one `JsoncParseError` rather than throwing on the first. No IO, no services, no runtime dependency other than `effect`.
   ### Decode straight into a domain schema
-
   `Jsonc.schema` composes with your own `Schema` so a JSONC string decodes into a validated value in one step. Malformed input fails through the typed channel, never as a throw.
-
   ```ts
   import { Jsonc } from "@effected/jsonc";
   import { Effect, Schema } from "effect";
@@ -318,11 +325,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   Effect.runPromise(program).then(console.log);
   // { port: 3000 }
   ```
-
   ### Editing without losing comments
-
   `JsoncModifier.modify` returns a `JsoncEdit` array — offset, length and replacement content — that `JsoncEdit.applyAll` splices into the original text. Only the bytes covered by an edit change.
-
   ```ts
   import { JsoncEdit, JsoncModifier } from "@effected/jsonc";
   import { Effect } from "effect";
@@ -343,7 +347,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   //   "port": 8080
   // }
   ```
-
   `Jsonc.parse` / `Jsonc.parseTree` recover to a plain value or an offset-preserving `JsoncNode` AST; `Jsonc.stripComments` yields valid JSON offset-preservingly; `JsoncFormatter` computes whitespace-normalizing edits; and `JsoncVisitor` walks a document as a `Stream` with `Stream.take` early termination. Hostile input (deep nesting, unterminated literals) fails through the error channel, never as a stack overflow. [#81][#81]
 
 ### Minor Changes

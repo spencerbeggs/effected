@@ -1,5 +1,15 @@
 # @effected/workspaces
 
+## 0.18.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/lockfiles | dependency | updated | 0.7.0 | 0.7.1 |
+| @effected/package-json | dependency | updated | 0.11.0 | 0.12.0 |
+| @effected/yaml | dependency | updated | 0.11.0 | 0.12.0 |
+
 ## 0.18.1
 
 ### Dependencies
