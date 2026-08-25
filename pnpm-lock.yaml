@@ -1076,8 +1076,8 @@ importers:
         specifier: catalog:docs
         version: 19.2.8(react@19.2.8)
       rspress-plugin-api-extractor:
-        specifier: ^0.11.0
-        version: 0.11.0(@effected/config-file@0.5.2(@effected/jsonc@0.8.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/yaml@0.12.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@rspress/core@2.0.19(@rspack/core@2.1.10(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.3.0)(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(supports-color@9.4.0)
+        specifier: ^0.12.0
+        version: 0.12.0(@effected/config-file@0.5.2(@effected/jsonc@0.8.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/yaml@0.12.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@rspress/core@2.0.19(@rspack/core@2.1.10(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.3.0)(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(supports-color@9.4.0)
       rspress-plugin-mermaid:
         specifier: catalog:docs
         version: 1.0.1(@rspress/core@2.0.19(@rspack/core@2.1.10(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(supports-color@9.4.0)
@@ -2677,8 +2677,8 @@ packages:
       typescript:
         optional: true
 
-  '@tsdoctor/snapshot@0.1.1':
-    resolution: {integrity: sha512-G55/2D7GM360Oeo/lsmgBpDI8/+s2RuKXFXiXXV92Q8sdgZrJY9Y1jYJjKglxpqc9vLdotn45et6TpG6H3ZStw==}
+  '@tsdoctor/snapshot@0.2.0':
+    resolution: {integrity: sha512-Eb0LqLvDnl4cBNKG+GKPtvSBw1uwRAFmhCOr1XqqTuAZGa1ocqPm8ZuVRPsRrmlolcU9xG8S/IQxKh+6jVoUjQ==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@effected/store': ^0.5.0
@@ -5296,8 +5296,8 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
-  rspress-plugin-api-extractor@0.11.0:
-    resolution: {integrity: sha512-ZCD91qk7naHnTd3zgYAyc5TeSqAXmmVxHysQdoPh6y5fKpYlQ03Bg2jppvYMJeg4Fv2SzvZqI+cZkw0PgfxY3A==}
+  rspress-plugin-api-extractor@0.12.0:
+    resolution: {integrity: sha512-owTxZiWk4IYNTYrdn3N7aesv10m4Bx9PAKkmsHjSEOfSaekJA0GOHOQ5jOtmS1bTuBYASgF3mMltwrn6xdRhKA==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@rspress/core': ^2.0.0
@@ -8205,7 +8205,7 @@ snapshots:
       '@typescript/vfs': 1.6.4(supports-color@9.4.0)(typescript@6.0.3)
       typescript: 6.0.3
 
-  '@tsdoctor/snapshot@0.1.1(@effected/store@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)':
+  '@tsdoctor/snapshot@0.2.0(@effected/store@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)':
     dependencies:
       '@effected/store': 0.5.0(effect@4.0.0-rc.109)
       effect: 4.0.0-rc.109
@@ -11390,7 +11390,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  rspress-plugin-api-extractor@0.11.0(@effected/config-file@0.5.2(@effected/jsonc@0.8.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/yaml@0.12.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@rspress/core@2.0.19(@rspack/core@2.1.10(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.3.0)(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(supports-color@9.4.0):
+  rspress-plugin-api-extractor@0.12.0(@effected/config-file@0.5.2(@effected/jsonc@0.8.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/yaml@0.12.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@rspress/core@2.0.19(@rspack/core@2.1.10(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.3.0)(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(supports-color@9.4.0):
     dependencies:
       '@effect/platform-node': 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effected/github': 0.8.0(effect@4.0.0-rc.109)
@@ -11411,7 +11411,7 @@ snapshots:
       '@tsdoctor/bundle': 0.2.0(281c9191ecf88be0127c58a1a158cf32)
       '@tsdoctor/model': 0.3.0(@effected/markdown@0.7.0(@effected/jsonc@0.8.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/yaml@0.12.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/package-json@0.12.0(effect@4.0.0-rc.109))(@types/node@26.3.0)(effect@4.0.0-rc.109)
       '@tsdoctor/registry': 0.2.1(@effect/platform-node@4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/store@0.5.0(effect@4.0.0-rc.109))(@effected/tsconfig-json@0.6.1(@effected/jsonc@0.8.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/xdg@0.3.0(@effected/config-file@0.5.2(@effected/jsonc@0.8.0(effect@4.0.0-rc.109))(@effected/toml@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/yaml@0.12.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.109)(typescript@6.0.3)
-      '@tsdoctor/snapshot': 0.1.1(@effected/store@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
+      '@tsdoctor/snapshot': 0.2.0(@effected/store@0.5.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109)
       '@typescript/vfs': 1.6.4(supports-color@9.4.0)(typescript@6.0.3)
       clsx: 2.1.1
       effect: 4.0.0-rc.109
