@@ -6,7 +6,7 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `AppendOptions` | Interface | Options for one append. | |
-| `CursoredSlice` | Interface | A {@link Slice} plus a resume point. | |
+| `CursoredSlice` | Interface | A `Slice` plus a resume point. | |
 | `DataSchema` | TypeAlias | The bound every registered payload schema must satisfy: a codec requiring **no services** in either direction. | |
 | `Envelope` | Variable + Interface | A decoded envelope: the frame, its validated payload, and where it sits in the source. | decode and encode a jsonl envelope line, filter-before-decode, walk back to valid |
 | `EnvelopeFrame` | Variable | Stage one of the read path: the envelope with its payload left undecoded. | stage-one undecoded envelope frame schema, filter a line before running its payload schema |

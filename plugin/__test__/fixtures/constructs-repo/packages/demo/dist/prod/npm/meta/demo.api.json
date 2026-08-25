@@ -37,6 +37,18 @@
 					"docComment": "/**\n * Render a report to markdown.\n *\n * @public\n */\n"
 				}
 			]
+		},
+		{
+			"kind": "EntryPoint",
+			"name": "sub",
+			"members": [
+				{
+					"kind": "Class",
+					"name": "SubThing",
+					"releaseTag": "Public",
+					"docComment": "/**\n * A subpath-only construct.\n *\n * @public\n */\n"
+				}
+			]
 		}
 	]
 }

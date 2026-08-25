@@ -16,10 +16,10 @@
 | `PnpmCatalogs` | TypeAlias | The pnpm `catalogs:` record shape as it appears in `pnpm-lock.yaml`: catalog name → package name → pinned version string or `{ specifier, version }` pair. | |
 | `PnpmExtension` | Class | Extension data specific to pnpm lockfiles, attached to `Lockfile.extension` when the format is `"pnpm"`. | pnpm lockfile extension data, catalogs, overrides and settings from the lockfile header |
 | `ResolvedPackage` | Class | A package resolved from a lockfile. | one package resolved from a lockfile, its dependency and peer edges |
-| `UnsupportedLockfileVersion` | Interface | The cause a {@link LockfileParseError} carries when a lockfile predates the supported format version. | |
+| `UnsupportedLockfileVersion` | Interface | The cause a `LockfileParseError` carries when a lockfile predates the supported format version. | |
 | `WorkspaceDependency` | Class | A directed dependency edge between two workspace packages as recorded in the lockfile. | a directed dependency edge between two workspace packages as the lockfile records it |
-| `WorkspaceManifest` | Class | The minimal manifest shape {@link LockfileIntegrity.compare} checks a lockfile against: a package name plus the four optional dependency maps. | the minimal package.json shape lockfile integrity checking compares against |
+| `WorkspaceManifest` | Class | The minimal manifest shape `LockfileIntegrity.compare` checks a lockfile against: a package name plus the four optional dependency maps. | the minimal package.json shape lockfile integrity checking compares against |
 | `filenameFor` | Function | The conventional lockfile filename for a format: `"bun.lock"`, `"package-lock.json"`, `"pnpm-lock.yaml"` or `"yarn.lock"`. | the conventional lockfile filename for a format, e.g. pnpm-lock.yaml |
 | `filenamesFor` | Function | Every filename a format is genuinely written under, primary first. | every filename a lockfile format is genuinely written under, including alternates |
 | `fromFilename` | Function | The format a lockfile filename identifies, if any. | detect which lockfile format a conventional filename identifies |
-| `isUnsupportedLockfileVersion` | Function | Whether a `LockfileParseError.cause` is an {@link UnsupportedLockfileVersion}. | check if a lockfile parse error means the version is too old |
+| `isUnsupportedLockfileVersion` | Function | Whether a `LockfileParseError.cause` is an `UnsupportedLockfileVersion`. | check if a lockfile parse error means the version is too old |

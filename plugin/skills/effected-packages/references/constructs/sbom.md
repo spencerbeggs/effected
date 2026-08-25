@@ -8,11 +8,11 @@
 | `CYCLONEDX_BOM_PREDICATE` | Variable | The CycloneDX BOM predicate type, for attesting an SBOM. | attest an sbom, cyclonedx bom predicate type uri, in-toto predicateType for a bom |
 | `Component` | Class | One component in the BOM — the root, or a dependency. | cyclonedx component entry, describe a dependency or root package in a bom |
 | `ComponentInput` | Interface | The fields a dependency contributes to its component entry. | |
-| `ComponentType` | Variable + TypeAlias | The decoded type of {@link (ComponentType:variable)}. | cyclonedx component type enum, library application or framework |
+| `ComponentType` | Variable + TypeAlias | The decoded type of `(ComponentType:variable)`. | cyclonedx component type enum, library application or framework |
 | `Contact` | Class | A point of contact — a person at a supplier, or an author of the BOM. | cyclonedx point of contact, sbom author or supplier contact info |
 | `CopyrightYears` | Interface | The years a copyright statement spans. | |
 | `ExternalReference` | Class | A link from a component to something outside the BOM. | link a component to its repository, issue tracker, homepage or docs |
-| `ExternalReferenceType` | Variable + TypeAlias | The decoded type of {@link (ExternalReferenceType:variable)}. | external reference kind enum, vcs issue-tracker website documentation |
+| `ExternalReferenceType` | Variable + TypeAlias | The decoded type of `(ExternalReferenceType:variable)`. | external reference kind enum, vcs issue-tracker website documentation |
 | `GITHUB_BUILD_TYPE` | Variable | The SLSA build type identifying a GitHub Actions workflow build. | slsa build type uri for a github actions workflow/v1 build |
 | `GitHubWorkflowProvenance` | Interface | The claims and runner facts a GitHub Actions provenance predicate is built from. | |
 | `IN_TOTO_PAYLOAD_TYPE` | Variable | The DSSE payload type for an in-toto statement, per the GitHub attestations specification. | dsse payload type for an in-toto statement, github attestations media type |
@@ -21,12 +21,12 @@
 | `IdentityTokenError` | Class | Raised when an identity token cannot be obtained. | handle failure obtaining an oidc identity token for an audience |
 | `IdentityTokenShape` | Interface | The contract: one method, one audience, one redacted token. | |
 | `InTotoStatement` | Class | An in-toto Statement v1. | build an in-toto attestation statement, wrap a subject and predicate for signing |
-| `InTotoStatementInput` | Interface | Input to {@link (InTotoStatement:class).of}. | |
+| `InTotoStatementInput` | Interface | Input to `(InTotoStatement:class).of`. | |
 | `InTotoSubject` | Class | A content-addressed artifact an attestation is about. | the artifact an attestation is about, name plus algorithm-to-digest map |
-| `InTotoSubjectInput` | Interface | Input to {@link (InTotoStatement:class).forSubject}. | |
+| `InTotoSubjectInput` | Interface | Input to `(InTotoStatement:class).forSubject`. | |
 | `InvalidSha256DigestError` | Class | Raised when a string is not a SHA-256 digest. | handle malformed sha-256 digest input, typed digest validation failure |
 | `NtiaElement` | Class | One element's verdict. | one ntia minimum element's pass/fail verdict on an sbom |
-| `NtiaElementId` | Variable + TypeAlias | The decoded type of {@link (NtiaElementId:variable)}. | the seven ntia minimum element identifiers |
+| `NtiaElementId` | Variable + TypeAlias | The decoded type of `(NtiaElementId:variable)`. | the seven ntia minimum element identifiers |
 | `NtiaReport` | Class | A document's standing against the NTIA minimum elements. | validate ntia compliance, check sbom minimum elements, generate compliance report |
 | `PredicateType` | TypeAlias | The URI naming what a statement asserts about its subjects. | |
 | `SIGSTORE_BUNDLE_V0_3_MEDIA_TYPE` | Variable | The Sigstore bundle media type this package produces. | sigstore bundle media type constant, dsse bundle version identifier |
@@ -34,15 +34,15 @@
 | `SLSA_PROVENANCE_V1` | Variable | The SLSA Provenance v1 predicate type URI. | slsa provenance predicate type uri |
 | `Sbom` | Class | The SBOM emitter: assemble, serialize, write. | generate an sbom, assemble and serialize a cyclonedx document, write a bom to disk |
 | `SbomDocument` | Class | A CycloneDX 1.6 bill of materials. | the cyclonedx 1.6 bom document model, bomFormat specVersion metadata and components |
-| `SbomInput` | Interface | Input to {@link Sbom.generate}. | |
-| `SbomJsonOptions` | Interface | Options for {@link Sbom.toJson}. | |
+| `SbomInput` | Interface | Input to `Sbom.generate`. | |
+| `SbomJsonOptions` | Interface | Options for `Sbom.toJson`. | |
 | `SbomMetadata` | Class | Document-level metadata: who made the BOM, when, and about what. | cyclonedx document metadata, who made the bom, when, and about what root component |
 | `SbomMetadataOptions` | Interface | What a manifest cannot supply, and the two places an explicit value wins. | |
 | `SbomMetadataSource` | Class | Derivation of CycloneDX metadata from a `package.json` manifest. | derive sbom metadata from a package.json manifest, npm purl, root component |
 | `SbomWriteError` | Class | Raised when a BOM cannot be written to disk. | handle failure writing an sbom to disk, filesystem write failure |
 | `Sha256Digest` | Variable + TypeAlias | A SHA-256 digest as 64 lowercase hexadecimal characters. | validate and normalize a sha-256 digest, strip sha256: prefix, lowercase hex |
 | `SigningError` | Class | Raised when a statement cannot be signed. | handle sigstore signing failure, identity certificate transparencyLog or bundle step |
-| `SigningErrorKind` | Variable + TypeAlias | The decoded type of {@link (SigningErrorKind:variable)}. | which sigstore signing step failed, identity certificate transparencyLog bundle |
+| `SigningErrorKind` | Variable + TypeAlias | The decoded type of `(SigningErrorKind:variable)`. | which sigstore signing step failed, identity certificate transparencyLog bundle |
 | `SigstoreBundle` | Class | A signed Sigstore bundle: the wire form of an attestation. | the signed dsse bundle wire form, sigstore attestation result value |
 | `SigstoreSigner` | Class | Sigstore signing. | sign with sigstore, produce a dsse bundle over fulcio and rekor |
 | `SigstoreSignerOptions` | Interface | Where signing happens, and with what. | |

@@ -10,22 +10,22 @@
 | `ConfigListEntry` | Class | One configuration entry, from `git config --list`. | one git config key/value pair from git config --list |
 | `DirtyWorktreeError` | Class | A merge-shaped operation refused to start because local modifications would be overwritten — git's refusal reads `Your local changes ... would be overwritten by merge`. | merge-shaped op refused because local changes would be overwritten, commit or stash first |
 | `Git` | Class | Typed git introspection over core's `ChildProcessSpawner`: read a repository's state at any ref without checking it out (including the network read `lsRemote` and the index read `lsFiles`), plus the mutating tier — checkout/fetch, the working-tree restore trio and stash, branches and tags, remotes, worktrees, commit/push/pull, submodules, sparse-checkout, config writes and staging — that changes it. Every mutating method's TSDoc opens with the literal word `Mutating:`. | run git commands with redacted argv, read a file at a ref |
-| `GitCommand` | Class | Pure constructors for the `git` {@link GitInvocation} values this package spawns. | pure constructors for git argv/invocations with redacted secrets |
-| `GitCommandError` | Class | git ran and failed in a way that is not one of the recognized domain cases ({@link NotARepositoryError} / {@link UnknownRefError}), or the spawn itself failed before git could run at all. | git command failed or spawn/timeout failure, exit code and redacted argv and stderr |
+| `GitCommand` | Class | Pure constructors for the `git` `GitInvocation` values this package spawns. | pure constructors for git argv/invocations with redacted secrets |
+| `GitCommandError` | Class | git ran and failed in a way that is not one of the recognized domain cases (`NotARepositoryError` / `UnknownRefError`), or the spawn itself failed before git could run at all. | git command failed or spawn/timeout failure, exit code and redacted argv and stderr |
 | `GitConfig` | Class | A lossless git-config document: the source text plus the structural index scanned from it. | lossless git-config document, parse and surgically edit git config text preserving formatting |
 | `GitConfigDiagnostic` | Class | One structural problem found while parsing git-config text. | one structural problem found parsing git-config text, malformed config line |
-| `GitConfigEditError` | Class | A surgical edit could not be applied to a {@link GitConfig} document. | a set/append/unset/section edit to a git config document was refused |
+| `GitConfigEditError` | Class | A surgical edit could not be applied to a `GitConfig` document. | a set/append/unset/section edit to a git config document was refused |
 | `GitConfigEntry` | Class | One variable line of a git-config document. | one variable line of a parsed git-config document, key and decoded value |
 | `GitConfigInclude` | Class | One `include` / `includeIf` directive found in the document. | one include or includeIf directive found in a git-config document, not resolved |
 | `GitConfigParseError` | Class | The document could not be parsed as git-config text. | git-config text failed to parse, malformed config, handle diagnostics |
 | `GitConfigScope` | TypeAlias | Which configuration file a read is scoped to. | |
 | `GitConfigSection` | Class | One section of a git-config document. | one [section] or [section "subsection"] block of a parsed git-config document |
 | `GitInvocation` | Interface | A pure `git` invocation: the spawnable command plus the diagnostic argv the error taxonomy is allowed to persist. | |
-| `GitShape` | Interface | The {@link Git} service shape. | |
+| `GitShape` | Interface | The `Git` service shape. | |
 | `Gitmodules` | Class | The typed view over a `.gitmodules` document: the decoded submodule entries, in first-appearance order. | typed view over a .gitmodules document, parse .gitmodules, decoded submodule entries |
-| `GitmodulesDecodeError` | Class | A `[submodule]` section could not be decoded into a {@link GitmodulesEntry}. | a [submodule] section in .gitmodules failed to decode, missing path or url |
+| `GitmodulesDecodeError` | Class | A `[submodule]` section could not be decoded into a `GitmodulesEntry`. | a [submodule] section in .gitmodules failed to decode, missing path or url |
 | `GitmodulesEntry` | Class | One `[submodule "<name>"]` entry of a `.gitmodules` document, decoded into typed fields. | one decoded submodule entry from .gitmodules: name path url branch shallow update ignore |
-| `GitmodulesParseError` | TypeAlias | Everything {@link Gitmodules.parseResult} can fail with: the text failed to parse as git-config at all, or a submodule section failed to decode. | |
+| `GitmodulesParseError` | TypeAlias | Everything `Gitmodules.parseResult` can fail with: the text failed to parse as git-config at all, or a submodule section failed to decode. | |
 | `LsFilesEntry` | Class | One index (staging area) entry, from `git ls-files --stage`. | one staged index entry from git ls-files --stage, mode oid stage path, staged gitlink |
 | `LsRemoteEntry` | Class | One ref a remote advertises, from `git ls-remote`. | one ref a remote advertises via git ls-remote, sha and full refname |
 | `LsTreeEntry` | Class | One entry of a `git ls-tree` listing. | one entry of a git ls-tree listing at a ref, mode type oid path |
@@ -36,7 +36,7 @@
 | `RefEntry` | Class | One ref, from `git for-each-ref`. | one ref from git for-each-ref, refname sha and pointed-at object type |
 | `StashEntry` | Class | One stash entry, from `git stash list`. | one stash entry from git stash list, reflog selector sha and subject |
 | `StatusEntry` | Class | One entry of a `git status --porcelain -z` listing. | one entry of git status --porcelain, index and working-tree status codes and path |
-| `StatusRenderOptions` | Interface | Options for {@link StatusEntry.toLine} / {@link StatusEntry.format}: how a rename/copy entry's path field renders. | |
+| `StatusRenderOptions` | Interface | Options for `StatusEntry.toLine` / `StatusEntry.format`: how a rename/copy entry's path field renders. | |
 | `SubmoduleStatusEntry` | Class | One line of a `git submodule status` listing. | one line of git submodule status, decoded state current uninitialized outOfSync conflict |
 | `UnknownRefError` | Class | `ref` does not resolve to an object in the repository at `cwd`. | a ref or ref range does not resolve to an object in the repository |
 | `WorktreeEntry` | Class | One working tree, from `git worktree list --porcelain`. | one working tree from git worktree list, path head branch detached bare locked prunable |

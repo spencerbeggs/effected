@@ -34,6 +34,9 @@ interface Row {
 	readonly kinds: readonly string[];
 	readonly purpose: string;
 	readonly required: boolean;
+	// Set only when this name appears exclusively in non-root entry points —
+	// the derived qualifier rendered as the first intent-cell part.
+	readonly fromEntry?: string;
 }
 
 interface Pkg {
@@ -73,30 +76,41 @@ const listPackages = (packagesDir: string): Pkg[] =>
 			modelPath: join(packagesDir, dir, "dist", "prod", "npm", "meta", `${dir}.api.json`),
 		}));
 
+// {@link Target} -> `Target`; {@link Target | label} / {@link Target|label} -> `label`.
+const LINK_RE = /\{@link\s+([^\s|}]+)(?:\s*\|\s*([^}]+))?\}/g;
+
 // First paragraph of a TSDoc comment: strip the frame, stop at the first
-// blank line or block tag. Pipes are escaped so the markdown table survives.
+// blank line, block tag, or code fence. Link macros unwrap to a backticked
+// name; pipes are escaped so the markdown table survives.
 const summaryOf = (doc: string | undefined): string => {
 	if (!doc) return "";
 	const lines = doc.split("\n").map((line) => line.replace(/^\s*\/?\*+\/?\s?/, "").trimEnd());
 	const summary: string[] = [];
 	for (const line of lines) {
 		const text = line.trim();
+		if (text.startsWith("```")) break;
 		if (text.startsWith("@")) break;
 		if (text === "" && summary.length > 0) break;
 		if (text !== "") summary.push(text);
 	}
-	return summary.join(" ").replace(/\|/g, "\\|");
+	return summary
+		.join(" ")
+		.replace(LINK_RE, (_match, target: string, label: string | undefined) => `\`${(label ?? target).trim()}\``)
+		.replace(/\|/g, "\\|");
 };
 
-const rowsOf = (modelPath: string): Row[] => {
+const rowsOf = (modelPath: string, npmName: string): Row[] => {
 	const model = JSON.parse(readFileSync(modelPath, "utf8")) as { members: readonly ApiMember[] };
-	const entry = model.members[0]?.members ?? [];
-	const byName = new Map<string, { kinds: Set<string>; doc: string | undefined }>();
-	for (const member of entry) {
-		const slot = byName.get(member.name) ?? { kinds: new Set<string>(), doc: undefined };
-		slot.kinds.add(member.kind);
-		if (slot.doc === undefined && member.docComment) slot.doc = member.docComment;
-		byName.set(member.name, slot);
+	const entryPoints = model.members ?? [];
+	const byName = new Map<string, { kinds: Set<string>; doc: string | undefined; entries: Set<string> }>();
+	for (const entryPoint of entryPoints) {
+		for (const member of entryPoint.members ?? []) {
+			const slot = byName.get(member.name) ?? { kinds: new Set<string>(), doc: undefined, entries: new Set<string>() };
+			slot.kinds.add(member.kind);
+			if (slot.doc === undefined && member.docComment) slot.doc = member.docComment;
+			slot.entries.add(entryPoint.name);
+			byName.set(member.name, slot);
+		}
 	}
 	for (const name of [...byName.keys()]) {
 		if (name.endsWith("_base") && byName.has(name.slice(0, -5))) byName.delete(name);
@@ -105,11 +119,15 @@ const rowsOf = (modelPath: string): Row[] => {
 		.sort(([a], [b]) => (a < b ? -1 : 1))
 		.map(([name, slot]) => {
 			const kinds = [...slot.kinds].sort((a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b));
+			// Root entry ("") always wins the qualifier: only a name confined to
+			// non-root entry points gets a derived "from `pkg/entry`" part.
+			const nonRootEntry = slot.entries.has("") ? undefined : [...slot.entries].sort()[0];
 			return {
 				name,
 				kinds,
 				purpose: summaryOf(slot.doc),
 				required: kinds.some((kind) => VALUE_KINDS.has(kind)),
+				...(nonRootEntry === undefined ? {} : { fromEntry: `from \`${npmName}/${nonRootEntry}\`` }),
 			};
 		});
 };
@@ -144,7 +162,7 @@ const main = () => {
 	}
 
 	const annotations = readAnnotations(annotationsPath);
-	const rowsByPkg = new Map(packages.map((pkg) => [pkg.dir, rowsOf(pkg.modelPath)]));
+	const rowsByPkg = new Map(packages.map((pkg) => [pkg.dir, rowsOf(pkg.modelPath, pkg.name)]));
 	const nameByDir = new Map(packages.map((pkg) => [pkg.dir, pkg.name]));
 
 	// Invert `implements` links so the contract side names its implementations.
@@ -168,10 +186,18 @@ const main = () => {
 				continue;
 			}
 			const names = new Set(rows.map((row) => row.name));
-			for (const name of Object.keys(constructs)) {
+			for (const [name, annotation] of Object.entries(constructs)) {
 				if (!names.has(name)) {
 					console.error(`stale annotation: ${pkg}.${name} is no longer exported`);
 					failed = true;
+				}
+				if (annotation.implements) {
+					const [targetPkg, targetName] = annotation.implements.split(".");
+					const targetNames = rowsByPkg.get(targetPkg ?? "")?.map((row) => row.name);
+					if (!targetNames?.includes(targetName ?? "")) {
+						console.error(`dangling implements: ${pkg}.${name} -> ${annotation.implements}`);
+						failed = true;
+					}
 				}
 			}
 		}
@@ -217,6 +243,7 @@ const main = () => {
 		for (const row of rows) {
 			const annotation = annotations[pkg.dir]?.[row.name];
 			const parts: string[] = [];
+			if (row.fromEntry) parts.push(row.fromEntry);
 			if (annotation?.intent) parts.push(annotation.intent);
 			if (annotation?.implements) {
 				const [targetPkg, targetName] = annotation.implements.split(".");

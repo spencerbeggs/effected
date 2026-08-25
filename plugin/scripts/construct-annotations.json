@@ -817,7 +817,10 @@
 		},
 		"classifyTag": "classify a git tag string as a release tag or a tracking alias",
 		"findWorkspaceRootSync": "synchronously find the workspace root, non-Effect entry point for config files like vitest.config",
-		"getWorkspacePackagesSync": "synchronously enumerate workspace packages, non-Effect entry point for config files"
+		"getWorkspacePackagesSync": "synchronously enumerate workspace packages, non-Effect entry point for config files",
+		"nodeFileSystem": "sync filesystem adapter over node:fs, exists read directory stat",
+		"nodePath": "sync path adapter, the running platform's node:path",
+		"nodeSyncOps": "bundle node filesystem and path adapters for the sync entry points"
 	},
 	"xdg": {
 		"AppDirKind": "the config, data, cache, state or runtime directory kind",

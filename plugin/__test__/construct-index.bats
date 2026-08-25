@@ -47,6 +47,8 @@ setup_file() {
 	grep -q 'implements `IdentityToken` from `@effected/demo`' "$out/impl.md"
 	# ...and the contract side names the implementation (derived by inversion)
 	grep -q 'implemented by `OidcTokenIssuer` in `@effected/impl`' "$out/demo.md"
+	# subpath-only entry point construct gets a derived from-package qualifier
+	grep -qF 'from `@effected/demo/sub`' "$out/demo.md"
 }
 
 @test "fixture: generate exits 2 naming the package when a doc model is missing" {
@@ -89,6 +91,27 @@ setup_file() {
 		--annotations "$stale"
 	[ "$status" -eq 1 ]
 	[[ "$output" == *"stale annotation: demo.Departed"* ]]
+}
+
+@test "fixture: check --require-intent fails naming SubThing when its annotation is missing" {
+	missing="$BATS_TEST_TMPDIR/missing-subthing.json"
+	printf '{"demo":{"NtiaReport":"validate NTIA minimum elements","IdentityToken":{"intent":"contract for minting an identity token"}}}\n' > "$missing"
+	run node "$GEN" check \
+		--packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$missing" \
+		--require-intent
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"missing intent annotation: demo.SubThing"* ]]
+}
+
+@test "fixture: check fails on a dangling implements target" {
+	dangling="$BATS_TEST_TMPDIR/dangling.json"
+	printf '{"demo":{"NtiaReport":{"intent":"validate NTIA minimum elements","implements":"demo.DoesNotExist"}}}\n' > "$dangling"
+	run node "$GEN" check \
+		--packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$dangling"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"dangling implements: demo.NtiaReport -> demo.DoesNotExist"* ]]
 }
 
 @test "repo: committed constructs/ is exactly what regeneration produces" {

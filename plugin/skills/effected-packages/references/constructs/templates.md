@@ -10,7 +10,7 @@
 | `Eol` | TypeAlias | The line ending a document uses. | |
 | `ManagedSection` | Class | Managed sections in files: read, compare, sync and remove delimited blocks whose surrounding content belongs to the user. | update a generated section in a file, read compare and remove blocks |
 | `ManagedSectionOptions` | Interface | How a `ManagedSection` layer reads and writes markers. | |
-| `ManagedSectionShape` | Interface | The {@link ManagedSection} service shape. | |
+| `ManagedSectionShape` | Interface | The `ManagedSection` service shape. | |
 | `PlacedSection` | Class | A managed section as found in a document, carrying the span it occupies. | locate a managed section's position in a document, span of an existing BEGIN/END block |
 | `Section` | Class | A managed section: an identity plus the content its owner wants between the markers. | declare the content that belongs inside a managed region, identity plus payload |
 | `SectionDialect` | Class | The marker vocabulary: what phrase delimits a managed section, and which comment styles a document is scanned for. | configure the marker phrase and comment styles a document is scanned with |
