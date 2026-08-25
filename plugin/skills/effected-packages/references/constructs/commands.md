@@ -6,27 +6,20 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `CommandFailedError` | Class | A command that could not be run, or that ran and failed. | |
-| `CommandFailedError_base` | Variable | | |
 | `CommandOutput` | Class | What one completed run produced. | |
 | `CommandOutputError` | Class | A command ran, but its output could not be used. | |
-| `CommandOutputError_base` | Variable | | |
-| `CommandOutput_base` | Variable | | |
 | `DEFAULT_MAX_OUTPUT_BYTES` | Variable | Default ceiling on captured bytes per stream (16 MiB). | |
 | `ExecContext` | Class | How to run a project-local binary here. | |
-| `ExecContext_base` | Variable | | |
 | `Launcher` | Variable + TypeAlias | The decoded type of {@link (Launcher:variable)}. | |
 | `LauncherPrefixes` | Interface | The per-launcher argv prefix record: exec, dlx and script-runner. | |
 | `LocalExec` | Class | Contract: how to run a project-local binary in this project. | |
 | `LocalExecError` | Class | The project-local execution context could not be determined. | |
-| `LocalExecError_base` | Variable | | |
 | `LocalExecShape` | Interface | The {@link LocalExec} service shape. | |
-| `LocalExec_base` | Variable | | |
 | `MismatchPolicy` | Variable + TypeAlias | The decoded type of {@link (MismatchPolicy:variable)}. | |
 | `REDACTED` | Variable | The placeholder every redaction writes in place of a secret. | |
 | `Redaction` | Class | Secret scrubbing for command arguments and captured output. | |
 | `ResolvedSource` | Variable + TypeAlias | The decoded type of {@link (ResolvedSource:variable)}. | |
 | `ResolvedTool` | Class | A tool that was found, with everything discovery learned about it. | |
-| `ResolvedTool_base` | Variable | | |
 | `Retry` | Class | Transience classification for command failures, and the retry policy built on it. | |
 | `Run` | Class | Structured running of core `ChildProcess.Command` values. | |
 | `RunOptions` | Interface | Policy for one run. | |
@@ -39,20 +32,12 @@
 | `Tool` | Class | A CLI tool to resolve, and the constraints resolution must satisfy. | |
 | `ToolDiscovery` | Class | Resolves CLI tools: globally on `PATH`, or project-locally through the launcher {@link LocalExec} describes. | |
 | `ToolDiscoveryShape` | Interface | The {@link ToolDiscovery} service shape. | |
-| `ToolDiscovery_base` | Variable | | |
 | `ToolNotFoundError` | Class | A tool could not be found where it was required. | |
-| `ToolNotFoundError_base` | Variable | | |
 | `ToolRefusedError` | Class | A tool name that cannot safely be spawned was refused before any process started. | |
-| `ToolRefusedError_base` | Variable | | |
 | `ToolResolutionFailure` | TypeAlias | Every way `ToolDiscovery.resolve` can fail. | |
 | `ToolSource` | Variable + TypeAlias | The decoded type of {@link (ToolSource:variable)}. | |
 | `ToolVersionMismatchError` | Class | The global and project-local copies disagree, and the tool's policy is `"fail"`. | |
-| `ToolVersionMismatchError_base` | Variable | | |
-| `Tool_base` | Variable | | |
 | `VersionFlag` | Class | Ask the tool for its version with a flag and read the answer out of stdout. | |
-| `VersionFlag_base` | Variable | | |
 | `VersionJson` | Class | Ask the tool for JSON and read the version from a dotted path within it. | |
-| `VersionJson_base` | Variable | | |
 | `VersionNone` | Class | Do not ask for a version; presence is the only question. | |
-| `VersionNone_base` | Variable | | |
 | `VersionProbe` | Variable + TypeAlias | The decoded type of {@link (VersionProbe:variable)}. | |

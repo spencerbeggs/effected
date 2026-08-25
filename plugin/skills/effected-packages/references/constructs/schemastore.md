@@ -10,60 +10,42 @@
 | `CanonicalJsonError` | TypeAlias | Union of the failures {@link CanonicalJson.serialize} can raise. | |
 | `CanonicalJsonOptions` | Interface | Options for {@link CanonicalJson.serialize}. | |
 | `CarrierDepthExceededError` | Class | Indicates that the carrier re-graft walk nested past the package's hardening cap (256 levels), which also intercepts cyclic inputs before they can recurse forever. | |
-| `CarrierDepthExceededError_base` | Variable | | |
 | `CatalogEntry` | Class | A SchemaStore `catalog.json` entry: the class is the schema, so decoding an existing entry and encoding one for submission are the same artifact. `versions` is present only for versioned catalogs ({@link SchemaVersioning.catalogUrls} assembles both modes). | |
-| `CatalogEntry_base` | Variable | | |
 | `CatalogLintFinding` | Class | A fileMatch hygiene finding: a value in a lint report, not an error — SchemaStore reviewers reject entries over these, so surfacing them locally is the point, but a warned entry is still a valid entry. | |
-| `CatalogLintFinding_base` | Variable | | |
 | `CatalogUrls` | Interface | The `url`/`versions` half of a catalog entry, as assembled by {@link SchemaVersioning.catalogUrls}. | |
 | `CheckResult` | Interface | The result of {@link SchemaFileShape.check}: the same two answers {@link WriteResult} carries, for a call that touched nothing. | |
 | `DRAFT_07_META_SCHEMA` | Variable | The Draft-07 meta-schema URL SchemaStore documents declare as `$schema`. | |
 | `DocumentDiff` | Class | Classifies the difference between two emitted schema documents by meaning: identical, documentation-only, or a change to the validation contract. | |
 | `DocumentLint` | Class | Owned structural checks over an assembled {@link StoreDocument} — the always-available half of the validation story (a real-engine gate like ajv strict mode stays at the consumer's edge): | |
 | `DocumentLintFinding` | Class | A structural lint finding over an assembled document: a value in a report, never an error channel — a document with findings is still a document, and the consumer decides what a finding gates. | |
-| `DocumentLintFinding_base` | Variable | | |
 | `InvalidSchemaVersionError` | Class | Indicates that a string is not a valid SchemaStore version label. | |
-| `InvalidSchemaVersionError_base` | Variable | | |
 | `JsonDepthExceededError` | Class | Indicates that the serialization input nests deeper than the package's hardening cap (256 levels), which also intercepts cyclic values before they can recurse forever. | |
-| `JsonDepthExceededError_base` | Variable | | |
 | `KeywordFamilies` | Class | The declared non-standard keyword families as one predicate: the vscode-json-languageservice set by exact name, plus the `x-taplo`, `x-tombi-` and `x-intellij-` prefixes. | |
 | `NonJsonValueError` | Class | Indicates that a value reachable from the serialization input is not a JSON value: `undefined`, a function, a symbol, a `bigint`, a non-finite number, or an object that is neither an array nor a plain object. | |
-| `NonJsonValueError_base` | Variable | | |
 | `PipelineCheckResult` | Interface | What {@link SchemaPipeline.check} found for one target — the same report without the write. | |
 | `PipelineFinding` | Class | One problem found while emitting a target, from either gate, normalized so a single policy predicate can judge both. | |
-| `PipelineFinding_base` | Variable | | |
 | `PipelineResult` | Interface | What the pipeline did with one target. | |
 | `SchemaChange` | TypeAlias | What differs between two schema documents: | |
 | `SchemaConversionError` | Class | Indicates that an Effect Schema could not be converted into a SchemaStore document — core's JSON Schema generation rejected the schema, or the generated document nested past the hardening cap. | |
-| `SchemaConversionError_base` | Variable | | |
 | `SchemaFile` | Class | Reads and writes emitted schema documents over core `FileSystem` / `Path` — the package's one IO surface. The layer requires those services; provide `@effect/platform-node`'s `NodeFileSystem` / `NodePath` (or a bun equivalent) at the application boundary. | |
 | `SchemaFileNotFoundError` | Class | Indicates that no schema file exists at the expected path. Carries its own tag for `catchTag` routing. | |
-| `SchemaFileNotFoundError_base` | Variable | | |
 | `SchemaFileReadError` | Class | Indicates that a schema file could not be read from the filesystem (a filesystem error other than not-found). | |
-| `SchemaFileReadError_base` | Variable | | |
 | `SchemaFileShape` | Interface | The shape of the {@link SchemaFile} service — the value produced by {@link SchemaFile.make} and carried by its layer. | |
 | `SchemaFileWriteError` | Class | Indicates that a schema file could not be written to the filesystem. Narrowed to the filesystem failure only — a serialization failure surfaces as its own `CanonicalJsonError`, never wrapped here. | |
-| `SchemaFileWriteError_base` | Variable | | |
-| `SchemaFile_base` | Variable | | |
 | `SchemaGateError` | Class | Indicates that at least one target's findings blocked under the active gating policy. Carries every blocking finding, so a caller renders one report instead of discovering problems one run at a time. | |
-| `SchemaGateError_base` | Variable | | |
 | `SchemaPipeline` | Class | The emit pipeline over a target manifest: generate, lint, validate, gate, write — the loop every consumer of this package was writing by hand. | |
 | `SchemaPipelineOptions` | Interface | Options for {@link SchemaPipeline.run} and {@link SchemaPipeline.check}. | |
 | `SchemaTarget` | Class + Interface | Constructors for `SchemaTarget` values. | |
 | `SchemaValidator` | Class | Real-engine JSON Schema document validation, closed by default over ajv — the engine SchemaStore's own gate is defined in terms of. | |
 | `SchemaValidatorError` | Class | Indicates that the validation engine behind the {@link SchemaValidator} contract failed as a *mechanism* — it could not run at all. | |
-| `SchemaValidatorError_base` | Variable | | |
 | `SchemaValidatorOptions` | Interface | Options for {@link SchemaValidatorShape.validate}. | |
 | `SchemaValidatorShape` | Interface | The shape of the {@link SchemaValidator} service — what an implementation provides. | |
-| `SchemaValidator_base` | Variable | | |
 | `SchemaVersion` | Variable + TypeAlias | The type of a validated SchemaStore version label. | |
 | `SchemaVersioning` | Class | Both SchemaStore catalog modes as pure derivations: unversioned (a plain `name.json` file, `url` only) and versioned (`name-<version>.json` files — SchemaStore's own suffix convention — a `versions` map, and `url` pointing at the latest version). | |
 | `SchemaWriteOptions` | Interface | Options for {@link SchemaFileShape.write} and {@link SchemaFileShape.check}: the {@link CanonicalJsonOptions} the document serializes under, plus how `write` decides whether to touch the file. | |
 | `StoreDocument` | Class | A SchemaStore-shaped Draft-07 JSON Schema document assembled from an Effect Schema source: `$schema` (the Draft-07 meta-schema) + `$id` + the root schema + the `$defs` pool. | |
 | `StoreDocumentOptions` | Interface | Options for {@link StoreDocument.fromSchema}. | |
-| `StoreDocument_base` | Variable | | |
 | `ValidationFinding` | Class | One problem a validation engine found with a document: a value in a report, never an error channel — the consumer decides what a finding gates. | |
-| `ValidationFinding_base` | Variable | | |
 | `WriteChange` | TypeAlias | How the document being written relates to what was already on disk: {@link SchemaChange} plus `"created"` for a file that did not exist, so there was nothing to compare against. | |
 | `WriteOutcome` | TypeAlias | What {@link SchemaFileShape.write} did to the filesystem: `"written"` when it wrote, `"unchanged"` when it left the file alone — reported as a value so the caller decides what to surface, never a log. | |
 | `WriteResult` | Interface | The result of {@link SchemaFileShape.write}: what happened to the file, and what the difference MEANT. | |

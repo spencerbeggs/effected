@@ -7,32 +7,23 @@
 | --- | --- | --- | --- |
 | `ConfigCodec` | Interface | A pluggable configuration file codec: how to turn file content into a value and back. | |
 | `ConfigCodecError` | Class | Indicates that a codec failed to parse or stringify configuration content. | |
-| `ConfigCodecError_base` | Variable | | |
 | `ConfigDefaultPathMissingError` | Class | Indicates that {@link ConfigFileShape.save} or {@link ConfigFileShape.update} was called on a service configured without a `defaultPath`. | |
-| `ConfigDefaultPathMissingError_base` | Variable | | |
 | `ConfigEncryptionError` | Class | Indicates that an encryption, decryption, key-derivation or base64 step failed. | |
-| `ConfigEncryptionError_base` | Variable | | |
 | `ConfigEvent` | Class | A published event: the payload plus the instant it occurred. | |
 | `ConfigEventPayload` | Variable + TypeAlias | The decoded form of {@link (ConfigEventPayload:variable)}: a tagged union a subscriber narrows with `switch (payload._tag)`. | |
-| `ConfigEvent_base` | Variable | | |
 | `ConfigEvents` | Class | The opt-in event hook: a PubSub of {@link ConfigEvent} that consumers subscribe to. | |
 | `ConfigEventsShape` | Interface | The service shape {@link ConfigEvents} provides. | |
-| `ConfigEvents_base` | Variable | | |
 | `ConfigFile` | Class | The config file service: a per-schema service factory, its layers, and the one-shot {@link ConfigFile.read}. | |
 | `ConfigFileMigration` | Interface | A single versioned migration step. | |
 | `ConfigFileNotFoundError` | Class | Indicates that the resolver chain produced no configuration source. | |
-| `ConfigFileNotFoundError_base` | Variable | | |
 | `ConfigFileOptions` | Interface | Options for {@link ConfigFile.layer}. | |
 | `ConfigFileReadError` | Class | Indicates that a config file could not be read from the filesystem. | |
-| `ConfigFileReadError_base` | Variable | | |
 | `ConfigFileShape` | Interface | The config file service, generic over the decoded config type `A`. | |
 | `ConfigFileTestOptions` | Interface | Options for {@link ConfigFile.testLayer}. | |
 | `ConfigFileWriteError` | Class | Indicates that a config file could not be written to the filesystem. | |
-| `ConfigFileWriteError_base` | Variable | | |
 | `ConfigLoadError` | TypeAlias | The failure modes of the full discovery-and-load path. | |
 | `ConfigMigration` | Class | Versioned migration support for config codecs. | |
 | `ConfigMigrationError` | Class | Indicates that a versioned config migration failed. | |
-| `ConfigMigrationError_base` | Variable | | |
 | `ConfigMigrationOptions` | Interface | Options for {@link ConfigMigration.make}. | |
 | `ConfigReadError` | TypeAlias | The failure modes of reading one known path. | |
 | `ConfigReadOptions` | Interface | Options for {@link ConfigFile.read}. | |
@@ -42,7 +33,6 @@
 | `ConfigSourceRef` | Variable | A reference to one configuration source that contributed to a load. | |
 | `ConfigUpdateError` | TypeAlias | The failure modes of {@link ConfigFileShape.update}, which loads and then saves. | |
 | `ConfigValidationError` | Class | Indicates that parsed config content did not satisfy the schema, or that a caller-supplied `validate` rejected it. | |
-| `ConfigValidationError_base` | Variable | | |
 | `ConfigWriteError` | TypeAlias | The failure modes of encoding and writing one known path. | |
 | `EncryptedCodec` | Function | Wrap any {@link (ConfigCodec:interface)} with AES-GCM encryption. | |
 | `EncryptedCodecKey` | Variable + TypeAlias | Key source union for {@link EncryptedCodec}. | |

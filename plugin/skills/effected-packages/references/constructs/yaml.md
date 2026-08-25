@@ -13,81 +13,55 @@
 | `ScalarChomp` | Variable + TypeAlias | The union of all block-scalar chomping indicator string literals. | |
 | `ScalarStyle` | Variable + TypeAlias | The union of all scalar style string literals. | |
 | `StyleConflict` | Class | One strict-resolution conflict: a `(rule, dimension)` whose observed spellings disagree. `candidates` carries every spelling with its count and first-seen position, ordered by count descending (dominant first). | |
-| `StyleConflict_base` | Variable | | |
 | `StyleEvidence` | Class | Per-dimension style evidence (#345): what the observed sources say about each inferable `(rule, dimension)` — vote histograms with first-seen positions, and measured floors. | |
-| `StyleEvidence_base` | Variable | | |
 | `StyleFloor` | Class | One measured style floor (#345): a value the source PROVES is at least `value`, without proving what the configured limit should be — the longest observed line proves `line-length.max` is at least that long, not what it is. Floors are carried in the evidence for callers that want them and are never resolved into config options; fabricating a max from the largest value one happened to see would be lying with a straight face. | |
 | `StyleFloorTally` | Class | An accumulated {@link StyleFloor} for a `(rule, dimension)` pair: the largest value the observed sources prove the limit is AT LEAST. Merging takes the maximum. Floors are informational — never resolved into config options (see {@link StyleFloor}). | |
-| `StyleFloorTally_base` | Variable | | |
-| `StyleFloor_base` | Variable | | |
 | `StyleObservation` | TypeAlias | What a rule's `infer` hook yields per occurrence: a categorical {@link StyleVote} or a measured {@link StyleFloor}. | |
 | `StyleVote` | Class | One categorical style observation (#345): a single occurrence of a style choice in the source, voting a `value` for an inference `dimension`. | |
 | `StyleVoteTally` | Class | An accumulated tally of one {@link StyleVote} spelling: how many times a `value` was voted for a `(rule, dimension)` pair, and the position of the FIRST occurrence seen (merging keeps the left operand's position, so on a multi-file merge the first file that exhibited the spelling names it). | |
-| `StyleVoteTally_base` | Variable | | |
-| `StyleVote_base` | Variable | | |
 | `Yaml` | Class | Static entry points for YAML parsing, stringification, comment stripping, semantic equality and the schema factories. Not instantiable. | |
 | `YamlAlias` | Class | A YAML alias AST node, referencing a previously defined anchor by name (without the leading `*`). | |
 | `YamlAliasEncoded` | Interface | The encoded (plain-object) form of a {@link YamlAlias}. See {@link YamlScalarEncoded} for why the encoded forms are named interfaces. | |
-| `YamlAlias_base` | Variable | | |
 | `YamlBoundCodec` | Interface | A domain codec pre-bound to its two directions, returned by {@link Yaml.bind}: the composed `schema` (what {@link Yaml.schema} returns) plus `decode` and `encode` functions derived from it once, so callers need no generic `Schema` machinery at the use site. | |
 | `YamlComposerErrorCode` | Variable + TypeAlias | The union of all composer-stage error code string literals. | |
 | `YamlDiagnostic` | Class | One structured diagnostic: its {@link (YamlErrorCode:type)}, a human-readable `message`, and its exact position (`offset`/`length`, plus zero-based `line`/`character`). Used for both errors and warnings-as-data; fatality is a property of the code — see {@link YamlDiagnostic.isFatal}. | |
-| `YamlDiagnostic_base` | Variable | | |
 | `YamlDirective` | Class | A YAML directive appearing before a document (e.g. `%YAML 1.2` or `%TAG ! tag:example.com,2000:`). `"YAML"` and `"TAG"` are the YAML 1.2 spec-defined directives; any other name is a reserved directive preserved for round-trip fidelity. | |
-| `YamlDirective_base` | Variable | | |
 | `YamlDocument` | Class | A parsed YAML document: the root {@link (YamlNode:type)} (or `null` when empty), recovered `errors` and `warnings` as {@link YamlDiagnostic} data, the {@link YamlDirective} list, the optional document-level comments and the `---`/`...` framing flags (absent flags read as `false`). | |
-| `YamlDocument_base` | Variable | | |
 | `YamlEdit` | Class | A non-mutating text edit: replace the span `[offset, offset + length)` with `content`. Set `length` to `0` to insert, `content` to `""` to delete. | |
-| `YamlEdit_base` | Variable | | |
 | `YamlErrorCode` | Variable + TypeAlias | The union of all YAML error code string literals. | |
 | `YamlFormat` | Class | Formatting and modification statics. Not instantiable. | |
 | `YamlFormattingOptions` | Class | Options controlling formatting behavior: every {@link YamlStringifyOptions} field (derived, not hand-duplicated — including `indentSequences`, `quoteStyle` and `quoteCompat`) plus `preserveComments` (default `true`), `range` (restrict edits to a region; see the module-level remarks on the `range` parameter vs. this field) and `requoteScalars` (default `false`). | |
-| `YamlFormattingOptions_base` | Variable | | |
 | `YamlLexErrorCode` | Variable + TypeAlias | The union of all lexer-stage error code string literals. | |
 | `YamlLint` | Class | Linting statics. Not instantiable. | |
 | `YamlLintConfig` | Class | The lint configuration: a `rules` map keying rule ids (built-in or custom) to a severity literal or a typed per-rule options object. | |
-| `YamlLintConfig_base` | Variable | | |
 | `YamlLintDiagnostic` | Class | A single lint finding: the reporting rule, its severity, a positioned span and optionally a surgical fix. | |
-| `YamlLintDiagnostic_base` | Variable | | |
 | `YamlLintInference` | Interface | A lenient inference report: the inferred config plus the residual — the diagnostics that config still produces on the observed text ("here is your config, and the places that do not match it"). | |
 | `YamlLintRuleSetting` | Variable + TypeAlias | The union type of one `rules`-map entry. | |
 | `YamlLintSeverity` | Variable + TypeAlias | The union of lint severity string literals. | |
 | `YamlMap` | Class | A YAML mapping AST node, representing a collection of {@link YamlPair} entries. | |
 | `YamlMapEncoded` | Interface | The encoded (plain-object) form of a {@link YamlMap}. See {@link YamlScalarEncoded} for why the encoded forms are named interfaces. | |
-| `YamlMap_base` | Variable | | |
 | `YamlModificationError` | Class | Raised when `YamlFormat.modify` cannot navigate the requested path against the composed AST (a structural mismatch), the source fails to parse, the source is a multi-document stream (`MultiDocumentStream` — a path names no particular document of a stream, so modify refuses rather than guessing), or the document carries `%YAML`/`%TAG` directives (`DirectiveCarryingDocument` — modify does not re-emit directive lines, and dropping a `%TAG` would orphan the shorthand tags that depend on it). Carries structured {@link YamlDiagnostic} entries — never a collapsed `reason` string (the structure-preserving-errors house rule). The error itself has no `code` field: read the code from the diagnostics — `error.diagnostics[0].code` is the primary failure. | |
-| `YamlModificationError_base` | Variable | | |
 | `YamlModifyErrorCode` | Variable + TypeAlias | The union of all modify-stage error code string literals. | |
 | `YamlNode` | Variable + TypeAlias | The union of all YAML AST value node types. | |
 | `YamlPair` | Class | A YAML key-value pair AST node, representing one entry within a mapping. `value` is `null` when absent (e.g. `key:` with no value). | |
-| `YamlPair_base` | Variable | | |
 | `YamlParseError` | Class | Error-recovery parse failure: aggregates every fatal {@link YamlDiagnostic} encountered, so a single failure reports the whole batch. Raised by {@link Yaml.parse}, {@link Yaml.parseAll}, `YamlDocument.parse`/`parseAll` and the decode direction of the schema factories. The error itself has no `code` field: read the code from the diagnostics — `error.diagnostics[0].code` is the primary failure. | |
 | `YamlParseErrorCode` | Variable + TypeAlias | The union of all parser-stage error code string literals. | |
-| `YamlParseError_base` | Variable | | |
 | `YamlParseOptions` | Class | Options controlling parse behavior. All fields are omissible; absent fields resolve to `strict` `true`, `maxAliasCount` `100` (the alias-based denial-of-service guard) and `uniqueKeys` `true` (duplicate mapping keys are errors). | |
-| `YamlParseOptions_base` | Variable | | |
 | `YamlPath` | TypeAlias | An ordered sequence of {@link (YamlSegment:type)} values describing a location within a YAML document tree. | |
 | `YamlRange` | Class | A range within a YAML document, expressed as a zero-based character `offset` and a `length` in UTF-16 code units. Pass to `YamlFormat.format` to restrict formatting to a region. | |
 | `YamlRangeLike` | TypeAlias | A range accepted at the `format`/`formatToString`/etc. call sites: either a {@link YamlRange} instance or a plain `{ offset, length }` literal (the two are structurally interchangeable — only `offset`/`length` are read). | |
-| `YamlRange_base` | Variable | | |
 | `YamlRule` | Interface | The public rule interface — built-ins and custom rules are the same shape, and config references either by `id`; there is no privileged built-in mechanism a custom rule cannot reach. | |
 | `YamlScalar` | Class | A YAML scalar AST node, representing a leaf value such as a string, number, boolean, or null. | |
 | `YamlScalarEncoded` | Interface | The encoded (plain-object) form of a {@link YamlScalar} — the class fields without the instance methods. Named so the recursive {@link (YamlNode:variable)} codec can state its encoded side without a circular type annotation. | |
-| `YamlScalar_base` | Variable | | |
 | `YamlSegment` | TypeAlias | A single path segment: a `string` for mapping keys or a `number` for sequence indices. | |
 | `YamlSeq` | Class | A YAML sequence AST node, representing an ordered list of {@link (YamlNode:type)} values. | |
 | `YamlSeqEncoded` | Interface | The encoded (plain-object) form of a {@link YamlSeq}. See {@link YamlScalarEncoded} for why the encoded forms are named interfaces. | |
-| `YamlSeq_base` | Variable | | |
 | `YamlStringifyError` | Class | Stringification failure (the circular-reference guard), carrying structured {@link YamlDiagnostic} entries and the offending value. Raised by {@link Yaml.stringify}, `YamlDocument#stringify` and the encode direction of the schema factories. The error itself has no `code` field: read the code from the diagnostics — `error.diagnostics[0].code` is the primary failure. | |
 | `YamlStringifyErrorCode` | Variable + TypeAlias | The union of all stringifier-stage error code string literals. | |
-| `YamlStringifyError_base` | Variable | | |
 | `YamlStringifyOptions` | Class | Options controlling stringify behavior. All fields are omissible; absent fields resolve to `indent` `2`, `lineWidth` `0`, `defaultScalarStyle` `"plain"`, `defaultCollectionStyle` `"block"`, `sortKeys` `false`, `indentSequences` `false`, `quoteStyle` `"single"`, `quoteCompat` absent (no dialect-compat quoting), `finalNewline` `true` and `forceDefaultStyles` `false`. | |
-| `YamlStringifyOptions_base` | Variable | | |
 | `YamlStyleConflictError` | Class | Raised by strict config inference when observed evidence is not unanimous: carries every conflicting `(rule, dimension)` as a structured {@link StyleConflict} — dimension, all spellings, counts and positions — never a collapsed `reason` string (the structure-preserving-errors house rule). Unobserved dimensions never conflict: they fall back to the base config's defaults. | |
-| `YamlStyleConflictError_base` | Variable | | |
 | `YamlToken` | Class | A single positioned YAML lexical token. | |
 | `YamlTokenKind` | Variable + TypeAlias | The union of all lexical token kind string literals. | |
-| `YamlToken_base` | Variable | | |
 | `YamlTokens` | Class | Tokenizer statics. Not instantiable. | |
 | `YamlVisitor` | Class | SAX-style YAML AST visitor statics. Not instantiable. | |
 | `YamlVisitorEvent` | Variable + TypeAlias | The discriminated union of YAML AST visitor events. Every variant carries `path` (segments from the document root) and `depth` (zero-based nesting level); collection/scalar begin events also carry `style` and the optional `tag`/`anchor`. `Error` carries a materialized {@link YamlDiagnostic} for every diagnostic recorded while composing the document — fatal or not. | |

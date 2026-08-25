@@ -6,66 +6,37 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `BranchEntry` | Class | One local (or remote-tracking) branch, from `git branch --list`. | |
-| `BranchEntry_base` | Variable | | |
 | `CommitInfo` | Class | The metadata of a single commit, read via `git log -1` with NUL-separated `%H` / `%G?` / `%B` placeholders. | |
-| `CommitInfo_base` | Variable | | |
 | `ConfigListEntry` | Class | One configuration entry, from `git config --list`. | |
-| `ConfigListEntry_base` | Variable | | |
 | `DirtyWorktreeError` | Class | A merge-shaped operation refused to start because local modifications would be overwritten — git's refusal reads `Your local changes ... would be overwritten by merge`. | |
-| `DirtyWorktreeError_base` | Variable | | |
 | `Git` | Class | Typed git introspection over core's `ChildProcessSpawner`: read a repository's state at any ref without checking it out (including the network read `lsRemote` and the index read `lsFiles`), plus the mutating tier — checkout/fetch, the working-tree restore trio and stash, branches and tags, remotes, worktrees, commit/push/pull, submodules, sparse-checkout, config writes and staging — that changes it. Every mutating method's TSDoc opens with the literal word `Mutating:`. | |
 | `GitCommand` | Class | Pure constructors for the `git` {@link GitInvocation} values this package spawns. | |
 | `GitCommandError` | Class | git ran and failed in a way that is not one of the recognized domain cases ({@link NotARepositoryError} / {@link UnknownRefError}), or the spawn itself failed before git could run at all. | |
-| `GitCommandError_base` | Variable | | |
 | `GitConfig` | Class | A lossless git-config document: the source text plus the structural index scanned from it. | |
 | `GitConfigDiagnostic` | Class | One structural problem found while parsing git-config text. | |
-| `GitConfigDiagnostic_base` | Variable | | |
 | `GitConfigEditError` | Class | A surgical edit could not be applied to a {@link GitConfig} document. | |
-| `GitConfigEditError_base` | Variable | | |
 | `GitConfigEntry` | Class | One variable line of a git-config document. | |
-| `GitConfigEntry_base` | Variable | | |
 | `GitConfigInclude` | Class | One `include` / `includeIf` directive found in the document. | |
-| `GitConfigInclude_base` | Variable | | |
 | `GitConfigParseError` | Class | The document could not be parsed as git-config text. | |
-| `GitConfigParseError_base` | Variable | | |
 | `GitConfigScope` | TypeAlias | Which configuration file a read is scoped to. | |
 | `GitConfigSection` | Class | One section of a git-config document. | |
-| `GitConfigSection_base` | Variable | | |
-| `GitConfig_base` | Variable | | |
 | `GitInvocation` | Interface | A pure `git` invocation: the spawnable command plus the diagnostic argv the error taxonomy is allowed to persist. | |
 | `GitShape` | Interface | The {@link Git} service shape. | |
-| `Git_base` | Variable | | |
 | `Gitmodules` | Class | The typed view over a `.gitmodules` document: the decoded submodule entries, in first-appearance order. | |
 | `GitmodulesDecodeError` | Class | A `[submodule]` section could not be decoded into a {@link GitmodulesEntry}. | |
-| `GitmodulesDecodeError_base` | Variable | | |
 | `GitmodulesEntry` | Class | One `[submodule "<name>"]` entry of a `.gitmodules` document, decoded into typed fields. | |
-| `GitmodulesEntry_base` | Variable | | |
 | `GitmodulesParseError` | TypeAlias | Everything {@link Gitmodules.parseResult} can fail with: the text failed to parse as git-config at all, or a submodule section failed to decode. | |
-| `Gitmodules_base` | Variable | | |
 | `LsFilesEntry` | Class | One index (staging area) entry, from `git ls-files --stage`. | |
-| `LsFilesEntry_base` | Variable | | |
 | `LsRemoteEntry` | Class | One ref a remote advertises, from `git ls-remote`. | |
-| `LsRemoteEntry_base` | Variable | | |
 | `LsTreeEntry` | Class | One entry of a `git ls-tree` listing. | |
-| `LsTreeEntry_base` | Variable | | |
 | `MergeConflictError` | Class | A merge-shaped operation (`pull`, `stash pop`, `stash apply`) stopped with conflict markers in the working tree. | |
-| `MergeConflictError_base` | Variable | | |
 | `NameStatusEntry` | Class | One entry of a `git diff --name-status` listing. | |
-| `NameStatusEntry_base` | Variable | | |
 | `NonFastForwardError` | Class | A `git push` was rejected because the remote ref has moved: the classic non-fast-forward rejection (`fetch first` / `non-fast-forward`), or a `--force-with-lease` lease failure (`stale info`). | |
-| `NonFastForwardError_base` | Variable | | |
 | `NotARepositoryError` | Class | `cwd` is not inside a git work tree. | |
-| `NotARepositoryError_base` | Variable | | |
 | `RefEntry` | Class | One ref, from `git for-each-ref`. | |
-| `RefEntry_base` | Variable | | |
 | `StashEntry` | Class | One stash entry, from `git stash list`. | |
-| `StashEntry_base` | Variable | | |
 | `StatusEntry` | Class | One entry of a `git status --porcelain -z` listing. | |
-| `StatusEntry_base` | Variable | | |
 | `StatusRenderOptions` | Interface | Options for {@link StatusEntry.toLine} / {@link StatusEntry.format}: how a rename/copy entry's path field renders. | |
 | `SubmoduleStatusEntry` | Class | One line of a `git submodule status` listing. | |
-| `SubmoduleStatusEntry_base` | Variable | | |
 | `UnknownRefError` | Class | `ref` does not resolve to an object in the repository at `cwd`. | |
-| `UnknownRefError_base` | Variable | | |
 | `WorktreeEntry` | Class | One working tree, from `git worktree list --porcelain`. | |
-| `WorktreeEntry_base` | Variable | | |

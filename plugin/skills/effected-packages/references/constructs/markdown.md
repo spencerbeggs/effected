@@ -6,42 +6,30 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `Blockquote` | Class | Blockquote — a section quoted from somewhere else. | |
-| `Blockquote_base` | Variable | | |
 | `Break` | Class | Break — a hard line break. | |
 | `BreakStyle` | Variable + TypeAlias | The union of all break-style string literals. | |
-| `Break_base` | Variable | | |
 | `BulletChar` | Variable + TypeAlias | The union of all bullet-character literals. | |
 | `Code` | Class | Code — a code block, fenced or indented. | |
 | `CodeBlockStyle` | Variable + TypeAlias | The union of all code-block-style string literals. | |
-| `Code_base` | Variable | | |
 | `Definition` | Class | Definition — a link reference definition (`[ref]: /url "title"`). | |
-| `Definition_base` | Variable | | |
 | `Delete` | Class | Delete — GFM strikethrough (`~~foo~~`). Content that is no longer accurate or relevant. | |
-| `Delete_base` | Variable | | |
 | `DocumentHeading` | Interface | A heading entry from {@link MarkdownDocument.headings}: the {@link Heading} node plus the derivations navigation wants — its `depth` and its plain-text content. | |
 | `DocumentLink` | Interface | A link entry from {@link MarkdownDocument.links}: the link-bearing node and the URL it points at. | |
 | `DocumentSection` | Class | A heading-delimited span from {@link MarkdownDocument.sections}: the heading, its depth, the source `range` the section occupies and the root-level blocks that follow the heading inside it. | |
 | `Emphasis` | Class | Emphasis — `*foo*` or `_foo_`. | |
 | `EmphasisChar` | Variable + TypeAlias | The union of all emphasis-marker character literals. | |
-| `Emphasis_base` | Variable | | |
 | `FenceChar` | Variable + TypeAlias | The union of all fence-character literals. | |
 | `FlowContent` | Variable + TypeAlias | The union of all flow-content node types. Includes mdast's `Content` category (`Definition \| Paragraph`) inline, as the spec's `FlowContent` definition does, the GFM extras `FootnoteDefinition` and `Table`, and the MDX extras {@link MdxJsxFlowElement} and {@link MdxFlowExpression} per mdast-util-mdx's `BlockContentMap` registrations — the parser never produces the MDX members; they serve constructed trees. | |
 | `FootnoteDefinition` | Class | FootnoteDefinition — a GFM footnote definition (`[^alpha]: bravo.`), the content a {@link FootnoteReference} points at. | |
-| `FootnoteDefinition_base` | Variable | | |
 | `FootnoteReference` | Class | FootnoteReference — a GFM footnote marker (`[^alpha]`), associating this point in the text with a {@link FootnoteDefinition} by identifier. | |
-| `FootnoteReference_base` | Variable | | |
 | `Frontmatter` | Class | Frontmatter — the raw, fidelity-preserving capture of a document's metadata block. `value` is the source text between the fences, exactly as written (never inline-parsed, never decoded); `format` records which fence captured it. The position spans the whole block including both fence lines. | |
 | `FrontmatterCodec` | Interface | A frontmatter codec: how to turn a raw `Frontmatter` capture into decoded data, and data back into a serialized frontmatter body. | |
 | `FrontmatterContent` | Variable + TypeAlias | The union of all frontmatter-content node types. | |
 | `FrontmatterDecodeError` | Class | Indicates that a frontmatter capture's content failed to parse in its declared format. | |
-| `FrontmatterDecodeError_base` | Variable | | |
 | `FrontmatterEncodeError` | Class | Indicates that frontmatter data failed to serialize in a codec's format. | |
-| `FrontmatterEncodeError_base` | Variable | | |
 | `FrontmatterFormat` | Variable + TypeAlias | The union of all frontmatter format string literals. | |
 | `FrontmatterFormatMismatchError` | Class | Indicates that a frontmatter codec was handed a capture of a different format — a yaml codec applied to a `+++` toml capture, for example. | |
-| `FrontmatterFormatMismatchError_base` | Variable | | |
 | `FrontmatterMissingError` | Class | Indicates that a document handed to a frontmatter decoder carries no frontmatter capture. | |
-| `FrontmatterMissingError_base` | Variable | | |
 | `FrontmatterMissingReason` | Variable + TypeAlias | Why a frontmatter decoder found no capture on a document. | |
 | `FrontmatterNewline` | Variable + TypeAlias | The union of all fence line-terminator literals. | |
 | `FrontmatterResolveError` | TypeAlias | The union of everything declaration resolution can fail with. | |
@@ -49,135 +37,86 @@
 | `FrontmatterSchemaResolver` | Interface | The resolver seam: given a classified declaration **and** the whole decoded frontmatter data, produce the schema to validate with, or fail typed. | |
 | `FrontmatterSource` | Class | The string-level frontmatter facade: split raw source at the fence boundaries and join it back, without parsing anything. | |
 | `FrontmatterSourceBlock` | Class | A frontmatter block at string level: the format its fence declared, the exact bytes between the fence lines, and the fence lines' terminator. | |
-| `FrontmatterSourceBlock_base` | Variable | | |
 | `FrontmatterSourceSplit` | Class | The result of {@link FrontmatterSource.split}: the frontmatter block when one exists, the exact body remainder, and the body's byte offset. | |
-| `FrontmatterSourceSplit_base` | Variable | | |
 | `FrontmatterValidationError` | Class | Indicates that decoded frontmatter data did not satisfy the consumer's schema. | |
-| `FrontmatterValidationError_base` | Variable | | |
 | `FrontmatterWriteError` | TypeAlias | The union of everything the frontmatter write seam can fail with. | |
-| `Frontmatter_base` | Variable | | |
 | `Heading` | Class | Heading — an ATX or setext heading of depth 1 to 6. | |
 | `HeadingDepth` | Variable + TypeAlias | The union of all legal heading depths. | |
 | `HeadingStyle` | Variable + TypeAlias | The union of all heading-style string literals. | |
-| `Heading_base` | Variable | | |
 | `Html` | Class | Html — a fragment of raw HTML, kept verbatim. Used for both HTML blocks (flow) and inline raw HTML (phrasing); the same node type serves both, as mdast specifies. | |
-| `Html_base` | Variable | | |
 | `Image` | Class | Image — an inline image (`![alt](url "title")`). | |
 | `ImageReference` | Class | ImageReference — an image referring to a {@link Definition} by identifier (`![alt][ref]`). | |
-| `ImageReference_base` | Variable | | |
-| `Image_base` | Variable | | |
 | `InlineCode` | Class | InlineCode — a code span: `foo` written between backtick fences in the source. `value` holds the span's content with the backtick fence stripped and the spec's space-stripping applied. | |
-| `InlineCode_base` | Variable | | |
 | `JsonFrontmatter` | Variable | The json frontmatter codec, over `@effected/jsonc`. | |
 | `Link` | Class | Link — an inline link (`[text](url "title")`), including autolinks. | |
 | `LinkBearingNode` | TypeAlias | The node types {@link MarkdownDocument.links} collects: the nodes that carry an outbound URL themselves ({@link Link}, {@link Image}, {@link Definition}) and the reference nodes that reach one through the definition index ({@link LinkReference}, {@link ImageReference}). | |
 | `LinkReference` | Class | LinkReference — a link referring to a {@link Definition} by identifier (`[text][ref]`). | |
-| `LinkReference_base` | Variable | | |
-| `Link_base` | Variable | | |
 | `List` | Class | List — an ordered or unordered list. | |
 | `ListContent` | Variable + TypeAlias | The union of all list-content node types. | |
 | `ListDelimiter` | Variable + TypeAlias | The union of all ordered-list delimiter literals. | |
 | `ListItem` | Class | ListItem — one item of a {@link List}. | |
-| `ListItem_base` | Variable | | |
-| `List_base` | Variable | | |
 | `Markdown` | Class | The markdown facade: parse markdown source — GFM by default, CommonMark by option — into an mdast-shaped {@link Root} tree, as a pure `Result` or as an `Effect`. | |
 | `MarkdownDiagnostic` | Class | One structured diagnostic: its {@link (MarkdownParseErrorCode:type)}, a human-readable `message`, and its exact position (`offset`/`length`, plus zero-based `line`/`character`). | |
-| `MarkdownDiagnostic_base` | Variable | | |
 | `MarkdownDialect` | Variable + TypeAlias | The union of all markdown dialect string literals. | |
 | `MarkdownDocument` | Class | A parsed markdown document: the original `source`, the mdast-shaped {@link Root} tree, the non-fatal {@link MarkdownDiagnostic}s the parse produced, and the link-reference `definitions` index. | |
-| `MarkdownDocument_base` | Variable | | |
 | `MarkdownEdit` | Class | A non-mutating text edit: replace the span `[offset, offset + length)` with `content`. Set `length` to `0` to insert, `content` to `""` to delete. | |
-| `MarkdownEdit_base` | Variable | | |
 | `MarkdownFormat` | Class | Formatting and modification statics. Not instantiable. | |
 | `MarkdownFormattingOptions` | Class | Options controlling formatting: which concrete-syntax markers to normalize, plus the parse knobs (`dialect`, `frontmatter`) the formatter parses the source with (same defaults as `Markdown.parse`). Every marker option is optional and independent; an absent option normalizes nothing. | |
-| `MarkdownFormattingOptions_base` | Variable | | |
 | `MarkdownFrontmatter` | Class | The frontmatter schema composition facade — typed gray-matter parity. | |
 | `MarkdownModificationError` | Class | Raised when `MarkdownFormat.modify` cannot perform the requested replacement: the target node is not in the document (`NodeNotInDocument`), the target kind or splice context is outside the day-one scope (`UnsupportedTarget`), the fragment's content category does not fit the target's slot (`FragmentCategoryMismatch`), or the fragment trips the stringifier's hardening guard (`FragmentUnrenderable`). Carries the typed `code` plus the target's `offset`/`length` where known — never a collapsed reason string alone. | |
 | `MarkdownModificationErrorCode` | Variable + TypeAlias | The union of all modification-error code string literals. | |
-| `MarkdownModificationError_base` | Variable | | |
 | `MarkdownNode` | Variable + TypeAlias | The union of every mdast node type this package produces — the content categories plus {@link Root}. | |
 | `MarkdownNodeOfType` | TypeAlias | The node class whose `type` tag is `T` — how a type-string selector narrows its result (`MarkdownNodeOfType<"heading">` is {@link Heading}). | |
 | `MarkdownNodeType` | TypeAlias | The union of every node `type` tag this package produces — the selector vocabulary of `MarkdownDocument.find`/`findAll`. | |
 | `MarkdownParseError` | Class | Parse failure: the {@link MarkdownDiagnostic} describing why the document was rejected. | |
 | `MarkdownParseErrorCode` | Variable + TypeAlias | The union of all markdown parse-error code string literals. | |
-| `MarkdownParseError_base` | Variable | | |
 | `MarkdownParseOptions` | Class | Options controlling parse behavior: `dialect` (omitted, `"gfm"`) and `frontmatter` (omitted, `false` — capture is opt-in). | |
-| `MarkdownParseOptions_base` | Variable | | |
 | `MarkdownPath` | TypeAlias | An ordered sequence of {@link MarkdownSegment} values describing a location within a markdown document tree. | |
 | `MarkdownRange` | Class | A range within a markdown document, expressed as a zero-based character `offset` and a `length` in UTF-16 code units. Pass to `MarkdownFormat.format` to restrict formatting to a region. | |
 | `MarkdownRangeLike` | TypeAlias | A range accepted at the `format`/`formatToString` call sites: either a {@link MarkdownRange} instance or a plain `{ offset, length }` literal (the two are structurally interchangeable — only `offset`/`length` are read). | |
-| `MarkdownRange_base` | Variable | | |
 | `MarkdownSegment` | TypeAlias | A single path segment: a `number` for child indices in the node tree, or a `string` for named addressing (reserved for the navigation surface — e.g. definition identifiers — which arrives with the visitor phase). | |
 | `MarkdownStringifyError` | Class | Stringify failure: the {@link MarkdownDiagnostic} describing why the tree was refused. | |
-| `MarkdownStringifyError_base` | Variable | | |
 | `MarkdownVisitor` | Class | SAX-style markdown tree visitor statics. Not instantiable. | |
 | `MarkdownVisitorEvent` | Variable + TypeAlias | The discriminated union of markdown visitor events, in document pre-order. `Enter` fires when the walk reaches a node, `Exit` when it leaves — for a leaf the two fire back to back. Every variant carries `path` (child indexes from the root; the root's own path is empty) and `depth` (zero-based; the root is 0). `Error` is terminal: it carries the depth-guard diagnostic for a decoded foreign tree nested past `MAX_NESTING_DEPTH` and nothing follows it. | |
 | `Mdast` | Class | The mdast projection facade — the remark-ecosystem interop boundary. | |
 | `MdastDecodeError` | Class | Indicates that foreign mdast input failed to decode into the package's node classes. | |
-| `MdastDecodeError_base` | Variable | | |
 | `MdastNode` | Interface | A plain mdast node: a `type` tag plus whatever fields that type carries. | |
 | `MdxFlowExpression` | Class | MdxFlowExpression — an expression in flow (block) position (`{a + b}` on its own lines); `value` holds the expression source text between the braces. | |
-| `MdxFlowExpression_base` | Variable | | |
 | `MdxJsxAttribute` | Class | MdxJsxAttribute — a named JSX attribute (`<a b="c" />`). `value` is a string literal, a {@link MdxJsxAttributeValueExpression}, or — for a boolean attribute (`<a b />`) — absent or `null`, both of which the mdast-util-mdx-jsx contract spells (its parser writes `null`; absence is the constructed-tree spelling). The serializer treats the two identically. | |
 | `MdxJsxAttributeContent` | Variable + TypeAlias | The union of all JSX attribute node types. | |
 | `MdxJsxAttributeValueExpression` | Class | MdxJsxAttributeValueExpression — a JSX attribute value written as an expression (`<a b={c} />`); `value` holds the expression source text between the braces, never evaluated or parsed. | |
-| `MdxJsxAttributeValueExpression_base` | Variable | | |
-| `MdxJsxAttribute_base` | Variable | | |
 | `MdxJsxExpressionAttribute` | Class | MdxJsxExpressionAttribute — a JSX attribute written whole as an expression (`<a {...b} />`); `value` holds the expression source text between the braces. | |
-| `MdxJsxExpressionAttribute_base` | Variable | | |
 | `MdxJsxFlowElement` | Class | MdxJsxFlowElement — a JSX element in flow (block) position (`<Component />` on its own lines). `name` is `null` for a fragment (`<></>`); children are flow content, per the oracle's `BlockContent \| DefinitionContent` model. | |
-| `MdxJsxFlowElement_base` | Variable | | |
 | `MdxJsxTextElement` | Class | MdxJsxTextElement — a JSX element in text (phrasing) position (`a <b>c</b> d`). `name` is `null` for a fragment; children are phrasing content. Refuses attributes on a fragment and an empty-string name, on the same terms as {@link MdxJsxFlowElement}. | |
-| `MdxJsxTextElement_base` | Variable | | |
 | `MdxTextExpression` | Class | MdxTextExpression — an expression in text (phrasing) position (`a {b} c`); `value` holds the expression source text between the braces. | |
-| `MdxTextExpression_base` | Variable | | |
 | `MdxjsEsm` | Class | MdxjsEsm — an MDX ESM block (`import`/`export` statements); `value` holds the statement source verbatim. | |
-| `MdxjsEsm_base` | Variable | | |
 | `Paragraph` | Class | Paragraph — a run of phrasing content. | |
-| `Paragraph_base` | Variable | | |
 | `PhrasingContent` | Variable + TypeAlias | The union of all phrasing-content node types. Widened for MDX with {@link MdxJsxTextElement} and {@link MdxTextExpression}, per mdast-util-mdx's `PhrasingContentMap` registrations — the parser never produces either; they serve constructed trees. | |
 | `Point` | Class | A single point in a source document: 1-based `line` and `column`, 0-based `offset`. | |
-| `Point_base` | Variable | | |
 | `Position` | Class | The source span of a node: `start` inclusive, `end` exclusive. | |
-| `Position_base` | Variable | | |
 | `ReferenceType` | Variable + TypeAlias | The union of all reference-type string literals. | |
 | `Root` | Class | Root — a whole document, and the only node that is never a child. | |
-| `Root_base` | Variable | | |
 | `RowContent` | Variable + TypeAlias | The union of all row-content node types. | |
 | `SchemaDeclaration` | Variable + TypeAlias | The union of all classified `$schema` declaration shapes. | |
 | `SchemaDeclarationByName` | Class | A `$schema` declaration referencing a registered schema by name — any other string, with the committed `name[@version]` grammar. | |
-| `SchemaDeclarationByName_base` | Variable | | |
 | `SchemaDeclarationByPath` | Class | A `$schema` declaration referencing a schema by path — any string starting `./`, `../` or `/` (a bundle- or file-relative reference). | |
-| `SchemaDeclarationByPath_base` | Variable | | |
 | `SchemaDeclarationByUrl` | Class | A `$schema` declaration referencing a schema by URL — any string containing `://`. | |
-| `SchemaDeclarationByUrl_base` | Variable | | |
 | `SchemaDeclarationInline` | Class | A `$schema` declaration carrying an inline JSON-Schema-like document — the declaration value is itself a mapping. | |
-| `SchemaDeclarationInline_base` | Variable | | |
 | `SchemaDeclarationInvalidError` | Class | Indicates that a `$schema` value does not classify: not a string or a mapping, an empty string, or a name whose version segment falls outside the committed `X[.Y[.Z]]` grammar. | |
-| `SchemaDeclarationInvalidError_base` | Variable | | |
 | `SchemaDeclarationMissingError` | Class | Indicates that frontmatter data carries no `$schema` declaration where one is required — the `requireDeclaration` strictness knob, or a registry resolver that has nothing to dispatch on. | |
-| `SchemaDeclarationMissingError_base` | Variable | | |
 | `SchemaNameUnknownError` | Class | Indicates that a declaration named a schema the resolver does not know — an unregistered name, or a URL/path/inline declaration handed to the name-keyed registry resolver. | |
-| `SchemaNameUnknownError_base` | Variable | | |
 | `SchemaResolver` | Class | The `$schema` declaration classifier and the package's one built-in resolver implementation. | |
 | `SchemaVersionUnresolvableError` | Class | Indicates that a declaration's name is registered but its version segments match no registration exactly — distinct from {@link SchemaNameUnknownError} by design, so a legal-but-unsatisfied partial version (`skill@2` against a `skill@2.1.0` registration) is diagnosable as a version problem, not an unknown schema. | |
-| `SchemaVersionUnresolvableError_base` | Variable | | |
 | `SectionHeadingMatch` | TypeAlias | How {@link MarkdownDocument.sectionByHeading} decides a section matches: an exact trimmed-text string, a `RegExp`, or a predicate over the text and the section. | |
 | `SectionQueryOptions` | Interface | Narrowing options for {@link MarkdownDocument.firstSection} and {@link MarkdownDocument.sectionByHeading}. | |
 | `Strong` | Class | Strong — `**foo**` or `__foo__`. | |
-| `Strong_base` | Variable | | |
 | `Table` | Class | Table — GFM two-dimensional data. | |
 | `TableAlign` | Variable + TypeAlias | The union of all table-alignment string literals. | |
 | `TableCell` | Class | TableCell — one cell of a {@link TableRow}: a header cell if its grandparent {@link Table}'s first row, a data cell otherwise. | |
-| `TableCell_base` | Variable | | |
 | `TableContent` | Variable + TypeAlias | The union of all table-content node types. | |
 | `TableRow` | Class | TableRow — one row of a {@link Table}: the labels of the columns if it is the table's first row, a data row otherwise. | |
-| `TableRow_base` | Variable | | |
-| `Table_base` | Variable | | |
 | `Text` | Class | Text — a run of literal characters, with entity references and backslash escapes already resolved into `value`. | |
-| `Text_base` | Variable | | |
 | `ThematicBreak` | Class | ThematicBreak — a horizontal rule (`---`, `***`, `___`). | |
 | `ThematicBreakChar` | Variable + TypeAlias | The union of all thematic-break character literals. | |
-| `ThematicBreak_base` | Variable | | |
 | `TomlFrontmatter` | Variable | The toml frontmatter codec, over `@effected/toml`. | |
 | `YamlFrontmatter` | Variable | The yaml frontmatter codec, over `@effected/yaml`. | |

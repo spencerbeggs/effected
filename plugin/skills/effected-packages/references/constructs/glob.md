@@ -7,9 +7,5 @@
 | --- | --- | --- | --- |
 | `GlobPattern` | Class | A compiled glob pattern: the schema IS the domain class. One encoded field, `source`; the compiled matcher lives in a private field the schema never encodes, built lazily for `make`/decode-constructed instances and pre-warmed by {@link GlobPattern.compile}. | |
 | `GlobPatternError` | Class | Typed failure raised when a glob pattern trips a compile-time guard: over-length, brace-expansion budget exhaustion, or nesting past the depth cap. Malformed input is never a defect — this is the only failure the package's fallible boundaries ({@link GlobPattern.compile} and `GlobSet.compile`) can produce. | |
-| `GlobPatternError_base` | Variable | | |
 | `GlobPatternOptions` | Class | The full minimatch options surface, schema-validated. Invalid options are a developer wiring error and throw at `make` — a defect at construction; the typed channel stays reserved for malformed patterns. | |
-| `GlobPatternOptions_base` | Variable | | |
-| `GlobPattern_base` | Variable | | |
 | `GlobSet` | Class | A compiled multi-pattern include/exclude set: `matches(candidate)` is true when some include accepts it and no exclude does. One encoded field, `patterns` — the source text of every member, preserved verbatim; the classified indexes live in a private field the schema never encodes. | |
-| `GlobSet_base` | Variable | | |

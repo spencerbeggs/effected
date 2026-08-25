@@ -98,6 +98,9 @@ const rowsOf = (modelPath: string): Row[] => {
 		if (slot.doc === undefined && member.docComment) slot.doc = member.docComment;
 		byName.set(member.name, slot);
 	}
+	for (const name of [...byName.keys()]) {
+		if (name.endsWith("_base") && byName.has(name.slice(0, -5))) byName.delete(name);
+	}
 	return [...byName.entries()]
 		.sort(([a], [b]) => (a < b ? -1 : 1))
 		.map(([name, slot]) => {
@@ -222,7 +225,8 @@ const main = () => {
 			for (const impl of implementedBy.get(`${pkg.dir}.${row.name}`) ?? []) {
 				parts.push(`implemented by \`${impl.name}\` in \`${nameByDir.get(impl.pkg) ?? impl.pkg}\``);
 			}
-			lines.push(`| \`${row.name}\` | ${row.kinds.join(" + ")} | ${row.purpose} | ${parts.join(" — ")} |`);
+			const cells = [`\`${row.name}\``, row.kinds.join(" + "), row.purpose, parts.join(" — ")];
+			lines.push(`|${cells.map((cell) => (cell === "" ? " " : ` ${cell} `)).join("|")}|`);
 		}
 		lines.push("");
 		writeFileSync(join(outDir, `${pkg.dir}.md`), lines.join("\n"));

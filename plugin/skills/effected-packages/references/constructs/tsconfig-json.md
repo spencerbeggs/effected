@@ -11,7 +11,6 @@
 | `FindNearestOptions` | Interface | Options for {@link TsconfigDiscovery.findNearest}. | |
 | `Jsx` | Variable | `compilerOptions.jsx`. There is no `none` literal — tsc's option map has only these five. | |
 | `JsxConfig` | Class | The JSX transform configuration a `jsx` compiler option implies: which runtime (`"automatic"` for `react-jsx` / `react-jsxdev`, `"classic"` for `react`) and, for the automatic runtime, the import source the transform emits (`jsxImportSource`, defaulting to `"react"` per tsc). | |
-| `JsxConfig_base` | Variable | | |
 | `Lib` | Variable | `compilerOptions.lib` member values — the complete TS 6.0.3 set, lowercase canonical, per R1.2. | |
 | `Module` | Variable | `compilerOptions.module` — the module output format. `none`, `amd`, `umd` and `system` are deprecated in TS 6.0. | |
 | `ModuleDetection` | Variable | `compilerOptions.moduleDetection`. | |
@@ -29,14 +28,12 @@
 | `TsEnumCodec` | Class | The string↔numeric enum codec for `compilerOptions` / `watchOptions` families, per R1.6. Plain data: every lookup is a synchronous map read returning `Option.Option`, never a thrown error. | |
 | `TsconfigDiscovery` | Class | Nearest-config upward discovery for `tsconfig.json`. | |
 | `TsconfigExtendsError` | Class | Raised when a config's `extends` chain cannot be resolved: an unresolvable target (`"not-found"`), a re-entrant chain (`"cycle"`), a chain deeper than `MAX_EXTENDS_DEPTH` (`"depth"`), or an empty target string (`"empty"`). `path` is the config whose `extends` failed, `target` is what it tried to extend (the offending spec for `"not-found"`/`"empty"`, the re-entered config path for `"cycle"`, the refused config for `"depth"`), and `chain` is the full resolution chain of normalized absolute paths. | |
-| `TsconfigExtendsError_base` | Variable | | |
 | `TsconfigJson` | Variable + Namespace | Type-only companion namespace for {@link (TsconfigJson:variable)}, exposing its decoded and encoded shapes plus the JSONC codec. | |
 | `TsconfigJsonFromString` | Variable | Decodes a JSONC-encoded tsconfig.json document straight into {@link (TsconfigJson:variable)}. Bound once at module top level — `Jsonc.schema` is schema-producing, and this is the shared instance (the house `FromString` idiom, R3.3; `TsconfigJson` is a `Schema.StructWithRest` value rather than a `Schema.Class`, so the codec is a sibling export, not a static). | |
 | `TsconfigLoader` | Class | The tsconfig.json loader: {@link TsconfigLoader.load} reads and decodes one config file, {@link TsconfigLoader.resolve} runs the full load -\> extends -\> merge -\> `${configDir}` pipeline, and {@link TsconfigLoader.compilerOptions} projects the resolved result down to its merged `compilerOptions`. | |
 | `TsconfigLoaderSync` | Class | The synchronous tsconfig.json loader facade: the {@link TsconfigLoader} pipeline run under `Effect.runSyncExit` against consumer-supplied {@link SyncFileSystem} and {@link SyncPath} operations. For sync-only host APIs (bundler plugin hooks, config factories); everything else should use {@link TsconfigLoader} with real platform layers. | |
 | `TsconfigLoaderSyncOptions` | Interface | The consumer-supplied operations backing one {@link TsconfigLoaderSync} call: the file operations and the path implementation. Both are required — this package never imports `node:*` and never assumes posix, so the platform binding is entirely the caller's. | |
 | `TsconfigParseError` | Class | Raised when a tsconfig.json document fails to parse or decode. `path` is the file path when the failure is file-bound, and the empty string otherwise (e.g. decoding an in-memory string). The loader (Task 8) wraps file-bound decode failures in this error; this module only declares it. | |
-| `TsconfigParseError_base` | Variable | | |
 | `TypeAcquisition` | Variable + Namespace | Type-only companion namespace for {@link (TypeAcquisition:variable)}. | |
 | `WatchDirectory` | Variable | `watchOptions.watchDirectory`. | |
 | `WatchFile` | Variable | `watchOptions.watchFile`. | |

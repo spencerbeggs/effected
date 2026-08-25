@@ -7,67 +7,45 @@
 | --- | --- | --- | --- |
 | `BinField` | Variable | The `bin` field: a single string path or a name→path map. Not meant to be referenced directly. | |
 | `Bugs` | Class | Where to report problems with a package. | |
-| `Bugs_base` | Variable | | |
 | `Dependency` | Class | A resolved dependency entry pairing a package name with its version specifier and the `kind` of map it came from (`@effected/npm`'s `DependencyKind`). The protocol predicates delegate to `DependencySpecifier`. | |
 | `DependencyMapField` | Variable | A string→string map field decoding a plain JSON object to a `HashMap`, defaulting to an empty map when the key is absent. Backs the four dependency maps and `scripts`. Not meant to be referenced directly. | |
-| `Dependency_base` | Variable | | |
 | `DevEngine` | Class | A single `devEngines` constraint with a name and optional `version` / `onFail`. | |
 | `DevEngineOrArray` | Variable | A `devEngines` constraint slot: a single {@link DevEngine} or an array of them. | |
-| `DevEngine_base` | Variable | | |
 | `DevEngines` | TypeAlias | The decoded `devEngines` field type. | |
 | `DevEnginesSchema` | Variable | The `devEngines` field schema, modeling runtime and package-manager constraints as optional {@link DevEngine} slots. | |
 | `EntryPointManifest` | Interface | The manifest fields entry resolution reads. | |
 | `ExportsField` | Variable | The `exports` field: a single string entry point or an open object of conditional exports. Not meant to be referenced directly. | |
 | `InvalidPackageNameError` | Class | Indicates that a string could not be used as a valid npm package name. | |
-| `InvalidPackageNameError_base` | Variable | | |
 | `InvalidSpdxLicenseError` | Class | Indicates that a string is not a valid SPDX license identifier or expression. | |
-| `InvalidSpdxLicenseError_base` | Variable | | |
 | `LenientFieldIssue` | Interface | One degraded field from a lenient decode: the top-level `field` that did not match its permissive shape, a human-readable description of the `expected` shape, and the raw `value` found there (also preserved verbatim under `LenientManifest.rest[field]`). | |
 | `LenientManifest` | Class | The shape-lenient view of a package.json document, for discovery and sniffing — probing a fetched tarball's manifest, walking a `node_modules` tree, listing candidate packages — where the document is other people's data and one malformed field must not fail the read. | |
-| `LenientManifest_base` | Variable | | |
 | `Package` | Class | A package.json document as a rich `Schema.Class`: typed known fields, a `rest` catch-all preserving unknown top-level fields across a read/edit/write cycle, computed getters, and immutable mutation statics. | |
 | `PackageDecodeError` | Class | Indicates that a JSON value could not be decoded into a valid {@link Package}. | |
-| `PackageDecodeError_base` | Variable | | |
 | `PackageFieldEdit` | Interface | One surgical field edit for {@link PackageJsonFile}'s `modify`: set `value` at `path`, or delete the key there when `value` is `undefined` (the `@effected/jsonc` / `@effected/yaml` modify convention — deletion is spelled with an explicit `value: undefined`, so it is always deliberate). | |
 | `PackageFormatOptions` | Interface | Options for {@link Package.toJsonString} and `PackageJsonFile.write`. | |
 | `PackageFormatTextOptions` | Interface | Options for {@link PackageJsonFormat.formatToString}. | |
 | `PackageIndent` | TypeAlias | Indentation for serialized package.json output: a spaces count, `"tab"` for real tab indentation, or `"preserve"` to reuse the indentation detected from the original source text (falling back to the two-space default when no source text is available). | |
 | `PackageJsonFile` | Class | Reads and writes package.json over core `FileSystem` / `Path`. The layer requires those services; provide `@effect/platform-node`'s `NodeFileSystem` / `NodePath` (or a bun equivalent) at the application boundary. | |
 | `PackageJsonFileShape` | Interface | The shape of the {@link PackageJsonFile} service — the value produced by {@link PackageJsonFile.make} and carried by its layer. | |
-| `PackageJsonFile_base` | Variable | | |
 | `PackageJsonFormat` | Class | Decode-free canonical sort and format statics. Not instantiable. | |
 | `PackageJsonModifyError` | Class | Indicates that a surgical modification could not be applied: the value on the navigation path is not the container kind the next path segment requires. The underlying `@effected/jsonc` `JsoncModificationError` — which names the expected container and the 1-based depth of the mismatch — is preserved on the structured `cause` field, never stringified. | |
-| `PackageJsonModifyError_base` | Variable | | |
 | `PackageJsonNotFoundError` | Class | Indicates that no package.json file exists at the expected path. Carries its own tag for `catchTag` routing. | |
-| `PackageJsonNotFoundError_base` | Variable | | |
 | `PackageJsonParseError` | Class | Indicates that a package.json file's contents are not valid JSON. | |
-| `PackageJsonParseError_base` | Variable | | |
 | `PackageJsonReadError` | Class | Indicates that a package.json file could not be read from the filesystem (a filesystem error other than not-found). | |
-| `PackageJsonReadError_base` | Variable | | |
 | `PackageJsonSyntaxError` | Class | Indicates that a text input could not be treated as a package.json document: either it is not valid JSON (`"invalid-json"`, carrying the underlying `SyntaxError` on `cause`) or it parsed to something other than a JSON object (`"not-an-object"` — an array, a scalar or `null`). | |
-| `PackageJsonSyntaxError_base` | Variable | | |
 | `PackageJsonWriteError` | Class | Indicates that a package.json file could not be written to the filesystem. Narrowed to the filesystem-write failure only — never a resolution or encode error. | |
-| `PackageJsonWriteError_base` | Variable | | |
 | `PackageManager` | Class | A structured `packageManager` value with `name`, `version` and an optional `integrity` hash. | |
 | `PackageManagerRange` | Class | A structured `packageManager` value whose version position is a semver **range**, carried verbatim: `name`, `range` and an optional `integrity` hash. | |
-| `PackageManagerRange_base` | Variable | | |
-| `PackageManager_base` | Variable | | |
 | `PackageManifest` | Class | A package.json document as it exists on disk, publishable or not: every field of {@link Package} with `name` and `version` optional and `packageManager` accepting the range spelling. | |
-| `PackageManifest_base` | Variable | | |
 | `PackageName` | Variable + TypeAlias | A valid npm package name, scoped or unscoped. | |
 | `PackagePatch` | TypeAlias | A patch over {@link Package}'s modeled fields — every field optional, derived from the schema so it never drifts from the model. | |
 | `PackageValidationError` | Class | Indicates that a {@link Package} failed one or more validation rules. | |
-| `PackageValidationError_base` | Variable | | |
 | `PackageValidator` | Class | Validates a {@link Package} against a set of {@link ValidationRule}s, aggregating every failure into one {@link PackageValidationError}. | |
-| `PackageValidator_base` | Variable | | |
-| `Package_base` | Variable | | |
 | `PeerDependenciesMetaField` | Variable | The `peerDependenciesMeta` field: a map of package name to `{ optional? }`. Not meant to be referenced directly. | |
 | `Person` | Class | A structured person object with `name`, optional `email` / `url`, and a `rest` catch-all preserving any additional keys across a read/write cycle. | |
-| `Person_base` | Variable | | |
 | `PublishConfigField` | Variable | The `publishConfig` field: an open record preserving known npm keys (`access`, `directory`, ...) plus extensions like `targets`. Not meant to be referenced directly. | |
 | `Repository` | Class | Where a package's source lives. | |
 | `RepositoryField` | Variable | The `repository` field's raw wire shape: a shorthand string or an object. | |
-| `Repository_base` | Variable | | |
 | `ResolveEntryPointOptions` | Interface | Options for {@link resolveEntryPoint}. | |
 | `RuleFailure` | Interface | A single validation-rule failure. | |
 | `ScopedPackageName` | Variable + TypeAlias | A valid npm scoped package name. | |
@@ -75,7 +53,6 @@
 | `StringMapField` | Variable | A string→string map field decoding a plain JSON object to a `HashMap`, with no default (an absent key stays absent). Backs `engines`. Not meant to be referenced directly. | |
 | `UnresolvedDependency` | TypeAlias | A {@link Dependency} whose specifier is an unresolved `catalog:` or `workspace:` protocol. | |
 | `UnresolvedEntryPointError` | Class | Raised when a manifest resolves no root entry point. | |
-| `UnresolvedEntryPointError_base` | Variable | | |
 | `UnscopedPackageName` | Variable + TypeAlias | A valid npm unscoped package name. | |
 | `ValidationRule` | Interface | A single validation rule: a name and a check that fails with a {@link RuleFailure}. | |
 | `defaultRules` | Variable | The default validation rules: license, description, repository and not-private. | |

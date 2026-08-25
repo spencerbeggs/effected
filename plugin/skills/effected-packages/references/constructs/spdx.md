@@ -6,20 +6,12 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `AndNode` | Class | The conjunction (`AND`) of two sub-expressions. Recursive: its children are any {@link (SpdxExpression:type)}, expressed via `Schema.suspend`. | |
-| `AndNode_base` | Variable | | |
 | `InvalidSpdxExpressionError` | Class | Indicates that a string is not a valid SPDX expression fragment: an unrecognized license or exception identifier, or a malformed `LicenseRef-`/`DocumentRef-` reference. | |
-| `InvalidSpdxExpressionError_base` | Variable | | |
 | `License` | Class | A validated SPDX license identifier: an Effect `Schema.Class` whose `id` is either a member of the SPDX License List or a well-formed `LicenseRef-`/`DocumentRef-` reference. The class doubles as its own schema — there is no `*Schema` suffix. | |
 | `LicenseException` | Class | A validated SPDX license-exception identifier: an Effect `Schema.Class` whose `id` is a member of the SPDX exception list. The class doubles as its own schema. | |
-| `LicenseException_base` | Variable | | |
 | `LicenseNode` | Class | A simple-license leaf of an SPDX expression: a license identifier with the trailing `+` ("or later") marker. This is the expression-level license node — distinct from, and a finer altitude than, the catalog `License` class in `./License.js`, which validates and resolves an identifier but does not model the `+` operator. | |
-| `LicenseNode_base` | Variable | | |
 | `LicenseRefNode` | Class | A `LicenseRef`/`DocumentRef` reference leaf. The `LicenseRef-`/`DocumentRef-` prefixes and the `:` separator are structural and are not stored; only the bare idstrings are kept, so the node round-trips to canonical form without duplicating the grammar. | |
-| `LicenseRefNode_base` | Variable | | |
-| `License_base` | Variable | | |
 | `OrNode` | Class | The disjunction (`OR`) of two sub-expressions. Recursive: its children are any {@link (SpdxExpression:type)}, expressed via `Schema.suspend`. | |
-| `OrNode_base` | Variable | | |
 | `SpdxExpression` | Variable + TypeAlias | The SPDX license-expression AST: a simple license, a reference, a `WITH`-exception, or an `AND`/`OR` compound. The five variants form a discriminated union on `_tag`. | |
 | `WithExceptionNode` | Class | A `license WITH exception` node. Per the SPDX grammar, `WITH` binds to a simple expression — a license identifier (optionally `+`) or a `LicenseRef`/`DocumentRef` reference — never a compound expression, so `license` is a {@link LicenseNode} or a {@link LicenseRefNode}. | |
-| `WithExceptionNode_base` | Variable | | |
 | `isValidExpression` | Function | Whether `input` is a syntactically and catalog-valid SPDX license expression. The synchronous, allocation-light predicate for non-Effect callers (lint hooks, config-time checks); it shares its engine with {@link (SpdxExpression:variable).parse}, so a `true` here guarantees a successful parse. | |

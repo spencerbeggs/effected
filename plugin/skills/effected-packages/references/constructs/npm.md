@@ -8,11 +8,8 @@
 | `BasicCredential` | Interface | HTTP basic auth — npm's `_auth`, carried as the **already-encoded** blob. | |
 | `CachingPackageManager` | Variable + TypeAlias | The union of managers the default-cache table covers. | |
 | `CatalogAssemblyError` | Class | Raised when a workspace's catalogs cannot be assembled — a `pnpm-workspace.yaml` that is unreadable or not valid YAML, a root `package.json` `workspaces` field whose shape or catalog blocks are malformed in a way pnpm itself rejects (including the default catalog declared twice), or a config dependency whose `pnpmfile.cjs` cannot be loaded or replayed. | |
-| `CatalogAssemblyError_base` | Variable | | |
 | `CatalogResolver` | Class | Contract for resolving pnpm `catalog:` dependency specifiers to concrete version ranges. | |
-| `CatalogResolver_base` | Variable | | |
 | `CatalogSpecifier` | Class | A `catalog:` reference. `name` carries the catalog name, or `Option.none()` for the default catalog (`catalog:`). | |
-| `CatalogSpecifier_base` | Variable | | |
 | `ClassifiedSpecifier` | TypeAlias | A dependency specifier classified into one of the five resolver-relevant cases. Decoded from a string by {@link DependencySpecifier.FromString}; every case preserves the original `raw` string. | |
 | `CorepackIntegrityHash` | Variable | {@link (IntegrityHash:variable)} narrowed to the corepack `<algo>.<hex>` form — `sha512.deadbeef`, and corepack's own sha224 default pins (`sha224.877304e3…`). An SRI (`sha512-<base64>`) or yarn (`10c0/<hex>`) hash, both valid `IntegrityHash` values, fails this schema. | |
 | `DEFAULT_REGISTRY` | Variable | The public npm registry, used when a read names no other. | |
@@ -22,77 +19,52 @@
 | `DependencyKind` | Variable + TypeAlias | The union of short dependency kinds. | |
 | `DependencyProtocol` | TypeAlias | The classification of a dependency specifier's protocol. | |
 | `DependencyResolutionError` | Class | Raised when a `catalog:` or `workspace:` specifier cannot be resolved because the resolution mechanism itself failed — not for an ordinary unmatched specifier, which resolves to `Option.none()` instead. Both {@link CatalogResolver} and {@link WorkspaceResolver} fail with it. | |
-| `DependencyResolutionError_base` | Variable | | |
 | `DependencySection` | Class | The dependency-section vocabulary: the two literal schemas ({@link (DependencyKind:variable)}, {@link (DependencyField:variable)}) plus the bidirectional mapping between a short kind and its manifest field name. | |
 | `DependencySpecifier` | Variable | A valid dependency version specifier, carrying the protocol taxonomy statics (`DependencySpecifier.protocolOf` and friends) that classify any specifier string, plus the {@link (DependencySpecifier:variable).FromString} codec that decodes a string into a {@link ClassifiedSpecifier} tagged union. Use it as a schema for a specifier field and reach for the statics to inspect a raw string. | |
 | `DependencySpecifierBrand` | TypeAlias | The branded dependency-specifier type: any string `DependencySpecifier` validates. | |
 | `DistTagSpecifier` | Class | A bare dist-tag (e.g. `latest`, `next`). | |
-| `DistTagSpecifier_base` | Variable | | |
 | `DryRunOutcome` | Interface | What a dry run reported. | |
 | `IntegrityAlgorithm` | TypeAlias | A supported integrity hash algorithm. | |
 | `IntegrityHash` | Variable | A subresource-integrity hash, covering the SRI (`sha512-<base64>`), corepack (`sha512.<hex>`) and yarn (`10c0/<hex>`) textual forms, carrying taxonomy statics (`IntegrityHash.algorithmOf` and friends). Use it as a schema for an integrity field and reach for the statics to inspect a raw string. | |
 | `IntegrityHashBrand` | TypeAlias | The branded integrity-hash type: any string {@link (IntegrityHash:variable)} validates. | |
 | `InvalidDependencySpecifierError` | Class | Indicates that a string could not be parsed as a valid dependency specifier. | |
-| `InvalidDependencySpecifierError_base` | Variable | | |
 | `InvalidIntegrityHashError` | Class | Indicates that a string could not be parsed as a valid integrity hash. | |
-| `InvalidIntegrityHashError_base` | Variable | | |
 | `InvalidPackageManagerPinError` | Class | Indicates that a string could not be parsed as a corepack package-manager pin (`<name>@<version>[+<integrity>]`). | |
-| `InvalidPackageManagerPinError_base` | Variable | | |
 | `InvalidSriIntegrityHashError` | Class | Indicates that a string could not be converted from npm's SRI form to the corepack integrity form. | |
-| `InvalidSriIntegrityHashError_base` | Variable | | |
 | `Manifest` | Class | A tolerant manifest as a domain model: the four dependency fields typed as string→string records, everything else preserved verbatim in `rest`. | |
 | `ManifestDecodeError` | Class | Indicates that an unknown value could not be decoded into a {@link Manifest}. | |
-| `ManifestDecodeError_base` | Variable | | |
-| `Manifest_base` | Variable | | |
 | `NpmExecutor` | Class | Which `npm` runs a publish command. | |
-| `NpmExecutor_base` | Variable | | |
 | `NpmRegistry` | Class | Registry reads over core `HttpClient`. | |
 | `NpmRegistryShape` | Interface | The {@link NpmRegistry} service shape. | |
-| `NpmRegistry_base` | Variable | | |
 | `PackOptions` | Interface | Options shared by the packing operations. | |
 | `PackageManagerCache` | Class | Where each package manager caches by default — a facts table, one documented authority per row. | |
 | `PackageManagerPin` | Class | A corepack package-manager pin: the `<name>@<version>[+<integrity>]` triple (e.g. `pnpm@11.17.0+sha512.abc…`), independent of any `package.json` field. | |
 | `PackageManagerPinName` | Variable + TypeAlias | The decoded type of {@link (PackageManagerPinName:variable)}: `"npm" \| "pnpm" \| "yarn" \| "bun"`. | |
-| `PackageManagerPin_base` | Variable | | |
 | `PackagePublish` | Class | The npm publish workflow, run through `@effected/commands`. | |
 | `PackagePublishShape` | Interface | The {@link PackagePublish} service shape. | |
-| `PackagePublish_base` | Variable | | |
 | `PackageTarball` | Class | Fetch, verify and extract a published tarball. | |
 | `PackageTarballShape` | Interface | The {@link PackageTarball} service shape. | |
-| `PackageTarball_base` | Variable | | |
 | `PackedTarball` | Class | A packed tarball and the two digests that describe it. | |
-| `PackedTarball_base` | Variable | | |
 | `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | |
 | `PublishError` | Class | A publish-workflow step failed. | |
-| `PublishError_base` | Variable | | |
 | `PublishOptions` | Interface | Options for uploading a tarball. | |
 | `PublishOutcome` | Interface | What one publish produced. | |
 | `PublishTime` | Class | When one version of a package was published. | |
-| `PublishTime_base` | Variable | | |
 | `PublishedVersion` | Class | One published version of one package, on one registry. | |
-| `PublishedVersion_base` | Variable | | |
 | `RangeSpecifier` | Class | A plain semver range or exact version (e.g. `^1.2.3`, `1.x`, `>=1 <2`). | |
-| `RangeSpecifier_base` | Variable | | |
 | `RawSpecifier` | Class | The honest fallback for `file:` / `link:` / `portal:` / git / URL / `npm:` forms this concept does not further interpret. | |
-| `RawSpecifier_base` | Variable | | |
 | `RegistryCredential` | TypeAlias | How to authenticate to a registry. | |
 | `RegistryKind` | Variable + TypeAlias | The decoded type of {@link (RegistryKind:variable)}. | |
 | `RegistryReadError` | Class | A registry read failed. | |
-| `RegistryReadError_base` | Variable | | |
 | `RegistrySeed` | Interface | A whole fake registry world, keyed the way real reads are. | |
 | `RegistryTarget` | Interface | Which registry to read from, and how to authenticate. | |
 | `ReleaseAgeGate` | Class | pnpm's publish-time release-age gate: the number of minutes a published version must age before it is eligible, and the set of package-name patterns exempt from the gate. Mirrors pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` config so a resolver can drop too-young candidate versions before picking, avoiding `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. | |
-| `ReleaseAgeGate_base` | Variable | | |
 | `SeededVersion` | Interface | One seeded version's registry-visible facts. | |
 | `TarballError` | Class | Raised when a published tarball cannot be fetched, verified or extracted. | |
-| `TarballError_base` | Variable | | |
 | `TokenCredential` | Interface | A bearer token — npm's `_authToken`, and the form every modern registry documents first. | |
 | `UnresolvedDependencyError` | Class | Raised when a `catalog:` or `workspace:` specifier in a manifest resolves to nothing: the catalog has no entry for the dependency, or no workspace package carries its name. Distinct from `DependencyResolutionError` — the resolution *mechanism* worked; the answer was `Option.none()`, which at the manifest level means the manifest cannot be projected to concrete ranges. | |
-| `UnresolvedDependencyError_base` | Variable | | |
 | `WorkspaceResolver` | Class | Contract for resolving pnpm `workspace:` dependency specifiers to concrete versions. | |
-| `WorkspaceResolver_base` | Variable | | |
 | `WorkspaceSpecifier` | Class | A `workspace:` reference. `range` carries the part after `workspace:` — a range modifier (`*`, `^`, `~`), a concrete range, or an alias form. | |
-| `WorkspaceSpecifier_base` | Variable | | |
 | `basicCredentialFromPair` | Function | A {@link BasicCredential} from a username and password, encoding for you. | |
 | `classifyRegistry` | Function | Classify a registry URL. | |
 | `isValidDependencySpecifier` | Function | Whether a string is a recognized dependency specifier: a semver range, exact version, dist-tag, URL, git ref, GitHub shorthand, file path, or an `npm:` / `catalog:` / `workspace:` protocol. | |
