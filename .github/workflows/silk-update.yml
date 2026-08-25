@@ -44,7 +44,7 @@ jobs:
           app-private-key: ${{ secrets.APP_PRIVATE_KEY }}
           branch: ${{ inputs.branch || 'pnpm/config-deps' }}
           dry-run: ${{ inputs.dry-run || false }}
-          changesets: false
+          changesets: true
           auto-merge: "squash"
           upgrade-package-manager: "^11.0.0"
           upgrade-runtime-node: "^26.0.0"
