@@ -175,8 +175,8 @@ await build({
 				effected: {
 					packages: {
 						"@effected/app": {
-							range: "^0.12.2",
-							peer: "^0.12.0",
+							range: "^0.13.0",
+							peer: "^0.13.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
