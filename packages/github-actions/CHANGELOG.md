@@ -1,5 +1,14 @@
 # @effected/github-actions
 
+## 0.10.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/markdown | dependency | updated | 0.6.3 | 0.7.0 |
+| @effected/sbom | dependency | updated | 0.4.2 | 0.4.3 |
+
 ## 0.10.0
 
 ### Breaking Changes
