@@ -5,106 +5,106 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `Annotation` | Class | One annotation on a check run. | |
-| `AnnotationLevel` | Variable | How serious an annotation is. | |
+| `Annotation` | Class | One annotation on a check run. | one file annotation on a check run, notice or warning at a line range |
+| `AnnotationLevel` | Variable | How serious an annotation is. | notice warning failure severity for a check run annotation |
 | `AppCredentials` | Interface | The credentials that identify a GitHub App. | |
-| `AppIdentity` | Class | What GitHub knows about the app itself. | |
+| `AppIdentity` | Class | What GitHub knows about the app itself. | resolve the github app's slug name and bot user id |
 | `AppliedSettings` | Interface | What {@link GitHubRepositoryShape.applySettings} actually sent. | |
-| `ArtifactMetadata` | Class | Artifact metadata. | |
+| `ArtifactMetadata` | Class | Artifact metadata. | record where a published package artifact lives, org-level storage record, supply chain provenance |
 | `ArtifactMetadataShape` | Interface | Organization-level artifact metadata. | |
-| `Attestation` | Class | Attestations. | |
-| `AttestationListEntry` | Class | One entry from an attestation listing. | |
-| `AttestationRecord` | Class | A stored attestation. | |
+| `Attestation` | Class | Attestations. | upload a sigstore bundle, attestations api, list attestations for a subject digest, slsa provenance lookup |
+| `AttestationListEntry` | Class | One entry from an attestation listing. | one attestation bundle url and predicate type from a listing |
+| `AttestationRecord` | Class | A stored attestation. | a stored attestation's id and url after upload |
 | `AttestationShape` | Interface | The attestation REST surface. | |
-| `BotIdentity` | Class | Who a bot commits as. | |
+| `BotIdentity` | Class | Who a bot commits as. | committer name and email for a bot commit, dco signoff trailer, github-actions bot identity |
 | `BranchOutcome` | TypeAlias | What {@link GitBranchShape.upsert} did. | |
-| `CheckConclusion` | Variable | How a check run finished. | |
-| `CheckRun` | Class | Check runs. | |
-| `CheckRunOutput` | Class | A check run's rendered output. | |
-| `CheckRunRef` | Class | A check run as GitHub reports it. | |
+| `CheckConclusion` | Variable | How a check run finished. | success failure neutral cancelled timed_out action_required skipped, how a check run finished |
+| `CheckRun` | Class | Check runs. | report a job's verdict on a commit, create update and complete a check run, withCheckRun bracket |
+| `CheckRunOutput` | Class | A check run's rendered output. | check run title summary and annotations, truncate to github's 65535 byte limit |
+| `CheckRunRef` | Class | A check run as GitHub reports it. | a check run's id name url and status as github reports it |
 | `CheckRunShape` | Interface | Check runs. | |
-| `CodeScanning` | Class | CodeQL default setup. | |
+| `CodeScanning` | Class | CodeQL default setup. | configure codeql default setup, detect repository languages for codeql, enable codeql scanning |
 | `CodeScanningSetup` | Interface | A CodeQL default-setup configuration. | |
 | `CodeScanningShape` | Interface | CodeQL default setup, and the language detection that gates it. | |
-| `CommentMarker` | Class | The hidden marker that makes a comment findable again. | |
-| `CommentOnceResult` | Class | What {@link GitHubIssueShape.commentOnce} found or wrote. | |
-| `CommentRecord` | Class | A comment this package wrote or found. | |
-| `CommitComparison` | Class | The result of comparing two refs. | |
-| `CommitFile` | Class | One changed file. | |
-| `CommitRef` | Class | A commit, projected to the three fields callers actually use. | |
-| `CommitSummary` | Class | A commit, projected to what callers read. | |
+| `CommentMarker` | Class | The hidden marker that makes a comment findable again. | hidden html marker that makes a sticky comment findable again, namespaced comment key |
+| `CommentOnceResult` | Class | What {@link GitHubIssueShape.commentOnce} found or wrote. | whether commentOnce posted a new comment or found the marker already there |
+| `CommentRecord` | Class | A comment this package wrote or found. | id body and url of a comment this package wrote or found |
+| `CommitComparison` | Class | The result of comparing two refs. | diff between two refs, ahead/behind counts, commits and changed files |
+| `CommitFile` | Class | One changed file. | one file's path status additions deletions from a commit or comparison |
+| `CommitRef` | Class | A commit, projected to the three fields callers actually use. | a commit's sha tree sha and parent shas for building a tree on top of it |
+| `CommitSummary` | Class | A commit, projected to what callers read. | a commit projected to sha message author and parents |
 | `ConcludeCheckRun` | TypeAlias | Conclude the surrounding {@link CheckRunShape.withCheckRun} explicitly. | |
-| `DeploymentEnvironment` | Class | Deployment environments. | |
+| `DeploymentEnvironment` | Class | Deployment environments. | create update list and delete a deployment environment, environment protection rules |
 | `DeploymentEnvironmentInfo` | Interface | A deployment environment, as listing returns it. | |
 | `DeploymentEnvironmentShape` | Interface | Deployment environments. | |
-| `ExtraPermission` | Class | A permission the token has and did not need. | |
-| `FileChange` | Variable + TypeAlias | One change in a commit. | |
-| `FileContent` | Class | A file to write in a commit. | |
-| `FileDeletion` | Class | A file to remove in a commit. | |
-| `FileMode` | Variable | A blob's file mode, as the Git Database API spells it. | |
-| `FileStatus` | Variable | How a file changed in a commit or a comparison. | |
-| `GRAPHQL_ONLY_SETTINGS` | Variable | Settings reachable **only** through the GraphQL `updateRepository` mutation, mapped from snake_case keys to camelCase GraphQL input fields. | |
-| `GitBranch` | Class | Branches, as refs. | |
+| `ExtraPermission` | Class | A permission the token has and did not need. | a permission a token was granted beyond what was required |
+| `FileChange` | Variable + TypeAlias | One change in a commit. | a file content write or deletion to include in a commit's tree |
+| `FileContent` | Class | A file to write in a commit. | a file to write in a commit, path content and blob mode |
+| `FileDeletion` | Class | A file to remove in a commit. | a file to remove in a commit by path |
+| `FileMode` | Variable | A blob's file mode, as the Git Database API spells it. | git blob file mode literals for the git database api, 100644 100755 120000 |
+| `FileStatus` | Variable | How a file changed in a commit or a comparison. | added removed modified renamed copied changed unchanged, how a file changed |
+| `GRAPHQL_ONLY_SETTINGS` | Variable | Settings reachable **only** through the GraphQL `updateRepository` mutation, mapped from snake_case keys to camelCase GraphQL input fields. | repository settings reachable only through the graphql updateRepository mutation |
+| `GitBranch` | Class | Branches, as refs. | create reset or delete a branch ref, upsert a branch idempotently, create a branch linked to an issue |
 | `GitBranchShape` | Interface | Branch refs in GitHub's Git Database API. | |
-| `GitCommit` | Class | Commits, trees and blobs. | |
+| `GitCommit` | Class | Commits, trees and blobs. | build a git tree and commit, commit files onto a branch through the git database api, blob and tree plumbing |
 | `GitCommitShape` | Interface | Commits and trees in GitHub's Git Database API. | |
-| `GitHubApp` | Class | GitHub App authentication: mint, revoke and identify. | |
-| `GitHubAppError` | Class | A GitHub App call failed. | |
+| `GitHubApp` | Class | GitHub App authentication: mint, revoke and identify. | mint scope and revoke a github app installation token, app authentication, jwt signing |
+| `GitHubAppError` | Class | A GitHub App call failed. | a github app authentication call failed, jwt token revoke identity or installation lookup failure |
 | `GitHubAppOptions` | Interface | Transport settings for the app's own API calls. | |
 | `GitHubAppShape` | Interface | The app-authentication surface. | |
-| `GitHubClient` | Class | The typed GitHub API client. | |
+| `GitHubClient` | Class | The typed GitHub API client. | the typed github rest and graphql transport, one request one paginated read one graphql document |
 | `GitHubClientOptions` | Interface | How a client layer is built. | |
 | `GitHubClientShape` | Interface | The typed GitHub transport: one request, one paginated read, one GraphQL document, and whatever the rate-limit headers last said. | |
-| `GitHubCommit` | Class | Commits, as GitHub reports them. | |
+| `GitHubCommit` | Class | Commits, as GitHub reports them. | read a commit, list commits on a ref, compare two refs, list a commit's changed files |
 | `GitHubCommitShape` | Interface | Reading commits. | |
-| `GitHubContent` | Class | Repository file contents. | |
+| `GitHubContent` | Class | Repository file contents. | read a text file's contents out of a repository at a ref |
 | `GitHubContentShape` | Interface | Reading a file out of a repository. | |
-| `GitHubError` | Class | Every REST failure this package produces, from every resource. | |
-| `GitHubErrorKind` | Variable | Why a GitHub call failed, as a value you can branch on. | |
+| `GitHubError` | Class | Every REST failure this package produces, from every resource. | every rest api failure this package produces, classify a github rest failure, handle notFound alreadyExists rateLimited |
+| `GitHubErrorKind` | Variable | Why a GitHub call failed, as a value you can branch on. | notFound alreadyExists rejected unauthorized rateLimited transport decode, structural routing for a github rest failure |
 | `GitHubFixtures` | Interface | A recorded response table for {@link GitHubClient.layerFixture}. | |
-| `GitHubGraphQLError` | Class | A GraphQL call failed. | |
-| `GitHubIssue` | Class | Issues. | |
+| `GitHubGraphQLError` | Class | A GraphQL call failed. | a graphql call failed, classify a github graphql failure, errors array from a 200 response |
+| `GitHubIssue` | Class | Issues. | get list close and comment on an issue, post a marked comment once, linked issues a pull request closes |
 | `GitHubIssueShape` | Interface | Issues. | |
-| `GitHubRelease` | Class | Releases. | |
+| `GitHubRelease` | Class | Releases. | create update and list releases, upload a release asset, get a release by tag |
 | `GitHubReleaseShape` | Interface | Releases and their assets. | |
-| `GitHubRepository` | Class | Repository settings and coordinates. | |
+| `GitHubRepository` | Class | Repository settings and coordinates. | read and patch repository settings, default branch, node id, owner type, apply a settings blob across rest and graphql |
 | `GitHubRepositoryShape` | Interface | The repository itself. | |
-| `GitTag` | Class | Tags. | |
+| `GitTag` | Class | Tags. | create reset resolve and delete a tag ref, list tags, find the newest semver-shaped tag on a repository |
 | `GitTagShape` | Interface | Tag refs in GitHub's Git Database API. | |
-| `GraphQLDocument` | Class | A named GraphQL document, its variables, and how to read its answer. | |
-| `GraphQLErrorEntry` | Class | One entry from a GraphQL response's `errors` array. | |
-| `Installation` | Class | One installation of the app. | |
-| `InstallationToken` | Class | An installation access token and what GitHub said about it. | |
-| `InvalidRepoRefError` | Class | A repository slug was not `owner/repo`. | |
-| `IssueInfo` | Class | An issue, projected to what callers read. | |
+| `GraphQLDocument` | Class | A named GraphQL document, its variables, and how to read its answer. | a named graphql query or mutation, its variables and response codec, typed graphql call |
+| `GraphQLErrorEntry` | Class | One entry from a GraphQL response's `errors` array. | one entry from a graphql response's errors array, message and github's error type |
+| `Installation` | Class | One installation of the app. | one installation of a github app, installation id and account |
+| `InstallationToken` | Class | An installation access token and what GitHub said about it. | a minted app installation access token, its expiry and granted permissions, re-mint before it expires |
+| `InvalidRepoRefError` | Class | A repository slug was not `owner/repo`. | a repository slug was not owner/repo, malformed repo ref parse failure |
+| `IssueInfo` | Class | An issue, projected to what callers read. | an issue's number title state labels and node id, projected for callers |
 | `LatestSemverOptions` | Interface | How to pick the newest version-shaped tag. | |
-| `LinkedIssue` | Class | An issue a pull request closes. | |
-| `MergeMethod` | Variable | How a pull request is merged. | |
+| `LinkedIssue` | Class | An issue a pull request closes. | an issue a pull request closes, whether a human linked it manually vs github inferred it |
+| `MergeMethod` | Variable | How a pull request is merged. | merge squash rebase, how a pull request is merged |
 | `OwnerType` | TypeAlias | Whether an account is a user or an organization. | |
-| `PageOptions` | Class | How far a paginated read should go. | |
-| `PermissionGap` | Class | A permission the token does not have enough of. | |
-| `PermissionLevel` | Variable + TypeAlias | How much access a permission grants. | |
-| `PermissionResult` | Class | What comparing a token's permissions against a requirement found. | |
+| `PageOptions` | Class | How far a paginated read should go. | how many items per page and how many pages to walk, bound a paginated read |
+| `PermissionGap` | Class | A permission the token does not have enough of. | a permission a token is missing or holds too weak a level of |
+| `PermissionLevel` | Variable + TypeAlias | How much access a permission grants. | read write admin, how much access a permission grants |
+| `PermissionResult` | Class | What comparing a token's permissions against a requirement found. | what comparing a token's permissions against a requirement found, missing and extra permissions |
 | `PollOptions` | Interface | How long to wait for a dispatched run. | |
-| `PullRequest` | Class | Pull requests. | |
-| `PullRequestComment` | Class | Sticky comments. | |
+| `PullRequest` | Class | Pull requests. | get list create update and merge a pull request, upsert a pr, request reviewers, turn auto-merge on or off |
+| `PullRequestComment` | Class | Sticky comments. | post or update a sticky marked comment on a pull request or issue, find a comment by its marker |
 | `PullRequestCommentShape` | Interface | Sticky comments on a pull request or issue. | |
-| `PullRequestInfo` | Class | A pull request, projected to what callers read. | |
+| `PullRequestInfo` | Class | A pull request, projected to what callers read. | a pull request's number head base sha state and merge status, projected for callers |
 | `PullRequestShape` | Interface | Pull requests. | |
-| `RateLimitSnapshot` | Class | What GitHub's rate-limit headers said on the most recent REST response. | |
+| `RateLimitSnapshot` | Class | What GitHub's rate-limit headers said on the most recent REST response. | what github's rate-limit headers said on the last response, remaining requests and reset time |
 | `RecordedCall` | Interface | One call served by {@link GitHubClient.layerFixture}, as recorded in {@link GitHubFixtures.requested}. | |
-| `ReleaseAsset` | Class | A file attached to a release. | |
-| `ReleaseInfo` | Class | A release. | |
-| `Repo` | Class | The repository the surrounding program acts on. | |
-| `RepoRef` | Class | Which repository an operation acts on. | |
+| `ReleaseAsset` | Class | A file attached to a release. | a file attached to a release, its download url and size |
+| `ReleaseInfo` | Class | A release. | a release's tag name body draft/prerelease flags and upload url |
+| `Repo` | Class | The repository the surrounding program acts on. | which repository the surrounding program acts on, provide a repo coordinate to a call, run against a different repository |
+| `RepoRef` | Class | Which repository an operation acts on. | parse an owner/repo slug into owner and repo, the pure repository coordinate value |
 | `RepositoryPatch` | TypeAlias | The fields `PATCH /repos/{owner}/{repo}` accepts, minus the coordinate. | |
 | `RepositoryPatchDraft` | TypeAlias | A {@link RepositoryPatch} under construction, where an absent field may be spelled as an explicit `undefined`. | |
-| `RepositorySecret` | Class | Secrets, encrypted client-side before they leave the process. | |
+| `RepositorySecret` | Class | Secrets, encrypted client-side before they leave the process. | encrypt and write a repository or environment secret, sealed box encryption, set list and delete a github actions secret |
 | `RepositorySecretShape` | Interface | Repository and environment secrets. | |
-| `RepositorySecurity` | Class | Repository security features with dedicated endpoints. | |
+| `RepositorySecurity` | Class | Repository security features with dedicated endpoints. | toggle dependabot vulnerability alerts, automated security fixes, private vulnerability reporting inbox |
 | `RepositorySecurityShape` | Interface | The three repository security features that have their own endpoints. | |
 | `RepositorySettings` | TypeAlias | Everything GitHub reports about a repository. | |
-| `RepositoryVariable` | Class | Repository and environment variables. | |
+| `RepositoryVariable` | Class | Repository and environment variables. | create update list and delete a repository or environment variable, github actions variables |
 | `RepositoryVariableShape` | Interface | Repository and environment variables. | |
 | `RestData` | TypeAlias | The `data` payload `Route` returns. | |
 | `RestExtras` | Interface | Transport knobs octokit accepts on any route, narrowed to the three this package allows. | |
@@ -113,28 +113,28 @@
 | `RestParams` | TypeAlias | The parameters `Route` accepts — path, query and body parameters from GitHub's OpenAPI description, plus the extras below. | |
 | `RestResponse` | TypeAlias | The full response `Route` returns, including `status`, `headers` and `data`. | |
 | `RestRoute` | TypeAlias | Every REST route GitHub documents, as a `"<METHOD> <path>"` literal — for example `"GET /repos/{owner}/{repo}"`. | |
-| `RetryPolicy` | Class | How the client retries a failed request. | |
+| `RetryPolicy` | Class | How the client retries a failed request. | how the client retries a failed request, backoff and jitter, honor a server-advised retry-after delay |
 | `RetryableFailure` | Interface | The shape {@link RetryPolicy} needs from a failure to decide anything. | |
-| `Ruleset` | Class | Repository rulesets. | |
+| `Ruleset` | Class | Repository rulesets. | create update list and delete a repository ruleset, branch protection ruleset, bypass actor team and role lookup |
 | `RulesetInfo` | Interface | A ruleset, as listing returns it. | |
 | `RulesetPayload` | Interface | What a ruleset write sends. | |
 | `RulesetShape` | Interface | Repository rulesets, and the lookups their bypass actors need. | |
-| `SECURITY_ANALYSIS_STATUS_FIELDS` | Variable | Fields in the user-facing `security_and_analysis` block that GitHub accepts as `{ status: "enabled" \| "disabled" }`. | |
+| `SECURITY_ANALYSIS_STATUS_FIELDS` | Variable | Fields in the user-facing `security_and_analysis` block that GitHub accepts as `{ status: "enabled" \| "disabled" }`. | which security_and_analysis fields github accepts as an enabled/disabled status object |
 | `SecretInfo` | Interface | A secret, as listing returns it. | |
 | `SecretScope` | TypeAlias | Which secret store an operation acts on. | |
-| `SemverTag` | Class | A tag whose name carries a version. | |
-| `StorageRecordInput` | Class | What to record about a published artifact. | |
-| `TagRef` | Class | A tag and the commit it ultimately points at. | |
-| `TokenPermissionError` | Class | A token asked for access it does not have, or has access it did not ask for. | |
-| `TokenPermissions` | Class | The permissions a token was granted, and what they satisfy. | |
+| `SemverTag` | Class | A tag whose name carries a version. | a tag whose name carries a parsed semantic version, tag sha and version together |
+| `StorageRecordInput` | Class | What to record about a published artifact. | what to record about a published artifact's location, name digest registry and repository |
+| `TagRef` | Class | A tag and the commit it ultimately points at. | a tag name and the commit sha it ultimately resolves to, annotated tag dereferenced to a commit |
+| `TokenPermissionError` | Class | A token asked for access it does not have, or has access it did not ask for. | a token asked for access it does not have, or holds access it never requested, permission assertion failure |
+| `TokenPermissions` | Class | The permissions a token was granted, and what they satisfy. | compare a token's granted permissions against a requirement, assert a token has sufficient or exact scopes |
 | `TokenRequest` | Interface | What to mint an installation token for. | |
 | `UpsertedPullRequest` | Interface | What {@link PullRequestShape.upsert} did. | |
 | `VariableInfo` | Interface | A variable, as listing returns it. | |
 | `VersionFromTag` | TypeAlias | Read a version out of a tag name. | |
-| `WorkflowDispatch` | Class | Workflow dispatch. | |
+| `WorkflowDispatch` | Class | Workflow dispatch. | trigger a workflow_dispatch event, poll a dispatched run until it finishes, list a repository's workflows |
 | `WorkflowDispatchShape` | Interface | Triggering workflows. | |
 | `WorkflowInfo` | Interface | One workflow defined in the repository. | |
-| `WorkflowRunStatus` | Class | Where a workflow run has got to. | |
-| `repositoryPatch` | Function | A {@link RepositoryPatch} from a draft, dropping every explicitly-`undefined` field. | |
-| `transformSecurityAndAnalysis` | Function | Translate a user-facing `security_and_analysis` block into the shape `PATCH /repos/{owner}/{repo}` expects. | |
-| `versionFromTag` | Variable | The default {@link VersionFromTag}. | |
+| `WorkflowRunStatus` | Class | Where a workflow run has got to. | a workflow run's id status and conclusion, whether a dispatched run has finished |
+| `repositoryPatch` | Function | A {@link RepositoryPatch} from a draft, dropping every explicitly-`undefined` field. | build a repository settings patch from a draft, drop unset fields rather than sending undefined |
+| `transformSecurityAndAnalysis` | Function | Translate a user-facing `security_and_analysis` block into the shape `PATCH /repos/{owner}/{repo}` expects. | translate a security_and_analysis block into the shape the repository patch endpoint expects |
+| `versionFromTag` | Variable | The default {@link VersionFromTag}. | extract a version string out of a tag name, the default tag-to-semver convention |

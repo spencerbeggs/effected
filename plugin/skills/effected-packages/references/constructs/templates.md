@@ -5,20 +5,20 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `CheckOutcome` | Variable + TypeAlias | What a check found, without touching the document. | |
-| `CommentStyle` | Class | How a managed section's markers are commented out in a given file format. | |
+| `CheckOutcome` | Variable + TypeAlias | What a check found, without touching the document. | report whether a managed section is missing, in sync, or drifted without writing |
+| `CommentStyle` | Class | How a managed section's markers are commented out in a given file format. | pick how BEGIN and END markers are commented per file type, line comment or block comment style |
 | `Eol` | TypeAlias | The line ending a document uses. | |
-| `ManagedSection` | Class | Managed sections in files: read, compare, sync and remove delimited blocks whose surrounding content belongs to the user. | |
+| `ManagedSection` | Class | Managed sections in files: read, compare, sync and remove delimited blocks whose surrounding content belongs to the user. | update a generated section in a file, sync a managed region markers, read compare and remove delimited blocks in user-owned files |
 | `ManagedSectionOptions` | Interface | How a `ManagedSection` layer reads and writes markers. | |
 | `ManagedSectionShape` | Interface | The {@link ManagedSection} service shape. | |
-| `PlacedSection` | Class | A managed section as found in a document, carrying the span it occupies. | |
-| `Section` | Class | A managed section: an identity plus the content its owner wants between the markers. | |
-| `SectionDialect` | Class | The marker vocabulary: what phrase delimits a managed section, and which comment styles a document is scanned for. | |
-| `SectionDocument` | Class | A parsed document: its text, the dialect it was read with, and every managed section found in it. | |
-| `SectionFileError` | Class | Raised when the file behind a managed-section operation could not be read or written. | |
-| `SectionId` | Class | What identifies a managed section inside a document: its key and the comment style its markers are written in. | |
-| `SectionKey` | Variable | The name identifying a managed section, as it literally appears in the file's markers. | |
-| `SectionParseError` | Class | Raised when a document's managed-section structure cannot be read without guessing. | |
+| `PlacedSection` | Class | A managed section as found in a document, carrying the span it occupies. | locate a managed section's position in a document, span of an existing BEGIN/END block |
+| `Section` | Class | A managed section: an identity plus the content its owner wants between the markers. | declare the content that belongs inside a managed region, section identity plus payload to sync |
+| `SectionDialect` | Class | The marker vocabulary: what phrase delimits a managed section, and which comment styles a document is scanned for. | configure the marker phrase and comment styles a document is scanned with, custom BEGIN/END wording |
+| `SectionDocument` | Class | A parsed document: its text, the dialect it was read with, and every managed section found in it. | parse a file into its text plus every managed section found, scan a document for BEGIN/END blocks |
+| `SectionFileError` | Class | Raised when the file behind a managed-section operation could not be read or written. | handle a managed-section file that could not be read or written, IO failure syncing a generated section |
+| `SectionId` | Class | What identifies a managed section inside a document: its key and the comment style its markers are written in. | identify a managed section by its key and comment style, which BEGIN/END block this is |
+| `SectionKey` | Variable | The name identifying a managed section, as it literally appears in the file's markers. | the name written inside BEGIN/END markers, validate a managed section key's grammar |
+| `SectionParseError` | Class | Raised when a document's managed-section structure cannot be read without guessing. | handle a document whose managed-section markers are malformed or ambiguous, cannot read BEGIN/END structure |
 | `SectionReconciliation` | Interface | The result of reconciling a declared set of sections against a document. | |
-| `SectionRenderError` | Class | Raised when a section cannot be turned into marker-delimited text. | |
-| `SyncOutcome` | Variable + TypeAlias | What a sync did to one declared section. | |
+| `SectionRenderError` | Class | Raised when a section cannot be turned into marker-delimited text. | handle a section that cannot be rendered as marker-delimited text |
+| `SyncOutcome` | Variable + TypeAlias | What a sync did to one declared section. | report what a sync did to a declared section, inserted updated or left unchanged |

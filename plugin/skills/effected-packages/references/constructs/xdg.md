@@ -5,17 +5,17 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `AppDirKind` | Variable + TypeAlias | The decoded form of {@link (AppDirKind:variable)}. | |
+| `AppDirKind` | Variable + TypeAlias | The decoded form of {@link (AppDirKind:variable)}. | the config, data, cache, state or runtime directory kind |
 | `AppDirOverrides` | Interface | Per-kind absolute directory overrides. Each wins outright over every other rung. | |
-| `AppDirs` | Class | App-namespaced XDG directories, with on-demand creation. | |
-| `AppDirsError` | Class | Indicates that an application directory could not be created. | |
+| `AppDirs` | Class | App-namespaced XDG directories, with on-demand creation. | resolve and create an app's namespaced config, data, cache, state and runtime directories |
+| `AppDirsError` | Class | Indicates that an application directory could not be created. | handle an app directory failing to be created on disk |
 | `AppDirsOptions` | Interface | Options for {@link AppDirs.layer}. | |
 | `AppDirsShape` | Interface | App-namespaced directory resolution and on-demand creation. | |
-| `CurrentPlatform` | Variable | The platform every native-directory decision is taken against. | |
-| `NativeDirs` | Class | The OS-native application directories for one namespace. | |
-| `ResolvedAppDirs` | Class | The fully resolved, app-namespaced directories. | |
-| `Xdg` | Class | XDG Base Directory environment resolution. | |
-| `XdgConfig` | Class | The bridge from XDG directories into `@effected/config-file`. | |
-| `XdgEnvError` | Class | Indicates that the environment cannot satisfy XDG directory resolution. | |
-| `XdgPaths` | Class | The XDG Base Directory environment, resolved. | |
-| `XdgPlatform` | Variable + TypeAlias | The decoded form of {@link (XdgPlatform:variable)}. | |
+| `CurrentPlatform` | Variable | The platform every native-directory decision is taken against. | override the detected os platform for native directory resolution in tests |
+| `NativeDirs` | Class | The OS-native application directories for one namespace. | map platform and environment to os-native app directories, macOS Application Support, Windows AppData |
+| `ResolvedAppDirs` | Class | The fully resolved, app-namespaced directories. | the fully resolved app-namespaced directories and their search paths |
+| `Xdg` | Class | XDG Base Directory environment resolution. | read the XDG Base Directory environment variables once at layer construction |
+| `XdgConfig` | Class | The bridge from XDG directories into `@effected/config-file`. | bridge xdg app directories into a config-file resolver, search path or native directory |
+| `XdgEnvError` | Class | Indicates that the environment cannot satisfy XDG directory resolution. | handle the HOME environment variable missing for xdg resolution |
+| `XdgPaths` | Class | The XDG Base Directory environment, resolved. | the resolved XDG_CONFIG_HOME/XDG_DATA_HOME and friends, home directory required |
+| `XdgPlatform` | Variable + TypeAlias | The decoded form of {@link (XdgPlatform:variable)}. | the os platform values xdg resolution reasons about, darwin/win32/linux and others |

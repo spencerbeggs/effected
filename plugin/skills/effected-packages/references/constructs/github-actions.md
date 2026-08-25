@@ -5,81 +5,81 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `Action` | Class | The entry point an action's `main`, `pre` and `post` scripts call. | |
-| `ActionCache` | Class | The runner's own cache: archive a set of paths under a key, and get them back in a later job. | |
-| `ActionCacheError` | Class | Raised when the runner's cache cannot be read or written. | |
+| `Action` | Class | The entry point an action's `main`, `pre` and `post` scripts call. | run an action's main/pre/post entry point, compose the runtime, set exit code on failure |
+| `ActionCache` | Class | The runner's own cache: archive a set of paths under a key, and get them back in a later job. | save and restore the runner's actions/cache, warm a toolchain or dependency cache between jobs |
+| `ActionCacheError` | Class | Raised when the runner's cache cannot be read or written. | handle a cache save or restore failure, actions cache misconfigured or unreachable |
 | `ActionCacheShape` | Interface | The {@link ActionCache} service shape. | |
-| `ActionEnvironment` | Class | The runner environment an action is executing inside. | |
-| `ActionEnvironmentError` | Class | Raised when the runner environment does not say what an action needs. | |
+| `ActionEnvironment` | Class | The runner environment an action is executing inside. | read GITHUB_*and RUNNER_* variables, process.env access for an action, step debug mode |
+| `ActionEnvironmentError` | Class | Raised when the runner environment does not say what an action needs. | handle a missing or malformed runner environment variable |
 | `ActionEnvironmentShape` | Interface | The {@link ActionEnvironment} service shape. | |
-| `ActionInput` | Class | Action inputs, read as `Config` values. | |
-| `ActionLogger` | Class | Groups, buffered step transcripts, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | |
+| `ActionInput` | Class | Action inputs, read as `Config` values. | read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input |
+| `ActionLogger` | Class | Groups, buffered step transcripts, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | workflow-command logger, collapsible log groups, buffered step transcript, notice annotation |
 | `ActionLoggerShape` | Interface | The {@link ActionLogger} service shape. | |
 | `ActionOutputError` | TypeAlias | Anything that can go wrong publishing an output, variable or summary. | |
-| `ActionOutputs` | Class | Everything an action publishes: step outputs, exported variables, `PATH` additions, the job summary, log masking and failure annotations. | |
+| `ActionOutputs` | Class | Everything an action publishes: step outputs, exported variables, `PATH` additions, the job summary, log masking and failure annotations. | set step output, export env var for later steps, add to PATH, job summary, mask a secret |
 | `ActionOutputsShape` | Interface | The {@link ActionOutputs} service shape. | |
 | `ActionRunOptions` | Interface | How to run an action. | |
-| `ActionRuntime` | Class | The default runtime an action executes inside. | |
+| `ActionRuntime` | Class | The default runtime an action executes inside. | the composed default action runtime layer, wire ActionEnvironment/Logger/Outputs/State |
 | `ActionServices` | TypeAlias | Everything {@link ActionRuntime.layer} provides. | |
-| `ActionState` | Class | State that survives the `pre` → `main` → `post` phase boundary. | |
-| `ActionStateError` | Class | Raised when state cannot cross the phase boundary. | |
+| `ActionState` | Class | State that survives the `pre` → `main` → `post` phase boundary. | persist and read state across pre/main/post phase boundary, GITHUB_STATE file |
+| `ActionStateError` | Class | Raised when state cannot cross the phase boundary. | handle action state save or read failure across the phase boundary |
 | `ActionStateShape` | Interface | The {@link ActionState} service shape. | |
-| `ActionsIdentityToken` | Class | The Actions side of `@effected/sbom`'s inverted OIDC contract. | |
-| `ActionsProvenance` | Class | The Actions side of `@effected/sbom`'s SLSA provenance constructor. | |
-| `AmbientPackageManager` | Class | A package manager the runner's own toolchain already had: nothing was downloaded and nothing was cached, so there is no directory to publish. | |
+| `ActionsIdentityToken` | Class | The Actions side of `@effected/sbom`'s inverted OIDC contract. | serve @effected/sbom's IdentityToken contract from the runner's OIDC issuer, sign with runner identity — implements `IdentityToken` from `@effected/sbom` |
+| `ActionsProvenance` | Class | The Actions side of `@effected/sbom`'s SLSA provenance constructor. | build SLSA provenance from the runner's OIDC claims, attest a GitHub Actions workflow run |
+| `AmbientPackageManager` | Class | A package manager the runner's own toolchain already had: nothing was downloaded and nothing was cached, so there is no directory to publish. | a package manager already on PATH from the runner's toolchain, no tool-cache entry |
 | `AnnotationProperties` | Interface | Where an annotation points in the repository. | |
-| `Artifact` | Class | Upload, list, download and delete GitHub Actions artifacts. | |
-| `ArtifactError` | Class | Raised when an artifact cannot be uploaded, listed, downloaded or deleted. | |
+| `Artifact` | Class | Upload, list, download and delete GitHub Actions artifacts. | upload, list, download and delete GitHub Actions artifacts |
+| `ArtifactError` | Class | Raised when an artifact cannot be uploaded, listed, downloaded or deleted. | handle an artifact upload, list, download or delete failure |
 | `ArtifactItem` | Interface | One artifact, as the backend describes it. | |
 | `ArtifactRef` | Interface | A reference to an artifact that is no longer there. | |
 | `ArtifactShape` | Interface | The {@link Artifact} service shape. | |
-| `BlobEnvelope` | Class | The schema-versioned frame that gives a stored blob a **metadata channel**. | |
+| `BlobEnvelope` | Class | The schema-versioned frame that gives a stored blob a **metadata channel**. | frame bytes with a versioned metadata header, pure encode/decode a stored blob |
 | `BlobEnvelopeError` | TypeAlias | Anything that can go wrong reading or writing a blob envelope. | |
-| `BlobMetadataDecodeError` | Class | Raised when well-framed metadata does not satisfy the caller's schema. | |
-| `BlobMetadataEncodeError` | Class | Raised when the value being stored does not satisfy its schema. | |
-| `BlobStore` | Class | Durable blob storage with a metadata channel. | |
-| `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | |
+| `BlobMetadataDecodeError` | Class | Raised when well-framed metadata does not satisfy the caller's schema. | handle blob metadata that does not satisfy the caller's schema |
+| `BlobMetadataEncodeError` | Class | Raised when the value being stored does not satisfy its schema. | handle a value that will not encode into blob metadata |
+| `BlobStore` | Class | Durable blob storage with a metadata channel. | get/put/has durable blob storage with a metadata channel, S3-compatible or in-memory backend |
+| `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | handle a blob store read or write failure, unreachable or refused backend |
 | `BlobStoreShape` | Interface | The {@link BlobStore} service shape. | |
-| `BlobTransferError` | Class | Raised when bytes could not be moved to or from a signed blob url. | |
-| `CacheKey` | Class | A GitHub Actions cache key and the restore-key ladder that goes with it. | |
-| `CacheKeyBadPatternError` | Class | Raised when a glob pattern would not compile. | |
+| `BlobTransferError` | Class | Raised when bytes could not be moved to or from a signed blob url. | handle a signed blob url upload or download failure |
+| `CacheKey` | Class | A GitHub Actions cache key and the restore-key ladder that goes with it. | build a GitHub Actions cache key and restore-key fallback ladder, hash files for a cache key |
+| `CacheKeyBadPatternError` | Class | Raised when a glob pattern would not compile. | handle a glob pattern that will not compile while deriving a cache key |
 | `CacheKeyError` | TypeAlias | Anything that can go wrong deriving a cache key from the filesystem. | |
-| `CacheKeyReadError` | Class | Raised when a file or directory that was going to be hashed could not be read. | |
-| `CachedPackageManager` | Class | A package manager living in the runner's tool cache — found there, or installed into it by this call. | |
-| `CheckDocument` | Class | A living document of check state: an in-process registry the run reports into, debounced onto a marker-delimited document, written through a narrow sink. | |
-| `CheckDocumentError` | Class | Raised when the check document cannot be regenerated, read back or written. | |
+| `CacheKeyReadError` | Class | Raised when a file or directory that was going to be hashed could not be read. | handle a file read failure while hashing files for a cache key |
+| `CachedPackageManager` | Class | A package manager living in the runner's tool cache — found there, or installed into it by this call. | a package manager installed into the runner's tool cache, binDir to addPath |
+| `CheckDocument` | Class | A living document of check state: an in-process registry the run reports into, debounced onto a marker-delimited document, written through a narrow sink. | reconcile check-run state onto a sticky PR comment or PR description, debounced managed regions |
+| `CheckDocumentError` | Class | Raised when the check document cannot be regenerated, read back or written. | handle a check document render, read-back or sink write failure |
 | `CheckDocumentOptions` | Interface | Options for {@link CheckDocument.layer}. | |
 | `CheckDocumentShape` | Interface | The check-run → document reconciler's surface. | |
 | `CheckDocumentSink` | TypeAlias | How a rendered document leaves the process: the narrow sink contract. | |
-| `CheckDocumentStamp` | Class | A run's identity for staleness ordering: when it started and which run it is. | |
+| `CheckDocumentStamp` | Class | A run's identity for staleness ordering: when it started and which run it is. | run identity for staleness ordering between two runs writing the same document |
 | `CheckFlushOutcome` | TypeAlias | What one reconcile pass did. | |
-| `CheckReport` | Class | What a run knows about one of its checks: the authoritative state, and the presentation facts a renderer projects into the document. | |
+| `CheckReport` | Class | What a run knows about one of its checks: the authoritative state, and the presentation facts a renderer projects into the document. | one check's current state and presentation for a check document render |
 | `CheckRunConclusion` | TypeAlias | The check-run conclusions the kit vocabulary can produce. | |
 | `CheckRunProjection` | TypeAlias | A `CheckState` on GitHub's check-run wire: a status, and a conclusion exactly when the status is `completed`. | |
-| `CheckState` | Variable + TypeAlias | The type of `CheckState`. | |
-| `ChildEnv` | Class | Child-process environment construction: prepending directories to `PATH` without falling into the three traps that each cost a real consumer a cross-OS matrix round. | |
+| `CheckState` | Variable + TypeAlias | The type of `CheckState`. | running/pass/fail/warn/skipped/timeout vocabulary for a release pipeline's checks |
+| `ChildEnv` | Class | Child-process environment construction: prepending directories to `PATH` without falling into the three traps that each cost a real consumer a cross-OS matrix round. | prepend directories to PATH for a spawned child, cross-platform PATH casing, extendEnv trap |
 | `ClientLayerOptions` | Interface | How to build a client from a persisted token. | |
 | `DataBlobTransfer` | Interface | Moving in-memory bytes to and from a signed blob url. | |
-| `DetachedLogUnavailableError` | Class | Raised when a detached child cannot be started, waited for, or reaped. | |
-| `DetachedNotReadyError` | Class | Raised when the readiness probe never held. | |
-| `DetachedOutputError` | Class | Raised when an output member was called under {@link ActionOutputs.layerDetached}. | |
-| `DetachedProcess` | Class | A long-lived child that outlives the phase that started it. | |
+| `DetachedLogUnavailableError` | Class | Raised when a detached child cannot be started, waited for, or reaped. | handle a detached child's log file that could not be opened |
+| `DetachedNotReadyError` | Class | Raised when the readiness probe never held. | handle a detached child readiness probe that never succeeded |
+| `DetachedOutputError` | Class | Raised when an output member was called under {@link ActionOutputs.layerDetached}. | handle an output call made from a detached worker that cannot reach the runner file |
+| `DetachedProcess` | Class | A long-lived child that outlives the phase that started it. | spawn a long-lived child that outlives the action phase, poll readiness, signal a pid by number |
 | `DetachedProcessError` | TypeAlias | Anything that can go wrong spawning, awaiting or reaping a detached child. | |
 | `DetachedProcessOps` | Interface | The module's operations as a value: the seam a consumer's tests inject. | |
-| `DetachedSignalFailedError` | Class | Raised when a signal was refused, e.g. the process belongs to another user. | |
-| `DetachedSpawnFailedError` | Class | Raised when the detached child did not start. | |
+| `DetachedSignalFailedError` | Class | Raised when a signal was refused, e.g. the process belongs to another user. | handle a signal refused when reaping a detached child |
+| `DetachedSpawnFailedError` | Class | Raised when the detached child did not start. | handle a detached child that did not start |
 | `DetachedSpawnOptions` | Interface | How a detached child is started. | |
 | `DownloadOptions` | Interface | Where a download should land. | |
 | `DownloadResult` | Interface | What a download produced. | |
-| `DryRun` | Class | The rehearsal guard: every mutation an action performs goes through it, so a workflow can be run end to end without changing anything. | |
+| `DryRun` | Class | The rehearsal guard: every mutation an action performs goes through it, so a workflow can be run end to end without changing anything. | rehearsal guard for action mutations, dry-run input, skip a mutation and report what would happen |
 | `DryRunShape` | Interface | The {@link DryRun} service shape. | |
 | `ExtractOptions` | Interface | Where extraction should put its output. | |
 | `FileBlobTransfer` | Interface | Moving whole files to and from the signed blob url a results-backend RPC hands back. | |
-| `GitHubCacheBlobStore` | Class | The {@link BlobStore} backend that stores blobs in the runner's own Actions cache. | |
-| `GitHubContext` | Class | The workflow's GitHub context, projected from the `GITHUB_*` variables. | |
+| `GitHubCacheBlobStore` | Class | The {@link BlobStore} backend that stores blobs in the runner's own Actions cache. | BlobStore backend over the runner's own Actions cache, no S3 bucket needed |
+| `GitHubContext` | Class | The workflow's GitHub context, projected from the `GITHUB_*` variables. | GITHUB_* workflow context: repository, ref, sha, actor, pull request head ref, branch |
 | `GitHubHeadingDepth` | TypeAlias | A heading level GitHub renders, `1` through `6`. | |
 | `GitHubListOptions` | Interface | Options for {@link GitHubMarkdown.list}. | |
-| `GitHubMarkdown` | Class | The fluent markdown writer for GitHub surfaces — PR comments, check-run summaries, job summaries. | |
+| `GitHubMarkdown` | Class | The fluent markdown writer for GitHub surfaces — PR comments, check-run summaries, job summaries. | fluent markdown writer for PR comments, job summaries and check-run bodies, render a table from a schema |
 | `GitHubRowSchema` | TypeAlias | The row-schema constraint {@link GitHubMarkdown.tableFor} accepts: any schema exposing a struct field map — `Schema.Struct` and `Schema.Class` both qualify. | |
 | `GitHubSchemaTable` | Interface | A renderer minted by {@link GitHubMarkdown.tableFor}: columns are fixed by the schema, rows are supplied at each render. | |
 | `GitHubSchemaTableColumn` | Interface | Per-column configuration for {@link GitHubMarkdown.tableFor}. | |
@@ -87,49 +87,49 @@
 | `GitHubSchemaTableFormatRequiredKeys` | TypeAlias | The field keys of a row schema whose column REQUIRES an explicit `format`: fields whose encoded side is not a string (their codec has no string projection to borrow), and fields whose encoding needs services (a sync cell render cannot provide them). | |
 | `GitHubSchemaTableFormattedColumn` | Interface | {@link GitHubSchemaTableColumn} with the `format` obligation discharged — the entry shape a non-string-encoded field demands. | |
 | `GitHubSchemaTableOptions` | TypeAlias | Options for {@link GitHubMarkdown.tableFor}. The whole bag is optional exactly when every field's encoded side is a string; one field without a string projection makes `columns` — and the entry carrying its `format` — required. | |
-| `GitHubToken` | Class | The GitHub App token lifecycle, shaped like a workflow. | |
-| `GitHubTokenError` | Class | Raised when the token an earlier phase persisted cannot be used. | |
-| `InstalledPackageManager` | Variable + TypeAlias | The decoded type of {@link (InstalledPackageManager:variable)}: {@link AmbientPackageManager} `\|` {@link CachedPackageManager}. | |
-| `InvalidOutputNameError` | Class | Raised when a name would corrupt the runner file's block structure. | |
-| `InvalidPidError` | Class | Raised when a non-positive pid was handed to {@link DetachedProcess.reap}. | |
-| `ManagedDocument` | Class | A marker-delimited document: named regions a tool owns, inside text a human may also edit. | |
-| `ManagedDocumentError` | Class | Raised when a managed document cannot be read or regenerated without guessing. | |
+| `GitHubToken` | Class | The GitHub App token lifecycle, shaped like a workflow. | mint, persist, read and revoke a GitHub App installation token across action phases |
+| `GitHubTokenError` | Class | Raised when the token an earlier phase persisted cannot be used. | handle a persisted installation token that expired before a later phase read it |
+| `InstalledPackageManager` | Variable + TypeAlias | The decoded type of {@link (InstalledPackageManager:variable)}: {@link AmbientPackageManager} `\|` {@link CachedPackageManager}. | decoded union of an ambient or tool-cache package manager install result |
+| `InvalidOutputNameError` | Class | Raised when a name would corrupt the runner file's block structure. | handle an output or variable name that would corrupt the runner file's block structure |
+| `InvalidPidError` | Class | Raised when a non-positive pid was handed to {@link DetachedProcess.reap}. | handle a non-positive pid refused before signaling a process group by mistake |
+| `ManagedDocument` | Class | A marker-delimited document: named regions a tool owns, inside text a human may also edit. | marker-delimited document with named regions a tool owns inside human-edited text |
+| `ManagedDocumentError` | Class | Raised when a managed document cannot be read or regenerated without guessing. | handle a corrupt or ambiguous managed document region structure |
 | `ManagedDocumentSource` | Interface | Options identifying a managed document inside a text that may not carry one yet. | |
-| `NotABlobEnvelopeError` | Class | Raised when bytes cannot be read as an envelope. | |
-| `OidcClaims` | Class | The claims a GitHub Actions OIDC token carries about the workflow that ran. | |
-| `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | |
-| `OidcTokenIssuer` | Class | The runner's OIDC token service. | |
+| `NotABlobEnvelopeError` | Class | Raised when bytes cannot be read as an envelope. | handle bytes that are not a recognizable blob envelope, legacy unframed blob |
+| `OidcClaims` | Class | The claims a GitHub Actions OIDC token carries about the workflow that ran. | the claims carried by a GitHub Actions OIDC token: repository, ref, sha, job workflow ref |
+| `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | handle an OIDC token that could not be minted or decoded, missing id-token permission |
+| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint a runner OIDC token, request an identity token, decode unverified JWT claims |
 | `OidcTokenIssuerShape` | Interface | The {@link OidcTokenIssuer} service shape. | |
-| `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | |
+| `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | handle a value that did not satisfy its schema while publishing a JSON output |
 | `PackageManagerInstallOptions` | Interface | How {@link PackageManagerInstallerShape.install} should behave. | |
-| `PackageManagerInstaller` | Class | First-class exact-version package-manager provisioning on a GitHub runner. | |
-| `PackageManagerInstallerError` | Class | Raised when a package manager cannot be provisioned on the runner. | |
+| `PackageManagerInstaller` | Class | First-class exact-version package-manager provisioning on a GitHub runner. | provision an exact npm/pnpm/yarn/bun version from a corepack pin onto the runner |
+| `PackageManagerInstallerError` | Class | Raised when a package manager cannot be provisioned on the runner. | handle a package manager provisioning failure: integrity mismatch, unsupported platform |
 | `PackageManagerInstallerShape` | Interface | The {@link PackageManagerInstaller} service shape. | |
 | `PairsOptions` | Interface | Options for {@link ActionInput.pairs}. | |
 | `PathPrependEnv` | Interface | The environment additions {@link ChildEnv.prependPath} builds: exactly one entry, keyed by the spelling of `PATH` the base environment already uses. | |
 | `PathPrependOptions` | Interface | What {@link ChildEnv.prependPath} derives the additions from. | |
-| `ProcessId` | Variable | The schema a pid crosses the phase boundary through. | |
+| `ProcessId` | Variable | The schema a pid crosses the phase boundary through. | validating schema for a pid crossing the action phase boundary through state |
 | `ProvisionFileOptions` | Interface | What {@link ToolInstallerShape.provisionFile} should provision. | |
 | `ProvisionOptions` | Interface | What to mint a token for. | |
 | `ProvisionedFile` | Interface | Where {@link ToolInstallerShape.provisionFile} put a single-binary tool. | |
 | `ReadOptions` | Interface | Where to read a persisted token from. | |
 | `ReadinessOptions` | Interface | How long to wait for a child to become ready. | |
-| `RunnerContext` | Class | The runner's own context, projected from the `RUNNER_*` variables. | |
-| `RunnerFileUnavailableError` | Class | Raised when an action cannot publish an output. | |
-| `RunnerFileWriteError` | Class | Raised when a runner file exists but could not be appended to. | |
+| `RunnerContext` | Class | The runner's own context, projected from the `RUNNER_*` variables. | RUNNER_* context: os, arch, temp directory, tool cache root |
+| `RunnerFileUnavailableError` | Class | Raised when an action cannot publish an output. | handle a runner file (GITHUB_OUTPUT/STATE/ENV/PATH) that is not available |
+| `RunnerFileWriteError` | Class | Raised when a runner file exists but could not be appended to. | handle a runner file that exists but could not be appended to |
 | `S3Config` | Interface | How to reach an S3-compatible object store. | |
-| `Secret` | Class | The declassification seam: the **only** place in this package where a `Redacted` value becomes a plain string. | |
+| `Secret` | Class | The declassification seam: the **only** place in this package where a `Redacted` value becomes a plain string. | declassify a Redacted value into plaintext, mask before it crosses a runner boundary |
 | `StoredBlob` | Interface | A stored value: the caller's metadata beside the bytes it describes. | |
 | `ToolDownloadOptions` | Interface | How a {@link ToolInstallerShape.download} should behave. | |
-| `ToolInstaller` | Class | Download, extract and cache a toolchain in the runner's tool cache. | |
-| `ToolInstallerError` | Class | Raised when a tool cannot be downloaded, extracted or cached. | |
+| `ToolInstaller` | Class | Download, extract and cache a toolchain in the runner's tool cache. | download, extract and cache a toolchain binary in the runner's tool cache |
+| `ToolInstallerError` | Class | Raised when a tool cannot be downloaded, extracted or cached. | handle a tool download, extract or tool-cache write failure, retryable download status |
 | `ToolInstallerShape` | Interface | The {@link ToolInstaller} service shape. | |
-| `TruncatedBlobEnvelopeError` | Class | Raised when the frame ends mid-header or mid-metadata. | |
-| `UnsupportedBlobEnvelopeVersionError` | Class | Raised when the envelope came from a newer revision of the format. | |
+| `TruncatedBlobEnvelopeError` | Class | Raised when the frame ends mid-header or mid-metadata. | handle a blob envelope frame that ends mid-header or mid-metadata |
+| `UnsupportedBlobEnvelopeVersionError` | Class | Raised when the envelope came from a newer revision of the format. | handle a blob envelope written by a newer format revision |
 | `UploadOptions` | Interface | How to pack an upload. | |
 | `UploadResult` | Interface | What an upload produced. | |
 | `WithBufferOptions` | Interface | Options for {@link ActionLoggerShape.withBuffer}. | |
 | `WithStepOptions` | Interface | Options for {@link ActionLoggerShape.withStep}. | |
-| `WorkflowCommand` | Class | The GitHub Actions workflow-command wire protocol: `::name key=value::message`. | |
-| `describeCause` | Function | A readable one-line summary of why an action failed. | |
-| `projectCheckState` | Function | Project a kit check state onto GitHub's check-run wire vocabulary. | |
+| `WorkflowCommand` | Class | The GitHub Actions workflow-command wire protocol: `::name key=value::message`. | render ::error::/::warning::/::notice::/::group:: workflow commands, escape a log annotation |
+| `describeCause` | Function | A readable one-line summary of why an action failed. | one-line [Tag]: message summary of why an action failed, render an Effect Cause for a log |
+| `projectCheckState` | Function | Project a kit check state onto GitHub's check-run wire vocabulary. | map the kit's check state onto GitHub's check-run status/conclusion wire vocabulary |

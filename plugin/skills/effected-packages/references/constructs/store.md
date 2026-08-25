@@ -5,25 +5,25 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `Cache` | Class | A key → `Uint8Array` cache with TTL, tags, an eviction policy and a {@link CacheEvent} PubSub. | |
-| `CacheEntry` | Class | A stored cache entry: its key, value and bookkeeping fields. | |
+| `Cache` | Class | A key → `Uint8Array` cache with TTL, tags, an eviction policy and a {@link CacheEvent} PubSub. | cache with ttl and tags, durable local state, tag invalidation and write-order eviction |
+| `CacheEntry` | Class | A stored cache entry: its key, value and bookkeeping fields. | a stored cache row, key value bytes, content type, tags and expiry |
 | `CacheEntryMeta` | Interface | Metadata for a cache entry, without its stored value. | |
-| `CacheError` | Class | Raised when a cache operation's SQL fails. | |
-| `CacheEvent` | Class | A published cache event: the payload plus the instant it occurred. | |
-| `CacheEventPayload` | Variable + TypeAlias | The decoded form of {@link (CacheEventPayload:variable)}: a tagged union a subscriber narrows with `switch (payload._tag)`. | |
+| `CacheError` | Class | Raised when a cache operation's SQL fails. | handle a cache sql operation failure, get set has invalidate prune failed |
+| `CacheEvent` | Class | A published cache event: the payload plus the instant it occurred. | a published cache lifecycle event with its timestamp |
+| `CacheEventPayload` | Variable + TypeAlias | The decoded form of {@link (CacheEventPayload:variable)}: a tagged union a subscriber narrows with `switch (payload._tag)`. | cache hit, miss, set, expired, evicted, invalidated, pruned event shapes |
 | `CacheHit` | Interface | What {@link Cache.throughVerbose} returns: the value, and where it came from. | |
 | `CacheOptions` | Interface | Options for the {@link Cache} layers. | |
 | `CacheRemovalResult` | Interface | Result of a bulk cache-removal operation: how many entries were removed and which keys they were. | |
 | `CacheShape` | Interface | The service shape {@link Cache} provides. | |
 | `CacheSqliteOptions` | Interface | Options for {@link Cache.layerSqlite}. | |
 | `CacheThroughOptions` | Interface | Options for {@link Cache.through} and {@link Cache.throughVerbose}. | |
-| `Store` | Class | A schema-versioned, migrated SQL client: a managed database connection with a user-defined migration ledger. | |
-| `StoreError` | Class | Raised when a store operation's own SQL fails — ledger bookkeeping or the queries around a migration. | |
+| `Store` | Class | A schema-versioned, migrated SQL client: a managed database connection with a user-defined migration ledger. | durable local state, migrated sqlite database, schema-versioned store |
+| `StoreError` | Class | Raised when a store operation's own SQL fails — ledger bookkeeping or the queries around a migration. | handle a store sql operation failure, migrate rollback status setup failed |
 | `StoreMigration` | Interface | A single user-defined migration, applied in ascending `id` order. | |
-| `StoreMigrationError` | Class | Raised when a user-supplied migration fails with a typed `SqlError`. | |
+| `StoreMigrationError` | Class | Raised when a user-supplied migration fails with a typed `SqlError`. | handle a failing user-defined migration, sql error during up or down |
 | `StoreMigrationResult` | Interface | What a {@link StoreShape.migrate} or {@link StoreShape.rollback} call changed. | |
-| `StoreMigrationStatus` | Class | The applied/pending status of a single {@link StoreMigration}. | |
+| `StoreMigrationStatus` | Class | The applied/pending status of a single {@link StoreMigration}. | a migration's applied/pending status, when it ran |
 | `StoreOptions` | Interface | Options for the {@link Store} layers. | |
 | `StoreShape` | Interface | The service shape {@link Store} provides. | |
 | `StoreSqliteOptions` | Interface | Options for {@link Store.layerSqlite}. | |
-| `Uint8ArrayFromUtf8` | Variable | A `Uint8Array` codec over UTF-8 text: the last inch between a string-shaped schema and a byte-valued store. | |
+| `Uint8ArrayFromUtf8` | Variable | A `Uint8Array` codec over UTF-8 text: the last inch between a string-shaped schema and a byte-valued store. | encode text to bytes for a store or cache value, utf-8 codec to uint8array |

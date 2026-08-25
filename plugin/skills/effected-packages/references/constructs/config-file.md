@@ -6,43 +6,43 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `ConfigCodec` | Interface | A pluggable configuration file codec: how to turn file content into a value and back. | |
-| `ConfigCodecError` | Class | Indicates that a codec failed to parse or stringify configuration content. | |
-| `ConfigDefaultPathMissingError` | Class | Indicates that {@link ConfigFileShape.save} or {@link ConfigFileShape.update} was called on a service configured without a `defaultPath`. | |
-| `ConfigEncryptionError` | Class | Indicates that an encryption, decryption, key-derivation or base64 step failed. | |
-| `ConfigEvent` | Class | A published event: the payload plus the instant it occurred. | |
-| `ConfigEventPayload` | Variable + TypeAlias | The decoded form of {@link (ConfigEventPayload:variable)}: a tagged union a subscriber narrows with `switch (payload._tag)`. | |
-| `ConfigEvents` | Class | The opt-in event hook: a PubSub of {@link ConfigEvent} that consumers subscribe to. | |
+| `ConfigCodecError` | Class | Indicates that a codec failed to parse or stringify configuration content. | handle malformed config content, typed parse or stringify failure |
+| `ConfigDefaultPathMissingError` | Class | Indicates that {@link ConfigFileShape.save} or {@link ConfigFileShape.update} was called on a service configured without a `defaultPath`. | handle save called without a configured default path |
+| `ConfigEncryptionError` | Class | Indicates that an encryption, decryption, key-derivation or base64 step failed. | handle encryption, decryption or key-derivation failure on a config file |
+| `ConfigEvent` | Class | A published event: the payload plus the instant it occurred. | one timestamped config-pipeline event to subscribe to |
+| `ConfigEventPayload` | Variable + TypeAlias | The decoded form of {@link (ConfigEventPayload:variable)}: a tagged union a subscriber narrows with `switch (payload._tag)`. | discovery, parse, validate, merge, write event union, subscribe to config lifecycle |
+| `ConfigEvents` | Class | The opt-in event hook: a PubSub of {@link ConfigEvent} that consumers subscribe to. | opt-in pubsub hub for config discovery, parse, validate, write events |
 | `ConfigEventsShape` | Interface | The service shape {@link ConfigEvents} provides. | |
-| `ConfigFile` | Class | The config file service: a per-schema service factory, its layers, and the one-shot {@link ConfigFile.read}. | |
+| `ConfigFile` | Class | The config file service: a per-schema service factory, its layers, and the one-shot {@link ConfigFile.read}. | load, save and watch an application's config file across several candidate locations |
 | `ConfigFileMigration` | Interface | A single versioned migration step. | |
-| `ConfigFileNotFoundError` | Class | Indicates that the resolver chain produced no configuration source. | |
+| `ConfigFileNotFoundError` | Class | Indicates that the resolver chain produced no configuration source. | handle no config file found anywhere in the resolver chain |
 | `ConfigFileOptions` | Interface | Options for {@link ConfigFile.layer}. | |
-| `ConfigFileReadError` | Class | Indicates that a config file could not be read from the filesystem. | |
+| `ConfigFileReadError` | Class | Indicates that a config file could not be read from the filesystem. | handle a config file that could not be read from disk |
 | `ConfigFileShape` | Interface | The config file service, generic over the decoded config type `A`. | |
 | `ConfigFileTestOptions` | Interface | Options for {@link ConfigFile.testLayer}. | |
-| `ConfigFileWriteError` | Class | Indicates that a config file could not be written to the filesystem. | |
+| `ConfigFileWriteError` | Class | Indicates that a config file could not be written to the filesystem. | handle a config file that could not be written to disk |
 | `ConfigLoadError` | TypeAlias | The failure modes of the full discovery-and-load path. | |
-| `ConfigMigration` | Class | Versioned migration support for config codecs. | |
-| `ConfigMigrationError` | Class | Indicates that a versioned config migration failed. | |
+| `ConfigMigration` | Class | Versioned migration support for config codecs. | upgrade an old config file schema to the latest version on load |
+| `ConfigMigrationError` | Class | Indicates that a versioned config migration failed. | handle a versioned config migration step failing to read, apply or write |
 | `ConfigMigrationOptions` | Interface | Options for {@link ConfigMigration.make}. | |
 | `ConfigReadError` | TypeAlias | The failure modes of reading one known path. | |
 | `ConfigReadOptions` | Interface | Options for {@link ConfigFile.read}. | |
-| `ConfigResolver` | Class + Interface | Built-in resolvers, in the order a typical chain uses them. | |
+| `ConfigResolver` | Class + Interface | Built-in resolvers, in the order a typical chain uses them. | find a config file by explicit path, static dir, upward walk, git or workspace root, or /etc |
 | `ConfigSaveError` | TypeAlias | The failure modes of {@link ConfigFileShape.save}. | |
 | `ConfigSource` | Interface | A single configuration source discovered during a resolver-chain pass. | |
-| `ConfigSourceRef` | Variable | A reference to one configuration source that contributed to a load. | |
+| `ConfigSourceRef` | Variable | A reference to one configuration source that contributed to a load. | path and resolver name that contributed a config value |
 | `ConfigUpdateError` | TypeAlias | The failure modes of {@link ConfigFileShape.update}, which loads and then saves. | |
-| `ConfigValidationError` | Class | Indicates that parsed config content did not satisfy the schema, or that a caller-supplied `validate` rejected it. | |
+| `ConfigValidationError` | Class | Indicates that parsed config content did not satisfy the schema, or that a caller-supplied `validate` rejected it. | handle a config document failing schema validation or a custom check |
 | `ConfigWriteError` | TypeAlias | The failure modes of encoding and writing one known path. | |
-| `EncryptedCodec` | Function | Wrap any {@link (ConfigCodec:interface)} with AES-GCM encryption. | |
-| `EncryptedCodecKey` | Variable + TypeAlias | Key source union for {@link EncryptedCodec}. | |
-| `JsonCodec` | Variable | A `ConfigCodec` backed by the host `JSON` global: plain JSON as configuration file content. | |
-| `JsoncCodec` | Variable | A `ConfigCodec` backed by `@effected/jsonc`: JSON with comments and trailing commas. | |
+| `EncryptedCodec` | Function | Wrap any {@link (ConfigCodec:interface)} with AES-GCM encryption. | wrap a config codec with aes-gcm encryption at rest |
+| `EncryptedCodecKey` | Variable + TypeAlias | Key source union for {@link EncryptedCodec}. | supply a crypto key or derive one from a passphrase for encrypted config |
+| `JsonCodec` | Variable | A `ConfigCodec` backed by the host `JSON` global: plain JSON as configuration file content. | parse and stringify config as plain json, no parsing engine dependency |
+| `JsoncCodec` | Variable | A `ConfigCodec` backed by `@effected/jsonc`: JSON with comments and trailing commas. | parse and stringify config as jsonc, comments and trailing commas allowed |
 | `LayerConfigProviderOptions` | Interface | Options for {@link layerConfigProvider}. | |
-| `MergeStrategy` | Variable + Interface | Strategy for combining several {@link ConfigSource} entries into one value. | |
+| `MergeStrategy` | Variable + Interface | Strategy for combining several {@link ConfigSource} entries into one value. | combine several discovered config sources into one value, first-match or deep merge |
 | `NonEmptySources` | TypeAlias | A source list guaranteed non-empty by the caller. | |
-| `TomlCodec` | Variable | A `ConfigCodec` backed by `@effected/toml`. | |
-| `VersionAccess` | Variable + Interface | How the version number is read from and written to the parsed config. | |
-| `YamlCodec` | Variable | A `ConfigCodec` backed by `@effected/yaml`. | |
-| `asConfigProvider` | Function | Expose a loaded, merged, schema-validated document as a v4 `ConfigProvider`, so it can be read through `Config.string("port")` and layered beneath other providers. | |
-| `layerConfigProvider` | Function | Install a loaded config document as a fallback beneath the **ambient** `ConfigProvider`, so `Config` accessors read env first and the file second. | |
+| `TomlCodec` | Variable | A `ConfigCodec` backed by `@effected/toml`. | parse and stringify config as toml |
+| `VersionAccess` | Variable + Interface | How the version number is read from and written to the parsed config. | read and write the version field used by config migrations |
+| `YamlCodec` | Variable | A `ConfigCodec` backed by `@effected/yaml`. | parse and stringify config as yaml |
+| `asConfigProvider` | Function | Expose a loaded, merged, schema-validated document as a v4 `ConfigProvider`, so it can be read through `Config.string("port")` and layered beneath other providers. | bridge a loaded config document into effect's Config accessors |
+| `layerConfigProvider` | Function | Install a loaded config document as a fallback beneath the **ambient** `ConfigProvider`, so `Config` accessors read env first and the file second. | install a config file as a fallback beneath the ambient ConfigProvider |

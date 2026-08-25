@@ -7,9 +7,9 @@
 | --- | --- | --- | --- |
 | `AscendOptions` | Interface | Options for {@link Walker.ascend}. | |
 | `CompileAndExpandOptions` | Interface | Options for {@link compileAndExpand}: every {@link DescendOptions} field, plus the glob options the pattern compiles under. | |
-| `DescendError` | Class | Typed failure raised by {@link descend}: a directory mid-walk was unreadable (under `onUnreadable: "fail"`), or the walk descended past `maxDepth`. Depth exhaustion is a typed failure, never a truncation — silent truncation silently changes match semantics. | |
+| `DescendError` | Class | Typed failure raised by {@link descend}: a directory mid-walk was unreadable (under `onUnreadable: "fail"`), or the walk descended past `maxDepth`. Depth exhaustion is a typed failure, never a truncation — silent truncation silently changes match semantics. | handle unreadable directory during glob descent, depth cap exceeded, typed filesystem walk failure |
 | `DescendOptions` | Interface | Options for {@link descend}. | |
-| `GlobExpansionError` | Class | Typed failure raised by {@link compileAndExpand}: the single error the compile+expand recipe fails with, so a caller catches one tag rather than folding two error channels by hand. | |
-| `Walker` | Class | Upward path traversal primitives. | |
-| `compileAndExpand` | Function | Compile a glob pattern and expand it against the filesystem in one call: matching FILE paths relative to `options.cwd`, POSIX separators, sorted. | |
-| `descend` | Function | Expand a compiled glob pattern against the filesystem, returning matching FILE paths relative to `cwd` (POSIX separators), sorted by relative path. | |
+| `GlobExpansionError` | Class | Typed failure raised by {@link compileAndExpand}: the single error the compile+expand recipe fails with, so a caller catches one tag rather than folding two error channels by hand. | handle pattern-to-files expansion failure, compile or descend stage error, wraps GlobPatternError or DescendError |
+| `Walker` | Class | Upward path traversal primitives. | walk up parent directories, find nearest config file, find monorepo root, ascend to filesystem root, stop at ceiling directory |
+| `compileAndExpand` | Function | Compile a glob pattern and expand it against the filesystem in one call: matching FILE paths relative to `options.cwd`, POSIX separators, sorted. | compile a glob string and expand it against the filesystem in one call, pattern source to matching files |
+| `descend` | Function | Expand a compiled glob pattern against the filesystem, returning matching FILE paths relative to `cwd` (POSIX separators), sorted by relative path. | expand a compiled glob pattern into matching files under a directory, downward filesystem walk, prune node_modules |

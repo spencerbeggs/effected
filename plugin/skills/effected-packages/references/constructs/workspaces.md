@@ -6,88 +6,88 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `CatalogAssemblyFailure` | TypeAlias | Every failure catalog assembly can surface. | |
-| `CatalogSet` | Class | An immutable, fully-normalized catalog collection — the one catalog resolution semantic in the package. | |
-| `ChangeDetectionError` | Class | Raised when change detection cannot proceed for a reason that is not one of git's own typed failures — the wrapper for "detection has no ground to stand on". | |
+| `CatalogSet` | Class | An immutable, fully-normalized catalog collection — the one catalog resolution semantic in the package. | pnpm catalog data, resolve a catalog: specifier to a version range, merge catalog sources from lockfile and inline config |
+| `ChangeDetectionError` | Class | Raised when change detection cannot proceed for a reason that is not one of git's own typed failures — the wrapper for "detection has no ground to stand on". | handle git change detection setup failure, no repository or nothing to detect against |
 | `ChangeDetectionFailure` | TypeAlias | Every failure the change-detection methods can surface. | |
-| `ChangeDetectionOptions` | Class | Which git refs to compare, and whether to fold in the working tree. | |
-| `ChangeDetector` | Class | Detects which workspace packages a git range touches. | |
+| `ChangeDetectionOptions` | Class | Which git refs to compare, and whether to fold in the working tree. | configure the git diff range, base and head refs, include uncommitted working-tree changes |
+| `ChangeDetector` | Class | Detects which workspace packages a git range touches. | find changed files since a git ref, which packages changed, affected packages blast radius, CI change detection |
 | `ChangeDetectorShape` | Interface | The {@link ChangeDetector} service shape. | |
 | `ClassifyOptions` | Interface | Arguments to {@link VersioningStrategy.classify}. | |
-| `ConfigDependencyHooks` | Class | Replays a workspace's `configDependencies` `updateConfig` hooks over the inline catalogs — the opt-in seam that lets hook-injected catalogs participate in assembly. | |
+| `ConfigDependencyHooks` | Class | Replays a workspace's `configDependencies` `updateConfig` hooks over the inline catalogs — the opt-in seam that lets hook-injected catalogs participate in assembly. | replay pnpm config dependency pnpmfile hooks, inject catalogs from a config-dependency plugin, updateConfig hook |
 | `ConfigDependencyHooksShape` | Interface | The {@link ConfigDependencyHooks} service shape. | |
-| `CyclicDependencyError` | Class | Raised when the workspace dependency graph cannot be topologically ordered because it contains a cycle. | |
+| `CyclicDependencyError` | Class | Raised when the workspace dependency graph cannot be topologically ordered because it contains a cycle. | handle a circular workspace dependency, cannot topologically sort packages |
 | `DependencyDiff` | Interface | The result of comparing two {@link WorkspacePackage} dependency snapshots. | |
-| `DependencyGraph` | Class | The directed graph of dependencies **between workspace packages**. External npm dependencies are not nodes. | |
-| `DetectedPackageManager` | Class | The outcome of package-manager detection at a workspace root. | |
+| `DependencyGraph` | Class | The directed graph of dependencies **between workspace packages**. External npm dependencies are not nodes. | inter-package dependency graph, topological sort, parallel build levels, build order, affected-by blast radius, mermaid diagram |
+| `DetectedPackageManager` | Class | The outcome of package-manager detection at a workspace root. | which package manager and version runs this workspace, detection result and evidence |
 | `FindWorkspaceRootOptions` | Interface | Options for {@link WorkspaceRoot}'s `find`. | |
 | `GetWorkspacePackagesSyncOptions` | Interface | Options for {@link getWorkspacePackagesSync}: the required consumer-supplied operations plus the traversal bound. | |
 | `HookInjection` | Interface | The result of replaying a workspace's `configDependencies` hooks: the catalogs the hooks yield, and the release-age gate contribution they leave on the config (pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude`). | |
 | `ImporterVersions` | TypeAlias | Each importer's dependency-name → resolved-version map, keyed by importer path (`"."` for the root package — the same keys `WorkspaceDiscovery.importerMap()` uses, and the same value `PackageStateSnapshot.relativePath` carries). | |
-| `LockfileReadError` | Class | Raised when the workspace's lockfile cannot be read off disk. | |
+| `LockfileReadError` | Class | Raised when the workspace's lockfile cannot be read off disk. | handle the workspace lockfile file cannot be read off disk |
 | `LockfileReadFailure` | TypeAlias | Every failure the lockfile methods can surface — the exported init-error union the review named best-in-class DX. | |
-| `LockfileReader` | Class | Reads and parses the workspace's lockfile. | |
+| `LockfileReader` | Class | Reads and parses the workspace's lockfile. | read and parse the workspace lockfile, look up a resolved package version, check lockfile integrity against manifests |
 | `LockfileReaderOptions` | Interface | Options for the {@link LockfileReader} layer. | |
 | `LockfileReaderShape` | Interface | The {@link LockfileReader} service shape. | |
-| `NoPeerDependencyRules` | Variable | The empty {@link PeerDependencyRules}: every axis present and empty. | |
-| `PackageManagerDetectionError` | Class | Raised when a directory carries no lockfile and no workspace configuration, so no package manager can be attributed to it. | |
+| `NoPeerDependencyRules` | Variable | The empty {@link PeerDependencyRules}: every axis present and empty. | empty peer-dependency suppression rules, assert a workspace declares no peerDependencyRules |
+| `PackageManagerDetectionError` | Class | Raised when a directory carries no lockfile and no workspace configuration, so no package manager can be attributed to it. | handle no package manager could be detected at a workspace root |
 | `PackageManagerDetectionFailure` | TypeAlias | Every failure {@link PackageManagerDetector} can surface: no manager could be attributed to the root, or the root's `package.json` exists but cannot be read or parsed. | |
-| `PackageManagerDetector` | Class | Detects which package manager owns a workspace root. | |
+| `PackageManagerDetector` | Class | Detects which package manager owns a workspace root. | detect which package manager npm pnpm yarn bun runs a workspace, probe lockfiles and manifest fields |
 | `PackageManagerDetectorShape` | Interface | The {@link PackageManagerDetector} service shape. | |
-| `PackageManagerEvidence` | Variable + TypeAlias | The decoded type of {@link (PackageManagerEvidence:variable)}: the marker that decided a detection. | |
-| `PackageManagerName` | Variable + TypeAlias | The decoded type of {@link (PackageManagerName:variable)}: `"npm" \| "pnpm" \| "yarn" \| "bun"`. | |
-| `PackageNotFoundError` | Class | Raised when a workspace package is requested by a name no member carries. | |
+| `PackageManagerEvidence` | Variable + TypeAlias | The decoded type of {@link (PackageManagerEvidence:variable)}: the marker that decided a detection. | which marker file or manifest field decided a package-manager detection |
+| `PackageManagerName` | Variable + TypeAlias | The decoded type of {@link (PackageManagerName:variable)}: `"npm" \| "pnpm" \| "yarn" \| "bun"`. | the four supported package managers, npm pnpm yarn bun |
+| `PackageNotFoundError` | Class | Raised when a workspace package is requested by a name no member carries. | handle an unknown workspace package name requested by name |
 | `PackageRelease` | Interface | One entry in a release batch: which package went out, at which version. | |
-| `PackageStateSnapshot` | Class | One workspace member as captured in a {@link WorkspaceStateSnapshot} — the serializable slice a snapshot diff reads: identity, version, location, and the four dependency records. | |
-| `PeerCheck` | Class | The result of checking a lockfile for unsatisfied peer dependencies. | |
+| `PackageStateSnapshot` | Class | One workspace member as captured in a {@link WorkspaceStateSnapshot} — the serializable slice a snapshot diff reads: identity, version, location, and the four dependency records. | one package's captured state at a point in time, name version and dependencies for diffing |
+| `PeerCheck` | Class | The result of checking a lockfile for unsatisfied peer dependencies. | find unsatisfied peer dependencies in a lockfile, replicate pnpm peers check, peer dependency audit |
 | `PeerCheckOptions` | Interface | Options for {@link PeerCheck.run}. | |
 | `PeerDependencyRules` | Interface | pnpm's `peerDependencyRules` block — the suppression policy pnpm applies **after** computing peer violations, in pnpm's own shape. | |
-| `PeerParent` | Class | One link in the chain from an importer to the package that declared an unsatisfied peer. | |
-| `PublishConfig` | Class | The `publishConfig` fields workspace tooling reads. | |
-| `PublishTarget` | Class | A resolved publish destination for a workspace package. | |
-| `PublishabilityDetector` | Class | Decides whether a workspace package publishes, and to where. | |
+| `PeerParent` | Class | One link in the chain from an importer to the package that declared an unsatisfied peer. | one link in the chain from an importer down to the package declaring an unmet peer |
+| `PublishConfig` | Class | The `publishConfig` fields workspace tooling reads. | typed publishConfig fields, registry access directory and dist-tag for publishing |
+| `PublishTarget` | Class | A resolved publish destination for a workspace package. | a resolved publish destination for a package, registry access directory and provenance |
+| `PublishabilityDetector` | Class | Decides whether a workspace package publishes, and to where. | decide whether a workspace package publishes and to where, npm publish semantics, private package check |
 | `PublishabilityDetectorShape` | Interface | The {@link PublishabilityDetector} service shape. | |
-| `ReleaseTag` | Class | A git tag naming a release, and the parts it was built from. | |
+| `ReleaseTag` | Class | A git tag naming a release, and the parts it was built from. | format a git release tag, single shared tag or per-package scoped tag naming |
 | `SyncDirectoryEntry` | Interface | One directory entry with its type resolved, as the optional {@link SyncFileSystem.readDirectoryWithTypes} fast path reports it. Node's `Dirent` satisfies it after mapping its predicate methods to booleans. | |
 | `SyncFileSystem` | Interface | The synchronous file operations the sync entry points need, supplied by the consumer. Node's built-ins satisfy it directly: ```ts import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"; | |
 | `SyncPath` | Interface | The synchronous path operations the sync entry points need, supplied by the consumer. Deliberately a structural subset of `node:path`, so the built-in module (and its `win32` / `posix` variants, or a Bun / Deno equivalent) satisfies it verbatim: ```ts import * as path from "node:path"; | |
 | `TagClassification` | TypeAlias | What an arbitrary tag string denotes. | |
 | `TagFormatOptions` | Interface | Formatting knobs for {@link ReleaseTag.single} and {@link ReleaseTag.scoped}. | |
-| `TagStyle` | Variable + TypeAlias | The decoded type of {@link (TagStyle:variable)}: `"single" \| "scoped"`. | |
-| `TrackingTag` | Class | A floating alias tag — `v1`, `v1.2` — that a repo re-points at its newest matching release. | |
+| `TagStyle` | Variable + TypeAlias | The decoded type of {@link (TagStyle:variable)}: `"single" \| "scoped"`. | whether a release uses one shared tag or one tag per package |
+| `TrackingTag` | Class | A floating alias tag — `v1`, `v1.2` — that a repo re-points at its newest matching release. | floating major/minor alias tag like v1 or v1.2, GitHub Actions version-pinning convention, re-point a tag at a new release |
 | `TrackingTagOptions` | Interface | Options for {@link TrackingTag.forVersion}. | |
-| `UnsatisfiedPeer` | Class | One peer dependency that is declared but not satisfied. | |
+| `UnsatisfiedPeer` | Class | One peer dependency that is declared but not satisfied. | one declared but unmet peer dependency row, missing or wrong version resolved |
 | `UnverifiedReason` | TypeAlias | Why a report is not a complete answer. | |
 | `VersioningDetectOptions` | Interface | Arguments to {@link VersioningStrategy.detect}. | |
-| `VersioningStrategy` | Class | How a workspace versions, and the tagging that follows from it. | |
-| `VersioningStrategyType` | Variable + TypeAlias | The decoded type of {@link (VersioningStrategyType:variable)}. | |
-| `WORKSPACE_MARKERS` | Variable | The marker filenames {@link WorkspaceRoot} probes for, in priority order. | |
-| `WorkspaceCatalogs` | Class | Assembles a workspace's catalogs, package-manager-aware. | |
+| `VersioningStrategy` | Class | How a workspace versions, and the tagging that follows from it. | how a workspace assigns versions, single fixed-group or independent, derive release tags for a batch |
+| `VersioningStrategyType` | Variable + TypeAlias | The decoded type of {@link (VersioningStrategyType:variable)}. | single, fixed-group or independent versioning classification |
+| `WORKSPACE_MARKERS` | Variable | The marker filenames {@link WorkspaceRoot} probes for, in priority order. | marker filenames that identify a workspace root, pnpm-workspace.yaml or package.json |
+| `WorkspaceCatalogs` | Class | Assembles a workspace's catalogs, package-manager-aware. | assemble pnpm catalogs for a workspace, resolve a catalog: specifier, release-age gate, effective peerDependencyRules — implements `CatalogResolver` from `@effected/npm` |
 | `WorkspaceCatalogsOptions` | Interface | Options for the {@link WorkspaceCatalogs} layer. | |
 | `WorkspaceCatalogsShape` | Interface | The {@link WorkspaceCatalogs} service shape. | |
-| `WorkspaceDiscovery` | Class | Discovers the packages of a workspace. | |
-| `WorkspaceDiscoveryError` | Class | Raised when a workspace member's `package.json` cannot be read, parsed, or used — it is missing, malformed, or lacks a `name` or `version`. | |
+| `WorkspaceDiscovery` | Class | Discovers the packages of a workspace. | enumerate workspace packages, find a package by name, resolve a file path to its owning package, monorepo package discovery — implements `WorkspaceResolver` from `@effected/npm` |
+| `WorkspaceDiscoveryError` | Class | Raised when a workspace member's `package.json` cannot be read, parsed, or used — it is missing, malformed, or lacks a `name` or `version`. | handle a workspace member's package.json that cannot be read, parsed, or lacks a name or version |
 | `WorkspaceDiscoveryFailure` | TypeAlias | The error channel of the discovery methods that do not look a package up by name — everything except `getPackage`. | |
 | `WorkspaceDiscoveryOptions` | Interface | Options for the {@link WorkspaceDiscovery} layer. | |
 | `WorkspaceDiscoveryShape` | Interface | The {@link WorkspaceDiscovery} service shape. | |
-| `WorkspaceInfo` | Class | Top-level facts about a workspace: where it is, what manages it, and the patterns that define its membership. | |
+| `WorkspaceInfo` | Class | Top-level facts about a workspace: where it is, what manages it, and the patterns that define its membership. | top-level workspace facts, root directory and packages: patterns |
 | `WorkspaceLookupFailure` | TypeAlias | Every failure `WorkspaceDiscovery.getPackage` can surface: the discovery failures plus a name that matches no member. | |
-| `WorkspaceManifestError` | Class | Raised when a workspace member's `package.json` cannot be read or decoded into the strict `@effected/package-json` `Package` model. | |
-| `WorkspacePackage` | Class | A single package inside a workspace: the discovery-relevant slice of its `package.json` plus its filesystem location. | |
-| `WorkspacePatternError` | Class | Raised when a `packages:` pattern cannot be enumerated: its base directory is absent (usually a typo), the descent exceeded its depth cap, or the visit budget was exhausted. | |
-| `WorkspaceRoot` | Class | Locates the workspace root by ascending from a starting directory. | |
-| `WorkspaceRootNotFoundError` | Class | Raised when no workspace root can be found by ascending from a directory. | |
+| `WorkspaceManifestError` | Class | Raised when a workspace member's `package.json` cannot be read or decoded into the strict `@effected/package-json` `Package` model. | handle a package.json that cannot be read or decoded into the strict manifest model |
+| `WorkspacePackage` | Class | A single package inside a workspace: the discovery-relevant slice of its `package.json` plus its filesystem location. | a located workspace member, discovered package.json projection, dependency lookups and glob matching |
+| `WorkspacePatternError` | Class | Raised when a `packages:` pattern cannot be enumerated: its base directory is absent (usually a typo), the descent exceeded its depth cap, or the visit budget was exhausted. | handle a packages: glob pattern that cannot be enumerated, missing base directory or depth exceeded |
+| `WorkspaceRoot` | Class | Locates the workspace root by ascending from a starting directory. | find the nearest workspace root, ascend directories for pnpm-workspace.yaml or a package.json workspaces field |
+| `WorkspaceRootNotFoundError` | Class | Raised when no workspace root can be found by ascending from a directory. | handle no workspace root found above a starting directory |
 | `WorkspaceRootShape` | Interface | The {@link WorkspaceRoot} service contract. | |
 | `WorkspaceSnapshotAtFailure` | TypeAlias | Every failure `WorkspaceSnapshots.at` can surface: git's own typed errors, a catalog-assembly failure from the inline config source at the ref, or an unfindable workspace root. | |
 | `WorkspaceSnapshotWorktreeFailure` | TypeAlias | Every failure `WorkspaceSnapshots.worktree` can surface: the discovery failures plus a catalog-assembly failure. | |
-| `WorkspaceSnapshots` | Class | Reads workspace state at a git ref with no checkout, and the live worktree. | |
+| `WorkspaceSnapshots` | Class | Reads workspace state at a git ref with no checkout, and the live worktree. | read workspace state at a git ref with no checkout, diff a workspace before and after, live worktree snapshot |
 | `WorkspaceSnapshotsOptions` | Interface | Options for the {@link WorkspaceSnapshots} layer. | |
 | `WorkspaceSnapshotsShape` | Interface | The {@link WorkspaceSnapshots} service shape. | |
-| `WorkspaceStateSnapshot` | Class | The state of a whole workspace at one moment — its packages and its assembled catalog set — as a serializable value. | |
-| `Workspaces` | Class | The composite layers. | |
+| `WorkspaceStateSnapshot` | Class | The state of a whole workspace at one moment — its packages and its assembled catalog set — as a serializable value. | workspace state at one moment as a serializable value, resolve catalog: or workspace: specifiers as of a ref, diff two refs |
+| `Workspaces` | Class | The composite layers. | composite layers wiring the whole workspaces package, one-call setup, run a project-local binary — implements `LocalExec` from `@effected/commands` |
 | `WorkspacesGitOptions` | Interface | Options for the composites that additionally provide {@link WorkspaceSnapshots} — {@link Workspaces.layerWithGit} and the two config-dependency variants. | |
 | `WorkspacesOptions` | Interface | Options shared by the composite layers. | |
 | `WorkspacesServices` | TypeAlias | Every service the git-free composite layer provides. | |
 | `WorkspacesSyncOptions` | Interface | The consumer-supplied operations backing one sync call: the file operations and the path implementation. Both are required — this package never imports `node:*` and never assumes posix, so the platform binding is entirely the caller's. | |
-| `classifyTag` | Function | Decide whether a tag string is a release tag, a tracking alias, or neither. | |
-| `findWorkspaceRootSync` | Function | The nearest workspace root at or above `cwd`, or `null`. | |
-| `getWorkspacePackagesSync` | Function | Every workspace package under `root`, root package first. | |
+| `classifyTag` | Function | Decide whether a tag string is a release tag, a tracking alias, or neither. | classify a git tag string as a release tag or a tracking alias |
+| `findWorkspaceRootSync` | Function | The nearest workspace root at or above `cwd`, or `null`. | synchronously find the workspace root, non-Effect entry point for config files like vitest.config |
+| `getWorkspacePackagesSync` | Function | Every workspace package under `root`, root package first. | synchronously enumerate workspace packages, non-Effect entry point for config files |
