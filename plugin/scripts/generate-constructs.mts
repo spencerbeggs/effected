@@ -10,7 +10,7 @@
 //
 // Exit codes: 0 ok; 1 annotation problems (stale entries, or --require-intent
 // unmet); 2 missing doc models ("build first").
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -70,7 +70,7 @@ const listPackages = (packagesDir: string): Pkg[] =>
 		.map((dir) => ({
 			dir,
 			name: (JSON.parse(readFileSync(join(packagesDir, dir, "package.json"), "utf8")) as { name: string }).name,
-			modelPath: join(packagesDir, dir, "dist", "prod", "npm", "meta", `${dir}.api.json`)
+			modelPath: join(packagesDir, dir, "dist", "prod", "npm", "meta", `${dir}.api.json`),
 		}));
 
 // First paragraph of a TSDoc comment: strip the frame, stop at the first
@@ -109,7 +109,7 @@ const rowsOf = (modelPath: string): Row[] => {
 				name,
 				kinds,
 				purpose: summaryOf(slot.doc),
-				required: kinds.some((kind) => VALUE_KINDS.has(kind))
+				required: kinds.some((kind) => VALUE_KINDS.has(kind)),
 			};
 		});
 };
@@ -132,7 +132,7 @@ const main = () => {
 	const { command, flags } = parseArgs(process.argv.slice(2));
 	const packagesDir = resolve(String(flags.get("packages") ?? join(repoRoot, "packages")));
 	const annotationsPath = resolve(
-		String(flags.get("annotations") ?? join(repoRoot, "plugin", "scripts", "construct-annotations.json"))
+		String(flags.get("annotations") ?? join(repoRoot, "plugin", "scripts", "construct-annotations.json")),
 	);
 	const packages = listPackages(packagesDir);
 
@@ -200,7 +200,7 @@ const main = () => {
 	}
 
 	const outDir = resolve(
-		String(flags.get("out") ?? join(repoRoot, "plugin", "skills", "effected-packages", "references", "constructs"))
+		String(flags.get("out") ?? join(repoRoot, "plugin", "skills", "effected-packages", "references", "constructs")),
 	);
 	mkdirSync(outDir, { recursive: true });
 	for (const pkg of packages) {
@@ -212,7 +212,7 @@ const main = () => {
 			"     Edit plugin/scripts/construct-annotations.json and regenerate. -->",
 			"",
 			"| Construct | Kind | Purpose | Reach for it when |",
-			"| --- | --- | --- | --- |"
+			"| --- | --- | --- | --- |",
 		];
 		for (const row of rows) {
 			const annotation = annotations[pkg.dir]?.[row.name];
