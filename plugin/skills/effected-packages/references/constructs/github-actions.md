@@ -9,7 +9,7 @@
 | `ActionCache` | Class | The runner's own cache: archive a set of paths under a key, and get them back in a later job. | save and restore the runner's actions/cache, warm a toolchain or dependency cache between jobs |
 | `ActionCacheError` | Class | Raised when the runner's cache cannot be read or written. | handle a cache save or restore failure, actions cache misconfigured or unreachable |
 | `ActionCacheShape` | Interface | The {@link ActionCache} service shape. | |
-| `ActionEnvironment` | Class | The runner environment an action is executing inside. | read GITHUB_*and RUNNER_* variables, process.env access for an action, step debug mode |
+| `ActionEnvironment` | Class | The runner environment an action is executing inside. | read `GITHUB_*` and `RUNNER_*` variables, process.env access for an action, step debug mode |
 | `ActionEnvironmentError` | Class | Raised when the runner environment does not say what an action needs. | handle a missing or malformed runner environment variable |
 | `ActionEnvironmentShape` | Interface | The {@link ActionEnvironment} service shape. | |
 | `ActionInput` | Class | Action inputs, read as `Config` values. | read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input |

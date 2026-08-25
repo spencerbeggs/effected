@@ -225,7 +225,7 @@ const main = () => {
 			for (const impl of implementedBy.get(`${pkg.dir}.${row.name}`) ?? []) {
 				parts.push(`implemented by \`${impl.name}\` in \`${nameByDir.get(impl.pkg) ?? impl.pkg}\``);
 			}
-			const cells = [`\`${row.name}\``, row.kinds.join(" + "), row.purpose, parts.join(" — ")];
+			const cells = [`\`${row.name}\``, row.kinds.join(" + "), row.purpose, parts.join(" — ").replace(/\|/g, "\\|")];
 			lines.push(`|${cells.map((cell) => (cell === "" ? " " : ` ${cell} `)).join("|")}|`);
 		}
 		lines.push("");
