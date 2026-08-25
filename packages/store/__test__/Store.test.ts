@@ -316,6 +316,33 @@ describe("Store", () => {
 			}),
 		);
 
+		// The `Omit` on `client` binds only TypeScript callers; a JavaScript (or
+		// any-typed) caller can still pass the name transforms, which rewrite the
+		// migration ledger's result names and make `status` report nothing
+		// applied. The layer must strip them at runtime; this fails if either
+		// transform leaks through to the driver.
+		it.effect("name-transform client options are stripped at runtime", () =>
+			Effect.gen(function* () {
+				const camelize = (name: string) => name.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+				const storeLayer = Store.layerSqlite({
+					filename: join(dir, "transforms-stripped.db"),
+					migrations: [createNotes],
+					client: { transformResultNames: camelize, transformQueryNames: camelize } as never,
+				});
+				const status = yield* Effect.provide(
+					Effect.gen(function* () {
+						const store = yield* Store;
+						return yield* store.status;
+					}),
+					storeLayer,
+				);
+				assert.deepStrictEqual(
+					status.map((entry) => [entry.id, entry.appliedAt !== undefined]),
+					[[1, true]],
+				);
+			}),
+		);
+
 		// A second open connection (that has read once) defeats SQLite's
 		// checkpoint-on-last-close, so the WAL's size after the layer scope
 		// closes is exactly what the finalizer — or its absence — left behind.
@@ -339,9 +366,11 @@ describe("Store", () => {
 					}),
 					storeLayer,
 				);
-				const size = statSync(`${filename}-wal`).size;
-				second?.close();
-				return size;
+				try {
+					return statSync(`${filename}-wal`).size;
+				} finally {
+					second?.close();
+				}
 			});
 
 		it.effect("checkpointOnClose truncates the WAL before the client closes", () =>

@@ -891,7 +891,11 @@ export type MdxJsxAttributeContent = MdxJsxAttribute | MdxJsxExpressionAttribute
  * flow content, per the oracle's `BlockContent | DefinitionContent` model.
  *
  * A fragment cannot carry attributes — that shape has no MDX spelling — so
- * the schema refuses it at construction and decode.
+ * the schema refuses it at construction and decode. A **named** element's
+ * name must be non-empty on the same terms: `""` has no MDX spelling either
+ * (the oracle's parser only ever produces a real name or `null`, and its
+ * serializer treats a falsy name as the fragment), so `null` is the one
+ * fragment spelling and the empty string fails typed.
  *
  * @public
  */
@@ -904,11 +908,14 @@ export class MdxJsxFlowElement extends Schema.Class<MdxJsxFlowElement>("MdxJsxFl
 		position: NodePosition,
 	}).pipe(
 		Schema.check(
-			Schema.makeFilter((element) =>
-				element.name === null && element.attributes.length > 0
+			Schema.makeFilter((element) => {
+				if (element.name !== null && element.name.length === 0) {
+					return "an MDX JSX element requires a non-empty name (`null` is the fragment spelling)";
+				}
+				return element.name === null && element.attributes.length > 0
 					? "an MDX JSX fragment cannot carry attributes"
-					: undefined,
-			),
+					: undefined;
+			}),
 		),
 	),
 ) {}
@@ -916,8 +923,8 @@ export class MdxJsxFlowElement extends Schema.Class<MdxJsxFlowElement>("MdxJsxFl
 /**
  * MdxJsxTextElement — a JSX element in text (phrasing) position
  * (`a <b>c</b> d`). `name` is `null` for a fragment; children are phrasing
- * content. Refuses attributes on a fragment, on the same terms as
- * {@link MdxJsxFlowElement}.
+ * content. Refuses attributes on a fragment and an empty-string name, on the
+ * same terms as {@link MdxJsxFlowElement}.
  *
  * @public
  */
@@ -930,11 +937,14 @@ export class MdxJsxTextElement extends Schema.Class<MdxJsxTextElement>("MdxJsxTe
 		position: NodePosition,
 	}).pipe(
 		Schema.check(
-			Schema.makeFilter((element) =>
-				element.name === null && element.attributes.length > 0
+			Schema.makeFilter((element) => {
+				if (element.name !== null && element.name.length === 0) {
+					return "an MDX JSX element requires a non-empty name (`null` is the fragment spelling)";
+				}
+				return element.name === null && element.attributes.length > 0
 					? "an MDX JSX fragment cannot carry attributes"
-					: undefined,
-			),
+					: undefined;
+			}),
 		),
 	),
 ) {}

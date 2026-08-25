@@ -148,7 +148,9 @@ export class YamlStringifyOptions extends Schema.Class<YamlStringifyOptions>("Ya
 	 * YAML 1.2 Core Schema rules — byte-identical to the released output.
 	 *
 	 * `"yaml-1.1"` quotes every plain scalar a YAML 1.1 parser (js-yaml,
-	 * PyYAML, libyaml) would implicitly resolve to a non-string: the extended
+	 * PyYAML, libyaml, and the `yaml` npm package's YAML 1.1 schema, whose
+	 * lenient resolvers set the outer bound) would implicitly resolve to a
+	 * non-string: the extended
 	 * boolean spellings (`y`/`yes`/`on`/`off` and case variants — the "Norway
 	 * problem"), timestamps (`2024-01-15`, `2001-12-15T02:59:43.1Z`, the
 	 * space-separated 1.1 forms), sexagesimal numbers (`1:30`,

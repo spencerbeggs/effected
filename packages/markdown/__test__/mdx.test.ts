@@ -14,8 +14,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result } from "effect";
 import { Markdown } from "../src/Markdown.js";
+import { MarkdownDocument } from "../src/MarkdownDocument.js";
 import {
 	Blockquote,
+	Code,
 	Heading,
 	List,
 	ListItem,
@@ -70,6 +72,13 @@ describe("mdx nodes", () => {
 
 		it("refuses an attribute without a name", () => {
 			assert.throws(() => MdxJsxAttribute.make({ name: "" }));
+		});
+
+		it("refuses an empty-string element name — `null` is the fragment spelling", () => {
+			// An empty name has no MDX spelling: the oracle's parser only ever
+			// produces a real name or `null`, and a serialized `< />` is invalid.
+			assert.throws(() => flowElement(""));
+			assert.throws(() => textElement(""));
 		});
 
 		it("admits every attribute value spelling the oracle contract has", () => {
@@ -193,6 +202,30 @@ describe("mdx nodes", () => {
 		it("restarts JSX indentation inside a blockquote and a list item", () => {
 			const quoted = rootOf(Blockquote.make({ children: [flowElement("x", [], [paragraph(text("y"))])] }));
 			assert.strictEqual(stringified(quoted), "> <x>\n>   y\n> </x>\n");
+			// The list item's hanging indent owns indentation from there in, so a
+			// JSX element inside an item of a list that itself sits inside a JSX
+			// element renders at depth 0 and takes the item indent only — the
+			// oracle's inferDepth break at `listItem`.
+			const listed = rootOf(
+				flowElement(
+					"x",
+					[],
+					[
+						List.make({
+							children: [ListItem.make({ children: [flowElement("y", [], [paragraph(text("z"))])] })],
+						}),
+					],
+				),
+			);
+			assert.strictEqual(stringified(listed), "<x>\n  - <y>\n      z\n    </y>\n</x>\n");
+		});
+
+		it("preserves child line terminators, leaving blank CRLF lines bare", () => {
+			// The oracle's indentLines splits on `\r\n`, `\n` and bare `\r`,
+			// keeps each terminator verbatim, and never indents a blank line —
+			// a blank CRLF line must not become `  \r`.
+			const tree = rootOf(flowElement("x", [], [Code.make({ value: "a\r\n\r\nb\n", lang: "txt" })]));
+			assert.strictEqual(stringified(tree), "<x>\n  ```txt\n  a\r\n\r\n  b\n  ```\n</x>\n");
 		});
 	});
 
@@ -225,6 +258,13 @@ describe("mdx nodes", () => {
 		it("serializes flow expressions with two-space continuation indent", () => {
 			assert.strictEqual(stringified(rootOf(MdxFlowExpression.make({ value: "a + b" }))), "{a + b}\n");
 			assert.strictEqual(stringified(rootOf(MdxFlowExpression.make({ value: "a\nb" }))), "{a\n  b}\n");
+		});
+
+		it("indents expression continuation lines across every terminator spelling", () => {
+			// Oracle line handling: a bare `\r` separates lines too, terminators
+			// survive verbatim, and blank lines take no indent.
+			assert.strictEqual(stringified(rootOf(MdxFlowExpression.make({ value: "a\rb" }))), "{a\r  b}\n");
+			assert.strictEqual(stringified(rootOf(MdxFlowExpression.make({ value: "a\r\n\r\nb" }))), "{a\r\n\r\n  b}\n");
 		});
 
 		it("serializes text expressions inline", () => {
@@ -360,6 +400,21 @@ describe("mdx nodes", () => {
 			}
 		});
 
+		it("passes a malformed element name through so the decode fails typed", () => {
+			// The oracle contract is exactly `string | null`; anything else must
+			// reach the schema and fail the decode, never be coerced to a fragment.
+			const numericName = {
+				type: "root",
+				children: [{ type: "mdxJsxFlowElement", name: 42, attributes: [], children: [] }],
+			};
+			assert.isTrue(Result.isFailure(Mdast.fromMdastResult(numericName)));
+			const emptyName = {
+				type: "root",
+				children: [{ type: "mdxJsxFlowElement", name: "", attributes: [], children: [] }],
+			};
+			assert.isTrue(Result.isFailure(Mdast.fromMdastResult(emptyName)));
+		});
+
 		it("round-trips project-then-admit for a tree with every MDX node type", () => {
 			const tree = rootOf(
 				MdxjsEsm.make({ value: "import a from 'b'" }),
@@ -373,6 +428,43 @@ describe("mdx nodes", () => {
 				assert.deepStrictEqual(Mdast.toMdast(back.success), Mdast.toMdast(tree));
 				assert.strictEqual(stringified(back.success), stringified(tree));
 			}
+		});
+	});
+
+	describe("document navigation over MDX nodes", () => {
+		const docOf = (...children: ReadonlyArray<Root["children"][number]>): MarkdownDocument =>
+			MarkdownDocument.make({
+				source: "",
+				root: rootOf(...children),
+				diagnostics: [],
+				definitions: new Map(),
+			});
+
+		it("reads heading text through a JSX text wrapper; an expression contributes none", () => {
+			const document = docOf(
+				Heading.make({
+					depth: 1,
+					children: [textElement("span", [], [text("Title")]), MdxTextExpression.make({ value: "x" })],
+				}),
+			);
+			assert.strictEqual(document.headings[0]?.text, "Title");
+			assert.strictEqual(document.sections[0]?.text, "Title");
+		});
+
+		it("sections a document carrying an ESM statement, excluding it from section children", () => {
+			const document = docOf(
+				Heading.make({ depth: 1, children: [text("T")] }),
+				MdxjsEsm.make({ value: 'import a from "b"' }),
+				paragraph(text("body")),
+			);
+			const sections = document.sections;
+			assert.strictEqual(sections.length, 1);
+			// ESM is metadata, not prose — like frontmatter it belongs to no
+			// section, which is also what keeps the FlowContent typing sound.
+			assert.deepStrictEqual(
+				sections[0]?.children.map((child) => child.type),
+				["paragraph"],
+			);
 		});
 	});
 });

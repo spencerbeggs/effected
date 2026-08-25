@@ -240,6 +240,11 @@ const selectorPredicate = (
 ): ((node: MarkdownNode) => boolean) =>
 	typeof selector === "string" ? (node: MarkdownNode): boolean => node.type === selector : selector;
 
+// The plain-text projection of phrasing content, for DocumentHeading.text and
+// DocumentSection.text. MDX policy: a JSX text wrapper is transparent — its
+// children's text comes through, so `<span>Title</span>` reads "Title" — while
+// a text EXPRESSION contributes nothing: its value is code, not prose, and no
+// rendering of it is faithful plain text.
 const phrasingText = (nodes: ReadonlyArray<PhrasingContent>): string => {
 	let out = "";
 	for (const node of nodes) {
@@ -260,7 +265,11 @@ const phrasingText = (nodes: ReadonlyArray<PhrasingContent>): string => {
 			case "delete":
 			case "link":
 			case "linkReference":
+			case "mdxJsxTextElement":
 				out += phrasingText(node.children);
+				break;
+			case "mdxTextExpression":
+				// Deliberately no text — see the policy note above.
 				break;
 			default:
 				break;
@@ -432,7 +441,11 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 					range: MarkdownRange.make({ offset: start, length: boundary - start }),
 					children: blocks
 						.slice(current.index + 1, end)
-						.filter((child): child is FlowContent => child.type !== "frontmatter"),
+						// Navigation is prose-oriented: the frontmatter block and MDX
+						// ESM statements are metadata, not section content, so both
+						// are excluded — which is also what keeps this predicate's
+						// FlowContent narrowing sound.
+						.filter((child): child is FlowContent => child.type !== "frontmatter" && child.type !== "mdxjsEsm"),
 					text: phrasingText(block.children),
 					// The body starts where the heading NODE ends, which is what makes
 					// this correct for setext headings too: their node span covers the

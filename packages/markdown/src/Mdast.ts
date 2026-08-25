@@ -365,10 +365,14 @@ const normalizeNode = (value: unknown): unknown => {
 	// and the attributes array carries nested attribute nodes whose positions
 	// (and value-expression positions) need the same sentinel synthesis as
 	// tree nodes. `data.estree` is dropped like every foreign `data` field.
+	// `name` passes through verbatim — the oracle contract is exactly
+	// `string | null`, so any other value (a number, an absent field) reaches
+	// the schema and fails the decode typed, like every other malformed
+	// recognized field.
 	if (type === "mdxJsxFlowElement" || type === "mdxJsxTextElement") {
 		return {
 			type,
-			name: typeof value.name === "string" ? value.name : null,
+			name: value.name,
 			attributes: Array.isArray(value.attributes) ? value.attributes.map(normalizeMdxAttribute) : [],
 			children: Array.isArray(value.children) ? value.children.map(normalizeNode) : [],
 			position: normalizePosition(value.position),

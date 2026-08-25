@@ -24,10 +24,15 @@ import { MAX_NESTING_DEPTH } from "./internal/limits.js";
  * - `UnrepresentableValue` — an `undefined`, function or symbol anywhere in
  *   the value. Unlike `Jsonc.stringify` (which follows `JSON.stringify`'s
  *   drop/null semantics for nested cases), canonicalization refuses to alter
- *   the document, so these fail typed at any position.
+ *   the document, so these fail typed at any position. Array holes read as
+ *   `undefined` and fail here too, carrying the hole's index in `path`.
  * - `BigIntValue` — a `bigint` (anywhere), which JSON cannot represent.
  * - `NonFiniteNumber` — `NaN`, `Infinity` or `-Infinity`, which RFC 8785
  *   forbids (`JSON.stringify` would silently rewrite them to `null`).
+ * - `LoneSurrogate` — a string value or object member key containing an
+ *   unpaired UTF-16 surrogate. RFC 8785 requires I-JSON (RFC 7493) input,
+ *   which malformed Unicode is not (`JSON.stringify` would silently emit a
+ *   `\udxxx` escape).
  * - `NonPlainObject` — an object that is neither an array nor a plain object
  *   (a `Date`, `Map`, class instance, …). `toJSON` methods are deliberately
  *   ignored; encode domain values to plain JSON (e.g. via `Schema`) first.
@@ -41,6 +46,7 @@ export const JsoncCanonicalizeErrorCode = Schema.Literals([
 	"UnrepresentableValue",
 	"BigIntValue",
 	"NonFiniteNumber",
+	"LoneSurrogate",
 	"NonPlainObject",
 	"NestingDepthExceeded",
 ]);
@@ -125,6 +131,18 @@ const emit = (value: unknown, path: string, depth: number): string => {
 			return JSON.stringify(value);
 		}
 		case "string":
+			// RFC 8785 requires I-JSON (RFC 7493) input: well-formed Unicode
+			// only. `JSON.stringify` would silently emit a `\udxxx` escape for
+			// an unpaired surrogate; a fingerprint of malformed text is a lie.
+			if (!value.isWellFormed()) {
+				throw new CanonicalizeFailure(
+					JsoncCanonicalizeError.make({
+						code: "LoneSurrogate",
+						path,
+						detail: "string contains an unpaired surrogate; RFC 8785 requires well-formed Unicode",
+					}),
+				);
+			}
 			// RFC 8785 §3.2.2.2 string serialization matches `JSON.stringify`:
 			// the two-character escapes, `\u00xx` lowercase-hex escapes for the
 			// remaining control characters, everything else literal.
@@ -159,7 +177,16 @@ const emit = (value: unknown, path: string, depth: number): string => {
 		);
 	}
 	if (Array.isArray(value)) {
-		return `[${value.map((item, index) => emit(item, `${path}/${index}`, depth + 1)).join(",")}]`;
+		// Indexed iteration, not `Array.prototype.map`: `map` skips holes, so a
+		// sparse array would emit `[,]`-shaped non-JSON (or silently collapse a
+		// hole away). Reading `value[index]` turns each hole into `undefined`,
+		// which fails typed above with the hole's JSON-pointer path — the same
+		// policy as an explicit `undefined` member.
+		const items: Array<string> = [];
+		for (let index = 0; index < value.length; index++) {
+			items.push(emit(value[index], `${path}/${index}`, depth + 1));
+		}
+		return `[${items.join(",")}]`;
 	}
 	const prototype = Object.getPrototypeOf(value);
 	if (prototype !== Object.prototype && prototype !== null) {
@@ -174,7 +201,20 @@ const emit = (value: unknown, path: string, depth: number): string => {
 	const record = value as Record<string, unknown>;
 	const keys = Object.keys(record).sort(compareCodeUnits);
 	return `{${keys
-		.map((key) => `${JSON.stringify(key)}:${emit(record[key], `${path}/${escapePointerSegment(key)}`, depth + 1)}`)
+		.map((key) => {
+			// Member keys are strings too: an unpaired surrogate in a key is the
+			// same RFC 8785 I-JSON violation as one in a value.
+			if (!key.isWellFormed()) {
+				throw new CanonicalizeFailure(
+					JsoncCanonicalizeError.make({
+						code: "LoneSurrogate",
+						path: `${path}/${escapePointerSegment(key)}`,
+						detail: "object member key contains an unpaired surrogate; RFC 8785 requires well-formed Unicode",
+					}),
+				);
+			}
+			return `${JSON.stringify(key)}:${emit(record[key], `${path}/${escapePointerSegment(key)}`, depth + 1)}`;
+		})
 		.join(",")}}`;
 };
 
@@ -272,7 +312,8 @@ export class JsoncFingerprint {
 	/**
 	 * Serialize a JSON value to its RFC 8785 canonical text. Fails with
 	 * {@link JsoncCanonicalizeError} on any non-JSON value (`undefined`,
-	 * functions, symbols, `bigint`, non-finite numbers, non-plain objects) and
+	 * functions, symbols, `bigint`, non-finite numbers, strings or member keys
+	 * with unpaired surrogates, non-plain objects) and
 	 * on nesting past the hardening cap (which also intercepts cycles).
 	 * Defined in terms of {@link JsoncFingerprint.canonicalizeResult} —
 	 * synchronous callers can use that variant directly.

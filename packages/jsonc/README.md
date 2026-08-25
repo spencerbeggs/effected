@@ -25,7 +25,7 @@ JSONC is JSON with comments and trailing commas: the format behind `tsconfig.jso
 
 This package treats the source text as the document. Modifications are computed as edits against the original bytes rather than re-serialized from a parsed object, so a change to one key leaves every comment, blank line and indentation choice untouched. Parsing recovers from errors and aggregates every diagnostic into one `JsoncParseError` carrying `code`, `offset`, `length`, `line` and `character` per error, instead of throwing on the first. And `Jsonc.schema` composes with a domain schema so a JSONC string decodes into a validated value in a single step.
 
-Everything is a pure function or a schema. No IO, no services and no runtime dependency other than `effect` itself: the scanner, parser and navigator are vendored into the package with attribution rather than pulled in as a dependency.
+Everything is a pure function or a schema. No IO, no owned services and no runtime dependency other than `effect` itself: the scanner, parser and navigator are vendored into the package with attribution rather than pulled in as a dependency. The one effectful edge is fingerprint hashing — `JsoncFingerprint.hash` and `hashText` require core's `Crypto.Crypto` service in `R`, and the package ships no backend: the consumer provides one at the application edge.
 
 ## Install
 
@@ -147,7 +147,7 @@ Preserving comments requires the original source text, which is exactly what `Js
 
 ## Canonical JSON and content fingerprints
 
-`JsoncFingerprint` produces RFC 8785 canonical JSON (the JSON Canonicalization Scheme) and SHA-256 fingerprints over it: compact output, object keys sorted by UTF-16 code units, ECMAScript number serialization. Two values that differ only in key order canonicalize — and fingerprint — identically. Unlike `Jsonc.stringify`, which follows `JSON.stringify`'s drop/null semantics for nested unrepresentables, canonicalization refuses to alter the document: an `undefined`, a function, a symbol, a `bigint`, a non-finite number or a non-plain object (a `Date`, a `Map`, a class instance) fails typed with a `JsoncCanonicalizeError` naming the JSON-pointer `path` to fix, rather than being silently dropped or nulled. `toJSON` methods are ignored on purpose — encode `Schema` classes and `Date`s to plain JSON first:
+`JsoncFingerprint` produces RFC 8785 canonical JSON (the JSON Canonicalization Scheme) and SHA-256 fingerprints over it: compact output, object keys sorted by UTF-16 code units, ECMAScript number serialization. Two values that differ only in key order canonicalize — and fingerprint — identically. Unlike `Jsonc.stringify`, which follows `JSON.stringify`'s drop/null semantics for nested unrepresentables, canonicalization refuses to alter the document: an `undefined`, a function, a symbol, a `bigint`, a non-finite number, a string or member key containing an unpaired surrogate, or a non-plain object (a `Date`, a `Map`, a class instance) fails typed with a `JsoncCanonicalizeError` naming the JSON-pointer `path` to fix, rather than being silently dropped or nulled. `toJSON` methods are ignored on purpose — encode `Schema` classes and `Date`s to plain JSON first:
 
 ```ts
 import { JsoncFingerprint } from "@effected/jsonc";

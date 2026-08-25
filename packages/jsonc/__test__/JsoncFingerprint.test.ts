@@ -139,6 +139,55 @@ describe("JsoncFingerprint", () => {
 			assert.strictEqual(failure(Symbol("s")).code, "UnrepresentableValue");
 		});
 
+		it("rejects an explicit undefined array member at its index", () => {
+			const error = failure([undefined]);
+			assert.strictEqual(error.code, "UnrepresentableValue");
+			assert.strictEqual(error.path, "/0");
+		});
+
+		it("rejects sparse array holes typed at the hole's index, never emitting invalid JSON", () => {
+			// `Array.prototype.map` would skip holes: new Array(2) would emit
+			// "[,]" (invalid JSON) and a one-hole array "[]" (colliding with the
+			// empty array). Holes must instead fail like explicit undefined.
+			const allHoles = failure(new Array(2));
+			assert.strictEqual(allHoles.code, "UnrepresentableValue");
+			assert.strictEqual(allHoles.path, "/0");
+
+			const middleHole: Array<number> = new Array(3);
+			middleHole[0] = 1;
+			middleHole[2] = 3;
+			const middle = failure(middleHole);
+			assert.strictEqual(middle.code, "UnrepresentableValue");
+			assert.strictEqual(middle.path, "/1");
+
+			const nested = failure([0, new Array(1)]);
+			assert.strictEqual(nested.code, "UnrepresentableValue");
+			assert.strictEqual(nested.path, "/1/0");
+		});
+
+		it("rejects lone surrogates in string values, per RFC 8785 I-JSON well-formedness", () => {
+			// JSON.stringify would silently emit "\ud800" and report success.
+			const high = failure("\uD800");
+			assert.strictEqual(high.code, "LoneSurrogate");
+			assert.strictEqual(high.path, "");
+
+			const low = failure({ s: "a\uDC00" });
+			assert.strictEqual(low.code, "LoneSurrogate");
+			assert.strictEqual(low.path, "/s");
+		});
+
+		it("rejects lone surrogates in object member keys, with the member's path", () => {
+			const error = failure({ "k\uD800": 1 });
+			assert.strictEqual(error.code, "LoneSurrogate");
+			assert.strictEqual(error.path, "/k\uD800");
+		});
+
+		it("accepts well-formed surrogate pairs in values and keys", () => {
+			const result = JsoncFingerprint.canonicalizeResult({ "\u{1f600}": "\u{1f600}" });
+			assert.isTrue(Result.isSuccess(result));
+			assert.strictEqual(Result.getOrThrow(result), '{"\u{1f600}":"\u{1f600}"}');
+		});
+
 		it("rejects bigint values", () => {
 			const error = failure({ n: 1n });
 			assert.strictEqual(error.code, "BigIntValue");

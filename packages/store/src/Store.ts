@@ -283,8 +283,17 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 
 	/** The batteries-included layer over `@effect/sql-sqlite-node`. */
 	static layerSqlite(options: StoreSqliteOptions): Layer.Layer<Store, StoreError | StoreMigrationError> {
-		// `filename` last: the layer owns it, whatever the passthrough says.
-		const client = SqliteClient.layer({ ...options.client, filename: options.filename });
+		// `filename` last: the layer owns it, whatever the passthrough says. The
+		// name transforms are stripped at runtime too — the `Omit` on `client`
+		// binds only TypeScript callers, and a leaked transform rewrites the
+		// migration ledger's result names, silently breaking `status`.
+		const {
+			filename: _filename,
+			transformResultNames: _transformResultNames,
+			transformQueryNames: _transformQueryNames,
+			...passthrough
+		} = (options.client ?? {}) as Partial<SqliteClient.SqliteClientConfig>;
+		const client = SqliteClient.layer({ ...passthrough, filename: options.filename });
 		const store = Layer.provide(Store.layer(options), client);
 		return options.checkpointOnClose === true
 			? Layer.merge(store, Layer.provide(walCheckpointOnClose(), client))

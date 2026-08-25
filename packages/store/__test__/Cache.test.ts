@@ -472,6 +472,34 @@ describe("Cache", () => {
 			}),
 		);
 
+		// The `Omit` on `client` binds only TypeScript callers; a JavaScript (or
+		// any-typed) caller can still pass the name transforms, which rewrite the
+		// cache's own snake_case result names (`expires_at`, `size_bytes`, …) and
+		// break `get`. The layer must strip them at runtime; this fails if either
+		// transform leaks through to the driver.
+		it.effect("name-transform client options are stripped at runtime", () =>
+			Effect.gen(function* () {
+				const camelize = (name: string) => name.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+				const cacheLayer = Cache.layerSqlite({
+					filename: join(dir, "transforms-stripped.db"),
+					client: { transformResultNames: camelize, transformQueryNames: camelize } as never,
+				});
+				const entry = yield* Effect.provide(
+					Effect.gen(function* () {
+						const cache = yield* Cache;
+						yield* cache.set({ key: "k", value: bytes("v") });
+						return yield* cache.get("k");
+					}),
+					cacheLayer,
+				);
+				assert.isTrue(Option.isSome(entry));
+				if (Option.isSome(entry)) {
+					assert.deepStrictEqual(Array.from(entry.value.value), Array.from(bytes("v")));
+					assert.strictEqual(entry.value.sizeBytes, 1);
+				}
+			}),
+		);
+
 		// The ordering mechanism (finalizer before the driver's close) is shared
 		// with Store via internal/sqlite.ts, where the Store suite carries the
 		// no-checkpoint control; this pins the Cache wiring end to end.
@@ -488,8 +516,11 @@ describe("Cache", () => {
 					}),
 					Cache.layerSqlite({ filename, checkpointOnClose: true }),
 				);
-				assert.strictEqual(statSync(`${filename}-wal`).size, 0);
-				second?.close();
+				try {
+					assert.strictEqual(statSync(`${filename}-wal`).size, 0);
+				} finally {
+					second?.close();
+				}
 			}),
 		);
 	});

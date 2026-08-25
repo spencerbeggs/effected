@@ -147,22 +147,34 @@ function wouldBeResolved(s: string): boolean {
 // Schema above does not: the extended boolean spellings, underscore digit
 // separators, base-2/8/16 integer forms, sexagesimal numbers and timestamps.
 // Where the spec and lenient real-world resolvers differ slightly (optional
-// exponent sign, colon-less timezone offsets, `0o` octals) the patterns
-// accept the union — over-quoting is the safe direction for a compat mode.
+// exponent sign, colon-less timezone offsets, `0o` octals, the reference
+// `yaml` package's 1.1-schema leading-zero decimal ints and one-digit
+// date-only months/days) the patterns accept the union — over-quoting is the
+// safe direction for a compat mode.
 
 const BOOL_11_RE = /^(?:y|Y|yes|Yes|YES|n|N|no|No|NO|true|True|TRUE|false|False|FALSE|on|On|ON|off|Off|OFF)$/;
 // Base 2 / base 8 (legacy `0` and `0o` prefixes) / base 10 / base 16, all
-// with `_` digit separators, plus base-60 (sexagesimal) integers.
-const INT_11_RE = /^[-+]?(?:0b[0-1_]+|0o?[0-7_]+|(?:0|[1-9][0-9_]*)|0x[0-9a-fA-F_]+|[1-9][0-9_]*(?::[0-5]?[0-9])+)$/;
-// Decimal floats with `_` separators (dotted, leading-dot and exponent-only
-// forms) and base-60 (sexagesimal) floats. `.inf`/`.nan` are already caught
-// by the 1.2 patterns above.
+// with `_` digit separators, plus base-60 (sexagesimal) integers. The decimal
+// branch accepts leading zeros (`09`, `0_9`): the spec says `0|[1-9][0-9_]*`,
+// but the reference `yaml` package's 1.1 schema resolves any `[0-9][0-9_]*`
+// to an int, so the union keeps those quoted.
+const INT_11_RE = /^[-+]?(?:0b[0-1_]+|0o?[0-7_]+|[0-9][0-9_]*|0x[0-9a-fA-F_]+|[1-9][0-9_]*(?::[0-5]?[0-9])+)$/;
+// Decimal floats with `_` separators (dotted, dotless-exponent and
+// leading-dot forms) and base-60 (sexagesimal) floats. A decimal point or an
+// exponent is required — the 1.1 float grammar demands one, so bare digit
+// runs are the int pattern's business, not this one's. The dotless-exponent
+// form (`1e3`) and the optional exponent sign are js-yaml leniency;
+// `.inf`/`.nan` are already caught by the 1.2 patterns above.
 const FLOAT_11_RE =
-	/^[-+]?(?:[0-9][0-9_]*(?:\.[0-9_]*)?(?:[eE][-+]?[0-9]+)?|\.[0-9_]+(?:[eE][-+]?[0-9]+)?|[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*)$/;
-// Date-only form (strict ymd) and the full form: 1-2 digit month/day, `T`/`t`
-// or whitespace separator, optional fraction and timezone (`Z` or an offset).
+	/^[-+]?(?:[0-9][0-9_]*(?:\.[0-9_]*(?:[eE][-+]?[0-9]+)?|[eE][-+]?[0-9]+)|\.[0-9_]+(?:[eE][-+]?[0-9]+)?|[0-9][0-9_]*(?::[0-5]?[0-9])+\.[0-9_]*)$/;
+// Date-only and full timestamp forms, both with 1-2 digit month/day, the full
+// form with a `T`/`t` or whitespace separator and an optional fraction and
+// timezone (`Z` or an offset, colon optional). The spec's date-only (ymd)
+// branch is strictly two-digit; the reference `yaml` package's 1.1 schema
+// also resolves `2024-1-15` to a date, so the union takes the lenient date
+// part for both forms.
 const TIMESTAMP_11_RE =
-	/^(?:[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]|[0-9][0-9][0-9][0-9]-[0-9][0-9]?-[0-9][0-9]?(?:[Tt]|[ \t]+)[0-9][0-9]?:[0-9][0-9]:[0-9][0-9](?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9][0-9]?(?::?[0-9][0-9])?))?)$/;
+	/^[0-9][0-9][0-9][0-9]-[0-9][0-9]?-[0-9][0-9]?(?:(?:[Tt]|[ \t]+)[0-9][0-9]?:[0-9][0-9]:[0-9][0-9](?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9][0-9]?(?::?[0-9][0-9])?))?)?$/;
 
 /**
  * Returns true if a string value would be resolved as a non-string type by a

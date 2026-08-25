@@ -630,6 +630,20 @@ describe("Yaml", () => {
 				}),
 			);
 
+			it.effect("applies on the node path — YamlDocument#stringify honors the option (regression)", () =>
+				Effect.gen(function* () {
+					// The document adapter dropped `quoteStyle` before forwarding
+					// options to the engine, so the node path always fell back to
+					// single quotes. `quoteCompat` is only the trigger that forces a
+					// parsed-plain scalar through the quoting fallback.
+					const doc = yield* YamlDocument.parse("date: 2024-01-15\n");
+					assert.strictEqual(
+						yield* doc.stringify({ quoteCompat: "yaml-1.1", quoteStyle: "double" }),
+						'date: "2024-01-15"\n',
+					);
+				}),
+			);
+
 			it("validates the field and reads back off the options class", () => {
 				const options = YamlStringifyOptions.make({ quoteStyle: "double", sortKeys: true });
 				assert.strictEqual(options.quoteStyle, "double");
@@ -667,6 +681,10 @@ describe("Yaml", () => {
 				["bool Off", "Off"],
 				["bool OFF", "OFF"],
 				["timestamp date-only", "2024-01-15"],
+				// The 1.1 spec's date-only (ymd) branch is strictly two-digit, but
+				// the reference `yaml` package's 1.1 schema resolves the one-digit
+				// spelling to a date too — the union policy quotes it.
+				["timestamp date-only 1-digit month", "2024-1-15"],
 				["timestamp ISO 8601", "2001-12-15T02:59:43.1Z"],
 				["timestamp lowercase t with offset", "2001-12-14t21:59:43.10-05:00"],
 				["timestamp space-separated", "2001-12-14 21:59:43.10 -5"],
@@ -676,7 +694,13 @@ describe("Yaml", () => {
 				["float sexagesimal", "190:20:30.15"],
 				["int underscored", "1_000"],
 				["int underscored signed", "+1_000"],
+				// Not an octal (contains 9) and not a spec decimal (leading zero),
+				// but the reference `yaml` package's 1.1 schema resolves it to the
+				// int 9 — the union policy quotes it.
+				["int leading-zero underscored", "0_9"],
 				["float underscored", "12_345.678_9"],
+				["float underscored short", "1_0.5"],
+				["float dotless exponent", "1e3"],
 				["int binary", "0b1010_0111"],
 				["int legacy octal underscored", "07_5"],
 				["int hex underscored", "0x_FF"],
@@ -687,7 +711,7 @@ describe("Yaml", () => {
 				["bool-prefixed word", "nope"],
 				["bool-prefixed word", "onwards"],
 				["bool-prefixed word", "offside"],
-				["date-only with 1-digit month", "2024-1-15"],
+				["date-only with 3-digit day", "2024-01-155"],
 				["date with trailing text", "2024-01-15x"],
 				["2-digit year", "24-01-15"],
 				["sexagesimal with out-of-range minute", "1:60"],

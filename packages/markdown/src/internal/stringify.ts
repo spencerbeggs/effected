@@ -514,16 +514,34 @@ const treeContainsMdx = (root: WalkableNode): boolean => {
 };
 
 /**
+ * The oracle's `indentLines` line model (mdast-util-to-markdown
+ * `lib/util/indent-lines.js`): lines split on every terminator spelling
+ * (`\r\n`, `\n`, bare `\r`), terminators preserved verbatim between the
+ * mapped lines, and `blank` meaning an empty line — so a blank CRLF line
+ * stays bare instead of having a retained `\r` treated as content.
+ */
+const mapMdxLines = (value: string, map: (line: string, index: number, blank: boolean) => string): string => {
+	const eol = /\r?\n|\r/g;
+	const result: string[] = [];
+	let start = 0;
+	let index = 0;
+	for (let match = eol.exec(value); match !== null; match = eol.exec(value)) {
+		const line = value.slice(start, match.index);
+		result.push(map(line, index, line === ""), match[0]);
+		start = match.index + match[0].length;
+		index += 1;
+	}
+	const last = value.slice(start);
+	result.push(map(last, index, last === ""));
+	return result.join("");
+};
+
+/**
  * Serialize an MDX expression body between braces. Continuation lines take
  * the oracle's two-space indent; the first line and blank lines take none.
  */
-const mdxExpression = (value: string): string => {
-	const body = value
-		.split("\n")
-		.map((line, index) => (index === 0 || line === "" ? line : `  ${line}`))
-		.join("\n");
-	return `{${body}}`;
-};
+const mdxExpression = (value: string): string =>
+	`{${mapMdxLines(value, (line, index, blank) => (index === 0 || blank ? line : `  ${line}`))}}`;
 
 /**
  * Serialize one JSX attribute. A `null` or absent value is a boolean
@@ -564,10 +582,7 @@ const serializeMdxJsxText = (node: MdxJsxTextElement, context: InlineContext, st
 
 /** Prefix every line of a rendered child block; blank lines stay bare. */
 const indentBlockLines = (content: string, indent: string): string =>
-	content
-		.split("\n")
-		.map((line) => (line === "" ? "" : `${indent}${line}`))
-		.join("\n");
+	mapMdxLines(content, (line, _index, blank) => (blank ? line : `${indent}${line}`));
 
 /**
  * Serialize a flow (block) JSX element: opening tag (attributes on their own
