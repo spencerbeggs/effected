@@ -7,12 +7,12 @@
 | --- | --- | --- | --- |
 | `CommandFailedError` | Class | A command that could not be run, or that ran and failed. | handle a command that failed to spawn, exited non-zero, or timed out |
 | `CommandOutput` | Class | What one completed run produced. | captured stdout, stderr and exit code from a finished command run |
-| `CommandOutputError` | Class | A command ran, but its output could not be used. | handle a command whose output was not usable json, or exceeded the output byte cap |
+| `CommandOutputError` | Class | A command ran, but its output could not be used. | handle a command whose output was not usable json, exceeded byte cap |
 | `DEFAULT_MAX_OUTPUT_BYTES` | Variable | Default ceiling on captured bytes per stream (16 MiB). | the default 16 MiB per-stream captured output ceiling |
 | `ExecContext` | Class | How to run a project-local binary here. | how to run a project-local binary: launcher argv prefix, dlx prefix, script prefix, directory |
-| `Launcher` | Variable + TypeAlias | The decoded type of {@link (Launcher:variable)}. | the four package managers whose project-local exec argv this package knows: npm, pnpm, yarn, bun |
+| `Launcher` | Variable + TypeAlias | The decoded type of {@link (Launcher:variable)}. | four package managers' local exec argv: npm, pnpm, yarn, bun |
 | `LauncherPrefixes` | Interface | The per-launcher argv prefix record: exec, dlx and script-runner. | |
-| `LocalExec` | Class | Contract: how to run a project-local binary in this project. | contract for finding the project-local way to run a binary here, implemented by workspace tooling — implemented by `Workspaces` in `@effected/workspaces` |
+| `LocalExec` | Class | Contract: how to run a project-local binary in this project. | contract for the project-local way to run a binary here — implemented by `Workspaces` in `@effected/workspaces` |
 | `LocalExecError` | Class | The project-local execution context could not be determined. | handle failure determining the project-local execution context |
 | `LocalExecShape` | Interface | The {@link LocalExec} service shape. | |
 | `MismatchPolicy` | Variable + TypeAlias | The decoded type of {@link (MismatchPolicy:variable)}. | what to do when global and project-local tool versions disagree: preferLocal, preferGlobal, fail |
@@ -29,15 +29,15 @@
 | `SpawnRecord` | Interface | What the scripted spawner observed for one spawn, in call order. | |
 | `SpawnScript` | TypeAlias | The script a {@link ScriptedSpawner} answers spawns from: the executable and argv in, a {@link ScriptResult} out. | |
 | `TRANSIENT_PATTERNS` | Variable | Substrings that mark a failure as a transport hiccup rather than a verdict. | substrings in command output that mark a failure as a retryable transport hiccup |
-| `Tool` | Class | A CLI tool to resolve, and the constraints resolution must satisfy. | a cli tool to resolve and the constraints resolution must satisfy: version probe, source, mismatch policy |
+| `Tool` | Class | A CLI tool to resolve, and the constraints resolution must satisfy. | a cli tool to resolve, constraints: version probe, source, mismatch policy |
 | `ToolDiscovery` | Class | Resolves CLI tools: globally on `PATH`, or project-locally through the launcher {@link LocalExec} describes. | find a cli tool on path or project-locally, cache probe evidence, resolve its version |
 | `ToolDiscoveryShape` | Interface | The {@link ToolDiscovery} service shape. | |
 | `ToolNotFoundError` | Class | A tool could not be found where it was required. | handle a tool that could not be found where its source requirement demanded it |
-| `ToolRefusedError` | Class | A tool name that cannot safely be spawned was refused before any process started. | handle a tool name refused before spawning because it looks like a flag or is empty |
+| `ToolRefusedError` | Class | A tool name that cannot safely be spawned was refused before any process started. | handle a tool name refused: looks like a flag, or empty |
 | `ToolResolutionFailure` | TypeAlias | Every way `ToolDiscovery.resolve` can fail. | |
 | `ToolSource` | Variable + TypeAlias | The decoded type of {@link (ToolSource:variable)}. | where a tool must be found for resolution to succeed: any, local, global, both |
-| `ToolVersionMismatchError` | Class | The global and project-local copies disagree, and the tool's policy is `"fail"`. | handle global and local copies of a tool reporting different versions under a fail policy |
-| `VersionFlag` | Class | Ask the tool for its version with a flag and read the answer out of stdout. | learn a tool's version by passing a flag and matching a pattern in its output |
-| `VersionJson` | Class | Ask the tool for JSON and read the version from a dotted path within it. | learn a tool's version by asking for json and reading a dotted path within it |
+| `ToolVersionMismatchError` | Class | The global and project-local copies disagree, and the tool's policy is `"fail"`. | handle global and local copies of a tool reporting different versions |
+| `VersionFlag` | Class | Ask the tool for its version with a flag and read the answer out of stdout. | learn a tool's version by passing a flag and matching output pattern |
+| `VersionJson` | Class | Ask the tool for JSON and read the version from a dotted path within it. | learn a tool's version via json, reading a dotted path within it |
 | `VersionNone` | Class | Do not ask for a version; presence is the only question. | skip asking a tool for its version; only check that it is present |
-| `VersionProbe` | Variable + TypeAlias | The decoded type of {@link (VersionProbe:variable)}. | union of ways to learn a tool's version: flag output, json path, or no probe at all |
+| `VersionProbe` | Variable + TypeAlias | The decoded type of {@link (VersionProbe:variable)}. | ways to learn a tool's version: flag output, json path, or none |

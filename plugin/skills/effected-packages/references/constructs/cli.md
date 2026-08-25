@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | `CliLogger` | Class | A `Logger` that renders CLI output rather than service logs. | plain-line cli output logger, no timestamp or level prefix, errors to stderr |
 | `CliLoggerOptions` | Interface | How a log record is turned into a line. | |
-| `CliRuntime` | Class | Report a CLI program's failures through the program's own logger. | report a cli program's failures through its own logger and set the process exit code |
+| `CliRuntime` | Class | Report a CLI program's failures through the program's own logger. | report a cli program's failures through its own logger, set exit code |
 | `ConfigIssueRenderer` | Class | Render a `@effected/config-file` validation failure. | render a @effected/config-file validation error into human-readable lines |
 | `ReportFailuresOptions` | Interface | How a failure is turned into output and an exit code. | |
 | `SchemaIssueRenderer` | Class | Turn a `SchemaIssue` tree into lines a user can act on. | turn a schema decode failure issue tree into lines a user can act on |

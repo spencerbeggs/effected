@@ -8,13 +8,13 @@
 | `AppendOptions` | Interface | Options for one append. | |
 | `CursoredSlice` | Interface | A {@link Slice} plus a resume point. | |
 | `DataSchema` | TypeAlias | The bound every registered payload schema must satisfy: a codec requiring **no services** in either direction. | |
-| `Envelope` | Variable + Interface | A decoded envelope: the frame, its validated payload, and where it sits in the source. | decode and encode one jsonl envelope line, filter-before-decode, walk back to the last valid envelope |
+| `Envelope` | Variable + Interface | A decoded envelope: the frame, its validated payload, and where it sits in the source. | decode and encode a jsonl envelope line, filter-before-decode, walk back to valid |
 | `EnvelopeFrame` | Variable | Stage one of the read path: the envelope with its payload left undecoded. | stage-one undecoded envelope frame schema, filter a line before running its payload schema |
 | `EnvelopeOf` | TypeAlias | The envelope type derived from one event definition. Distributes over a union of definitions, which is what turns a registry into a discriminated union. | |
 | `EnvelopeUnion` | TypeAlias | The discriminated union of every envelope a registry can carry. | |
 | `EnvelopeWithTag` | TypeAlias | The envelope variant carrying a given tag — the type a slice narrows to. | |
 | `InvalidData` | Class | A line whose envelope or payload failed schema validation. | handle a line whose envelope frame or registered payload fails schema validation |
-| `Journal` | Variable | Define a `Journal` service class over a registry. | append events to a journal, watch a jsonl file, live tail and resumable query over an append-only file |
+| `Journal` | Variable | Define a `Journal` service class over a registry. | append events to a journal, watch a jsonl file, live tail queries |
 | `JournalClass` | Interface | A per-registry `Journal` service class. | |
 | `JournalClosed` | Class | An append refused because the journal's scope has closed. | handle an append attempted after the journal's scope has closed |
 | `JournalConfig` | Interface | Configuration for one journal layer. | |
@@ -24,11 +24,11 @@
 | `JournalShape` | Interface | The shape of a `Journal`, typed by its registry. | |
 | `JournalWriteError` | TypeAlias | The failure channel of a write operation. | |
 | `JsonlError` | TypeAlias | Every error this package raises from the pure core and the journal service. | |
-| `JsonlEvent` | Variable + Namespace + Interface | One event definition: a tag, the schema its `data` must satisfy, and the two lifecycle markings. | define a journal event tag and its payload schema, register events into a journal's typed registry |
+| `JsonlEvent` | Variable + Namespace + Interface | One event definition: a tag, the schema its `data` must satisfy, and the two lifecycle markings. | define a journal event tag and payload schema, register into typed registry |
 | `JsonlEventTypeId` | Variable + TypeAlias | Unique type identifier marking a JSONL event definition. | runtime type identifier marking a jsonl event definition |
-| `Line` | Class | Splitting, parsing and corrupt-tail walk-back over JSONL text. | split jsonl text into byte-offset candidate lines, parse one line's json, walk back to the last parseable line |
+| `Line` | Class | Splitting, parsing and corrupt-tail walk-back over JSONL text. | split jsonl text into byte-offset lines, walk back to last parseable line |
 | `LineSlice` | Class | A single candidate line: its text, and where it lives in the source **in bytes**. | one candidate jsonl line located in the source by utf-8 byte offset |
-| `MalformedLine` | Class | A journal line that is not valid JSON. | handle a journal line that is not valid json, distinguish a torn tail from a corrupt hole |
+| `MalformedLine` | Class | A journal line that is not valid JSON. | a malformed journal line: not valid json, torn tail vs corrupt hole |
 | `ParsedLine` | Class | A line that parsed as JSON, paired with the slice it came from. | a line that parsed as json paired with the slice it came from |
 | `Slice` | Interface | A filter over envelope fields. | |
 | `TerminalViolation` | Class | An append attempted after a terminal event, by an event not marked `reopen`. | handle an append attempted after a terminal event without a reopen-marked event |

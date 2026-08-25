@@ -22,4 +22,4 @@
 | `filenameFor` | Function | The conventional lockfile filename for a format: `"bun.lock"`, `"package-lock.json"`, `"pnpm-lock.yaml"` or `"yarn.lock"`. | the conventional lockfile filename for a format, e.g. pnpm-lock.yaml |
 | `filenamesFor` | Function | Every filename a format is genuinely written under, primary first. | every filename a lockfile format is genuinely written under, including alternates |
 | `fromFilename` | Function | The format a lockfile filename identifies, if any. | detect which lockfile format a conventional filename identifies |
-| `isUnsupportedLockfileVersion` | Function | Whether a `LockfileParseError.cause` is an {@link UnsupportedLockfileVersion}. | check if a lockfile parse error's cause means the lockfile version is too old to parse |
+| `isUnsupportedLockfileVersion` | Function | Whether a `LockfileParseError.cause` is an {@link UnsupportedLockfileVersion}. | check if a lockfile parse error means the version is too old |

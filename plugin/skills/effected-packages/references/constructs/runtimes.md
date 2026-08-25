@@ -28,9 +28,9 @@
 | `NodePhase` | Variable + TypeAlias | Lifecycle phase of a Node.js major release line. | node lifecycle phase: current, active-lts, maintenance-lts, end-of-life |
 | `NodeRelease` | Class | One Node.js release. | one published node version with its npm version, ask if a release is lts |
 | `NodeReleaseLine` | Interface | The parts of a version that decide which release line it belongs to. | |
-| `NodeResolver` | Class | The Node.js resolver. | resolve a node version from a semver range and lifecycle phase, pick a node release |
+| `NodeResolver` | Class | The Node.js resolver. | resolve a node version from a semver range and lifecycle phase |
 | `NodeResolverOptions` | Variable + TypeAlias | How to resolve Node.js versions. | options for resolving node versions, range, phases, increments, default, date |
-| `NodeSchedule` | Class | An immutable snapshot of the Node.js release schedule. | the node.js release schedule, look up lifecycle phase for a version at a point in time |
+| `NodeSchedule` | Class | An immutable snapshot of the Node.js release schedule. | the node.js release schedule, look up lifecycle phase for a version |
 | `NodeScheduleData` | Variable + TypeAlias | The raw shape of `schedule.json`. | raw shape of nodejs/Release schedule.json before parsing |
 | `NodeScheduleEntry` | Class | One release line's lifecycle dates. | one node release line's lifecycle dates: start, lts, maintenance, end, codename |
 | `RateLimitError` | Class | GitHub's rate limit was exhausted. | github api rate limit exhausted, back off using retryAfter |

@@ -11,7 +11,7 @@
 | `CatalogResolver` | Class | Contract for resolving pnpm `catalog:` dependency specifiers to concrete version ranges. | resolve a catalog: specifier to a version range, catalog contract, noop default layer — implemented by `WorkspaceCatalogs` in `@effected/workspaces` |
 | `CatalogSpecifier` | Class | A `catalog:` reference. `name` carries the catalog name, or `Option.none()` for the default catalog (`catalog:`). | represent a parsed catalog: dependency reference and its catalog name |
 | `ClassifiedSpecifier` | TypeAlias | A dependency specifier classified into one of the five resolver-relevant cases. Decoded from a string by {@link DependencySpecifier.FromString}; every case preserves the original `raw` string. | |
-| `CorepackIntegrityHash` | Variable | {@link (IntegrityHash:variable)} narrowed to the corepack `<algo>.<hex>` form — `sha512.deadbeef`, and corepack's own sha224 default pins (`sha224.877304e3…`). An SRI (`sha512-<base64>`) or yarn (`10c0/<hex>`) hash, both valid `IntegrityHash` values, fails this schema. | restrict integrity hash to corepack algo.hex form, convert npm sri hash to corepack pin format |
+| `CorepackIntegrityHash` | Variable | {@link (IntegrityHash:variable)} narrowed to the corepack `<algo>.<hex>` form — `sha512.deadbeef`, and corepack's own sha224 default pins (`sha224.877304e3…`). An SRI (`sha512-<base64>`) or yarn (`10c0/<hex>`) hash, both valid `IntegrityHash` values, fails this schema. | restrict integrity hash to corepack algo.hex, convert npm sri to corepack pin |
 | `DEFAULT_REGISTRY` | Variable | The public npm registry, used when a read names no other. | the public npmjs.org registry url |
 | `Default` | Variable | Composite no-op default layer merging {@link CatalogResolver.noop} and {@link WorkspaceResolver.noop}. Provide it once at the application boundary when a consumer only needs the resolver contracts to type-check while resolving nothing (both `rangeOf` and `versionOf` return `Option.none()`). | provide both catalog and workspace resolver noop layers at once |
 | `DefaultCacheDirectoryOptions` | Interface | What {@link PackageManagerCache.defaultDirectory} derives the answer from. | |
@@ -33,20 +33,20 @@
 | `InvalidSriIntegrityHashError` | Class | Indicates that a string could not be converted from npm's SRI form to the corepack integrity form. | handle failure converting an sri integrity string to corepack form |
 | `Manifest` | Class | A tolerant manifest as a domain model: the four dependency fields typed as string→string records, everything else preserved verbatim in `rest`. | resolve catalog: and workspace: specifiers in a tolerant package.json-shaped record to concrete version ranges |
 | `ManifestDecodeError` | Class | Indicates that an unknown value could not be decoded into a {@link Manifest}. | handle a manifest whose dependency fields fail to decode |
-| `NpmExecutor` | Class | Which `npm` runs a publish command. | choose which npm binary runs a publish command, ambient vs pinned via dlx, npm cache redirect for CI runners |
+| `NpmExecutor` | Class | Which `npm` runs a publish command. | choose which npm binary runs a publish command, ambient vs pinned |
 | `NpmRegistry` | Class | Registry reads over core `HttpClient`. | read package metadata from an npm registry over http: version lookup, dist-tags, publish times |
 | `NpmRegistryShape` | Interface | The {@link NpmRegistry} service shape. | |
 | `PackOptions` | Interface | Options shared by the packing operations. | |
 | `PackageManagerCache` | Class | Where each package manager caches by default — a facts table, one documented authority per row. | look up a package manager's default cache directory for a platform |
 | `PackageManagerPin` | Class | A corepack package-manager pin: the `<name>@<version>[+<integrity>]` triple (e.g. `pnpm@11.17.0+sha512.abc…`), independent of any `package.json` field. | parse and print a corepack packageManager pin string, name@version+integrity |
 | `PackageManagerPinName` | Variable + TypeAlias | The decoded type of {@link (PackageManagerPinName:variable)}: `"npm" \| "pnpm" \| "yarn" \| "bun"`. | the four package managers a corepack pin can name: npm, pnpm, yarn, bun |
-| `PackagePublish` | Class | The npm publish workflow, run through `@effected/commands`. | pack a package into a tarball, publish it to a registry, write npmrc auth, dry-run pack |
+| `PackagePublish` | Class | The npm publish workflow, run through `@effected/commands`. | pack a package into a tarball, publish to a registry, dry-run pack |
 | `PackagePublishShape` | Interface | The {@link PackagePublish} service shape. | |
 | `PackageTarball` | Class | Fetch, verify and extract a published tarball. | download, verify and extract a published tarball by integrity |
 | `PackageTarballShape` | Interface | The {@link PackageTarball} service shape. | |
 | `PackedTarball` | Class | A packed tarball and the two digests that describe it. | the tarball path, digests and size npm pack produced |
 | `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | one config source's contribution to a pnpm minimumReleaseAge gate before merging |
-| `PublishError` | Class | A publish-workflow step failed. | handle an npm publish workflow step failure: auth write, pack, publish, output parse, digest, missing executor |
+| `PublishError` | Class | A publish-workflow step failed. | handle an npm publish step failure: auth, pack, publish, output parse, digest |
 | `PublishOptions` | Interface | Options for uploading a tarball. | |
 | `PublishOutcome` | Interface | What one publish produced. | |
 | `PublishTime` | Class | When one version of a package was published. | when one package version was published, from the registry time map |

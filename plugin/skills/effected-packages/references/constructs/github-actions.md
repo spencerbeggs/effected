@@ -16,7 +16,7 @@
 | `ActionLogger` | Class | Groups, buffered step transcripts, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | workflow-command logger, collapsible log groups, buffered step transcript, notice annotation |
 | `ActionLoggerShape` | Interface | The {@link ActionLogger} service shape. | |
 | `ActionOutputError` | TypeAlias | Anything that can go wrong publishing an output, variable or summary. | |
-| `ActionOutputs` | Class | Everything an action publishes: step outputs, exported variables, `PATH` additions, the job summary, log masking and failure annotations. | set step output, export env var for later steps, add to PATH, job summary, mask a secret |
+| `ActionOutputs` | Class | Everything an action publishes: step outputs, exported variables, `PATH` additions, the job summary, log masking and failure annotations. | set step output, export env var, add to PATH, mask a secret |
 | `ActionOutputsShape` | Interface | The {@link ActionOutputs} service shape. | |
 | `ActionRunOptions` | Interface | How to run an action. | |
 | `ActionRuntime` | Class | The default runtime an action executes inside. | the composed default action runtime layer, wire ActionEnvironment/Logger/Outputs/State |
@@ -41,7 +41,7 @@
 | `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | handle a blob store read or write failure, unreachable or refused backend |
 | `BlobStoreShape` | Interface | The {@link BlobStore} service shape. | |
 | `BlobTransferError` | Class | Raised when bytes could not be moved to or from a signed blob url. | handle a signed blob url upload or download failure |
-| `CacheKey` | Class | A GitHub Actions cache key and the restore-key ladder that goes with it. | build a GitHub Actions cache key and restore-key fallback ladder, hash files for a cache key |
+| `CacheKey` | Class | A GitHub Actions cache key and the restore-key ladder that goes with it. | build a GitHub Actions cache key, restore-key fallback ladder, hash files |
 | `CacheKeyBadPatternError` | Class | Raised when a glob pattern would not compile. | handle a glob pattern that will not compile while deriving a cache key |
 | `CacheKeyError` | TypeAlias | Anything that can go wrong deriving a cache key from the filesystem. | |
 | `CacheKeyReadError` | Class | Raised when a file or directory that was going to be hashed could not be read. | handle a file read failure while hashing files for a cache key |
@@ -62,8 +62,8 @@
 | `DataBlobTransfer` | Interface | Moving in-memory bytes to and from a signed blob url. | |
 | `DetachedLogUnavailableError` | Class | Raised when a detached child cannot be started, waited for, or reaped. | handle a detached child's log file that could not be opened |
 | `DetachedNotReadyError` | Class | Raised when the readiness probe never held. | handle a detached child readiness probe that never succeeded |
-| `DetachedOutputError` | Class | Raised when an output member was called under {@link ActionOutputs.layerDetached}. | handle an output call made from a detached worker that cannot reach the runner file |
-| `DetachedProcess` | Class | A long-lived child that outlives the phase that started it. | spawn a long-lived child that outlives the action phase, poll readiness, signal a pid by number |
+| `DetachedOutputError` | Class | Raised when an output member was called under {@link ActionOutputs.layerDetached}. | handle output from a detached worker that cannot reach the runner file |
+| `DetachedProcess` | Class | A long-lived child that outlives the phase that started it. | spawn a long-lived child outliving the action, poll readiness, signal by pid |
 | `DetachedProcessError` | TypeAlias | Anything that can go wrong spawning, awaiting or reaping a detached child. | |
 | `DetachedProcessOps` | Interface | The module's operations as a value: the seam a consumer's tests inject. | |
 | `DetachedSignalFailedError` | Class | Raised when a signal was refused, e.g. the process belongs to another user. | handle a signal refused when reaping a detached child |
@@ -71,7 +71,7 @@
 | `DetachedSpawnOptions` | Interface | How a detached child is started. | |
 | `DownloadOptions` | Interface | Where a download should land. | |
 | `DownloadResult` | Interface | What a download produced. | |
-| `DryRun` | Class | The rehearsal guard: every mutation an action performs goes through it, so a workflow can be run end to end without changing anything. | rehearsal guard for action mutations, dry-run input, skip a mutation and report what would happen |
+| `DryRun` | Class | The rehearsal guard: every mutation an action performs goes through it, so a workflow can be run end to end without changing anything. | rehearsal guard for action mutations: dry-run input, skip and report |
 | `DryRunShape` | Interface | The {@link DryRun} service shape. | |
 | `ExtractOptions` | Interface | Where extraction should put its output. | |
 | `FileBlobTransfer` | Interface | Moving whole files to and from the signed blob url a results-backend RPC hands back. | |
@@ -79,7 +79,7 @@
 | `GitHubContext` | Class | The workflow's GitHub context, projected from the `GITHUB_*` variables. | GITHUB_* workflow context: repository, ref, sha, actor, pull request head ref, branch |
 | `GitHubHeadingDepth` | TypeAlias | A heading level GitHub renders, `1` through `6`. | |
 | `GitHubListOptions` | Interface | Options for {@link GitHubMarkdown.list}. | |
-| `GitHubMarkdown` | Class | The fluent markdown writer for GitHub surfaces — PR comments, check-run summaries, job summaries. | fluent markdown writer for PR comments, job summaries and check-run bodies, render a table from a schema |
+| `GitHubMarkdown` | Class | The fluent markdown writer for GitHub surfaces — PR comments, check-run summaries, job summaries. | fluent markdown writer for pr comments and check-run bodies, render a table |
 | `GitHubRowSchema` | TypeAlias | The row-schema constraint {@link GitHubMarkdown.tableFor} accepts: any schema exposing a struct field map — `Schema.Struct` and `Schema.Class` both qualify. | |
 | `GitHubSchemaTable` | Interface | A renderer minted by {@link GitHubMarkdown.tableFor}: columns are fixed by the schema, rows are supplied at each render. | |
 | `GitHubSchemaTableColumn` | Interface | Per-column configuration for {@link GitHubMarkdown.tableFor}. | |
@@ -96,7 +96,7 @@
 | `ManagedDocumentError` | Class | Raised when a managed document cannot be read or regenerated without guessing. | handle a corrupt or ambiguous managed document region structure |
 | `ManagedDocumentSource` | Interface | Options identifying a managed document inside a text that may not carry one yet. | |
 | `NotABlobEnvelopeError` | Class | Raised when bytes cannot be read as an envelope. | handle bytes that are not a recognizable blob envelope, legacy unframed blob |
-| `OidcClaims` | Class | The claims a GitHub Actions OIDC token carries about the workflow that ran. | the claims carried by a GitHub Actions OIDC token: repository, ref, sha, job workflow ref |
+| `OidcClaims` | Class | The claims a GitHub Actions OIDC token carries about the workflow that ran. | claims carried by a GitHub Actions OIDC token: repository, ref, sha, job |
 | `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | handle an OIDC token that could not be minted or decoded, missing id-token permission |
 | `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint a runner OIDC token, request an identity token, decode unverified JWT claims |
 | `OidcTokenIssuerShape` | Interface | The {@link OidcTokenIssuer} service shape. | |
@@ -131,5 +131,5 @@
 | `WithBufferOptions` | Interface | Options for {@link ActionLoggerShape.withBuffer}. | |
 | `WithStepOptions` | Interface | Options for {@link ActionLoggerShape.withStep}. | |
 | `WorkflowCommand` | Class | The GitHub Actions workflow-command wire protocol: `::name key=value::message`. | render ::error::/::warning::/::notice::/::group:: workflow commands, escape a log annotation |
-| `describeCause` | Function | A readable one-line summary of why an action failed. | one-line [Tag]: message summary of why an action failed, render an Effect Cause for a log |
+| `describeCause` | Function | A readable one-line summary of why an action failed. | one-line [Tag]: message summary of why an action failed |
 | `projectCheckState` | Function | Project a kit check state onto GitHub's check-run wire vocabulary. | map the kit's check state onto GitHub's check-run status/conclusion wire vocabulary |

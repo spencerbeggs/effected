@@ -27,7 +27,7 @@
 | `ConfigMigrationOptions` | Interface | Options for {@link ConfigMigration.make}. | |
 | `ConfigReadError` | TypeAlias | The failure modes of reading one known path. | |
 | `ConfigReadOptions` | Interface | Options for {@link ConfigFile.read}. | |
-| `ConfigResolver` | Class + Interface | Built-in resolvers, in the order a typical chain uses them. | find a config file by explicit path, static dir, upward walk, git or workspace root, or /etc |
+| `ConfigResolver` | Class + Interface | Built-in resolvers, in the order a typical chain uses them. | find a config file: explicit path, static dir, upward walk, or /etc |
 | `ConfigSaveError` | TypeAlias | The failure modes of {@link ConfigFileShape.save}. | |
 | `ConfigSource` | Interface | A single configuration source discovered during a resolver-chain pass. | |
 | `ConfigSourceRef` | Variable | A reference to one configuration source that contributed to a load. | path and resolver name that contributed a config value |

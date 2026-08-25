@@ -15,7 +15,7 @@
 | `REFERENCE_KEYWORDS` | Variable | The non-closing reference keywords the list dialect accepts, lowercased. | the non-closing reference keywords ref, refs, references |
 | `ReferenceKeyword` | TypeAlias | One of the non-closing reference keywords, in canonical lowercase form. | |
 | `ReferenceList` | Interface | The issues a reference-list line names, per {@link parseReferenceList}. | |
-| `collectReferenceLists` | Function | Every reference list a text carries, line by line, across both postures. | extract every closing or reference list from commit or PR body text, line and inline combined |
+| `collectReferenceLists` | Function | Every reference list a text carries, line by line, across both postures. | extract every closing or reference list from commit or PR body text |
 | `harvestIssueReferences` | Function | Every inline closing reference in `text`, in document order. | find closes/fixes/resolves #12 style references in commit message or pr body prose |
 | `harvestReferenceLists` | Function | Every reference list found inline in `text`, in document order. | find several issue lists inline in running text, e.g. closes #123, fixes #456 |
 | `keywordFamily` | Function | The family a keyword belongs to. | collapse close/closes/closed and similar conjugations to one stem |
