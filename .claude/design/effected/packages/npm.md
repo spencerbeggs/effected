@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../architecture.md
@@ -114,7 +114,7 @@ The conversion is a **`Schema` transformation**, `CorepackIntegrityHash.FromSri`
 Four rulings carry it:
 
 - **Non-sha512 input fails typed decode** rather than producing garbage. The other algorithms are valid `IntegrityHash` values and a lenient converter would emit a pin corepack rejects at install time, which is the worst place to learn about it. The **digest length is checked too** — sha512 is 64 bytes, and an SRI value carrying anything else cannot be one.
-- **The base64 reader is strict and hand-rolled.** `Buffer` is Node-only *and* lenient — it drops invalid characters and truncates — and lenience is exactly what an integrity conversion must not have. A non-canonical spelling (a length no base64 output has, mismatched padding, an interior `=`, non-zero trailing bits) is rejected rather than repaired, because a second spelling of the same bytes is a value npm never emits.
+- **The base64 reader is strict and hand-rolled.** `Buffer` is Node-only *and* lenient — it drops invalid characters and truncates — and lenience is exactly what an integrity conversion must not have. A non-canonical spelling (a length no base64 output has, mismatched padding, an interior `=`, non-zero trailing bits) is rejected rather than repaired, because a second spelling of the same bytes is a value npm never emits. Core's `Encoding.decodeBase64` was re-evaluated here at `4.0.0-rc.109` and **kept out for the same reason `Buffer` is**: probed, it decodes `QQ==`, `QR==` and `QV==` to the same byte and strips embedded CRLF, while rejecting the unpadded form this reader accepts — lenient and stricter than us at once, so it is a drop-in in neither direction. This is the [canonical-value mismatch](../effect-standards.md#core-owning-a-primitive-is-not-the-same-as-cores-primitive-fitting) in its purest form, and it is **decode-only**: core's `Encoding.encodeBase64` emits the canonical spelling by construction, which is why [`PackageTarball`](#packagetarball--reading-a-published-package-back) verifies through it with no module-private encoder while this reader stays hand-rolled. One codec, two directions, two different answers.
 - **The conversion is one-way from SRI.** An already-corepack-form input does **not** pass through decode; accepting it would let a caller feed pins back in and mask a wiring bug. The codec's *encode* direction is the exact inverse — corepack back to canonical padded SRI, failing typed for the corepack forms SRI cannot carry, such as corepack's own sha224 default pins — which is a codec being a codec, not a second acceptance rule.
 - **JSON-quoted registry values are tolerated.** Registry payloads round-trip through JSON in enough consumer paths that one surrounding pair of quotes is a normal input, not a malformed one. One layer only, and encode never re-quotes.
 

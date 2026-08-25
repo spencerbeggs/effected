@@ -161,6 +161,23 @@ const corepackRestricted = brandedIntegrity.pipe(
 // hand-rolls it re-decides the same edge cases (quoted JSON tokens, non-sha512
 // algorithms, sloppy base64), so the bridge lives here, once, as a codec.
 
+// Why this is hand-rolled rather than core's `Encoding`, which this package
+// already uses elsewhere (`PackageTarball`, `RegistryCredential`): the two
+// disagree in both directions, and for an integrity value the disagreement is
+// load-bearing. Probed against effect@4.0.0-rc.109:
+//
+//   Encoding.decodeBase64("QQ==")     -> [65]
+//   Encoding.decodeBase64("QR==")     -> [65]   non-zero trailing bits
+//   Encoding.decodeBase64("QV==")     -> [65]   ditto
+//   Encoding.decodeBase64("QQ=\r\n=") -> [65]   CRLF stripped silently
+//   Encoding.decodeBase64("QQ")       -> fail  "Length must be a multiple of 4"
+//
+// Core accepts three spellings of one digest and tolerates embedded CRLF, so
+// two `integrity` strings that differ as text can decode to identical bytes —
+// precisely the ambiguity an integrity check exists to deny. Core is also
+// *stricter* where this codec is deliberately lenient: it rejects the unpadded
+// form. Neither direction is a drop-in. Do not "fix" this to `Encoding`.
+//
 // Canonical base64 alphabet; index = 6-bit value.
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const BASE64_INVALID = 0xff;

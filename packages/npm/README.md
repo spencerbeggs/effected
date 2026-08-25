@@ -231,7 +231,7 @@ Effect.runPromise(CorepackIntegrityHash.fromSri(npmIntegrity)).then(console.log)
 // Failure: InvalidSriIntegrityHashError, carrying the offending `input`
 ```
 
-`FromSri` is the same conversion as a `Schema.Codec`, for decoding an integrity field inside your own schemas; `fromSri` is the `Effect` convenience over it. The bridge is deliberately **one-way**: an input that is already in the corepack form fails typed rather than passing through, so a caller feeding pins back into the converter finds the wiring bug instead of masking it. The base64 reader is strict and canonical for the same reason — a lenient one mints pins corepack rejects at install time.
+`FromSri` is the same conversion as a `Schema.Codec`, for decoding an integrity field inside your own schemas; `fromSri` is the `Effect` convenience over it. The bridge is deliberately **one-way**: an input that is already in the corepack form fails typed rather than passing through, so a caller feeding pins back into the converter finds the wiring bug instead of masking it. The base64 reader is strict for the same reason — a lenient one mints pins corepack rejects at install time. Padding is its one latitude: a digest's padded and unpadded spellings decode to the same pin, while a stray character, an interior `=`, or non-zero trailing bits all fail.
 
 ## Who consumes this
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -148,7 +148,7 @@ Core ships a root-level `Graph` module and this package uses it — **for two de
 
 **The substrate swap was evaluated and rejected.** It would replace the trivially-correct part — building two maps out of manifests — while keeping every part that is actually hard, and it would add a permanent name↔`NodeIndex` translation layer beneath an API that consumers address by package name. It would also widen this package's dependence on an exact-pinned beta surface for no stability gain. **Transient construction at the two call sites confines that exposure to code that is already failing or already rendering**, which is the whole shape of the adoption.
 
-**`levels` stays hand-rolled, and that is a finding rather than a preference.** Core's `topo` cannot produce the parallel-wave boundaries `levels` exists to give: its walker exposes no level data, and `TopoConfig.initials` only *prioritizes* zero-in-degree nodes rather than fencing a wave. Settled against the vendored beta.107 source, so it does not need re-deriving.
+**`levels` stays hand-rolled, and that is a finding rather than a preference.** Core's `topo` cannot produce the parallel-wave boundaries `levels` exists to give: its walker exposes no level data, and `TopoConfig.initials` only *prioritizes* zero-in-degree nodes rather than fencing a wave. Settled against the vendored beta.107 source and **re-confirmed at `4.0.0-rc.109`** in the kit-wide core-primitive audit (effected#516), so it does not need re-deriving. That re-check added two gaps to the same verdict, both of which outlive `levels`: core's traversals **throw** `GraphError` rather than failing typed — 16 sites, so a cycle would arrive as a *defect* carrying a message instead of the `CyclicDependencyError` payload that names the offending packages — and `affectedBy`'s reverse reachability has no core equivalent at all, so the reverse-edge index stays regardless. The throw is precisely why the two adopted call sites are the ones they are: `stronglyConnectedComponents` and `toMermaid` do not throw on any graph this class can hold. Both facts generalize past this package and are recorded as such in [effect-standards.md](../effect-standards.md#core-owning-a-primitive-is-not-the-same-as-cores-primitive-fitting).
 
 Both transient graphs materialize through one helper that adds nodes in sorted-name order and each node's edges in sorted-target order, so `NodeIndex` *i* is always the *i*th sorted name and **everything derived is deterministic regardless of manifest key order.**
 

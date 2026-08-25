@@ -69,7 +69,7 @@ Zero *external* runtime deps.
   behaviour change. The catcher is a runtime **identity** assertion in each
   consumer's suite, with a control against the unrestricted brand; never
   downgrade it to a behavioural test.
-- **The SRI bridge is one-way.** `CorepackIntegrityHash.FromSri` / `fromSri` decode npm's `sha512-<base64>` to the corepack form only; an already-corepack input **fails typed**, so a caller feeding pins back in cannot mask a wiring bug. Its base64 reader is strict and canonical for the same reason — `Buffer`-style lenience mints pins corepack rejects at install. Encode is its exact inverse, not a second acceptance rule.
+- **The SRI bridge is one-way.** `CorepackIntegrityHash.FromSri` / `fromSri` decode npm's `sha512-<base64>` to the corepack form only; an already-corepack input **fails typed**, so a caller feeding pins back in cannot mask a wiring bug. Its base64 reader is strict for the same reason — `Buffer`-style lenience mints pins corepack rejects at install; padding alone is optional. Core's `Encoding.decodeBase64` is no substitute either: probed at rc.109 it is lenient and stricter than us at once. That verdict is **decode-only** — `PackageTarball` verifies through core's *encoder*. Encode is its exact inverse, not a second acceptance rule.
 - **A package-manager pin's first `+` after the version always begins the
   integrity** — a malformed tail fails typed, never falling back to
   build-metadata parsing. The pin's four-literal name grammar diverging from

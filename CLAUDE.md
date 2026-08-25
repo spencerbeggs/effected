@@ -13,7 +13,7 @@ The monorepo holds libraries only — applications stay in external repos.
 Thirteen foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load each one on demand:
 
 - Architecture → `@./.claude/design/effected/architecture.md` — Load when: changing repo structure, build pipeline, tooling, or workspace/catalog setup.
-- Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, choosing a test double, or making dependency/peer-closure decisions.
+- Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, asking whether core already owns a primitive *and whether its shape fits the call site*, choosing a test double, or making dependency/peer-closure decisions.
 - Package inventory → `@./.claude/design/effected/package-inventory.md` — Load when: picking the next migration target or updating a package's migration status.
 - Releases → `@./.claude/design/effected/releases.md` — Load when: reasoning about how a release is cut or versioned, or scoping a package against its consumers.
 - Roadmap → `@./.claude/design/effected/roadmap.md` — Load when: planning post-migration work or picking the next workstream.
