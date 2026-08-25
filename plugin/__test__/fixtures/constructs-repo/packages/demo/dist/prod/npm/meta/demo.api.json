@@ -1,0 +1,42 @@
+{
+	"metadata": { "toolPackage": "@microsoft/api-extractor" },
+	"name": "@effected/demo",
+	"members": [
+		{
+			"kind": "EntryPoint",
+			"name": "",
+			"members": [
+				{
+					"kind": "Class",
+					"name": "NtiaReport",
+					"releaseTag": "Public",
+					"docComment": "/**\n * A document's standing against the NTIA minimum elements.\n *\n * @example\n * ```ts\n * const r = NtiaReport.of(doc);\n * ```\n *\n * @public\n */\n"
+				},
+				{
+					"kind": "Variable",
+					"name": "IdentityToken",
+					"releaseTag": "Public",
+					"docComment": "/**\n * Contract for minting an identity token.\n *\n * @public\n */\n"
+				},
+				{
+					"kind": "Interface",
+					"name": "IdentityToken",
+					"releaseTag": "Public",
+					"docComment": ""
+				},
+				{
+					"kind": "TypeAlias",
+					"name": "ReportShape",
+					"releaseTag": "Public",
+					"docComment": "/**\n * The report's | pipe-bearing summary line.\n *\n * @public\n */\n"
+				},
+				{
+					"kind": "Function",
+					"name": "renderReport",
+					"releaseTag": "Public",
+					"docComment": "/**\n * Render a report to markdown.\n *\n * @public\n */\n"
+				}
+			]
+		}
+	]
+}

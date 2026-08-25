@@ -1,0 +1,12 @@
+{
+	"demo": {
+		"NtiaReport": "validate NTIA minimum elements, check SBOM compliance",
+		"IdentityToken": { "intent": "contract for minting an identity token" }
+	},
+	"impl": {
+		"OidcTokenIssuer": {
+			"intent": "mint a runner OIDC token",
+			"implements": "demo.IdentityToken"
+		}
+	}
+}
