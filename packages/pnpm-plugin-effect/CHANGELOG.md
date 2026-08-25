@@ -1,5 +1,15 @@
 # @effected/pnpm-plugin-effect
 
+## 0.6.10
+
+### Maintenance
+
+- Synced the `effected` catalog to the current kit release versions
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.6.9
 
 ### Maintenance
