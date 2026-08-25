@@ -77,3 +77,28 @@ FIXTURES="$PLUGIN_ROOT/__test__/fixtures"
 	[ "$status" -eq 1 ]
 	[[ "$output" == *"stale annotation: demo.Departed"* ]]
 }
+
+@test "repo: committed constructs/ is exactly what regeneration produces" {
+	committed="$PLUGIN_ROOT/skills/effected-packages/references/constructs"
+	regenerated="$BATS_TEST_TMPDIR/regenerated"
+	run node "$GEN" generate --out "$regenerated"
+	if [ "$status" -eq 2 ]; then
+		echo "doc models missing — run \`pnpm build\` before this suite" >&2
+		echo "$output" >&2
+		return 1
+	fi
+	[ "$status" -eq 0 ]
+	run diff -ru "$committed" "$regenerated"
+	if [ "$status" -ne 0 ]; then
+		echo "constructs/ has drifted from the doc models + annotations:" >&2
+		echo "$output" >&2
+		echo "" >&2
+		echo "run: node plugin/scripts/generate-constructs.mts generate  — and commit the result" >&2
+		return 1
+	fi
+}
+
+@test "repo: no stale construct annotations" {
+	run node "$GEN" check
+	[ "$status" -eq 0 ]
+}
