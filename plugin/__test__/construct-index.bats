@@ -48,3 +48,32 @@ FIXTURES="$PLUGIN_ROOT/__test__/fixtures"
 	[[ "$output" == *"build first"* ]]
 	[[ "$output" == *"ghost"* ]]
 }
+
+@test "fixture: check passes without --require-intent when annotations are merely incomplete" {
+	run node "$GEN" check \
+		--packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json"
+	[ "$status" -eq 0 ]
+}
+
+@test "fixture: check --require-intent fails naming each unannotated value construct" {
+	run node "$GEN" check \
+		--packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" \
+		--require-intent
+	[ "$status" -eq 1 ]
+	# renderReport is a Function with no annotation in the fixture
+	[[ "$output" == *"missing intent annotation: demo.renderReport"* ]]
+	# ReportShape is a TypeAlias — must NOT be required
+	[[ "$output" != *"ReportShape"* ]]
+}
+
+@test "fixture: check fails on a stale annotation naming a construct that no longer exists" {
+	stale="$BATS_TEST_TMPDIR/stale.json"
+	printf '{"demo":{"Departed":"gone construct"}}\n' > "$stale"
+	run node "$GEN" check \
+		--packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$stale"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"stale annotation: demo.Departed"* ]]
+}
