@@ -1,5 +1,32 @@
 # @effected/app
 
+## 0.13.0
+
+### Features
+
+#### Construct index for the `effected-packages` skill
+
+- `plugin/skills/effected-packages/` now ships a generated construct index — one
+  reference file per kit package under `references/constructs/`, listing every
+  exported construct with its kind, a TSDoc-derived purpose, and intent
+  keywords for grep-based discovery. The skill's `SKILL.md` documents how to
+  search it:
+
+```bash
+grep -ri "table" plugin/skills/effected-packages/references/constructs/
+```
+
+- This complements the existing per-package `references/*.md` files: the
+  package table routes when you know *which* package to reach for, the
+  construct index routes when you know *what* you want done but not what it's
+  called. [#534][#534]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#534]: https://github.com/spencerbeggs/effected/pull/534
+
 ## 0.12.2
 
 ### Documentation
