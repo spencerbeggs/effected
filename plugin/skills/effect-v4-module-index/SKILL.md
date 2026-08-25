@@ -56,7 +56,7 @@ phrasing and missed on its module name.
 | `Console` | Effect wrapper over console (log/group/count/table/timer) as a swappable service | logging/console side effects you want swappable in tests |
 | `Context` | typed map of service implementations keyed by Service/Reference | building or reading the service environment `R` of effects |
 | `Cron` | recurring calendar schedule from cron expressions or field constraints | matching dates or computing next/previous scheduled occurrences |
-| `Crypto` | platform-independent crypto service contract: secure random bytes/numbers/shuffle, UUIDv4+v7, and `digest` over `SHA-1/256/384/512` — **and nothing else** (no HMAC, no signing, no key derivation; `Crypto.ts:75-153`) | secure random/UUID/hashing; contract, platform layer provides implementation. For HMAC or signing, `node:crypto` or a platform package — see the sharp corner below |
+| `Crypto` | platform-independent crypto service contract: secure random bytes/numbers/shuffle, UUIDv4+v7, and a **one-shot** `digest` over `SHA-1/256/384/512` — **and nothing else** (no HMAC, no signing, no key derivation, no incremental hashing; `Crypto.ts:75-153`) | secure random/UUID/hashing of a value already in memory; contract, platform layer provides implementation. For HMAC, signing, or hashing a stream, `node:crypto` or a platform package — see the sharp corner below |
 | `Data` | constructors for immutable value classes, tagged classes/unions, typed errors | defining `_tag`-carrying domain values and errors with structural equality |
 | `DateTime` | absolute instants plus optional time-zone-aware date-times and arithmetic | zone-aware timestamps, date math, and formatting |
 | `Deferred` | one-time set-once async variable many fibers can await | cross-fiber coordination on a single result/signal |
@@ -232,6 +232,16 @@ section.
   discovers mid-implementation that it must reach for `node:crypto` or a platform
   package after all — after the tier and peer decisions were already made on the
   wrong premise.
+- **`Crypto.digest` is one-shot, and that is a second dependency decision.** The
+  signature is `digest(algorithm, data: Uint8Array)` (`Crypto.ts:98-101`) — it
+  takes the whole payload at once and there is **no incremental/streaming form**,
+  no `update`/`digest` accumulator pair. So hashing a file, a tarball or any
+  input without a known upper bound means buffering all of it in memory to use
+  this API, where `node:crypto`'s `createHash(...).update(chunk)` walks a stream
+  at constant cost. Digesting a key, a token or a short manifest is a fit;
+  digesting an artifact is not. In the kit this is exactly why
+  `github-actions`' `Artifact` and `PackageManagerInstaller` stay on
+  `node:crypto` — both fold a `Stream` chunk-by-chunk on purpose.
 - **Core `Cache` is interrupt-clean, unlike `Effect.cached`.** Interrupting the
   only awaiter **discards** the in-flight entry and the next `get` re-runs the
   lookup; concurrent gets still de-dupe to one lookup. So the `Effect.cached`

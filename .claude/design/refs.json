@@ -4,8 +4,8 @@
 		{
 			"source": "CLAUDE.build-and-test.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "463d0bbc41e68380ab5b603bdc2e3390c38ff2294e5f7fd2d534c839ec4239b7",
-			"recordedAt": "2026-08-21"
+			"hash": "94ff64c287f6e0b31395778ddf6b23cd0e9f8f180fcca3bf8da9e9adb01cbe78",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "CLAUDE.dependencies.md",
@@ -16,8 +16,8 @@
 		{
 			"source": "CLAUDE.dependencies.md",
 			"target": ".claude/design/effected/catalog-sync.md",
-			"hash": "14f7612bfb9831a8f040815e6532b09776b0452d4eb69f457cd291d3bdf09e00",
-			"recordedAt": "2026-08-23"
+			"hash": "653bfc40eafd1317ff547a6882c6fb60705d3a99c08282dd50918f2f921e7c8e",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -28,14 +28,14 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/catalog-sync.md",
-			"hash": "14f7612bfb9831a8f040815e6532b09776b0452d4eb69f457cd291d3bdf09e00",
-			"recordedAt": "2026-08-23"
+			"hash": "653bfc40eafd1317ff547a6882c6fb60705d3a99c08282dd50918f2f921e7c8e",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "463d0bbc41e68380ab5b603bdc2e3390c38ff2294e5f7fd2d534c839ec4239b7",
-			"recordedAt": "2026-08-21"
+			"hash": "94ff64c287f6e0b31395778ddf6b23cd0e9f8f180fcca3bf8da9e9adb01cbe78",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -328,20 +328,20 @@
 		{
 			"source": "packages/npm/CLAUDE.md",
 			"target": ".claude/design/effected/packages/npm.md",
-			"hash": "6037a84ae6c715f56c4e30e8112589d48a2f3daaaebb1ab62b0909acf932cf7e",
-			"recordedAt": "2026-08-23"
+			"hash": "8e3affd124d72880bba9a46ee6a1d25af45f078eea3806daaf6735a7679d08db",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "packages/npm/CLAUDE.services.md",
 			"target": ".claude/design/effected/packages/npm.md",
-			"hash": "6037a84ae6c715f56c4e30e8112589d48a2f3daaaebb1ab62b0909acf932cf7e",
-			"recordedAt": "2026-08-23"
+			"hash": "8e3affd124d72880bba9a46ee6a1d25af45f078eea3806daaf6735a7679d08db",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "packages/npm/CLAUDE.vocabulary.md",
 			"target": ".claude/design/effected/packages/npm.md",
-			"hash": "6037a84ae6c715f56c4e30e8112589d48a2f3daaaebb1ab62b0909acf932cf7e",
-			"recordedAt": "2026-08-23"
+			"hash": "8e3affd124d72880bba9a46ee6a1d25af45f078eea3806daaf6735a7679d08db",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "packages/package-json/CLAUDE.md",
@@ -358,8 +358,8 @@
 		{
 			"source": "packages/pnpm-plugin-effect/CLAUDE.md",
 			"target": ".claude/design/effected/catalog-sync.md",
-			"hash": "14f7612bfb9831a8f040815e6532b09776b0452d4eb69f457cd291d3bdf09e00",
-			"recordedAt": "2026-08-23"
+			"hash": "653bfc40eafd1317ff547a6882c6fb60705d3a99c08282dd50918f2f921e7c8e",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "packages/pnpm-plugin-effect/CLAUDE.md",
@@ -466,8 +466,8 @@
 		{
 			"source": "packages/workspaces/CLAUDE.md",
 			"target": ".claude/design/effected/packages/workspaces.md",
-			"hash": "104e805d6dce678762d03b32bdaf37cf7561bd26b23b56ac4125e3f58beb84d1",
-			"recordedAt": "2026-08-23"
+			"hash": "d348a7cd5a9f962db153597add0e615a22f88bc7c9c3864df86e3f0508b739b6",
+			"recordedAt": "2026-08-25"
 		},
 		{
 			"source": "packages/xdg/CLAUDE.md",

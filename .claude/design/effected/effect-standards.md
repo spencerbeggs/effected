@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-20
-last-synced: 2026-08-20
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - architecture.md
@@ -112,6 +112,20 @@ Three operating rules fall out:
 Learned the expensive way, over two attempts at `@effected/commands`, and the lesson is **two separate failure modes: re-declaring a core concept, and implementing one.** Clearing the first does not clear the second. The first design invented a `Command`/`CommandRunner` vocabulary for what core already declares, and it survived several review gates because reviewers checked the code against the brief instead of the brief against core. The second imported core's vocabulary faithfully and deleted every invented type — it passed the re-declaration check outright — and was still removed, because it shipped a **backend** for a contract core already implements. A reviewer holding a single "don't reinvent core" rule would have approved it, which is why both modes are named here rather than compressed into one.
 
 The general form, and the invariant `@effected/commands` ships under: **every subprocess concept is core's, and no implementation of one is.** `@effected/git` is the same invariant from the consuming end — it simply requires the core `ChildProcessSpawner` in `R`. See [packages/commands.md](packages/commands.md).
+
+### Core owning a primitive is not the same as core's primitive fitting
+
+Rule 1 answers *does core declare this?* It does not answer the question that actually decides a call site: **does core's version have the shape this site needs?** A sweep of every package's `src` against the vendored core at `4.0.0-rc.109`, looking for hand-rolled re-rolls of the late-landing modules (`Crypto`, `Encoding`, `Graph`, `unstable/encoding/{Toml,Yaml}`), found most candidates already adopted and every remaining one kept for a **shape** mismatch rather than inertia (effected#516). The mismatches fall into five recurring kinds, each invisible from the module name and each cheap to miss:
+
+1. **A sync site against an `Effect` primitive.** `Crypto.digest` returns an `Effect` requiring `Crypto` in `R`. A sync function or a module-level constant cannot call it without becoming effectful or acquiring a runtime, which is a public-surface change to buy a dependency removal.
+2. **A streaming site against a one-shot primitive.** `Crypto.digest(algorithm, data: Uint8Array)` takes the whole payload and there is no `update`/`digest` accumulator, so hashing a stream through it means buffering the stream. Digesting a key or a short manifest fits; digesting an artifact of unbounded size trades constant memory for none.
+3. **A canonical value against a lenient codec.** `Encoding.decodeBase64` maps several textual spellings onto identical bytes and strips embedded CRLF, while *rejecting* the unpadded form some grammars allow. Where a value's text is load-bearing — an integrity hash, a signature, a cache key — a decoder that accepts synonyms is not a drop-in for one that denies them, and the divergence runs in both directions at once. Encoding is unaffected: core's encoders emit the canonical spelling, so the adopt/keep answer can legitimately differ between the two directions of one codec ([packages/npm.md](packages/npm.md#sri-to-corepack-conversion)).
+4. **A typed error channel against a throwing API.** Core's `Graph` traversals `throw` `GraphError`, so a cycle arrives as a **defect** outside the declared error channel carrying a message rather than a payload. That is not a reason to avoid the module — only a reason to adopt it where the throw is unreachable or the payload does not matter, which is exactly what `workspaces` does ([packages/workspaces.md](packages/workspaces.md#cores-graph-is-adopted-at-two-call-sites-not-as-the-substrate)).
+5. **A superset against a subset.** Core's `unstable/encoding/Toml` and `…/Yaml` export a single `parse`. The kit's `@effected/toml` and `@effected/yaml` are strict supersets — parse, edit, format, comment fidelity — so there is nothing to fold in, and a same-named core module is not evidence of duplication.
+
+Absence is its own answer and the cheapest one to check first: core's `Crypto` has **no HMAC, no signing, no key derivation and no cipher**, so an AWS SigV4 signer or a PBKDF2 + AES-GCM envelope is not a migration candidate at all — it is `node:crypto` or WebCrypto `subtle` under rule 2's overlay exception, decided before the tier and peer decisions are made rather than discovered mid-implementation.
+
+Two standing rules come out of it. **Probe the shape, do not read the name** — every judgement above came from running the primitive against the call site's actual inputs, and three of the five are undetectable from a signature. And **record the verdict at the site, in both directions**: an adoption and a considered keep are equally worth a comment naming the core module, the version probed and the deciding fact, because otherwise the next audit re-runs the probe and the one after that "fixes" the keep.
 
 ### The vendored source is the style oracle, not just the API authority
 

@@ -43,6 +43,32 @@ interface Edges {
 	readonly reverse: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
+// Core's `Graph` is already adopted in this file — `stronglyConnectedComponents`
+// for the cycle payload, and `directed`/`addNode`/`addEdge`/`toMermaid` over the
+// `materialize` helper below. What stays local is the *substrate* (the
+// string-keyed forward/reverse index) plus `levels`, `affectedBy` and
+// `sortSubset`. Re-confirmed against effect@4.0.0-rc.109; recorded here so the
+// next audit does not re-run it, in both directions.
+//
+// Why those three do not move onto core:
+//
+//   1. Core's `topo` **throws** `GraphError` on a cyclic graph (`Graph.ts:5425`)
+//      rather than failing typed, and carries only a message — no cycle members.
+//      `levels()` fails with `CyclicDependencyError` naming the offending
+//      packages, so adopting `topo` would mean catching a defect and recomputing
+//      the members anyway. Note this is a reason to pick call sites, not to avoid
+//      the module: `stronglyConnectedComponents` throws only for *undirected*
+//      graphs (`Graph.ts:3866`) and `materialize` builds `Graph.directed`, so the
+//      adopted site above cannot throw on any graph this class can hold.
+//   2. Core's `topo` yields a **flat** order. The product here is parallel build
+//      *levels* — level n depends only on levels below it — which is the whole
+//      reason this type exists and is not derivable from a flat order.
+//   3. `affectedBy` (reverse reachability) has no core equivalent, and both it
+//      and `sortSubset` need the reverse-edge index maintained below.
+//
+// Revisit only if core grows a level-partitioning traversal with a non-throwing
+// error channel.
+
 /**
  * The directed graph of dependencies **between workspace packages**. External
  * npm dependencies are not nodes.
