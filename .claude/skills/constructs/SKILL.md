@@ -60,7 +60,12 @@ misses documented in #188). Rules:
 - Write the words a consumer would search: verbs plus objects. "validate NTIA
   minimum elements, check SBOM compliance" — not "NTIA report class".
 - Never restate the construct's name; the name is already in the row.
-- 3–12 words, lowercase, comma-separated phrases. Terse beats complete.
+- Aim for 3–12 words, hard cap 14, lowercase, comma-separated phrases. Terse
+  beats complete.
+- Emphasis-active tokens — anything containing `*` or `_` (env-var patterns
+  like `GITHUB_*`, `snake_case` names) — must be wrapped in code spans. The
+  pre-commit markdown fixer rewrites bare emphasis-like sequences, and an
+  un-spanned token breaks the committed-equals-regenerated fixed point.
 - A schema-plus-class merged row gets ONE annotation covering both faces.
 - If two constructs are a contract/implementation pair across packages, the
   implementing side carries `implements` — check for the kit's known splits
@@ -72,8 +77,16 @@ misses documented in #188). Rules:
 
 - "has drifted" — someone changed exports or annotations without
   regenerating: run step 4 and commit the result. Never hand-edit the tables.
+  If it goes red AGAIN after that regeneration+commit, the markdown fixer
+  mutated a cell at commit time — code-span the offending emphasis-active
+  token in the annotation (rule above) and regenerate once more. Never loop on
+  plain regeneration; that never converges against a fixer that keeps
+  rewriting the same token.
 - "stale annotation" — the export was renamed or removed: move or delete the
   annotation entry, regenerate.
+- "dangling implements" — an `implements` target names a package or construct
+  that does not exist: fix or drop the `implements` field. `check` validates
+  every `implements` target, not just staleness of the annotated name itself.
 - "missing intent annotation" — a new value-kind export landed: author it
   (rules above), regenerate.
 - "build first" — the doc models are missing or the checkout is stale:
