@@ -175,7 +175,7 @@ await build({
 				effected: {
 					packages: {
 						"@effected/app": {
-							range: "^0.12.0",
+							range: "^0.12.1",
 							peer: "^0.12.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -193,7 +193,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/config-file": {
-							range: "^0.5.1",
+							range: "^0.5.2",
 							peer: "^0.5.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -211,7 +211,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/github-actions": {
-							range: "^0.10.0",
+							range: "^0.10.1",
 							peer: "^0.10.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -241,7 +241,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/lockfiles": {
-							range: "^0.7.0",
+							range: "^0.7.1",
 							peer: "^0.7.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -277,7 +277,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/sbom": {
-							range: "^0.4.2",
+							range: "^0.4.3",
 							peer: "^0.4.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -319,7 +319,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/tsconfig-json": {
-							range: "^0.6.0",
+							range: "^0.6.1",
 							peer: "^0.6.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -331,7 +331,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/workspaces": {
-							range: "^0.18.1",
+							range: "^0.18.2",
 							peer: "^0.18.0",
 							strategy: "lock-minor",
 							source: "workspace",
