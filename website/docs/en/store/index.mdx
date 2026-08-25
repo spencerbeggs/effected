@@ -81,7 +81,7 @@ Effect.runPromise(program.pipe(Effect.provide(CacheLive)));
 
 ## Three layers, and the split is load-bearing
 
-Both services expose the same trio. `layer(options)` is driver-agnostic: it requires an abstract `SqlClient` in its requirements, so any Effect SQL driver satisfies it. That is the seam. `layerSqlite(options & { filename })` is batteries-included and provides the SQLite driver itself. `layerTest(options)` is `layerSqlite` at `:memory:`, which is what the test suites use — hermetic, no temp files.
+Both services expose the same trio. `layer(options)` is driver-agnostic: it requires an abstract `SqlClient` in its requirements, so any Effect SQL driver satisfies it. That is the seam. `layerSqlite(options & { filename })` is batteries-included and provides the SQLite driver itself — and takes the rest of the driver's tuning through `client`, plus a `checkpointOnClose` convenience (see [Advanced](/store/advanced)). `layerTest(options)` is `layerSqlite` at `:memory:`, which is what the test suites use — hermetic, no temp files.
 
 Migrations run at layer construction and failures surface on the layer's **typed** error channel. Nothing is laundered into a defect to make the signature tidier.
 

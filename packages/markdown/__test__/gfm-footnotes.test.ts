@@ -24,6 +24,7 @@ import type {
 	FootnoteDefinition,
 	FootnoteReference,
 	Frontmatter,
+	MdxjsEsm,
 	Paragraph,
 	PhrasingContent,
 	Text,
@@ -34,9 +35,9 @@ type Dialect = "commonmark" | "gfm";
 /** Every node in a source's flow tree, in document order, however deeply nested. */
 const flowNodes = (source: string, dialect: Dialect = "gfm"): ReadonlyArray<FlowContent> => {
 	const found: FlowContent[] = [];
-	const walk = (nodes: ReadonlyArray<Frontmatter | FlowContent>): void => {
+	const walk = (nodes: ReadonlyArray<Frontmatter | MdxjsEsm | FlowContent>): void => {
 		for (const node of nodes) {
-			if (node.type === "frontmatter") {
+			if (node.type === "frontmatter" || node.type === "mdxjsEsm") {
 				continue;
 			}
 			found.push(node);

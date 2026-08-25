@@ -39,8 +39,8 @@ export type YamlRangeLike = YamlRange | { readonly offset: number; readonly leng
 
 /**
  * Options controlling formatting behavior: every {@link YamlStringifyOptions}
- * field (derived, not hand-duplicated — including `indentSequences` and
- * `quoteStyle`) plus
+ * field (derived, not hand-duplicated — including `indentSequences`,
+ * `quoteStyle` and `quoteCompat`) plus
  * `preserveComments` (default `true`), `range` (restrict edits to a
  * region; see the module-level remarks on the `range` parameter vs. this
  * field) and `requoteScalars` (default `false`).
@@ -142,6 +142,7 @@ const toStringifyInput = (options?: YamlStringifyOptions) =>
 				sortKeys: options.sortKeys,
 				indentSequences: options.indentSequences,
 				quoteStyle: options.quoteStyle,
+				quoteCompat: options.quoteCompat,
 				finalNewline: options.finalNewline,
 				forceDefaultStyles: options.forceDefaultStyles,
 			};

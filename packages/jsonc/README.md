@@ -25,7 +25,7 @@ JSONC is JSON with comments and trailing commas: the format behind `tsconfig.jso
 
 This package treats the source text as the document. Modifications are computed as edits against the original bytes rather than re-serialized from a parsed object, so a change to one key leaves every comment, blank line and indentation choice untouched. Parsing recovers from errors and aggregates every diagnostic into one `JsoncParseError` carrying `code`, `offset`, `length`, `line` and `character` per error, instead of throwing on the first. And `Jsonc.schema` composes with a domain schema so a JSONC string decodes into a validated value in a single step.
 
-Everything is a pure function or a schema. No IO, no services and no runtime dependency other than `effect` itself: the scanner, parser and navigator are vendored into the package with attribution rather than pulled in as a dependency.
+Everything is a pure function or a schema. No IO, no owned services and no runtime dependency other than `effect` itself: the scanner, parser and navigator are vendored into the package with attribution rather than pulled in as a dependency. The one effectful edge is fingerprint hashing — `JsoncFingerprint.hash` and `hashText` require core's `Crypto.Crypto` service in `R`, and the package ships no backend: the consumer provides one at the application edge.
 
 ## Install
 
@@ -145,6 +145,42 @@ console.log(Result.isFailure(bad) ? bad.failure.code : "");
 
 Preserving comments requires the original source text, which is exactly what `JsoncModifier` and `JsoncFormatter` take. If you need to write a JSONC file back out with its comments intact, edit the text: parse for reading, and modify for writing.
 
+## Canonical JSON and content fingerprints
+
+`JsoncFingerprint` produces RFC 8785 canonical JSON (the JSON Canonicalization Scheme) and SHA-256 fingerprints over it: compact output, object keys sorted by UTF-16 code units, ECMAScript number serialization. Two values that differ only in key order canonicalize — and fingerprint — identically. Unlike `Jsonc.stringify`, which follows `JSON.stringify`'s drop/null semantics for nested unrepresentables, canonicalization refuses to alter the document: an `undefined`, a function, a symbol, a `bigint`, a non-finite number, a string or member key containing an unpaired surrogate, or a non-plain object (a `Date`, a `Map`, a class instance) fails typed with a `JsoncCanonicalizeError` naming the JSON-pointer `path` to fix, rather than being silently dropped or nulled. `toJSON` methods are ignored on purpose — encode `Schema` classes and `Date`s to plain JSON first:
+
+```ts
+import { JsoncFingerprint } from "@effected/jsonc";
+import { Result } from "effect";
+
+const ok = JsoncFingerprint.canonicalizeResult({ b: 2, a: 1 });
+console.log(Result.isSuccess(ok) ? ok.success : "");
+// {"a":1,"b":2}
+
+const bad = JsoncFingerprint.canonicalizeResult({ a: { b: undefined } });
+console.log(Result.isFailure(bad) ? `${bad.failure.code} at "${bad.failure.path}"` : "");
+// UnrepresentableValue at "/a/b"
+```
+
+`hash` and `hashText` carry that canonicalization through to a content digest: the lowercase-hex SHA-256 of the UTF-8 bytes of the canonical text (`hash`) or of raw text as given (`hashText`). Both require core's `Crypto.Crypto` service in `R` — this package owns no backend, so provide `@effect/platform-node`'s `NodeCrypto.layer` (or any `Crypto` layer) at the application edge:
+
+```ts
+import { JsoncFingerprint } from "@effected/jsonc";
+import { NodeCrypto } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const a = yield* JsoncFingerprint.hash({ b: 2, a: 1 });
+  const b = yield* JsoncFingerprint.hash({ a: 1, b: 2 });
+  return a === b;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NodeCrypto.layer))).then(console.log);
+// true
+```
+
+Digests are always exactly 64 lowercase hexadecimal characters, with no `sha256:` or other algorithm prefix — the same format `@effected/sbom`'s `Sha256Digest` schema decodes, so a fingerprint flows straight into an attestation subject without this package taking a dependency edge on `sbom`. `hashText`'s `normalizeEol: true` option normalizes `\r\n` and bare `\r` to `\n` before hashing — reach for it when the same file content must fingerprint identically across checkouts with different line-ending settings; `JsoncFingerprint.normalizeEol` exposes the same normalization as a pure, total function.
+
 ## Features
 
 - `Jsonc.parse` / `Jsonc.parseTree` — error-recovery parsing to a plain value or an offset-preserving `JsoncNode` AST, aggregating every recovered error into one `JsoncParseError` rather than failing on the first.
@@ -155,6 +191,7 @@ Preserving comments requires the original source text, which is exactly what `Js
 - `Jsonc.schema` / `Jsonc.fromString` / `Jsonc.JsoncFromString` — string→domain schema factories that decode JSONC directly into a validated Effect `Schema` value.
 - `JsoncFormatter` / `JsoncModifier` — compute byte-minimal `JsoncEdit` arrays for formatting and path-based modification, so callers apply the smallest possible diff instead of re-serializing the document.
 - `JsoncVisitor` — walk a parsed document as a `Stream` of visitor events, with `Stream.take` early termination on large inputs.
+- `JsoncFingerprint` — RFC 8785 canonical JSON (`canonicalize` / `canonicalizeResult`) and SHA-256 content fingerprints over it (`hash`, `hashText`), failing typed with `JsoncCanonicalizeError` rather than silently dropping or altering non-JSON values; `hash`/`hashText` require core's `Crypto.Crypto` service.
 - `JsoncParseError` / `JsoncModificationError` — tagged errors carrying structured, positional payloads rather than opaque messages. Hostile input (deep nesting, unterminated literals) fails through the error channel, never as a stack overflow.
 
 ## License

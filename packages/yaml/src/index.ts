@@ -53,6 +53,7 @@ export { StyleFloor, StyleVote, YamlLintDiagnostic, YamlLintSeverity } from "./Y
 export type { YamlAliasEncoded, YamlMapEncoded, YamlScalarEncoded, YamlSeqEncoded } from "./YamlNode.js";
 export {
 	CollectionStyle,
+	QuoteCompat,
 	QuoteStyle,
 	ScalarChomp,
 	ScalarStyle,

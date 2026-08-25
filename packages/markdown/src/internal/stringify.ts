@@ -56,6 +56,10 @@ import type {
 	Heading,
 	List,
 	ListItem,
+	MdxJsxAttributeContent,
+	MdxJsxFlowElement,
+	MdxJsxTextElement,
+	MdxjsEsm,
 	Paragraph,
 	PhrasingContent,
 	Root,
@@ -88,9 +92,23 @@ const SCHEME_WORDS = new Set(["http", "https", "ftp", "mailto", "xmpp"]);
 
 const ORDERED_MARKER = /^\d{1,9}[.)]/;
 
-/** The serializer's one piece of mutable state. */
+/** The serializer's mutable state. */
 interface StringifyState {
 	depth: number;
+	/**
+	 * MDX JSX flow-element nesting depth — how many `mdxJsxFlowElement`
+	 * ancestors enclose the current emission, counted from the nearest
+	 * blockquote or list item (whose own continuation prefixes take over
+	 * indentation; the oracle's `inferDepth` break). Drives the two-space
+	 * child indentation inside flow elements.
+	 */
+	jsxDepth: number;
+	/**
+	 * Whether the tree contains any MDX node. MDX makes `{` significant in
+	 * text, so text escaping defends it — but only then, keeping non-MDX
+	 * trees byte-identical to the published canonical form.
+	 */
+	readonly mdx: boolean;
 }
 
 const guard = (state: StringifyState, node: { position: { start: { offset: number } } }): void => {
@@ -129,6 +147,7 @@ const escapeText = (
 	value: string,
 	context: InlineContext,
 	atLineStart: boolean,
+	mdx: boolean,
 ): { text: string; atLineStart: boolean } => {
 	let out = "";
 	let lineStart = atLineStart;
@@ -188,6 +207,14 @@ const escapeText = (
 		lineStart = false;
 		if (ALWAYS_ESCAPE.has(char)) {
 			out += `\\${char}`;
+			continue;
+		}
+		// MDX makes `{` open an expression anywhere in text (the oracle's
+		// unsafe set: `{` in phrasing and at breaks); `<` is already in the
+		// always-escape set. Only trees carrying MDX nodes pay this escape,
+		// so non-MDX output is byte-identical to the canonical table.
+		if (mdx && char === "{") {
+			out += "\\{";
 			continue;
 		}
 		if (context.inHeading && char === "#") {
@@ -336,7 +363,7 @@ const serializeInlines = (
 		};
 		switch (child.type) {
 			case "text": {
-				const escaped = escapeText(child.value, context, atLineStart);
+				const escaped = escapeText(child.value, context, atLineStart, state.mdx);
 				out += escaped.text;
 				atLineStart = escaped.atLineStart;
 				break;
@@ -427,11 +454,181 @@ const serializeInlines = (
 				out += `[^${escapeLabel(child.label ?? child.identifier)}]`;
 				atLineStart = false;
 				break;
+			case "mdxJsxTextElement":
+				out += serializeMdxJsxText(child, context, state);
+				atLineStart = false;
+				break;
+			case "mdxTextExpression":
+				out += mdxExpression(child.value);
+				atLineStart = false;
+				break;
 		}
 		index += 1;
 		unguard(state);
 	}
 	return out;
+};
+
+// --- MDX serialization ------------------------------------------------------
+//
+// Oracle parity: mdast-util-mdx-jsx@3.2.0's `mdxJsxToMarkdown` with its
+// defaults (quote `"`, no quoteSmart, spaced self-closing `<a />`, no
+// printWidth — attributes wrap onto their own lines only when one carries a
+// line ending), mdast-util-mdx-expression@2.0.1's `{expr}` handler with
+// two-space continuation indentation, and mdast-util-mdxjs-esm@2.0.1's
+// verbatim value. Child BLOCK content inside a flow element follows this
+// package's canonical table (bullet `-`, ATX headings, ...), not the oracle's
+// to-markdown defaults — the MDX structure is oracle-shaped, the markdown
+// inside it is canonical.
+
+/** The tag string of every MDX node type. */
+const MDX_NODE_TYPES: ReadonlySet<string> = new Set([
+	"mdxJsxFlowElement",
+	"mdxJsxTextElement",
+	"mdxFlowExpression",
+	"mdxTextExpression",
+	"mdxjsEsm",
+]);
+
+/** The minimal structural shape the MDX presence scan needs. */
+interface WalkableNode {
+	readonly type: string;
+	readonly children?: ReadonlyArray<WalkableNode>;
+}
+
+/** Whether the tree carries any MDX node — iterative, deliberately unguarded. */
+const treeContainsMdx = (root: WalkableNode): boolean => {
+	const stack: WalkableNode[] = [root];
+	while (stack.length > 0) {
+		const node = stack.pop() as WalkableNode;
+		if (MDX_NODE_TYPES.has(node.type)) {
+			return true;
+		}
+		if (node.children !== undefined) {
+			for (const child of node.children) {
+				stack.push(child);
+			}
+		}
+	}
+	return false;
+};
+
+/**
+ * The oracle's `indentLines` line model (mdast-util-to-markdown
+ * `lib/util/indent-lines.js`): lines split on every terminator spelling
+ * (`\r\n`, `\n`, bare `\r`), terminators preserved verbatim between the
+ * mapped lines, and `blank` meaning an empty line — so a blank CRLF line
+ * stays bare instead of having a retained `\r` treated as content.
+ */
+const mapMdxLines = (value: string, map: (line: string, index: number, blank: boolean) => string): string => {
+	const eol = /\r?\n|\r/g;
+	const result: string[] = [];
+	let start = 0;
+	let index = 0;
+	for (let match = eol.exec(value); match !== null; match = eol.exec(value)) {
+		const line = value.slice(start, match.index);
+		result.push(map(line, index, line === ""), match[0]);
+		start = match.index + match[0].length;
+		index += 1;
+	}
+	const last = value.slice(start);
+	result.push(map(last, index, last === ""));
+	return result.join("");
+};
+
+/**
+ * Serialize an MDX expression body between braces. Continuation lines take
+ * the oracle's two-space indent; the first line and blank lines take none.
+ */
+const mdxExpression = (value: string): string =>
+	`{${mapMdxLines(value, (line, index, blank) => (index === 0 || blank ? line : `  ${line}`))}}`;
+
+/**
+ * Serialize one JSX attribute. A `null` or absent value is a boolean
+ * attribute; a string value is quoted with `"` (the oracle default), the
+ * quote itself escaped as `&#x22;` exactly as `stringify-entities` spells
+ * it; an expression value goes between braces.
+ */
+const serializeMdxAttribute = (attribute: MdxJsxAttributeContent): string => {
+	if (attribute.type === "mdxJsxExpressionAttribute") {
+		return `{${attribute.value}}`;
+	}
+	const value = attribute.value;
+	if (value === undefined || value === null) {
+		return attribute.name;
+	}
+	if (typeof value === "string") {
+		return `${attribute.name}="${value.replaceAll('"', "&#x22;")}"`;
+	}
+	return `${attribute.name}={${value.value}}`;
+};
+
+/** Serialize a text (phrasing) JSX element. */
+const serializeMdxJsxText = (node: MdxJsxTextElement, context: InlineContext, state: StringifyState): string => {
+	const attributes = node.attributes.map(serializeMdxAttribute);
+	const selfClosing = node.name !== null && node.children.length === 0;
+	let out = `<${node.name ?? ""}`;
+	if (attributes.length > 0) {
+		out += ` ${attributes.join(" ")}`;
+	}
+	if (selfClosing) {
+		return `${out} />`;
+	}
+	out += ">";
+	out += serializeInlines(node.children, context, state, false);
+	out += `</${node.name ?? ""}>`;
+	return out;
+};
+
+/** Prefix every line of a rendered child block; blank lines stay bare. */
+const indentBlockLines = (content: string, indent: string): string =>
+	mapMdxLines(content, (line, _index, blank) => (blank ? line : `${indent}${line}`));
+
+/**
+ * Serialize a flow (block) JSX element: opening tag (attributes on their own
+ * lines when one carries a line ending), children as indented block layout,
+ * closing tag — the oracle's `mdxElement` flow branch.
+ */
+const serializeMdxJsxFlow = (node: MdxJsxFlowElement, state: StringifyState): string => {
+	const currentIndent = "  ".repeat(state.jsxDepth);
+	const attributes = node.attributes.map(serializeMdxAttribute);
+	const selfClosing = node.name !== null && node.children.length === 0;
+	const attributesOnOneLine = attributes.join(" ");
+	const attributesOnTheirOwnLine = /[\r\n]/.test(attributesOnOneLine);
+	let value = `${currentIndent}<${node.name ?? ""}`;
+	if (attributesOnTheirOwnLine) {
+		// Only the first line of each attribute is indented — attribute
+		// VALUES cannot be re-indented without changing them.
+		value += `\n${attributes.map((attribute) => `${currentIndent}  ${attribute}`).join("\n")}\n${currentIndent}`;
+	} else if (attributesOnOneLine !== "") {
+		value += ` ${attributesOnOneLine}`;
+	}
+	if (selfClosing) {
+		value += `${attributesOnTheirOwnLine ? "" : " "}/`;
+	}
+	value += ">";
+	if (node.children.length > 0) {
+		state.jsxDepth += 1;
+		const childIndent = "  ".repeat(state.jsxDepth);
+		const parts = node.children.map((child) => {
+			// A nested flow element indents itself (it reads the deeper
+			// jsxDepth); every other block is rendered flush and indented
+			// here, blank lines excepted — the oracle's containerFlow.
+			if (child.type === "mdxJsxFlowElement") {
+				guard(state, child);
+				const rendered = serializeMdxJsxFlow(child, state);
+				unguard(state);
+				return rendered;
+			}
+			return indentBlockLines(serializeBlocks([child], state), childIndent);
+		});
+		state.jsxDepth -= 1;
+		value += `\n${parts.join("\n\n")}\n`;
+	}
+	if (!selfClosing) {
+		value += `${currentIndent}</${node.name ?? ""}>`;
+	}
+	return value;
 };
 
 // --- block serialization ----------------------------------------------------
@@ -501,6 +698,10 @@ const serializeDefinition = (node: Definition): string =>
 	`[${escapeLabel(node.label ?? node.identifier)}]: ${destination(node.url)}${titleSuffix(node.title)}`;
 
 const serializeFootnoteDefinition = (node: FootnoteDefinition, state: StringifyState): string => {
+	// The definition's four-space continuation indent stacks UNDER the JSX
+	// indent: the oracle's inferDepth breaks only at blockquote and listItem,
+	// so a flow element nested through a footnote definition keeps counting
+	// its JSX ancestors and self-indents one step deeper. No jsxDepth reset.
 	const content = serializeBlocks(node.children, state);
 	const lines = content.split("\n");
 	const marker = `[^${escapeLabel(node.label ?? node.identifier)}]:`;
@@ -572,7 +773,12 @@ const serializeListItem = (item: ListItem, marker: string, state: StringifyState
 	// whole list on re-parse, so same-item block pairs join with a bare
 	// newline wherever the interruption rules allow it; pairs that genuinely
 	// need the blank line are the documented tight-multi-block edge.
+	// The item's hanging indent owns indentation from here in, so the JSX
+	// indent counter restarts (the oracle's inferDepth break).
+	const savedJsxDepth = state.jsxDepth;
+	state.jsxDepth = 0;
 	const inner = serializeBlocks(item.children, state, tight);
+	state.jsxDepth = savedJsxDepth;
 	unguard(state);
 	const checkbox = item.checked === undefined ? "" : item.checked ? "[x] " : "[ ] ";
 	const content = `${checkbox}${inner}`;
@@ -592,7 +798,7 @@ const serializeList = (list: List, state: StringifyState, flipped: boolean): str
 	return items.join(tight ? "\n" : "\n\n");
 };
 
-type Block = FlowContent | Frontmatter | Paragraph;
+type Block = FlowContent | Frontmatter | MdxjsEsm | Paragraph;
 
 /** Whether `next` interrupts a paragraph without a blank line before it. */
 const interruptsParagraph = (next: Block): boolean => {
@@ -681,7 +887,13 @@ const serializeBlocks = (children: ReadonlyArray<Block>, state: StringifyState, 
 				previousListMarker = undefined;
 				break;
 			case "blockquote": {
+				// A blockquote's `> ` prefix owns indentation from here in, so
+				// the JSX indent counter restarts (the oracle's inferDepth
+				// break at blockquote/listItem).
+				const savedJsxDepth = state.jsxDepth;
+				state.jsxDepth = 0;
 				const inner = serializeBlocks(child.children, state);
+				state.jsxDepth = savedJsxDepth;
 				parts.push(prefixLines(inner, "> ", ">"));
 				previousListMarker = undefined;
 				break;
@@ -711,6 +923,20 @@ const serializeBlocks = (children: ReadonlyArray<Block>, state: StringifyState, 
 				previousListMarker = undefined;
 				break;
 			}
+			case "mdxJsxFlowElement":
+				parts.push(serializeMdxJsxFlow(child, state));
+				previousListMarker = undefined;
+				break;
+			case "mdxFlowExpression":
+				parts.push(mdxExpression(child.value));
+				previousListMarker = undefined;
+				break;
+			case "mdxjsEsm":
+				// Verbatim, the oracle's handler: the value IS the emitted
+				// block, statement terminators included as written.
+				parts.push(child.value);
+				previousListMarker = undefined;
+				break;
 		}
 		previous = child;
 		nodes.push(child);
@@ -737,7 +963,7 @@ const serializeBlocks = (children: ReadonlyArray<Block>, state: StringifyState, 
  * empty for an empty root and ends with exactly one newline otherwise.
  */
 export const stringifyTree = (root: Root): string => {
-	const state: StringifyState = { depth: 0 };
+	const state: StringifyState = { depth: 0, jsxDepth: 0, mdx: treeContainsMdx(root) };
 	const body = serializeBlocks(root.children, state);
 	return body === "" ? "" : `${body}\n`;
 };

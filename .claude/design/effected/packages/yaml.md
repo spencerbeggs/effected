@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-24
+last-synced: 2026-08-24
 completeness: 95
 related:
   - ../architecture.md
@@ -176,6 +176,16 @@ Shipped 2026-08-23 ([issue #347](https://github.com/spencerbeggs/effected/issues
 **Composition guarantee.** Escaping mode's replacement text comes from the stringifier's own `renderDoubleQuoted` / `renderSingleQuoted` (now exported from `internal/stringifier.ts`), and the format path uses the helper as the re-quotable predicate and flips the node's `style` — the stringifier then emits through those same renderers, so flip-and-stringify and the helper's replacement cannot disagree.
 
 The README "Migrating from Prettier" table maps `singleQuote` to `quoteStyle` plus the companion for full parity.
+
+### `quoteCompat` — defending a YAML 1.1 consumer downstream (tsdoctor dogfood, 2026-08-24)
+
+`YamlStringifyOptions.quoteCompat`, currently the single-member `"yaml-1.1"`, additionally quotes a plain scalar that a YAML **1.1** resolver (js-yaml, PyYAML, libyaml) would implicitly coerce to a non-string but the 1.2 Core Schema rules above do not: the extended boolean spellings (`y`/`yes`/`on`/`off` and case variants — the "Norway problem"), 1.1's timestamp grammar (including its space-separated forms), sexagesimal numbers (`1:30`), underscore-separated digits (`1_000`) and the base-2/8/16 integer forms. `internal/stringifier.ts`'s `wouldBeResolved11` carries the pattern set, deliberately over-quoting at every spec/real-world-resolver seam (optional exponent sign, colon-less timezone offsets, `0o` octals, and the reference `yaml` package's 1.1-schema leniencies: leading-zero decimal ints like `0_9` and one-digit date-only months/days like `2024-1-15`) — over-quoting is the safe direction for a compat mode, never under.
+
+**Strictly additive, exactly like `indentSequences`'s default-off posture.** Absent (the default) changes nothing — byte-identical to the released output — and set, it can only add quotes the 1.2 rules did not already require; it can never un-quote anything, and a scalar carrying an explicit tag is exempt on the same terms as the 1.2 type-conflict check. It threads through `requiresQuoting`'s existing single gate rather than a parallel check, so the two dialects' rules can never disagree about which characters win when both would quote.
+
+**The option threads through three parallel `toStringifyInput` adapters, and that is a recorded maintenance hazard, not a design.** `Yaml.ts`, `YamlDocument.ts` and `YamlFormat.ts` each hand-copy `YamlStringifyOptions` onto the engine's `StringifyOptionsInput` field-by-field rather than through one shared mapping function — the [jsonc/yaml parity reconciliation](#jsoncyaml-parity-reconciliation) explains why `YamlFormattingOptions` derives via `.fields` spread while the stringify-input adapters do not. Every new `YamlStringifyOptions` field must be added to all three by hand, and nothing currently enforces that structurally.
+
+**That hazard was not hypothetical: `YamlDocument.ts`'s adapter silently dropped `quoteStyle`.** It was missing from before this option existed — a pre-existing defect first recorded here as found-but-deferred, then **fixed on this same branch** after two PR reviewers independently flagged it: the adapter now forwards `quoteStyle` like its two siblings, with a node-path regression test (`YamlDocument#stringify` with `quoteStyle: "double"` emits double quotes) pinning it. Before the fix, a document-path caller setting `quoteStyle` got the default fallback (`"single"`, per `createContext`) regardless of what they passed. `quoteCompat` was added correctly to all three adapters despite the neighboring bug, so the two were independent all along — the episode stands as the proof case for the hand-copied-adapter hazard above.
 
 ## Multi-document support
 

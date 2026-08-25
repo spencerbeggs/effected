@@ -108,3 +108,98 @@ export const scanFrontmatter = (lines: ReadonlyArray<SourceLine>, text: string):
 
 	return null;
 };
+
+/** A raw line terminator spelling. */
+export type RawNewline = "\n" | "\r\n" | "\r";
+
+/**
+ * A successful raw string-level capture: exact byte boundaries into the
+ * ORIGINAL source, no preprocessing (no U+0000 replacement — the value slice
+ * is verbatim bytes; a fence line containing U+0000 simply is not a fence,
+ * matching the preprocessed scan where the replacement character breaks the
+ * exact match the same way).
+ */
+export interface RawFrontmatterCapture {
+	readonly format: FrontmatterFormat;
+	/**
+	 * The exact bytes strictly between the opening fence line (terminator
+	 * included) and the closing fence line: every value line WITH its own
+	 * terminator, verbatim. Empty for a block with no value lines; `"\n"`
+	 * for a block whose value is one blank line — the two stay distinct.
+	 */
+	readonly value: string;
+	/** The line terminator following the opening fence line. */
+	readonly newline: RawNewline;
+	/**
+	 * Absolute offset of the first byte after the closing fence line and its
+	 * line terminator — where the body begins. Equal to the source length
+	 * when the closing fence ends the document.
+	 */
+	readonly bodyOffset: number;
+}
+
+/** The terminator starting at `offset`, or null when none does. */
+const terminatorAt = (source: string, offset: number): RawNewline | null => {
+	const code = source.charCodeAt(offset);
+	if (code === 0x0a) {
+		return "\n";
+	}
+	if (code === 0x0d) {
+		return source.charCodeAt(offset + 1) === 0x0a ? "\r\n" : "\r";
+	}
+	return null;
+};
+
+/**
+ * Scan raw source for a frontmatter block — the same closed fence grammar as
+ * {@link scanFrontmatter}, over unpreprocessed bytes, returning exact
+ * offsets. The two scans agree on every input about WHETHER a block exists
+ * (the preprocessor's substitutions are length-preserving and can only break
+ * a fence match both scans require); this one exists for the string-level
+ * split/join surface, whose contract is byte exactness.
+ *
+ * Returns `null` when the document has no frontmatter — no fence at offset
+ * 0, or an opening fence with no closing fence, which per the grammar is not
+ * frontmatter at all.
+ */
+export const scanRawFrontmatter = (source: string): RawFrontmatterCapture | null => {
+	// The opening fence line: source up to the first terminator. It must be
+	// exactly a fence and must be terminated — a closing fence needs
+	// somewhere to live.
+	let index = 0;
+	while (index < source.length && terminatorAt(source, index) === null) {
+		index += 1;
+	}
+	const openNewline = index < source.length ? (terminatorAt(source, index) as RawNewline) : null;
+	const rule = FENCES.get(source.slice(0, index));
+	if (rule === undefined || openNewline === null) {
+		return null;
+	}
+	const valueStart = index + openNewline.length;
+
+	// Scan the remaining lines for the exact closing fence.
+	let lineStart = valueStart;
+	index = valueStart;
+	while (index <= source.length) {
+		const terminator = index === source.length ? null : terminatorAt(source, index);
+		if (terminator === null && index < source.length) {
+			index += 1;
+			continue;
+		}
+		if (source.slice(lineStart, index) === rule.close) {
+			return {
+				format: rule.format,
+				value: source.slice(valueStart, lineStart),
+				newline: openNewline,
+				bodyOffset: terminator === null ? index : index + terminator.length,
+			};
+		}
+		if (terminator === null) {
+			break;
+		}
+		index += terminator.length;
+		lineStart = index;
+	}
+
+	return null;
+};

@@ -4,6 +4,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type * as SqlError from "effect/unstable/sql/SqlError";
 import type { MigratorFailure } from "./internal/migrator.js";
 import { ensureLedger, rollbackTo, runPending, statusOf, validateMigrations } from "./internal/migrator.js";
+import { walCheckpointOnClose } from "./internal/sqlite.js";
 
 /**
  * A single user-defined migration, applied in ascending `id` order.
@@ -162,6 +163,32 @@ export interface StoreSqliteOptions extends StoreOptions {
 	 * store belongs in) is the caller's concern.
 	 */
 	readonly filename: string;
+	/**
+	 * Remaining driver options, passed through to `SqliteClient.layer`.
+	 *
+	 * @remarks
+	 * `filename` is owned by this layer and cannot be overridden here. The two
+	 * name-transform options (`transformResultNames`, `transformQueryNames`)
+	 * are deliberately excluded: they rewrite the result names of the
+	 * migration ledger's own queries, silently making {@link StoreShape.status}
+	 * report every migration pending. Consumers who need name transforms wire
+	 * their own client under the abstract {@link Store.layer}.
+	 */
+	readonly client?: Omit<SqliteClient.SqliteClientConfig, "filename" | "transformResultNames" | "transformQueryNames">;
+	/**
+	 * Register a `PRAGMA wal_checkpoint(TRUNCATE)` finalizer that runs before
+	 * the driver closes the connection.
+	 *
+	 * @remarks
+	 * Useful when another process may open the database file after this scope
+	 * closes: the WAL is folded into the main file eagerly rather than on the
+	 * next open. The checkpoint is best-effort — a failure is ignored so a
+	 * clean shutdown never turns into a failed one. SQLite-specific by nature,
+	 * so the option lives here and not on the driver-agnostic
+	 * {@link Store.layer}; {@link Store.layerTest} (`:memory:`) has no WAL and
+	 * never checkpoints.
+	 */
+	readonly checkpointOnClose?: boolean;
 }
 
 const LEDGER_TABLE = "_store_migrations";
@@ -256,7 +283,21 @@ export class Store extends Context.Service<Store, StoreShape>()("@effected/store
 
 	/** The batteries-included layer over `@effect/sql-sqlite-node`. */
 	static layerSqlite(options: StoreSqliteOptions): Layer.Layer<Store, StoreError | StoreMigrationError> {
-		return Layer.provide(Store.layer(options), SqliteClient.layer({ filename: options.filename }));
+		// `filename` last: the layer owns it, whatever the passthrough says. The
+		// name transforms are stripped at runtime too — the `Omit` on `client`
+		// binds only TypeScript callers, and a leaked transform rewrites the
+		// migration ledger's result names, silently breaking `status`.
+		const {
+			filename: _filename,
+			transformResultNames: _transformResultNames,
+			transformQueryNames: _transformQueryNames,
+			...passthrough
+		} = (options.client ?? {}) as Partial<SqliteClient.SqliteClientConfig>;
+		const client = SqliteClient.layer({ ...passthrough, filename: options.filename });
+		const store = Layer.provide(Store.layer(options), client);
+		return options.checkpointOnClose === true
+			? Layer.merge(store, Layer.provide(walCheckpointOnClose(), client))
+			: store;
 	}
 
 	/** An in-memory (`:memory:`) layer for tests. */

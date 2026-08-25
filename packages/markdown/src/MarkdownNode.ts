@@ -436,13 +436,18 @@ export const PhrasingContent: Schema.Codec<PhrasingContent> = Schema.suspend(() 
 		InlineCode,
 		Link,
 		LinkReference,
+		MdxJsxTextElement,
+		MdxTextExpression,
 		Strong,
 		Text,
 	]),
 );
 
 /**
- * The union of all phrasing-content node types.
+ * The union of all phrasing-content node types. Widened for MDX with
+ * {@link MdxJsxTextElement} and {@link MdxTextExpression}, per
+ * mdast-util-mdx's `PhrasingContentMap` registrations — the parser never
+ * produces either; they serve constructed trees.
  *
  * @public
  */
@@ -457,6 +462,8 @@ export type PhrasingContent =
 	| InlineCode
 	| Link
 	| LinkReference
+	| MdxJsxTextElement
+	| MdxTextExpression
 	| Strong
 	| Text;
 
@@ -731,6 +738,8 @@ export const FlowContent: Schema.Codec<FlowContent> = Schema.suspend(() =>
 		Heading,
 		Html,
 		List,
+		MdxFlowExpression,
+		MdxJsxFlowElement,
 		Paragraph,
 		Table,
 		ThematicBreak,
@@ -740,7 +749,10 @@ export const FlowContent: Schema.Codec<FlowContent> = Schema.suspend(() =>
 /**
  * The union of all flow-content node types. Includes mdast's `Content`
  * category (`Definition | Paragraph`) inline, as the spec's `FlowContent`
- * definition does, and the GFM extras `FootnoteDefinition` and `Table`.
+ * definition does, the GFM extras `FootnoteDefinition` and `Table`, and the
+ * MDX extras {@link MdxJsxFlowElement} and {@link MdxFlowExpression} per
+ * mdast-util-mdx's `BlockContentMap` registrations — the parser never
+ * produces the MDX members; they serve constructed trees.
  *
  * @public
  */
@@ -752,6 +764,8 @@ export type FlowContent =
 	| Heading
 	| Html
 	| List
+	| MdxFlowExpression
+	| MdxJsxFlowElement
 	| Paragraph
 	| Table
 	| ThematicBreak;
@@ -772,6 +786,210 @@ export const ListContent: Schema.Codec<ListContent> = Schema.suspend(() => Schem
  * @public
  */
 export type ListContent = ListItem;
+
+// --- MDX --------------------------------------------------------------------
+//
+// The MDX node vocabulary, shaped exactly to the mdast-util-mdx contracts
+// (mdast-util-mdx-jsx@3.2.0, mdast-util-mdx-expression@2.0.1,
+// mdast-util-mdxjs-esm@2.0.1 — the vendored serialization oracles): the JSX
+// element pair with their attribute carriers, the expression pair and the ESM
+// node. The parser NEVER produces these — MDX syntax is not parsed (a `<` or
+// `{` in source stays CommonMark text/HTML) — they exist for construction and
+// serialization: synthesize a tree carrying them and `Markdown.stringify`
+// emits valid MDX. The ecosystem's `data.estree` compiler annotation is
+// deliberately NOT modeled: this package has no estree vocabulary,
+// serialization never consults it, and the `Mdast` admission boundary drops
+// it silently the way it drops every foreign `data` field.
+
+/**
+ * MdxJsxAttributeValueExpression — a JSX attribute value written as an
+ * expression (`<a b={c} />`); `value` holds the expression source text
+ * between the braces, never evaluated or parsed.
+ *
+ * The primary construction path is a JSON-encoded prop:
+ * `MdxJsxAttributeValueExpression.make({ value: JSON.stringify(props) })`.
+ *
+ * @public
+ */
+export class MdxJsxAttributeValueExpression extends Schema.Class<MdxJsxAttributeValueExpression>(
+	"MdxJsxAttributeValueExpression",
+)({
+	type: Schema.tag("mdxJsxAttributeValueExpression"),
+	value: Schema.String,
+	position: NodePosition,
+}) {}
+
+/**
+ * MdxJsxAttribute — a named JSX attribute (`<a b="c" />`). `value` is a
+ * string literal, a {@link MdxJsxAttributeValueExpression}, or — for a
+ * boolean attribute (`<a b />`) — absent or `null`, both of which the
+ * mdast-util-mdx-jsx contract spells (its parser writes `null`; absence is
+ * the constructed-tree spelling). The serializer treats the two identically.
+ *
+ * `name` must be non-empty — an attribute without a name has no MDX spelling,
+ * so the schema refuses it at construction and decode (the oracle's
+ * serialize-time crash, moved to the admission boundary).
+ *
+ * @public
+ */
+export class MdxJsxAttribute extends Schema.Class<MdxJsxAttribute>("MdxJsxAttribute")(
+	Schema.Struct({
+		type: Schema.tag("mdxJsxAttribute"),
+		name: Schema.String,
+		value: Schema.optionalKey(Schema.NullOr(Schema.Union([MdxJsxAttributeValueExpression, Schema.String]))),
+		position: NodePosition,
+	}).pipe(
+		Schema.check(
+			Schema.makeFilter((attribute) =>
+				attribute.name.length === 0 ? "an MDX JSX attribute requires a non-empty name" : undefined,
+			),
+		),
+	),
+) {}
+
+/**
+ * MdxJsxExpressionAttribute — a JSX attribute written whole as an expression
+ * (`<a {...b} />`); `value` holds the expression source text between the
+ * braces.
+ *
+ * @public
+ */
+export class MdxJsxExpressionAttribute extends Schema.Class<MdxJsxExpressionAttribute>("MdxJsxExpressionAttribute")({
+	type: Schema.tag("mdxJsxExpressionAttribute"),
+	value: Schema.String,
+	position: NodePosition,
+}) {}
+
+/**
+ * The union of every node that may appear in a JSX element's `attributes`
+ * array. A real `Schema.Union` for the construction pass-through documented
+ * on `RowContent`.
+ *
+ * Attribute carriers are node-shaped values — they carry `type` and
+ * `position` per the mdast-util-mdx-jsx contract — but they are **not tree
+ * content**: they never appear in a `children` array, so they are excluded
+ * from `MarkdownNode` and invisible to the visitor and to
+ * `MarkdownDocument.find`.
+ *
+ * @public
+ */
+export const MdxJsxAttributeContent: Schema.Codec<MdxJsxAttributeContent> = Schema.Union([
+	MdxJsxAttribute,
+	MdxJsxExpressionAttribute,
+]);
+
+/**
+ * The union of all JSX attribute node types.
+ *
+ * @public
+ */
+export type MdxJsxAttributeContent = MdxJsxAttribute | MdxJsxExpressionAttribute;
+
+/**
+ * MdxJsxFlowElement — a JSX element in flow (block) position (`<Component />`
+ * on its own lines). `name` is `null` for a fragment (`<></>`); children are
+ * flow content, per the oracle's `BlockContent | DefinitionContent` model.
+ *
+ * A fragment cannot carry attributes — that shape has no MDX spelling — so
+ * the schema refuses it at construction and decode. A **named** element's
+ * name must be non-empty on the same terms: `""` has no MDX spelling either
+ * (the oracle's parser only ever produces a real name or `null`, and its
+ * serializer treats a falsy name as the fragment), so `null` is the one
+ * fragment spelling and the empty string fails typed.
+ *
+ * @public
+ */
+export class MdxJsxFlowElement extends Schema.Class<MdxJsxFlowElement>("MdxJsxFlowElement")(
+	Schema.Struct({
+		type: Schema.tag("mdxJsxFlowElement"),
+		name: Schema.NullOr(Schema.String),
+		attributes: Schema.Array(MdxJsxAttributeContent),
+		children: Schema.Array(Schema.suspend((): Schema.Codec<FlowContent> => FlowContent)),
+		position: NodePosition,
+	}).pipe(
+		Schema.check(
+			Schema.makeFilter((element) => {
+				if (element.name !== null && element.name.length === 0) {
+					return "an MDX JSX element requires a non-empty name (`null` is the fragment spelling)";
+				}
+				return element.name === null && element.attributes.length > 0
+					? "an MDX JSX fragment cannot carry attributes"
+					: undefined;
+			}),
+		),
+	),
+) {}
+
+/**
+ * MdxJsxTextElement — a JSX element in text (phrasing) position
+ * (`a <b>c</b> d`). `name` is `null` for a fragment; children are phrasing
+ * content. Refuses attributes on a fragment and an empty-string name, on the
+ * same terms as {@link MdxJsxFlowElement}.
+ *
+ * @public
+ */
+export class MdxJsxTextElement extends Schema.Class<MdxJsxTextElement>("MdxJsxTextElement")(
+	Schema.Struct({
+		type: Schema.tag("mdxJsxTextElement"),
+		name: Schema.NullOr(Schema.String),
+		attributes: Schema.Array(MdxJsxAttributeContent),
+		children: Schema.Array(Schema.suspend((): Schema.Codec<PhrasingContent> => PhrasingContent)),
+		position: NodePosition,
+	}).pipe(
+		Schema.check(
+			Schema.makeFilter((element) => {
+				if (element.name !== null && element.name.length === 0) {
+					return "an MDX JSX element requires a non-empty name (`null` is the fragment spelling)";
+				}
+				return element.name === null && element.attributes.length > 0
+					? "an MDX JSX fragment cannot carry attributes"
+					: undefined;
+			}),
+		),
+	),
+) {}
+
+/**
+ * MdxFlowExpression — an expression in flow (block) position (`{a + b}` on
+ * its own lines); `value` holds the expression source text between the
+ * braces.
+ *
+ * @public
+ */
+export class MdxFlowExpression extends Schema.Class<MdxFlowExpression>("MdxFlowExpression")({
+	type: Schema.tag("mdxFlowExpression"),
+	value: Schema.String,
+	position: NodePosition,
+}) {}
+
+/**
+ * MdxTextExpression — an expression in text (phrasing) position
+ * (`a {b} c`); `value` holds the expression source text between the braces.
+ *
+ * @public
+ */
+export class MdxTextExpression extends Schema.Class<MdxTextExpression>("MdxTextExpression")({
+	type: Schema.tag("mdxTextExpression"),
+	value: Schema.String,
+	position: NodePosition,
+}) {}
+
+/**
+ * MdxjsEsm — an MDX ESM block (`import`/`export` statements); `value` holds
+ * the statement source verbatim.
+ *
+ * Only ever a child of {@link Root}, per the mdast-util-mdxjs-esm content
+ * registration — ESM cannot nest inside a JSX element or any other
+ * container. As with the frontmatter head node, the constraint is structural
+ * (the `Root` children union admits it, no other union does), not validated.
+ *
+ * @public
+ */
+export class MdxjsEsm extends Schema.Class<MdxjsEsm>("MdxjsEsm")({
+	type: Schema.tag("mdxjsEsm"),
+	value: Schema.String,
+	position: NodePosition,
+}) {}
 
 // --- Frontmatter ------------------------------------------------------------
 
@@ -841,14 +1059,17 @@ export type FrontmatterContent = Frontmatter;
  * mdast leaves a root's content model open; a parsed markdown document is
  * flow content, optionally headed by one {@link Frontmatter} node — mdast's
  * `FlowContentFrontmatter` merge, which admits frontmatter at the root and
- * nowhere else.
+ * nowhere else. {@link MdxjsEsm} is likewise admitted at the root and nowhere
+ * else, per mdast-util-mdxjs-esm's `RootContentMap` registration.
  *
  * @public
  */
 export class Root extends Schema.Class<Root>("Root")({
 	type: Schema.tag("root"),
 	children: Schema.Array(
-		Schema.suspend((): Schema.Codec<Frontmatter | FlowContent> => Schema.Union([Frontmatter, FlowContent])),
+		Schema.suspend(
+			(): Schema.Codec<Frontmatter | MdxjsEsm | FlowContent> => Schema.Union([Frontmatter, MdxjsEsm, FlowContent]),
+		),
 	),
 	position: NodePosition,
 }) {}
@@ -864,6 +1085,7 @@ export type MarkdownNode =
 	| FrontmatterContent
 	| FlowContent
 	| ListContent
+	| MdxjsEsm
 	| PhrasingContent
 	| RowContent
 	| TableContent;
@@ -874,7 +1096,16 @@ export type MarkdownNode =
  * @public
  */
 export const MarkdownNode: Schema.Codec<MarkdownNode> = Schema.suspend(() =>
-	Schema.Union([Root, FrontmatterContent, FlowContent, ListContent, PhrasingContent, RowContent, TableContent]),
+	Schema.Union([
+		Root,
+		FrontmatterContent,
+		FlowContent,
+		ListContent,
+		MdxjsEsm,
+		PhrasingContent,
+		RowContent,
+		TableContent,
+	]),
 );
 
 /**

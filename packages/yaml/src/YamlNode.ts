@@ -63,6 +63,29 @@ export const QuoteStyle = Schema.Literals(["single", "double"]);
 export type QuoteStyle = typeof QuoteStyle.Type;
 
 /**
+ * Foreign resolution dialects the stringifier's plain-scalar fallback can
+ * defend against: setting the `quoteCompat` field of `YamlStringifyOptions`
+ * to `"yaml-1.1"` additionally quotes every plain scalar a YAML 1.1 parser
+ * (js-yaml, PyYAML, libyaml, and the `yaml` npm package's YAML 1.1 schema,
+ * whose lenient resolvers set the outer bound) would implicitly resolve to a
+ * non-string —
+ * `yes`/`no`/`on`/`off` booleans, ISO 8601 and space-separated timestamps,
+ * sexagesimal `1:30`, underscored `1_000` and base-2/8/16 numbers. Like
+ * `QuoteStyle` it is a stringify-option vocabulary, never a property of a
+ * composed node.
+ *
+ * @public
+ */
+export const QuoteCompat = Schema.Literals(["yaml-1.1"]);
+
+/**
+ * The union of all quote-compat dialect string literals.
+ *
+ * @public
+ */
+export type QuoteCompat = typeof QuoteCompat.Type;
+
+/**
  * Block-scalar chomping indicators (`-` strip, default clip, `+` keep).
  * Referenced by the {@link YamlScalar} `chomp` field schema.
  *

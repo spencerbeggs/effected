@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-24
+last-synced: 2026-08-24
 completeness: 95
 related:
   - ../architecture.md
@@ -37,6 +37,7 @@ Module-per-concept per the [module-per-concept standard](../effect-standards.md#
 - `JsoncNode.ts` — the recursive AST node, with the `JsoncPath` / `JsoncSegment` aliases.
 - `JsoncEdit.ts` — the edit class plus `applyAll`, and the shared `JsoncRange` / `JsoncFormattingOptions` vocabulary.
 - `JsoncFormatter.ts`, `JsoncModifier.ts`, `JsoncVisitor.ts` — formatting, path modification and the SAX stream.
+- `JsoncFingerprint.ts` — RFC 8785 canonical JSON and SHA-256 content fingerprints; see [Fingerprinting](#fingerprinting-canonical-json-and-content-hashes).
 - `internal/` — the private engine: scanner, recursive-descent parser, scanner-based navigator, the shared `skipBalancedValue` and `limits.ts`.
 
 `JsoncFormatter` is its own module rather than folded into the facade: a standalone formatter keeps the facade small and makes the jsonc and yaml surfaces structurally symmetric.
@@ -124,6 +125,20 @@ If a node ever customizes equality it MUST override `[Hash.symbol]` too, since `
 There is deliberately **no shared-package extraction**: a possible `@effected/text-edit` micro-kernel over Edit/Range/Path/diff is deferred until the shapes prove identical in use. In its place, a binding convention: `JsoncEdit`, `JsoncRange`, `JsoncPath`, `JsoncSegment` and the parse-error-detail shape are **structurally identical** to their `Yaml*` counterparts — same field names, types and optionality, with the same `applyAll`/`equals`/`schema` semantics. The point is codec-generic consumer code: one function over "a document codec's Edit/Range/Path" works against both packages.
 
 Two exceptions are recorded rather than fixed. `YamlFormattingOptions` derives its shared fields from `YamlStringifyOptions` at runtime by spreading `.fields`, which is not structurally identical even though the names and semantics line up ([yaml's options derivation](yaml.md#options-derivation)). And `JsoncModificationError` is not bound by the convention at all — its fields differ from yaml's because the underlying failures differ. The convention binds Edit/Range/Path, not the errors.
+
+## Fingerprinting: canonical JSON and content hashes
+
+`JsoncFingerprint.ts` adds RFC 8785 (JSON Canonicalization Scheme, JCS) serialization plus SHA-256 content hashing over it, for callers that need a stable digest of a JSON value — cache keys, change detection, attestation subjects — independent of key order or source formatting.
+
+The pure core is a single recursive JCS emitter: compact output, object keys sorted by UTF-16 code unit (`<` on JS strings, per RFC 8785 §3.2.3), ECMAScript number serialization and `JSON.stringify` string escaping. It follows the package's usual `Result` primitive / spanned `Effect` twin arrangement — `canonicalizeResult` is the sync primitive, `canonicalize` is `Effect.fromResult` behind a named span.
+
+**Canonicalization is deliberately stricter than `Jsonc.stringify`.** `Jsonc.stringify` follows `JSON.stringify`'s documented drop/null semantics for nested unrepresentables; a fingerprint must never silently alter the document it claims to summarize, so every non-JSON value fails typed instead, carrying a JSON-pointer `path` to the offending value. `JsoncCanonicalizeError`'s closed code set: `UnrepresentableValue` (`undefined`, function, symbol, anywhere), `BigIntValue`, `NonFiniteNumber` (`NaN`/`±Infinity`, which RFC 8785 forbids and `JSON.stringify` would silently null), `NonPlainObject` (anything but a plain object or array — `toJSON` methods are deliberately ignored; encode domain values to plain JSON, e.g. via `Schema`, first) and `NestingDepthExceeded` (the shared `MAX_NESTING_DEPTH` cap from `internal/limits.ts`, which also intercepts cyclic values before they can recurse forever — the one hardening surface this module needs).
+
+**Hashing requires core's `Crypto.Crypto` service in `R`, and that does not lift the tier.** `hash`/`hashText` need a real digest backend, which this pure-tier package does not own — the sanctioned pattern is a service required in `R` with the backend supplied by the consumer at the edge (`@effect/platform-node`'s `NodeCrypto.layer`, or any `Crypto` layer, e.g. one built with `Crypto.make` over WebCrypto). This is **not** a tier violation: [R1](../effect-standards.md#dependency-policy) governs runtime *dependencies* and IO ownership, not service *requirements* threaded through `R` — jsonc still has zero runtime dependencies and the module owns no backend. A future reader auditing "why does a pure package have `R ≠ never`" should read this paragraph before flagging it.
+
+The output format is a cross-package guarantee: exactly 64 lowercase hex characters, no `sha256:` or other algorithm prefix — the same bare-hex vocabulary `@effected/sbom`'s `Sha256Digest` schema decodes, so a fingerprint flows into an attestation subject downstream **without this package taking a dependency edge on `sbom`**. `hashText` additionally exposes `normalizeEol` (also available standalone as the pure `JsoncFingerprint.normalizeEol`) for file content that must fingerprint identically across checkout line-ending settings.
+
+Equal JSON values canonicalize (and therefore hash) identically regardless of object key order — the whole point of JCS over a plain `JSON.stringify` digest.
 
 ## Observability
 

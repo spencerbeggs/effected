@@ -217,6 +217,8 @@ const toStringifyInput = (options?: YamlStringifyOptions) =>
 				defaultCollectionStyle: options.defaultCollectionStyle,
 				sortKeys: options.sortKeys,
 				indentSequences: options.indentSequences,
+				quoteStyle: options.quoteStyle,
+				quoteCompat: options.quoteCompat,
 				finalNewline: options.finalNewline,
 				forceDefaultStyles: options.forceDefaultStyles,
 			};

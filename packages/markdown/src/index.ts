@@ -45,6 +45,12 @@ export {
 	SchemaResolver,
 	SchemaVersionUnresolvableError,
 } from "./FrontmatterResolver.js";
+export {
+	FrontmatterNewline,
+	FrontmatterSource,
+	FrontmatterSourceBlock,
+	FrontmatterSourceSplit,
+} from "./FrontmatterSource.js";
 export { JsonFrontmatter } from "./JsonFrontmatter.js";
 export {
 	Markdown,
@@ -104,6 +110,15 @@ export {
 	ListDelimiter,
 	ListItem,
 	MarkdownNode,
+	MdxFlowExpression,
+	MdxJsxAttribute,
+	MdxJsxAttributeContent,
+	MdxJsxAttributeValueExpression,
+	MdxJsxExpressionAttribute,
+	MdxJsxFlowElement,
+	MdxJsxTextElement,
+	MdxTextExpression,
+	MdxjsEsm,
 	Paragraph,
 	PhrasingContent,
 	Point,

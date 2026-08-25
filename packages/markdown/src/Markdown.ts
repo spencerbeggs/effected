@@ -15,8 +15,10 @@ import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effec
 import type { BlockPassResult } from "./internal/blockParser.js";
 import { parseBlocks } from "./internal/blockParser.js";
 import { isGuardExceeded, isRawMarkdownError } from "./internal/carriers.js";
+import { parsePhrasingText } from "./internal/phrasing.js";
 import { stringifyTree } from "./internal/stringify.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
+import type { PhrasingContent } from "./MarkdownNode.js";
 import { Root } from "./MarkdownNode.js";
 
 /**
@@ -222,6 +224,92 @@ export class Markdown {
 	);
 
 	/**
+	 * Parse a text fragment as a single paragraph's inline content,
+	 * synchronously, as a `Result` — the phrasing-level twin of
+	 * {@link Markdown.parseResult}, for callers holding already-markdown
+	 * prose (a link-carrying sentence, a backtick span) who want its
+	 * phrasing nodes without a full document parse and a paragraph splice.
+	 *
+	 * @remarks
+	 * The whole input is prepared exactly the way the block pass prepares one
+	 * paragraph's content — leading and trailing whitespace trimmed, line
+	 * terminators normalized to `\n` — and handed to the inline pass, so the
+	 * result matches the `children` of the paragraph a full parse of the same
+	 * fragment would produce. Node positions are correct relative to the
+	 * input string.
+	 *
+	 * Two consequences of the single-paragraph contract:
+	 *
+	 * - **Blank lines do not break blocks.** A `\n\n` in the input stays
+	 *   inline content (literal newlines in a text node); nothing at this
+	 *   level opens a heading, list or code block — `# foo` is the text
+	 *   `# foo`.
+	 * - **No reference context exists.** The fragment carries no definitions,
+	 *   so `[foo]`, `![foo]` and `[^foo]` remain literal text — the same
+	 *   result a full parse of the isolated fragment produces.
+	 *
+	 * `options.dialect` selects the inline dialect (default `"gfm"`);
+	 * `options.frontmatter` has no effect at phrasing level. Failure is rare
+	 * by design, on {@link Markdown.parseResult}'s terms: only a
+	 * hardening-guard trip (delimiter or bracket nesting past the cap) fails.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Markdown } from "@effected/markdown";
+	 * import { Result } from "effect";
+	 *
+	 * const ok = Markdown.parsePhrasingResult("see [the docs](./docs.md)");
+	 * if (Result.isSuccess(ok)) {
+	 *   console.log(ok.success.map((node) => node.type)); // => ["text", "link"]
+	 * }
+	 * ```
+	 *
+	 * @param text - The prose fragment to parse.
+	 * @param options - Optional {@link MarkdownParseOptions}; the dialect
+	 *   defaults to `"gfm"`.
+	 * @returns A `Result` succeeding with the fragment's phrasing content, or
+	 *   failing with {@link MarkdownParseError}.
+	 */
+	static parsePhrasingResult(
+		text: string,
+		options?: MarkdownParseOptions,
+	): Result.Result<ReadonlyArray<PhrasingContent>, MarkdownParseError> {
+		try {
+			return Result.succeed(parsePhrasingText(text, dialectOf(options)));
+		} catch (caught) {
+			if (isGuardExceeded(caught)) {
+				return Result.fail(
+					new MarkdownParseError({
+						diagnostic: MarkdownDiagnostic.fromRaw(text, {
+							code: caught.reason,
+							message: caught.message,
+							offset: caught.offset,
+							length: 0,
+						}),
+					}),
+				);
+			}
+			throw caught;
+		}
+	}
+
+	/**
+	 * Parse a text fragment as a single paragraph's inline content. Defined
+	 * in terms of {@link Markdown.parsePhrasingResult} — synchronous callers
+	 * can use that variant directly; the single-paragraph contract (blank
+	 * lines stay inline, references never form) is documented there.
+	 *
+	 * @param text - The prose fragment to parse.
+	 * @param options - Optional {@link MarkdownParseOptions}; the dialect
+	 *   defaults to `"gfm"`.
+	 * @returns An `Effect` that succeeds with the fragment's phrasing
+	 *   content, or fails with {@link MarkdownParseError}.
+	 */
+	static readonly parsePhrasing = Effect.fn("Markdown.parsePhrasing")((text: string, options?: MarkdownParseOptions) =>
+		Effect.fromResult(Markdown.parsePhrasingResult(text, options)),
+	);
+
+	/**
 	 * Serialize a {@link Root} tree to canonical markdown, synchronously, as a
 	 * `Result`. The pure primitive twin of {@link Markdown.stringify}, on the
 	 * same terms as {@link Markdown.parseResult}.
@@ -280,6 +368,18 @@ export class Markdown {
 	 * every `Code` node that carries neither a `lang` nor one already, in a
 	 * post-decode walk that reaches nested nodes. The choice then leaves the
 	 * emitter entirely and no output depends on a node's neighbours.
+	 *
+	 * **MDX nodes (constructed trees only — the parser reads no MDX syntax)**
+	 * serialize to valid MDX with the mdast-util-mdx defaults, and these
+	 * choices are part of the same stability commitment: attribute values
+	 * quote with `"` (the quote escaped as `&#x22;`), an empty element
+	 * self-closes spaced (`<a />`), a fragment is `<></>`, flow children take
+	 * block layout indented two spaces per JSX ancestor, attributes move onto
+	 * their own lines only when one carries a line ending, expressions emit
+	 * `{expr}` with two-space continuation indent, and ESM values emit
+	 * verbatim. A tree containing any MDX node additionally escapes `{` in
+	 * text — MDX makes it significant — while a tree with none serializes
+	 * byte-identically to the table above.
 	 *
 	 * To *normalize* a document to different choices — a `-` list rewritten to
 	 * `*`, setext headings rewritten to ATX — use `MarkdownFormat` with

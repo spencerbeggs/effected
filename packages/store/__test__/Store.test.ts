@@ -1,6 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterAll, assert, describe, it, layer } from "@effect/vitest";
 import { Cause, Effect, Exit, Layer } from "effect";
 import type { StoreMigration } from "../src/index.js";
@@ -287,6 +288,101 @@ describe("Store", () => {
 					}),
 					shared,
 				);
+			}),
+		);
+	});
+
+	describe("sqlite driver options", () => {
+		const dir = mkdtempSync(join(tmpdir(), "effected-store-sqlite-options-"));
+		afterAll(() => {
+			rmSync(dir, { recursive: true, force: true });
+		});
+
+		it.effect("client passthrough reaches the driver: disableWAL switches the journal mode", () =>
+			Effect.gen(function* () {
+				const journalMode = Effect.gen(function* () {
+					const store = yield* Store;
+					const rows = yield* store.client<{ journal_mode: string }>`PRAGMA journal_mode`;
+					return rows[0]?.journal_mode;
+				});
+				const walStore = Store.layerSqlite({ filename: join(dir, "wal-default.db"), migrations: [createNotes] });
+				const noWalStore = Store.layerSqlite({
+					filename: join(dir, "wal-disabled.db"),
+					migrations: [createNotes],
+					client: { disableWAL: true },
+				});
+				assert.strictEqual(yield* Effect.provide(journalMode, walStore), "wal");
+				assert.strictEqual(yield* Effect.provide(journalMode, noWalStore), "delete");
+			}),
+		);
+
+		// The `Omit` on `client` binds only TypeScript callers; a JavaScript (or
+		// any-typed) caller can still pass the name transforms, which rewrite the
+		// migration ledger's result names and make `status` report nothing
+		// applied. The layer must strip them at runtime; this fails if either
+		// transform leaks through to the driver.
+		it.effect("name-transform client options are stripped at runtime", () =>
+			Effect.gen(function* () {
+				const camelize = (name: string) => name.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+				const storeLayer = Store.layerSqlite({
+					filename: join(dir, "transforms-stripped.db"),
+					migrations: [createNotes],
+					client: { transformResultNames: camelize, transformQueryNames: camelize } as never,
+				});
+				const status = yield* Effect.provide(
+					Effect.gen(function* () {
+						const store = yield* Store;
+						return yield* store.status;
+					}),
+					storeLayer,
+				);
+				assert.deepStrictEqual(
+					status.map((entry) => [entry.id, entry.appliedAt !== undefined]),
+					[[1, true]],
+				);
+			}),
+		);
+
+		// A second open connection (that has read once) defeats SQLite's
+		// checkpoint-on-last-close, so the WAL's size after the layer scope
+		// closes is exactly what the finalizer — or its absence — left behind.
+		// Size 0 proves the PRAGMA ran against the still-open connection: after
+		// the driver's own close it would fail (and be ignored), leaving the
+		// frames in place, which is what the control pins.
+		// The WAL is read before `second` closes — closing the last connection
+		// would itself checkpoint — and `ensuring` closes `second` on every exit
+		// path, including a failure inside the provided effect (a generator-level
+		// try/finally would never run there: the fiber does not resume the
+		// generator on a failed yield*).
+		const walSizeAfterClose = (filename: string, checkpointOnClose: boolean) => {
+			let second: DatabaseSync | undefined;
+			return Effect.provide(
+				Effect.gen(function* () {
+					const store = yield* Store;
+					yield* store.client`INSERT INTO notes (body) VALUES ('one')`;
+					second = new DatabaseSync(filename);
+					second.prepare("SELECT count(*) AS n FROM notes").get();
+				}),
+				Store.layerSqlite({
+					filename,
+					migrations: [createNotes],
+					...(checkpointOnClose ? { checkpointOnClose: true } : {}),
+				}),
+			).pipe(
+				Effect.flatMap(() => Effect.sync(() => statSync(`${filename}-wal`).size)),
+				Effect.ensuring(Effect.sync(() => second?.close())),
+			);
+		};
+
+		it.effect("checkpointOnClose truncates the WAL before the client closes", () =>
+			Effect.gen(function* () {
+				assert.strictEqual(yield* walSizeAfterClose(join(dir, "checkpointed.db"), true), 0);
+			}),
+		);
+
+		it.effect("without checkpointOnClose the WAL keeps its frames (the control)", () =>
+			Effect.gen(function* () {
+				assert.isAbove(yield* walSizeAfterClose(join(dir, "unchecked.db"), false), 0);
 			}),
 		);
 	});

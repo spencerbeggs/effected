@@ -38,6 +38,12 @@ export {
 } from "./Jsonc.js";
 export type { JsoncFormattingOptionsLike } from "./JsoncEdit.js";
 export { JsoncEdit, JsoncFormattingOptions, JsoncRange } from "./JsoncEdit.js";
+export {
+	JsoncCanonicalizeError,
+	JsoncCanonicalizeErrorCode,
+	JsoncFingerprint,
+	JsoncTextHashOptions,
+} from "./JsoncFingerprint.js";
 export { JsoncFormatter } from "./JsoncFormatter.js";
 export { JsoncModificationError, JsoncModifier, type JsoncModifyOptions } from "./JsoncModifier.js";
 export { JsoncNode, JsoncNodeType, type JsoncPath, type JsoncSegment } from "./JsoncNode.js";

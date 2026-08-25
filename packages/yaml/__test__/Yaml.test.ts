@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
 import {
 	Yaml,
+	YamlDocument,
 	YamlFormat,
 	YamlParseError,
 	YamlParseOptions,
@@ -629,10 +630,186 @@ describe("Yaml", () => {
 				}),
 			);
 
+			it.effect("applies on the node path — YamlDocument#stringify honors the option (regression)", () =>
+				Effect.gen(function* () {
+					// The document adapter dropped `quoteStyle` before forwarding
+					// options to the engine, so the node path always fell back to
+					// single quotes. `quoteCompat` is only the trigger that forces a
+					// parsed-plain scalar through the quoting fallback.
+					const doc = yield* YamlDocument.parse("date: 2024-01-15\n");
+					assert.strictEqual(
+						yield* doc.stringify({ quoteCompat: "yaml-1.1", quoteStyle: "double" }),
+						'date: "2024-01-15"\n',
+					);
+				}),
+			);
+
 			it("validates the field and reads back off the options class", () => {
 				const options = YamlStringifyOptions.make({ quoteStyle: "double", sortKeys: true });
 				assert.strictEqual(options.quoteStyle, "double");
 				assert.throws(() => YamlStringifyOptions.make({ quoteStyle: "backtick" as unknown as "single" }));
+			});
+		});
+
+		describe('quoteCompat: "yaml-1.1"', () => {
+			// Expected strings derive from the YAML 1.1 implicit-resolver
+			// patterns (yaml.org/type: bool, int, float, timestamp): every value
+			// in `coercible` resolves to a non-string under a YAML 1.1 parser
+			// (js-yaml, PyYAML, libyaml) and must therefore be quoted; every
+			// value in `stillPlain` is a string in BOTH editions and must stay
+			// plain — the clean-output half of the contract.
+			const compat = YamlStringifyOptions.make({ quoteCompat: "yaml-1.1" });
+
+			// One discriminating control per rule family rides along: a value
+			// wrong in exactly one way (case, digit count, range) that the 1.1
+			// resolver rejects, proving the predicate matches the rule and not a
+			// looser superset.
+			const coercible: ReadonlyArray<readonly [family: string, value: string]> = [
+				["bool y", "y"],
+				["bool Y", "Y"],
+				["bool n", "n"],
+				["bool yes", "yes"],
+				["bool Yes", "Yes"],
+				["bool YES", "YES"],
+				["bool no", "no"],
+				["bool No", "No"],
+				["bool NO", "NO"],
+				["bool on", "on"],
+				["bool On", "On"],
+				["bool ON", "ON"],
+				["bool off", "off"],
+				["bool Off", "Off"],
+				["bool OFF", "OFF"],
+				["timestamp date-only", "2024-01-15"],
+				// The 1.1 spec's date-only (ymd) branch is strictly two-digit, but
+				// the reference `yaml` package's 1.1 schema resolves the one-digit
+				// spelling to a date too — the union policy quotes it.
+				["timestamp date-only 1-digit month", "2024-1-15"],
+				["timestamp ISO 8601", "2001-12-15T02:59:43.1Z"],
+				["timestamp lowercase t with offset", "2001-12-14t21:59:43.10-05:00"],
+				["timestamp space-separated", "2001-12-14 21:59:43.10 -5"],
+				["int sexagesimal", "3:25"],
+				["int sexagesimal multi-part", "190:20:30"],
+				["int sexagesimal negative", "-1:30"],
+				["float sexagesimal", "190:20:30.15"],
+				["int underscored", "1_000"],
+				["int underscored signed", "+1_000"],
+				// Not an octal (contains 9) and not a spec decimal (leading zero),
+				// but the reference `yaml` package's 1.1 schema resolves it to the
+				// int 9 — the union policy quotes it.
+				["int leading-zero underscored", "0_9"],
+				["float underscored", "12_345.678_9"],
+				["float underscored short", "1_0.5"],
+				["float dotless exponent", "1e3"],
+				["int binary", "0b1010_0111"],
+				["int legacy octal underscored", "07_5"],
+				["int hex underscored", "0x_FF"],
+			];
+
+			const stillPlain: ReadonlyArray<readonly [family: string, value: string]> = [
+				["mixed-case non-bool", "yES"],
+				["bool-prefixed word", "nope"],
+				["bool-prefixed word", "onwards"],
+				["bool-prefixed word", "offside"],
+				["date-only with 3-digit day", "2024-01-155"],
+				["date with trailing text", "2024-01-15x"],
+				["2-digit year", "24-01-15"],
+				["sexagesimal with out-of-range minute", "1:60"],
+				["colon pair with non-digits", "1:xx"],
+				["leading underscore", "_1000"],
+				["dotted version string", "v1.2.3"],
+				["ordinary word", "hello"],
+			];
+
+			it.effect("quotes every 1.1-coercible plain scalar (single quotes by default)", () =>
+				Effect.gen(function* () {
+					for (const [family, value] of coercible) {
+						assert.strictEqual(yield* Yaml.stringify({ k: value }, compat), `k: '${value}'\n`, `${family}: ${value}`);
+					}
+				}),
+			);
+
+			it.effect("leaves strings no 1.1 parser coerces plain — the clean-output half", () =>
+				Effect.gen(function* () {
+					for (const [family, value] of stillPlain) {
+						assert.strictEqual(yield* Yaml.stringify({ k: value }, compat), `k: ${value}\n`, `${family}: ${value}`);
+					}
+				}),
+			);
+
+			it.effect("is strictly additive over the 1.2 rules — their output is unchanged", () =>
+				Effect.gen(function* () {
+					// Every value here is already quoted (or escaped) by the 1.2 Core
+					// Schema gate; the compat mode must not move a byte of it.
+					const value = { a: "true", b: "null", c: "0x1F", d: "123", e: "1.5", f: "", g: "*star" };
+					assert.strictEqual(yield* Yaml.stringify(value), yield* Yaml.stringify(value, compat));
+				}),
+			);
+
+			it.effect("default (option absent) output is byte-identical to the released form", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* Yaml.stringify({ yes: "2024-01-15" }), "yes: 2024-01-15\n");
+				}),
+			);
+
+			it.effect("composes with quoteStyle — the quote character stays its decision", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* Yaml.stringify({ d: "2024-01-15" }, { quoteCompat: "yaml-1.1", quoteStyle: "double" }),
+						'd: "2024-01-15"\n',
+					);
+				}),
+			);
+
+			it.effect("quotes 1.1-coercible mapping keys in block and flow styles", () =>
+				Effect.gen(function* () {
+					const value = { yes: 1, "1:30": "x" };
+					assert.strictEqual(yield* Yaml.stringify(value, compat), "'yes': 1\n'1:30': x\n");
+					assert.strictEqual(
+						yield* Yaml.stringify(value, { defaultCollectionStyle: "flow", quoteCompat: "yaml-1.1" }),
+						"{'yes': 1, '1:30': x}\n",
+					);
+				}),
+			);
+
+			it.effect("actual booleans and numbers stay unquoted — only strings are at stake", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* Yaml.stringify({ a: true, b: 90, c: 1.5 }, compat), "a: true\nb: 90\nc: 1.5\n");
+				}),
+			);
+
+			it.effect("round-trips through the package's own parser unchanged", () =>
+				Effect.gen(function* () {
+					const value = Object.fromEntries(coercible.map(([, v], i) => [`k${i}`, v]));
+					assert.deepStrictEqual(yield* Yaml.parse(yield* Yaml.stringify(value, compat)), value);
+				}),
+			);
+
+			it.effect("applies on the node path — YamlDocument#stringify quotes the 1.1 delta", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("date: 2024-01-15\nname: alice\n");
+					assert.strictEqual(yield* doc.stringify(compat), "date: '2024-01-15'\nname: alice\n");
+				}),
+			);
+
+			it.effect("a tagged scalar is exempt, exactly like the 1.2 type-conflict check", () =>
+				Effect.gen(function* () {
+					const doc = yield* YamlDocument.parse("date: !!str 2024-01-15\n");
+					assert.strictEqual(yield* doc.stringify(compat), "date: !!str 2024-01-15\n");
+				}),
+			);
+
+			it("applies on the format path — YamlFormattingOptions derives the field", () => {
+				assert.strictEqual(
+					YamlFormat.formatToString("date: 2024-01-15\n", undefined, { quoteCompat: "yaml-1.1" }),
+					"date: '2024-01-15'\n",
+				);
+			});
+
+			it("validates the field and reads back off the options class", () => {
+				const options = YamlStringifyOptions.make({ quoteCompat: "yaml-1.1" });
+				assert.strictEqual(options.quoteCompat, "yaml-1.1");
+				assert.throws(() => YamlStringifyOptions.make({ quoteCompat: "yaml-9.9" as unknown as "yaml-1.1" }));
 			});
 		});
 

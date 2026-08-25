@@ -13,6 +13,9 @@
 //   Package            — strict, publishable: name+version required.
 //   PackageManifest    — presence-lenient: absence allowed, shape-on-presence
 //                        still validated (this module).
+//   LenientManifest    — shape-lenient discovery/sniffing: malformed fields
+//                        degrade to absence (kept in `rest`, reported on
+//                        `issues`) instead of failing the document.
 //   @effected/npm Manifest — shape-blind outside the four dependency fields,
 //                        for mid-build resolution.
 //   PackageJsonFormat  — decode-free text path: anything syntactically JSON.
@@ -42,10 +45,12 @@ import { PackageName } from "./PackageName.js";
  * typed), a present `name` must still satisfy the npm grammar, a present
  * `packageManager` must still parse — though here the version position may be
  * a semver range (`pnpm@^11.20.0`), decoded as {@link PackageManagerRange}.
- * For total tolerance of malformed fields, use the decode-free
- * {@link PackageJsonFormat} text path (or `@effected/npm`'s shape-blind
- * `Manifest`) — silently carrying a value the type claims to have validated
- * would be a lie, and silently dropping it would break round-trip fidelity.
+ * For tolerance of malformed fields, use the shape-lenient `LenientManifest`
+ * discovery tier — which degrades them to absence, preserved in `rest` and
+ * reported on `issues` — or the decode-free {@link PackageJsonFormat} text
+ * path (or `@effected/npm`'s shape-blind `Manifest`); here, silently carrying
+ * a value the type claims to have validated would be a lie, and silently
+ * dropping it would break round-trip fidelity.
  *
  * The model is deliberately lean — fields, the `rest` catch-all wire codec,
  * {@link PackageManifest.decode} and {@link PackageManifest.toJsonString} —

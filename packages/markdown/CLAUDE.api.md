@@ -11,7 +11,11 @@ to keep in sync line by line.
 - **`Markdown`** — `parseResult`/`stringifyResult` (pure `Result` primitives),
   `parse`/`stringify` (`Effect`), the `MarkdownFromString` two-way codec;
   `MarkdownDialect`, `MarkdownParseOptions`, `MarkdownParseError`,
-  `MarkdownStringifyError`.
+  `MarkdownStringifyError`. Plus `parsePhrasingResult`/`parsePhrasing`: a text
+  fragment parsed as ONE paragraph's inline content — blank lines stay inline,
+  no reference context (dangling `[x]`/`[^x]` stay literal), positions correct
+  relative to the input, `frontmatter` option a documented no-op. Same error
+  posture (hardening trips only).
 - **`MarkdownDocument`** — source + tree + frontmatter (+ `hasFrontmatterBlock`,
   the capture-off discriminant) + `diagnostics` + the `definitions` index, plus
   derived navigation getters `headings`/`sections`/`links` and the
@@ -35,7 +39,18 @@ to keep in sync line by line.
   `Frontmatter`, …), the content unions, `Position` (including the public
   zero-width `Position.synthetic`) / `Point`, and the fidelity literals
   (`BulletChar`, `FenceChar`, `HeadingStyle`, `EmphasisChar`, …). Co-located in one
-  file to break the recursive-AST cycle.
+  file to break the recursive-AST cycle. The MDX vocabulary lives here too,
+  shaped verbatim to the mdast-util-mdx oracle contracts (construct + serialize
+  only; the parser reads no MDX syntax): `MdxJsxFlowElement`/`MdxJsxTextElement`
+  (fragment = `name: null`, and a fragment with attributes is **unconstructible**
+  — a schema check, not a serializer error), the attribute carriers
+  (`MdxJsxAttribute` with `value?: string | expr | null` — both `null` and
+  absence admitted per the oracle — `MdxJsxExpressionAttribute`,
+  `MdxJsxAttributeValueExpression`, unioned as `MdxJsxAttributeContent` and
+  deliberately **outside** `MarkdownNode`/visitor/find), plus
+  `MdxFlowExpression`/`MdxTextExpression` and root-only `MdxjsEsm`. No
+  `data.estree` field anywhere — the kit has no estree model; the `Mdast`
+  boundary drops it silently like every foreign `data`.
 - **`Mdast`** — `toMdast` / `fromMdastResult`: projection to plain spec-valid
   mdast JSON (fidelity fields stripped) and checked decoding back; `MdastNode`,
   `MdastDecodeError`.
@@ -79,6 +94,19 @@ to keep in sync line by line.
   differs from the captured one fails typed. The block is re-serialized **whole**
   from the encoded data, so comments inside a yaml block do not survive —
   gray-matter parity, with per-key surgical editing a recorded future refinement.
+- **`FrontmatterSource`** — string-level `split`/`join` over the SAME closed
+  fence grammar as the parser's pre-scan (shared `FENCES` table in
+  `internal/blocks/frontmatter.ts`), usable without parsing the body (MDX
+  pages, snapshot-hash contracts). Both total, pure sync — no Result/Effect
+  twins because nothing can fail; absence is representable (one fact here: no
+  capture toggle exists at string level). `FrontmatterSourceBlock.value` is the
+  exact bytes between the fence LINES — each value line WITH its terminator,
+  deliberately unlike the `Frontmatter` node's value — which keeps `""` vs
+  `"\n"` distinct and makes `join` byte-exact for unmodified round-trips
+  (two documented normalizations: close-fence-at-EOF gains a final newline,
+  mismatched fence terminators re-emit as the opening one).
+  `body === source.slice(bodyOffset)` always; no U+0000 substitution and no
+  BOM handling at this level.
 - **`SchemaResolver`** (`classify`, `declarationOf`, `fromRegistry`) plus the
   `SchemaDeclaration` union (`ByUrl`/`ByPath`/`Inline`/`ByName`) and its four
   errors. Dependency-free by design — the `name[@version]` grammar (split at the
