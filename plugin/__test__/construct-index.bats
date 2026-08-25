@@ -9,6 +9,19 @@ REPO_ROOT="$(cd "$PLUGIN_ROOT/.." && pwd)"
 GEN="$PLUGIN_ROOT/scripts/generate-constructs.mts"
 FIXTURES="$PLUGIN_ROOT/__test__/fixtures"
 
+setup_file() {
+	# CI's shell-tests job runs this suite on a fresh checkout with no dist/
+	# artifacts. Generator exit 2 is specifically the missing-doc-model
+	# signal — provision them ourselves; turbo's remote cache makes the
+	# build cheap there. Exit 0/1 (ok / annotation problems) need no build.
+	local status=0
+	node "$GEN" check >/dev/null 2>&1 || status=$?
+	if [ "$status" -eq 2 ]; then
+		echo "# doc models missing — running pnpm build to provision them" >&3
+		(cd "$REPO_ROOT" && pnpm build) >&2 || return 1
+	fi
+}
+
 @test "fixture: generate renders one table per package with merged kinds, escaped pipes, and cross-links" {
 	out="$BATS_TEST_TMPDIR/constructs"
 	run node "$GEN" generate \
@@ -98,7 +111,7 @@ FIXTURES="$PLUGIN_ROOT/__test__/fixtures"
 	fi
 }
 
-@test "repo: no stale construct annotations" {
-	run node "$GEN" check
+@test "repo: annotations are complete — every value-kind construct has intent, none are stale" {
+	run node "$GEN" check --require-intent
 	[ "$status" -eq 0 ]
 }
