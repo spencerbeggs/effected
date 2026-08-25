@@ -41,6 +41,9 @@ setup_file() {
 	grep -q "Variable + Interface" "$out/demo.md"
 	# pipe in a docComment is escaped so the table row survives
 	grep -qF "report's \\|" "$out/demo.md"
+	# a literal backslash-pipe in source escapes backslash-first, so no bare
+	# delimiter leaks into the cell (CodeQL: incomplete string escaping)
+	grep -qF 'and \\\| backslash-pipe' "$out/demo.md"
 	# intent column filled from annotations
 	grep -q "validate NTIA minimum elements" "$out/demo.md"
 	# cross-link: impl side names the contract...
@@ -91,6 +94,17 @@ setup_file() {
 		--annotations "$stale"
 	[ "$status" -eq 1 ]
 	[[ "$output" == *"stale annotation: demo.Departed"* ]]
+}
+
+@test "fixture: check --require-intent treats a blank intent as missing" {
+	blank="$BATS_TEST_TMPDIR/blank.json"
+	printf '{"demo":{"renderReport":"  "}}\n' > "$blank"
+	run node "$GEN" check \
+		--packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$blank" \
+		--require-intent
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"missing intent annotation: demo.renderReport"* ]]
 }
 
 @test "fixture: check --require-intent fails naming SubThing when its annotation is missing" {

@@ -7,7 +7,7 @@
 | --- | --- | --- | --- |
 | `CollectionStyle` | Variable + TypeAlias | The union of all collection style string literals. | block vs flow collection style literal, {} and [] vs indented |
 | `LintContext` | Interface | The context handed to every rule. The engine tokenizes ONCE and every rule shares the one materialized `tokens` array — linting is inherently multi-pass and random-access (layout rules need lookahead and lookbehind), so the context is eager by nature; the streaming token form exists for other consumers. | |
-| `LintLine` | Interface | One source line of the linted document: its text (without the line terminator — the `\n`, and for CRLF input the `\r\n` pair), the offset of its first character, and its zero-based line number. | |
+| `LintLine` | Interface | One source line of the linted document: its text (without the line terminator — the `\\n`, and for CRLF input the `\\r\\n` pair), the offset of its first character, and its zero-based line number. | |
 | `QuoteCompat` | Variable + TypeAlias | The union of all quote-compat dialect string literals. | quote dialect compat literal, json-safe or yaml 1.1 quoting |
 | `QuoteStyle` | Variable + TypeAlias | The union of all fallback quote style string literals. | fallback quote style literal, single vs double quote preference |
 | `ScalarChomp` | Variable + TypeAlias | The union of all block-scalar chomping indicator string literals. | block scalar chomping indicator, strip clip keep trailing newlines |

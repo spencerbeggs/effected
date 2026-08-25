@@ -41,8 +41,8 @@
 | `SbomMetadataSource` | Class | Derivation of CycloneDX metadata from a `package.json` manifest. | derive sbom metadata from a package.json manifest, npm purl, root component |
 | `SbomWriteError` | Class | Raised when a BOM cannot be written to disk. | handle failure writing an sbom to disk, filesystem write failure |
 | `Sha256Digest` | Variable + TypeAlias | A SHA-256 digest as 64 lowercase hexadecimal characters. | validate and normalize a sha-256 digest, strip sha256: prefix, lowercase hex |
-| `SigningError` | Class | Raised when a statement cannot be signed. | handle sigstore signing failure, identity certificate transparencyLog or bundle step |
-| `SigningErrorKind` | Variable + TypeAlias | The decoded type of `(SigningErrorKind:variable)`. | which sigstore signing step failed, identity certificate transparencyLog bundle |
+| `SigningError` | Class | Raised when a statement cannot be signed. | handle sigstore signing failure, identity certificate transparency log or bundle step |
+| `SigningErrorKind` | Variable + TypeAlias | The decoded type of `(SigningErrorKind:variable)`. | which sigstore signing step failed, identity certificate transparency log bundle |
 | `SigstoreBundle` | Class | A signed Sigstore bundle: the wire form of an attestation. | the signed dsse bundle wire form, sigstore attestation result value |
 | `SigstoreSigner` | Class | Sigstore signing. | sign with sigstore, produce a dsse bundle over fulcio and rekor |
 | `SigstoreSignerOptions` | Interface | Where signing happens, and with what. | |

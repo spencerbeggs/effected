@@ -42,7 +42,7 @@
 | `TomlStringStyle` | Variable + TypeAlias | The union of all string-style literals. | the toml string quoting styles, basic literal multiline-basic or multiline-literal |
 | `TomlStringifyError` | Class | Stringification failure: an unsupported value, an out-of-range integer, a circular reference or a tripped depth guard, as one structured `TomlDiagnostic` (offset `0` — there is no source text). Raised by `Toml.stringify` and the encode direction of the schema factories. | handle a failure stringifying to toml: unsupported, out-of-range, circular, depth |
 | `TomlStringifyErrorCode` | Variable + TypeAlias | The union of all stringifier-stage error code string literals. | the union of toml stringifier-stage error codes |
-| `TomlStringifyOptions` | Class | Options controlling stringify behavior. The only knob is `newline` — omitted, it resolves to `"\n"`. | options controlling toml stringify newline output |
+| `TomlStringifyOptions` | Class | Options controlling stringify behavior. The only knob is `newline` — omitted, it resolves to `"\\n"`. | options controlling toml stringify newline output |
 | `TomlTableHeader` | Class | A `[table]` header expression. Span contract as in `TomlKeyValue`. | declares a `[table]` section header opening a table body |
 | `TomlTrivia` | Class | A run of consecutive blank and comment-only lines, coalesced into one expression. `text` is the raw source slice, newlines included. | a run of blank lines and standalone comments coalesced into one toml node |
 | `TomlValueNode` | Variable + TypeAlias | The union of all TOML value node types. | union of every toml value type: string integer float boolean date-time array |

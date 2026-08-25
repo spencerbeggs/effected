@@ -96,6 +96,7 @@ const summaryOf = (doc: string | undefined): string => {
 	return summary
 		.join(" ")
 		.replace(LINK_RE, (_match, target: string, label: string | undefined) => `\`${(label ?? target).trim()}\``)
+		.replace(/\\/g, "\\\\")
 		.replace(/\|/g, "\\|");
 };
 
@@ -205,7 +206,8 @@ const main = () => {
 			let unannotated = 0;
 			for (const [pkg, rows] of rowsByPkg) {
 				for (const row of rows) {
-					if (row.required && annotations[pkg]?.[row.name]?.intent === undefined) {
+					const intent = annotations[pkg]?.[row.name]?.intent;
+					if (row.required && (intent === undefined || intent.trim() === "")) {
 						console.error(`missing intent annotation: ${pkg}.${row.name} (${row.kinds.join(" + ")})`);
 						unannotated++;
 					}
@@ -252,7 +254,15 @@ const main = () => {
 			for (const impl of implementedBy.get(`${pkg.dir}.${row.name}`) ?? []) {
 				parts.push(`implemented by \`${impl.name}\` in \`${nameByDir.get(impl.pkg) ?? impl.pkg}\``);
 			}
-			const cells = [`\`${row.name}\``, row.kinds.join(" + "), row.purpose, parts.join(" — ").replace(/\|/g, "\\|")];
+			const cells = [
+				`\`${row.name}\``,
+				row.kinds.join(" + "),
+				row.purpose,
+				parts
+					.join(" — ")
+					.replace(/\\/g, "\\\\")
+					.replace(/\|/g, "\\|")
+			];
 			lines.push(`|${cells.map((cell) => (cell === "" ? " " : ` ${cell} `)).join("|")}|`);
 		}
 		lines.push("");

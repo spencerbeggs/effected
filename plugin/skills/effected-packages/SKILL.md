@@ -87,8 +87,11 @@ grep -ri "oidc\|identity token" plugin/skills/effected-packages/references/const
 (In a consumer repo the plugin's install path replaces `plugin/`.) Rows whose
 last column names an `implements` / `implemented by` pair are the kit's
 deliberate contract↔implementation splits — the capability lives in a
-different package than its contract. Finding nothing after an intent grep is
-real evidence of absence; finding nothing without one is not.
+different package than its contract. A no-match result means "not found in
+this index" — check the package's reference and source before concluding the
+kit lacks the capability. That is still far stronger evidence than never
+grepping at all: hand-rolling a capability without an intent grep is how every
+documented miss happened.
 
 Facts about the kit that change how you depend on it:
 
@@ -226,10 +229,11 @@ core first — the kit deliberately requires core contracts (`FileSystem`,
 
 **Construct-level coverage — does every export get named somewhere in
 `skills/` — is checked, not maintained by hand here.**
-`plugin/__test__/construct-coverage.bats` walks each covered package's
-`src/index.ts` export list against every skill file, phased in starting from
-six packages (`github-actions`, `github`, `commands`, `npm`, `schemastore`,
-`jsonl`). This file's prose is what that check verifies isn't silently
-orphaned, not the source of truth for whether a given export is covered — a
-hand-maintained claim of completeness drifts the same way this file's own
-stale reference-file count once did.
+`plugin/__test__/construct-index.bats` regenerates the construct index from
+every package's api-extractor doc model and fails on any drift from the
+committed tables under `references/constructs/`, and its strict mode requires
+an intent annotation for every value-kind export. The generated tables, not
+this file's prose, are the source of truth for whether a given export is
+covered — a hand-maintained claim of completeness drifts the same way this
+file's own stale reference-file count once did. The maintenance loop lives in
+the repo's `constructs` skill.

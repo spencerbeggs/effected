@@ -1,5 +1,7 @@
 {
-	"metadata": { "toolPackage": "@microsoft/api-extractor" },
+	"metadata": {
+		"toolPackage": "@microsoft/api-extractor"
+	},
 	"name": "@effected/demo",
 	"members": [
 		{
@@ -28,7 +30,7 @@
 					"kind": "TypeAlias",
 					"name": "ReportShape",
 					"releaseTag": "Public",
-					"docComment": "/**\n * The report's | pipe-bearing summary line.\n *\n * @public\n */\n"
+					"docComment": "/**\n * The report's | pipe-bearing and \\| backslash-pipe summary line.\n *\n * @public\n */\n"
 				},
 				{
 					"kind": "Function",
