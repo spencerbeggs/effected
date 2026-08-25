@@ -1,5 +1,17 @@
 # @effected/app
 
+## 0.12.2
+
+### Documentation
+
+- The Effect v4 module index now flags core's `Crypto.digest` as **one-shot**: its signature takes the whole payload as a single `Uint8Array`, with no incremental/streaming form. Digesting a key, token, or short manifest fits; digesting a stream-sized artifact means buffering it all in memory, which is why the kit's `github-actions` `Artifact` and `PackageManagerInstaller` stay on `node:crypto` instead [#526][#526]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#526]: https://github.com/spencerbeggs/effected/pull/526
+
 ## 0.12.1
 
 ### Dependencies
