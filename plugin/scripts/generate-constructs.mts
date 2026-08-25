@@ -258,10 +258,7 @@ const main = () => {
 				`\`${row.name}\``,
 				row.kinds.join(" + "),
 				row.purpose,
-				parts
-					.join(" — ")
-					.replace(/\\/g, "\\\\")
-					.replace(/\|/g, "\\|")
+				parts.join(" — ").replace(/\\/g, "\\\\").replace(/\|/g, "\\|"),
 			];
 			lines.push(`|${cells.map((cell) => (cell === "" ? " " : ` ${cell} `)).join("|")}|`);
 		}
