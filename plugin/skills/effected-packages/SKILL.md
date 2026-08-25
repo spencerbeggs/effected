@@ -1,6 +1,6 @@
 ---
 name: effected-packages
-description: The @effected package index — what each of the kit's 30 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML/Markdown, semver math, SPDX license expressions, glob matching, an in-memory filesystem for tests, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, unsatisfied peer-dependency detection, git introspection, runtime-version resolution, running commands or discovering CLI tools, managed sections in generated files, append-only JSONL journals and watching them, the GitHub REST/GraphQL API, parsing GitHub issue references (`Closes #12`) out of a commit message or PR body, the GitHub Actions runtime, CLI output and failure reporting, SBOM generation and signing, or publishing Effect Schemas as SchemaStore-shaped JSON Schema documents. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/.
+description: The @effected package index — what each of the kit's 30 packages contains and when to reach for it. Use when working in a repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing or editing JSONC/YAML/TOML/Markdown, semver math, SPDX license expressions, glob matching, an in-memory filesystem for tests, package.json or tsconfig.json handling, lockfile parsing, config-file loading, upward path walking, XDG directories, SQLite state/caching, monorepo/workspace introspection, unsatisfied peer-dependency detection, git introspection, runtime-version resolution, running commands or discovering CLI tools, managed sections in generated files, append-only JSONL journals and watching them, the GitHub REST/GraphQL API, parsing GitHub issue references (`Closes #12`) out of a commit message or PR body, the GitHub Actions runtime, CLI output and failure reporting, SBOM generation and signing, or publishing Effect Schemas as SchemaStore-shaped JSON Schema documents. Also use when choosing dependencies for a new Effect v4 app or library, or when a task names an @effected package. Rows route; per-package depth lives in references/; per-construct intent search lives in references/constructs/.
 ---
 
 # The @effected package index
@@ -67,6 +67,31 @@ one level up: `building-a-github-action` routes a 14-skill suite (capability
 references plus `designing-an-action`'s build sequence) covering these three
 packages and `npm`/`sbom` in more depth than one reference file can — start
 there when you are actually building an action.
+
+## Search by intent
+
+The package table routes when you know *which package*; the construct index
+routes when you know *what you want done* but not what it is called. One
+generated file per package lives in
+[references/constructs/](./references/constructs/) — every export in the kit,
+with its kind, TSDoc purpose, and intent keywords ("validate NTIA compliance",
+"run a workspace binary", "build a GFM table node").
+
+Before concluding the kit lacks a capability, grep the index by intent words:
+
+```bash
+grep -ri "table" plugin/skills/effected-packages/references/constructs/
+grep -ri "oidc\|identity token" plugin/skills/effected-packages/references/constructs/
+```
+
+(In a consumer repo the plugin's install path replaces `plugin/`.) Rows whose
+last column names an `implements` / `implemented by` pair are the kit's
+deliberate contract↔implementation splits — the capability lives in a
+different package than its contract. A no-match result means "not found in
+this index" — check the package's reference and source before concluding the
+kit lacks the capability. That is still far stronger evidence than never
+grepping at all: hand-rolling a capability without an intent grep is how every
+documented miss happened.
 
 Facts about the kit that change how you depend on it:
 
@@ -204,10 +229,11 @@ core first — the kit deliberately requires core contracts (`FileSystem`,
 
 **Construct-level coverage — does every export get named somewhere in
 `skills/` — is checked, not maintained by hand here.**
-`plugin/__test__/construct-coverage.bats` walks each covered package's
-`src/index.ts` export list against every skill file, phased in starting from
-six packages (`github-actions`, `github`, `commands`, `npm`, `schemastore`,
-`jsonl`). This file's prose is what that check verifies isn't silently
-orphaned, not the source of truth for whether a given export is covered — a
-hand-maintained claim of completeness drifts the same way this file's own
-stale reference-file count once did.
+`plugin/__test__/construct-index.bats` regenerates the construct index from
+every package's api-extractor doc model and fails on any drift from the
+committed tables under `references/constructs/`, and its strict mode requires
+an intent annotation for every value-kind export. The generated tables, not
+this file's prose, are the source of truth for whether a given export is
+covered — a hand-maintained claim of completeness drifts the same way this
+file's own stale reference-file count once did. The maintenance loop lives in
+the repo's `constructs` skill.

@@ -30,7 +30,7 @@ Skills live under `plugin/skills/`, each a `SKILL.md` whose frontmatter `descrip
 **Routing** — consulted first, so nobody designs a capability core or the kit already ships:
 
 - `effect-v4-module-index` — the routing map for Effect v4 core: every core module in one table (what it is, when to reach for it, where it lives in the vendored source). Rows route; the other skills teach.
-- `effected-packages` — the sibling routing map for the kit: one table row per package (what it contains, when to reach for it, tier), plus per-package `references/` covering entrypoints, core services, testing machinery and gotchas. Preloaded by all four agents. **The references are deliberately not one-to-one with the table**: the github-split packages route to the actions suite instead, because a skill that teaches a package beats a reference that describes it and carrying both is how the two drift.
+- `effected-packages` — the sibling routing map for the kit: one table row per package (what it contains, when to reach for it, tier), plus per-package `references/` covering entrypoints, core services, testing machinery and gotchas, and the generated [construct index](#the-construct-index) searchable by intent. Preloaded by all four agents. **The references are deliberately not one-to-one with the table**: the github-split packages route to the actions suite instead, because a skill that teaches a package beats a reference that describes it and carrying both is how the two drift.
 
 **Process** — decides *what* to write:
 
@@ -82,17 +82,51 @@ Three `.bats` files under `plugin/__test__/` hold the plugin's structural claims
 
 - `session-start-orientation.bats` — the skill roster in the briefing hook, derived from the directories on disk with a minimum-count guard, so a new skill cannot ship without its briefing bullet.
 - `agent-skill-registration.bats` — each agent's frontmatter `skills` list, including a membership test naming every Actions skill `action-engineer` must list. That pins the preload-the-whole-suite decision, so dropping one fails a test instead of silently reverting the call. It also catches a skill name leaking into an agent's `tools` block, which would satisfy any test that merely greps the file for the name.
-- `construct-coverage.bats` — **generated construct-level coverage.** It walks each covered package's `src/index.ts` export list and fails on any exported identifier with zero mentions under `plugin/skills/`. Generated rather than hand-maintained because a hand-maintained index demonstrably shares its author's blind spots with the skills it describes.
+- `construct-index.bats` — the executable pin on the [construct index](#the-construct-index): generator fixture tests, a drift test that regenerates the committed index into a temp dir and diffs, and the strict annotation gate. It replaced `construct-coverage.bats` and its allow-list; detail lives in [that section's enforcement notes](#enforcement).
 
-The coverage check's posture is deliberate on three points:
+**What no check pins is prose about the kit rather than about the plugin.** The construct index pins that an exported identifier is *indexed and annotated*; no check can tell whether a sentence about it is still true. Package counts, tier labels and publication status sitting inside the `effected-packages` routing map are exactly that class, and a re-verification pass found them aged. Two things contain it, neither of them a test: the voice rule requiring a load-bearing count to be written as the grep that produces it, and re-verifying kit-surface claims as part of a release wave rather than on discovery.
 
-- **Phased scope.** It starts with the packages an audit spot-checked by hand, proving the signal-to-noise ratio before widening to the whole kit.
-- **A reviewed allow-list, not a suppression dump.** `construct-coverage.allow` carries one identifier per line under a per-package comment block stating the reason. A package whose whole export surface is allow-listed is a **known, separately-tracked gap**, not a pass.
-- **The suppression list is itself watched.** A second check reports allow-listed identifiers that *are* now mentioned in `skills/`, without failing the build, so a human prunes deliberately instead of the check quietly degrading.
+**CI runs the suite through the org release-validate workflow's auto-discovered Shell Tests check**, with no custom build step: the one file that needs build artifacts, `construct-index.bats`, self-provisions them (see [enforcement](#enforcement)) — which is what closed the #243 gap for this suite.
 
-**What no check pins is prose about the kit rather than about the plugin.** Coverage asks whether an exported identifier is *mentioned*; it cannot tell whether the sentence mentioning it is still true. Package counts, tier labels and publication status sitting inside the `effected-packages` routing map are exactly that class, and a re-verification pass found them aged. Two things contain it, neither of them a test: the voice rule requiring a load-bearing count to be written as the grep that produces it, and re-verifying kit-surface claims as part of a release wave rather than on discovery.
+## The construct index
 
-**No CI runs this repo's bats suite.** All three files run locally today; wiring them into CI is a known prerequisite the checks themselves do not solve, and until it lands the pins hold only for whoever runs them.
+The construct index is the systemic fix for the #188 incident class — a capability discoverable only by whoever already knows its name — closing that issue's re-scoped residuals (per its 2026-08-15 triage comment): construct-level discoverability by intent, and full-kit coverage of the old construct-coverage check. [The canon doc](github-action-canon.md) names it as such. Built 2026-08-25 from the plan at `.claude/plans/2026-08-25-construct-index.md`.
+
+### Why it exists
+
+`effected-packages` routes by package, and before the index no construct-level surface was searchable by intent — "validate NTIA" or "run a binary" found nothing, which is exactly how #188's four false "the kit ships no successor" declarations happened. The mention-floor predecessor, `construct-coverage.bats`, covered only 6 of 28 packages and parsed each `src/index.ts` with awk/grep — fragile, with a NUL-byte hazard on record (#187).
+
+### The artifact
+
+One generated file per workspace package at `plugin/skills/effected-packages/references/constructs/<pkg>.md` — 30 files, **1175 rows**. The doc models expose the full `export declare` surface; api-extractor's 512 synthesized `X_base` members are filtered whenever the sibling `X` is exported. Each file is a table with four columns — **construct | kind | purpose | intent keywords**, purpose being the TSDoc summary mechanically extracted, intent keywords agent-authored — under a generated/do-not-edit header. The committed output is a fixed point of the pre-commit markdown fix pass: empty cells render in markdownlint's compacted form and the intent column is pipe-escaped, so the hook has nothing to rewrite.
+
+**No new plugin skill.** The hand-written `effected-packages/SKILL.md` carries a "Search by intent" section teaching agents to grep the constructs directory when they know what they want but not its name, and its frontmatter routes constructs searches.
+
+**Cross-package contract↔implementation pairs render as explicit rows in both packages' files** — the generator inverts each `implements` link into the contract side's file: `ActionsIdentityToken` implements `sbom.IdentityToken`, `Workspaces` implements `commands.LocalExec`, and `WorkspaceCatalogs` / `WorkspaceDiscovery` implement `npm.CatalogResolver` / `npm.WorkspaceResolver`. A reader landing on either side sees the other.
+
+### Data model and generator
+
+Intent keywords and cross-links live in a sidecar `plugin/scripts/construct-annotations.json` — plain JSON (not JSONC, so no parser dependency), agent/human-owned, keyed package → construct, holding intent-keyword strings plus an optional `implements` field — the `implementedBy` side is never authored; the generator derives it by inverting the `implements` links. It holds **815 entries** (811 required value-kind, 4 optional), authored from source by a 12-agent fan-out; intent strings run at most 12 words (a small 13–14-word residual band exists), with emphasis-active tokens code-spanned so the markdown stays inert.
+
+The generator is **dependency-free**: `plugin/scripts/generate-constructs.mts`, run with bare Node as `node <file>.mts` like the website scripts, parsing each package's api-extractor doc model as plain JSON — it does **not** use `@microsoft/api-extractor-model`, which is only in the tree transitively and would need a new devDep. Its CLI is `generate` / `check [--require-intent]`, with exit codes 0/1/2: ok, annotation problems, missing doc models.
+
+The canonical doc-model input is the package build output, `packages/<dir>/dist/prod/npm/meta/<dir>.api.json`, produced by `pnpm build --filter @effected/<dir>` — authoritative on exports, carrying kind, releaseTag and TSDoc, and immune to the source-parsing fragility class. The copies under `website/lib/models/` are secondary gitignored artifacts and are avoided — among other things they carry stale directories for removed packages (ts-vfs, runtime-resolver-cli). The generator enumerates packages **by reading the `packages/` directory on disk** — subdirectories containing a `package.json` — never from a models directory. Rendering is deterministic: facts from the doc model joined with the annotations.
+
+### Coverage bar (tiered)
+
+Class, Function and Variable entries **require** an intent annotation — a missing one is a `check --require-intent` failure naming the construct; 811 rows carry one today. Interface and TypeAlias rows ride on their TSDoc summary alone; annotating them is optional (4 are). The rationale: every documented miss in #188 was a value-level capability.
+
+### Enforcement
+
+`plugin/__test__/construct-index.bats` pins the index: five fixture tests for the generator, a repo drift test that regenerates the committed index into a temp dir and diffs, and the strict `check --require-intent` test. A `setup_file()` hook self-provisions missing doc models by running `pnpm build`, triggered by the generator's exit code 2, so the org release-validate workflow's auto-discovered Shell Tests check needs no custom build step — closing the #243 gap for this suite. `construct-coverage.bats` and its allow-list are retired: the index strictly subsumes the mention floor.
+
+### Maintenance
+
+A **project-level** skill at `.claude/skills/constructs` — a sibling to [`improve`](#the-improve-skill), and outside the plugin for the same reason — documents the build → check → annotate → regenerate loop. Each PR adding an export gets a one-row increment prompted by the failing check.
+
+### Accepted trade-off
+
+The doc-model input adds a build dependency to the check, where the old grep-over-src approach had none — accepted because turbo caching makes builds cheap, and the doc model eliminates the fragility class and provides TSDoc for free.
 
 ## The `improve` skill
 

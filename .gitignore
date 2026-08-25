@@ -6,6 +6,11 @@
 *.config.d.ts
 **/build
 **/dist
+# construct-index fixtures commit a static api-extractor doc model under a
+# dist/ path to mirror real build output; never actually built, so **/dist
+# would otherwise swallow it
+!plugin/__test__/fixtures/**/dist
+!plugin/__test__/fixtures/**/dist/**
 **/.rslib
 **/.artifacts
 **/.turbo
