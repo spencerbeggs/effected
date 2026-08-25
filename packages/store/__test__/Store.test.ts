@@ -349,29 +349,30 @@ describe("Store", () => {
 		// Size 0 proves the PRAGMA ran against the still-open connection: after
 		// the driver's own close it would fail (and be ignored), leaving the
 		// frames in place, which is what the control pins.
-		const walSizeAfterClose = (filename: string, checkpointOnClose: boolean) =>
-			Effect.gen(function* () {
-				let second: DatabaseSync | undefined;
-				const storeLayer = Store.layerSqlite({
+		// The WAL is read before `second` closes — closing the last connection
+		// would itself checkpoint — and `ensuring` closes `second` on every exit
+		// path, including a failure inside the provided effect (a generator-level
+		// try/finally would never run there: the fiber does not resume the
+		// generator on a failed yield*).
+		const walSizeAfterClose = (filename: string, checkpointOnClose: boolean) => {
+			let second: DatabaseSync | undefined;
+			return Effect.provide(
+				Effect.gen(function* () {
+					const store = yield* Store;
+					yield* store.client`INSERT INTO notes (body) VALUES ('one')`;
+					second = new DatabaseSync(filename);
+					second.prepare("SELECT count(*) AS n FROM notes").get();
+				}),
+				Store.layerSqlite({
 					filename,
 					migrations: [createNotes],
 					...(checkpointOnClose ? { checkpointOnClose: true } : {}),
-				});
-				yield* Effect.provide(
-					Effect.gen(function* () {
-						const store = yield* Store;
-						yield* store.client`INSERT INTO notes (body) VALUES ('one')`;
-						second = new DatabaseSync(filename);
-						second.prepare("SELECT count(*) AS n FROM notes").get();
-					}),
-					storeLayer,
-				);
-				try {
-					return statSync(`${filename}-wal`).size;
-				} finally {
-					second?.close();
-				}
-			});
+				}),
+			).pipe(
+				Effect.flatMap(() => Effect.sync(() => statSync(`${filename}-wal`).size)),
+				Effect.ensuring(Effect.sync(() => second?.close())),
+			);
+		};
 
 		it.effect("checkpointOnClose truncates the WAL before the client closes", () =>
 			Effect.gen(function* () {

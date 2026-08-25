@@ -698,12 +698,11 @@ const serializeDefinition = (node: Definition): string =>
 	`[${escapeLabel(node.label ?? node.identifier)}]: ${destination(node.url)}${titleSuffix(node.title)}`;
 
 const serializeFootnoteDefinition = (node: FootnoteDefinition, state: StringifyState): string => {
-	// The definition's four-space continuation indent owns indentation from
-	// here in — same JSX indent restart as blockquote and list items.
-	const savedJsxDepth = state.jsxDepth;
-	state.jsxDepth = 0;
+	// The definition's four-space continuation indent stacks UNDER the JSX
+	// indent: the oracle's inferDepth breaks only at blockquote and listItem,
+	// so a flow element nested through a footnote definition keeps counting
+	// its JSX ancestors and self-indents one step deeper. No jsxDepth reset.
 	const content = serializeBlocks(node.children, state);
-	state.jsxDepth = savedJsxDepth;
 	const lines = content.split("\n");
 	const marker = `[^${escapeLabel(node.label ?? node.identifier)}]:`;
 	// Indented code cannot share the marker line — its leading spaces would

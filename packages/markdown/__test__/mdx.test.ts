@@ -18,6 +18,7 @@ import { MarkdownDocument } from "../src/MarkdownDocument.js";
 import {
 	Blockquote,
 	Code,
+	FootnoteDefinition,
 	Heading,
 	List,
 	ListItem,
@@ -220,6 +221,40 @@ describe("mdx nodes", () => {
 			assert.strictEqual(stringified(listed), "<x>\n  - <y>\n      z\n    </y>\n</x>\n");
 		});
 
+		it("keeps counting JSX depth through a footnote definition", () => {
+			// The oracle's inferDepth breaks ONLY at `blockquote` and `listItem`
+			// (.repos/mdast-util-mdx-jsx/lib/index.js `inferDepth`), so for
+			// mdxJsxFlowElement > footnoteDefinition > mdxJsxFlowElement the
+			// inner element still counts its JSX ancestor. Expected bytes are
+			// derived from the oracle's algorithm: the inner element
+			// self-indents by inferDepth (`  <b>` at depth 1, its child at
+			// depth 2), the footnote applies its four-space continuation
+			// indent over that, and the outer element's flow indents the whole
+			// definition one more step.
+			const sandwiched = rootOf(
+				flowElement(
+					"a",
+					[],
+					[
+						FootnoteDefinition.make({
+							identifier: "x",
+							children: [flowElement("b", [], [paragraph(text("y"))])],
+						}),
+					],
+				),
+			);
+			assert.strictEqual(stringified(sandwiched), "<a>\n  [^x]:   <b>\n          y\n        </b>\n</a>\n");
+			// With no JSX ancestor the inner element sits at depth 0 and only
+			// the footnote's continuation indent applies.
+			const topLevel = rootOf(
+				FootnoteDefinition.make({
+					identifier: "x",
+					children: [flowElement("b", [], [paragraph(text("y"))])],
+				}),
+			);
+			assert.strictEqual(stringified(topLevel), "[^x]: <b>\n      y\n    </b>\n");
+		});
+
 		it("preserves child line terminators, leaving blank CRLF lines bare", () => {
 			// The oracle's indentLines splits on `\r\n`, `\n` and bare `\r`,
 			// keeps each terminator verbatim, and never indents a blank line —
@@ -413,6 +448,23 @@ describe("mdx nodes", () => {
 				children: [{ type: "mdxJsxFlowElement", name: "", attributes: [], children: [] }],
 			};
 			assert.isTrue(Result.isFailure(Mdast.fromMdastResult(emptyName)));
+		});
+
+		it("passes non-array attributes and children through so the decode fails typed", () => {
+			// Same contract discipline as `name`: `attributes` and `children`
+			// are exactly arrays, so any other value must reach the schema and
+			// fail the decode — never be coerced to `[]`, which would decode
+			// successfully while silently dropping input.
+			const objectAttributes = {
+				type: "root",
+				children: [{ type: "mdxJsxFlowElement", name: "x", attributes: {}, children: [] }],
+			};
+			assert.isTrue(Result.isFailure(Mdast.fromMdastResult(objectAttributes)));
+			const stringChildren = {
+				type: "root",
+				children: [{ type: "mdxJsxFlowElement", name: "x", attributes: [], children: "text" }],
+			};
+			assert.isTrue(Result.isFailure(Mdast.fromMdastResult(stringChildren)));
 		});
 
 		it("round-trips project-then-admit for a tree with every MDX node type", () => {

@@ -210,6 +210,54 @@ describe("JsoncFingerprint", () => {
 			assert.strictEqual(error.path, "/a~1b/x~0y");
 		});
 
+		it("fails typed when an object member getter throws, at the member's path", () => {
+			// A raw getter exception must not escape canonicalizeResult as a
+			// defect — the malformed-input-fails-typed policy covers the read.
+			const root: Record<string, unknown> = {};
+			Object.defineProperty(root, "boom", {
+				enumerable: true,
+				get() {
+					throw new Error("hostile getter");
+				},
+			});
+			const error = failure(root);
+			assert.strictEqual(error.code, "UnrepresentableValue");
+			assert.strictEqual(error.path, "/boom");
+			assert.include(error.detail, "getter");
+
+			const inner: Record<string, unknown> = {};
+			Object.defineProperty(inner, "b", {
+				enumerable: true,
+				get() {
+					throw new Error("hostile nested getter");
+				},
+			});
+			const nested = failure({ a: inner });
+			assert.strictEqual(nested.code, "UnrepresentableValue");
+			assert.strictEqual(nested.path, "/a/b");
+		});
+
+		it("fails typed when an array index getter throws, at the element's index", () => {
+			const items: Array<number> = [1, 2];
+			Object.defineProperty(items, 1, {
+				get() {
+					throw new Error("hostile index getter");
+				},
+			});
+			const error = failure(items);
+			assert.strictEqual(error.code, "UnrepresentableValue");
+			assert.strictEqual(error.path, "/1");
+			assert.include(error.detail, "getter");
+		});
+
+		it("still canonicalizes benign getters, matching JSON.stringify accessor semantics", () => {
+			const value: Record<string, unknown> = { a: 1 };
+			Object.defineProperty(value, "b", { enumerable: true, get: () => 2 });
+			const result = JsoncFingerprint.canonicalizeResult(value);
+			assert.isTrue(Result.isSuccess(result));
+			assert.strictEqual(Result.getOrThrow(result), '{"a":1,"b":2}');
+		});
+
 		it("fails typed on cyclic values via the depth cap", () => {
 			const cyclic: Record<string, unknown> = {};
 			cyclic.self = cyclic;

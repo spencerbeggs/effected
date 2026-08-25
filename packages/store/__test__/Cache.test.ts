@@ -507,7 +507,10 @@ describe("Cache", () => {
 			Effect.gen(function* () {
 				const filename = join(dir, "checkpointed.db");
 				let second: DatabaseSync | undefined;
-				yield* Effect.provide(
+				// The WAL is read before `second` closes — closing the last connection
+				// would itself checkpoint — and `ensuring` closes `second` on every
+				// exit path, including a failure inside the provided effect.
+				const walSize = yield* Effect.provide(
 					Effect.gen(function* () {
 						const cache = yield* Cache;
 						yield* cache.set({ key: "k", value: bytes("v") });
@@ -515,12 +518,11 @@ describe("Cache", () => {
 						second.prepare("SELECT count(*) AS n FROM cache_entries").get();
 					}),
 					Cache.layerSqlite({ filename, checkpointOnClose: true }),
+				).pipe(
+					Effect.flatMap(() => Effect.sync(() => statSync(`${filename}-wal`).size)),
+					Effect.ensuring(Effect.sync(() => second?.close())),
 				);
-				try {
-					assert.strictEqual(statSync(`${filename}-wal`).size, 0);
-				} finally {
-					second?.close();
-				}
+				assert.strictEqual(walSize, 0);
 			}),
 		);
 	});

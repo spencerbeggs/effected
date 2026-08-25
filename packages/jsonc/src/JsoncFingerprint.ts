@@ -25,7 +25,10 @@ import { MAX_NESTING_DEPTH } from "./internal/limits.js";
  *   the value. Unlike `Jsonc.stringify` (which follows `JSON.stringify`'s
  *   drop/null semantics for nested cases), canonicalization refuses to alter
  *   the document, so these fail typed at any position. Array holes read as
- *   `undefined` and fail here too, carrying the hole's index in `path`.
+ *   `undefined` and fail here too, carrying the hole's index in `path`. A
+ *   property getter that throws during the read also fails here, at the
+ *   member's path — a benign getter's value canonicalizes normally, matching
+ *   `JSON.stringify`'s accessor semantics.
  * - `BigIntValue` — a `bigint` (anywhere), which JSON cannot represent.
  * - `NonFiniteNumber` — `NaN`, `Infinity` or `-Infinity`, which RFC 8785
  *   forbids (`JSON.stringify` would silently rewrite them to `null`).
@@ -108,6 +111,28 @@ const escapePointerSegment = (segment: string): string => segment.replace(/~/g, 
 // (unescaped) keys — exactly what `<` on JS strings compares.
 const compareCodeUnits = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
+// Member and element reads go through this guard. An accessor property is
+// invoked, matching `JSON.stringify` semantics — a benign getter's value
+// canonicalizes normally — but a getter that throws must not escape as a raw
+// exception through the `canonicalizeResult` boundary: it fails typed at the
+// member's JSON-pointer path instead. The `try` wraps ONLY the property read,
+// never the recursive `emit` of the value it produced, so a
+// `CanonicalizeFailure` from deeper in the walk cannot be caught (and
+// re-labelled) here.
+const readProperty = (container: object, key: string | number, path: string): unknown => {
+	try {
+		return (container as Record<string | number, unknown>)[key];
+	} catch {
+		throw new CanonicalizeFailure(
+			JsoncCanonicalizeError.make({
+				code: "UnrepresentableValue",
+				path,
+				detail: "the property getter for this value threw; getters must return plain JSON values",
+			}),
+		);
+	}
+};
+
 const emit = (value: unknown, path: string, depth: number): string => {
 	if (value === null) {
 		return "null";
@@ -184,7 +209,8 @@ const emit = (value: unknown, path: string, depth: number): string => {
 		// policy as an explicit `undefined` member.
 		const items: Array<string> = [];
 		for (let index = 0; index < value.length; index++) {
-			items.push(emit(value[index], `${path}/${index}`, depth + 1));
+			const itemPath = `${path}/${index}`;
+			items.push(emit(readProperty(value, index, itemPath), itemPath, depth + 1));
 		}
 		return `[${items.join(",")}]`;
 	}
@@ -202,18 +228,19 @@ const emit = (value: unknown, path: string, depth: number): string => {
 	const keys = Object.keys(record).sort(compareCodeUnits);
 	return `{${keys
 		.map((key) => {
+			const memberPath = `${path}/${escapePointerSegment(key)}`;
 			// Member keys are strings too: an unpaired surrogate in a key is the
 			// same RFC 8785 I-JSON violation as one in a value.
 			if (!key.isWellFormed()) {
 				throw new CanonicalizeFailure(
 					JsoncCanonicalizeError.make({
 						code: "LoneSurrogate",
-						path: `${path}/${escapePointerSegment(key)}`,
+						path: memberPath,
 						detail: "object member key contains an unpaired surrogate; RFC 8785 requires well-formed Unicode",
 					}),
 				);
 			}
-			return `${JSON.stringify(key)}:${emit(record[key], `${path}/${escapePointerSegment(key)}`, depth + 1)}`;
+			return `${JSON.stringify(key)}:${emit(readProperty(record, key, memberPath), memberPath, depth + 1)}`;
 		})
 		.join(",")}}`;
 };
