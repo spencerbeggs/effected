@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - github-actions.md
@@ -31,7 +31,7 @@ It lives here rather than in `sbom` because it reads the runner's token-request 
 
 1. The token comes from the runner's **own token-service endpoint over TLS** — the transport is the trust boundary, and the process asking for the token is the process that received it.
 2. The claims populate a **provenance predicate**, not a trust decision. Nothing branches on them for authorization; they are recorded as attested facts about the workflow that ran.
-3. Verifying would require a **key-set fetch**, turning a pure decode into a network call — non-pure, untestable without a fixture server, and dependent on GitHub's key endpoint being reachable at attestation time.
+3. Verifying would require a **key-set fetch**, turning a pure decode into a network call — non-pure, untestable without a fixture server and dependent on GitHub's key endpoint being reachable at attestation time.
 
 If a consumer ever needs a *verified* token, that is a different operation with a different name and a different error channel, not an option on this one.
 

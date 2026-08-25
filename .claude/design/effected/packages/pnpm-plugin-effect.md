@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-21
-last-synced: 2026-08-21
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 90
 related:
   - ../architecture.md
@@ -18,7 +18,7 @@ related:
 
 ## Overview
 
-`@effected/pnpm-plugin-effect` is the kit's [companion](../effect-standards.md#companion-packages-published-but-not-a-library) package — published and installable, but not a library. It is a pnpm **config dependency** (installed with `pnpm add --config`, not as a normal dependency) that centralizes Effect-ecosystem versioning by publishing pnpm [catalogs](https://pnpm.io/catalogs). It is the single source of truth for what "the current Effect version" means: every `@effected/*` package references `catalog:effect` / `catalog:effect:peers`, and once published, so can any external workspace that installs it. Since 2026-08-21 it carries the kit's own version surface too, so one installed config dependency pins both halves of what a consumer builds against.
+`@effected/pnpm-plugin-effect` is the kit's [companion](../effect-standards.md#companion-packages-published-but-not-a-library) package — published and installable, but not a library. It is a pnpm **config dependency** (installed with `pnpm add --config`, not as a normal dependency) that centralizes Effect-ecosystem versioning by publishing pnpm [catalogs](https://pnpm.io/catalogs). It is the single source of truth for what "the current Effect version" means: every `@effected/*` package references `catalog:effect` / `catalog:effect:peers`, and so can any external workspace that installs it. It carries the kit's own version surface too, so one installed config dependency pins both halves of what a consumer builds against.
 
 The catalogs consumers pin against:
 
@@ -27,7 +27,7 @@ The catalogs consumers pin against:
 - **`effected`** — the kit's own packages, at the version each will next publish; see [the effected catalog](#the-effected-catalog-the-kits-own-version-surface).
 - **`effected:peers`** — the same set as the advertised peer range.
 
-These four are the whole set. The Effect v3 interop catalogs and the camelCase aliases are gone; see [the retired effect3 interop catalogs](#the-retired-effect3-interop-catalogs).
+These four are the whole set, and every name is colon-form; see [the retired effect3 interop catalogs](#the-retired-effect3-interop-catalogs) for the pair that must not come back.
 
 ## Classification: companion
 
@@ -65,20 +65,20 @@ Keeping the catalog current is automated; the machinery, and the release gate th
 
 ## The retired effect3 interop catalogs
 
-The plugin once shipped `effect3` / `effect3:peers` catalogs tracking the latest Effect v3 releases, so a package could be tested against both majors in one monorepo; they used an `interop` strategy that downleveled peers to the widest safe floor, and camelCase aliases (`effectPeers`, `effect3Peers`) shadowed the colon-form names for compatibility. All of it was removed on the `rc.109` advance: no consumer referenced the v3 catalogs or the aliases any longer, and the rolldown-pnpm-config `0.6.x` generator emits only colon-form catalog names. This retired them ahead of the plugin-`1.0.0` graduation originally planned to do it. Do not reintroduce them — with no Effect v3 anywhere in the workspace lockfile, an interop catalog would be dead configuration.
+There is **no Effect v3 catalog and no camelCase catalog alias**, and neither may be reintroduced. `effect3` / `effect3:peers` once tracked the v3 line so a package could be tested against both majors, and `effectPeers` / `effect3Peers` shadowed the colon-form names; nothing in the workspace carries Effect v3 any longer, so an interop catalog would be dead configuration, and the generator emits colon-form names only.
 
 ## The generated allowed-versions table
 
 Every catalog advance strands previously-published artifacts: under `lock`, a registry package peers on the exact version it was built against, so the moment the workspace installs the next pin that peer goes unmet and `pnpm peers check` gains a warning. The structural fix is a `peerDependencyRules.allowedVersions` table in the root `pnpm-workspace.yaml` declaring the lock catalog's current pin an acceptable resolution — retiring the warning class rather than documenting each occupant.
 
-**The table is derived, never hand-written.** `PnpmConfigPlugin`'s `peerDependencyRules.allowedVersionsFromCatalogs` option names the source catalog and the peer each rule targets; `rolldown-pnpm-config export` emits one rule per lock-catalog package into the workspace file. Earlier iterations of this mechanism were a hand-authored table and then a standalone generator script with sentinel comments and a drift tripwire; both are gone, and neither should be reintroduced — the declarative option is the supported form.
+**The table is derived, never hand-written.** `PnpmConfigPlugin`'s `peerDependencyRules.allowedVersionsFromCatalogs` option names the source catalog and the peer each rule targets; `rolldown-pnpm-config export` emits one rule per lock-catalog package into the workspace file. The declarative option is the supported form: neither a hand-authored table nor a standalone generator script with sentinel comments belongs here, and both have been tried.
 
 Two properties are load-bearing:
 
-- **Rules are version-qualified parent selectors** (`"<satellite>@<its pin>>effect"`), never blanket and never name-only. pnpm applies a qualified rule only when the actual parent instance's version satisfies the qualifier, so any other instance of the same satellite name — a toolchain-carried older prerelease, or historically the v3 line through the retired interop catalog — still warns on a genuinely unmet peer.
+- **Rules are version-qualified parent selectors** (`"<satellite>@<its pin>>effect"`), never blanket and never name-only. pnpm applies a qualified rule only when the actual parent instance's version satisfies the qualifier, so any other instance of the same satellite name — a toolchain-carried older prerelease, say — still warns on a genuinely unmet peer.
 - **The scope is effect's own satellites, not the kit's `@effected/*` members.** The kit controls its own artifacts and the republish cycle repairs their stranding properly; covering them would mask a real defect.
 
-The table suppresses reporting only — it does not change resolution, so `autoInstallPeers` may still materialize an older `effect` instance for a stranded artifact's subgraph. That was accepted until the `rc.109` advance proved a second copy is not always inert: the toolchain's subgraph mixed two `effect` copies into one Schema decode pipeline and crashed every build, and the temporary overrides bridge in `pnpm-workspace.yaml` now collapses those trees to one copy ([architecture.md](../architecture.md#the-temporary-overrides-bridge)). What the table buys is the stronger invariant the dependency discipline states: any peer warning outside the toolchain graph is a genuine closure defect to fix upstream, not something to tolerate.
+The table suppresses reporting only — it does not change resolution, so `autoInstallPeers` may still materialize an older `effect` instance for a stranded artifact's subgraph. **A second copy is not always inert**: a lagging toolchain has mixed two `effect` copies into one Schema decode pipeline and crashed every build. The workspace and the toolchain currently resolve to a single `effect`, and keeping it that way — including the temporary, spec-scoped `overrides` remedy for a lagging tool — is [architecture.md](../architecture.md#dependency-resolution)'s invariant to state, not this package's to solve. What the table buys is the stronger invariant the dependency discipline states: any peer warning outside the toolchain graph is a genuine closure defect to fix upstream, not something to tolerate.
 
 ## Maintainer workflows
 
@@ -90,7 +90,7 @@ Three root scripts drive catalog maintenance. They regenerate the plugin's defin
 
 Advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`, and the submodule is re-pinned in the same commit ([architecture.md](../architecture.md#re-pinning-when-the-effect-catalog-bumps)).
 
-The two `catalog:` scripts are a different class and are **not** in the user-run-only set: `pnpm catalog:sync` and `pnpm catalog:check` touch only `savvy.build.ts` and one fixed-name changeset, never the lockfile or `pnpm-workspace.yaml`, and CI runs the first of them on every push to `main` ([catalog-sync.md](../catalog-sync.md)).
+The two `catalog:` scripts are a different class and are **not** in the user-run-only set: `pnpm catalog:sync` and `pnpm catalog:check` touch only `savvy.build.ts` and one fixed-name changeset, never the lockfile or `pnpm-workspace.yaml`, and CI runs them on every pull request to `main` and to `changeset-release/main` ([catalog-sync.md](../catalog-sync.md)).
 
 ## Consumer usage
 
@@ -105,4 +105,4 @@ The install steps and the two patterns are the package [README](../../../../pack
 
 These catalogs are the mechanism behind the [peer-dependency discipline](../effect-standards.md#peer-dependency-discipline) in the standards. Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key, `autoInstallPeers: true` — no `dedupePeerDependents`, no `dedupeDirectDeps`, no `.npmrc`. Do not reintroduce any of them. The v3/v4 peer-resolution bug that once required pnpm-resolver workarounds is fixed upstream.
 
-**The direct `effect` (`catalog:effect`) devDependency here is load-bearing — do not remove it as unused** (347ca229). With no `effect` of its own, this package let pnpm bind the bundler's `@effected/*` peers to the v3 `effect` that `rolldown-pnpm-config` carried at the time, loading v4 code against v3 at build time. The hazard class outlives that v3 instance — the toolchain still carries its own older `effect` for the resolver to reach for — so the devDependency stays: it exists purely to give the resolver the right version to bind, and the companion still ships no `effect`-importing code.
+**The direct `effect` (`catalog:effect`) devDependency here is load-bearing — do not remove it as unused.** With no `effect` of its own, this package let pnpm bind the bundler's `@effected/*` peers to whatever older `effect` the toolchain carried, loading v4 code against it at build time. The hazard class outlives any one such instance — the toolchain still carries its own older `effect` for the resolver to reach for — so the devDependency stays: it exists purely to give the resolver the right version to bind, and the companion still ships no `effect`-importing code.

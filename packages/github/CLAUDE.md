@@ -25,8 +25,6 @@ first. The depth lives in five children, each loaded on demand:
 - `@./CLAUDE.testing.md` — Load when: writing or debugging a test. Holds the
   harness traps and the fixture client's contract.
 
-Program frame: `.claude/plans/2026-07-25-github-split-master.md` (Phase 2).
-
 ## Tier and dependencies
 
 **Integrated** — it owns the octokit runtime so nothing downstream has to.

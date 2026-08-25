@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-21
-updated: 2026-08-23
-last-synced: 2026-08-23
-completeness: 85
+updated: 2026-08-25
+last-synced: 2026-08-25
+completeness: 90
 related:
   - architecture.md
   - releases.md
@@ -17,16 +17,15 @@ related:
 
 ## Overview
 
-The kit publishes its own version surface — the `effected` / `effected:peers` catalogs described in [pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#the-effected-catalog-the-kits-own-version-surface) — and this is the machinery that keeps that surface current without a human remembering to. A pull request to `main` — or to `changeset-release/main`, which is what makes the sync a release gate rather than only hygiene — resolves every catalogued package's **next release** version from the workspace, rewrites the catalog literal, writes one changeset and commits to `main`. The Effect catalogs are not in scope: those advance through the user-run `pnpm:up` / `pnpm:export` flow, which the automation never touches.
-
-This design came out of a cross-repo programme with `savvy-web/systems` and `spencerbeggs/rolldown-pnpm-config`. The originating spec lived under `docs/superpowers/`, which is gitignored here, so this document — not that spec — is the durable record.
+The kit publishes its own version surface — the `effected` / `effected:peers` catalogs described in [pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md#the-effected-catalog-the-kits-own-version-surface) — and this is the machinery that keeps that surface current without a human remembering to. A pull request to `main` — or to `changeset-release/main`, which is what puts the sync in the release path rather than only in hygiene — resolves every catalogued package's **next release** version from the workspace, rewrites the catalog literal, writes one changeset and commits to `main`. The Effect catalogs are not in scope: those advance through the user-run `pnpm:up` / `pnpm:export` flow, which the automation never touches.
 
 ## The pieces
 
 - `lib/scripts/catalog-sync.ts` — the `catalog:sync` and `catalog:check` entry points, wired as root `package.json` scripts and covered by `__test__/catalog-sync.test.ts`.
-- `.github/workflows/catalog-sync.yml` — the push-to-`main` job, modeled on `update-runtime-defaults.yml`.
+- `.github/workflows/catalog-sync.yml` — the job itself: triggered by pull requests, it reads and repairs the catalog on `main` and reports a `Catalog Sync` check run.
 - `packages/pnpm-plugin-effect/turbo.json` — the build-input override that makes turbo see the version sources the plugin's build actually reads.
 - `packages/pnpm-plugin-effect/savvy.build.ts` — the catalog literal the CLI rewrites; `packages/pnpm-plugin-effect/__test__/catalog.test.ts` pins its membership.
+- `.github/workflows/release.yml` — carries `catalog:check` as the release's [`on-build` gate](#the-release-gate).
 
 ## The CLI is the only writer
 
@@ -36,11 +35,11 @@ This design came out of a cross-repo programme with `savvy-web/systems` and `spe
 
 `catalog:sync` runs the CLI with `--json`. That document is used for **reporting** which entries moved. Whether the catalog moved at all is decided by diffing `savvy.build.ts` around the invocation, because the file is the artifact that matters and a diff of it cannot disagree with itself. The split is deliberate: a change in the CLI's JSON shape degrades the log line rather than the verdict.
 
-`catalog:check` deliberately stays on the CLI's **text** output. It is the release gate, and its stdout becomes the message a human reads on a red check — that should be the drift list, not a JSON blob.
+`catalog:check` deliberately stays on the CLI's **text** output. It is the gate, and its stdout is what a human reads in the run log behind a red check — that should be the drift list, not a JSON blob. Nothing parses it: the [release gate](#the-release-gate) keys on the exit code alone.
 
 ## Catalog entries hold next-release versions
 
-The catalog resolves what each package's **next published version will be**, not what is on the registry now, so a pending changeset moves an entry with no manifest edit anywhere — an unreleased `patch` for `@effected/workspaces` moved it from `^0.17.0` to `^0.17.1` on its own. Two consequences:
+The catalog resolves what each package's **next published version will be**, not what is on the registry now, so a pending `patch` changeset moves that package's entry up a patch with no manifest edit anywhere. Two consequences:
 
 - `.changeset/**` is a real version source. The plugin's `turbo.json` restates the root `inputs` list plus `$TURBO_ROOT$/packages/*/package.json` and `$TURBO_ROOT$/.changeset/**` on **both** `build:dev` and `build:prod`, because the plugin's build reads versions from outside its own directory and turbo's defaults do not describe that.
 - The `lock-minor` strategy floors peer patches, so a first sync normalizes a peer like `^0.11.1` down to `^0.11.0`. **That diff is correct, not drift** — do not "repair" it back.
@@ -59,41 +58,40 @@ The correct order is therefore **changesets → `catalog:sync` → release**. St
 | the published plugin's catalog names them | TRUE |
 | the consumer's tree resolves them | **FALSE** |
 
-Both green checks are observations of the *artifact*; only the third is about the tree that actually installs. A downstream hit exactly this on 2026-08-23: it removed its `file:` overrides after a verified-correct release, reinstalled, and resolved straight back to the previous versions with none of the new API — because its `configDependencies` pin still named the previous plugin build. The fix is to bump that pin (version **and** integrity) and reinstall.
+Both green checks are observations of the *artifact*; only the third is about the tree that actually installs. A downstream that drops its local `file:` overrides after a verified-correct release can reinstall straight back onto the previous versions, with none of the new API, because its `configDependencies` pin still names the previous plugin build. The fix is to bump that pin — version **and** integrity — and reinstall.
 
 Two consequences worth holding. **A release mail cannot warn about this**, because the stale object lives in the consumer's repository, not in anything the upstream publishes or can see. And **the terminal verification is the resolved tree**, not the registry — `require('./node_modules/@effected/<pkg>/package.json').version` after installing, or grepping an adopted symbol out of the installed `.d.ts`. Treating "the published catalog names `^X`" as the last check is one step short.
 
 **CI enforces that ordering — do not re-derive it as a manual step.** The workflow triggers on PRs to `main` *and to `changeset-release/main`*, so opening the release PR is itself the trigger: the job syncs, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before anything publishes. The catalog cannot publish out of step with the packages it names.
 
-That guarantee is easy to miss, and missing it is expensive in the other direction: a maintainer who believes the sync is theirs to remember will offer a downstream a promise CI already keeps better, and will treat a release as blocked on a command nobody needs to run. Both happened on the wave that produced this section. Two properties of the job make it look manual when it is not — it checks out `ref: main` and commits to `main` rather than to the PR head, so a feature branch's pending changesets reach the catalog only once merged and its PR shows no catalog diff; and its check run reports **failure** when it found drift and repaired it, which reads as a broken sync rather than a working one.
+That guarantee is easy to miss, and missing it is expensive in the other direction: a maintainer who believes the sync is theirs to remember will offer a downstream a promise CI already keeps better, and will treat a release as blocked on a command nobody needs to run. Two properties of the job make it look manual when it is not — it checks out `ref: main` and commits to `main` rather than to the PR head, so a feature branch's pending changesets reach the catalog only once merged and its PR shows no catalog diff; and its check run reports **failure** when it found drift and repaired it, which reads as a broken sync rather than a working one.
 
 ## Workflow mechanics worth not re-deriving
 
 - **Change detection is `git status --porcelain`, never `git diff --quiet`.** `catalog:sync` writes both the rewrite and `.changeset/catalog-sync.md`, and that changeset is untracked on a first run. `git diff` cannot see an untracked file, so it would report no change on exactly the run that had one to propose — a green check that did nothing, which is the failure class this design exists to eliminate.
-- **The commit is made through `createCommitOnBranch`**, not `git commit` plus `git push`, so GitHub signs it and the bot's commits land verified. The mutation cannot force-push, so the job resets the branch pointer to the base tip first; moving a ref creates no commit, so nothing unsigned enters history.
+- **The commit is made through `createCommitOnBranch`**, not `git commit` plus `git push`, so GitHub signs it and the bot's commits land verified. It goes straight onto `main`, guarded by `expectedHeadOid` so a concurrent push makes the mutation fail cleanly instead of clobbering. A manual `workflow_dispatch` with `open-pr` takes the branch-plus-auto-merging-PR route instead; because the mutation cannot force-push, that path resets the branch pointer to the base tip first, and moving a ref creates no commit, so nothing unsigned enters history.
 - **The changeset has a fixed name.** Repeated runs overwrite one file rather than accumulating a pile of identical patch bumps.
 - **Biome runs scoped to the rewritten file only**, so an unfixable lint diagnostic elsewhere in the repo cannot abort the job.
 - **The verification run disables coverage.** This repo's vitest config enforces global thresholds a single-package subset run cannot meet, and the job would abort on them rather than on a real failure.
 
 ## The reported check run
 
-The job's outcome is published as a **`Catalog Sync` check run**, written once, in a single `if: always()` step that already holds the conclusion. Three decisions there are load-bearing.
+The job's outcome is published as a **`Catalog Sync` check run**, written once, in a single `if: always()` step that already holds the conclusion. Every decision in that step is load-bearing.
 
-- **One write, never create-early-then-complete-late.** A run opened as `in_progress` and closed by a later step stays `in_progress` **forever** whenever the job is cancelled or dies before reaching that step — and a hung check is indistinguishable from a slow one, with nothing timing it out. This repo has a live example of the shape sitting stuck. A run that is only ever written once cannot hang.
+- **One write, never create-early-then-complete-late.** A run opened as `in_progress` and closed by a later step stays `in_progress` **forever** whenever the job is cancelled or dies before reaching that step — and a hung check is indistinguishable from a slow one, with nothing timing it out. A run that is only ever written once cannot hang.
 - **The head SHA, never `github.sha`.** On a `pull_request` event `github.sha` is the ephemeral merge commit; a check run posted there does not appear in the PR's own status list and no branch-protection rule keyed on the check can see it, so the gate silently never applies. The step uses `github.event.pull_request.head.sha` and falls back to `github.sha` for `workflow_dispatch`. This is the same merge-ref blindness that makes head-scoped check *queries* lie.
 - **The conclusion is `catalog:check`'s exit code, and that step runs BEFORE the sync.** This is the fix for the defect that prompted the work: the job ran only `catalog:sync`, which repairs drift and then exits 0, so it reported success on a branch whose catalog was wrong. A check run placed after the mutation is worthless for the same reason — by then the catalog is in sync by construction. The gate is the read-only `catalog:check`, run first, with `continue-on-error: true` so its exit code survives as a signal while the remediation below still runs.
 - **Read `steps.catalog-check.outcome`, never `.conclusion`.** `continue-on-error` rewrites `conclusion` to `success`; `outcome` is the step's real result. Reading the wrong one reports green on exactly the drift runs the gate exists to catch.
 - **A repaired catalog still reports `failure`.** The check answers "was the catalog correct at this ref", not "did the automation cope". A run that silently fixes drift teaches nobody that the drift happened, and the summary says the repair landed and names the commit, so the failure is informative rather than obstructive. It goes green on a re-run once the sync commit is in the branch.
 - **`catalog:check` reporting drift while `catalog:sync` rewrites nothing is its own failure**, distinctly worded: the two halves disagree, so one is broken, and neither answer may be treated as a clean catalog.
+- **The run link lives in the summary, not `details_url`.** GitHub silently ignores `details_url` on a check run created with the Actions `GITHUB_TOKEN` and substitutes the check run's own URL, so passing it yields a check with no route back to the log explaining it. Verified on a live run rather than taken from the docs.
 
-The step also exits non-zero on a failing conclusion, so the outcome is visible whether a consumer keys on the reported check run or on the job's own status. Writing the run needs `checks: write`, taken on `GITHUB_TOKEN` rather than the App token so the App's grants do not have to change.
-
-- **The run link lives in the summary, not `details_url`.** GitHub silently ignores `details_url` on a check run created with the Actions `GITHUB_TOKEN` and substitutes the check run's own URL, so passing it yielded a check with no route back to the log explaining it. Verified on a live run rather than taken from the docs.
+The step also exits non-zero on a failing conclusion, so the outcome is visible whether a consumer keys on the reported check run or on the job's own status. Writing the run needs `checks: write`, taken on `GITHUB_TOKEN` rather than the App token so the App's grants do not have to change. The commit URL reaches it as a **step output** (`steps.commit.outputs.commit-url`) rather than only as stdout, because the conclusion depends on whether a commit actually happened and stdout is not readable from a later step.
 
 **Fork PRs skip the job rather than failing it.** A `pull_request` from a fork gets no secrets, so the App-token step cannot mint a token and the job dies at step 1 with an opaque credential error, having never looked at the catalog. Skipping is also the safer semantic: the remediation path commits straight to `main`, which a fork PR must never be able to reach for. This is the only workflow in the repo that runs on `pull_request` **and** depends on `secrets`, which is why the guard is local rather than shared.
 
-The commit URL reaches that step as a **step output** (`steps.commit.outputs.commit-url`) rather than only as stdout — the conclusion depends on whether a commit actually happened, and stdout is not readable from a later step.
+## The release gate
 
-## Not wired: the release gate
+`catalog:check` is also wired as a release gate: `.github/workflows/release.yml` passes `on-build: pnpm catalog:check` to the reusable org workflow, so a drifted catalog fails the release's validation phase. The contract there is **exit-code only** — the gate's non-zero exit is the whole signal and stderr is not inspected — which is why `catalog:check` may keep its human-readable text output without the gate trying to parse it.
 
-`catalog:check` exists and is tested, but **nothing runs it on release yet**. The intended wiring is an `on-build: pnpm catalog:check` input to the reusable release workflow, and effected calls `spencerbeggs/.github/.github/workflows/release.yml@main`, which has no `on-build` passthrough. The input has to be added in the two org workflow files first: adding it to this repo's `with:` block ahead of that fails workflow validation on **every** release run, not just the one that would have used it. Until then, drift is caught by the push-to-`main` sync rather than blocked at the gate.
+Two independent defences therefore cover the same drift: this gate blocks a release that would publish a stale catalog, and the pull-request sync above repairs `main` before the release PR gets there. Neither makes the other redundant — the gate cannot fix anything, and the sync does not block anything.

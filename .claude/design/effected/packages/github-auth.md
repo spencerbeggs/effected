@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - github.md
@@ -32,11 +32,11 @@ The alternative spellings each cost something: a suffixed name on the client cla
 
 ## The token lifecycle
 
-The service mints an installation token, mints one **scoped** to a `Scope` with best-effort revocation on close, revokes explicitly, enriches with the App's identity, and lists installations. The token itself is a schema class with a **JSON-encodable encoded form** — the redacted value encodes to the raw string and the expiry to an ISO string — which is precisely what lets [`@effected/github-actions`](github-actions-runtime.md#the-app-token-bridge) persist it across a phase boundary.
+The service mints an installation token, mints one **scoped** to a `Scope` with best-effort revocation on close, revokes explicitly, enriches with the App's identity and lists installations. The token itself is a schema class with a **JSON-encodable encoded form** — the redacted value encodes to the raw string and the expiry to an ISO string — which is precisely what lets [`@effected/github-actions`](github-actions-runtime.md#the-app-token-bridge) persist it across a phase boundary.
 
 Five deliberate shapes:
 
-- **Expiry is enforced, not merely persisted.** A predecessor stored the expiry and read it nowhere, so a long-running phase outliving the roughly one-hour token simply started failing with an unauthorized status and no explanation. Here the token can answer whether it is expired, the App client layer re-mints inside a small skew window, and an unauthorized response on a minted token retries **once** after a forced re-mint. This is the one place the client's retry policy is not sufficient, because the fix is not "wait" but "get a new token".
+- **Expiry is enforced, not merely persisted.** A predecessor stored the expiry and read it nowhere, so a long-running phase outliving the roughly one-hour token simply started failing with an unauthorized status and no explanation. Here the token can answer whether it is expired, the App client layer re-mints inside a small skew window and an unauthorized response on a minted token retries **once** after a forced re-mint. This is the one place the client's retry policy is not sufficient, because the fix is not "wait" but "get a new token".
 - **Bot identity moves off the service shape.** It was a synchronous member on a service, which forces every mock to a full implementation. It becomes a **pure class** with statics — one for an App's identity, one for the well-known Actions bot — plus an instance projection off the token. It is **not** wrapped in `Effect.succeed`; that is the named anti-pattern.
 - **Installation discovery is environment-free and not hand-paged.** A predecessor matched installations against a repository slug read from the environment — env-coupled auth inside the auth layer. Here it matches against [the repo coordinate](github.md#the-repo-coordinate) when one is provided, or an explicit owner, and it walks the installations endpoint through the client's real paginator instead of a link-header regex.
 - **Identity keeps its documented quirk.** The bot-user lookup rejects an App JWT, so it bears the installation token when one is supplied and otherwise runs unauthenticated at GitHub's anonymous rate limit. That is GitHub's behaviour, not a defect; it stays, documented, with the unauthenticated path surfacing as an identity-kind failure rather than a silent degrade.

@@ -3,8 +3,8 @@ status: archived
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 100
 related:
   - README.md
@@ -38,4 +38,4 @@ The audit's conclusions were absorbed into the owning packages' design docs, in 
 
 For what these applications prove a **new** action should look like, [github-action-canon.md](../github-action-canon.md) supersedes this document outright: it was derived construct by construct from three actions' shipped source, which is stronger evidence than rewrites that had never been compiled.
 
-This file remains only so existing cross-references resolve, and can be removed once they are repointed.
+Nothing in the repository links here any more. The file is kept as the record that the gate ran and what bar it was scored against — not because anything depends on it.

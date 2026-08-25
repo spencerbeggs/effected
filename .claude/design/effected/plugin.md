@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 90
 related:
   - architecture.md
@@ -12,6 +12,7 @@ related:
   - migration-playbook.md
   - releases.md
   - github-action-canon.md
+  - packages/app.md
 ---
 
 # The "effected" Claude Code plugin
@@ -20,7 +21,7 @@ related:
 
 `plugin/` houses the "effected" Claude Code plugin for Effect v4 development: a catalog of skills, four specialist subagents and a SessionStart briefing hook, dogfooded during package work (see [migration-playbook.md](migration-playbook.md)). It is [repo infrastructure, not an `@effected` library](architecture.md), and during dogfooding it is loaded via `claude --plugin-dir plugin` (the root `package.json` `claude` script).
 
-The plugin's ethos is **"verify against the installed beta, not v3 memory"**: every skill is authored from claims probed against the `effect` beta the catalog pins. Its corpus is the Effect team's migration notes, the [official skill guides](https://github.com/Effect-TS/skills) and the shipped kit itself. Lessons from kit work feed back in through the [`improve` skill](#the-improve-skill), which is the mechanism that closes the loop.
+The plugin's ethos is **"verify against the installed prerelease, not v3 memory"**: every skill is authored from claims probed against the `effect` prerelease the catalog pins. Its corpus is the Effect team's migration notes, the [official skill guides](https://github.com/Effect-TS/skills) and the shipped kit itself. Lessons from kit work feed back in through the [`improve` skill](#the-improve-skill), which is the mechanism that closes the loop.
 
 ## Skill catalog
 
@@ -62,7 +63,7 @@ The shape is a load-cost decision: a skill's body is paid on every trigger while
 
 **The voice is timeless and consumer-facing.** Skills name packages as `@effected/<name>` and carry no repo-relative paths, run ids, issue numbers or dates; where a count is load-bearing it is stated as the grep that produces it rather than a number that silently ages. The reader is in a *consumer* repository, and history that reader cannot act on is cost without payoff. One file is a sanctioned exception, because it is about a codebase being ported and therefore has to discuss one: `designing-an-action`'s porting reference. The complementary half of this rule is [the canon doc](github-action-canon.md), which exists as the register for the incidents, dates and issue numbers the skills exclude.
 
-**Citations into the Effect source are the other sanctioned exception**, and they are load-bearing rather than tolerated: a `Module.ts:line` anchor is what lets a reader settle a v4 claim at rung 2 instead of trusting the skill. They are written module-relative, so they resolve against a consumer's `node_modules/effect/src` as well as the vendored tree. The cost is that an anchor is a *pinned* fact — a beta advance drifts them wholesale, and a drifted anchor points confidently at the wrong declaration. Re-verifying them therefore belongs with the catalog bump and the submodule re-pin ([architecture.md](architecture.md#re-pinning-when-the-effect-catalog-bumps)), not on a schedule of its own. The same rider covers the claims those anchors support: a beta advance is when an API the skills teach quietly stops existing.
+**Citations into the Effect source are the other sanctioned exception**, and they are load-bearing rather than tolerated: a `Module.ts:line` anchor is what lets a reader settle a v4 claim at rung 2 instead of trusting the skill. They are written module-relative, so they resolve against a consumer's `node_modules/effect/src` as well as the vendored tree. The cost is that an anchor is a *pinned* fact — a catalog advance drifts them wholesale, and a drifted anchor points confidently at the wrong declaration. Re-verifying them therefore belongs with the catalog bump and the submodule re-pin ([architecture.md](architecture.md#re-pinning-when-the-effect-catalog-bumps)), not on a schedule of its own. The same rider covers the claims those anchors support: a catalog advance is when an API the skills teach quietly stops existing.
 
 **The frontmatter contract** splits triggering from cataloguing: a trigger-first `description` leading with the strongest use case and carrying no construct-listing prose, plus a separate `when_to_use` catalog of trigger phrases. The two together stay under Claude Code's listing cap.
 
@@ -112,7 +113,7 @@ The rungs are ordered by cost, and each answers a strictly different class of qu
 
 **One document sits between rungs 1 and 2, and the skill names it rung 1.5.** The vendored tree ships `packages/effect/SCHEMA.md` *at the pin* — upstream Schema documentation versioned with the source rather than floating like a website, so unlike the migration notes it describes the surface actually installed. That makes it a cheap, version-exact diff oracle: when it disagrees with a skill, the skill is usually what is wrong. It is still a document and it does not outrank a declaration — a re-verification pass found it right in most of its disagreements and wrong in a handful of its own. Reach for it early, treat a disagreement as a strong signal worth chasing, then settle the answer in `src`. Like rung 1 it is vendored-only: the npm package ships `src` and `ai-docs`, but neither `SCHEMA.md` nor `migration/`.
 
-Rung 2 has two roots that can drift, so the skill names a tiebreak: **the installed source wins.** `node_modules` is what the code links against; the vendored tree is what someone pinned last, and it remains the only home of rung 1. Because the Effect catalogs pin exact betas and a re-pin is folded into the catalog-bump commit ([architecture.md](architecture.md#re-pinning-when-the-effect-catalog-bumps)), the two agree by construction — but the tiebreak stays, because it costs nothing and catches the next divergence.
+Rung 2 has two roots that can drift, so the skill names a tiebreak: **the installed source wins.** `node_modules` is what the code links against; the vendored tree is what someone pinned last, and it remains the only home of rung 1. Because the Effect catalogs pin exact prereleases and a re-pin is folded into the catalog-bump commit ([architecture.md](architecture.md#re-pinning-when-the-effect-catalog-bumps)), the two agree by construction — but the tiebreak stays, because it costs nothing and catches the next divergence.
 
 The docs are prescriptive rather than exhaustive, which is why rung 1 cannot be the last rung: the services migration note covers `Context.Tag` → `Context.Service` and never mentions `Context.Key`, yet `Context.Key` is the primitive some ports need. Nothing short of source settles a removal; nothing short of a probe settles behaviour.
 

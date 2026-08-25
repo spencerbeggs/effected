@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-28
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -144,7 +144,7 @@ This is the ajv decision one layer up: there the copied boilerplate was the engi
 
 Three design calls:
 
-- **A plain function, not a `Context.Service`.** Its requirements compose through `R` for free; a service would add a layer to wire for no capability the consumer lacks — precisely the ceremony the ajv decision removed.
+- **Plain statics, not a `Context.Service`.** Their requirements compose through `R` for free; a service would add a layer to wire for no capability the consumer lacks — precisely the ceremony the ajv decision removed.
 - **Gating is policy and must be overridable.** The default treats warnings as blocking, which is right, but a hardcoded policy sends anyone who disagrees back to hand-rolling the whole loop to change one comparison, which defeats the point of shipping it.
 - **Findings are values, never logs**, consistent with the lint's convention. This deliberately does **not** solve log-wording divergence — log wording is repo policy. What it solves is the gating divergence, which is the part that silently changes what ships.
 

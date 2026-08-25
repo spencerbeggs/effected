@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -31,7 +31,7 @@ The line against [`@effected/github`](github.md) is sharp and worth stating firs
 The package covers four subsystems, each with its own doc:
 
 - **[The runner runtime](github-actions-runtime.md)** — environment, inputs, outputs, state across the phase boundary, the workflow-command protocol, logging, the dry-run guard, the secret declassification seam, the App-token bridge and detached-process lifecycle. This is what `Action.run` composes.
-- **[Storage and provisioning](github-actions-storage.md)** — the Actions cache and artifact protocols, the blob store and its envelope, cache-key derivation, and tool and package-manager installation. Everything Azure-touching lives here.
+- **[Storage and provisioning](github-actions-storage.md)** — the Actions cache and artifact protocols, the blob store and its envelope, cache-key derivation and the tool and package-manager installers. Everything Azure-touching lives here.
 - **[The reporting suite](github-actions-reporting.md)** — check state, the managed document, the GitHub-flavored markdown writer and the check-run reconciler: the living-document surfaces an action reports progress into.
 - **[The attestation seam](github-actions-attestation.md)** — OIDC tokens, and the two adapters that close [`@effected/sbom`](sbom.md)'s inverted contracts without sbom ever depending on the Actions runtime.
 
@@ -41,7 +41,7 @@ The package covers four subsystems, each with its own doc:
 
 Two consequences are licences the rest of the kit does not have:
 
-- **A direct `node:` import is sanctioned here.** The [require-in-R default](../effect-standards.md#the-consolidated-core-and-the-require-in-r-default) calls one a code smell *most of the time*; the documented exception is a Node-only overlay, and this package is one. It is used for what core cannot do: SHA-256 and HMAC, signalling a bare pid, the fd-level detached spawn, and the compression and stream codecs in the cache and artifact paths.
+- **A direct `node:` import is sanctioned here.** The [require-in-R default](../effect-standards.md#the-consolidated-core-and-the-require-in-r-default) calls one a code smell *most of the time*; the documented exception is a Node-only overlay, and this package is one. It is used for what core cannot do: SHA-256 and HMAC, signalling a bare pid, the fd-level detached spawn and the compression and stream codecs in the cache and artifact paths.
 - **The platform layer may be composed here**, rather than left to the consumer. That is the point of `Action.run`.
 
 **Core `Crypto` covers digests but not HMAC** — it exposes random primitives, UUIDs and SHA digests, and no HMAC, signing or key derivation. So file hashing, the S3 request signer and cache-key derivation all use `node:crypto`, and **no AWS SDK dependency is needed for request signing**. Recorded because "put it on core `Crypto`" is the obvious wrong guess.
@@ -56,23 +56,23 @@ The requirement is structural: **a consumer that imports only an outputs accesso
 
 - **Azure is imported by the three protocol modules that need it, and nowhere else** — the cache, the artifact store and the GitHub-cache blob backend. The Actions cache's own protocol hands back an Azure blob URL for the payload, which is why it is three modules rather than the two an outside reading suggests. **No shared helper in `internal/` may import it**, because an internal helper is exactly how a heavy import leaks into a light module's graph.
 - **The three are separate named exports, never gathered into a namespace object.** The [codec hazard](../effect-standards.md#no-barrel-re-exports) applies verbatim: a `Stores` object would make every one of them reachable from any of them.
-- **`@effected/markdown` is confined the same way**: the markdown writer is the only module allowed to import the engine, and every other reporting module composes *strings*. `@effected/npm` joined the confined set on the same terms — the package-manager installer is its only importer, it is not reachable from the composed runtime layer, and taking it costs the consumer one explicit layer line.
+- **`@effected/markdown` is confined the same way**: the markdown writer is the only module allowed to import the engine, and every other reporting module composes *strings*. `@effected/npm` joined the confined set on the same terms — the package-manager installer is its only importer, it is not reachable from the composed runtime layer and taking it costs the consumer one explicit layer line.
 - **`@effected/templates` and `@effected/sbom` are deliberately not confined.** Both are small, pure-or-contract-shaped kit packages whose presence in an import graph costs nothing worth measuring, and pretending otherwise would make the reachability suite a ritual rather than a defense.
 
 **Checked, not promised — and precise about which graph.** `__test__/reachability.test.ts` walks the **runtime import graph of `src`** statically (type-only imports skipped, because they are erased), asserting that no module outside the permitted set reaches the heavy dependency **and** that the permitted modules do reach it. Without the second assertion the first can pass for the wrong reason — which is not hypothetical here, since an earlier walker stripped block comments before line comments and reported a module importing Azure as importing nothing at all. It fails **silently in the safe direction**, which for a confinement test is the worst direction there is.
 
 **What that test does not prove, stated so nobody reads it as more than it is:**
 
-- **It constrains the import graph, not the resolver graph.** Every heavy edge here — the Azure client, `@effected/markdown`, `@effected/npm`, and through `@effected/sbom` the Sigstore stack — is a **declared dependency of this package**, so it is installed for every consumer and a bundler's resolver still walks it. Import-graph confinement is not resolver-graph absence, and only a consumer that actually bundles finds the difference. **The [seam adapters](github-actions-attestation.md) are the sharpest case**: they are two small modules, and taking that edge for them puts `@effected/sbom`'s runtime dependencies in the install graph of every action that never signs anything.
+- **It constrains the import graph, not the resolver graph.** Every heavy edge here — the Azure client, `@effected/markdown`, `@effected/npm` and through `@effected/sbom` the Sigstore stack — is a **declared dependency of this package**, so it is installed for every consumer and a bundler's resolver still walks it. Import-graph confinement is not resolver-graph absence, and only a consumer that actually bundles finds the difference. **The [seam adapters](github-actions-attestation.md) are the sharpest case**: they are two small modules, and taking that edge for them puts `@effected/sbom`'s runtime dependencies in the install graph of every action that never signs anything.
 - **Whether an unreferenced module is dropped is the bundler's decision**, resting on `"sideEffects": false` (which the suite asserts) plus the module-per-file output the builder emits. That is the part we do not control; the edge set is the part we do.
 
-The honest claim is therefore: **no import edge exists, the package declares itself side-effect free, and a tree-shaking bundler can therefore drop the module** — not that a consumer's dependency tree is free of the package.
+The honest claim is therefore: **no import edge exists, the package declares itself side-effect free and a tree-shaking bundler can therefore drop the module** — not that a consumer's dependency tree is free of the package.
 
 The same rule shapes composition, not just imports: the composed runtime layer deliberately **excludes the cache, artifact and blob services**, because folding them in would put the Azure client in the bundle of every action that merely sets an output. Their requirements are all satisfied by the runtime, so a consumer that wants one passes it as `Action.run`'s layer option and writes nothing else.
 
 ## Module topology
 
-Module-per-concept, no barrels, `src/index.ts` re-exports only. See `src/`, and the four subsystem docs for what each module decides. The shape of the growth is worth recording: the modules that were *added* rather than ported — the blob envelope, cache-key derivation, the secret seam, detached-process lifecycle, and the whole reporting suite — were all **consumer-side hand-rolls** found by surveying real actions, not new inventions.
+Module-per-concept, no barrels, `src/index.ts` re-exports only. See `src/`, and the four subsystem docs for what each module decides. The shape of the growth is worth recording: the modules that were *added* rather than ported — the blob envelope, cache-key derivation, the secret seam, detached-process lifecycle and the whole reporting suite — were all **consumer-side hand-rolls** found by surveying real actions, not new inventions.
 
 `internal/` holds the request signer, the Twirp client and the results-backend reader, and is import-restricted by the reachability rule above.
 
@@ -115,22 +115,20 @@ Per the [observability standard](../effect-standards.md#observability-standards)
 `@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. **No `./testing` subpath**, and none of the predecessor's behaviour-reimplementing doubles is ported.
 
 - **Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`,** with unstubbed members dying loudly and naming themselves. This is the direct fix for a predecessor double that returned **exit 0 for unregistered commands**, leaving consumer tests green on a documented lie.
-- **Honest-default exceptions are recorded rather than assumed.** Three doubles get real defaults because dying would make them useless: the environment double seeds the standard context variables (a block a survey found duplicated byte-identically across six consumer test files), the logger double defaults to silent, and the dry-run double defaults to *on* — the safe direction. Every other member dies.
+- **Honest-default exceptions are recorded rather than assumed.** Three doubles get real defaults because dying would make them useless: the environment double seeds the standard context variables (a block a survey found duplicated byte-identically across six consumer test files), the logger double defaults to silent and the dry-run double defaults to *on* — the safe direction. Every other member dies.
 - **Real IO where the claim is about the filesystem**, and **opt-in integration** for the two network protocols, skipped-not-green without credentials.
 - **The runner-file doubles are a real in-memory volume** ([`@effected/memfs`](memfs.md), a devDependency) — the shape `ActionEnvironment`'s own TSDoc points consumers at. `ActionOutputs` and `ActionState` both write with `flag: "a"`, and the previous `Map` stubs were **re-implementing append by concatenation**: filesystem behaviour hand-modelled inside the test of something else, where any disagreement with the real semantics would read as a passing test. The volume appends; the fixture only seeds the runner-file directory, because a write needs its parent.
 - **Mutate the edges before declaring green.** The subsystem docs each name the mutants that discriminate.
 
 Four testing facts have bitten repeatedly and are worth carrying: **interleaving tests must use a `Latch`, never `Effect.sleep`** (a sleep under the virtual clock hangs to the vitest timeout); **a two-latch interleaving is load-bearing**, because a single-latch version passes against a deliberately wrong save-and-restore implementation, which is LIFO-correct whenever two overrides nest properly; **a spy on a process global must be released on the failure path** with `acquireUseRelease`, since a try/finally inside `Effect.gen` leaks when an assertion fails and a leaked spy produces a false *green* in a later test; and **a test that sets the process exit code must restore it**, or a green suite fails the vitest process instead.
 
-## What the dogfood rounds actually asked for
+## What adoption keeps asking for
 
-Adoption against real actions added modules and options to a package declared complete, and the *shape* of that feedback is the useful part: **not one round was a service gap.** Every one was a **projection** a consumer had to write between two things this kit already owned, and got wrong in a way that typechecked — an eleven-field claim rename, GFM escaping, a step-summary shape, a table's columns respelled per call site.
+Every module and option this package gained after it was declared complete came from adoption against real actions, and the *shape* of that feedback is the useful part: almost none of it was a missing service. It was a **projection** a consumer had to write between two things the kit already owned, and got wrong in a way that typechecked — a many-field claim rename, GFM escaping, a step-summary shape, a table's columns respelled per call site. That is the class this package should keep absorbing, and it is why the reporting suite's formatters are type-*required* rather than defaulted: the defect these modules delete is never "no API for it", it is **"the obvious spelling is silently wrong"**.
 
-That is the class this package should keep absorbing, and the reason the reporting suite's formatters are type-*required* rather than defaulted: the defect these modules delete is never "no API for it", it is **"the obvious spelling is silently wrong"**.
+**One exception is worth more than the pattern.** The [staleness guard](github-actions-reporting.md#the-staleness-guard-two-runs-one-document) came from a *coordination* gap: two workflow runs writing one living document, where the reconciler's private "last text I wrote" shadow meant neither could see the other. No consumer could have fixed that by projecting better, because the missing thing was an assumption — that a reporting document has one writer — baked into the reconciler and stated nowhere. It landed as **options on an existing service** rather than a module, which is the right shape: the coordination is opt-in, and a consumer that genuinely has one writer pays nothing. The generalisation to carry past this suite is that **feedback finds wrong projections easily and unstated single-writer assumptions only by racing them**, so a service that writes anything shared should say in its own doc what it assumes about other writers.
 
-**One later round broke that pattern, and the break is the finding.** The [staleness guard](github-actions-reporting.md#the-staleness-guard-two-runs-one-document) came from a *coordination* gap, not a projection: two workflow runs writing one living document, where the reconciler's private "last text I wrote" shadow meant neither could see the other. No consumer could have fixed that by projecting better, because the missing thing was an assumption — that a reporting document has one writer — baked into the reconciler and stated nowhere. It still landed as **options on an existing service** rather than a module, which is the right shape for it: the coordination is opt-in, and a consumer that genuinely has one writer pays nothing. The generalisation worth carrying past this suite: **survey feedback finds wrong projections easily and unstated single-writer assumptions only by racing them**, so a service that writes anything shared should say in its own doc what it assumes about other writers.
-
-Two standing rulings came out of the same rounds without code. A reported footgun in core's noop filesystem traced back to a consumer's own override, and the residual composability ask belongs **upstream**, not here. And `optionalDependencies` was rejected outright for the heavy dependencies: all of them are hard static imports that throw at module load rather than degrade, and several sit on the common reporting path, so the easy subpath split does not work.
+**`optionalDependencies` is rejected for the heavy dependencies, and stays rejected.** All of them are hard static imports that throw at module load rather than degrade, and several sit on the common reporting path, so the subpath split that makes optionality work elsewhere does not work here.
 
 ## Deliberately not here
 

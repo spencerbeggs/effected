@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -36,7 +36,7 @@ Two properties shape every decision below.
 
 **Taken: `@sigstore/sign` and `@sigstore/bundle`.** Real dependencies, no optional-peer maze, and decisively **cryptography plus a wire protocol** against Fulcio and Rekor. Re-implementing X.509 issuance and transparency-log inclusion proofs is what the [never re-implement platform specifics](../effect-standards.md#the-consolidated-core-and-the-require-in-r-default) rule protects against, and getting it subtly wrong is a security defect rather than a bug. Take it, confine it to one module, and let the reachability test prove the confinement.
 
-**Kit edges:** [`@effected/spdx`](spdx.md) for license expressions on components — never a second SPDX engine — and [`@effected/package-json`](package-json.md) for manifest-derived metadata. `Package` is imported as a **type only**, so package-json's IO module never joins this package's runtime graph, and `Package`, `Person` and `Repository` are **re-exported from this package's entry point** because the metadata surface speaks them: a caller must be able to name its parameter type without declaring an edge on a package it only touches through ours.
+**Kit edges:** [`@effected/spdx`](spdx.md) for license expressions on components — never a second SPDX engine — and [`@effected/package-json`](package-json.md) for manifest-derived metadata. The metadata module imports `Package` and `Person` as **types only**, so nothing in the emitter's own graph links package-json's IO module. The one runtime link is the entry point's re-export of `Package`, `Person` and `Repository`, which is there because the metadata surface speaks them: a caller must be able to name its parameter type without declaring an edge on a package it only touches through ours, and a re-export sitting at the barrel is what a tree-shaking consumer can drop.
 
 **No `@effected/github` edge, in either direction** — see [the attestation seam](#the-attestation-seam-no-edge-either-way).
 
@@ -47,8 +47,8 @@ Module-per-concept; `src/index.ts` re-exports only. See `src/`:
 | Module | Owns | Reaches |
 | --- | --- | --- |
 | `SbomDocument.ts` | the CycloneDX 1.6 model and its normalizing serializer | spdx |
-| `Sbom.ts` | the emitter facade: assemble, serialize, write | spdx, package-json |
-| `SbomMetadataSource.ts` | derivation from a `Package` manifest plus explicit overrides, and the purl encoder | package-json |
+| `Sbom.ts` | the emitter facade: assemble, serialize, write | `SbomDocument.ts` only |
+| `SbomMetadataSource.ts` | derivation from a `Package` manifest plus explicit overrides, and the purl encoder | package-json (types) |
 | `NtiaReport.ts` | the seven-element report | — |
 | `InTotoStatement.ts` | statements, subjects, digests, predicate types | — |
 | `SlsaProvenance.ts` | the typed SLSA Provenance v1 predicate and its GitHub-workflow constructor | — |
@@ -62,7 +62,7 @@ There is deliberately **no `src/internal/`**: the JSON normalizer sits in the mo
 
 Assembling a document and serializing it are **plain functions with no error channel**. A predecessor typed them as effects failing on "build" and "serialize", which could only fire because the CycloneDX library might throw — a failure mode introduced *by* the dependency. With an owned model whose inputs are already-validated schema values, neither can fail. Only writing keeps an error channel, and it is IO's. That is the [formatter convention](../formatter-convention.md) applied honestly to a non-format package: a pure boundary exposes the sync primitive, and an `Effect` wrapper is offered only where the error channel is real.
 
-The same audit found two more can't-fire channels in the source it replaced — a provenance constructor wrapped in `Effect.try` over pure string interpolation, and an NTIA check testing a field the model declares required. **A channel that cannot fire is worse than no channel**: it forces every caller to handle a case that does not exist and makes the type a lie.
+Two neighbouring channels went the same way and must not come back — an `Effect.try` around pure string interpolation in the provenance constructor, and an NTIA check testing a field the model declares required. **A channel that cannot fire is worse than no channel**: it forces every caller to handle a case that does not exist and makes the type a lie.
 
 **A license is an expression field, and the emitter picks between three shapes.** CycloneDX constrains a license `id` to the SPDX identifier enumeration, but a `package.json` `license` is an *expression* field — so `MIT OR Apache-2.0`, an ordinary value and exactly what manifest derivation feeds it, produced a document that looked right and failed validation. A catalog identifier emits an `id`, a valid expression emits the schema's one-element `expression` tuple, and anything else (`UNLICENSED`, `SEE LICENSE IN …`) emits a named license. The branches are exclusive because the expression tuple caps at one element, so an expression among several entries degrades to a named license rather than producing an invalid document. This is where the [spdx edge](#tier-and-the-dependency-decision) becomes real.
 
@@ -100,7 +100,7 @@ The emitted shape is **byte-compatible with what the upstream Actions attestatio
 
 **`IdentityToken` is an inverted contract.** OIDC token issuance belongs to the Actions runtime, and this package must not depend on [`@effected/github-actions`](github-actions.md) — that package is integrated with a required `@effect/platform-node` peer, and taking the edge would drag a platform peer into every SBOM consumer. So this package declares the narrow contract, ships `layerStatic` for a consumer that already holds a token, and github-actions ships the implementing layer: [`ActionsIdentityToken`](github-actions-attestation.md). The module header names that implementation, because a contract that does not point at its implementation reads as unimplemented — and until it existed, every action wanting a signed attestation wrote the adapter itself, which is the work an inverted contract is supposed to have already done.
 
-`SigningError`'s `kind` is chosen by reading the signing library's own internal error codes rather than guessed, and an unattributable failure is honestly "the bundle did not get built" rather than assigned to a step. A predecessor's recursive cause-chain-to-string flattener **has no successor**: it existed because the error was about to become a message, and a structural `cause` makes the whole walk unnecessary.
+`SigningError`'s `kind` is chosen by reading the signing library's own internal error codes rather than guessed, and an unattributable failure is honestly "the bundle did not get built" rather than assigned to a step. There is **no cause-chain-to-string flattener** and there must not be one: such a walk exists only to turn an error into a message, and a structural `cause` makes it unnecessary.
 
 Two facts that only surfaced by running it, both pinned: the bundle's **media type is carried through from the builder** rather than declared as a literal, because the builder picks a version depending on whether a certificate chain is present and a literal would quietly lie; and an unwitnessed bundle has **no transparency-log key at all**, since protobuf JSON omits empty repeated fields.
 

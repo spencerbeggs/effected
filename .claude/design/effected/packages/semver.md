@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../architecture.md
@@ -53,7 +53,7 @@ The comparison statics are deliberately out of scope: already plain, total and d
 
 ## String-level validity
 
-String validity is a **lexically paired surface** (3e98b704): the `isValid` boolean pairs with the `ExactVersionString` `Schema.String` check, and `isPinnable` with `PinnableVersionString`. Each schema check is refined by its same-stem predicate, so the two levels cannot drift and the pairing is discoverable by name.
+String validity is a **lexically paired surface**: the `isValid` boolean pairs with the `ExactVersionString` `Schema.String` check, and `isPinnable` with `PinnableVersionString`. Each schema check is refined by its same-stem predicate, so the two levels cannot drift and the pairing is discoverable by name.
 
 All four **reject surrounding whitespace**, deliberately diverging from `parseResult`, which trims to match node-semver's constructor. The parser canonicalizes; the predicates answer "is this string, byte for byte, a version?" Padded input is the caller's bug to surface, not this package's to hide.
 

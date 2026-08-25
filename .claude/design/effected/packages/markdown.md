@@ -3,13 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-18
-updated: 2026-08-24
-last-synced: 2026-08-24
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 92
 related:
   - ../effect-standards.md
   - ../package-inventory.md
   - ../formatter-convention.md
+  - markdown-frontmatter.md
+  - markdown-mdx.md
   - spdx.md
   - github-actions.md
   - jsonc.md
@@ -28,9 +30,14 @@ It carries the full-parity ambition of its format siblings [jsonc](jsonc.md), [y
 
 **Markdown→HTML and HTML→markdown are explicitly out of scope as product features.** HTML exists only as test-harness machinery for the conformance corpus.
 
+This document covers the engine, the node model, the edit and stringify layers, navigation and hardening. Two subsystems have their own docs:
+
+- **[Frontmatter](markdown-frontmatter.md)** — the capture node, the three format codecs and the write seam, the string-level `FrontmatterSource` facade, and the `$schema` declaration grammar with its resolver seam.
+- **[The MDX vocabulary](markdown-mdx.md)** — the construction-and-serialization-only MDX node set, the unions it widens and the presence-keyed escaping invariant it turns on.
+
 ## Tier and dependencies
 
-**Pure tier.** No IO, the engine is owned in `src/internal/`, and there are no external runtime dependencies. `peerDependencies` is `effect` plus **optional** kit peers on [yaml](yaml.md), [toml](toml.md) and [jsonc](jsonc.md), consumed only by the respective frontmatter codec modules — a recorded delta from [config-file](config-file.md), whose peers are not optional.
+**Pure tier.** No IO, the engine is owned in `src/internal/`, and there are no external runtime dependencies. `peerDependencies` is `effect` plus **optional** kit peers on [yaml](yaml.md), [toml](toml.md) and [jsonc](jsonc.md), consumed only by the respective [frontmatter codec modules](markdown-frontmatter.md) — a recorded delta from [config-file](config-file.md), whose peers are not optional.
 
 The commonmark.js port carries upstream attribution and license headers per the vendored-port convention the yaml and jsonc engines established. `"sideEffects": false`.
 
@@ -85,103 +92,17 @@ Two constructs are **seams inside base constructs, not registry entries**, becau
 
 **Autolink literals split by offset fidelity.** Scheme and www literals are inline constructs over raw source, so offsets stay true; email literals run as a postprocess after the delimiter stack is spent, supported by a postprocess hook and a guarded scanner primitive.
 
-## MDX: construct and serialize, never parse (2026-08-24)
-
-Eight node classes in `src/MarkdownNode.ts` shape the MDX vocabulary exactly to three vendored mdast-util-mdx oracles — `mdast-util-mdx-jsx@3.2.0`, `mdast-util-mdx-expression@2.0.1`, `mdast-util-mdxjs-esm@2.0.1` — checked out under `.repos/` as the serialization authorities: `MdxJsxFlowElement`, `MdxJsxTextElement` (the JSX element pair, flow and text position), `MdxJsxAttribute`, `MdxJsxExpressionAttribute`, `MdxJsxAttributeValueExpression` (the attribute carriers), `MdxFlowExpression`, `MdxTextExpression` (the expression pair) and `MdxjsEsm` (the ESM import/export block).
-
-**The scope cut is deliberate and permanent: MDX PARSE is not supported.** The engine reads no MDX syntax — a bare `<` or `{` in source stays CommonMark text or HTML, exactly as before this work landed. The vocabulary exists for **construction and serialization only**: a consumer builds a tree carrying these nodes by hand (or via a schema encode) and `Markdown.stringify` emits valid MDX. This keeps the parser's near-total CommonMark contract untouched — no new syntax to disambiguate, no new parse errors, no new hardening surface — while still letting a markdown-emitting consumer (documentation generators, codegen) produce `.mdx` output through the same canonical stringifier the plain-markdown path already guarantees byte-stable. Full MDX parsing, if ever wanted, is a distinct and much larger undertaking (a JS-expression parser, a JSX grammar) and is explicitly off this scope, not merely deferred inside it.
-
-**The ecosystem's `data.estree` compiler annotation is deliberately NOT modeled.** This package has no estree vocabulary, serialization never consults it, and the `Mdast` admission boundary drops it silently the way it drops every foreign `data` field — consistent with the package's general posture of stripping fidelity/foreign extras at that boundary.
-
-### Union widening
-
-Three existing unions widen to admit the new nodes, each following the same append-a-construction-only-member pattern the mdast-util-mdx `*ContentMap` registrations specify:
-
-- `PhrasingContent` (text position) **+=** `MdxJsxTextElement | MdxTextExpression`.
-- `FlowContent` (block position) **+=** `MdxJsxFlowElement | MdxFlowExpression`.
-- `Root.children` **+=** `MdxjsEsm`, alongside the existing `Frontmatter` widening — `MdxjsEsm` is only ever a `Root` child, per mdast-util-mdxjs-esm's `RootContentMap`; ESM cannot nest inside a JSX element or any other container. Like the frontmatter head-node constraint, this is structural (only `Root`'s children union admits it) rather than validated.
-
-The parser never produces any MDX member of these unions — same posture as the pre-existing "parser never emits this" note on `Definition`/`FootnoteDefinition` staying unresolved, just for a vocabulary the parser cannot see at all.
-
-`MdxJsxAttributeContent` (`MdxJsxAttribute | MdxJsxExpressionAttribute`) is a fourth, **narrower** union: attribute carriers are node-shaped (they carry `type` and `position`) but are **not tree content** — they live in a JSX element's `attributes` array, never in a `children` array, so they are excluded from the `MarkdownNode` selector union and invisible to the visitor and to `MarkdownDocument.find`.
-
-### Refusals at construction
-
-Two shapes have no MDX spelling and are refused typed at construction and decode, on the schema's own `Schema.check`/`Schema.makeFilter` terms rather than left to crash at serialize time: an `MdxJsxAttribute` with an empty `name` (moving the oracle's serialize-time crash to the admission boundary), and an `MdxJsxFlowElement`/`MdxJsxTextElement` fragment (`name: null`) carrying attributes (a fragment `<></>` cannot carry them).
-
-### Serialization fidelity to the oracles
-
-`src/internal/stringify.ts` reproduces the oracles' defaults node-for-node: attribute values quote with `"` (the quote itself escaped as `&#x22;`, matching `stringify-entities`'s spelling, never a backslash escape), an empty element self-closes spaced (`<a />`), a fragment renders `<></>`, flow children take block layout indented two spaces per JSX-ancestor depth (tracked on a new `StringifyState.jsxDepth` field, reset to zero on entering a blockquote, list item or footnote definition — the oracle's own `inferDepth` break, since those containers' own continuation prefixes take over indentation), attributes move onto their own lines only when at least one carries a line ending (never on a `printWidth` measure — this stringifier has none), expressions emit `{expr}` with two-space continuation indent for embedded newlines, and ESM `value` emits verbatim with no reformatting. Child **block** content nested inside a flow element still renders through this package's own canonical table (bullet `-`, ATX headings, …) — the MDX structure is oracle-shaped, the markdown inside it stays canonical.
-
-### The `{`/`<` escaping invariant — presence-keyed, never a stringify option
-
-**A tree containing any MDX node additionally escapes `{` in text; a tree with none serializes byte-identically to the published canonical table.** `<` was already in the always-escape set before this work; MDX makes `{` significant too (it opens an expression anywhere in text), so the escape widens — but *only* when the tree actually carries an MDX node. `treeContainsMdx` is an iterative (deliberately unguarded — a single presence check, not a hostile-input surface) pre-scan threaded through `StringifyState.mdx`, and `escapeText`'s `mdx` parameter gates the one added escape branch.
-
-This is **load-bearing and must never become a stringify option**: the whole point is that a plain-markdown consumer's existing byte-stability guarantee — the corpus-wide re-parse equivalence property, the documented canonical-form table — is untouched by MDX landing in the same module, because the escape only activates on trees that opted in by construction. An option would force every caller to know and set it; presence-keying makes the two audiences (plain markdown, MDX) mutually invisible to each other's concerns.
-
-### Testing
-
-`__test__/mdx.test.ts` is the construction/serialization suite: attribute value shapes (string, expression, boolean, `null`), fragment refusals, nested flow-element indentation depth, the two-space expression continuation, ESM verbatim emission and the presence-keyed `{` escape (both directions — MDX-carrying trees escape it, MDX-free trees do not). There is no MDX parse suite, matching the scope cut; the existing CommonMark/GFM corpora are the proof that MDX landing did not perturb the parser they exercise.
-
-## Phrasing-level parse and string-level frontmatter (2026-08-24)
-
-Two small entry points extend the surface without touching the block/inline pipeline's contract:
+## Phrasing-level parse
 
 **`Markdown.parsePhrasingResult`/`Markdown.parsePhrasing`** (`src/internal/phrasing.ts`) parse a text fragment as **one paragraph's inline content** without running the block pass at all — for a caller holding already-markdown prose (a link-carrying sentence, a backtick span) who wants its phrasing nodes without a full document parse and a paragraph splice. The fragment is prepared exactly the way the block pass prepares one paragraph (line preprocessing, the commonmark.js paragraph trim, `\n`-joined lines) and handed to the inline pass with full source provenance, so node positions are correct relative to the input string. Two consequences of the single-paragraph contract: **blank lines do not break blocks** — a `\n\n` stays literal newlines inside text content, since nothing at this level can open a heading, list or code block — and **no reference context exists**, so `[foo]`, `![foo]` and `[^foo]` stay literal text (the reference map and footnote-label set are both empty), matching what a full parse of the same isolated fragment would produce since it carries no definitions either. Failure is rare by construction: only a hardening-guard trip (the inline pass's delimiter/bracket stacks) fails, on `Markdown.parseResult`'s own terms. `parsePhrasingResult` is the `Result` primitive; `parsePhrasing` is its `Effect.fn`-spanned `Effect` twin.
 
-**`FrontmatterSource.split`/`.join`** (`src/FrontmatterSource.ts`) is a **string-level, pure, total** frontmatter facade — split raw source into its frontmatter block and body without parsing the body, or the frontmatter value, at all. It exists for the consumer whose body the CommonMark engine cannot or should not parse (an MDX page whose body is not CommonMark, a template) and whose contract is byte-exact boundaries — a snapshot hash over the body, say. It runs the **same closed fence grammar** as the parser's offset-0 pre-scan (`---` yaml, `+++` toml, `---json` json; a fence line is exactly the fence; an unclosed fence is not frontmatter) via a shared primitive, `scanRawFrontmatter` in `src/internal/blocks/frontmatter.ts` — **not a duplicated grammar**: the block parser's own `scanFrontmatter` and this raw variant are two call sites over the one set of fence rules, so the string-level and parsed-tree surfaces can never disagree about whether a document has frontmatter. Unlike the parse path there is no capture toggle at this level, so absence is one fact here (the tree parse path's two-reason absence — capture toggled off vs. genuinely blockless — does not apply, since this surface always looks).
-
-`FrontmatterSourceBlock.value` deliberately differs from the parsed `Frontmatter` node's `value`: the string-level surface keeps every line's own terminator (so a one-blank-line block stays distinct from a no-value-lines block, and interior CRLF survives), while the node's `value` drops the final terminator for the codecs' benefit. `split`/`join` round-trip byte-for-byte except at two documented normalization edges: a closing fence at end-of-document gains a final newline on `join`, and mismatched open/close fence-line terminators re-emit both with the opening one — value and body bytes survive verbatim in every case.
-
-## Frontmatter: the config-file codec pattern, in-package
-
-The core engine captures the frontmatter block as a raw fidelity-preserving node — text plus a format marker. Schema decoding ships as **free-standing named codec modules**, one per format, peering on the corresponding format package. **Never a namespace object**: the [config-file tree-shaking rule](config-file.md) applies verbatim, and a JSON-frontmatter consumer must not pay for the yaml engine. mdast has no native frontmatter parsing story, so this is a differentiator.
-
-**Capture defaults off.** An enabled capture changes how a leading `---` parses and the spec corpora contain such documents, so the toggle is the consumer's opt-in and the conformance harnesses run untouched.
-
-**The fence grammar is a closed set** — the yaml, toml and JSON spellings, with gray-matter and remark-frontmatter as the authorities. An unclosed fence is not frontmatter and emits no diagnostic. The capture runs as an offset-0 pre-scan in the block-parser constructor rather than as a registry construct, because it fires at most once and before any block.
-
-**One capture node, not per-format classes.** mdast has no JSON frontmatter name, so a per-format split would invent a non-mdast type anyway, and one shape keeps the codec contract format-uniform. The root's children widen to admit frontmatter at the root and nowhere else.
-
-### Read and write
-
-The codec contract carries **both directions, and encode is required, not optional** — the codecs stay field-identical, pinned by a contract-shape test. Encoding serializes data to the body text that belongs **between** the fences and never the fences themselves, which are format-determined and rendered by the seam.
-
-**The seam normalizes the trailing terminator**, because the engines genuinely disagree: two of the three emit a final newline and the JSON one matches `JSON.stringify` and does not. Normalizing at the one render site rather than in each codec keeps the divergence from leaking into the contract.
-
-The writer produces **exactly one edit** — either a replacement spanning the whole capture, both fence lines included, or with no capture an offset-0 insert of the block plus a separator. **A capture of a different format fails typed**: fences are never switched, so writing cannot silently convert a toml block to yaml. The parse precondition mirrors the read side, because without the capture toggle absence is ambiguous and the insert path would double a block the parse ignored.
-
-**Per-codec empty-object rulings** are each chosen so write-then-read recovers an empty object: yaml encodes to the flow mapping, deliberately not an empty body, because an empty body round-trips as yaml's empty-document null and would lose the object; toml encodes to the empty body, mirroring the decode ruling that an empty toml capture is an empty object; JSON encodes to braces, having no empty-document value in either direction.
-
-**Whole-block re-serialization is the caveat.** The block is re-serialized whole from the encoded data — gray-matter parity, not surgical editing — so anything the format's data model does not carry is lost, and comments inside a yaml frontmatter block do not survive a write. A per-key surgical mode over the format packages' own edit layers is recorded future work; the siblings already ship the machinery it would sit on.
-
-### Absence is two facts, and the discriminant is derived
-
-The missing-frontmatter error carries a required reason, because a genuinely blockless document and a document that opens with a fence but was parsed without the capture toggle are **different problems with different fixes**: the first needs content, the second needs a parse option.
-
-The ruling worth keeping is *how* the accessor answers: **derived, not stored.** The getter runs the **same** offset-0 pre-scan the parser runs when capture is enabled, so it is true exactly when parsing this source with capture on would produce a node. A stored flag set at parse time would be a second source of truth for a question the source already answers, and the failure mode is silent — a document constructed or edited without going through that path would report an absence contradicting its own bytes. Because the error's reason reads the same accessor, the error, the getter and the capture **agree by construction**. The cost is honest: it recomputes per access, like every other navigation accessor, so bind it once when checking repeatedly.
-
-### The `$schema` declaration grammar and resolver seam
-
-Frontmatter blocks may self-describe their schema. The package **classifies the declaration by shape** into a tagged union and this is the full grammar contract:
-
-- **By URL** and **by path** are carried as data and never resolved in-package — no IO in the pure tier.
-- **Inline** (the value is a mapping) is likewise carried as data, interpretable only via an external resolver. The kit deliberately has no JSON Schema engine, and `@effected/json-schema` is off the roadmap entirely.
-- **By name** is any other string, with a committed grammar of `name[@version]`, **split at the last `@`** so a leading npm-style scope survives. The version grammar is internal and dependency-free: one to three dot-separated non-negative integers, with no prerelease, no build metadata and no range operators. [@effected/semver](semver.md) was consciously declined as a peer so the resolver module depends on nothing. The recorded cost: `@` in a by-name declaration is reserved forever as the version separator, except the leading scope `@`.
-
-Resolution lives behind an in-package **seam**: a resolver contract that, given the declaration **and the whole decoded frontmatter data**, returns a schema or fails typed. The package ships one registry-backed implementation. Because the resolver sees the whole decoded frontmatter, **dispatch need not key on the declaration at all** — a resolver for a foreign convention can dispatch on that convention's own key with zero knowledge of it in this package.
-
-Resolution is **exact version-segment equality**, compared numerically per segment, so leading zeros are legal and numerically colliding registrations throw at construction as programmer errors. A versionless declaration matches only a versionless registration; both mismatch directions fail with the dedicated version error rather than unknown-name. A partial version is legal grammar yet resolves only against an identically-written registration.
-
-The documented future minor is **prefix resolution** — the Docker-tag mental model, where a partial version selects the highest matching registration. No grammar or API change is needed; the version error simply stops firing for satisfiable prefixes, which makes it a clean semver-minor evolution.
-
 ## Editing: offset-splice, not a lossless CST
 
-Research finding, recorded: **nobody in the JS ecosystem ships a lossless markdown CST.** remark's serializer reformats by design, and its maintainers themselves recommend positional splicing.
+**Nobody in the JS ecosystem ships a lossless markdown CST.** remark's serializer reformats by design, and its maintainers themselves recommend positional splicing.
 
 The edit model is therefore the house pattern — an offset/length/content edit plus an apply-all — **structurally identical to the jsonc, yaml and toml edit vocabularies**. That is the binding cross-package parity contract and the pre-work for the deferred text-edit kernel. Surgical edits are computed as offset-splices over the original source; the canonical stringifier serves synthesized trees.
 
-Apply-all adopts toml's overlap-rejection posture, and range filtering adopts toml's owning-node-intersection posture. Apply-all is now harmonized across all four format packages; the **range-filter posture** is the one place they still document different filters, and markdown follows toml's.
+Apply-all adopts toml's overlap-rejection posture, and range filtering adopts toml's owning-node-intersection posture. Apply-all is harmonized across all four format packages; the **range-filter posture** is the one place they document different filters, and markdown follows toml's.
 
 **Canonical stringify serializes fidelity-first** with a recorded defaults table, and its escaping is a conservative always-escape set plus line-start and raw-source-autolink defenses, with the corpus-wide re-parse equivalence property as the authority. One default is worth naming here because it surprised a real consumer: a **language-less code node with no explicit fence char stringifies as an indented block.** That is correct and canonical; the TSDoc names it outright rather than leaving it to be discovered.
 
@@ -207,8 +128,8 @@ This diverges from the format siblings for a spec reason, not a design one, and 
 One concern per file, mirroring [yaml's layout](yaml.md#module-layout); `src/index.ts` is the sole barrel. See `src/` for the full list. The placements that are decisions:
 
 - **`MarkdownNode.ts` co-locates every node class in one file** to break the recursive-AST cycle: `Schema.suspend`, no parent pointers, recursive references typed as codecs. It also owns the position type and the node-type selector vocabulary.
-- **`FrontmatterResolver.ts` is its own module** so the frontmatter seam stays a lean composition point and a consumer who never resolves declarations never loads the resolution machinery.
-- **The three frontmatter codecs are separate modules**, per the tree-shaking rule above.
+- **`FrontmatterResolver.ts` is its own module** so the [frontmatter seam](markdown-frontmatter.md#the-schema-declaration-grammar-and-resolver-seam) stays a lean composition point and a consumer who never resolves declarations never loads the resolution machinery.
+- **The three frontmatter codecs are separate modules**, per [the tree-shaking rule](markdown-frontmatter.md).
 - **`src/internal/` never imports public modules** — the raw-carrier cycle firewall, with the facade materializing diagnostics.
 
 House schema conventions apply throughout: `make` rather than `new` in the public surface, bare `optionalKey` fields with implementation-level defaults, and the Effect-wrapping policy — pure sync where total, `Effect` where the error channel is real, `Stream` for the visitor.
@@ -284,15 +205,15 @@ The first in-kit consumer is [@effected/github-actions](github-actions.md), whos
 
 - The edit and range types are field-identical to the three siblings', and the diagnostic core carries the shared fields. This is the binding cross-package parity contract.
 - **A `schema(target)` factory must carry its decode and encode service generics from day one.** Shipping without them silently loses a target schema's requirements through the composition, and threading them later is a signature change on the package's flagship surface.
-- **Stringify trailing-newline asymmetry**: two siblings emit a trailing newline and the JSON one does not. This is a recorded rough edge in the parity surface, not a bug in any sibling — the frontmatter write seam normalizes around it at its one render site rather than forcing a sibling to break byte-compatibility.
+- **Stringify trailing-newline asymmetry**: two siblings emit a trailing newline and the JSON one does not. This is a recorded rough edge in the parity surface, not a bug in any sibling — [the frontmatter write seam](markdown-frontmatter.md#read-and-write) normalizes around it at its one render site rather than forcing a sibling to break byte-compatibility.
 
 ## Deferred
 
 - **The `obsidian` dialect**, which must land as registry entries alone.
 - **A read-side one-call composition** folding parse, extract, resolve and validate together. The write half exists; this remains unbuilt.
 - **hast output.** Porting the mdast-to-hast conversion was raised and deferred behind a decision gate: revisit after real consumer adoption shows whether keeping that one remaining dependency is a real cost. Either way **the `Mdast` projection is the bridge** — consumers render via the existing ecosystem converter over the projected plain tree. HTML string serialization stays permanently out of scope regardless.
-- **A separate knowledge-format package.** The generic surface here — frontmatter schemas, heading and section navigation, link extraction, lossless round-trip — is designed to make such conventions trivially expressible, and the resolver seam already covers their dispatch model. A dedicated package waits for such a spec to stabilize.
-- **Per-key surgical frontmatter editing** over the format packages' own edit layers.
+- **A separate knowledge-format package.** The generic surface here — [frontmatter schemas](markdown-frontmatter.md), heading and section navigation, link extraction, lossless round-trip — is designed to make such conventions trivially expressible, and the resolver seam already covers their dispatch model. A dedicated package waits for such a spec to stabilize.
+- **[Per-key surgical frontmatter editing](markdown-frontmatter.md#read-and-write)** over the format packages' own edit layers.
 
 ## Build
 

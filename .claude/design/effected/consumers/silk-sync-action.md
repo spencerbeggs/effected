@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 88
 related:
   - README.md
@@ -40,6 +40,6 @@ That narrowness is what makes it useful here. It is the consumer that tests whet
 
 ## Open questions
 
-1. **The CycloneDX bundler `ignore` is dead code and should be deleted.** The action's `action.config.ts` stubs `xmlbuilder2`, `libxmljs2` and `ajv-formats-draft2019`, with a comment attributing them to `@cyclonedx/cyclonedx-library` arriving transitively through `@effected/github-actions` → `@effected/sbom`. That premise no longer holds: `@effected/sbom` declines the CycloneDX library outright — it depends only on `@effected/package-json`, `@effected/spdx`, `@sigstore/bundle` and `@sigstore/sign`, and `cyclonedx` appears in this repo solely as a keyword string. Checked against the consumer's own lockfile, none of the three stubbed packages is installed at all. The prediction that per-package splitting would remove this escape hatch by construction was **correct**; the consumer just never deleted the stub, and its comment now documents a graph that does not exist.
+1. **The CycloneDX bundler `ignore` is dead code and is still there.** The action's `action.config.ts` stubs `xmlbuilder2`, `libxmljs2` and `ajv-formats-draft2019`, with a comment attributing them to `@cyclonedx/cyclonedx-library` arriving transitively through `@effected/github-actions` → `@effected/sbom`. That premise does not hold: `@effected/sbom` declines the CycloneDX library outright, and none of the three stubbed packages is installed in this consumer's tree at all. The prediction that per-package splitting would remove this escape hatch by construction was **correct** — the consumer just never deleted the stub, so its comment documents a dependency graph that does not exist. Worth carrying because it is the failure mode of a *successful* upstream fix: nothing breaks, so nobody cleans up.
 
 2. **The seam edge that does cost something is `@sigstore/*`.** `@effected/github-actions` depends on `@effected/sbom` for two small adapter modules, so every consumer of the Actions package installs sbom's runtime dependencies — the sigstore signing stack among them — whether or not it ever signs anything. The kit's reachability tests confine those modules in the **import** graph, which is what lets a tree-shaking bundler drop them given `"sideEffects": false`; they say nothing about the **resolver** graph, where a declared dependency is installed regardless. Import-graph confinement is not resolver-graph absence, and only a consumer that bundles or audits its install tree finds the difference.

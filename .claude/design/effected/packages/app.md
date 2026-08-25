@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 92
 related:
   - ../effect-standards.md
@@ -27,7 +27,7 @@ related:
 
 **It owns no domain logic.** It defines no service, no schema and no error class, and it **re-exports nothing** — the [no-barrel rule](../effect-standards.md#no-barrel-re-exports) holds, so a consumer who wants config files alone takes `config-file` alone. The entire public surface is layer factories, one config preset and one type alias. If a change here wants a `Context.Service`, that is the signal the change belongs in one of the three packages beneath it instead.
 
-**Nothing may depend on `@effected/app`.** A library taking an application control plane as a dependency would drag tier 3 into its consumers' trees under [R2](../effect-standards.md#dependency-policy) — the leak the taxonomy exists to prevent. This package sits at the top of the graph, and that is also why nothing was ever blocked on it.
+**Nothing may depend on `@effected/app`.** A library taking an application control plane as a dependency would drag tier 3 into its consumers' trees under [R2](../effect-standards.md#dependency-policy) — the leak the taxonomy exists to prevent. This package sits at the top of the graph.
 
 ## Tier and dependencies
 
@@ -39,11 +39,11 @@ related:
 
 ## Module layout
 
-Four modules under `src/`, plus `internal/filename.ts` (the single-path-component guard). There is no engine here — nothing but composition and that one wiring-defect guard.
+One module per concept under `src/` — `App`, `AppStore`, `AppCache`, `AppConfig` — plus `internal/filename.ts` (the single-path-component guard). There is no engine here, nothing but composition and that one wiring-defect guard.
 
 `AppConfig.ts` must stay a **separate module and a free-standing export** from anything that reaches the sqlite driver. This is the [namespace-object / tree-shaking rule](config-file.md#the-load-bearing-constraint-free-standing-named-exports-never-a-namespace-object) applied one level up: `AppConfig` reaches `xdg` + `config-file` only, while `App` / `AppStore` / `AppCache` reach `store` and through it `@effect/sql-sqlite-node`. A consumer who wants XDG-placed config files and no database must be able to import `AppConfig` without pulling a SQLite driver into their graph. Collecting the four concepts into one `App = { … }` namespace object would destroy that silently — **there is no namespace object here either.** The import direction is what keeps the two graphs separate: `App.ts` imports `AppStore.ts` and `AppCache.ts` but **not** `AppConfig.ts`.
 
-Each of the four is a **static class with a private constructor**, not an `as const` namespace object. An `as const` object's member types are inferred in the built `.d.ts` and lose their TSDoc entirely; a class's `static readonly` declarations keep it. Call syntax is unaffected, and each implementation stays a plain function with the contract TSDoc living on the static.
+Each is a **static class with a private constructor**, not an `as const` namespace object. An `as const` object's member types are inferred in the built `.d.ts` and lose their TSDoc entirely; a class's `static readonly` declarations keep it. Call syntax is unaffected, and each implementation stays a plain function with the contract TSDoc living on the static.
 
 ## Public surface
 
@@ -72,7 +72,7 @@ The documented limit: code paths that actually exercise `ensure*` **die** agains
 `AppConfig.layer(tag, options)` wraps `ConfigFile.layer` with the resolver chain xdg documents, in xdg's order, so an existing `~/.config/<app>` still beats the native directory, and with an `XdgConfig` save path that fits config-file's `defaultPath` slot **without an `orDie`** because xdg moved resolution to layer-construction time. The load-bearing decisions:
 
 - **The namespace is never a parameter.** It is read from the ambient `AppDirs` service at layer build time, so it is typed **exactly once, in `App.layer`**. This kills the two-strings drift where an app passes `"myapp"` to `App.layer` and `"my-app"` to its config preset and then reads config from a directory nothing else writes to. Anything derivable is not asked for.
-- **Caller resolvers prepend; they never replace.** `options.resolvers` is composed *ahead* of the XDG chain, in the order given, with `XdgConfig.resolver` and the native probe still behind it — so absent the option the chain is exactly what it was, and the default is unchanged. Added in the `@spencerbeggs/reposets` dogfood loop (round 1, 2026-08-13), whose blocker was the case the preset could not express: a CLI's `--config` flag has to outrank the app's own search path, and reaching for `ConfigFile.layer` to get it meant rebuilding by hand the XDG wiring `AppConfig` exists to own. Two consequences are documented rather than designed away — a caller resolver that finds nothing **falls through** to XDG, because every `ConfigResolver`'s error channel is `never` by contract and a missing `--config` file is therefore a miss and not an error; and the **save path is untouched**, still `XdgConfig.savePath(filename)`, so writing back to a flag-named file is `write(value, path)`. The deliberate limit: a chain needing the XDG resolvers anywhere but last, or not at all, has outgrown the preset and should compose `ConfigFile.layer` directly — the option buys the common case, not arbitrary chain surgery.
+- **Caller resolvers prepend; they never replace.** `options.resolvers` is composed *ahead* of the XDG chain, in the order given, with `XdgConfig.resolver` and the native probe still behind it — so absent the option the chain is exactly what it was and the default is unchanged. It exists for the one case the preset could not otherwise express: a CLI's `--config` flag has to outrank the app's own search path, and reaching for `ConfigFile.layer` to get that means rebuilding by hand the XDG wiring `AppConfig` exists to own. Two consequences are documented rather than designed away — a caller resolver that finds nothing **falls through** to XDG, because every `ConfigResolver`'s error channel is `never` by contract and a missing `--config` file is therefore a miss and not an error; and the **save path is untouched**, still `XdgConfig.savePath(filename)`, so writing back to a flag-named file is `write(value, path)`. The deliberate limit: a chain needing the XDG resolvers anywhere but last, or not at all, has outgrown the preset and should compose `ConfigFile.layer` directly — the option buys the common case, not arbitrary chain surgery.
 - **`parseOptions` passes straight through to config-file**, unchanged and undefaulted, so an application turns on excess-property rejection here without dropping to `ConfigFile.layer`. The preset adds no policy of its own: the decision, and why the `validate` hook cannot stand in for it, is [config-file's](config-file.md#decode-options-and-why-validate-cannot-substitute).
 - **The codec stays a required parameter.** Defaulting it, or inferring one from the filename's extension, would hard-code a *format* choice into a composition layer — not this package's decision. The caller names the codec, and that named import is also what keeps the other engines out of their bundle.
 - **`native` defaults to `true`** — the opposite of `AppDirsOptions.native`, which defaults to `false`. The asymmetry is deliberate: *creating* a native directory commits an application to a location, so it is opt-in; *probing* one for an existing config file costs a `stat` that finds nothing, so it is opt-out. Reading a config a user already put in `~/Library/Application Support` is a courtesy; writing there uninvited is not.
@@ -103,17 +103,17 @@ Every export is a **parameterized layer factory**, so [store's layer-memoization
 
 ## Testing
 
-Suites in `__test__/`, integration under `__test__/integration/`. `@effect/platform-node` backs the integration suite, and it keeps doing so on the merits — the ordering proofs are claims about a real filesystem. But the *stated* reason, that no working in-memory `FileSystem` existed, has **expired**: [`@effected/memfs`](memfs.md) is one, and this package's unit suites sit on its [pending migration list](memfs.md#in-kit-adoption).
+Suites in `__test__/`, integration under `__test__/integration/`. `@effect/platform-node` backs the integration suite on the merits — the ordering proofs are claims about a real filesystem — and stays there. The unit suites are a different question: they sit on [`@effected/memfs`](memfs.md#in-kit-adoption)'s pending migration list.
 
 Re-examine [`layerTest`'s internal `FileSystem.layerNoop`](#applayertest--the-hermetic-control-plane) in that pass. A seeded volume would make its documented limit — that any path exercising `ensure*` dies — go away rather than stay documented, which is strictly better than a caveat. It is the same open question `@effected/github-actions` carries for `ActionEnvironment.layerTest`, and the two should be answered together: what a published `layerTest` provides for `FileSystem` is a kit convention, not a per-package taste.
 
-The ordering proofs carry the design's weight — the ensure-before-open ordering is this package's only real claim, and a test that does not watch it fail proves nothing. Four properties are the ones to preserve if these suites are ever rewritten:
+The ordering proofs carry the design's weight — the ensure-before-open ordering is this package's only real claim, and a test that does not watch it fail proves nothing. The properties to preserve if these suites are ever rewritten:
 
 - **A fresh namespace with no pre-existing directories builds without a defect**, watched failing against a naive compose that skips the ensure.
 - **An unwritable ancestor surfaces a typed `AppDirsError`, never a die** — the anti-`orDie` regression.
 - **The namespace-once property** — a config file lands under the namespace passed to `App.layer`, with none passed to `AppConfig` at all. If someone adds a `namespace` option "for flexibility", this fails.
 - **`App.layerTest` works with zero platform layers** — if this ever needs a platform import, the layer has stopped doing its job.
-- **A caller resolver outranks the XDG search path** — proven with both files present and different bodies, so appending instead of prepending fails the assertion rather than passing quietly. Verified as a mutant: flipping the two spread positions in the chain fails exactly two tests.
+- **A caller resolver outranks the XDG search path** — proven with both files present and different bodies, so appending instead of prepending fails the assertion rather than passing quietly. Flipping the two spread positions in the chain must fail the assertion.
 
 The filename guard is exercised through a shared matrix (`__test__/filenameGuard.ts`) registered once per suite against each of the three filename options.
 

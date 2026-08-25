@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 96
 related:
   - ../effect-standards.md

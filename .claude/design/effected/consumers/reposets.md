@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-08-14
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 90
 related:
   - README.md
@@ -15,7 +15,6 @@ related:
   - ../packages/github.md
   - ../packages/github-resources.md
   - ../packages/xdg.md
-  - ../releases.md
 ---
 
 # spencerbeggs/reposets
@@ -30,7 +29,7 @@ It is unlike every other entry in this register, and each difference is why its 
 - **It is the first consumer of the application control plane** — [`app`](../packages/app.md) and [`store`](../packages/store.md) had shipped and had never been driven from outside their own suites.
 - **It is the first loop that upstreamed code rather than only findings.** Two ports were written downstream against a design doc and landed here: the six repository resource services plus the sealed-box crypto into [`github`](../packages/github.md), and the whole of `@effected/cli`. Both were folded, corrected and gated on this side; neither arrived as a merge of consumer source.
 
-Verified against the checkout on 2026-08-14. The loop's own mail is transitory and gitignored; what is durable is here and in the packages' own docs.
+**The loop is closed.** Its findings landed, the wave it drove released, and the consumer now resolves through published `catalog:effected` pins rather than the local overrides it ran the loop on. Verified against the checkout on 2026-08-25. The loop's own mail was transitory and gitignored; what is durable is here and in the packages' own docs.
 
 ## What it exercises
 
@@ -63,6 +62,4 @@ The kit stops at the typed API and the control plane. What stays in the consumer
 
 ## Open questions
 
-- **It has not adopted `@effected/cli`**, the package it drove — the port landed here first and awaits its first release. Whether the consumer's own boundary collapses onto it cleanly is the adoption evidence that package has not yet had.
-- **`tweetnacl` is still declared downstream** while nothing imports it; the sealed box it was there for is `@effected/github`'s now. A leftover to drop when it advances its pins.
-- **Pins wait on the release.** The consumer resolves through `file:` overrides and deliberately did not infer version ranges from the linked builds — the reason that matters to everyone is in [releases.md](../releases.md#versioning).
+- **It still has not adopted `@effected/cli`**, the package it drove. The port landed here, has released, and the consumer advanced its pins past it without taking it up — so the one piece of adoption evidence `cli` most needs is the one this loop did not produce. Whether the consumer's own boundary collapses onto it cleanly is still unanswered.

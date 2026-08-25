@@ -12,16 +12,19 @@ point, and string-level frontmatter split/join.
 (`peerDependenciesMeta`), consumed only by the three frontmatter codec modules.
 Zero runtime deps, no IO. ~13k src LOC across 15 public modules plus the
 `src/internal/` engine — second in size only to `yaml`. Not a migration: designed
-here, built in five phases. **P1–P5 are complete; P6 (docs and adoption) remains**
-— the api-extractor model plus website docs, dogfooded via the
-`rspress-plugin-api-extractor` swap (that repo's `mdast-util-from-markdown` +
-`gray-matter` stack is the identified consumer). Nothing here knows about any
-consumer; markdown's dependency arrow never points outward.
+here. Nothing here knows about any consumer; markdown's dependency arrow never
+points outward.
 
 **Design doc:** `@../../.claude/design/effected/packages/markdown.md` — load when
 changing the public API, the dialect registries, the node shape, the hardening
-story, or the `$schema` resolver grammar. It records every settled decision,
-including the per-phase (P1–P5) rulings.
+story, or the `$schema` resolver grammar. It is the contract this package
+implements and the entry point to two children:
+
+- `@../../.claude/design/effected/packages/markdown-frontmatter.md` — Load when:
+  working on a frontmatter codec, the split/join primitives, or the optional
+  `yaml`/`toml`/`jsonc` peers they consume.
+- `@../../.claude/design/effected/packages/markdown-mdx.md` — Load when: touching
+  an MDX node class, the unions it widens, or how the stringifier serializes it.
 
 **Child context files** carry the reasoning; the rules below stand alone. Load
 what matches what you touch: `@./CLAUDE.engine.md` (the vendored parser, the cycle

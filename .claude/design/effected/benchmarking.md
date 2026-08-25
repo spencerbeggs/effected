@@ -3,9 +3,9 @@ status: draft
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-12
-last-synced: 2026-08-12
-completeness: 55
+updated: 2026-08-25
+last-synced: 2026-08-25
+completeness: 60
 related:
   - yaml-lint.md
   - formatter-convention.md
@@ -21,7 +21,7 @@ A design for a benchmark-and-parity system that answers one question: how does t
 
 The kit's stance is "we are the wiring, users bring their own I/O". The benchmark system leans into that: it builds real tools *with* the kit — a yaml linter CLI, a toml tool, a markdown tool, a jsonc tool — and races them against the equivalent npm packages, re-using the parity corpora the format packages already ship, the same fixtures asked a different question. The clean tools built on only the kit double as the honest proof that a competitive tool *can* be built with just the toolkit.
 
-**The core is decided** — the two-folder turbo-routed structure, the gate model, the dual-location corpus story, the JS-only competitor stance and the per-package targets, the CLI-first perf approach, and the parity-differential mechanism. **Four areas are open**: the jsonc corpus, the deliberate-divergence allowlist format, how far each package's parity moves from CLI-level to library-level, and the canonical fixture source shared between the two locations. They are recorded as [open questions](#open-questions) with their known direction, and must not be invented past what is written here. Nothing moves out of the packages, so the corpora's existing safety net is untouched by any of it.
+The structure, the gate model, the dual-location corpus story, the competitor stance and the parity mechanism are decided; four questions are deliberately left open and recorded, with their direction, under [open questions](#open-questions). Nothing moves out of the packages, so the corpora's existing safety net is untouched by any of it.
 
 ## The two-folder structure, turbo-routed
 
@@ -33,7 +33,7 @@ The system adds two new top-level folders. The split is not cosmetic — it is w
 
 The chain is `kit → app → suite`. Each hop is a real `workspace:*` edge, so turbo orders them without any hand-written task wiring: turbo's tasks depend on their upstream counterpart (`dependsOn: ["^build:dev"]` in `turbo.json`), and topological order falls out of the dependency edges. See the [turbo naming note](#turbo-naming) — the repo has no plain `build` task, so the chain rides `^build:dev`, not `^build`.
 
-Both `benchmarks/apps` and `benchmarks/suites` are new pnpm-workspace globs, added to `packages:` in `pnpm-workspace.yaml`. **`website` is the precedent** — it is already a non-`packages/*` member of that list, so adding two more non-`packages/*` globs is a pattern the workspace already uses, not a new capability. Both folders are kept out of the release and publish gate (they never ship to npm) but are still wired into turbo so the build chain holds. See [keeping the folders off the release gate](#keeping-the-folders-off-the-release-gate) for the exact mechanism and one nuance the brief did not anticipate.
+Both `benchmarks/apps` and `benchmarks/suites` are new pnpm-workspace globs, added to `packages:` in `pnpm-workspace.yaml`. **`website` and `scratchpad` are the precedent** — both are already non-`packages/*` members of that list, so adding two more is a pattern the workspace uses, not a new capability. Both folders are kept out of the release and publish gate (they never ship to npm) but are still wired into turbo so the build chain holds; see [keeping the folders off the release gate](#keeping-the-folders-off-the-release-gate).
 
 ## Gate model
 
@@ -94,7 +94,7 @@ The exact per-package **form** of the differential — CLI-level (compare tool s
 
 ## Relationship to the yaml lint system
 
-`@benchmark/yaml-lint` is a consumer of the unbuilt `YamlLint` system ([yaml-lint.md](yaml-lint.md)). The two rollouts are **decoupled on purpose.** Benchmarking can start against the shipped `Yaml.parse` and `YamlFormat` surfaces and gain the linter race as an increment once `YamlLint` is real. Do not couple the benchmark rollout to the linter's.
+`@benchmark/yaml-lint` is a consumer of the shipped `YamlLint` system ([yaml-lint.md](yaml-lint.md)), so the linter race is available from the start rather than as a later increment. The two stay decoupled anyway: the app can be built against `Yaml.parse` and `YamlFormat` alone, and nothing about the benchmark structure depends on which yaml surfaces it drives.
 
 ## Two implementation notes
 
@@ -106,7 +106,7 @@ There is **no `build` task in `turbo.json`** — it defines `build:dev`, `build:
 
 ### Keeping the folders off the release gate
 
-The changeset `ignore` list is the right mechanism, and adding the two benchmark globs to it would be its **first use** here. Note that `website`, the existing non-`packages/*` workspace member, is *not* on that list: it stays out of releases only by never having a changeset written against it, while `privatePackages.version`/`tag` are both `true`, so a private package *does* release if a changeset targets it. The stronger guarantee is worth adopting for the benchmark folders precisely because they carry competitor dependencies that must never reach npm.
+The changeset `ignore` list in `.changeset/config.json` is the mechanism, and the two benchmark globs join the private workspace members already listed there. `"private": true` is **not** the guarantee: `privatePackages.version` and `.tag` are both `true`, so a private package does release if a changeset targets it. The `ignore` list is what makes that impossible, which matters here precisely because the suites carry competitor dependencies that must never reach npm.
 
 ## Open questions
 
@@ -118,4 +118,4 @@ The direction is recorded where one exists; the choice is **not** made, and must
 
 3. **Parity granularity per package.** Every package starts CLI-simple — compare tool output over the corpus. Whether and when a given package's parity moves to a **library-level** differential (comparing parsed values, isolating the engine from the I/O and CLI layers) is open and expected to **differ per package** — toml already has a library-level differential oracle to inherit, jsonc has none yet. Open.
 
-4. **The canonical fixture source.** The conformance gate (in the package) and the parity gate (in the suite) run the same corpora — ideally reading **one** canonical fixture set so the two cannot drift apart on inputs. Whether that is a single shared vendored directory both locations read, or each keeps its own vendored copy kept in sync, is open. The proposal is shared-canonical; the sharing mechanism is not designed. Open.
+4. **The canonical fixture source.** The conformance gate (in the package) and the parity gate (in the suite) run the same corpora — ideally reading **one** canonical fixture set so the two cannot drift apart on inputs. Whether that is a single shared vendored directory both locations read, or each keeps its own vendored copy kept in sync, is open. The proposal is shared-canonical; the sharing mechanism is not designed. Note the shape the repo has already grown around this: `.repos/` carries the upstream spec repositories (the CommonMark and GFM specs among them) as read-only submodules for agents to consult, while each package keeps its own committed fixtures for its gate. Open.

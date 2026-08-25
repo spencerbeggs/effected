@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 88
 related:
   - README.md
@@ -23,9 +23,9 @@ It is the smallest consumer in the register and the only one outside the savvy-w
 
 ## What it exercises
 
-**`GitBranch.upsert`, and the reason it exists.** The committer previously ran a TOCTOU dance — check existence, then create, then on failure re-check existence and reset if a concurrent run won the race — carrying an eight-line comment explaining that the predecessor's branch error had no structured "already exists" discriminant, so re-checking was the only robust way to tell a race from a real failure. `upsert` is one call, and `GitHubError`'s `alreadyExists` discriminant is what makes the second check unnecessary rather than merely unfashionable. The force-reset semantics the comment was defending are preserved, not traded away: a concurrent creator that rooted the branch elsewhere is still corrected.
+**`GitBranch.upsert`, and the reason it exists.** The committer previously ran a TOCTOU dance — check existence, then create, then on failure re-check existence and reset if a concurrent run won the race — under a comment explaining that the predecessor's branch error had no structured "already exists" discriminant, so re-checking was the only robust way to tell a race from a real failure. `upsert` is one call, and `GitHubError`'s `alreadyExists` discriminant is what makes the second check unnecessary rather than merely unfashionable. The force-reset semantics the comment was defending are preserved, not traded away: a concurrent creator that rooted the branch elsewhere is still corrected.
 
-**`GitHubRepository.defaultBranch`.** Resolving a base branch was eight lines of locally-declared octokit interface plus a `client.rest<{ default_branch }>("repos.get", …)` callback, because the predecessor's `rest()` returned `unknown`. It is now a member access.
+**`GitHubRepository.defaultBranch`.** Resolving a base branch was a locally-declared octokit interface plus a `client.rest<{ default_branch }>("repos.get", …)` callback, because the predecessor's `rest()` returned `unknown`. It is now a member access.
 
 **The branch-then-commit ordering hazard, from the consuming side.** `@effected/github` documents against `GitBranch.upsert` that resetting a branch and then committing to it closes the branch's open pull request, and names this action as the consumer that lost one to that window. The committer now builds the commit first and upserts once, straight to the finished sha. This is the register's clearest case of a hazard that produces no compile error and is only found in production.
 

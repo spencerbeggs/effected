@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 93
 related:
   - cli.md
@@ -74,7 +74,7 @@ Saving without a configured default path is a **typed runtime error, not a compi
 
 Each config schema gets a uniquely-keyed service so multiple typed config services coexist in one layer graph. The form is a generic class factory the consumer extends, putting identity and shape in one consumer-owned artifact:
 
-~~~ts
+```ts
 class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
 class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("app/Config") {}
 
@@ -84,7 +84,7 @@ const layer = ConfigFile.layer(AppConfig, {
   resolvers: [ConfigResolver.upwardWalk(".apprc"), ConfigResolver.systemEtc("app")],
   strategy: MergeStrategy.firstMatch,
 });
-~~~
+```
 
 Options are supplied to the layer, **not baked into the factory**, for two reasons: resolver requirements must flow into the layer's `R`, and the scoped test layer needs to vary options freely against the same service identity.
 
@@ -96,7 +96,7 @@ The service keeps a deliberate **save versus write** distinction — default pat
 
 `ConfigFileOptions` and `ConfigReadOptions` both take `parseOptions`, threaded into **every** schema decode either performs. Absent, core's defaults apply and nothing changes.
 
-The field that motivates it is `onExcessProperty`, which core defaults to `"ignore"`. For a *loader* that default means a user's unknown keys are dropped in silence, so the package can report neither a typo'd section nor a field the schema deliberately removed — the two config-file diagnostics a user most needs. **It cannot be expressed with the `validate` hook**, and that is the load-bearing part: `validate` runs on the *decoded* value, by which point the excess keys are already gone. A consumer discovering this writes a bespoke filter per removed field, which is what happened before the option existed.
+The field that motivates it is `onExcessProperty`, which core defaults to `"ignore"`. For a *loader* that default means a user's unknown keys are dropped in silence, so the package can report neither a typo'd section nor a field the schema deliberately removed — the two config-file diagnostics a user most needs. **It cannot be expressed with the `validate` hook**, and that is the load-bearing part: `validate` runs on the *decoded* value, by which point the excess keys are already gone. Without the option a consumer writes a bespoke filter per removed field.
 
 Two properties keep `"error"` safe to adopt. Keys covered by a `Schema.StructWithRest` rest are **not** excess, so a schema admitting a deliberate pass-through section keeps working under it. And it pairs with `errors: "all"`: core defaults to `"first"`, which for a loader means a file with three typos surfaces one per run — fix, re-run, discover the next — while the extra work only ever happens on a document that is already failing.
 
@@ -143,7 +143,7 @@ The YAML codec has a real stringify and carries no comment-loss caveat.
 The deep merge behind the layered strategy runs over the **decoded** source values, which makes two properties load-bearing:
 
 - **Value identity is preserved.** The merge builds its result on the target's prototype, so a decoded `Schema.Class` document survives as a real instance with its getters intact and still encodes through the schema. Recursion is gated on a true plain-object test — prototype `Object.prototype` or `null` — so nested `Date`, `Map`, `Set`, `RegExp` and class instances are **atomic**: the highest-priority source that defines one wins it whole. A `toString`-tag test cannot discriminate here, since `Schema.Class`, `DateTime` and `Option` all report the same; only the prototype test is safe. Because each source decodes individually before the strategy sees it, the layered strategy overrides values across tiers but cannot fill a field missing from a source — that source would fail its own decode first.
-- **Prototype-pollution safe, and the two properties interact.** Preserving the prototype means the result inherits `Object.prototype`'s `__proto__` accessor, so any write through `[[Set]]` semantics can move the prototype. The merge therefore filters the dunder keys from **both** sides and copies every key with `Object.defineProperty` — an own data property that never consults the prototype chain — never plain assignment and never `Object.assign`. This was a real regression caught in review.
+- **Prototype-pollution safe, and the two properties interact.** Preserving the prototype means the result inherits `Object.prototype`'s `__proto__` accessor, so any write through `[[Set]]` semantics can move the prototype. The merge therefore filters the dunder keys from **both** sides and copies every key with `Object.defineProperty` — an own data property that never consults the prototype chain — never plain assignment and never `Object.assign`. Neither half of that guard is optional.
 
 Three more properties of the current pipeline:
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 94
 related:
   - github-actions.md
@@ -17,7 +17,7 @@ related:
 
 ## Overview
 
-Storage and provisioning is the runner-side storage protocols and the installers built on them: the Actions cache and artifact APIs, the blob store and its envelope, cache-key derivation, and tool and package-manager provisioning.
+Storage and provisioning is the runner-side storage protocols and the installers built on them: the Actions cache and artifact APIs, the blob store and its envelope, cache-key derivation and the tool and package-manager installers.
 
 What it owns is the **protocol**, never the transport — the RPC sequence, conflict handling, version derivation, retry policy and envelope framing all sit on this side of a pre-signed URL, and the upload itself is taken as an argument. It is also where the package's heavy edges concentrate: everything Azure-touching lives in three modules here, and `@effected/npm` is reachable only from the package-manager installer, which is why none of this is in the layer [`Action.run`](github-actions-runtime.md#actionrun-and-the-composed-runtime) composes — a consumer that wants a cache passes it in and writes one explicit layer line. Package-wide framing — including the [reachability rules](github-actions.md#bundle-reachability-confining-the-heavy-edges) that make the confinement checkable — is in [github-actions.md](github-actions.md).
 
@@ -36,7 +36,7 @@ A raw get/put/has store over byte arrays has **no metadata channel**, so the con
 
 **The envelope's failures are a [per-reason tagged union](github-actions.md#errors)**: `BlobEnvelopeError` aliases `NotABlobEnvelopeError | TruncatedBlobEnvelopeError | UnsupportedBlobEnvelopeVersionError | BlobMetadataDecodeError | BlobMetadataEncodeError`. The split matters most precisely here, because the framing failures are the ones a caller *recovers from selectively* — "not an envelope" and "unsupported version" are both ordinary cache misses on a migrating consumer, while a truncated frame or a metadata decode failure is a corrupt entry worth reporting.
 
-**The service takes the schema per call**, which is not a new idiom — it is exactly the shape the state service already has, which is the consistency argument for choosing it over a layer-baked or type-parameterized service. There is **no list and no delete**: eviction is the backend's, no consumer wants them, and adding them would mean designing an eviction story for two backends that both already have one.
+**The service takes the schema per call**, which is not a new idiom — it is exactly the shape the state service already has, which is the consistency argument for choosing it over a layer-baked or type-parameterized service. There is **no list and no delete**: eviction is the backend's, no consumer wants them and adding them would mean designing an eviction story for two backends that both already have one.
 
 Two backends, both requiring core's HTTP client in their layer: the **Actions cache** protocol, and an **S3-compatible** backend with request signing, **path-style** addressing and a custom endpoint — which is what makes it work against non-AWS object stores rather than only AWS. Signing is `node:crypto` HMAC, per [the crypto finding](github-actions.md#tier-and-dependencies). The GitHub-cache backend's layer static lives on **its own module's class**, not on the shared service class: putting it there would make the Azure client reachable from every module that reads a blob. That is the layer-static-belongs-to-the-module-owning-the-dependency rule, applied for a confinement reason rather than a stylistic one.
 
@@ -54,7 +54,7 @@ It settles a duplication question that looks like sloppiness and is not: **each 
 
 **The results backend is only reachable from a `uses:` step.** Its two environment variables are injected into action execution contexts and **not** into shell steps, so identical code works from a bundled action and fails when a workflow invokes it directly. All three services report that as a misconfiguration **naming the absent variable**, because nothing else in the environment distinguishes the two cases. They read the variables **per call through the environment service**, not at layer construction: resolving at construction would make merely *composing* the layer fail outside Actions, including for an action that never touches the cache.
 
-**The runtime token is never declassified.** It arrives as plaintext, is wrapped immediately at the read, and leaves only through the HTTP client's bearer-token helper, which accepts a redacted value directly. So the [declassification seam](github-actions-runtime.md#secrets-the-declassification-seam) needed no new member for it.
+**The runtime token is never declassified.** It arrives as plaintext, is wrapped immediately at the read and leaves only through the HTTP client's bearer-token helper, which accepts a redacted value directly. So the [declassification seam](github-actions-runtime.md#secrets-the-declassification-seam) needed no new member for it.
 
 **Artifact facts that are easy to get wrong**, each with a test: the create call's protocol version is unrelated to the version in the marketplace action's name (which is the obvious wrong guess); finalization hashes the **stored archive, streamed** rather than read, because an artifact is the one payload here with no upper bound on size; entries are stored **relative to the root directory**, or a download rebuilds a tree named after the runner that produced it; and a conflict on create is a **failure**, unlike the cache, because a run may hold one artifact per name.
 
@@ -64,7 +64,7 @@ The artifact module is **provisional by ruling** in a way the others are not: it
 
 ## Cache keys, and where file hashing lives
 
-The key ladder is consumer-visible logic every consumer re-derives, so it is its own concept module: file hashing, the primary-key and restore-key ladder, and branch-aware derivation.
+The key ladder is consumer-visible logic every consumer re-derives, so it is its own concept module: file hashing, the primary-key and restore-key ladder and branch-aware derivation.
 
 Three properties earned their tests, and each is a way the obvious implementation is wrong:
 
@@ -76,7 +76,7 @@ Three properties earned their tests, and each is a way the obvious implementatio
 
 `CacheKeyError` also became a [per-reason union](github-actions.md#errors) — `CacheKeyReadError` carries a required `path`, `CacheKeyBadPatternError` a required `pattern` — which is the case where the old shape's optional fields were most visibly wrong: half the messages could render `"undefined"`.
 
-**File hashing is byte-compatible with the official glob action**: sorted, de-duplicated, and each file's digest fed into the accumulator as **binary, not hex**. A hex-fed accumulator produces a perfectly plausible digest that never matches a cache entry written by any other action, so the test pins the digest as a literal.
+**File hashing is byte-compatible with the official glob action**: sorted, de-duplicated and each file's digest fed into the accumulator as **binary, not hex**. A hex-fed accumulator produces a perfectly plausible digest that never matches a cache entry written by any other action, so the test pins the digest as a literal.
 
 **Discovery and matching are two halves, deliberately.** [`@effected/glob`](glob.md) is a **matcher, not a walker** — pure string-to-predicate by construction — so it cannot supply file discovery. The walk is therefore core's recursive directory read, which is the better half of the deal: it makes the whole pairing testable through a noop filesystem with no temp directory and no real IO. The alternative, a platform glob call, was rejected on a **correctness** argument rather than a weight one: it welds discovery and matching into one non-stubbable call, and node's glob dialect is not the minimatch dialect the official action uses — a dialect divergence surfaces as a *silent cache-key difference* from every other action in the same workflow, which is the worst failure mode a cache key has.
 
@@ -92,14 +92,14 @@ Downloading, extracting and caching a toolchain, plus exact-version provisioning
 
 **Downloads go through core's HTTP client and stream to disk** rather than buffering, and extraction requires core's subprocess contract in `R` — no spawner backend here, per the [commands invariant](commands.md#the-one-rule). The platform branch reads the **runner's own OS variable**, not the process platform.
 
-**Installs stage then swap**: extract into a temp directory **under the cache root** and rename into place. Two invariants, both tested, and both confirmed by mutating the naive "make the destination, then copy into it" implementation back in — it fails both. A failed install must leave **nothing** at the cache path, because a lookup reports an empty directory as a **hit**, so every later run uses a tool that is not there and never re-downloads it. And a re-install must **replace** rather than merge, so the previous version's files do not survive inside the new one. The staging directory lives under the cache root deliberately: a rename across filesystems is not atomic and often not permitted, so a system temp directory would silently degrade the guarantee to a copy.
+**Installs stage then swap**: extract into a temp directory **under the cache root** and rename into place. Two invariants, both tested and both confirmed by mutating the naive "make the destination, then copy into it" implementation back in — it fails both. A failed install must leave **nothing** at the cache path, because a lookup reports an empty directory as a **hit**, so every later run uses a tool that is not there and never re-downloads it. And a re-install must **replace** rather than merge, so the previous version's files do not survive inside the new one. The staging directory lives under the cache root deliberately: a rename across filesystems is not atomic and often not permitted, so a system temp directory would silently degrade the guarantee to a copy.
 
 Tool installation deliberately takes **no edge to [`@effected/runtimes`](runtimes.md)**, despite the apparent overlap: that package resolves *versions* and answers with a download URL, while this one takes a URL and installs *files*. Nothing in the installer wants a version resolver, and a consumer that wants both composes them in three lines. The edge stays free if a real call site ever asks for it.
 
 ## Testing notes specific to this subsystem
 
 - **Real IO where the claim is about the filesystem.** The installer tests run against the real platform layer with a real archiver, because stage-then-swap is a statement about what the filesystem contains after a partial failure and an in-memory double would only assert the double.
-- **The envelope gets pure tests and a property**: round-trip arbitrary metadata and bodies, a truncated frame failing typed rather than throwing, a random byte array failing as not-an-envelope, and a bumped version byte failing as unsupported. This is the module where a counterexample is a corrupted cache entry.
+- **The envelope gets pure tests and a property**: round-trip arbitrary metadata and bodies, a truncated frame failing typed rather than throwing, a random byte array failing as not-an-envelope and a bumped version byte failing as unsupported. This is the module where a counterexample is a corrupted cache entry.
 - **A fake HTTP layer must decode the request body through a response**, never by stringifying it. The body arrives as bytes, and stringifying them yields a comma-separated digit soup that throws in the JSON parse, which inside a fake transport surfaces as a *transport fault*, which the client then **retries**, which hangs the virtual clock. One misread fixture presented as ten unrelated timeouts in modules that had nothing wrong with them.
 - **A retry test needs a bounded settle helper** — a forked fiber plus a bounded clock-advance loop polling the fiber — rather than an unbounded wait: a fiber blocked on something that is not a sleep would otherwise hang to the vitest timeout with no clue why.
-- **Mutants that discriminate here**: removing the RPC retry, dropping the snake_case field fallback, taking the finalized size from the body rather than the frame, computing the cache entry version over unsorted paths, ignoring the matched key on restore, storing archive entries absolutely, loosening the directory filter, hex-feeding the digest accumulator, dropping the ladder's sort, and importing Azure from an internal helper.
+- **Mutants that discriminate here**: removing the RPC retry, dropping the snake_case field fallback, taking the finalized size from the body rather than the frame, computing the cache entry version over unsorted paths, ignoring the matched key on restore, storing archive entries absolutely, loosening the directory filter, hex-feeding the digest accumulator, dropping the ladder's sort and importing Azure from an internal helper.

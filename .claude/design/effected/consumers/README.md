@@ -3,11 +3,13 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-14
-last-synced: 2026-08-14
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 90
 related:
   - reposets.md
+  - tsdoctor.md
+  - fluency-audit.md
   - ../packages/app.md
   - ../packages/store.md
   - ../packages/cli.md
@@ -30,7 +32,7 @@ One document per application that consumes the kit from outside this monorepo. E
 
 These documents exist because the kit's scope is closed by its consumers rather than by its own ambition. A package earns its surface by what a real application asks of it, and the register is where that demand is written down. It is a **register of current relationships**, not a work plan: nothing here is scheduled, and no row waits on anything.
 
-**Every application below runs on the kit today.** `@savvy-web/github-action-effects` — the package the kit replaced wholesale — is absent from every consumer's manifest and no longer exists in savvy-web/systems, and the mechanism half of `@savvy-web/silk-effects` has moved up into `@effected/commands`, `@effected/templates` and `@effected/workspaces`. Verified against the checkouts on 2026-08-12, and reposets on 2026-08-14 — it is the one row still resolving through local `file:` overrides rather than published pins, because the wave it drove has not released yet.
+**Every application below runs on the kit today, and every one of them resolves through published `catalog:effected` pins.** `@savvy-web/github-action-effects` — the package the kit replaced wholesale — is absent from every consumer's manifest and no longer exists in savvy-web/systems, and the mechanism half of `@savvy-web/silk-effects` has moved up into `@effected/commands`, `@effected/templates` and `@effected/workspaces`. Verified against the checkouts on 2026-08-25.
 
 **These repositories are read-only from here.** They are surveyed, never modified by work in this monorepo. Where a consumer is not checked out locally, its document says so rather than guessing.
 
@@ -46,6 +48,7 @@ These documents exist because the kit's scope is closed by its consumers rather 
 | spencerbeggs/claude-code-marketplace-manager | [claude-code-marketplace-manager.md](claude-code-marketplace-manager.md) | Comment-preserving JSONC editing plus the branch-and-pull-request landing path. |
 | savvy-web/systems | [systems.md](systems.md) | The source monorepo the kit took its GitHub and Actions code from, and now a heavy consumer in its own right. |
 | spencerbeggs/reposets | [reposets.md](reposets.md) | The application control plane and the terminal: `app`, `store` and the repository-configuration write surface, from a CLI rather than an action. |
+| spencerbeggs/tsdoctor | [tsdoctor.md](tsdoctor.md) | Durable local state at scale, and the pure document tier: `store`, `xdg`, `tsconfig-json`, `markdown` and `package-json` inside a build pipeline. |
 
 ## Document shape
 
@@ -58,11 +61,21 @@ Each register entry carries:
 
 Paths are repo-relative and given without line numbers on purpose: a path survives an edit, a line number does not.
 
+## Linking a consumer to an unreleased kit
+
+Every dogfood loop begins by pointing a consumer at unpublished builds, and the mechanism for that has one trap worth stating once, because its failure mode is a **green typecheck**.
+
+A plain `link:` — or `file:`, which pnpm resolves as a link for a directory — leaves the linked package resolving `effect` and its `@effected` siblings from the *kit's* tree, putting a second `effect` instance in the process. The visible half is honest: type identity errors, "two different types with this name exist". Chasing that by linking each clashing sibling in turn makes the typecheck pass, which is the trap. The invisible half is runtime — schema class adapters failing across the instance seam, an all-strings table cell coming back a non-string, a large minority of a passing suite failing where the unlinked tree passed everything.
+
+The fix is `file:` **plus `dependenciesMeta.<pkg>.injected: true`**, so pnpm materializes a real copy whose dependencies resolve from the consumer's tree — one `effect`, one of everything, and no sibling overrides at all. Two operational notes travel with it: after changing an injected override the lockfile must be cleaned, because a plain install replays the stale resolution and silently keeps the previous link; and the first install can leave a dangling symlink that a second install materializes.
+
 ## What adoption taught
 
 Adoption by these applications produced a run of upstream corrections, and the pattern in them is worth more than the list. **The github-split consumers reported no missing capability between them.** Every finding was a *projection* the consumer had to write between two things the kit already owned — OIDC claims to a provenance predicate, check state to a document, a row type to a table — and got wrong in a way that typechecked. Prefer absorbing the projection over documenting the hazard.
 
 **That pattern is a property of arriving second, not a law**, and [reposets](reposets.md) is where it broke: the first consumer of the application control plane and the first to run at a terminal found genuine absence — a resolver chain, a read-through cache, a UTF-8 codec, decode options, six unrepresented route families — and, twice, wrote the missing surface itself for this repo to fold in. **Expect the first consumer of any surface to find absence and later ones to find projections**, and read a projection-only round as evidence that the surface was already shaped by someone else.
+
+**A third shape showed up once surfaces started meeting their *second* environment.** [tsdoctor](tsdoctor.md) arrived at `store`, `yaml`, `markdown` and `package-json` after all four had shipped, and found neither absence nor mis-projection: it found the **option axis** — driver options a durable-SQLite consumer must pass through, a compat mode for a downstream YAML 1.1 resolver, sync primitives beside effectful ones. These are additive by construction and cost the kit nothing to grant, which is the tell. **Absence means the surface was never designed; an option ask means it was designed against one environment.** Neither is a defect in the consumer, and only the first is a defect in the design.
 
 The hazards that could not be absorbed are recorded in the owning package's design doc, in its own terms and current tense, rather than duplicated here:
 
@@ -75,5 +88,10 @@ The hazards that could not be absorbed are recorded in the owning package's desi
 | Resetting a branch and then committing to it closes the branch's open pull request | [github.md](../packages/github.md) |
 | A language-less `Code` node stringifies as an indented block, not a fenced one | [markdown.md](../packages/markdown.md) |
 | `SectionId` keys render into markers verbatim, so canonicalization belongs at construction | [templates.md](../packages/templates.md) |
+| `Store.layerSqlite` is a parameterized factory and layers memoize by reference, so calling it inline at two provide sites opens the database twice | [store.md](../packages/store.md) |
 
 What these applications prove a *new* action should look like is a separate question, answered by [github-action-canon.md](../github-action-canon.md) — derived construct by construct from the three that completed the move.
+
+## Archived
+
+[fluency-audit.md](fluency-audit.md) records the acceptance gate that ran before any consumer had migrated — five known-bad call sites rewritten against the then-new kit and scored on one bar. It is superseded on both counts: its findings live in the owning packages' docs, and the action canon replaced its rewrites with shipped source. Kept as the record that the gate ran, not as guidance.

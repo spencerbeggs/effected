@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 92
 related:
   - github.md
@@ -17,13 +17,13 @@ related:
 
 ## Overview
 
-GraphQL is the package's second transport: a `GraphQLDocument` carrying a name, the document text, a response schema and a variables schema, executed through the same client, the same [error taxonomy](github-errors.md) and the same span conventions as a REST call. There is no separate GraphQL service.
+GraphQL is the package's second transport: a `GraphQLDocument` (`src/GraphQL.ts`) carrying a name, the document text and a response schema, executed through the same client, the same [error taxonomy](github-errors.md) and the same span conventions as a REST call. There is no separate GraphQL service.
 
 What differs from [the REST surface](github-rest.md) is ownership, and that is why it is its own doc: REST routes come from a generated map that describes all of GitHub, while every GraphQL document here is one the kit chose to write. A document whose subject is a GitHub primitive the package already models is owned here; a document whose subject is one consumer's domain stays with that consumer. The mechanism is the kit's, the schema may not be. Package-wide framing is in [github.md](github.md).
 
 ## Typed documents, decoded responses
 
-A `GraphQLDocument` carries a name, the document text, a response schema and a variables schema. The client encodes the variables, posts the document and **decodes the response through the schema** — so a GraphQL result is a domain value, not an `unknown` the caller casts, and a decode failure is [the decode kind](github-errors.md#four-errors-and-classification-happens-once) with the schema error carried structurally.
+A document is built from a name, the document text and a response schema; the variables type is stated separately, with an optional encoder onto the wire object. The constructor is **curried** for that reason — TypeScript takes explicit type arguments all-or-nothing, so a single call would force the caller to spell out the decoded type as well — and the encoder exists so the variables type is genuinely load-bearing rather than structurally interchangeable. The client encodes the variables, posts the document and **decodes the response through the schema**, so a GraphQL result is a domain value rather than an `unknown` the caller casts, and a decode failure is [the decode kind](github-errors.md#four-errors-and-classification-happens-once) with the schema error carried structurally.
 
 The name is not decoration: it names the span and the error's operation field, where a predecessor passed the literal string `"graphql"` for every call.
 

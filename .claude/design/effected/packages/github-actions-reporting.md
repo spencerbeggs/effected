@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - github-actions.md
@@ -38,7 +38,7 @@ It is a thin domain fixing of [`@effected/templates`](templates.md)' section doc
 
 ### Region metadata rides the marker
 
-A region may carry `name="value"` pairs on its marker: `withRegions` takes a `[key, content, meta?]` **triple** alongside the existing two-tuple, `entry(key)` answers content and metadata together, and the `regions` getter reports `meta` on every region. The mechanism is [`templates`' marker attributes](templates.md#attributes-ride-the-begin-marker) passed straight through — this module adds no grammar and no meaning.
+A region may carry `name="value"` pairs on its marker: `withRegions` takes a `[key, content, meta?]` **triple** alongside the existing two-tuple, `entry(key)` answers content and metadata together and the `regions` getter reports `meta` on every region. The mechanism is [`templates`' marker attributes](templates.md#attributes-ride-the-begin-marker) passed straight through — this module adds no grammar and no meaning.
 
 Three shape decisions:
 
@@ -52,7 +52,7 @@ Three shape decisions:
 
 A fluent writer for GitHub's surfaces: tables, headings, links, code, lists, collapsible sections and raw passthrough. **Every member takes pre-rendered markdown and returns a string**, so compositions read as plain string assembly; what the writer owns is the *structure*.
 
-The defect it exists to delete is live: a predecessor **joined strings**, and joining is precisely what corrupts a table when a cell contains a pipe — every column after it shifts. Here a cell's pipes are escaped, a fence inside a code block widens the fence, and a URL with spaces is bracketed. That is also why the serializer's impossible arm is a **defect, not a fallback**: quietly degrading to string joining on a tree that cannot occur is how the corruption came back last time.
+The defect it exists to delete is live: a predecessor **joined strings**, and joining is precisely what corrupts a table when a cell contains a pipe — every column after it shifts. Here a cell's pipes are escaped, a fence inside a code block widens the fence and a URL with spaces is bracketed. That is also why the serializer's impossible arm is a **defect, not a fallback**: quietly degrading to string joining on a tree that cannot occur is how the corruption came back last time.
 
 It is the **only** module permitted to import [`@effected/markdown`](markdown.md), and that confinement is [reachability-tested with a control](github-actions.md#bundle-reachability-confining-the-heavy-edges) exactly as the Azure client is — which constrains the **import** graph, not the resolver graph: the engine is a declared dependency of this package either way, so what the confinement buys is that a consumer writing a check document without calling the writer links none of it and a tree-shaking bundler can drop it.
 
@@ -85,7 +85,7 @@ Its error carries which phase failed — the document could not be built, the li
 
 ### The staleness guard: two runs, one document
 
-Two workflow runs can be in flight against one document — a re-run started while a delayed original is still going, or two events racing on the same pull request. The reconciler shipped assuming it was alone: each pass reconciled against **the last text this process wrote**, a process-local shadow, so a run never saw another run's writes and happily rewrote over them. The observable damage is a report that flickers between two runs' states and settles on whichever finished last, which is not necessarily the newest.
+Two workflow runs can be in flight against one document — a re-run started while a delayed original is still going, or two events racing on the same pull request. With neither mechanism below engaged, the reconciler assumes it is alone: each pass reconciles against **the last text this process wrote**, a process-local shadow, so a run never sees another run's writes and happily rewrites over them. The observable damage is a report that flickers between two runs' states and settles on whichever finished last, which is not necessarily the newest.
 
 Two independent, opt-in mechanisms close it, and they are separable on purpose: reading fixes *what a pass reconciles against*, stamping fixes *whether a pass may write at all*.
 

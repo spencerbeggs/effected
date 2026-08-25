@@ -15,8 +15,6 @@ entry point to two children:
 - `@../../.claude/design/effected/packages/jsonl-reads.md` — Load when: working
   on `Slice`, `query`/`changes`/`projection`, or the read economy.
 
-**Plan:** `@../../.claude/plans/2026-08-03-jsonl-package.md`.
-
 ## Tier: boundary
 
 `effect` is the only peer. **Zero runtime dependencies, zero `@effected/*`

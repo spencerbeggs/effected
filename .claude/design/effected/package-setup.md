@@ -3,14 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-08-21
-last-synced: 2026-08-21
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 92
 related:
   - catalog-sync.md
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
+  - package-inventory.md
 ---
 
 # Package setup
@@ -29,6 +30,8 @@ A pure-tier package is these files under `packages/X/`. Where a file is byte-ide
 - `tsdoc.json` — copy verbatim from a sibling ([`packages/jsonc/tsdoc.json`](../../../packages/jsonc/tsdoc.json)); it is the standard `supportForTags` allow-list and does not vary per package.
 - `savvy.build.ts` — `import { build } from "@savvy-web/bundler"; await build({ meta: { localPaths: ["../../website/lib/models/X"] } });`. The `localPaths` entry is per-package, same rename rule as `turbo.json`.
 - `LICENSE` — copy from a sibling.
+- `CLAUDE.md` — the package's own context file. Every package has one and it is where the package documents itself; the root `CLAUDE.md` deliberately does not duplicate it.
+- `README.md` — the package's user-facing entry point, and what npm renders. Every package has one.
 - `src/index.ts` — the public entrypoint, re-exports only (see the no-barrel rule in [effect-standards.md](effect-standards.md)). Create it as a stub **before the first install** — see [scaffold order](#scaffold-order-stub-srcindexts-before-the-first-install).
 - `__test__/` — tests live here per repo convention, never co-located in `src/`.
 

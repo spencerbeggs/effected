@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - github.md
@@ -32,6 +32,14 @@ The route vocabulary lives in one types-only module (`src/Rest.ts`, which emits 
 
 **`operation: string` is gone.** There is nothing left for it to name: the route names the endpoint and the span carries it. One consumer had filled it with an invented key unrelated to any endpoint; that has no successor and needs none.
 
+### `repositoryPatch` owns the cast consumers were writing
+
+The no-cast property has one place it does not hold for free, and `src/GitHubRepository.ts` absorbs it there rather than pushing it out. `RepositoryPatch` is octokit's generated parameter type, and octokit spells an optional field as `has_issues?: boolean` — **not** `has_issues?: boolean | undefined`. Under `exactOptionalPropertyTypes`, which is on in this repo and in the silk tsconfig base, a `Partial<T>` assembled from a consumer's own settings schema therefore does not assign to `RepositoryPatch` at all, and every consumer applying "only what the user configured" was writing the same `as`.
+
+`RepositoryPatchDraft` is that shape — every field optional *and* explicitly `undefined`-able — and `repositoryPatch(draft)` narrows it by **dropping keys whose value is `undefined`**. Dropping rather than sending is what the wire needs: `PATCH` reads an absent field as "leave it alone", while an explicit `null` or `undefined` is a value.
+
+**The residual limitation is recorded, because a reader will try to fix it.** A key-by-key loop still defeats TypeScript's correlation between two indexed accesses (`draft[key] = source[key]` over a union `key`), and no helper can fix that — build the draft as a literal where you can.
+
 ### Resource ids come off the wire as `number | bigint`
 
 `@octokit/types` v17 widened every GitHub resource id to `number | bigint`, future-proofing the generated map against ids past 2^53. **The public surface stays `id: number`**: REST payloads arrive through `JSON.parse`, which never yields a bigint, so the union is a claim about a future that has not happened rather than a shape any response actually takes.
@@ -52,7 +60,7 @@ The general lesson generalizes past that endpoint: **the typed route table does 
 
 See `src/GitHubClient.ts`. One request member, one decoding-request member, a collected and a streaming paginate, a GraphQL member and an effect-valued rate-limit snapshot. **Every member is an `Effect`, a `Stream` or a function returning one** — including the snapshot, which is an effect-valued property, the core paradigm — so the whole shape stays mock-optional and stubbable from a partial record.
 
-Layer variants: from an explicit token, and from the ambient config provider. The config variant reads a redacted token and **fails with `ConfigError`** — an honest "no token is configured" rather than a wire-failure type. Three things improve at once: the layer is testable by providing a provider, it is not Actions-coupled, and a consumer may simply let the config error sit in the layer's error channel instead of writing a comment justifying an `orDie`. The App-authenticated variant lives in [another module](github-auth.md#where-the-app-client-layer-lives), for reachability reasons.
+Layer variants: from an explicit token, and from the ambient config provider. The config variant reads a redacted token and **fails with `ConfigError`** — an honest "no token is configured" rather than a wire-failure type. Three things improve at once: the layer is testable by providing a provider, it is not Actions-coupled and a consumer may simply let the config error sit in the layer's error channel instead of writing a comment justifying an `orDie`. The App-authenticated variant lives in [another module](github-auth.md#where-the-app-client-layer-lives), for reachability reasons.
 
 ## Pagination
 
@@ -65,7 +73,7 @@ Four rules:
 3. **Both a collected and a streaming form, sharing one engine.** The collected form is the stream run to completion, and the page bound is applied **inside the iterator adapter** so the traversal *stops issuing requests* rather than filtering after the fact.
 4. **A non-paginating route is a compile error**, which an operation-string-plus-callback surface could never express.
 
-**The engine is octokit's own iterator, not a hand-rolled link walk**, and reading the plugin's source settled two things the design could not: its cursor **advances only on success**, so wrapping it in the retry re-requests a failed page rather than skipping it; and it already carries three behaviours we would otherwise have reimplemented — a compare endpoint's continuation, the search-shaped payload normalization, and the empty-repository conflict case. The page bound and header capture stay on our side.
+**The engine is octokit's own iterator, not a hand-rolled link walk**, and reading the plugin's source settled two things the design could not: its cursor **advances only on success**, so wrapping it in the retry re-requests a failed page rather than skipping it; and it already carries three behaviours we would otherwise have reimplemented — a compare endpoint's continuation, the search-shaped payload normalization and the empty-repository conflict case. The page bound and header capture stay on our side.
 
 **There is exactly one pagination implementation**, and the seam that keeps it that way is a page source. One resource pages **by file** at a fixed size on a route octokit does not list as paginating (its payload is an object, not an array), so it constructs pages itself and hands them to the same engine — which is what that seam is for. The [fixture client double](github.md#testing) feeds the same engine from recorded arrays, so it cannot drift from the live behaviour.
 

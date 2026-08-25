@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-14
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - architecture.md
@@ -16,16 +16,16 @@ related:
 
 ## Overview
 
-The `scratchpad/` workspace lets agents write **typed** probes fast — the evidence ladder's rung 3 ("only a probe settles semantics") tooled instead of hand-rolled. It was designed from [issue #346](https://github.com/spencerbeggs/effected/issues/346) (all three open questions are settled below) and is fully implemented; `scratchpad/` and the root wiring are the authority on mechanics, and `scratchpad/CLAUDE.md` is the in-directory contract agents actually read.
+The `scratchpad/` workspace lets agents write **typed** probes fast — the evidence ladder's rung 3 ("only a probe settles semantics") tooled instead of hand-rolled. `scratchpad/` and the root wiring are the authority on mechanics; `scratchpad/CLAUDE.md` is the in-directory contract agents actually read.
 
-The motivation is the yaml #338 branch, where every hard question was settled by untyped `node -e` probes against dist paths — one of which silently misread the v4 `Result` accessor. Typed probes kill that bug class at compile time. The downstream dogfood partner independently built the same thing ad hoc (`sweep.mjs`), confirming the need is real, not local.
+The bug class it exists to kill: hard questions settled by untyped `node -e` probes against dist paths, one of which silently misread the v4 `Result` accessor. A typed probe catches that at compile time. A downstream dogfood partner independently built the same thing ad hoc, which is the evidence that the need is general rather than local.
 
 ## Architecture: the ghost workspace
 
 `scratchpad/` is a real pnpm workspace member — listed in `pnpm-workspace.yaml` — so `workspace:*` dependencies resolve and the tooling ecosystem (turbo, vitest-agent, pnpm) treats it normally. But it is a **fixture, not a package**:
 
 - `"name": "scratchpad"`, `"private": true`, `"type": "module"`, **no** `publishConfig`. No `savvy.build.ts`, no build scripts — its only scripts are the three runners (`probe`, `check`, `reset`).
-- Dependencies: `effect: catalog:effect` and every published `@effected/*` package at `workspace:*` — the manifest is the list, and a package missing from it is simply unprobeable here, which is how `memfs` went unprobed until 2026-08-20. DevDeps: `@effect/vitest` (`catalog:effect`), `tsx`, `typescript` and `@types/node` (`catalog:build`). **No `vitest` devDep** — the project runs through the root vitest install; adding one locally would only invite version skew.
+- Dependencies: `effect: catalog:effect` and every published `@effected/*` package at `workspace:*` — **the manifest is the list**, and a package missing from it is simply unprobeable here, so a new kit package has to be added or it is silently out of reach. DevDeps: `@effect/vitest` (`catalog:effect`), `tsx`, `typescript` and `@types/node` (`catalog:build`). **No `vitest` devDep** — the project runs through the root vitest install; adding one locally would only invite version skew.
 - Exclusions make it a "ghost": `"scratchpad"` in the `ignore` array of `.changeset/config.json` (alongside `"docs"`); skipped by the vitest discover strategy when `CI` is set; `scratchpad/**` in the root coverage `exclude`.
 
 The manifest **is committed**. A fully gitignored workspace member would cause lockfile importer churn on fresh clones — only the probe working areas are ignored.
@@ -50,7 +50,7 @@ scratchpad/
 
 ## Two probe venues
 
-Settles issue #346 open question 1. The original design assumed workspace imports resolve to `./src/index.ts` ("source mode, zero staleness"); implementation disproved that, so **there is no zero-staleness venue** — both venues read built output and differ in which build they read.
+**There is no zero-staleness venue.** Workspace imports do not resolve to `./src/index.ts`; both venues read built output and differ only in which build they read.
 
 - **Workspace mode** (the default for API-semantics probes): a bare `@effected/<pkg>` import resolves through pnpm's workspace linking — which honors each package's `publishConfig.linkDirectory`/`directory` — to that package's **`dist/dev/pkg` build** (verified: `scratchpad/node_modules/@effected/app -> ../../../packages/app/dist/dev/pkg`). Probes type against the dev build's declarations, kept fresh by install prepare hooks plus the vitest globalSetup turbo pre-build. After editing a package's `src/`, run `pnpm build --filter @effected/<pkg>` before trusting a tsx probe; test-shaped probes get the pre-build automatically.
 - **Artifact mode**: deep-import `packages/<pkg>/dist/prod/npm/pkg/...` to interrogate the **built prod artifact**, typed via `as unknown as typeof import("@effected/<pkg>")` — the double cast is required because dev and prod declarations of private-field classes are nominally distinct. `lib/templates/artifact-probe.ts` demonstrates it. Build the target first.
@@ -81,13 +81,13 @@ The committed `scratchpad/CLAUDE.md` states: the purpose (rung-3 probes); the tw
 
 ## Plugin guidance
 
-Settles issue #346 open question 2. Two surgical amendments to existing plugin skills, no new skill: `effect-v4-source-lookup` names the scratchpad as the sanctioned rung-3 venue (replacing hand-rolled `node -e` guidance and lifting its placement/deletion preconditions inside the scratchpad), and `effect-v4-planning`'s probe step points the same way. The wording degrades gracefully since the plugin ships to other repos: "if the repo has a `scratchpad/` workspace, use it; otherwise inline probe."
+Two surgical amendments to existing plugin skills, no new skill: `effect-v4-source-lookup` names the scratchpad as the sanctioned rung-3 venue (replacing hand-rolled `node -e` guidance and lifting its placement/deletion preconditions inside the scratchpad), and `effect-v4-planning`'s probe step points the same way. The wording degrades gracefully since the plugin ships to other repos: "if the repo has a `scratchpad/` workspace, use it; otherwise inline probe."
 
 **The name collides with the agent harness's own scratch directory, and the collision is a real failure mode.** Most sessions are handed a private scratch *directory* for temporary files — an absolute path under `/tmp`, named in the system prompt — which has no `node_modules`, so a probe written there dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'`. That failure is reached by a route that feels like *following* the venue rule rather than breaking it, which is why the skill now names the distinction explicitly: the venue is a `scratchpad/` directory **inside the repo**, resolved from the repo root. Re-proven 2026-08-23, a probe in the harness scratchpad failed to resolve `effect` and the identical file copied into a package directory ran first try.
 
 ## Dogfood harness landing path
 
-Settles issue #346 open question 3. Handed-over harnesses (e.g. the systems `sweep.mjs`) land in `probes/` — disposable by default. Durable parts get promoted into `__test__/utils/` as a reviewed commit. One paragraph in the scratchpad CLAUDE.md covers this.
+A handed-over harness lands in `probes/` — disposable by default. Durable parts get promoted into `__test__/utils/` as a reviewed commit. One paragraph in the scratchpad CLAUDE.md covers this.
 
 ## Deliberately excluded (YAGNI)
 

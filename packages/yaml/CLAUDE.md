@@ -4,7 +4,9 @@ Zero-dependency YAML 1.2 parsing, editing, formatting and linting as Effect sche
 
 **Design docs:**
 
-- `@../../.claude/design/effected/packages/yaml.md` — load when changing the public API, the engine seams, the comment model or the hardening guards.
+- `@../../.claude/design/effected/packages/yaml.md` — load when changing the public API, the engine seams or the hardening guards.
+- `@../../.claude/design/effected/packages/yaml-comments.md` — load when changing where a comment is captured, which node owns it, or how the stringifier puts it back.
+- `@../../.claude/design/effected/packages/yaml-stringify.md` — load when changing an emitter option: sequence indentation, explicit keys, folding, re-quoting or 1.1 compatibility.
 - `@../../.claude/design/effected/yaml-lint.md` — load when changing the token stream, the rule model, a built-in rule or autofix.
 
 **Child context file:** `@./CLAUDE.lint.md` — the token stream and lint system. Load when touching tokens, rules, lint config, autofix or a rule test.

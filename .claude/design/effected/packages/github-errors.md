@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - github.md
@@ -52,8 +52,8 @@ Designing from zero users: **delete the subsystem, keep one policy inside the cl
 
 **Resilience imports no error class at all.** It declares a **structural** shape — retryable, plus an optional advised delay — so one policy serves both the REST and the GraphQL error and every policy decision is testable against a two-field literal. That is also why the error lives in its own module rather than inside the client: the policy needs the error's shape and the client needs the policy.
 
-**Rate-limit headers stay, as an observable value rather than a shared cell.** The client parses them off every response into a ref held **inside the layer's own closure**, surfaced as one effect-valued member on the client shape: mockable from a partial record, observable in tests, impossible to forget to provide, and impossible to desynchronize from the client that writes it. A dead "observed at" field is dropped.
+**Rate-limit headers stay, as an observable value rather than a shared cell.** The client parses them off every response into a ref held **inside the layer's own closure**, surfaced as one effect-valued member on the client shape: mockable from a partial record, observable in tests, impossible to forget to provide and impossible to desynchronize from the client that writes it. A dead "observed at" field is dropped.
 
 **No proactive throttling.** The gate that would have provided it had zero users and duplicated what the reactive path handles correctly: GitHub answers an exhausted budget with a status plus reset headers, which classifies as rate-limited and gets the server-advised delay. A consumer that wants to pace itself has the snapshot and can build a gate; if a second one asks, it arrives additively.
 
-**No dependency edge to [`@effected/commands`](commands.md)' retry vocabulary.** That module classifies a subprocess failure over a subprocess transport; this one classifies an HTTP failure over HTTP. Sharing would require a cross-package error contract to buy a shared word. What the two packages share is a **convention** — each owns "which of my failures are transient", exposes it, and lets the caller compose the retry — and a convention belongs in [effect-standards](../effect-standards.md), not in a package edge.
+**No dependency edge to [`@effected/commands`](commands.md)' retry vocabulary.** That module classifies a subprocess failure over a subprocess transport; this one classifies an HTTP failure over HTTP. Sharing would require a cross-package error contract to buy a shared word. What the two packages share is a **convention** — each owns "which of my failures are transient", exposes it and lets the caller compose the retry — and a convention belongs in [effect-standards](../effect-standards.md), not in a package edge.

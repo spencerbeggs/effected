@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-23
-last-synced: 2026-08-23
-completeness: 88
+updated: 2026-08-25
+last-synced: 2026-08-25
+completeness: 90
 related:
   - effect-standards.md
   - catalog-sync.md
@@ -14,6 +14,7 @@ related:
   - package-setup.md
   - releases.md
   - plugin.md
+  - scratchpad.md
 ---
 
 # Monorepo architecture
@@ -51,14 +52,17 @@ Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Rele
 - `packages/pnpm-plugin-effect` — the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) (pnpm catalog/config plugin): published with the kit and installable by consumers, but not a library, so it carries no tier.
 - `plugin/` — the "effected" Claude Code plugin; see [plugin.md](plugin.md).
 - `.claude/skills/improve` — the project-level self-improvement skill that maintains `plugin/skills/`; see [plugin.md](plugin.md).
-- `.repos/effect` — vendored Effect v4 source, a sparse git submodule, read-only reference material; see [Vendored source](#vendored-source).
+- `.repos/` — read-only vendored sources as sparse git submodules, `.repos/effect` chief among them; see [Vendored source](#vendored-source).
 - `website/` — RSPress docs site with per-package api-extractor models under `website/lib/models/`.
+- `scratchpad/` — a private agent-probe workspace member, never published and invisible to CI; see [scratchpad.md](scratchpad.md).
 
 Build tooling comes from two `@savvy-web` packages: `bundler` (each package's `savvy.build.ts`, the dual dev/prod outputs and the `publishConfig` manifest transform) and `silk` (the Biome, commitlint, lint-staged, markdownlint and tsconfig presets), orchestrated by turbo. The root `CLAUDE.md` carries the pipeline's rules and `CLAUDE.build-and-test.md` its mechanics.
 
 ## Vendored source
 
-`.repos/effect` is a git submodule of [Effect-TS/effect](https://github.com/Effect-TS/effect), declared in `.gitmodules` and managed by the silk plugin's repos tooling through the `.repos/config.json` manifest (url, ref, purpose, sparse paths, orientation notes). It is pinned to the release tag matching the `effect` catalog pin in `pnpm-workspace.yaml` — **not** tracking `main`. Pinning is the whole point: a vendored tree at `main` drifts ahead of the prerelease we compile against, letting an agent assert, with source in hand, a surface that does not exist in the installed version. That is a worse failure than guessing, because the evidence looks conclusive.
+`.repos/` holds read-only vendored sources as sparse git submodules, declared in `.gitmodules` and described by the `.repos/config.json` manifest (url, ref, purpose, sparse paths, orientation notes). `.repos/effect` is the load-bearing one and the rest are port bases and oracles for `@effected/markdown` — read the manifest for the current set rather than assuming it is only Effect.
+
+`.repos/effect` is a git submodule of [Effect-TS/effect](https://github.com/Effect-TS/effect), managed by the silk plugin's repos tooling. It is pinned to the release tag matching the `effect` catalog pin in `pnpm-workspace.yaml` — **not** tracking `main`. Pinning is the whole point: a vendored tree at `main` drifts ahead of the prerelease we compile against, letting an agent assert, with source in hand, a surface that does not exist in the installed version. That is a worse failure than guessing, because the evidence looks conclusive.
 
 The checkout is **sparse** — only the trees agents actually read are materialized: `packages/effect` (the v4 export authority), `packages/vitest` (the `@effect/vitest` reference implementation) and `migration`, `ai-docs`, `LLMS.md`, `MIGRATION.md` (the rename evidence for the plugin's evidence ladder). The sparse set is recorded in `.repos/config.json`.
 
@@ -68,9 +72,9 @@ The checkout is **sparse** — only the trees agents actually read are materiali
 
 Re-pinning is one operation:
 
-~~~bash
+```bash
 savvy repos pin effect effect@<new-tag>   # or the repos_manage MCP tool, action:"pin"
-~~~
+```
 
 The pin stages the gitlink and the `.repos/config.json` manifest and returns a ready-made conventional commit message. **Fold that staged change into the same commit as the catalog bump** — source and installed version move together by construction. The pin also flags `staleNoteIds` — manifest notes stamped against an older ref — for review.
 
@@ -78,11 +82,11 @@ The pin stages the gitlink and the `.repos/config.json` manifest and returns a r
 
 The vendored tree is read-only, and the silk plugin enforces it rather than trusting convention: its PreToolUse guards deny Write, Edit, Bash and MCP-git mutations under `.repos/**`. Check dirtiness with `savvy repos status` (or `repos_inspect` with `mode:"status"`).
 
-The tree also stays outside every build and lint graph: the silk Biome preset centrally excludes `**/.repos`, markdownlint's config keeps `**/.repos` in its ignores, dependabot excludes `.repos/**`, and pnpm, turbo and vitest never matched the directory by glob in the first place. Its consumers are the `improve` skill and the plugin's `effect-v4-source-lookup` skill — the one file in `plugin/` that names the path (see [plugin.md](plugin.md)).
+The tree also stays outside every build and lint graph: the silk Biome preset centrally excludes `**/.repos`, markdownlint's config keeps `**/.repos` in its ignores, dependabot excludes `.repos/**` and pnpm, turbo and vitest never matched the directory by glob in the first place. Its readers are the `improve` skill and the plugin's `effect-v4-source-lookup` skill (see [plugin.md](plugin.md)).
 
 ## Dependency resolution
 
-The workspace pins one v4 `effect` prerelease while parts of the toolchain (`@savvy-web/*`, rolldown-pnpm-config, vitest-agent) still ship against an older one, sharing one `node_modules` tree. The v3/v4 coexistence era is over — no Effect v3 remains anywhere in the lockfile — and the resolver bug that era exposed (an unresolved `effect` peer binding to the workspace-preferred version and leaking into importers wanting another) is fixed upstream in pnpm ≥ 11.12.0, which this repo runs.
+The whole tree resolves to **one** `effect` copy — this workspace and the build toolchain (`@savvy-web/*`, rolldown-pnpm-config, vitest-agent) alike, on the prerelease the catalogs pin. That is the invariant to protect, and it is not merely tidiness: when the toolchain last lagged the pin, its copy and the workspace's met inside a single Schema decode pipeline and crashed every package's build with a type error from deep inside a parser. The remedy for a lagging toolchain is a temporary, spec-scoped `overrides` entry rewriting the tool's wanted spec to the pinned one, deleted the moment that tool republishes — none stands today. The v3/v4 coexistence era is over — no Effect v3 remains anywhere in the lockfile — and the resolver bug it exposed (an unresolved `effect` peer binding to the workspace-preferred version and leaking into importers wanting another) is fixed upstream in pnpm ≥ 11.12.0, which this repo runs.
 
 ### The catalogs pin exact versions
 
@@ -92,12 +96,6 @@ The `effect3` / `effect3:peers` interop catalogs that tracked the Effect v3 line
 
 The plugin also publishes an `effected` / `effected:peers` pair carrying the kit's own packages. Those are **consumer-facing only** — they are not exported into `pnpm-workspace.yaml`, because internal edges stay `workspace:*`, and unlike the Effect catalogs they carry caret ranges under a `lock-minor` strategy rather than exact pins. A workflow triggered by pull requests to `main` and to `changeset-release/main` keeps them current automatically, which is also what keeps a release from publishing out of step with them ([catalog-sync.md](catalog-sync.md#the-publish-ordering-the-catalog-imposes)).
 
-### The temporary overrides bridge
-
-`pnpm-workspace.yaml` carries a small `overrides` block that is **temporary by design**: spec-scoped rules rewriting the toolchain's wanted `effect@4.0.0-beta.107` (and its `@effect/platform-node` / `@effect/sql-sqlite-node` companions) to the workspace's pinned `rc.109`. It exists because the `@savvy-web` build toolchain, rolldown-pnpm-config and vitest-agent still hard-depend on the older prerelease: with the workspace catalog ahead of them, `autoInstallPeers` glued the toolchain's embedded published `@effected/*` packages inconsistently — one bound to the toolchain's `effect`, its own `@effected/*` peer bound to the workspace's — putting two `effect` copies in one Schema decode pipeline and crashing every package's build (`text.charCodeAt is not a function` out of the jsonc scanner). The overrides collapse the tree back to one `effect` copy.
-
-Three properties keep the bridge safe. It is **spec-scoped**: each rule matches only the literal older wanted spec, so catalog-driven resolution is untouched. It affects **installation only**: published manifests come from the bundler's `publishConfig` transform reading the `effect:peers` catalog, never from the override. And it is **temporary**: remove it once the kit has released against the current pin and the toolchain has republished against it — do not let it accrete entries or outlive its cause.
-
 The build-tooling versions — `typescript`, `@types/node` and the bundler's own stack — come from `catalog:build`, which is **not** declared in `pnpm-workspace.yaml`: the `@savvy-web/pnpm-plugin-silk` config dependency injects it. Read the installed plugin under `node_modules/.pnpm-config/` when a `catalog:build` version needs checking, not the workspace file.
 
 ### The typechecker: tsc, not tsgo
@@ -106,6 +104,6 @@ Every package typechecks with `tsc --noEmit` against `typescript` (`catalog:buil
 
 ### Peer-closure warnings
 
-`pnpm peers check` carries a known-issue slot whose occupant rotates as toolchains and catalogs move. The `CLAUDE.dependencies.md` context file is the live registry of the current occupant; this document deliberately does not duplicate it, because a list of resolved residuals reads exactly like a list of live ones. What is durable: the occupant is always in the *toolchain* graph rather than this workspace, it always clears when the offending tool republishes against the current beta, and there is no second expected residual — **any** other warning is a genuine closure defect to fix upstream. The structural remedy that retired the whole `@effect` satellite-drift class, a generated `peerDependencyRules.allowedVersions` table, is in [pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md); the discipline it enforces is in [effect-standards.md](effect-standards.md#peer-dependency-discipline).
+`pnpm peers check` carries a known-issue slot whose occupant rotates as toolchains and catalogs move. The `CLAUDE.dependencies.md` context file is the live registry of the current occupant; this document deliberately does not duplicate it, because a list of resolved residuals reads exactly like a list of live ones. What is durable: the occupant is always in the *toolchain* graph rather than this workspace, it always clears when the offending tool republishes against the current prerelease, and there is no second expected residual — **any** other warning is a genuine closure defect to fix upstream. The structural remedy that retired the whole `@effect` satellite-drift class, a generated `peerDependencyRules.allowedVersions` table, is in [pnpm-plugin-effect.md](packages/pnpm-plugin-effect.md); the discipline it enforces is in [effect-standards.md](effect-standards.md#peer-dependency-discipline).
 
 Always check the lockfile diff after an install — a plain `pnpm install` once stripped the turbo, biome and tsgo platform binaries from it.

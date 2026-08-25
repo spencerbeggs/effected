@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 90
 related:
   - effect-standards.md
@@ -73,6 +73,6 @@ The second stopping rule is **do not complete the pattern for its own sake.** `@
 
 ## Adopters
 
-The kit surfaces built on this policy include `semver`, `jsonc`, `yaml`, `toml`, `glob`, `markdown`, `spdx`, `templates` and `jsonl`'s pure core. Each package's own doc names its primitives; grep for `parseResult` rather than maintaining a list here.
+Every pure-tier format and grammar package in the kit is built on this policy, plus the pure cores of some boundary packages. `grep -rl parseResult packages/*/src` is the roster; each package's own doc names its primitives.
 
 A **missing twin on an in-scope boundary is a review finding**, not a nice-to-have — the policy is also stated in the plugin's `effect-v4-observability` skill so a reviewer meets it without reading this document.

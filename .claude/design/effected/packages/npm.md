@@ -33,6 +33,8 @@ Resolution lives here rather than in package-json because it fundamentally requi
 
 **Scope discipline.** API ships on evidence: a concept moves here only when a second consumer materializes. `PackageName` stays in [package-json](package-json.md) because it has one consumer. The [vocabulary registry](#vocabulary-registry) records where every npm concept lives so nobody rebuilds an idiom for lack of a map.
 
+**The pure half and the service half stay in one doc deliberately.** They look like two subsystems and would split cleanly on the page, but what binds them is [the tier guardrail](#the-tier-guardrail-and-it-is-enforced): the services may do IO only through core contracts, the vocabulary must not reach them, and the day that breaks the answer is a package split. Splitting the doc first would hide the constraint that decides the package's shape.
+
 ## Tier and dependencies
 
 **Boundary tier.** Not by [R2](../effect-standards.md#dependency-policy) — the `@effected/commands` edge is boundary and carries zero runtime dependencies, and boundary does not propagate — but by **[R4](../effect-standards.md#dependency-policy)**: the package performs IO itself, through core-declared contracts (`HttpClient`, `ChildProcessSpawner`, `FileSystem`, `Path`, `Crypto`) required in `R`. That is the walker/xdg/git shape, and it is what boundary means.
@@ -128,7 +130,7 @@ This is a **schema-first port of the gate vocabulary only**, and three behaviour
 - **Exclude matching is flat-string with `@pnpm/matcher` parity, where `*` crosses `/`.** A bare `*` matches a scoped name and a scope pattern matches a whole scope. This is **deliberately not [@effected/glob](glob.md)'s minimatch dialect**, where `*` refuses to cross `/`; pnpm treats the package name as a flat string, and routing through glob would silently change which packages a gate exempts. **Do not "fix" it.**
 - **Version filtering is pure with a caller-supplied clock.** It drops versions younger than the cutoff and versions whose timestamp is missing or unparseable — pnpm's strict posture, that an unestablishable age is too young — while a version exactly at the cutoff is kept. It reads no wall clock and has no error channel.
 
-**Consumer-side config readers are deliberately not resident here.** Reading the gate from workspace config keys or replayed hooks is config IO, a boundary concern; [@effected/workspaces](workspaces.md#configdependencyhooks--the-opt-in-replay-seam) owns that assembly, and this pure module is the vocabulary those readers combine into.
+**Consumer-side config readers are deliberately not resident here.** Reading the gate from workspace config keys or replayed hooks is config IO, a boundary concern; [@effected/workspaces](workspaces-catalogs.md#configdependencyhooks--the-opt-in-replay-seam) owns that assembly, and this pure module is the vocabulary those readers combine into.
 
 ## The service half: registry reads, tarballs and publishing
 
@@ -177,7 +179,7 @@ Three facts inside it:
 
 ### NpmExecutor — cache redirection as typed API
 
-`NpmExecutor` gained `withCacheDir` and a generic `withExtraArgs`. The cache redirect is API rather than tribal knowledge for a specific reason: **GitHub's macOS runner images ship a partially root-owned `~/.npm/_cacache`**, and current npm hard-fails with `EACCES` before doing any work when it sees root-owned files in its cache — so every `view` / `pack` / `publish` on such a runner dies until the cache is pointed somewhere the job owns. Setting `npm_config_cache` in the environment works identically and npm honours it in every dispatch form, but it is **invisible at the call site**, which is how the fix gets lost in a port and rediscovered the hard way. Naming it puts the reason in the `.d.ts`.
+`NpmExecutor` carries `withCacheDir` and a generic `withExtraArgs`. The cache redirect is API rather than tribal knowledge for a specific reason: **GitHub's macOS runner images ship a partially root-owned `~/.npm/_cacache`**, and current npm hard-fails with `EACCES` before doing any work when it sees root-owned files in its cache — so every `view` / `pack` / `publish` on such a runner dies until the cache is pointed somewhere the job owns. Setting `npm_config_cache` in the environment works identically and npm honours it in every dispatch form, but it is **invisible at the call site**, which is how the fix gets lost in a port and rediscovered the hard way. Naming it puts the reason in the `.d.ts`.
 
 **The redirect OVERRIDES a deliberately configured cache, and the combinator stays dumb about it.** A `--cache` flag in argv outranks both `npm_config_cache` and any npmrc setting, so an unconditional call also overrides a self-hosted runner pointed at a warmed cache on purpose. The alternative — consult the environment and only redirect when nothing else is set — was rejected: a value transformation that reads ambient state cannot be reasoned about from the call site, and `NpmExecutor` being an inspectable `Schema` class is worth more than the convenience. **The precedence is documented and the caller makes the check**, which is the same division the rest of this package takes between mechanism and policy.
 
@@ -187,7 +189,7 @@ Three facts inside it:
 
 A single exhaustive classification replaces a family of boolean predicates, so a consumer `switch`es rather than composing booleans that can disagree — the prior art had one call site asking two in sequence and another negating a third to mean "everything else". **The domain match is exact-or-subdomain with a leading dot**, because a bare `endsWith` classifies a lookalike domain as the public registry, and that classification decides whether a token is sent. The same classifier decides which read path applies and whether the provenance flag is passed, since npm rejects that flag against non-npm registries and a release publishing to three registries should not lose two of them to one flag.
 
-**The label projections ship, and the earlier refusal was wrong.** This doc previously recorded that a display-name helper was deliberately withheld, on the reasoning that consumers rendering the same registry as "GitHub Packages" and as "github" prove no library-canonical string serves anybody. What the second and third consumer actually showed is that both spellings are wanted, in *different places*, by the same consumer — so the disagreement was never about canonicity, it was two projections read as one. Three functions now ship: `registryShortLabel` (a table row: `npm`, `github`, `jsr`, else the host), `registryDisplayName` (prose: `npm`, `GitHub Packages`, `JSR`, else the host) and `registryHost`, the shared fallback.
+**The label projections ship, as two projections rather than one canonical name.** A consumer rendering the same registry as "github" in a table row and as "GitHub Packages" in a sentence is not disagreeing about canonicity — it wants both spellings, in different places, which is why withholding a display name on the grounds that no single string serves everybody was the wrong reading. Three functions ship: `registryShortLabel` (`npm`, `github`, `jsr`, else the host), `registryDisplayName` (`npm`, `GitHub Packages`, `JSR`, else the host) and `registryHost`, the shared fallback.
 
 Three rulings inside them are the reason they are worth a note:
 
@@ -241,7 +243,7 @@ Registry reads run against a stubbed `HttpClient` — core-declared, no platform
 
 The tarball suite is where [`@effected/memfs`](memfs.md) enters as a devDependency: verification and extraction are claims about bytes on a volume, and the fault-injectable in-memory volume is what lets a write failure be a *test input* rather than a stub body. Its discriminating claims are the ordering ones — that a mismatched digest fails **before** anything is written, and that a non-2xx never reaches the extractor — both of which pass against a naive implementation until the assertion is about ordering rather than outcome.
 
-The claims proven by deliberate mutation, each observed red: scoped-package URL encoding; 404-as-absence; the seeded double's registry axis; the npmrc auth-key trailing slash; a failed dry run staying a result; `dlx` degrading silently; the lookalike-domain guard; and the reachability test itself.
+Each claim this doc calls load-bearing was proven by deliberate mutation and observed red — the lookalike-domain guard, 404-as-absence, `dlx` refusing to degrade and the reachability test itself among them. A guardrail nobody has watched fail is prose.
 
 ## Deferred
 

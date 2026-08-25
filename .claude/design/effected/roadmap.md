@@ -3,12 +3,11 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 85
 related:
   - consumers/reposets.md
-  - packages/github-references.md
   - releases.md
   - package-inventory.md
   - architecture.md
@@ -16,9 +15,7 @@ related:
   - migration-playbook.md
   - packages/markdown.md
   - packages/jsonl.md
-  - packages/toml.md
-  - packages/jsonc.md
-  - packages/npm.md
+  - github-action-canon.md
   - consumers/README.md
 ---
 
@@ -57,12 +54,6 @@ A `Vfs` keyed by `node_modules/`-prefixed paths, with merge/prefix helpers and a
 
 The verified boundary is that **`Slice` is load-bearing for subscription, query and projection, and is not load-bearing for current-state or lifecycle.** The open work is `latest(slice)` as a per-scope `SubscriptionRef` plus per-scope terminal semantics. Consumer-gated: build it when a real consumer needs the collapse.
 
-### `github-references`: the three additive gaps — closed
-
-**Shipped 2026-08-17**, before the package's first release: the inline list-aware harvester (effected#402, the only gap that had cost the consumer a workaround), the text-level per-line forms (#403) and the keyword-family projection (#404). Surfaces and settled grammar are in [packages/github-references.md](packages/github-references.md#the-four-additive-follow-ups).
-
-The recorded caveat — that all three wanted a second consumer to confirm the shape before freezing — is resolved by shipping them inside the initial surface rather than as a later widening, so there is no version to be compatible with. `github`'s compat re-export is unchanged and still holds only the six moved names. Adoption evidence for the three arrives when savvy-web/systems consumes the released package — round 1 ran against the unreleased workspace — and a discrepancy it finds then is a package change, not a roadmap item.
-
 ### `markdown`: the consumer-side finish
 
 [`@effected/markdown`](packages/markdown.md) is complete as a package. What remains is consumer-side — the docs pass and the `rspress-plugin-api-extractor` swap — and it is a consumer port rather than package work.
@@ -75,13 +66,9 @@ Three items remain from the format-package sweep, in execution order:
 2. **Format range-filter posture** — the four format packages document three different postures; standardize on one.
 3. **Promote the parity contract** in [effect-standards.md](effect-standards.md) from shape-identical to behavior-identical, once the two items above make that assertable.
 
-### TOML 1.1
+### Effect prerelease cadence
 
-A design-doc note in [packages/toml.md](packages/toml.md) enumerating the 1.1 delta set against the engine — verify the spec's release status first, it was a draft when this was recorded — shaped as a dialect/version option per the markdown dialect-registry pattern. Implement when 1.1 tags a release, or behind a draft flag on application demand.
-
-### Effect beta cadence
-
-Advance the Effect catalogs to the newest beta promptly after each phase of major work: the Effect team publishes caret peer ranges, so live applications already resolve the newest beta and the kit should test against what consumers actually run. The advance is the user-run `pnpm pnpm:up` / `pnpm pnpm:export` flow, with the `.repos/effect` re-pin folded into the same commit ([architecture.md](architecture.md#re-pinning-when-the-effect-catalog-bumps)) and a full-kit verification after.
+Advance the Effect catalogs to the newest prerelease promptly after each phase of major work: the Effect team publishes caret peer ranges, so live applications already resolve the newest one and the kit should test against what consumers actually run. The advance is the user-run `pnpm pnpm:up` / `pnpm pnpm:export` flow, with the `.repos/effect` re-pin folded into the same commit ([architecture.md](architecture.md#re-pinning-when-the-effect-catalog-bumps)) and a full-kit verification after.
 
 ## Application-tier abstractions to evaluate
 
@@ -95,9 +82,7 @@ Parallel and experimental. A time-boxed spike **in this repo** proving end-to-en
 
 External repos. These are **pull, not push** — they proceed whenever their inputs exist and never block kit packages. All run against real published packages.
 
-**The github-split consumers are done.** silk-release-action, silk-runtime-action, silk-update-action, silk-sync-action, silk-router-action and claude-code-marketplace-manager all consume `@effected/*` directly, and `@savvy-web/github-action-effects` appears in none of their manifests — the predecessor package and its plugin are gone from `savvy-web/systems` entirely. What that migration produced is no longer a roadmap item: the shape a kit-based action takes is [github-action-canon.md](github-action-canon.md), derived from three of those repos' shipped source.
-
-Still open:
+The github-split consumers are **done** and are not roadmap items: what their migration produced is [github-action-canon.md](github-action-canon.md), the shape a kit-based action takes. Still open:
 
 - **rspress-plugin-api-extractor** — a full application port, not a dependency swap: the plugin's v3 `*-effect` dependencies cannot coexist with the v4 kit. Twoslash type-checking keeps `typescript@6` as a direct dependency, the sanctioned island until the TypeScript 7.1 JS API exists.
 - **@savvy-web/bundler** (savvy-web/systems) — its TS usage is syntactic parser plus config API only, no type checker. `tsconfig-json` replaces its tsconfig resolver; the `dts/` AST walkers wrap plain `typescript` calls in Effect.

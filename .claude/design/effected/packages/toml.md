@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -130,4 +130,4 @@ Pure-tier rule: named `Effect.fn` spans on the public fallible boundaries only. 
 
 ## Build and scaffold
 
-Per [package-setup.md](../package-setup.md), scaffolded from a pure sibling with the api-extractor model wired at `website/lib/models/toml` in both `turbo.json` outputs and `savvy.build.ts`. The Schema class factories need the narrow `_base` suppression per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories) — this package carries the largest such count in the repo, tracking its larger class surface, and the suppression must stay narrow anyway. No `prepare` script: toml is a pure leaf with no workspace dependencies.
+Per [package-setup.md](../package-setup.md), scaffolded from a pure sibling with the api-extractor model wired at `website/lib/models/toml` in both `turbo.json` outputs and `savvy.build.ts`. The Schema class factories need the narrow `_base` suppression per the [API-Extractor policy](../effect-standards.md#api-extractor--effect-class-factories), one entry per class factory and no wider.

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -160,7 +160,7 @@ Per the [observability standard](../effect-standards.md#observability-standards)
 Three things about that fixture generalize:
 
 - **Assertion timing dictates the constructor family.** The pair is built eagerly with `makeInspectableWith` and wrapped in `Layer.succeed`, *not* `layerInspectableWith`. A memfs layer re-seeds a fresh volume on every `Effect.provide` — right as a default, wrong here, because the assertions run after the provide and would read a volume nobody wrote to.
-- **The write counter is a fault handler that declines**, so the write is counted *and* really happens. A stub body that swallowed it would leave every later read reporting pre-write contents; the mutant that does exactly that fails five tests, which is what makes the read-back load-bearing rather than decorative.
+- **The write counter is a fault handler that declines**, so the write is counted *and* really happens. A stub body that swallowed it would leave every later read reporting pre-write contents; the mutant that does exactly that fails the read-back assertions across the service suite, which is what makes them load-bearing rather than decorative.
 - **The old `Map` double was hiding an untested precondition.** This package requires `FileSystem` and [deliberately not `Path`](#tier-and-dependencies), so it cannot create a parent directory — "the caller guarantees the directory exists" is a real contract that had never been exercised, because a `Map` happily accepts a write into a directory that does not exist. The volume refuses it. Do not seed around this by making the fixture create parents implicitly; the refusal *is* the contract surfacing.
 
 The trap the old double documented still holds in its general form: `FileSystem.layerNoop` fails unimplemented members with a typed `NotFound`, which this package reads as "file absent", so a partial stub makes every test silently see an empty document. That is deny-by-default's specific cost here, and the reason the double is a real volume now.

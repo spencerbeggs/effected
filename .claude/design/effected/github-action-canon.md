@@ -3,14 +3,15 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-04
-updated: 2026-08-17
-last-synced: 2026-08-17
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 90
 related:
   - plugin.md
   - effect-standards.md
   - releases.md
   - packages/github-actions.md
+  - packages/github-actions-reporting.md
   - packages/github.md
   - packages/sbom.md
   - packages/schemastore.md
@@ -161,7 +162,7 @@ Order matters — this is the sequence in which an action's design decisions are
 - **Kit-static seams are defaulted parameters, not service wrappers.** silk-runtime-action's `DetachedProcessOps` is the shape: a seam that keeps `R` — and therefore every consumer's layer stack — unchanged.
 - **`ActionEnvironment` is the only environment authority.** Ambient `process.env` appears only at named bridge sites (release#192: duplicate `GITHUB_SHA` reads with divergent fallbacks).
 - **No `as never` on the `R` channel** (release#192). A dropped layer must fail to compile, not die at runtime; production entry points are zero-arg by construction.
-- **Known kit workarounds stay documented until they are fixed.** `CheckRun.withCheckRun` requires `R = never`, so the app layer ends up provided twice (an upstream fix is wanted); the `env.isDebug → References.MinimumLogLevel` bridge is a named snippet every action repeats.
+- **Known kit workarounds stay documented until they are fixed, and deleted when they are.** The live one is the `env.isDebug → References.MinimumLogLevel` bridge, a named snippet every action repeats. The register is only useful if a fixed entry leaves it: `CheckRun.withCheckRun` once forced `R = never`, so the app layer got provided twice — it is polymorphic in `R` now, and an action still carrying that workaround is carrying dead weight.
 
 ## Resolved rules
 
@@ -217,9 +218,9 @@ One module per missing contract, named for it (`shims/git-mutations.ts`), with a
 
 Consider each of these before building; none of them produces a compile error, which is why they are written down.
 
-1. **effected#198 — the macOS npm cache.** GitHub's macOS runners ship a partly root-owned `~/.npm/_cacache` and `npm pack` dies with `EACCES`. The predecessor's `npmCacheArgs()` splice was lost in the port and 11 of 11 publish targets failed on the first real run. Until `NpmExecutor` grows `cacheDir`/`extraArgs`, the redirect must be visible **at the call site** — never an invisible environment variable.
+1. **effected#198 — the macOS npm cache.** GitHub's macOS runners ship a partly root-owned `~/.npm/_cacache` and `npm pack` dies with `EACCES`. The predecessor's cache-args splice was lost in the port and 11 of 11 publish targets failed on the first real run. `NpmExecutor` now owns the redirect (`withCacheDir`, plus `extraArgs` for the general case), so the hazard is no longer *how* to splice it but remembering that it is needed at all — and the redirect stays visible **at the call site**, never an invisible environment variable.
 2. **effected#195 — three silent failures.** `PullRequest.list({ head })` wants `owner:ref` and the projection hands back a bare ref, so it returns nothing without erroring; `GitTag.latestSemver` orders by version rather than recency, pinning a monorepo boundary backwards and silently; `Schema.Redacted` encodes to the literal `<redacted>`, so persisting through it round-trips something useless.
-3. **effected#193 and #194 — missing-kit-surface residue.** Raw git spawns and copy-pasted regex drift are what "wait for the kit" produces in practice. Route through B8 shims with tracking issues.
+3. **effected#193 and #194 — missing-kit-surface residue.** Raw git spawns and copy-pasted regex drift are what "wait for the kit" produces in practice; both gaps have since closed into `@effected/git`'s mutating tier and `@effected/github-references`. The hazard is the pattern, not those two surfaces: route a genuine gap through a B8 shim with a tracking issue, and re-audit the shim register when the issue closes.
 4. **effected#188 — capability discoverable only by name.** Four surfaces were declared absent in one migration and none of them were. Recon (step 0) is construct-level against installed source; the plugin's generated construct index is the systemic fix.
 5. **effected#185 — testing-migration ordering.** Doubles first, runner conversion separately. A characterization gate rewritten alongside the thing it gates is not a gate.
 6. **update#187 — bundle-time silent-empty.** Never degrade a build-time data decode: `orElseSucceed(() => [])` turned a broken bundle into truthful-sounding emptiness. Prefer bundle-safe standalone functions to class-static aliases.

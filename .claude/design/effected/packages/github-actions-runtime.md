@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - github-actions.md
@@ -37,7 +37,7 @@ Three decisions about it are load-bearing:
 
 Two friction fixes define its shape.
 
-**The webhook payload loses the filesystem from its `R`.** Reading the event path made every caller carry a `FileSystem` requirement, which consumers worked around by capturing it at layer construction and re-injecting it per call. The fix is the standard one: **the layer requires it, resolves it once at construction, and every member's `R` is `never`.** Not a new capability — the same capability with the requirement in the right place.
+**The webhook payload loses the filesystem from its `R`.** Reading the event path made every caller carry a `FileSystem` requirement, which consumers worked around by capturing it at layer construction and re-injecting it per call. The fix is the standard one: **the layer requires it, resolves it once at construction and every member's `R` is `never`.** Not a new capability — the same capability with the requirement in the right place.
 
 **The scoped environment override is parallel-safe, because it never touches the process environment.** Mutating a process global cannot be made parallel-safe; the answer is to stop treating it as the source of truth at read time. The layer seeds an immutable map once at construction and holds it in a `Context.Reference` (the v4 spelling of what v3 called a `FiberRef` — there is no `FiberRef` module in v4), so an override is **fiber-scoped**: two fibers overriding the same variable concurrently see their own values and neither leaks into the other or into the real environment. Nothing to restore, nothing to race.
 
@@ -84,7 +84,7 @@ Three shapes are decisions:
 
 - **A silent layer is a named constant.** A survey counted dozens of ad-hoc empty-logger provides across two consumer repos, purely to silence logs in tests. A no-arg layer *factory* would mint a fresh layer per call and defeat memoization for nothing.
 - **Buffering is opt-in and flushes on every exit path**, including a defect. `withBuffer` takes a success disposition, so a step can be quiet when it succeeds and still spill its transcript when it does not — and only a **success** is ever discarded, because a typed failure, a defect and an interruption are all the moment the transcript was kept for. Step debugging overrides the discard, since asking for debug output means wanting to see what a green step did.
-- **`withStep` is the one-line-success shape a named step actually wants**: buffer with discard-on-success, one summary line on success, and a failure header ahead of the spilled transcript. The failure header goes through the console rather than the log, so it lands ahead of the flush and does not mint a second error annotation beside the one `Action.run` already renders. The success summary is emitted **outside** the buffered region — inside, it would be discarded with the transcript it replaces, leaving a green step with no line at all. Its predecessor's shape was independently derived wrong three times during one port, because grouping plus buffering looks like complete parity until you notice nothing emits the success line.
+- **`withStep` is the one-line-success shape a named step actually wants**: buffer with discard-on-success, one summary line on success and a failure header ahead of the spilled transcript. The failure header goes through the console rather than the log, so it lands ahead of the flush and does not mint a second error annotation beside the one `Action.run` already renders. The success summary is emitted **outside** the buffered region — inside, it would be discarded with the transcript it replaces, leaving a green step with no line at all. Its predecessor's shape was independently derived wrong three times during one port, because grouping plus buffering looks like complete parity until you notice nothing emits the success line.
 
 Log annotations use the **readable** property vocabulary rather than the wire names, set through a combinator, so a caller never spells an annotation key — the same reasoning that makes the input accessors safe. The debug check reads through the environment service, not the process environment.
 
@@ -92,7 +92,7 @@ Log annotations use the **readable** property vocabulary rather than the wire na
 
 **Reporting a failure emits the annotation but does not set the exit code.** That belongs to `Action.run`, so an action that reports a failure and then recovers is not doomed by a side effect it cannot undo.
 
-**Runner-file delimiters are derived, not random.** GitHub's own toolkit uses a random UUID and accepts a collision chance; deriving one and extending it until it is absent from the value makes collision *impossible* rather than improbable, needs no crypto service, and is deterministic under test. A value containing the delimiter would otherwise terminate its block early — a value-controlled injection into the runner's own file.
+**Runner-file delimiters are derived, not random.** GitHub's own toolkit uses a random UUID and accepts a collision chance; deriving one and extending it until it is absent from the value makes collision *impossible* rather than improbable, needs no crypto service and is deterministic under test. A value containing the delimiter would otherwise terminate its block early — a value-controlled injection into the runner's own file.
 
 **Both error sets are now [per-reason tagged unions](github-actions.md#errors)** — `ActionOutputError` is `RunnerFileUnavailableError | RunnerFileWriteError | InvalidOutputNameError | OutputEncodeError | DetachedOutputError`, and `DetachedProcessError` likewise across its five failures. The names survive as union aliases, so nothing in the surface moved; what changed is that "the runner file is not there" and "the output name is invalid" are separately recoverable, which is the distinction a `pre`/`post` phase actually acts on.
 
@@ -104,7 +104,7 @@ Log annotations use the **readable** property vocabulary rather than the wire na
 
 `Redacted.value` appears nowhere else in `src/`, and **a structural test asserts that**. It is not ceremony — it caught two real leaks a review would plausibly have waved through: an OIDC accessor that unwrapped its own token to decode it (restructured so a private issue path returns the raw value and the public members wrap or read it), and a request signer that genuinely needs the raw secret for its HMAC. The second was answered by *adding a member to the seam* rather than granting an exception, so the signing layer masks both credentials once at layer construction. That is worth having even though the key is never written anywhere: a signing key leaks through something nobody audited — a debug log of outgoing headers, a serialized error, a stack trace holding the closure — and the runner's filter redacts all of those.
 
-**The test itself had a phantom-edge bug** of exactly the kind the reachability walkers hit: a raw text scan reads TSDoc as code, so a module whose comment *explains* that it does not unwrap a secret was reported as unwrapping one. It strips comments first, keeps a non-empty control, and has a third test for the stripper — which is load-bearing once the scan depends on it, because a blinded scan is a silent false green.
+**The test itself had a phantom-edge bug** of exactly the kind the reachability walkers hit: a raw text scan reads TSDoc as code, so a module whose comment *explains* that it does not unwrap a secret was reported as unwrapping one. It strips comments first, keeps a non-empty control and has a third test for the stripper — which is load-bearing once the scan depends on it, because a blinded scan is a silent false green.
 
 State persistence gets the same treatment rather than a second mechanism: the save-a-secret path masks then persists, because the runner's state file is plaintext by GitHub's protocol and the mask is the only available defense. [`@effected/github` deliberately does neither](github-auth.md#the-seam-the-actions-runtime-needs) — masking is an Actions output command and persistence is an Actions file, so both are this package's job.
 
@@ -128,9 +128,9 @@ Three behaviours are carried deliberately, each load-bearing:
 
 ## Detached processes and the bare-pid guard
 
-An action that spawns a long-lived child in `main`, persists its pid and reaps it in `post` needs three pieces, all of which consumers hand-rolled: a detached spawn with stdio routed to a log file, a readiness poll, and a reap.
+An action that spawns a long-lived child in `main`, persists its pid and reaps it in `post` needs three pieces, all of which consumers hand-rolled: a detached spawn with stdio routed to a log file, a readiness poll and a reap.
 
-**The bare-pid guard is why reaping lives here.** Killing crosses a process boundary, no handle survives the phase boundary, and it needs `node:process.kill`, which a boundary package may not import. The guard is the load-bearing part: **signalling pid 0 hits the entire process group and −1 hits every process the user owns.** A pid round-tripped through the runner's plaintext state file that decodes to `0` — an absent key, a truncated file, an empty-string coercion — would, unguarded, **kill the runner**. So reaping refuses any non-positive pid as a typed failure, and the pid is validated on the way *out* of state as well as on the way in. That guard sits beside the state service that can produce the bad value, which is the whole reason it is here rather than in [`@effected/commands`](commands.md).
+**The bare-pid guard is why reaping lives here.** Killing crosses a process boundary, no handle survives the phase boundary and it needs `node:process.kill`, which a boundary package may not import. The guard is the load-bearing part: **signalling pid 0 hits the entire process group and −1 hits every process the user owns.** A pid round-tripped through the runner's plaintext state file that decodes to `0` — an absent key, a truncated file, an empty-string coercion — would, unguarded, **kill the runner**. So reaping refuses any non-positive pid as a typed failure, and the pid is validated on the way *out* of state as well as on the way in. That guard sits beside the state service that can produce the bad value, which is the whole reason it is here rather than in [`@effected/commands`](commands.md).
 
 The pid brand is **core's**, not a local one — core already owns it, and declaring a second was the re-declaring-a-core-concept half of the commands invariant. What justifies a local export is what core does not have: a **validating** constructor. Core's is nominal and applies no runtime check, which is right for a pid the spawner just produced and wrong for one that has been through a text file.
 

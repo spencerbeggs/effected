@@ -3,13 +3,14 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 92
 related:
   - ../effect-standards.md
   - ../releases.md
   - workspaces.md
+  - workspaces-discovery.md
   - npm.md
   - git.md
   - semver.md
@@ -19,7 +20,7 @@ related:
 
 ## Overview
 
-Three modules inside [@effected/workspaces](workspaces.md) answer the **release-shaped** questions the workspace model already holds the facts for: *does this package publish, and to where*, *how does this workspace version*, and *what is the git tag called*. They are split out here because they form a cohesive subsystem — `Publishability.ts`, `VersioningStrategy.ts` and `ReleaseTag.ts` reach into the rest of the package only through `WorkspaceDiscovery` and `WorkspacePackage`, and everything else in workspaces is about *structure* rather than *releases*.
+Three modules inside [@effected/workspaces](workspaces.md) answer the **release-shaped** questions the workspace model already holds the facts for: *does this package publish, and to where*, *how does this workspace version*, and *what is the git tag called*. They are split out here because they form a cohesive subsystem — `Publishability.ts`, `VersioningStrategy.ts` and `ReleaseTag.ts` reach into the rest of the package only through [discovery](workspaces-discovery.md) and the located-member model, and everything else in workspaces is about *structure* rather than *releases*.
 
 They ship inside `@effected/workspaces` rather than as their own package because they are meaningless without a discovered workspace, and the swappable half is one small service.
 

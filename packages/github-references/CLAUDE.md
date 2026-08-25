@@ -1,6 +1,6 @@
 # @effected/github-references
 
-GitHub's issue-reference grammar as pure functions: the nine closing keywords and three dialects, strings in and values out — no service, no layer, no client. Extracted from `@effected/github` on 2026-08-17, plus follow-ups, pending its first release. 4 `src/` files, 3 test files, 58 tests.
+GitHub's issue-reference grammar as pure functions: the nine closing keywords and three dialects, strings in and values out — no service, no layer, no client. Extracted from `@effected/github`, which keeps a droppable compat re-export. Published. (File and test counts move; run `pnpm vitest run --project @effected/github-references`.)
 
 **Tier: pure.** Peer-depends on `effect` only; zero runtime dependencies, no IO, `"sideEffects": false`. Never add a dependency here — the package exists so a consumer with no octokit can speak the grammar instead of re-deriving it.
 
@@ -14,9 +14,9 @@ GitHub's issue-reference grammar as pure functions: the nine closing keywords an
 
 **One regex for all of them is the tempting simplification and it fails invisibly.** Accepting the colon inline harvests references GitHub will *not* link, so a pipeline reports an issue closing that merging leaves open. Dialects differ because producers differ — prose for GitHub's scanner, a generated region for humans. Apply that rule if a fourth dialect appears.
 
-## Shipped 2026-08-17: four additive follow-ups
+## The four adoption-driven surfaces
 
-Downstream adoption drove four additive gaps, folded into the same unreleased minor — none changes a ruling above, none widens the re-export below:
+Downstream adoption drove four additive gaps — none changes a ruling above, none widens the compat re-export below:
 
 - **`harvestReferenceLists(text)`** (`src/ClosingList.ts`) — the closing-list grammar worn inline (`Closes #123, Fixes #456` on one line), a gap neither shipped dialect covered; returns `HarvestedReferenceList` (`ReferenceList` plus `start`/`end`).
 - **`parseBareLines`** (`src/IssueReferences.ts`), **`parseClosingLists`**, **`parseReferenceLists`** (`src/ClosingList.ts`) — apply the matching single-line parser across a whole text, one result per line, no line numbers by design.
@@ -52,7 +52,7 @@ Cross-repo (`owner/repo#N`) and full-URL (`https://github.com/owner/repo/issues/
 
 ## Testing and building
 
-Tests live in `__test__/` (3 files, 58 tests), use `@effect/vitest`, assert with `assert.*` — never `expect`. The moved suite came across **unchanged**, the check that the move was a move; do not rewrite it. The closing-list suite carries the design doc's drift rulings as executable cases, plus a hostility case pinning the linear-time posture. The 2026-08-17 cases (`KeywordFamily.test.ts` is new) pin the rules above: whitespace-class split, lowercase-only `and`, exhaustive twelve-keyword `keywordFamily` coverage, and `collectReferenceLists`'s once-per-posture preference.
+Tests live in `__test__/`, use `@effect/vitest`, assert with `assert.*` — never `expect`. The suite moved from `github` **unchanged**, the check that the move was a move; do not rewrite it. The closing-list suite carries the design doc's drift rulings as executable cases, plus a hostility case pinning the linear-time posture. `KeywordFamily.test.ts` and the adoption-driven cases pin the rules above: whitespace-class split, lowercase-only `and`, exhaustive twelve-keyword `keywordFamily` coverage, and `collectReferenceLists`'s once-per-posture preference.
 
 ```bash
 pnpm vitest run --project @effected/github-references   # this package's tests

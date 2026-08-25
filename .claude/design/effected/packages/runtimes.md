@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -85,7 +85,7 @@ Every default reference time is `DateTime.now`, so `TestClock` drives phase logi
 
 ### Error ladder
 
-Seven `Schema.TaggedError` classes across `ResolvedVersions.ts` and `GitHub.ts`; see those files for the fields. No error carries a free-text `message` field — that would duplicate what the structured fields encode.
+The `Schema.TaggedError` classes live in `ResolvedVersions.ts` and `GitHub.ts`; see those files for the fields. No error carries a free-text `message` field — that would duplicate what the structured fields encode.
 
 Four distinctions the pipeline must not collapse:
 
@@ -139,7 +139,7 @@ The suite-boundary seams that make the whole stack testable without network: the
 
 Deno has no suite of its own — it and Bun are the same shared builder, so a separate suite would re-test one code path.
 
-The mutation-prone edges the suite pins: that the auto fallback and the live path each set their own provenance; that an invalid range surfaces the range error rather than a no-match; that a phase filter excluding every release yields a typed failure rather than an empty success; **the dotted `0.x` lines**, asserted at a reference date where the lines disagree, pinned at the resolver seam as well as on the schedule; that an unresolvable requested default fails while an absent one falls back, both halves; that a `403` with quota remaining is not retried while one with exhausted quota is, asserted on the call *count*; that `retry-after` is honored, capped and non-negative, asserted on the *timing*; and that fresh-strategy failures assert the error **type**, since a raw transport error leaking through unwrapped is exactly what the freshness error exists to catch.
+The mutation-prone edges are the distinctions this doc calls load-bearing, and the suite pins each of them at the seam where it can silently collapse: provenance per strategy, an invalid range against a no-match, the dotted `0.x` lines at a reference date where the lines disagree, an unresolvable requested default against an absent one, and the `403` classification asserted on the call *count* with `retry-after` asserted on the *timing*. Where an error is the claim, the assertion is on its **type** — a raw transport error leaking through unwrapped is exactly what the freshness error exists to catch.
 
 ## Build
 

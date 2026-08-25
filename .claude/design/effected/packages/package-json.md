@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-24
-last-synced: 2026-08-24
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../architecture.md
@@ -13,6 +13,7 @@ related:
   - ../formatter-convention.md
   - semver.md
   - jsonc.md
+  - package-json-text.md
   - npm.md
   - spdx.md
   - sbom.md
@@ -26,7 +27,7 @@ related:
 
 ## Tier and dependencies
 
-**Boundary tier, set by the file IO in `PackageJsonFile.ts` and nothing more** — the package carries no runtime dependency outside `effect` core. Its `@effected` edges (semver, npm and spdx, all `workspace:^`) are to pure packages, and [R2 propagates only tier-3](../effect-standards.md#dependency-policy), so none of them lifts the tier.
+**Boundary tier, set by the file IO in `PackageJsonFile.ts` and nothing more** — the package carries no runtime dependency outside `effect` core. Its `@effected` edges (semver, spdx, jsonc and npm, all `workspace:^`) are to pure and boundary packages, and [R2 propagates only tier-3](../effect-standards.md#dependency-policy), so none of them lifts the tier.
 
 `effect` is the only peer: there is **no `@effect/platform` peer**, because `FileSystem` and `Path` live in core. `@effect/platform-node` stays a devDependency for integration tests that provide a real filesystem; consumers of the file API provide their own platform implementation at the edge.
 
@@ -37,15 +38,16 @@ related:
 Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept). Each concept file owns its `Schema.Class` models, the errors that concept raises and — if it is a service — the `Context.Service` class plus its layers.
 
 - `Package.ts` — the core model, the wire transform and `.extend()` story, and the reusable `@public` field codecs.
-- `LenientManifest.ts` — the shape-lenient discovery tier; see [the tolerance ladder](#the-tolerance-ladder-and-lenientmanifest).
-- The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `Person.ts`, `Repository.ts`, `DevEngines.ts`, `Dependency.ts`. `Repository.ts` holds both location models, because they share the shorthand-or-object encoding and the wire-provenance machinery and splitting them would duplicate it.
+- `PackageManifest.ts` and `LenientManifest.ts` — the two tolerant tiers; see [the tolerance ladder](#the-tolerance-ladder).
+- The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `PackageManagerRange.ts`, `Person.ts`, `Repository.ts`, `DevEngines.ts`, `Dependency.ts`. `Repository.ts` holds both location models, because they share the shorthand-or-object encoding and the wire-provenance machinery and splitting them would duplicate it.
 - `PackageValidator.ts` — the validation service, its rule interface, the default rule set and a parameterized layer factory.
-- `PackageJsonFile.ts` — **the only IO module**: one service, read and write over core `FileSystem`/`Path`, plus its error tags.
+- `PackageJsonFile.ts` — **the only IO module**: one service, read/write and [surgical modify](package-json-text.md#surgical-edits-preserve-every-untouched-byte) over core `FileSystem`/`Path`, plus its error tags.
 - `EntryPoint.ts` — [entry-point resolution](#resolveentrypoint-exports-encapsulates-the-package), pure and IO-free, and the one module whose input is deliberately *structural* rather than a `Package`.
-- `PackageJsonFormat.ts` — the **decode-free** formatting seam. See [the formatting seam](#the-decode-free-formatting-seam).
+- `PackageJsonFormat.ts` — the **decode-free** text seam: formatting and surgical edits, neither of which decodes. See [the decode-free text path](package-json-text.md).
 - `internal/format.ts` — the pure canonical-key-order, map-alphabetizing and empty-map-stripping functions shared by the write options, the model's serializer and the format seam. Holds the key order and its provenance comment.
+- `internal/wire.ts` — the `rest`-partitioning wire codec builder, shared by `Package` and `PackageManifest` so the two tiers cannot drift on what round-trips.
 
-The package ships a single entry point; there is no `./schema` subpath, and field codecs are either `@public` consts on their owning concept or `internal/` privates. **`DependencySpecifier` is not defined here** — the specifier taxonomy lives in [`@effected/npm`](npm.md), because lockfiles is its second consumer; `index.ts` re-exports it for surface compatibility.
+The package ships a single entry point; there is no `./schema` subpath, and field codecs are either `@public` consts on their owning concept or `internal/` privates. **`DependencySpecifier` is not defined here** — the specifier taxonomy lives in [`@effected/npm`](npm.md), because lockfiles is its second consumer; `index.ts` re-exports it for surface compatibility, and re-exports [`@effected/jsonc`](jsonc.md)'s `JsoncEdit` / `JsoncPath` on the same grounds, since a caller applying the edits `modify` returns needs them and should not have to declare a jsonc edge to name a path.
 
 ## Effect-wrapping policy
 
@@ -112,23 +114,31 @@ The modeled field set is scoped to **every manifest field the CycloneDX 1.6 plus
 
 **`funding` was evaluated and deliberately NOT added.** npm documents it, but CycloneDX 1.6 has no funding external-reference type — verified by enumerating the published type set, not from memory. A field with no target in the mapping would be exactly the arbitrary growth this scope rule exists to prevent; it earns its place the day a consumer names a target for it.
 
-## The tolerance ladder and `LenientManifest`
+## The tolerance ladder
 
-The kit's package.json tolerance ladder, from strictest to most permissive, is documented once in `PackageManifest.ts`'s header comment and reproduced here because it is load-bearing for choosing between four surfaces that all decode the same document:
+The kit's package.json tolerance ladder, from strictest to most permissive, is documented once in `PackageManifest.ts`'s header comment and reproduced here because it is load-bearing for choosing between five surfaces that all read the same document:
 
 - **`Package`** — strict, publishable: `name`/`version` required, every present field shape-validated against its npm grammar.
 - **`PackageManifest`** — presence-lenient: fields may be absent (the private workspace-root shape), but a present field is still shape-validated exactly as strictly as `Package`'s.
-- **`LenientManifest`** — shape-lenient discovery/sniffing (this section): a present field that fails even its permissive shape check **degrades to absence** rather than failing the document.
+- **`LenientManifest`** — shape-lenient discovery/sniffing: a present field that fails even its permissive shape check **degrades to absence** rather than failing the document.
 - **`@effected/npm`'s `Manifest`** — shape-blind outside the four dependency fields, for mid-build resolution.
-- **`PackageJsonFormat`** — the decode-free text path: anything syntactically JSON, no field validation at all.
+- **`PackageJsonFormat`** — [the decode-free text path](package-json-text.md): anything syntactically JSON, no field validation at all.
 
-`LenientManifest` exists for the discovery use case neither strict tier can serve: probing a fetched tarball's manifest, walking a `node_modules` tree, listing candidate packages — where the document is other people's data and one malformed field must not fail the whole read. Every field shares its name with `Package`, but is typed as its **plain permissive JSON shape** rather than the branded/validated one: `name` and `version` are any string (a legacy uppercase name or a non-semver `"1.0"` is recovered, not rejected), `license` is any string with no SPDX check, and the dependency maps, `scripts` and `engines` are plain `Record<string, string>` rather than the strict tiers' `HashMap`.
+**`PackageManifest` is the tier a manifest *editor* works in.** npm requires `name` and `version` only of a package that will be published, so the idiomatic private workspace root — `{ "private": true, "packageManager": "…", "devEngines": {…} }` — is entirely valid and `Package` rejects it. It relaxes exactly two things: those two fields become optional, and `packageManager` decodes through [`PackageManagerRange`](#packagemanagerrange) instead of the exact pin. Everything else, including the `rest` catch-all, is `Package`'s own codec through the shared `internal/wire.ts` builder.
+
+`LenientManifest` exists for the discovery use case neither of those can serve: probing a fetched tarball's manifest, walking a `node_modules` tree, listing candidate packages — where the document is other people's data and one malformed field must not fail the whole read. Every field shares its name with `Package`, but is typed as its **plain permissive JSON shape** rather than the branded/validated one: `name` and `version` are any string (a legacy uppercase name or a non-semver `"1.0"` is recovered, not rejected), `license` is any string with no SPDX check, and the dependency maps, `scripts` and `engines` are plain `Record<string, string>` rather than the strict tiers' `HashMap`.
 
 **Leniency is per-field, never per-syntax, and degradation is per-top-level-field.** Text that fails to `JSON.parse` fails typed as `PackageJsonSyntaxError`; a parsed value that is not a JSON object at all fails typed as `PackageDecodeError` — leniency does not cover either. Within an object, each top-level key is sifted independently against a `Map<string, FieldGuard>` of permissive-shape predicates: an unknown key or a known key whose value fails its guard both flow verbatim into `rest` (a malformed known field is treated exactly like an unknown one), and every degradation is additionally recorded on `issues` as a `LenientFieldIssue { field, expected, value }` so a caller can report what was ignored. One junk entry degrades its whole field — there is no per-array-element or per-map-entry leniency.
 
 **An empty `issues` array does not imply the strict tiers would accept the document.** The permissive guards check JSON *shape*, not npm *semantics* (no SPDX validity, no semver grammar, no npm name grammar) — `LenientManifest` is a sniffing tier, not a validation bypass. The upgrade path when validation is actually wanted is re-decoding the *original* input through `PackageManifest.decode` (presence-lenient, shape-strict) or `Package.decode` (strict, publishable). Consistent with that posture, the class carries **no mutation statics and no write path** — editing belongs to the strict tiers and to `PackageJsonFormat.modifyToString` / `PackageJsonFile.modify`.
 
-Sync primitives (`decodeResult`/`parseResult`) with `Effect.fn`-derived spans (`decode`/`parse`) follow the package-wide wrapping policy exactly like every other fallible surface here. Born from the tsdoctor-monorepo dogfood ask (round 1, item 3).
+Sync primitives (`decodeResult`/`parseResult`) with `Effect.fn`-derived spans (`decode`/`parse`) follow the package-wide wrapping policy exactly like every other fallible surface here.
+
+### `PackageManagerRange`
+
+pnpm's own reading of `packageManager` is wider than corepack's: with `manage-package-manager-versions` it accepts a semver **range** and resolves it itself, and manifests carrying `pnpm@^11.20.0` exist in the wild. `PackageManagerRange` models that wider field without weakening [`PackageManager`](#leaf-concepts), which stays the exact, pinnable, corepack-provisionable spelling — the two are separate classes rather than one loosened one, so a caller asking "can corepack provision this?" still gets a typed answer.
+
+It takes the [`Repository` posture](#repository-carries-the-reference-verbatim): the range text is carried **verbatim** and validated only to parse as a semver range, with `isExact` as a derived answer. It shares the strict form's one load-bearing rule — the first `+` after the `@` begins the integrity component, never semver build metadata — which is why a range whose comparators would carry build metadata cannot be expressed in this field at all. The field's grammar owns `+`.
 
 ## The `rest` catch-all and `.extend()` story
 
@@ -156,45 +166,16 @@ Each error is a `Schema.TaggedError` defined in the module of the concept that r
 
 The kit's first real exercise of the [services-and-layers standards](../effect-standards.md#services-and-layers-standards). Layers are exported as consts inside each concept module, memoized by reference (never getters) and provided at boundaries only — business logic requires services and never calls `Effect.provide` locally.
 
-`PackageJsonFile` is the only IO service, working over **core** `FileSystem`/`Path` so its layer requires no platform peer. Write creates the parent directory before writing, and both steps fail as the narrowed write error. `PackageValidator` carries a default rule set plus a genuinely-parameterized layer factory. The resolver services are **not defined here** — `Package.resolve` imports the tags from [`@effected/npm`](npm.md) and requires them from context.
+`PackageJsonFile` is the only IO service, working over **core** `FileSystem`/`Path` so its layer requires no platform peer. It carries three pairs of operations against a path — the strict `read`/`write`, the presence-lenient `readManifest`/`writeManifest` and the byte-preserving [`modify`](package-json-text.md#surgical-edits-preserve-every-untouched-byte) — so a caller picks a tolerance tier without leaving the service. Write creates the parent directory before writing, and both steps fail as the narrowed write error. `PackageValidator` carries a default rule set plus a genuinely-parameterized layer factory. The resolver services are **not defined here** — `Package.resolve` imports the tags from [`@effected/npm`](npm.md) and requires them from context.
 
 Two boundary properties are load-bearing:
 
 1. **Resolution is out of `write`.** Write writes what it is given; resolution is an explicit step the caller composes. A writer that silently resolved would make *writing a file mutate its contents*.
 2. **The formatter and transformer are pure functions, not services** — surfaced as write options and as the model's serializer.
 
-## Formatting: byte-agreement with the ecosystem oracle
+## The decode-free text path
 
-The formatter's job is not "a reasonable order" — it is **the order the ecosystem already produces**, so running the kit's writer over a repo does not churn every manifest against whatever the team's `sort-package-json` pre-commit hook does next.
-
-The canonical top-level key order is `sort-package-json`'s default sort order, **re-baselined verbatim**, with the version recorded as provenance beside the list. Verbatim is the point: a hand-curated *near*-copy is the shape that drifts silently, since every disagreement shows up as a diff in someone's repo rather than as a failure here. Unknown keys append after the known ones — public keys alphabetically, then underscore-prefixed keys alphabetically — matching the oracle's own behavior.
-
-### Map-field alphabetization follows from HashMap, not taste
-
-Sorting alphabetizes the dependency maps for canonical presentation, and `scripts`, `engines` and `bin` join them for a stronger reason: the model carries all three as `HashMap`s, whose encode order is *hash* order. **Source order is already unrecoverable**, so the choice is not "preserve or sort" but "hash order or alphabetical", and deterministic alphabetical wins uncontested. The oracle sorts these identically, except that its `scripts` sort is a grouped one agreeing with plain code-unit order apart from `pre`/`post` pairing.
-
-### `PackageIndent` and `"preserve"`
-
-The indent option is `number | "tab" | "preserve"`. `"preserve"` reuses the source text's indentation, backed by an explicit source-text option — and the file writer supplies it by **reading the file it is about to overwrite** when the caller gives none. That read is the only way `"preserve"` can mean anything at a write site holding a decoded model and nothing else; without it the option would silently degrade to a default and quietly re-indent the file.
-
-### The decode-free formatting seam
-
-`PackageJsonFormat` exists because the strict path **hard-fails on legal input**: decode raises on `{"private": true}` and on version-less roots, both perfectly valid manifests. That makes the strict path unusable as a lint handler. This package is the only one of the kit's four formatters with a *schema* between text and text, so it is the only one where that can happen at all — the three format packages satisfy the constraint by construction.
-
-Four properties are load-bearing, and they are [the kit formatter convention](../formatter-convention.md#the-rules) rather than local choices:
-
-- **A distinct named entry point, never a `{ strict: false }` flag.** A flag would make the strict path's return type a union of guarantees and hide the choice from both the call site and `grep`.
-- **Two shapes because two hosts exist** — value→value and bytes→bytes — routed through one internal sort so they cannot drift.
-- **The value path only reorders; it never adds or removes a key.** That is what makes the `T → T` return type honest, and it is type-enforced: `tsc` rejects a key-removing option there. Stripping lives on the text path, defaulted **off**. Capabilities that delete are opt-in, always.
-- **Input it cannot handle comes back unchanged**, never partially rewritten — a non-object degrades to identity instead of losing data.
-
-The text path returns `Result`, not `Effect`: lint hosts are synchronous, and an `Effect` return would force every one of them to build a runtime to format a file. Effect hosts lift with `Effect.fromResult` in one call, so the `Result` serves both. Its options type is deliberately separate from the strict path's — a source-text option is meaningless when the text *is* the source — and where a default diverges, the divergence and its reason are documented on the member, because that is exactly where a silent edit hides.
-
-### Byte-parity fixtures
-
-`__test__/fixtures/` holds real manifests from this repo paired with frozen oracle output for the same input, and the format test asserts byte equality. **`sort-package-json` is deliberately not a dependency** — the oracle's *output* is committed, not the tool, so the parity claim is checked without taking a runtime edge on the thing being matched.
-
-The **re-baseline rule** is that the fixtures, the recorded version in the fixture README and the key-order provenance comment move **together**, in one deliberate act. Regenerating fixtures alone would silently ratify whatever a newer version changed, turning the oracle test from a check into a rubber stamp.
+Formatting and surgical field edits both work on manifest **text** and never decode, which is what makes them usable where `Package.decode` hard-fails on legal input. Both live in `src/PackageJsonFormat.ts` and are reachable from `PackageJsonFile` against a path; the oracle byte-parity rule, the indentation options and the edit conventions are in [the decode-free text path](package-json-text.md).
 
 ## `resolveEntryPoint`: `exports` encapsulates the package
 

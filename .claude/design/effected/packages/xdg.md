@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -132,9 +132,9 @@ Suites in `__test__/`, one per concept module, with suite-boundary `layer(...)` 
 
 The mutation-prone edges the suite pins: **one test per precedence rung**, each with the higher rungs absent and the lower present, so a rung that stopped mattering would be caught; the **native matrix** including win32 with and without its environment variables and linux skipping the rung entirely; **search-path order**, including that a file in an earlier system directory wins over a later one and that the app's own config directory beats both; **per-candidate absorption**, where a failure on the first candidate must not hide a hit on the second; that a **missing `HOME`** fails with the package's own error rather than a raw `ConfigError`, driven through a config provider rather than environment mutation; that a **namespace containing a separator dies** at layer construction; and that the **save path composes into config-file's default-path slot** end-to-end, which is the whole reason resolution moved to layer-construction time.
 
-One fixture-authoring hazard survives the migration in changed form. `AppDirs` builds its `ensure*` effects **once, at layer construction**, so anything that records eagerly counts directories that were never created and every assertion measures construction instead of execution. The old `layerNoop` stub needed an explicit `Effect.suspend` around its recording to avoid that; a fault handler is consulted when the method is *called*, so the property now comes free. That is a reason to prefer the handler — not a reason to stop knowing why it matters, because the same trap waits for any recorder written by hand.
+One fixture-authoring hazard is worth knowing before writing a double here. `AppDirs` builds its `ensure*` effects **once, at layer construction**, so anything that records eagerly counts directories that were never created and every assertion measures construction instead of execution. A hand-written stub that records eagerly needs an explicit `Effect.suspend` around its recording; a fault handler is consulted when the method is *called*, so the property comes free. That is a reason to prefer the handler — not a reason to stop knowing why it matters, because the same trap waits for any recorder written by hand.
 
-`XdgConfig`'s suites have not migrated yet and still use core-only doubles.
+`XdgConfig`'s suites stay on a core-only `layerNoop` double, because the resolvers touch the filesystem only through existence probes and the fixture's whole job is to record which candidates were probed and to deny one of them.
 
 ## Hardening
 

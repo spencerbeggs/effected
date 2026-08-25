@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 88
 related:
   - README.md
@@ -13,6 +13,8 @@ related:
   - ../packages/workspaces.md
   - ../packages/markdown.md
   - ../packages/commands.md
+  - ../packages/git.md
+  - ../packages/github-references.md
   - ../packages/npm.md
   - ../packages/sbom.md
   - ../github-action-canon.md
@@ -24,7 +26,7 @@ related:
 
 `/Users/spencer/workspaces/savvy-web/silk-release-action` is the release pipeline: it detects the workflow phase, cuts and syncs a release branch, validates builds, packs and publishes to npm/JSR/GitHub Packages, builds SBOMs and attestations, cuts GitHub releases with assets, and links and closes the issues a release resolves.
 
-It is the kit's widest consumer — its phases reach `github`, `github-actions`, `commands`, `git`, `npm`, `workspaces`, `sbom`, `markdown`, `templates`, `package-json` and `jsonc` — and it is one of the three actions the [action canon](../github-action-canon.md) was derived from.
+It is the kit's widest consumer — its phases reach `github`, `github-actions`, `commands`, `git`, `npm`, `workspaces`, `sbom`, `markdown`, `github-references`, `package-json` and `jsonc` — and it is one of the three actions the [action canon](../github-action-canon.md) was derived from.
 
 ## What it exercises
 
@@ -33,6 +35,8 @@ It is the kit's widest consumer — its phases reach `github`, `github-actions`,
 **The publishability seam.** It supplies its own `PublishabilityDetector` — silk's policy, implemented against the kit's contract — which is the case the seam was designed for: the kit owns the question, the release tool owns the answer. `VersioningStrategy` and `ReleaseTag` serve it from `@effected/workspaces`.
 
 **The GitHub write surface.** Branch upsert and reset, commit trees, tags, releases and assets, pull requests, check runs with byte-budgeted output, and issue linking through GraphQL. It is the heaviest user of `@effected/github`'s mutating members and the reason several of them carry sequencing warnings in their TSDoc.
+
+**Managed regions, and a rule that improved out of the swap.** The release PR body and its sticky comments are section-per-region documents written by `ManagedDocument` from `@effected/github-actions` — which is how `@effected/templates` reaches this pipeline, transitively rather than as a declared dependency. `src/utils/managed-sections.ts` kept the five rules it owns about *when* a section is written (transition-before-work, superseded rather than blanked, sha-stamped, independent, monotonic) and deleted the region scanning and splicing underneath them. Rule 3 got stronger for the move: the stamp lives in region **metadata**, which round-trips verbatim and survives writes by parties that do not know it is there, where it used to be an in-content HTML comment that a whole-section re-render had to rewrite. That is the shape to expect when a mechanism moves up — the consumer keeps its policy and its invariants get cheaper to hold.
 
 **Registry labelling, and the refusal it overturned.** This consumer carried a `src/utils/registry-label.ts` rendering a registry as both a short table label and a spelled-out name — the hand-roll that retired `@effected/npm`'s standing refusal to ship a display name ([npm.md](../packages/npm.md#registrykind--one-classification-not-four-predicates)). The file is deleted and four release modules import `registryShortLabel` / `registryDisplayName` / `registryHost` instead; the consumer's own test survives as an **adoption guard on the rendered strings**, which is the right residue for a projection that moved upstream.
 
@@ -46,12 +50,6 @@ It is the kit's widest consumer — its phases reach `github`, `github-actions`,
 - **`@savvy-web/silk-effects`** — `Changesets`, `ChangesetConfig` and `SilkPublishability` stay downstream. The kit deliberately owns no changesets engine.
 - **Changeset counting** — `src/utils/count-changesets.ts` reads the target branch's `.changeset` directory without a checkout, built from `@effected/git`'s `lsTree`/`show` and `@effected/markdown`'s frontmatter. This is the intended shape: a consumer composing kit primitives into its own domain operation rather than waiting for a `@effected/changesets` that is not planned.
 - **Build validation and report shaping** — how a release reads, not how it works.
-
-## Linking this consumer to an unreleased kit
-
-A dogfood round against unpublished builds found a trap worth carrying, because its failure mode is a **green typecheck**: a plain `link:` (or `file:`, which pnpm resolves as a link for a directory) leaves the linked package resolving `effect` and its `@effected` siblings from the *kit's* tree, putting a second `effect` instance in the process. The visible half is honest — type identity errors, "two different types with this name exist" — and chasing it by linking each clashing sibling in turn makes the typecheck pass, which is the trap. The invisible half is runtime: schema class adapters failing across the instance seam, an all-strings table cell coming back a non-string, **93 of 871 tests failing** where the unlinked tree passed all of them.
-
-The fix is `file:` **plus `dependenciesMeta.<pkg>.injected: true`**, so pnpm materializes a real copy whose dependencies resolve from the consumer's tree — one `effect`, one of everything, and no sibling overrides at all. Two operational notes travel with it: after changing an injected override the lockfile must be cleaned (a plain install replays the stale resolution and silently keeps the previous link), and the first install can leave a dangling symlink a second install materializes.
 
 ## Open questions
 

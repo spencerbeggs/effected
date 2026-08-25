@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 90
 related:
   - architecture.md
@@ -12,6 +12,7 @@ related:
   - migration-playbook.md
   - releases.md
   - roadmap.md
+  - github-action-canon.md
   - packages/semver.md
   - packages/jsonc.md
   - packages/yaml.md
@@ -70,7 +71,7 @@ Nineteen of these were the `0.1.0` gate set ([releases.md](releases.md#the-gate)
 | `@effected/config-file` | boundary | port of `config-file-effect`; carries the four codecs as free-standing named exports | [packages/config-file.md](packages/config-file.md) |
 | `@effected/walker` | boundary | extraction from `config-file`; upward path traversal | [packages/walker.md](packages/walker.md) |
 | `@effected/glob` | pure | invention; vendored minimatch dialect as pure string→predicate schemas | [packages/glob.md](packages/glob.md) |
-| `@effected/toml` | pure | invention; TOML 1.0.0 on a from-scratch engine | [packages/toml.md](packages/toml.md) |
+| `@effected/toml` | pure | invention; TOML on a from-scratch engine — parses 1.1.0, emits 1.0.0 spellings | [packages/toml.md](packages/toml.md) |
 | `@effected/lockfiles` | pure | extraction from `workspaces`; bun/npm/pnpm/yarn parsers and integrity checking | [packages/lockfiles.md](packages/lockfiles.md) |
 | `@effected/store` | integrated | extraction from `xdg`; migrated SQLite `Store` and TTL `Cache` | [packages/store.md](packages/store.md) |
 | `@effected/xdg` | boundary | port of `xdg-effect`; XDG concepts over `walker`, does not depend on `store` | [packages/xdg.md](packages/xdg.md) |
@@ -105,14 +106,17 @@ Tiers classify libraries by dependency surface; the companion is not a library a
 
 ### Packages whose design doc is split
 
-Four packages are large enough that their doc is a parent overview plus one child per subsystem. The parent in the table above is still the entry point — it links its children and they link back — but the children are where the depth lives, so go straight to one when you know which subsystem you need.
+Seven packages are large enough that their doc is a parent overview plus one child per subsystem. The parent in the table above is still the entry point — it links its children and they link back — but the children are where the depth lives, so go straight to one when you know which subsystem you need.
 
 | Package | Child docs |
 | --- | --- |
 | `github` | [rest](packages/github-rest.md), [graphql](packages/github-graphql.md), [auth](packages/github-auth.md), [resources](packages/github-resources.md), [errors and resilience](packages/github-errors.md) |
 | `github-actions` | [runtime](packages/github-actions-runtime.md), [storage and provisioning](packages/github-actions-storage.md), [reporting](packages/github-actions-reporting.md), [OIDC and attestation](packages/github-actions-attestation.md) |
 | `jsonl` | [the journal service](packages/jsonl-journal.md), [the read surfaces](packages/jsonl-reads.md) |
-| `workspaces` | [the release surface](packages/workspaces-release.md) |
+| `markdown` | [frontmatter](packages/markdown-frontmatter.md), [the MDX vocabulary](packages/markdown-mdx.md) |
+| `package-json` | [the decode-free text path](packages/package-json-text.md) |
+| `workspaces` | [discovery and detection](packages/workspaces-discovery.md), [the dependency graph](packages/workspaces-graph.md), [catalogs and the config-dependency seam](packages/workspaces-catalogs.md), [peer-dependency checking](packages/workspaces-peer-check.md), [git integration and snapshots](packages/workspaces-snapshots.md), [the release surface](packages/workspaces-release.md) |
+| `yaml` | [the comment model](packages/yaml-comments.md), [stringify presentation and compatibility options](packages/yaml-stringify.md) |
 
 ## The four codecs live in `config-file`
 

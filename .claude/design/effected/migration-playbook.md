@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-20
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 85
 related:
   - architecture.md
@@ -18,12 +18,12 @@ related:
 
 ## Overview
 
-The per-package cycle for adding an `@effected/*` library. The porting program that named the doc is finished — every remaining addition is a new package — but the cycle is unchanged, and it is still what a new package follows. The design doc is written first; the build follows.
+The per-package cycle for adding an `@effected/*` library. It is named for the porting program that produced most of the kit; that program is finished and every remaining addition is a new package, but the cycle is what a new package still follows. The design doc is written first; the build follows.
 
 ## Steps per package
 
 1. **Analyze** the target surface — API, dependencies, IO boundaries — from the consumer survey that scoped the package.
-2. **Design** — write the package's design doc under `packages/`, stating its target class-based API and tier per [effect-standards.md](effect-standards.md), with the module-per-concept layout.
+2. **Design** — write the package's design doc under [`.claude/design/effected/packages/`](packages/), stating its target class-based API and tier per [effect-standards.md](effect-standards.md), with the module-per-concept layout.
 3. **Build** against Effect v4.
 4. **Test** with `@effect/vitest` following the `__test__/` conventions in the root `CLAUDE.md` Testing section and the sibling suites.
 5. **Document** — wire the api-extractor model (`website/lib/models/`) and website docs.

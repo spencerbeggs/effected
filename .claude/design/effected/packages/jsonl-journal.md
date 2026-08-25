@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - jsonl.md
@@ -42,7 +42,7 @@ The asymmetry is forced by the primary use case rather than chosen for elegance.
 
 Outside that domain — cross-prototype, scalar, array or void bases — the patch **replaces** rather than merges, and a *partial* patch against such a base then fails typed **naming the missing keys**, which is the honest outcome: the caller asked to patch something with no fields to inherit.
 
-**Corrected rationale, on the record.** An earlier framing described a plain-record guard as risking silent loss. That was wrong, and the correction matters more than the original claim: it made `appendPatch` **loudly unusable** with class payloads rather than silently lossy, and the silent-loss scenario was independently probed unreachable. A design record that keeps a scary-but-false hazard is worse than one that records the real, duller failure.
+**What a symmetric guard would cost here is loudness, not loss** — probed rather than assumed. It rejects a class-payload patch outright, making `appendPatch` unusable against the payload shape it is most used with; it does not quietly drop fields. The asymmetry is bought to keep that case working, not to close a silent-loss hazard.
 
 ## The append primitive, and what atomicity actually means
 
@@ -94,7 +94,7 @@ The window is genuinely tiny — between two syscalls, both under the write perm
 
 The obvious phrasing of pin 4 is weaker than the guarantee: **every append that *completed* is delivered before the terminal end-of-stream.** Per-append hub acceptance does not compose into that property, for a specific reason — the terminal signal is not on the ordering chain, so nothing about the individual publishes orders it against them.
 
-So the finalizer **captures the publish-chain tail under the write permit** — a consistent snapshot, since the baton is only mutated under that permit — and awaits it within the same bounded interruptible region before publishing the end signal. This was a **demonstrated regression** of the first baton implementation, not a theoretical hole: the terminal signal overtook an already-written envelope. It was invisible to the obvious test and visible only to a subscription in an **outer scope that outlives the journal's** — which is the shape a real consumer has, and the reason the test had to be written that way rather than the convenient way.
+So the finalizer **captures the publish-chain tail under the write permit** — a consistent snapshot, since the baton is only mutated under that permit — and awaits it within the same bounded interruptible region before publishing the end signal. The hole is demonstrable rather than theoretical: without that capture the terminal signal overtakes an already-written envelope. It is invisible to the obvious test and visible only to a subscription in an **outer scope that outlives the journal's** — which is the shape a real consumer has, and the reason the test is written that way rather than the convenient way.
 
 ## Shutdown: refusal and drain are two mechanisms
 
@@ -139,7 +139,7 @@ Exactly one leading BOM is stripped. A BOM code point anywhere else in the file 
 
 Core's `watch` **stats the path first and fails if it does not exist**, which collides head-on with two other commitments — the layer watches for the life of its scope, and file creation is explicit. Resolved by decision:
 
-- **Layer construction never fails on a missing journal file.** A consumer must be able to wire its layer graph before deciding to create the file. That is "missing", not "unreadable", and the distinction is in the layer's type: construction **can** fail typed on a journal that is present but unreadable, because a permissions fault is a real fault about a real file and is not swallowed into a working-looking service over a journal nobody can read. A cast erasing that channel made the layer look infallible; the typed channel is the correction of record.
+- **Layer construction never fails on a missing journal file.** A consumer must be able to wire its layer graph before deciding to create the file. That is "missing", not "unreadable", and the distinction is in the layer's type: construction **can** fail typed on a journal that is present but unreadable, because a permissions fault is a real fault about a real file and is not swallowed into a working-looking service over a journal nobody can read.
 - **The watcher activates once the file exists**, and the **watch is armed before the catch-up read** (below).
 - **`append`, `query` and `latest` against a missing journal fail typed.** A first append never silently creates the file: a typo in a path would otherwise materialize a second, empty journal and look like a working system with no history.
 
@@ -194,4 +194,4 @@ Three of this package's tests are structurally incapable of testing what they ap
 - **The completed-appends-precede-the-end test needs three appends.** With two, the hub's FIFO ordering of blocked publishers drains the pending publish and the direct end signal in the right order **by accident**, and the mutant survives. A third makes the end signal register *between* baton-chained publishers, which is the only arrangement that can observe the violation.
 - **A prototype-pollution test must sit directly on the merge primitive, never downstream of a schema boundary.** Placed downstream — after the merged value has been encoded and re-decoded — the hijacked object is transient, so the observable output is always clean **while the hazard is real**. The invariant is asserted on the merge itself, with a prototype-integrity assertion and a throwing-setter fixture. The lesson generalizes past this package: a security invariant tested through a normalizing boundary is testing the boundary, not the invariant.
 
-The arming-window test earns a place beside them: **its first version passed against the very bug it was written for**, because the write was placed before construction where seeding covered it, and only mutation testing caught that. A test for a race that does not actually straddle the race is the same failure mode as a pollution test downstream of a schema boundary.
+The arming-window test earns a place beside them: its write must land **after** construction, inside the window itself. Placed before construction the seeding read covers it, so the test passes against the very bug it exists for. A test for a race that does not straddle the race is the same failure mode as a pollution test downstream of a schema boundary.

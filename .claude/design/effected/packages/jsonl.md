@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-03
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -122,7 +122,7 @@ Module-per-concept per the [module layout standard](../effect-standards.md#modul
 
 Every offset the package emits is a **UTF-8 byte offset**, never a UTF-16 index, because these values are cursors into a file: they feed the offset read and get persisted across process restarts. A `String.length`-derived offset is correct only for ASCII journals and is the single most likely bug in the line module.
 
-**As-built note on the grouped-statics form.** `Envelope` and `JsonlEvent` land as a merged `interface` plus `const`, not as static classes — each name is shared with a same-file generic interface, and merging a class into one of those is a compile error. The accepted cost is that an object literal's member types are inferred in the built `.d.ts` and lose their TSDoc, and that a bare `{@link}` to either name is ambiguous and needs the variable selector form. Do not "tidy" either into a static class; it will not compile.
+**The grouped-statics form is forced.** `Envelope` and `JsonlEvent` land as a merged `interface` plus `const`, not as static classes — each name is shared with a same-file generic interface, and merging a class into one of those is a compile error. The accepted cost is that an object literal's member types are inferred in the built `.d.ts` and lose their TSDoc, and that a bare `{@link}` to either name is ambiguous and needs the variable selector form. Do not "tidy" either into a static class; it will not compile.
 
 ## The service is a factory, not a generic key
 
@@ -164,6 +164,8 @@ Per the [observability standard](../effect-standards.md#observability-standards)
 - **Integration tests run the watcher against real temporary directories** and are the only tests that provide a platform layer. Watcher behaviour that does not need a real filesystem is driven through the [`FileSystem` double's `watch`](jsonl-journal.md#the-watcher-and-activation) instead, so those assertions are deterministic and timer-free.
 - Several concurrency and ordering tests here are **structurally incapable of testing what they appear to test** unless arranged carefully; the specific traps are recorded with the mechanisms they guard, in [the journal doc](jsonl-journal.md#what-the-concurrency-tests-must-actually-arrange).
 
+The platform findings recorded across these three documents were established against the vendored core and the node backend; when the catalog advances, the `FileSystem`, `watch` and `writeAll` findings are the ones to re-check.
+
 ## Non-goals
 
 - Rotation, compaction and retention. Append-only history is the point of the format, and a package that rotates has quietly become a log shipper.
@@ -171,5 +173,3 @@ Per the [observability standard](../effect-standards.md#observability-standards)
 - A general event-sourcing framework; core's `eventlog` occupies that space.
 - Locking, leases or any coordination protocol between writers beyond the documented one-write-per-line discipline.
 - Querying by anything other than envelope fields. A payload-content query would force a payload decode per line and dismantle the filtering guarantee the package is built on.
-
-Platform findings throughout these three documents were established against the vendored core and node backend; when the catalog advances, the `FileSystem`, `watch` and `writeAll` findings are the ones to re-check.

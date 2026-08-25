@@ -10,7 +10,7 @@ The monorepo holds libraries only — applications stay in external repos.
 
 ## Design Documentation
 
-Thirteen foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load each one on demand:
+The foundational design docs live in `.claude/design/effected/` (config: `.claude/design/design.config.json`). Load each one on demand:
 
 - Architecture → `@./.claude/design/effected/architecture.md` — Load when: changing repo structure, build pipeline, tooling, or workspace/catalog setup.
 - Effect standards → `@./.claude/design/effected/effect-standards.md` — Load when: designing or porting a library API, asking whether core already owns a primitive *and whether its shape fits the call site*, choosing a test double, or making dependency/peer-closure decisions.
@@ -26,7 +26,7 @@ Thirteen foundational design docs live in `.claude/design/effected/` (config: `.
 - GitHub Action canon → `@./.claude/design/effected/github-action-canon.md` — Load when: building or reviewing a GitHub Action repository on the kit, or editing the Actions skill suite that teaches it.
 - Scratchpad → `@./.claude/design/effected/scratchpad.md` — Load when: changing the scratchpad workspace's committed shell or its ghost-workspace exclusions.
 
-Per-package design docs live in `.claude/design/effected/packages/`; consumer dogfood records in `.claude/design/effected/consumers/`.
+Per-package design docs live in `.claude/design/effected/packages/`; consumer dogfood records in `.claude/design/effected/consumers/`. Two docs sit beside the roster and are **deliberately off it** — do not "repair" the list by adding them: `yaml-lint.md` is a topic doc for `@effected/yaml`, reached from that package's context files, and `benchmarking.md` designs a system nothing has built yet.
 
 ### Child context files
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-23
-last-synced: 2026-08-23
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 88
 related:
   - architecture.md
@@ -31,6 +31,9 @@ related:
   - packages/github-references.md
   - packages/memfs.md
   - packages/jsonl.md
+  - packages/config-file.md
+  - packages/pnpm-plugin-effect.md
+  - packages/schemastore.md
   - consumers/README.md
 ---
 
@@ -40,9 +43,9 @@ related:
 
 How the kit releases, and what closed the question of which packages had to exist before it could release at all.
 
-The kit did not release package-by-package on its way in: the whole gate set published together at `0.1.0` against one `effect` beta, as an explicit **pre-release**. Nothing here claims stability, and consumer ports proceed against real published packages rather than being gated behind a synthetic proof. `1.0.0` waits for Effect v4 GA.
+The kit did not release package-by-package on its way in: the whole gate set published together at `0.1.0` against one `effect` prerelease, as an explicit **pre-release**. Nothing here claims stability, and consumer ports proceed against real published packages rather than being gated behind a synthetic proof. `1.0.0` waits for Effect v4 GA.
 
-**Releases are changeset-driven, and the release set is an output of that mechanism rather than a policy choice.** CI builds the appropriate changesets and releases the packages they name — the whole kit when a catalog advance touches everything, a single package when a patch is the only thing pending. Both shapes are ordinary: the 27-package beta.107 wave and solo patches like `workspaces@0.11.1` are the same mechanism producing different sets. A package may be released on its own.
+**Releases are changeset-driven, and the release set is an output of that mechanism rather than a policy choice.** CI builds the appropriate changesets and releases the packages they name — the whole kit when a catalog advance touches everything, a single package when a patch is the only thing pending. Both shapes are ordinary: a near-whole-kit wave behind a catalog advance and a lone patch release are the same mechanism producing different sets. A package may be released on its own.
 
 In practice new packages have debuted alongside others, because a wave that introduces one usually touches its neighbours too — but that is an observation about how the changesets have fallen, not a rule the process enforces.
 
@@ -82,7 +85,7 @@ The release criterion is "the kit can replace the business logic of these five."
 - `vitest-agent` — consumes `workspaces`, `config-file`, `xdg` and `store`, and transitively `walker` and `lockfiles`.
 - `soda3js/tools` — via `@soda3js/config`, an Effect package that loads and writes a TOML config file. It consumes `config-file` and `toml`, needing **only** TOML. `TomlCodec` arrives inside `@effected/config-file`, so this consumer carries unexecuted dependency edges on `@effected/jsonc` and `@effected/yaml`. It provably pays nothing for them — an explicitly-composed codec is tree-shaken when unreferenced and, unbundled, ESM never loads a module nobody imports ([packages/config-file.md](packages/config-file.md#the-load-bearing-constraint-free-standing-named-exports-never-a-namespace-object)). This is the consumer that would pay if either fact were ever falsified.
 - `silk-update-action` (savvy-web) — consumes `workspaces` (root discovery, package-manager detection, the lockfile reader) and `lockfiles` (per-importer declared dependencies for before/after lockfile diffing).
-- `savvy-web/systems` — via `@savvy-web/silk-effects`' DepsRegen engine: consumes `workspaces`' snapshot service (git at-ref and worktree snapshots), the opt-in config-dependency hook replay, and `@effected/git` directly for the git operations its tooling currently hand-rolls — DepsRegen's merge-base/ls-tree reads, the cli/mcp/silk-effects introspection wave and the repos domain's submodule mutations ([issue #82](https://github.com/spencerbeggs/effected/issues/82)).
+- `savvy-web/systems` — via `@savvy-web/silk-effects`' DepsRegen engine: consumes `workspaces`' snapshot service (git at-ref and worktree snapshots), the opt-in config-dependency hook replay, and `@effected/git` directly for its git operations — DepsRegen's merge-base/ls-tree reads, the cli/mcp/silk-effects introspection wave and the repos domain's submodule mutations.
 
 ## The gate
 
@@ -112,7 +115,7 @@ The gate is the union of what those consumers need, and it is met. The gate set 
 
 ### `@effected/toml` is a full-parity format package
 
-`@effected/toml` is a full-parity sibling to `@effected/jsonc` and `@effected/yaml` — parse, stringify, Schema, lossless CST, edit-in-place, formatter, visitor — on a from-scratch Effect-native engine targeting TOML 1.0.0, with `smol-toml` appearing only as a devDependency test oracle. The gate consumer `@soda3js/config` needs only parse/stringify: the consumer contract defines the minimum the package must satisfy, not its bound. [packages/toml.md](packages/toml.md) is authoritative.
+`@effected/toml` is a full-parity sibling to `@effected/jsonc` and `@effected/yaml` — parse, stringify, Schema, lossless CST, edit-in-place, formatter, visitor — on a from-scratch Effect-native engine, with `smol-toml` appearing only as a devDependency test oracle. The gate consumer `@soda3js/config` needs only parse/stringify: the consumer contract defines the minimum the package must satisfy, not its bound. [packages/toml.md](packages/toml.md) is authoritative.
 
 ### Joining the release stream after the gate
 

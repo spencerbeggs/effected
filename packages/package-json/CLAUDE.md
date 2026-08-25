@@ -1,19 +1,27 @@
 # @effected/package-json
 
-package.json parsing, editing, validation and file IO as Effect schemas. Fourth migration; merged — the consolidation is the point: a module per concept in `src/`, down from 34 v3 files. (Test counts move every commit and are not tracked here; run `pnpm test --filter @effected/package-json`.)
+package.json parsing, editing, validation and file IO as Effect schemas. **One module per concept in `src/`** — the consolidation is the point; do not re-fragment it. (Test counts move every commit and are not tracked here; run `pnpm test --filter @effected/package-json`.)
 
 **Design doc:** `@../../.claude/design/effected/packages/package-json.md` — load when
-changing the public surface, the `rest` wire transform, or the error taxonomy.
+changing the public surface, the `rest` wire transform, the tolerance ladder or
+the error taxonomy. One child:
+
+- `@../../.claude/design/effected/packages/package-json-text.md` — Load when:
+  working on the decode-free text path — `PackageJsonFormat`'s canonical key
+  order, `PackageIndent`/`"preserve"`, or the surgical `modify` mutator.
 
 ## Tier: boundary
 
 **Boundary tier**, driven by the IO boundary. It carries no third-party runtime
 dependency — its `dependencies` are `workspace:^` edges to pure `@effected`
-packages plus the `effect` peer — so it never rises to integrated.
+packages (`jsonc`, `npm`, `semver`, `spdx`) plus the `effect` peer — so it never
+rises to integrated.
 All IO **lives in `src/PackageJsonFile.ts`** — one module, one `Context.Service`,
-two methods (`read`, `write`). Every other module is pure. Keep it that way: if a
-change wants to read or write, route it through `PackageJsonFile` or leave it to
-the caller. `PackageJsonFile` reads and writes over core `FileSystem` / `Path`
+five methods: `read` / `write` (strict `Package`), `readManifest` /
+`writeManifest` (the presence-lenient `PackageManifest`, which accepts the
+private workspace-root shape `read` rejects), and `modify`. Every other module is
+pure. Keep it that way: if a change wants to read or write, route it through
+`PackageJsonFile` or leave it to the caller. `PackageJsonFile` reads and writes over core `FileSystem` / `Path`
 (v4 — no `@effect/platform` peer); its layer requires those services, and the
 consumer provides `@effect/platform-node` at the edge.
 
@@ -24,10 +32,10 @@ npm-specific `UNLICENSED` and `SEE LICENSE IN` cases. That delegation dropped th
 former `spdx-expression-parse` runtime dependency and its ambient shim — the dep
 that once made this package integrated — so its tier is now boundary.
 
-A review proposed splitting the IO into its own package; **the split was
-reversed**. The v3 motivation — isolating the `@effect/platform` peer — evaporates
-in v4, where platform abstractions live in `effect` core. A future split remains
-a one-module extraction.
+**Do not split the IO into its own package.** The motivation would be isolating
+an `@effect/platform` peer, and in v4 the platform abstractions live in `effect`
+core, so there is nothing to isolate. It stays a one-module extraction should
+that ever change.
 
 ## Relationship to @effected/npm
 
@@ -69,7 +77,7 @@ re-exports below it).
   does NOT imply strict validity; the upgrade path is re-decoding the original
   input through `PackageManifest.decode` / `Package.decode`. Born from the
   tsdoctor-monorepo dogfood ask (round 1, item 3).
-- **`DependencySpecifier`** — the specifier taxonomy (one `protocolOf` classifier over eleven protocols, `range` | `tag` | `git` | `url` | `npm` | `file` | `link` | `portal` | `catalog` | `workspace` | `unknown`, plus predicate statics). **Relocated to `@effected/npm`** when lockfiles became its second consumer; `src/DependencySpecifier.ts` was deleted and `index.ts` **re-exports** it (with `DependencyKind`, `DependencyProtocol`, `DependencySpecifierBrand`, `InvalidDependencySpecifierError`, `isValidDependencySpecifier`) from there. This package no longer owns the file.
+- **`DependencySpecifier`** — the specifier taxonomy (one `protocolOf` classifier over eleven protocols, `range` | `tag` | `git` | `url` | `npm` | `file` | `link` | `portal` | `catalog` | `workspace` | `unknown`, plus predicate statics). **Owned by `@effected/npm`**, which has two consumers; `index.ts` only **re-exports** it here (with `DependencyKind`, `DependencyProtocol`, `DependencySpecifierBrand`, `InvalidDependencySpecifierError`, `isValidDependencySpecifier`). Do not re-add a local copy.
 - **`EntryPoint.ts`** — `resolveEntryPoint`, answering "which file is this
   manifest's `"."` entry?" **pure, IO-free and `Result`-returning**, over a
   *structural* `EntryPointManifest` (`{ exports?, main? }`) rather than a
@@ -88,15 +96,13 @@ re-exports below it).
   **`Person.ts`**, **`DevEngines.ts`** — leaf concepts, each owning its own
   statics and its own error. `PackageManager` models the same
   `<name>@<version>[+<integrity>]` triple as `@effected/npm`'s
-  `PackageManagerPin`, and since the **2026-07-28 consolidation** shares both
-  strict pieces with it rather than re-deriving them: `integrity` is npm's
-  `CorepackIntegrityHash` (the shared corepack `<algo>.<hex>` narrowing), and
-  the version — since the 2026-08-02 migration — IS `@effected/semver`'s
+  `PackageManagerPin`, and **shares both strict pieces with it rather than
+  re-deriving them**: `integrity` is npm's `CorepackIntegrityHash` (the shared
+  corepack `<algo>.<hex>` narrowing), and the version IS `@effected/semver`'s
   `SemVer.PinnableVersionString` (decode rules through `SemVer.isPinnable`).
-  That version fold was a **deliberate strictening** of
-  `PackageManager.FromString` — `pnpm@01.2.3`, `1.2.3-01` and `1.2.3-a..b`
-  were accepted by the old regex, and `pnpm@ 10.33.0` (padded version) by the
-  pre-migration trimming parse; all now fail typed, matching corepack's own
+  That version fold is a **deliberate strictening** of
+  `PackageManager.FromString` — `pnpm@01.2.3`, `1.2.3-01`, `1.2.3-a..b` and
+  `pnpm@ 10.33.0` (padded) all fail typed, matching corepack's own
   `semver.valid` check minus its trim — and the check sits on the *field*, so
   `make` refuses a malformed version (and any build metadata, which the
   grammar cannot express) rather than producing a manifest value that
@@ -119,13 +125,30 @@ re-exports below it).
   `bun@1.2.20`; it skips its own name check for URL specs; npm documents no
   constraint on the field, only on `devEngines.packageManager.name`). Do not
   "align" it with the pin.
+- **`PackageManagerRange.ts`** — the range-tolerant `packageManager` model
+  (`pnpm@^11.20.0`), the field as **pnpm** reads it under
+  `manage-package-manager-versions`, alongside the strict corepack
+  `PackageManager` — which stays strict. `range` is the manifest's text
+  **verbatim** (validated to parse as a semver range, never normalized; the
+  `Repository` carry-verbatim posture), and `isExact` is how a caller tracks
+  which form was actually written. It shares the strict grammar's one
+  load-bearing rule: **the first `+` after the `@` begins integrity, never
+  semver build metadata.** `PackageManifest` decodes the field through this
+  class, not the strict one.
 - **`PackageValidator.ts`** — rule-based validation over a decoded `Package`;
   `layer` (default rules) and the parameterized `layerRules` factory.
 - **`PackageJsonFile.ts`** — the IO surface.
-- **`PackageJsonFormat.ts`** — the decode-free formatter: `PackageJsonFormat`
-  with two statics, `sortValue` (value→value, total, returns its input type
-  `T`) and `formatToString` (text→text, `Result<string, PackageJsonSyntaxError>`),
-  plus `PackageFormatTextOptions`. Named for the kit formatter convention
+- **`PackageJsonFormat.ts`** — the decode-free text path (design depth:
+  `@../../.claude/design/effected/packages/package-json-text.md`). Four
+  statics: `sortValue` (value→value, total, returns its input type `T`),
+  `formatToString` (text→text, `Result<string, PackageJsonSyntaxError>`), and
+  the surgical mutators `modify` / `modifyToString`, which apply an ordered
+  list of `PackageFieldEdit` (`{ path, value }`, `value: undefined` deletes)
+  through **`@effected/jsonc`** so every byte outside the edited spans —
+  key order, indentation, line endings, trailing newline — survives; an
+  unnavigable path fails as `PackageJsonModifyError`. `PackageJsonFile.modify`
+  is that path against a file, skipping the write when the result is
+  byte-identical to what was read. Named for the kit formatter convention
   (`@../../.claude/design/effected/formatter-convention.md`) — `JsoncFormatter`,
   `YamlFormat` and `TomlFormat` spell the same capability the same way.
   **`sortValue` only ever reorders keys**; it never adds or removes one, which

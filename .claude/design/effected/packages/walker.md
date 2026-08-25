@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -125,7 +125,7 @@ Because the channel is `never`, the walking resolvers in config-file inherit the
 
 So unreadable directories **fail** by default. A skip mode exists for callers who genuinely want best-effort, but it must be **asked for**, never assumed. Depth exhaustion is likewise a typed failure, never a truncation — silent truncation silently changes match semantics. An invalid depth cap stays a defect, exactly as upward.
 
-`DescendError`'s reason field uses `Schema.Literals`, not `Schema.Literal`: the variadic `Literal` **silently ignores every argument after the first** in the pinned beta, so a two-argument `Literal` union quietly narrows to the first member.
+`DescendError`'s reason field uses `Schema.Literals`, not `Schema.Literal`: the variadic `Literal` **silently ignores every argument after the first**, so a two-argument `Literal` union quietly narrows to the first member.
 
 ## Hardening
 

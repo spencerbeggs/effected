@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-12
-last-synced: 2026-08-12
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../effect-standards.md
@@ -32,7 +32,7 @@ The package is designed **against** core's `effect/unstable/process` vocabulary,
 
 **Every subprocess concept in this package is core's, and no implementation of one is.** The only new vocabulary is the *outcome* (collected output, typed failure), the *policy* (timeout, redaction, transience) and the *tool* (discovery, version, source).
 
-The rule is stated this sharply because an earlier package with this name was deleted for breaking it twice: it invented `Command` / `CommandRunner` / `CommandSpawnError`, then deleted those and **ported a platform spawner backend into itself**. The second failure is the subtle one — consuming core's vocabulary faithfully is necessary but not sufficient, since a package can speak core's types and still be wrong by implementing them. Concretely, never add: a `Command` type, a service wrapping `ChildProcessSpawner`, a spawner backend, a platform layer, a `node:child_process` import or a shell helper. `Run` is **free functions**, not a service, for exactly this reason: core's spawner *is* the runner service.
+The rule is stated this sharply because it has two failure modes and the second is subtle. Inventing a parallel `Command` / `CommandRunner` / `CommandSpawnError` vocabulary is the obvious one; **implementing** core's contract — porting a platform spawner backend in here — is the one that still looks correct, because a package can speak core's types faithfully and be wrong by supplying them. Concretely, never add: a `Command` type, a service wrapping `ChildProcessSpawner`, a spawner backend, a platform layer, a `node:child_process` import or a shell helper. `Run` is **free functions**, not a service, for exactly this reason: core's spawner *is* the runner service.
 
 ## Tier and dependencies
 
@@ -46,7 +46,7 @@ The rule is stated this sharply because an earlier package with this name was de
 
 `ToolDiscovery`'s local resolution needs to know how to run a project-local binary (`pnpm exec`, `npx --no --`, `yarn exec`, `bun x --no-install`), which means knowing the workspace root and the package manager — both `@effected/workspaces`' knowledge, and `workspaces` is **integrated** tier.
 
-Taking that edge directly would drag this package to integrated under [R2](../effect-standards.md#dependency-policy), and through the planned `@effected/npm` → `commands` edge it would drag `npm`, `lockfiles` (**pure**) and `package-json` with it — four packages, including a pure one, plus pnpm's catalog engine in the tree of anyone who wanted to check whether `tar` exists.
+Taking that edge directly would drag this package to integrated under [R2](../effect-standards.md#dependency-policy), and through the `@effected/npm` → `commands` edge it would drag `npm`, `lockfiles` (**pure**) and `package-json` with it — four packages, including a pure one, plus pnpm's catalog engine in the tree of anyone who wanted to check whether `tar` exists.
 
 So the contract inverts, exactly as [`@effected/npm`'s resolver contracts](npm.md#resolver-contracts) do: **`commands` declares `LocalExec` in `src/LocalExec.ts` and requires it in `R`; `@effected/workspaces` ships the layer that implements it.** The contract is deliberately smaller than "the workspaces surface" — it is an argv prefix and a directory (`ExecContext`), not a workspace model. Three consequences:
 
@@ -67,7 +67,7 @@ Module-per-concept, no barrels; `src/index.ts` re-exports only. See `src/`:
 | `Retry.ts` | transience classification and the retry policy — vocabulary for `Effect.retry`, not a retrying runner |
 | `LocalExec.ts` | the inverted contract: `LocalExec`, `ExecContext`, `LocalExecError`, the prefix table, the layers |
 | `Tool.ts` | `Tool`, the `VersionProbe` union, the `ToolSource` / `MismatchPolicy` literals |
-| `ToolDiscovery.ts` | the service and its layer, `ResolvedTool`, the three tool errors, the evidence cache |
+| `ToolDiscovery.ts` | the service and its layer, `ResolvedTool`, the tool errors, the evidence cache |
 | `ScriptedSpawner.ts` | the public scripted `ChildProcessSpawner` double |
 | `internal/capture.ts` | bounded stream capture; not exported |
 
@@ -75,7 +75,7 @@ Module-per-concept, no barrels; `src/index.ts` re-exports only. See `src/`:
 
 ## What `Run` decides
 
-- **`RunOptions` carries only what a core `Command` cannot.** `cwd`, `env`, `extendEnv`, `stdin`, `shell`, kill signals and fd wiring are all `ChildProcess.CommandOptions` fields with core combinators; duplicating them here is the re-declaration that killed the previous package. What is left is genuinely ours: a deadline (**no default** — an install and a `rev-parse` cannot share one), a redaction set and a capture bound.
+- **`RunOptions` carries only what a core `Command` cannot.** `cwd`, `env`, `extendEnv`, `stdin`, `shell`, kill signals and fd wiring are all `ChildProcess.CommandOptions` fields with core combinators; duplicating them here is exactly the re-declaration [the one rule](#the-one-rule) forbids. What is left is genuinely ours: a deadline (**no default** — an install and a `rev-parse` cannot share one), a redaction set and a capture bound.
 - **`Run.extendEnv` exists because core's `setEnv` is a trap.** `setEnv` merges into `options.env` but never sets `extendEnv`, and the Node spawner resolves the child environment as `extendEnv ? { ...process.env, ...env } : env` — so a command built with a bare `setEnv({ VAR: x })` spawns a child whose entire environment is that one variable: no `PATH`, no `HOME`, silent at the type level. `Run.extendEnv` merges like `setEnv` and **forces `extendEnv: true`** even over a construction-time `false`, because inheriting the parent environment is its whole purpose; a hermetic environment is what bare `setEnv` remains for. It is a combinator on the `Command` value rather than a `RunOptions` field, per the rule above, and a unit CONTROL pins core's own behavior so a beta that changes `setEnv` fails loudly.
 - **A non-zero exit is a *result* for `collect`, `exitCode`, `succeeds` and `jsonLine`, and a typed failure for `text`, `lines` and `json`.** The split is deliberate; do not "fix" either half. The interpreting helpers also **trim** — `Run.text` trims the whole result, which silently corrupts fixed-column output whose first column can be whitespace (`git status --porcelain` is the canonical one). Parse that from `collect`'s untrimmed `stdout`.
 - **Collection is concurrent, and that is load-bearing.** `collect` reads stdout, stderr and the exit code under `{ concurrency: "unbounded" }`: sequential collection deadlocks the moment either OS pipe buffer fills, because the child blocks writing to a full pipe while the reader that would drain it waits on the other stream. A mock spawner over in-memory streams cannot reproduce it, which is why the e2e backpressure test is not optional.
@@ -100,7 +100,7 @@ Two halves of a detached child's lifecycle are deliberately **not** here: signal
 
 Two, both structurally routable — see `src/Run.ts`. `CommandFailedError` carries `kind: "nonZero" | "spawn" | "timeout"` plus the command and its **redacted** argv, with ergonomic statics filling the rest from the `Command` value the caller already has. `CommandOutputError` carries `kind: "notJson" | "schema" | "tooLarge"`, and the combinators that parse independently of the exit code also populate the run's exit code and both streams, **stored redacted**, so a bad payload is diagnosable without re-running the child.
 
-Three decisions ride on that shape. There is **no `reason: string`** — a predecessor carried one and consumers matched substrings on it, so `kind` plus structured fields replace it and `message` is a rendering, never a routing surface. `message` is **tail-truncated**, because npm writes warnings first and the real error last. And **`stdout` is carried alongside `stderr`**, for the same reason: npm routes real errors to stdout often enough that dropping it hid causes.
+Three decisions ride on that shape. There is **no `reason: string`** — a prose field invites consumers to match substrings on it, so `kind` plus structured fields carry the routing and `message` stays a rendering, never a routing surface. `message` is **tail-truncated**, because npm writes warnings first and the real error last. And **`stdout` is carried alongside `stderr`**, for the same reason: npm routes real errors to stdout often enough that dropping it hid causes.
 
 An opted-in timeout is absorbed into `CommandFailedError { kind: "timeout" }` rather than surfacing core's `Cause.TimeoutError`, which is the same absorption [`@effected/git`](git.md#errors-classification-happens-once) performs so consumers only ever see one taxonomy. That absorption, not the deadline, is what the option buys over a bare `Effect.timeout`.
 
@@ -114,9 +114,9 @@ An opted-in timeout is absorbed into `CommandFailedError { kind: "timeout" }` ra
 
 `ToolDiscovery.resolve(tool)` answers with a `ResolvedTool` naming the source it chose, the versions it saw and whether they disagree; the policy (`source`, `onMismatch`) is the caller's. Five decisions are deliberate:
 
-- **No shell, ever.** A predecessor probed availability by interpolating the tool name into `sh -c "command -v <name>"` — an injection hazard and broken on Windows. **Absence is a spawn failure, never an exit code**: the probe spawns the tool itself with its version flag, a `PlatformError` whose `reason._tag` is `"NotFound"` means absent, and any completed run means present. A tool whose `--version` exits 1 exists.
+- **No shell, ever.** Probing availability by interpolating a tool name into `sh -c "command -v <name>"` is an injection hazard and broken on Windows. **Absence is a spawn failure, never an exit code**: the probe spawns the tool itself with its version flag, a `PlatformError` whose `reason._tag` is `"NotFound"` means absent, and any completed run means present. A tool whose `--version` exits 1 exists.
 - **Option-injection guard.** A tool name that is empty or begins with `-` is refused **before any spawn**, typed as its own `ToolRefusedError` — not `ToolNotFoundError`, which carries a `searched` list a refusal has no answer for, and not a `kind` on it, which would blur absence with refusal.
-- **The cache holds evidence, not answers.** A predecessor cached resolved values keyed by tool *name*, so a second `Tool` with different constraints silently inherited the first caller's policy decision. Here the cached value is the probe outcome, keyed by `(name, version probe)` as a `Schema.Class` whose structural `Equal`/`Hash` the cache uses directly — probing `--version` and `-V` are different questions — and policy is applied per call.
+- **The cache holds evidence, not answers.** Caching *resolved values* keyed by tool name lets a second `Tool` with different constraints silently inherit the first caller's policy decision. Here the cached value is the probe outcome, keyed by `(name, version probe)` as a `Schema.Class` whose structural `Equal`/`Hash` the cache uses directly — probing `--version` and `-V` are different questions — and policy is applied per call.
 - **Core `Cache`, not a bare `Ref`,** for in-flight de-duplication: two fibers resolving one tool concurrently produce one probe. Core `Cache` does **not** share `Effect.cached`'s interrupt-poisoning property (probed with a control that reproduced the poisoning first), but it **does** memoize failures for the entry's TTL, which is why the `timeToLive` function is load-bearing.
 - **Only a positive result is memoized forever.** "Not found" is a *successful* lookup carrying negative evidence, and memoizing it makes a tool installed mid-process — an action that provisions a runtime and then uses it — permanently absent. A tool that exists does not stop existing; a tool that does not exist very often starts to.
 
@@ -128,7 +128,7 @@ An opted-in timeout is absorbed into `CommandFailedError { kind: "timeout" }` ra
 
 ## What this package deliberately does not do
 
-Each line is a thing a previous version did, or a thing a reviewer will propose:
+Each line is a thing a reviewer will eventually propose:
 
 - **No `Command` type and no runner service.** Core declares both; `ResolvedTool.command(...)` returns a core `Command` and `Run` is free functions over it.
 - **No spawner backend, no platform layer, no shell helper.** A misbehaving backend is fixed upstream, not shimmed here; a consumer running a configured command string builds `ChildProcess.make("sh", ["-c", str])` itself and owns the injection surface.

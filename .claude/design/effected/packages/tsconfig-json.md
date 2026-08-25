@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-13
-updated: 2026-08-16
-last-synced: 2026-08-16
+updated: 2026-08-25
+last-synced: 2026-08-25
 completeness: 95
 related:
   - ../roadmap.md
@@ -22,7 +22,7 @@ related:
 
 ## Overview
 
-`@effected/tsconfig-json` reads, decodes, validates, resolves and constructs `tsconfig.json` files: string-level schemas for the document shape, full `extends`-chain resolution matching tsc semantics, nearest-tsconfig upward discovery, a data-owned codec between string option values and TypeScript's numeric enums, and a portable-tsconfig filter for virtual-TS environments. It is a new invention scoped by [consumer surveys](#consumers-this-api-was-designed-against), not a port, and it is on the `0.1.0` release gate.
+`@effected/tsconfig-json` reads, decodes, validates, resolves and constructs `tsconfig.json` files: string-level schemas for the document shape, full `extends`-chain resolution matching tsc semantics, nearest-tsconfig upward discovery, a data-owned codec between string option values and TypeScript's numeric enums, and a portable-tsconfig filter for virtual-TS environments. It is a new invention scoped by [consumer surveys](#consumers-this-api-was-designed-against), not a port.
 
 It enforces the repo's TypeScript posture: the version-coupled parts of tsconfig knowledge become plain data owned here, so no `@effected/*` package ever imports `typescript` (see [the TypeScript 5→6→7 posture](../roadmap.md#the-typescript-567-posture)).
 
@@ -167,13 +167,13 @@ Per the [testing standards](../effect-standards.md#testing-standards): `@effect/
 
 Resolution suites run on **in-memory fixture trees** — a real volume from [`@effected/memfs`](memfs.md) (a devDependency) seeded from a `Map`, merged with core's `Path` layer, so there is still **no platform package even in tests**.
 
-**The migration off the previous `layerNoop`-over-a-`Map` stub is this package's own cautionary tale.** Map membership made directories not exist, which made the fixture's `exists` structurally file-only — accidentally *agreeing* with the loader's file-only contract and thereby hiding the very divergence that contract exists to record. A test asserting `Option.none()` for a relative path to a directory had been passing for the wrong reason; against the volume the directory genuinely exists, the divergence is observable, and the test pins the real answer (`./dir` resolves to the directory, and no `<dir>/tsconfig.json` fallback is tried). A second fixture had seeded a file *and* a directory at one path — a contradiction only map membership permits — and had been silently skipping its test. Never reintroduce a structurally file-only double to make either of those reads tidier: the divergence must stay visible to a test, because that is the only thing stopping it regressing unnoticed. The **discovery** suite is a separate, narrow `layerNoop` stub and has not moved.
+**A structurally file-only double must never come back, and the reason is this package's own cautionary tale.** A `layerNoop`-over-a-`Map` fixture makes directories not exist, which makes its `exists` structurally file-only — accidentally *agreeing* with the loader's file-only contract and thereby hiding the very divergence that contract exists to record. A test asserting `Option.none()` for a relative path to a directory passed for the wrong reason under that stub; against a real volume the directory genuinely exists, the divergence is observable, and the test pins the real answer (`./dir` resolves to the directory, and no `<dir>/tsconfig.json` fallback is tried). Another fixture seeded a file *and* a directory at one path — a contradiction only map membership permits — and silently skipped its test. Never reintroduce a structurally file-only double to make either of those reads tidier: the divergence must stay visible to a test, because that is the only thing stopping it regressing unnoticed. The **discovery** suite keeps a separate, narrow `layerNoop` stub: it asserts which candidates walker probes, not what a filesystem holds.
 
 The families that matter: fixture trees with real extends chains asserting merge semantics and the extended-path ordering; data-driven parity tests recorded from the TypeScript-source verification; hostile inputs (cycles, deep chains, malformed JSONC, dunder keys) each failing with its typed error; round-trip properties on the document schema including unknown-key preservation; and the compile-time assignability test on the encode return.
 
 ## Consumers this API was designed against
 
-- **`rspress-plugin-api-extractor`'s tsconfig parser** — loads a tsconfig by path, resolves extends, extracts a compiler-options subset, needs the extended-path metadata and feeds numeric options to a virtual-TS environment. This is the [gate-proof](../roadmap.md#consumer-ports) consumer, deferred to post-`0.1.0`.
+- **`rspress-plugin-api-extractor`'s tsconfig parser** — loads a tsconfig by path, resolves extends, extracts a compiler-options subset, needs the extended-path metadata and feeds numeric options to a virtual-TS environment. It is an open [consumer port](../roadmap.md#consumer-ports): the plugin's v3 dependencies cannot coexist with the v4 kit, so the port waits on the rest of its graph.
 - **`@savvy-web/bundler`'s tsconfig resolver** — the same load-and-resolve, followed by the numeric-to-portable-string conversion this package's string-level schemas eliminate outright.
 - **`type-registry-effect`** (external) — its virtual-TS environment consumes numeric compiler options, which is the enum codec's encode target.
 
