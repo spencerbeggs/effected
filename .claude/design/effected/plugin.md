@@ -98,7 +98,7 @@ The construct index is the systemic fix for the #188 incident class — a capabi
 
 ### The artifact
 
-One generated file per workspace package at `plugin/skills/effected-packages/references/constructs/<pkg>.md` — 30 files, **1172 rows**. The doc models expose the full `export declare` surface; api-extractor's 512 synthesized `X_base` members are filtered whenever the sibling `X` is exported. Each file is a table with four columns — **construct | kind | purpose | intent keywords**, purpose being the TSDoc summary mechanically extracted, intent keywords agent-authored — under a generated/do-not-edit header. The committed output is a fixed point of the pre-commit markdown fix pass: empty cells render in markdownlint's compacted form and the intent column is pipe-escaped, so the hook has nothing to rewrite.
+One generated file per workspace package at `plugin/skills/effected-packages/references/constructs/<pkg>.md` — 30 files, **1175 rows**. The doc models expose the full `export declare` surface; api-extractor's 512 synthesized `X_base` members are filtered whenever the sibling `X` is exported. Each file is a table with four columns — **construct | kind | purpose | intent keywords**, purpose being the TSDoc summary mechanically extracted, intent keywords agent-authored — under a generated/do-not-edit header. The committed output is a fixed point of the pre-commit markdown fix pass: empty cells render in markdownlint's compacted form and the intent column is pipe-escaped, so the hook has nothing to rewrite.
 
 **No new plugin skill.** The hand-written `effected-packages/SKILL.md` carries a "Search by intent" section teaching agents to grep the constructs directory when they know what they want but not its name, and its frontmatter routes constructs searches.
 
@@ -106,7 +106,7 @@ One generated file per workspace package at `plugin/skills/effected-packages/ref
 
 ### Data model and generator
 
-Intent keywords and cross-links live in a sidecar `plugin/scripts/construct-annotations.json` — plain JSON (not JSONC, so no parser dependency), agent/human-owned, keyed package → construct, holding intent-keyword strings plus an optional `implements` field — the `implementedBy` side is never authored; the generator derives it by inverting the `implements` links. It holds **812 entries** (808 required value-kind, 4 optional), authored from source by a 12-agent fan-out; intent strings run at most 12 words (a small 13–14-word residual band exists), with emphasis-active tokens code-spanned so the markdown stays inert.
+Intent keywords and cross-links live in a sidecar `plugin/scripts/construct-annotations.json` — plain JSON (not JSONC, so no parser dependency), agent/human-owned, keyed package → construct, holding intent-keyword strings plus an optional `implements` field — the `implementedBy` side is never authored; the generator derives it by inverting the `implements` links. It holds **815 entries** (811 required value-kind, 4 optional), authored from source by a 12-agent fan-out; intent strings run at most 12 words (a small 13–14-word residual band exists), with emphasis-active tokens code-spanned so the markdown stays inert.
 
 The generator is **dependency-free**: `plugin/scripts/generate-constructs.mts`, run with bare Node as `node <file>.mts` like the website scripts, parsing each package's api-extractor doc model as plain JSON — it does **not** use `@microsoft/api-extractor-model`, which is only in the tree transitively and would need a new devDep. Its CLI is `generate` / `check [--require-intent]`, with exit codes 0/1/2: ok, annotation problems, missing doc models.
 
@@ -114,7 +114,7 @@ The canonical doc-model input is the package build output, `packages/<dir>/dist/
 
 ### Coverage bar (tiered)
 
-Class, Function and Variable entries **require** an intent annotation — a missing one is a `check --require-intent` failure naming the construct; 808 rows carry one today. Interface and TypeAlias rows ride on their TSDoc summary alone; annotating them is optional (4 are). The rationale: every documented miss in #188 was a value-level capability.
+Class, Function and Variable entries **require** an intent annotation — a missing one is a `check --require-intent` failure naming the construct; 811 rows carry one today. Interface and TypeAlias rows ride on their TSDoc summary alone; annotating them is optional (4 are). The rationale: every documented miss in #188 was a value-level capability.
 
 ### Enforcement
 
