@@ -211,13 +211,19 @@ re-exports below it).
   mutated **in place** keeps its provenance entry while no longer being
   described by it; an unguarded replay then writes the ORIGINAL value back and
   the edit is silently discarded. **Every replay branch must therefore be
-  guarded by a faithfulness check** — `Person.isFaithful`,
-  `isFaithfulRepository`, `isFaithfulBugs`, `Funding`'s `isFaithfulObject`,
-  and value equality on each string branch. The **object** branches of
-  `Repository` and `Bugs` once replayed unconditionally while their string
-  branches were guarded, so an instance decoded from the object form and then
-  edited re-encoded as the stale original; a new replay branch is presumed to
-  have that bug until a mutate-in-place round-trip test says otherwise. Three
+  guarded by a faithfulness check** — on the object branches
+  `Person.isFaithful`, `isFaithfulRepository`, `isFaithfulBugs` and `Funding`'s
+  `isFaithfulObject`; on the string branches value equality on the url AND an
+  expressibility predicate (`isShorthandExpressible`,
+  `isStringExpressibleRepository`, `isStringExpressibleBugs`,
+  `Funding`'s `isStringExpressible`), because a shorthand carries only the url
+  and silently drops anything the value gained that it has no syntax for.
+  `Repository` and `Bugs` once shipped this bug on BOTH branches: the object
+  branches replayed unconditionally, and the string branches checked only that
+  the url still matched, so a value that gained a field the shorthand cannot
+  express re-encoded without it. A new replay branch is presumed to have that
+  bug until a mutate-in-place round-trip test says otherwise — and the string
+  branch needs its OWN such test, because an object-input one never reaches it. Three
   traps if you touch any of them:
   - **`rest` is the field the string branch forgets.** A shorthand has no
     syntax for extra keys, so a person decoded from `"Ann"` that later gains

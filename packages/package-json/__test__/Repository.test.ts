@@ -408,3 +408,86 @@ describe("Repository and Bugs — the object wire is replayed only while it is f
 		}),
 	);
 });
+
+describe("Repository and Bugs — the shorthand is replayed only while it can carry the value", () => {
+	// The object branch's stale-replay guard has a twin on the string branch, and
+	// it fails differently: the shorthand has no SYNTAX for `type`, `directory`
+	// or an unknown key, so a value that gains one is no longer describable by
+	// the wire it remembers. Replaying it drops the addition with no error.
+	// `Person` and `Funding` already gate their string branches this way.
+
+	it.effect("a directory added to a string-decoded repository is not dropped", () =>
+		Effect.gen(function* () {
+			// The live case: this package ships `directoryUrl`, so making a
+			// bare-string repository into a monorepo member is the natural edit.
+			const repo = yield* decode(Repository.FromValue, "effected/kit");
+			(repo as { directory?: string }).directory = "packages/spdx";
+			assert.deepStrictEqual(yield* encode(Repository.FromValue, repo), {
+				url: "effected/kit",
+				directory: "packages/spdx",
+			});
+		}),
+	);
+
+	it.effect("a type added to a string-decoded repository is not dropped", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, "effected/kit");
+			(repo as { type?: string }).type = "git";
+			assert.deepStrictEqual(yield* encode(Repository.FromValue, repo), { type: "git", url: "effected/kit" });
+		}),
+	);
+
+	it.effect("an unknown key added to a string-decoded repository is not dropped", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, "effected/kit");
+			(repo as { rest?: Record<string, unknown> }).rest = { homepage: "https://example.com" };
+			assert.deepStrictEqual(yield* encode(Repository.FromValue, repo), {
+				url: "effected/kit",
+				homepage: "https://example.com",
+			});
+		}),
+	);
+
+	it.effect("an untouched shorthand still replays verbatim", () =>
+		Effect.gen(function* () {
+			// The guard must not cost the fidelity it protects: a value the
+			// shorthand CAN still carry re-encodes as that exact string.
+			for (const input of ["effected/kit", "github:effected/kit", "git@github.com:effected/kit.git"]) {
+				const repo = yield* decode(Repository.FromValue, input);
+				assert.strictEqual(yield* encode(Repository.FromValue, repo), input, input);
+			}
+		}),
+	);
+
+	it.effect("Bugs: an unknown key added to a string-decoded entry is not dropped", () =>
+		Effect.gen(function* () {
+			const bugs = yield* decode(Bugs.FromValue, "https://example.com/issues");
+			(bugs as { rest?: Record<string, unknown> }).rest = { tracker: "linear" };
+			assert.deepStrictEqual(yield* encode(Bugs.FromValue, bugs), {
+				url: "https://example.com/issues",
+				tracker: "linear",
+			});
+		}),
+	);
+
+	it.effect("Bugs: an email added to a string-decoded entry is still not dropped", () =>
+		Effect.gen(function* () {
+			// This half was already guarded; it is kept so a future rewrite of the
+			// predicate cannot quietly drop the clause that was already correct.
+			const bugs = yield* decode(Bugs.FromValue, "https://example.com/issues");
+			(bugs as { email?: string }).email = "bugs@example.com";
+			assert.deepStrictEqual(yield* encode(Bugs.FromValue, bugs), {
+				url: "https://example.com/issues",
+				email: "bugs@example.com",
+			});
+		}),
+	);
+
+	it.effect("Bugs: an untouched string still replays verbatim", () =>
+		Effect.gen(function* () {
+			const input = "https://example.com/issues";
+			const bugs = yield* decode(Bugs.FromValue, input);
+			assert.strictEqual(yield* encode(Bugs.FromValue, bugs), input);
+		}),
+	);
+});

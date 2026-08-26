@@ -119,6 +119,31 @@ const restOf = (wire: { readonly [k: string]: unknown }, known: ReadonlySet<stri
 	return rest;
 };
 
+/**
+ * Whether the shorthand string can still carry everything this value holds.
+ *
+ * @remarks
+ * A shorthand is only a `url` — it has no syntax for `type`, `directory` or an
+ * unknown key. So a repository decoded from a string that later GAINS one of
+ * those is no longer described by the wire it remembers, and replaying that
+ * wire drops the addition silently. This is the same stale-provenance class the
+ * object branch guards, reached through the one field the shorthand cannot
+ * express, and `Person.isShorthandExpressible` / `Funding.isStringExpressible`
+ * already gate their own string branches this way.
+ *
+ * `directory` is the live case: this package ships `Repository.directoryUrl`,
+ * so a consumer reading a bare-string `repository` and making it a monorepo
+ * member is the natural mutator.
+ */
+const isStringExpressibleRepository = (repository: Repository): boolean =>
+	repository.type === undefined &&
+	repository.directory === undefined &&
+	Object.keys(repository.rest ?? {}).length === 0;
+
+/** Whether the bare URL string can still carry everything this `bugs` entry holds. */
+const isStringExpressibleBugs = (bugs: Bugs): boolean =>
+	bugs.email === undefined && Object.keys(bugs.rest ?? {}).length === 0;
+
 const isFaithfulRepository = (wire: { readonly [k: string]: unknown }, repository: Repository): boolean =>
 	(wire.url as unknown) === repository.url &&
 	(wire.type as unknown) === repository.type &&
@@ -267,7 +292,8 @@ export class Repository extends Schema.Class<Repository>("Repository")({
 					const wire = repositoryWires.get(repository);
 					// Replay the shorthand only while it still describes this value —
 					// an edited url must not re-encode as the stale original.
-					if (typeof wire === "string" && wire === repository.url) return wire;
+					if (typeof wire === "string" && wire === repository.url && isStringExpressibleRepository(repository))
+						return wire;
 					if (wire !== undefined && typeof wire !== "string" && isFaithfulRepository(wire, repository)) return wire;
 					return {
 						...(repository.type !== undefined && { type: repository.type }),
@@ -326,7 +352,7 @@ export class Bugs extends Schema.Class<Bugs>("Bugs")({
 				},
 				encode: (bugs: Bugs): string | { readonly [k: string]: unknown } => {
 					const wire = bugsWires.get(bugs);
-					if (typeof wire === "string" && wire === bugs.url && bugs.email === undefined) return wire;
+					if (typeof wire === "string" && wire === bugs.url && isStringExpressibleBugs(bugs)) return wire;
 					if (wire !== undefined && typeof wire !== "string" && isFaithfulBugs(wire, bugs)) return wire;
 					return {
 						...(bugs.url !== undefined && { url: bugs.url }),

@@ -18,6 +18,27 @@ const DRIFTED = 'range: "^0.11.0"';
 
 const roots: string[] = [];
 
+/** A catalog literal shaped the way the real one is, naming exactly `packages`. */
+function catalogConfig(packages: readonly string[]): string {
+	const entries = packages
+		.map(
+			(name) =>
+				`\t\t\t\t\t\t"${name}": { range: "^0.1.0", peer: "^0.1.0", strategy: "lock-minor", source: "workspace" },`,
+		)
+		.join("\n");
+	return `await build({\n\tmeta: {\n\t\tcatalogs: {\n\t\t\teffected: {\n\t\t\t\tpackages: {\n${entries}\n\t\t\t\t},\n\t\t\t},\n\t\t},\n\t},\n});\n`;
+}
+
+/** Write a publishable package manifest into a root, the way membership discovers one. */
+function addPublishable(root: string, name: string): void {
+	const dir = join(root, "packages", name.replace("@effected/", ""));
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(
+		join(dir, "package.json"),
+		JSON.stringify({ name, private: true, publishConfig: { access: "public" } }),
+	);
+}
+
 /** A repo-shaped temp tree: the config the CLI would rewrite, and a .changeset directory. */
 function makeRoot(config: string): string {
 	const root = mkdtempSync(join(tmpdir(), "catalog-sync-"));
@@ -214,5 +235,72 @@ describe("catalog:sync message rendering", () => {
 		}));
 		const headline = renderCommitMessage(many).split("\n")[0] ?? "";
 		assert.isBelow(headline.length, 100, headline);
+	});
+});
+
+describe("catalog membership gate", () => {
+	it("check fails when a publishable package is absent from the catalog", async () => {
+		// The defect this gate exists for: the upgrade CLI walks the LITERAL, so a
+		// package that was never added to it is invisible and `--check` reports
+		// being in sync. The injected runner returns 0 here precisely to model
+		// that — the CLI is green and the catalog is still incomplete.
+		const root = makeRoot(catalogConfig(["@effected/spdx"]));
+		addPublishable(root, "@effected/spdx");
+		addPublishable(root, "@effected/schema-org");
+
+		const code = await check({ root, run: async () => ({ code: 0, stdout: "" }) });
+
+		assert.notStrictEqual(code, 0, "a green CLI must not carry an incomplete catalog to success");
+	});
+
+	it("check passes when every publishable package is catalogued", () => {
+		const root = makeRoot(catalogConfig(["@effected/spdx"]));
+		addPublishable(root, "@effected/spdx");
+
+		return check({ root, run: async () => ({ code: 0, stdout: "" }) }).then((code) => {
+			assert.strictEqual(code, 0);
+		});
+	});
+
+	it("the plugin itself is excluded, or the release loop never terminates", async () => {
+		// Cataloguing the plugin makes every rewrite bump it, invalidating the
+		// catalog and writing another changeset. Its absence IS the termination
+		// condition, so discovering it must not read as a gap.
+		const root = makeRoot(catalogConfig(["@effected/spdx"]));
+		addPublishable(root, "@effected/spdx");
+		addPublishable(root, PLUGIN);
+
+		assert.strictEqual(await check({ root, run: async () => ({ code: 0, stdout: "" }) }), 0);
+	});
+
+	it("sync refuses before writing anything when the catalog is incomplete", async () => {
+		const root = makeRoot(catalogConfig(["@effected/spdx"]));
+		addPublishable(root, "@effected/spdx");
+		addPublishable(root, "@effected/schema-org");
+		const run = runner(DRIFTED);
+
+		let message = "";
+		try {
+			await sync({ root, run });
+			assert.fail("sync must refuse an incomplete catalog rather than proceeding");
+		} catch (error) {
+			message = error instanceof Error ? error.message : String(error);
+		}
+		assert.include(message, "@effected/schema-org", "the refusal names the missing package");
+
+		assert.strictEqual(run.calls.length, 0, "the CLI must not run at all on an incomplete catalog");
+		assert.isFalse(existsSync(join(root, CHANGESET_PATH)), "a refused sync writes no changeset");
+	});
+
+	it("a directory without a manifest is not a package", async () => {
+		// Build output survives a branch switch while tracked files do not, so
+		// `packages/<name>/` routinely exists holding only `dist/`. Reading straight
+		// through would crash the gate with an ENOENT naming a package.json nobody
+		// deleted.
+		const root = makeRoot(catalogConfig(["@effected/spdx"]));
+		addPublishable(root, "@effected/spdx");
+		mkdirSync(join(root, "packages/leftover-build-output"), { recursive: true });
+
+		assert.strictEqual(await check({ root, run: async () => ({ code: 0, stdout: "" }) }), 0);
 	});
 });

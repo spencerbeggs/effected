@@ -37,5 +37,13 @@ spellings.
 `Repository` and `Bugs` replayed their remembered object wire unconditionally
 on encode, so an instance edited in place after decoding re-encoded as the
 stale original and the edit was silently discarded. Both now carry
-faithfulness guards matching `Person`'s; the string branches were always
-guarded, only the object branches were affected.
+faithfulness guards matching `Person`'s.
+
+The **string** branches had the same class of bug, reached through the fields
+the shorthand has no syntax for. A repository decoded from `"effected/kit"`
+that gained a `type`, a `directory` or an unknown key re-encoded as the bare
+string, dropping the addition; `Bugs` did the same for an unknown key. Both now
+fall through to the object form unless the string can still carry the value,
+matching `Person` and `Funding`. The `directory` case is the live one, since
+this release also ships `Repository.directoryUrl` — making a bare-string
+repository into a monorepo member is exactly the edit that was being lost.
