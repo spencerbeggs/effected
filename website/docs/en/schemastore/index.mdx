@@ -1,0 +1,104 @@
+---
+title: "@effected/schemastore"
+description: "Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources."
+---
+
+# @effected/schemastore
+
+Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources. Assemble the publication shape around core's generation pipeline, keep the language-server keyword families alive through the Draft-07 lowering, derive catalog entries in both versioning modes, gate documents through a structural lint and ajv strict mode, serialize deterministically, and write only when the content actually changed. Every failure is a tagged error carrying the identity it failed on, not a thrown string.
+
+## Why @effected/schemastore
+
+Generating a JSON Schema from an Effect Schema is a solved problem — core does it. `Schema.toJsonSchemaDocument` produces Draft 2020-12 and `JsonSchema.toDocumentDraft07` lowers it. Publishing that schema where editors will actually find it is the part nobody has solved for you, and it is a surprising amount of contract.
+
+[SchemaStore](https://www.schemastore.org) recommends Draft-07 because that is the dialect the language servers support, and core's lowering has two consequences a publisher has to deal with. It rewrites `$ref` pointers to the canonical `#/definitions/...` form while the published document keeps its pool under `$defs`, and it drops every keyword outside its fixed copy-list — which is exactly where `markdownDescription`, `x-taplo` and the rest of the editor keywords live. Around the document sits the store's own contract: ajv strict mode as the validation gate, `fileMatch` patterns that must not be generic, and versioned schemas as suffixed files plus a `versions` map whose top-level URL points at the latest. This package is that last mile, so a build script does not reinvent it.
+
+The scope is deliberately narrow. There is no schema construction here, no ref resolution beyond the document's own `$defs` pool and no dialect conversion. Core's `JsonSchema` owns the generation pipeline, ajv provides the validation gate, and `@effected/schemastore` owns the SchemaStore shape in between.
+
+## Install
+
+```bash
+npm install @effected/schemastore effect
+```
+
+```bash
+pnpm add @effected/schemastore effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency. Two regular dependencies ride along: [`@effected/semver`](/semver) backs the version ordering inside `SchemaVersioning` (no `SemVer` type surfaces in the public API), and `ajv` is the engine behind `SchemaValidator.layer`, so the validation examples need no extra install. Every module is pure except [`SchemaFile`](/schemastore/api/class/schemafile), whose layer requires core `FileSystem` and `Path` — supplied at the edge from `@effect/platform-node` or `@effect/platform-bun`.
+
+## Quick start
+
+Turn an Effect Schema into a publication-ready document:
+
+```ts
+import { StoreDocument } from "@effected/schemastore";
+import { Effect, Schema } from "effect";
+
+const Config = Schema.Struct({ name: Schema.String });
+
+const program = Effect.gen(function* () {
+  const document = yield* StoreDocument.fromSchema(Config, {
+    $id: "https://example.com/config.schema.json",
+  });
+  return yield* Effect.fromResult(document.serializeResult());
+});
+
+console.log(Effect.runSync(program));
+// {
+//   "$schema": "http://json-schema.org/draft-07/schema#",
+//   "$id": "https://example.com/config.schema.json",
+//   "type": "object",
+//   "properties": {
+//     "name": {
+//       "type": "string"
+//     }
+//   },
+//   "required": [
+//     "name"
+//   ],
+//   "additionalProperties": false
+// }
+```
+
+[`fromSchema`](/schemastore/api/class/storedocument) runs the whole assembly — 2020-12 generation, the Draft-07 lowering, the `$ref` rewrite back to `$defs` and the annotation re-graft — so every `$ref` in a built document already resolves against its own pool. `toJson()` is the flat publication shape (`$defs` omitted when empty), and `serializeResult()` routes through the owned canonical serializer.
+
+## Editor annotations survive the lowering
+
+SchemaStore documents lean on non-standard keywords the editors read: the vscode-json-languageservice set (`markdownDescription`, `defaultSnippets`, `enumDescriptions`, `markdownEnumDescriptions`, `allowTrailingCommas`), taplo's `x-taplo` keys, tombi's `x-tombi-*` and IntelliJ's `x-intellij-*`. Effect Schema annotations accept arbitrary string keys, so writing them type-checks with no module augmentation — but core's Draft-07 lowering would drop them on the way out.
+
+[`AnnotationCarriers`](/schemastore/api/class/annotationcarriers) re-grafts the declared families onto the lowered document with a parallel walk that mirrors core's descent, so the annotation you wrote is the keyword that ships. [`KeywordFamilies`](/schemastore/api/class/keywordfamilies) is the single registry of what counts as declared, and both the carriers and the lint consume it — so the two can never disagree about which keywords are legitimate.
+
+One constraint bites consumers who do not know it: **annotate at the definition site**. An annotation applied at a hoisted schema's *usage* site reaches neither the `$ref` node nor the `$defs` pool entry, even before the lowering. It silently carries nothing. That is core behavior, and the package documents it rather than papering over it.
+
+## Two gates, and they agree
+
+[`DocumentLint`](/schemastore/api/class/documentlint) is the owned, always-available half: a total structural lint that returns findings as values and never fails. It checks that every `$ref` resolves against the `$defs` pool, that no keyword sits outside Draft-07 plus the declared families, that the root description ends in a docs URL (SchemaStore's convention, advisory), and it degrades to a finding rather than throwing on hostile nesting.
+
+[`SchemaValidator`](/schemastore/api/class/schemavalidator) is the real-engine half, and it ships closed: `SchemaValidator.layer` is ajv, not a contract you have to implement. Provide it and validation works. Findings are still values — a strict-mode rejection is a report, not an error — and the error channel is reserved for the engine failing as a mechanism. The declared keyword families are registered before compiling, so ajv cannot reject what the lint deliberately allows.
+
+## Versioning is the decision, not the mechanics
+
+[`DocumentDiff.classify`](/schemastore/api/class/documentdiff) puts two emitted documents in one of three buckets — `"none"`, `"annotations"` or `"contract"` — and that is the answer to whether a change needs a new schema version. An `"annotations"` change replaces its predecessor transparently; a `"contract"` change does not. `default`, `examples`, `readOnly` and `writeOnly` count as contract rather than documentation, because consumers act on them: misreporting a contract change as annotations ships a silent break, while the reverse only costs a version bump.
+
+[`SchemaVersioning`](/schemastore/api/class/schemaversioning) then derives both catalog modes. `SchemaVersion` is a **full three-component SemVer** label, validated through `@effected/semver`'s own parse rather than a parallel regex, so ordering is plain precedence (`1.10.0` above `1.9.0`) and the label round-trips verbatim into `<name>-<version>.json`. Build metadata is rejected: precedence ignores it, so two labels differing only in build would compare equal and both claim to be latest.
+
+## Write only what changed
+
+[`SchemaFile`](/schemastore/api/class/schemafile) is the package's one IO surface. It serializes through the canonical serializer, compares against what is on disk, and writes only on difference — creating parent directories as needed. The comparison is by **content**, not bytes, so a generated schema can share a file with a Biome or Prettier hook that also reflows it; the next run still reports `"unchanged"` and you write no exclusion rule. `check` makes the same comparison without writing, which is exactly what a CI drift job wants.
+
+`outcome` and `wouldWrite` are the authoritative answers to whether the file was or would be touched. Never infer that from `change`, which reports content and reads `"none"` on a `compare: "bytes"` write that did rewrite the file.
+
+## One call for the whole loop
+
+[`SchemaPipeline`](/schemastore/api/class/schemapipeline) is the loop around everything above: generate each target's document, lint it, validate it, gate on the findings, write it. It is a plain function requiring `SchemaFile` and `SchemaValidator`, not another service to wire. Both gates' findings normalize into one [`PipelineFinding`](/schemastore/api/class/pipelinefinding) shape so a single predicate judges them, and gating is policy rather than mechanism — replace the `blocking` predicate rather than re-implementing the loop.
+
+## Errors
+
+[`SchemaConversionError`](/schemastore/api/class/schemaconversionerror), [`SchemaGateError`](/schemastore/api/class/schemagateerror), [`InvalidSchemaVersionError`](/schemastore/api/class/invalidschemaversionerror), [`SchemaValidatorError`](/schemastore/api/class/schemavalidatorerror), the `SchemaFile` trio ([`SchemaFileNotFoundError`](/schemastore/api/class/schemafilenotfounderror), [`SchemaFileReadError`](/schemastore/api/class/schemafilereaderror), [`SchemaFileWriteError`](/schemastore/api/class/schemafilewriteerror)) and the canonical-JSON pair ([`NonJsonValueError`](/schemastore/api/class/nonjsonvalueerror), [`JsonDepthExceededError`](/schemastore/api/class/jsondepthexceedederror)) are tagged error classes. Route on them with `Effect.catchTag` and read the structured fields — the `message` is derived from them, never a preformatted string you have to parse back.
+
+Lint and validation *findings* are deliberately not errors. A finding is a report about a document; the error channel is for a mechanism failing.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/schemastore/api). New here? Start with the [getting-started guide](/schemastore/getting-started), then the [advanced guide](/schemastore/advanced) for the pipeline, catalog assembly and testing patterns.

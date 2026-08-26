@@ -1,0 +1,71 @@
+---
+title: "@effected/spdx"
+description: "SPDX license identifiers, exceptions and license expressions as Effect schemas."
+---
+
+# @effected/spdx
+
+SPDX license identifiers, exceptions and license expressions as Effect schemas. Validate a single identifier against the full SPDX License List, parse a whole expression — `(MIT OR Apache-2.0)`, `GPL-2.0-only WITH Classpath-exception-2.0` — into a typed AST instead of a string you re-parse at every call site, read the licenses back out of it, and look up a license's title, canonical URL and approval flags. Malformed grammar and an unknown identifier both fail as one tagged error carrying the offending input, never as a thrown exception.
+
+## Why @effected/spdx
+
+Validating a `license` field usually means importing a small CJS parser at runtime and trusting it to keep working across module systems — a foreign dependency for a grammar that changes a few times a year. This package vendors the SPDX datasets as real, committed TypeScript instead: 695 active and 26 deprecated license identifiers plus 66 exceptions, built once from static data with no parsing cost at load time. Validation runs against actual user input, never against the known-good catalog.
+
+The grammar is hardened the same way. The recursive-descent parser is depth-capped, so a hostile or accidentally-nested expression fails as a typed error rather than a `RangeError`, and a differential test suite checks the engine against the canonical `spdx-expression-parse` package on all 695 known ids — when the two disagree, the rule is to fix this engine, not the test. The package follows the [`@effected/semver`](/semver) north star throughout: the class *is* the schema, construction goes through a validating `parse`, and every failure is a value on the typed error channel.
+
+## Install
+
+```bash
+npm install @effected/spdx effect
+```
+
+```bash
+pnpm add @effected/spdx effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind — no IO, no filesystem, no network.
+
+## Quick start
+
+```ts
+import { License, SpdxExpression, isValidExpression } from "@effected/spdx";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const mit = yield* License.parse("MIT");
+  const expr = yield* SpdxExpression.parse("(MIT OR Apache-2.0)");
+  return [mit.id, expr._tag, expr.toString()] as const;
+});
+
+console.log(Effect.runSync(program));
+// ["MIT", "Or", "(MIT OR Apache-2.0)"]
+
+console.log(isValidExpression("MIT AND"));
+// false
+```
+
+## An expression is an AST, not a string
+
+`SpdxExpression.parse` returns a tagged union — [`LicenseNode`](/spdx/api/class/licensenode), [`LicenseRefNode`](/spdx/api/class/licenserefnode), [`WithExceptionNode`](/spdx/api/class/withexceptionnode), [`AndNode`](/spdx/api/class/andnode) and [`OrNode`](/spdx/api/class/ornode) — so a `switch` on `_tag` gets exhaustiveness checking instead of a regular expression. Every node's `toString()` emits the canonical, fully-parenthesized form, and `SpdxExpression.FromString` is a `Schema.Codec` that round-trips between that string and the AST, so a license field decodes as part of the schema that contains it.
+
+Two accessors read licenses back out. `SpdxExpression.licensesOf` returns every license the expression names, in written order and de-duplicated by identifier. `SpdxExpression.primaryLicense` returns the single license an expression can be said to be under — the license itself for a simple or `WITH` expression, the leftmost term for an `OR`, and `Option.none()` for an `AND`. That `none` is deliberate: a conjunction binds every term at once, so picking one would silently drop an obligation that still applies. A caller that lands on `none` emits the array from `licensesOf` instead.
+
+## A license carries its metadata
+
+A [`License`](/spdx/api/class/license) is more than a validated string. `name` and `referenceUrl` are `Option` — the license's title from the SPDX List and its canonical `https://spdx.org/licenses/<id>.html` page — and `osiApproved` / `fsfLibre` are plain booleans a policy gate can read directly. All four are derived from the vendored catalog rather than stored on the instance.
+
+Absence is honest. A `LicenseRef-`/`DocumentRef-` reference names a license living in the consuming document, not on spdx.org, so it has no title and no page and both getters return `none`; the flags return `false`, because an uncataloged id is not approved by anyone. And the two flags are independent in both directions — `0BSD` is OSI-approved and not FSF-libre, `Apache-1.0` is FSF-libre and not OSI-approved — so never derive one from the other.
+
+## Both a sync and an Effect surface
+
+Every parse entry point comes in two forms built on one engine. `License.parseResult`, `LicenseException.parseResult` and `SpdxExpression.parseResult` are synchronous and return a `Result`; `License.parse`, `LicenseException.parse` and `SpdxExpression.parse` are the `Effect` twins derived from them behind a tracing span. [`isValidExpression`](/spdx/api/function/isvalidexpression) is the allocation-light predicate for a lint hook or a config-time check that just needs a yes or no. Because all four surfaces share the engine, they cannot disagree: a `true` from `isValidExpression` guarantees a successful parse.
+
+Deprecated identifiers are valid but flagged. `License.parse("GPL-2.0")` succeeds and returns a license with `deprecated: true`, rather than rejecting an id that is still legitimately in the wild.
+
+## Errors
+
+[`InvalidSpdxExpressionError`](/spdx/api/class/invalidspdxexpressionerror) is the package's single typed error. A bad token, an unbalanced parenthesis, a dangling `AND`, an unknown identifier, an uncataloged exception and nesting past the depth cap all fail through it on the `E` channel, each carrying the `input` that failed. Its `message` is a getter derived from that field, never a preformatted string — route on the `_tag` with `Effect.catchTag` and read `input`.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/spdx/api).

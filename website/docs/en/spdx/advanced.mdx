@@ -1,0 +1,256 @@
+---
+title: Advanced
+description: Compose @effected/spdx into a real Effect application — embed a license field in a domain schema, walk the expression AST, build a policy gate over the catalog metadata, and keep every failure on the typed error channel.
+---
+
+# Advanced
+
+## A publish gate that has to judge a license field
+
+Picture the job this package was built for. A tool reads every dependency's manifest — the kind [`@effected/package-json`](/package-json/api) decodes — and has to answer one question per package: *does this license field clear our policy?* That is not a string comparison. `MIT` clears it, `(MIT OR GPL-3.0-only)` clears it because the author offered a choice, `MIT AND CC-BY-NC-4.0` does not because a conjunction imposes every term at once, and `LicenseRef-Acme-Internal` is not on any list at all and needs a human. The answer depends on the *shape* of the expression, not on which substrings it contains.
+
+The package's reason to exist is to make that judgement exact and typed: validate identifiers against the vendored SPDX catalogs, parse a whole expression into a tagged-union AST, read the licenses back out without collapsing information, expose each license's title, URL and approval flags, and route every malformed or unknown input through one tagged error rather than a thrown string. This guide covers the four capabilities a real application leans on — embedding a license in a domain schema, walking the AST, the catalog metadata behind a policy gate, and the synchronous `Result` boundary — plus the failure modes and testing patterns a production tool needs. It assumes the parse-and-read workflow from the [getting-started guide](/spdx/getting-started).
+
+## How it composes with Effect
+
+Nothing in this package owns a service, a layer or an `R`. It is pure tier: every input is a string, every output is a value or a typed error, and there is no IO of any kind. `License.parse`, `LicenseException.parse` and `SpdxExpression.parse` are plain `Effect` values, so they drop into an `Effect.fn` workflow and their single tagged error — [`InvalidSpdxExpressionError`](/spdx/api/class/invalidspdxexpressionerror) — joins your program's `E` channel with no wrapping and nothing to provide.
+
+Because [`License`](/spdx/api/class/license) and [`LicenseException`](/spdx/api/class/licenseexception) are each a `Schema.Class`, and the [`SpdxExpression` facade](/spdx/api/variable/spdxexpression) carries a `FromString` codec over the [AST union](/spdx/api/type/spdxexpression), a license field validates as part of the schema that contains it rather than on the side. That is what keeps the packages above it honest: a manifest reader decodes a license into a real value, a policy gate reasons over that value, and a renderer asks the same value for its title and link — no one re-parses the string.
+
+## Embed a license expression in a domain schema
+
+The flagship move: `SpdxExpression.FromString` is a `Schema.Codec<SpdxExpression, string>`, so a manifest's `license` string decodes into a live AST alongside every other field, in one validation pass.
+
+```ts with-api
+import { SpdxExpression } from "@effected/spdx";
+import { Effect, Schema } from "effect";
+
+// The license is a first-class field, decoded with the rest of the manifest.
+const PackageManifest = Schema.Struct({
+  name: Schema.String,
+  license: SpdxExpression.FromString,
+});
+
+const program = Effect.gen(function* () {
+  const manifest = yield* Schema.decodeUnknownEffect(PackageManifest)({
+    name: "app",
+    license: "MIT OR Apache-2.0",
+  });
+  // manifest.license is an AST, so its behavior is right there.
+  return {
+    tag: manifest.license._tag,
+    ids: SpdxExpression.licensesOf(manifest.license).map((license) => license.id),
+  };
+});
+
+Effect.runPromise(program).then(console.log);
+// { tag: "Or", ids: [ "MIT", "Apache-2.0" ] }
+```
+
+A malformed `license` reports through a normal schema parse error carrying the same message as `InvalidSpdxExpressionError`, so it fails validation alongside every other field rather than throwing. Encoding runs the other way and emits the **canonical, fully-parenthesized** form: decode `"MIT OR Apache-2.0"` and encode it again and you get `"(MIT OR Apache-2.0)"`. That normalization is a feature — two manifests that wrote the same expression differently converge on one string — but it does mean a decode/encode round trip is canonical rather than byte-identical. Do not use the codec as a formatting-preserving rewriter of someone else's manifest.
+
+## Walk the AST
+
+The expression AST is five node classes over one `_tag` discriminant — [`LicenseNode`](/spdx/api/class/licensenode), [`LicenseRefNode`](/spdx/api/class/licenserefnode), [`WithExceptionNode`](/spdx/api/class/withexceptionnode), [`AndNode`](/spdx/api/class/andnode) and [`OrNode`](/spdx/api/class/ornode) — so a recursive `switch` covers the grammar exhaustively and the compiler holds you to it. This is where policy lives, because `OR` and `AND` demand opposite answers: a disjunction clears if *some* branch clears, a conjunction clears only if *every* term does.
+
+```ts with-api
+import { SpdxExpression } from "@effected/spdx";
+import { Effect } from "effect";
+
+const ALLOWED = new Set(["MIT", "Apache-2.0", "BSD-3-Clause"]);
+
+// OR clears if either side clears; AND requires both. WITH carries the license.
+const clears = (node: SpdxExpression): boolean => {
+  switch (node._tag) {
+    case "License":
+      return ALLOWED.has(node.id);
+    case "LicenseRef":
+      return false; // a document-local license is never implicitly allowed
+    case "WithException":
+      return clears(node.license);
+    case "Or":
+      return clears(node.left) || clears(node.right);
+    case "And":
+      return clears(node.left) && clears(node.right);
+  }
+};
+
+const check = Effect.fn("check")(function* (declared: string) {
+  const expression = yield* SpdxExpression.parse(declared);
+  return `${expression.toString()} → ${clears(expression) ? "allowed" : "review"}`;
+});
+
+const program = Effect.forEach(
+  ["MIT OR GPL-3.0-only", "MIT AND CC-BY-NC-4.0"],
+  check,
+);
+
+Effect.runPromise(program).then(console.log);
+// [ "(MIT OR GPL-3.0-only) → allowed", "(MIT AND CC-BY-NC-4.0) → review" ]
+```
+
+Two grammar facts shape how you write that walk. `WithExceptionNode.license` is a **union** of `LicenseNode` and `LicenseRefNode`, because the SPDX ABNF lets `WITH` bind to any simple expression — `LicenseRef-Foo WITH Bison-exception-2.2` is grammatical — so never assume the left side of a `WITH` is a cataloged id. And `LicenseNode.plus` carries the trailing `+` "or later" marker, which is an expression-level operator: `Apache-2.0+` parses to a node with `id: "Apache-2.0"` and `plus: true`, and only a cataloged id may carry it (`LicenseRef-Foo+` is rejected). If your policy treats "or later" differently from the exact version, read `plus` — `licensesOf` deliberately drops it, because `License` models identifiers, not operators.
+
+## Never collapse many licenses into one by accident
+
+`SpdxExpression.licensesOf` and `SpdxExpression.primaryLicense` are a pair, and neither is complete alone. `licensesOf` returns every license in written order, de-duplicated by identifier; `primaryLicense` returns the one license an expression can be said to be under — the license itself for a simple or `WITH` expression, the leftmost term of an `OR` (the choice the author wrote first, which npm's convention treats as preferred), and `Option.none()` for an `AND`.
+
+```ts with-api
+import { SpdxExpression } from "@effected/spdx";
+import { Effect, Option } from "effect";
+
+const display = Effect.fn("display")(function* (declared: string) {
+  const expression = yield* SpdxExpression.parse(declared);
+  const primary = SpdxExpression.primaryLicense(expression);
+
+  // One license where one fits; the full list where it does not.
+  return Option.match(primary, {
+    onSome: (license) => license.id,
+    onNone: () => SpdxExpression.licensesOf(expression).map((l) => l.id).join(" + "),
+  });
+});
+
+const program = Effect.forEach(
+  ["MIT", "(MIT OR Apache-2.0)", "MIT AND CC-BY-4.0"],
+  display,
+);
+
+Effect.runPromise(program).then(console.log);
+// [ "MIT", "MIT", "MIT + CC-BY-4.0" ]
+```
+
+**The `AND` `none` is a routing signal, not an error, and it is load-bearing.** A conjunction imposes every term at once, so no single term represents the whole, and returning the leftmost would be a confidently wrong answer that looks perfectly fine on a badge. Never work around it by taking the first conjunct.
+
+One failure mode is worth naming because a real consumer hit it: they mapped `licensesOf(...)` down to a bare `string[]` of ids, discarding the `License` objects — so the only `referenceUrl` that survived was the primary's, and a dual-licensed (`AND`) package therefore rendered *no* license at all, since an `AND` has no primary. The package's surface was correct at every step; the loss happened one level up, in the consumer's own intermediate type. **The entries are the payload.** `licensesOf` returns `License` values precisely so per-entry metadata travels with them; narrow to ids only at the very last step, if at all.
+
+## Build a policy gate on the catalog metadata
+
+Once you hold `License` values, the catalog metadata does the work a report or a gate wants. `osiApproved` and `fsfLibre` are the approval flags, `name` is the SPDX title and `referenceUrl` the canonical page — the last two as `Option`, because a `LicenseRef-` reference names a license that lives in your own document rather than on spdx.org.
+
+```ts with-api
+import { SpdxExpression } from "@effected/spdx";
+import { Effect, Option } from "effect";
+
+const program = Effect.gen(function* () {
+  const expression = yield* SpdxExpression.parse("MIT AND LicenseRef-Acme-Proprietary");
+
+  return SpdxExpression.licensesOf(expression).map((license) => ({
+    id: license.id,
+    title: Option.getOrElse(license.name, () => "(not on the SPDX List)"),
+    url: Option.getOrNull(license.referenceUrl),
+    osiApproved: license.osiApproved,
+  }));
+});
+
+Effect.runPromise(program).then(console.log);
+// [
+//   { id: "MIT", title: "MIT License", url: "https://spdx.org/licenses/MIT.html", osiApproved: true },
+//   { id: "LicenseRef-Acme-Proprietary", title: "(not on the SPDX List)", url: null, osiApproved: false }
+// ]
+```
+
+Three rules govern that surface, and each is the safe answer rather than the convenient one. **Absence is `none`, never a fabricated value** — templating `https://spdx.org/licenses/LicenseRef-Acme.html` anyway would hand a caller a confidently broken link. **The flags default to `false`** because they assert something about a *known* license, so an uncataloged id is never "approved" — a complete answer rather than a missing one. And **`osiApproved` and `fsfLibre` are independent in both directions**: `0BSD` is OSI-approved and not FSF-libre, `Apache-1.0` is FSF-libre and not OSI-approved. A gate that derives one from the other will be wrong on real licenses.
+
+The static predicates answer catalog questions without constructing anything: `License.isKnownId` (active or deprecated), `License.isDeprecatedId`, and `License.isLicenseRef` for the `LicenseRef-`/`DocumentRef-` grammar. `LicenseException` carries the matching pair over the exception catalog.
+
+## Cross the synchronous boundary
+
+Not every caller has an Effect runtime — a lint rule, a build-time assertion, a validation callback. Per the kit's sync-primitive policy the `Result` form *is* the engine here and the `Effect` form derives from it behind a tracing span, so the two can never drift. `SpdxExpression.parseResult`, `License.parseResult` and `LicenseException.parseResult` return `Result`; [`isValidExpression`](/spdx/api/function/isvalidexpression) is the allocation-light boolean when you need nothing but a verdict.
+
+```ts with-api
+import { License, SpdxExpression, isValidExpression } from "@effected/spdx";
+import { Result } from "effect";
+
+// A lint rule: no runtime, no async, one verdict.
+const lint = (declared: string): string =>
+  isValidExpression(declared) ? "ok" : `invalid license: ${declared}`;
+
+console.log([lint("(MIT OR Apache-2.0)"), lint("MIT AND")]);
+// [ "ok", "invalid license: MIT AND" ]
+
+// The same engine, with the parsed value or the typed error in hand.
+console.log(
+  Result.match(SpdxExpression.parseResult("Apache-2.0+"), {
+    onSuccess: (expression) => expression.toString(),
+    onFailure: (error) => `rejected: ${error.input}`,
+  }),
+);
+// "Apache-2.0+"
+
+console.log(Result.isSuccess(License.parseResult("Nope-1.0")));
+// false
+```
+
+## Edge cases and failure modes
+
+Everything malformed, unknown or over-deep arrives on the typed `E` channel — never as a thrown exception and never as a `Cause.Die` defect. There is exactly one error class, so the question is never *which* error but *what it means*.
+
+**Deprecated identifiers are valid, and flagged.** `GPL-2.0` was superseded by `GPL-2.0-only`, but it is still declared in real manifests, so it parses successfully with `deprecated: true`. Warn on it; do not reject it.
+
+```ts with-api
+import { License } from "@effected/spdx";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const license = yield* License.parse("GPL-2.0");
+  return license.deprecated ? `${license.id} is deprecated — prefer GPL-2.0-only` : license.id;
+});
+
+Effect.runPromise(program).then(console.log);
+// "GPL-2.0 is deprecated — prefer GPL-2.0-only"
+```
+
+**A `LicenseRef` is valid grammar, not a cataloged license.** `License.parse("LicenseRef-Acme")` succeeds — the reference grammar is part of SPDX — but the id is not a catalog member, so `License.isKnownId` returns `false`, `name` and `referenceUrl` are `none`, and both approval flags are `false`. Treat "parses" and "is a known license" as two different questions.
+
+**Nesting is depth-capped, and the cap is a typed failure.** The recursive-descent parser stops at 256 levels and reports the overflow as `InvalidSpdxExpressionError` rather than blowing the stack with a `RangeError` — the input-hardening invariant applied to this grammar. A hostile `license` field cannot crash your process.
+
+```ts with-api
+import { isValidExpression } from "@effected/spdx";
+
+const hostile = "(".repeat(300) + "MIT" + ")".repeat(300);
+
+console.log(isValidExpression(hostile));
+// false — past the depth cap, reported rather than thrown
+```
+
+**An unknown exception fails the whole expression.** `MIT WITH Bogus-exception` is rejected even though `MIT` is fine: the exception must be a cataloged SPDX exception id. The same holds for a reference — `LicenseRef-Foo WITH Bison-exception-2.2` is accepted, but only because that exception is cataloged.
+
+**Parsing is strict.** There is no loose mode and no coercion: case matters, `MIT AND` is a dangling operator, an unbalanced parenthesis fails, and an id the List does not contain fails. Every one of them carries the original `input` on the error, so a diagnostic can quote exactly what it was handed.
+
+## Testing with @effect/vitest
+
+There is no service and no layer to provide — the package is pure, so a test is just a call. Drive the `Effect` forms with `it.effect`, assert with `assert.*` — never `expect` — and prove a failure lands on the typed channel by flipping the effect and asserting on the `_tag`.
+
+```ts
+import { License, SpdxExpression, isValidExpression } from "@effected/spdx";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("license policy", () => {
+  it.effect("reads every license out of a conjunction", () =>
+    Effect.gen(function* () {
+      const expression = yield* SpdxExpression.parse("MIT AND CC-BY-4.0");
+      const ids = SpdxExpression.licensesOf(expression).map((license) => license.id);
+      assert.deepStrictEqual(ids, ["MIT", "CC-BY-4.0"]);
+    }));
+
+  it.effect("routes an unknown identifier through the typed channel", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(License.parse("Definitely-Not-A-License"));
+      assert.strictEqual(error._tag, "InvalidSpdxExpressionError");
+      assert.strictEqual(error.input, "Definitely-Not-A-License");
+    }));
+
+  it("agrees with the sync predicate", () => {
+    assert.isTrue(isValidExpression("(MIT OR Apache-2.0)"));
+    assert.isFalse(isValidExpression("MIT AND"));
+  });
+});
+```
+
+Because the sync and `Effect` forms share one engine, a test written against either holds for both — there is no second code path to cover. When you need a stable fixture, `License.of(...)` builds one without touching the catalog; keep it out of tests that are meant to exercise validation, since it does not validate.
+
+## Next steps
+
+- New to the package? Start with the [overview](/spdx) for the parse, validate and read basics, or the [getting-started guide](/spdx/getting-started) for the common operations.
+- Every export, with full signatures, lives in the [API reference](/spdx/api). The types this guide leaned on: [`License`](/spdx/api/class/license) and [`LicenseException`](/spdx/api/class/licenseexception), the [`SpdxExpression` facade](/spdx/api/variable/spdxexpression) and its [AST union](/spdx/api/type/spdxexpression) — [`LicenseNode`](/spdx/api/class/licensenode), [`LicenseRefNode`](/spdx/api/class/licenserefnode), [`WithExceptionNode`](/spdx/api/class/withexceptionnode), [`AndNode`](/spdx/api/class/andnode) and [`OrNode`](/spdx/api/class/ornode) — the sync [`isValidExpression`](/spdx/api/function/isvalidexpression), and the tagged [`InvalidSpdxExpressionError`](/spdx/api/class/invalidspdxexpressionerror).

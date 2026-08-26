@@ -1,0 +1,196 @@
+---
+title: Getting Started
+description: Build a JSON-LD graph out of typed schema.org nodes, cross-reference them by @id, and serialize it safely into a script element with @effected/schema-org.
+---
+
+# Getting Started
+
+Reach for `@effected/schema-org` when a page has to *emit* structured data — a package's documentation page describing its source, its docs article and its author, so that search engines and tooling read the same facts your prose does. Hand-assembling that as an object literal works right up until a description contains the literal `</script>`, at which point `JSON.stringify` writes it straight through and the JSON-LD block closes early. This package builds the graph out of typed nodes, checks identity as one step, and gives you exactly one text serializer — the escaped one.
+
+## Install
+
+```bash
+npm install @effected/schema-org effect
+```
+
+```bash
+pnpm add @effected/schema-org effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own and does no IO — the vocabulary is a compiled TypeScript literal, never a file read.
+
+## Your first task: structured data for a docs page
+
+Here is a concrete, everyday goal. You are rendering the documentation page for a package, and you want a `<script type="application/ld+json">` block that describes three things: the source code, the article the reader is looking at, and the person who wrote it. We will build it up one step at a time.
+
+Start with the nodes. Every node class is a `Schema.Class` whose only required field is `@id` — the IRI you mint for that thing in your own namespace. `@type` is fixed by the class, so you never write it. Everything else is optional:
+
+```ts with-api
+import { Person } from "@effected/schema-org";
+
+const alice = Person.make({
+  "@id": "https://example.com/#alice",
+  name: "Alice Example",
+  url: "https://example.com/about",
+});
+
+console.log(alice["@type"], alice.name);
+// Person Alice Example
+```
+
+Nodes point at each other by `@id`, never by embedding. A node-valued property such as `author` holds a [`NodeRef`](/schema-org/api/class/noderef), which `NodeRef.to` builds from either a node you are already holding or a bare identifier string. `to` is total: it never throws and never validates, because identity is checked once, later, when the graph is assembled.
+
+Now assemble all three nodes and serialize. [`JsonLdDocument.buildResult`](/schema-org/api/class/jsonlddocument) takes the nodes, checks identity, and returns a `Result` — the synchronous primitive, so a static-site build never has to construct a runtime:
+
+```ts with-api
+import { JsonLdDocument, NodeRef, Person, SoftwareSourceCode, TechArticle } from "@effected/schema-org";
+import { Result } from "effect";
+
+const alice = Person.make({ "@id": "https://example.com/#alice", name: "Alice Example" });
+
+const source = SoftwareSourceCode.make({
+  "@id": "https://example.com/pkg#source",
+  name: "example",
+  version: "1.2.3",
+  codeRepository: "https://github.com/example/example",
+  programmingLanguage: ["TypeScript"],
+  license: ["https://spdx.org/licenses/MIT.html"],
+});
+
+const article = TechArticle.make({
+  "@id": "https://example.com/pkg/docs#intro",
+  headline: "Getting started with example",
+  // Prose is where the injection risk lives — this string is safe here.
+  description: "Everything you need to know before you </script> ship.",
+  author: [NodeRef.to(alice)],
+  isPartOf: [NodeRef.to(source)],
+  datePublished: "2026-01-14",
+});
+
+const built = JsonLdDocument.buildResult([alice, source, article]);
+const body = Result.getOrThrow(built).toScriptBody();
+
+console.log(body.includes("</script>"));
+// false — the escaped body cannot close the element it sits in
+```
+
+Two results are worth pausing on. The `description` containing `</script>` survives verbatim as *data* — `toScriptBody()` rewrites `<`, `>` and `&` as the JSON escapes `\u003c`, `\u003e` and `\u0026`, which are ordinary JSON string escapes, so every parser reads back the original characters while no `<` remains in the text to close the element. And `buildResult` returned a `Result`, not a thrown value: identity problems arrive as data. In real code you would route that `Result` rather than call `getOrThrow`, which the [errors section](#handling-errors) below shows.
+
+Embed the body verbatim:
+
+```html
+<script type="application/ld+json">BODY</script>
+```
+
+## Common operations
+
+Each snippet below is a complete, runnable program built only from the package's real exports.
+
+### Choose a node type
+
+Six classes cover the structured data a package or documentation site emits:
+
+- [`SoftwareSourceCode`](/schema-org/api/class/softwaresourcecode) — the code itself: `codeRepository`, `programmingLanguage`, `runtimePlatform`, `targetProduct`.
+- [`TechArticle`](/schema-org/api/class/techarticle) — a documentation page: `headline`, `articleSection`, `proficiencyLevel`, `dependencies`.
+- [`APIReference`](/schema-org/api/class/apireference) — generated reference material: `assemblyVersion`, `programmingModel`, `targetPlatform`, `executableLibraryName`.
+- [`Person`](/schema-org/api/class/person) — `email`, `affiliation`.
+- [`Organization`](/schema-org/api/class/organization) — `legalName`, `logo`.
+- [`CreativeWork`](/schema-org/api/class/creativework) — the general case, when nothing more specific fits.
+
+Every class also carries the shared field records: [`ThingFields`](/schema-org/api/variable/thingfields) (`name`, `url`, `description`, `identifier`, `sameAs`, `additional`) on all six, [`CreativeWorkFields`](/schema-org/api/variable/creativeworkfields) (`license`, `author`, `publisher`, `isPartOf`, `mainEntity`, `about`, `keywords`, `datePublished`, `dateModified`, `inLanguage`, `version`) on the work types, and [`TechArticleFields`](/schema-org/api/variable/techarticlefields) on `TechArticle` and `APIReference`. There is no schema inheritance in the TypeScript — the `rdfs:subClassOf` chain lives in the vendored vocabulary, which is the thing the validator reads, and duplicating it in class heritage would give two sources of truth.
+
+### Repeatable properties are always arrays
+
+There is no `T | ReadonlyArray<T>` anywhere in this package. A property that can repeat is an array even at length one, which is identical to a scalar in the JSON-LD data model — including `license`, because `MIT AND Apache-2.0` is a real dual-license and collapsing it would be silent data loss. `mainEntity` is singular by schema.org's own definition, not by our choice:
+
+```ts with-api
+import { NodeRef, TechArticle } from "@effected/schema-org";
+
+const article = TechArticle.make({
+  "@id": "https://example.com/docs#guide",
+  keywords: ["effect", "json-ld"],
+  articleSection: ["Guides"],
+  // Singular, per schema.org's own definition of mainEntity.
+  mainEntity: NodeRef.to("https://example.com/pkg#source"),
+});
+
+console.log(article.keywords, article.mainEntity?.["@id"]);
+// [ 'effect', 'json-ld' ] https://example.com/pkg#source
+```
+
+### Add a term the package does not model
+
+`additional` is the open catch-all: any JSON-valued term, flattened into the node at serialization. It is how you emit a property none of the six classes types, and it is the one door the offline validator exists to police:
+
+```ts with-api
+import { JsonLdDocument, SoftwareSourceCode } from "@effected/schema-org";
+import { Result } from "effect";
+
+const source = SoftwareSourceCode.make({
+  "@id": "https://example.com/pkg#source",
+  name: "example",
+  additional: { downloadUrl: "https://registry.example.com/example-1.2.3.tgz" },
+});
+
+const doc = Result.getOrThrow(JsonLdDocument.buildResult([source]));
+
+console.log(JSON.stringify(doc.toJsonLd()).includes('"downloadUrl"'));
+// true — the catch-all is flattened into the node, not nested under "additional"
+```
+
+A catch-all key that collides with a typed field, with `@id` or with `@type` fails the build with [`ConflictingTermError`](/schema-org/api/class/conflictingtermerror) rather than silently overwriting one of them.
+
+### Inspect the graph before you ship it
+
+`nodeIds` and `danglingReferences` are plain accessors on the assembled document. A dangling reference is legal — it is how a node points at something described on another page — so the package reports them and lets you decide:
+
+```ts with-api
+import { JsonLdDocument, NodeRef, TechArticle } from "@effected/schema-org";
+import { Result } from "effect";
+
+const article = TechArticle.make({
+  "@id": "https://example.com/docs#guide",
+  publisher: [NodeRef.to("https://example.com/#org")],
+});
+
+const doc = Result.getOrThrow(JsonLdDocument.buildResult([article]));
+
+console.log(doc.nodeIds.size, doc.danglingReferences);
+// 1 [ 'https://example.com/#org' ]
+```
+
+If your graph is meant to be closed, gate on that array being empty. If it is deliberately open — the publisher really is described on your home page — ignore it.
+
+## Handling errors
+
+`buildResult` fails with a union of three tagged errors, and the `Effect` twin [`JsonLdDocument.build`](/schema-org/api/class/jsonlddocument) puts that union on the typed `E` channel, where `Effect.catchTag` routes each one by its `_tag`:
+
+```ts with-api
+import { JsonLdDocument, Person } from "@effected/schema-org";
+import { Effect } from "effect";
+
+const program = JsonLdDocument.build([
+  Person.make({ "@id": "https://example.com/#alice", name: "Alice" }),
+  // Same @id twice — one thing cannot be two nodes.
+  Person.make({ "@id": "https://example.com/#alice", name: "Alice Example" }),
+]).pipe(
+  Effect.map((doc) => `built ${doc.nodeIds.size} nodes`),
+  Effect.catchTag("DuplicateNodeIdError", (error) => Effect.succeed(`duplicate id: ${error.id}`)),
+  Effect.catchTag("InvalidNodeIdError", (error) => Effect.succeed(`bad id: ${error.input}`)),
+  Effect.catchTag("ConflictingTermError", (error) => Effect.succeed(`term clash: ${error.term}`)),
+);
+
+Effect.runPromise(program).then(console.log);
+// duplicate id: https://example.com/#alice
+```
+
+The failure channel here is the union `InvalidNodeIdError | DuplicateNodeIdError | ConflictingTermError`, and handling all three narrows it to `never`. Drop any one `catchTag` and it stays a compile-time obligation until every failure is accounted for — which is the point of the typed channel, because none of these three should ever reach a page.
+
+Each error carries structured fields rather than a preformatted string: `InvalidNodeIdError` the offending `input`, `DuplicateNodeIdError` the repeated `id`, `ConflictingTermError` the `nodeId` and the colliding `term`. Their `message` is a getter derived from those fields.
+
+If you would rather stay synchronous, `buildResult` returns the same union inside a `Result`, and `Result.match` or `Result.isFailure` routes it without a runtime.
+
+## Next steps
+
+- Ready to validate a graph against schema.org's own vocabulary, read the vocabulary directly, or wire the gate into CI? See the [advanced guide](/schema-org/advanced).
+- Every export, with full signatures, lives in the [API reference](/schema-org/api) — start with [`JsonLdDocument`](/schema-org/api/class/jsonlddocument), [`NodeRef`](/schema-org/api/class/noderef) and [`Conformance`](/schema-org/api/class/conformance).

@@ -1,0 +1,221 @@
+---
+title: Getting Started
+description: Validate SPDX license identifiers, parse license expressions into a typed AST, read the licenses back out, and route every malformed string as a typed error with @effected/spdx.
+---
+
+# Getting Started
+
+Reach for `@effected/spdx` whenever something has to *understand* a license field rather than echo it — decide whether a dependency's `license` is acceptable, render a license name and link in a UI, or reject a malformed value before it reaches a published manifest. A `license` string is a small grammar, not free text: `(MIT OR Apache-2.0)` offers a choice, `MIT AND CC-BY-4.0` imposes both, and `GPL-2.0-only WITH Classpath-exception-2.0` is one license modified by a cataloged exception. This package parses that grammar strictly against the SPDX License List, hands you a typed AST instead of a string, and turns every malformed or unknown input into a typed Effect error carrying the offending text — so nothing arrives as an unhandled exception.
+
+## Install
+
+```bash
+npm install @effected/spdx effect
+```
+
+```bash
+pnpm add @effected/spdx effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind — no IO, no filesystem, no network.
+
+## Your first task: check a manifest's license field
+
+Here is a concrete, everyday goal. You have the `license` string a package declares, and you want to know two things: is it a valid SPDX expression at all, and which licenses does it actually put you under? That is the check a dependency audit, a publish gate or a license report all start from.
+
+The first move is to parse the string. `SpdxExpression.parse` returns an `Effect` that either yields the expression AST or fails with `InvalidSpdxExpressionError`. From the AST, `SpdxExpression.licensesOf` gives every license the expression names, in written order and de-duplicated — each one a full `License` object, not a bare id, so its metadata travels with it:
+
+```ts with-api
+import { SpdxExpression } from "@effected/spdx";
+import { Effect, Option } from "effect";
+
+// The license field a package declared.
+const declared = "MIT AND CC-BY-4.0";
+
+const program = Effect.gen(function* () {
+  // 1. Parse the declared string into a typed expression AST.
+  const expression = yield* SpdxExpression.parse(declared);
+
+  // 2. Every license the expression names, in written order, deduplicated.
+  const licenses = SpdxExpression.licensesOf(expression);
+
+  // 3. The single license to display, when there is one.
+  const primary = SpdxExpression.primaryLicense(expression);
+
+  return {
+    canonical: expression.toString(),
+    ids: licenses.map((license) => license.id),
+    primary: Option.getOrElse(
+      Option.map(primary, (license) => license.id),
+      () => "none — a conjunction has no single license",
+    ),
+  };
+});
+
+console.log(Effect.runSync(program));
+// {
+//   canonical: "(MIT AND CC-BY-4.0)",
+//   ids: [ "MIT", "CC-BY-4.0" ],
+//   primary: "none — a conjunction has no single license"
+// }
+```
+
+Two results are worth pausing on. `toString()` emits the *canonical* form — fully parenthesized, operators normalized — so the same expression written three ways compares equal as a string once it has been through the parser. And `primaryLicense` returned `none`, which is the whole point of that accessor: `MIT AND CC-BY-4.0` puts you under both licenses at once, so no single one stands for it, and returning `MIT` would have quietly dropped an obligation that still binds. When you get `none`, show the array from `licensesOf`.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built only from the package's real exports.
+
+### Validate a single identifier
+
+`License.parse` checks an id against the full SPDX License List and returns a validated [`License`](/spdx/api/class/license). Deprecated ids are accepted rather than rejected — they are still real, still in use, and carry `deprecated: true` so a caller can warn instead of failing:
+
+```ts with-api
+import { License } from "@effected/spdx";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const mit = yield* License.parse("MIT");
+  const old = yield* License.parse("GPL-2.0"); // superseded by GPL-2.0-only
+  return [
+    `${mit.id} deprecated=${mit.deprecated}`,
+    `${old.id} deprecated=${old.deprecated}`,
+  ];
+});
+
+console.log(Effect.runSync(program));
+// [ "MIT deprecated=false", "GPL-2.0 deprecated=true" ]
+```
+
+### Read a license's title, link and approval flags
+
+A validated license carries the SPDX List's own metadata as getters. `name` and `referenceUrl` are `Option` — they are `none` for a `LicenseRef-` identifier, which names a license living in your document rather than on spdx.org — while `osiApproved` and `fsfLibre` are plain booleans:
+
+```ts with-api
+import { License } from "@effected/spdx";
+import { Option } from "effect";
+
+const mit = License.of("MIT");
+
+console.log([
+  Option.getOrNull(mit.name),
+  Option.getOrNull(mit.referenceUrl),
+  mit.osiApproved,
+  mit.fsfLibre,
+]);
+// [ "MIT License", "https://spdx.org/licenses/MIT.html", true, true ]
+
+const custom = License.of("LicenseRef-Acme-Internal");
+
+console.log([Option.getOrNull(custom.name), custom.osiApproved]);
+// [ null, false ]
+```
+
+`License.of` constructs from already-trusted parts and does **not** validate — reach for `License.parse` or `License.parseResult` whenever the id came from outside your program.
+
+### Check validity synchronously
+
+At a non-Effect boundary — a lint rule, a config-time assertion, a form validator — [`isValidExpression`](/spdx/api/function/isvalidexpression) answers with a plain boolean and no runtime to set up. It shares its engine with `SpdxExpression.parse`, so a `true` here guarantees a successful parse:
+
+```ts with-api
+import { isValidExpression } from "@effected/spdx";
+
+console.log(isValidExpression("(MIT OR Apache-2.0)")); // true
+console.log(isValidExpression("Apache-2.0+")); // true — the "or later" marker
+console.log(isValidExpression("MIT AND")); // false — dangling operator
+console.log(isValidExpression("Definitely-Not-A-License")); // false — unknown id
+```
+
+### Branch on the shape of an expression
+
+The AST is a tagged union, so a `switch` on `_tag` covers every form the grammar allows and TypeScript checks the coverage for you. That is how you tell "one license" from "a choice" from "a conjunction" without a regular expression:
+
+```ts with-api
+import { SpdxExpression } from "@effected/spdx";
+import { Effect } from "effect";
+
+// `SpdxExpression` names both the AST union type and the facade value.
+const describe = (node: SpdxExpression): string => {
+  switch (node._tag) {
+    case "License":
+      return `a single license: ${node.id}${node.plus ? " or later" : ""}`;
+    case "LicenseRef":
+      return `a document-local reference: ${node.ref}`;
+    case "WithException":
+      return `${node.license.toString()} modified by ${node.exception}`;
+    case "Or":
+      return `a choice between ${describe(node.left)} and ${describe(node.right)}`;
+    case "And":
+      return `both ${describe(node.left)} and ${describe(node.right)}`;
+  }
+};
+
+const program = SpdxExpression.parse("GPL-2.0-only WITH Classpath-exception-2.0").pipe(
+  Effect.map(describe),
+);
+
+console.log(Effect.runSync(program));
+// "GPL-2.0-only modified by Classpath-exception-2.0"
+```
+
+### Validate an exception on its own
+
+[`LicenseException`](/spdx/api/class/licenseexception) mirrors `License` over the SPDX exception catalog, with the same `parse` / `parseResult` / `of` trio and the same deprecation flag. Use it when an exception id arrives separately from the license it modifies:
+
+```ts with-api
+import { LicenseException } from "@effected/spdx";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const exception = yield* LicenseException.parse("Classpath-exception-2.0");
+  return [exception.id, exception.deprecated, LicenseException.isKnownId("Nope")] as const;
+});
+
+console.log(Effect.runSync(program));
+// [ "Classpath-exception-2.0", false, false ]
+```
+
+## Handling errors
+
+Every parse entry point fails with the same tagged error — [`InvalidSpdxExpressionError`](/spdx/api/class/invalidspdxexpressionerror) — whether the grammar was malformed, the identifier was unknown, or the expression nested past the parser's depth cap. There is no second error class to remember and no thrown exception to catch: one tag covers the whole surface, and the error carries the `input` it choked on.
+
+Because it is tagged, `Effect.catchTag` routes it with full type inference:
+
+```ts with-api
+import { SpdxExpression } from "@effected/spdx";
+import { Effect } from "effect";
+
+const program = SpdxExpression.parse("MIT OR"); // dangling operator
+
+const safe = program.pipe(
+  Effect.map((expression) => expression.toString()),
+  Effect.catchTag("InvalidSpdxExpressionError", (error) =>
+    Effect.succeed(`not a valid SPDX expression: ${error.input}`),
+  ),
+);
+
+Effect.runPromise(safe).then(console.log);
+// not a valid SPDX expression: MIT OR
+```
+
+Handling that one tag narrows the failure channel to `never`, which is the payoff of the typed channel: remove the `catchTag` and it stays a compile-level obligation until the malformed case is accounted for. At a synchronous boundary, reach for the `Result` twin instead — `SpdxExpression.parseResult` returns the same value and the same error without an Effect runtime:
+
+```ts with-api
+import { SpdxExpression } from "@effected/spdx";
+import { Result } from "effect";
+
+const summary = Result.match(SpdxExpression.parseResult("MIT WITH Bogus-exception"), {
+  onSuccess: (expression) => `ok: ${expression.toString()}`,
+  onFailure: (error) => `rejected: ${error.input}`,
+});
+
+console.log(summary);
+// rejected: MIT WITH Bogus-exception
+```
+
+Note what was rejected there: the license was fine, but `Bogus-exception` is not in the SPDX exception catalog, and an uncataloged exception is not a valid expression. The same single error reports it.
+
+## Next steps
+
+- Ready to embed a license field in your own schema, walk the AST, or build a policy gate over the catalog metadata? See the [advanced guide](/spdx/advanced).
+- Every export, with full signatures, lives in the [API reference](/spdx/api) — start with [`License`](/spdx/api/class/license), the [`SpdxExpression` facade](/spdx/api/variable/spdxexpression) and its [AST union](/spdx/api/type/spdxexpression).

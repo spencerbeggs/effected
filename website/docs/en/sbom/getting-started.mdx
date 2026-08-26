@@ -1,0 +1,210 @@
+---
+title: Getting Started
+description: Emit a conformant CycloneDX 1.6 SBOM from a package.json manifest, check it against the NTIA minimum elements, and write it to disk with @effected/sbom.
+---
+
+# Getting Started
+
+Reach for `@effected/sbom` when a release pipeline has to *ship an artifact about itself* — a bill of materials a consumer can audit, a digest an attestation can name, a signature a verifier can check. Hand-rolling that from `JSON.stringify` produces a document that looks correct and fails validation on the first scoped package name or dual license; pulling in a full CycloneDX object model costs 6.6 MB and a second SPDX engine. This package owns a CycloneDX 1.6 model conformance-tested against the published schema, derives it from a `package.json` you already have, and keeps signing behind a wall so an SBOM build never loads a network stack.
+
+## Install
+
+```bash
+npm install @effected/sbom effect
+```
+
+```bash
+pnpm add @effected/sbom effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. `@sigstore/sign` and `@sigstore/bundle` are runtime dependencies, confined to the signer module — everything on this page is pure computation and loads none of them.
+
+## Your first task: emit an SBOM for your own package
+
+Here is a concrete, everyday goal. Your release job holds a decoded `package.json` and the resolved versions of its dependencies, and you want a CycloneDX 1.6 document on disk that an auditor — or GitHub's dependency graph — will accept. There are three moves: describe the root, describe the dependencies, assemble.
+
+The root is what the BOM is *about*, and [`SbomMetadataSource.rootComponent`](/sbom/api/class/sbommetadatasource) derives it from the manifest: name, version, purl, description, license, keywords, authors, and the external references it can find (`repository` → `vcs`, `bugs` → `issue-tracker`, `homepage` → `documentation`). Document-level metadata is a separate call, because three of the seven NTIA minimum elements — the supplying organization, who assembled the BOM, and when — are things a `package.json` simply does not say. Deriving them would be fabrication, so they are explicit-only:
+
+```ts with-api
+import { type Package, Sbom, SbomMetadataSource, Supplier } from "@effected/sbom";
+
+// The manifest, already decoded — `Package` is @effected/package-json's,
+// re-exported here so you can name it without adding that dependency.
+declare const pkg: Package;
+
+// 1. Who supplies the software. A manifest never says this, so you do.
+const supplier = Supplier.make({
+  name: "Acme, Inc.",
+  url: ["https://acme.example"],
+});
+
+// 2. The component the BOM is about, derived from the manifest.
+const root = SbomMetadataSource.rootComponent(pkg, { supplier });
+
+// 3. Document metadata: supplier, author and timestamp are explicit-only.
+const metadata = SbomMetadataSource.fromPackage(pkg, {
+  supplier,
+  timestamp: "2026-08-26T12:00:00.000Z",
+});
+
+// 4. One entry per resolved dependency.
+const components = [
+  SbomMetadataSource.componentFor({ name: "effect", version: "4.0.0-rc.109", license: "MIT" }),
+  SbomMetadataSource.componentFor({ name: "@effected/spdx", version: "0.6.0", license: "MIT" }),
+];
+
+// 5. Assemble. Total — there is no error channel, because nothing here can fail.
+const document = Sbom.generate({ root, components, metadata });
+
+console.log(Sbom.toJson(document));
+// canonical CycloneDX 1.6 JSON
+```
+
+Three things in that program are worth pausing on. `Sbom.generate` and `Sbom.toJson` are plain functions, not `Effect`s — an owned model over already-validated values has nothing to fail at, so inventing an error channel would only make every caller handle a case that cannot occur. The component list comes back sorted by name, so the same inputs always produce the same bytes; an SBOM's digest becomes an attestation subject, and a document that reshuffled itself between runs would invalidate that digest for no reason. And the root component is threaded onto the metadata by `generate` itself, which is why `fromPackage` does not set it — passing both is the intended shape.
+
+## Common operations
+
+Each snippet below is a complete program built only from the package's real exports.
+
+### Check the NTIA minimum elements
+
+[`NtiaReport.of`](/sbom/api/class/ntiareport) grades a document against the seven elements the NTIA names as the floor for a usable SBOM. It is total — it answers for every document, including one that satisfies nothing — and it reports, rather than failing, because emitting a non-compliant BOM and warning about it is a legitimate choice:
+
+```ts with-api
+import { NtiaReport, type SbomDocument } from "@effected/sbom";
+import { Effect } from "effect";
+
+declare const document: SbomDocument;
+
+const program = Effect.gen(function* () {
+  const report = NtiaReport.of(document);
+  if (!report.compliant) {
+    yield* Effect.logWarning(`SBOM missing: ${report.missing.join(", ")}`);
+  }
+  return report.compliant;
+});
+
+Effect.runPromise(program).then(console.log);
+```
+
+`report.missing` is a list of stable identifiers — `"supplierName"`, `"sbomAuthor"`, `"timestamp"` and so on — rather than display prose, so a caller branches on them and renders its own wording. Each individual verdict is an [`NtiaElement`](/sbom/api/class/ntiaelement) carrying the value that satisfied it, when one did.
+
+### Build a package URL
+
+The purl is the NTIA's "unique identifier" element and the name an in-toto subject uses, so [`npmPurl`](/sbom/api/class/sbommetadatasource) is public rather than internal — a caller assembling its own components needs exactly the encoding this package applies:
+
+```ts with-api
+import { SbomMetadataSource } from "@effected/sbom";
+
+console.log(SbomMetadataSource.npmPurl("@effected/sbom", "0.1.0"));
+// pkg:npm/%40effected/sbom@0.1.0
+
+console.log(SbomMetadataSource.npmPurl("effect"));
+// pkg:npm/effect
+```
+
+Note what happened to the scope: `@` percent-encoded, the separating slash left literal. The scope is the purl *namespace*, and a plain `encodeURIComponent` over the whole name collapses that slash to `%2F`, producing a string that parses back as a namespace-less package.
+
+### Render a copyright statement
+
+`formatCopyright` takes the year as an argument rather than reading a clock, which is what keeps it testable and its output reproducible:
+
+```ts with-api
+import { SbomMetadataSource } from "@effected/sbom";
+
+console.log(SbomMetadataSource.formatCopyright("Acme, Inc.", { year: 2026 }));
+// Copyright 2026 Acme, Inc.
+
+console.log(SbomMetadataSource.formatCopyright("Acme, Inc.", { startYear: 2019, year: 2026 }));
+// Copyright 2019-2026 Acme, Inc.
+```
+
+### Layer explicit metadata over derived metadata
+
+A release tool usually has two sources: what it inferred from the manifest, and what a config file states. [`merge`](/sbom/api/class/sbommetadatasource) combines them field-wise — every field the override carries wins — and deliberately does not decide *which* side is the override, because that is release policy and belongs to the consumer:
+
+```ts with-api
+import { type Package, SbomMetadata, SbomMetadataSource, Supplier } from "@effected/sbom";
+
+declare const pkg: Package;
+
+const derived = SbomMetadataSource.fromPackage(pkg);
+
+const stated = SbomMetadata.make({
+  timestamp: "2026-08-26T12:00:00.000Z",
+  supplier: Supplier.make({ name: "Acme, Inc." }),
+});
+
+// The config file wins where it speaks; the manifest fills the rest.
+const metadata = SbomMetadataSource.merge(derived, stated);
+
+console.log(metadata.supplier?.name);
+// Acme, Inc.
+```
+
+### Write the document to disk
+
+`Sbom.write` is the package's only IO and its only routine error channel. It works over Effect core's `FileSystem`, which you supply once at the edge — on Node, from `@effect/platform-node`. It deliberately does not create parent directories, so the failure mode stays "the path you gave me is not writable" rather than "something was created somewhere":
+
+```ts
+import { Sbom, type SbomDocument } from "@effected/sbom";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+declare const document: SbomDocument;
+
+const program = Sbom.write(document, "./sbom.cdx.json").pipe(
+  Effect.catchTag("SbomWriteError", (error) => Effect.logError(`${error.message}: ${String(error.cause)}`)),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(NodeFileSystem.layer)));
+```
+
+Pass `{ space: 0 }` as a third argument for a single-line document — the form you want when the bytes are about to be hashed rather than read.
+
+### Validate a digest
+
+An attestation names its subject by digest, and [`Sha256Digest`](/sbom/api/variable/sha256digest) is the validated form: 64 lowercase hex characters, with an optional `sha256:` prefix stripped and hex normalized on the way in. It offers three entry points — a `boolean` predicate, a synchronous `Result`, and the `Effect` form:
+
+```ts with-api
+import { Sha256Digest } from "@effected/sbom";
+import { Effect, Result } from "effect";
+
+const raw = `sha256:${"AB".repeat(32)}`;
+
+console.log(Sha256Digest.isValid(raw));
+// true
+
+// The sync primitive: a Result, no Effect runtime needed.
+console.log(Result.isSuccess(Sha256Digest.parseResult(raw)));
+// true
+
+// The same check in the Effect channel.
+Effect.runPromise(Sha256Digest.parse(raw)).then(console.log);
+// the same 64 characters, lowercased
+```
+
+## Handling errors
+
+Only two things on this page can fail, and both fail with a tagged error rather than a thrown exception: `Sbom.write` with [`SbomWriteError`](/sbom/api/class/sbomwriteerror), and digest parsing with [`InvalidSha256DigestError`](/sbom/api/class/invalidsha256digesterror). Each carries structured fields — the `path` that could not be written, the `input` that was not a digest — and derives its `message` from them instead of storing preformatted prose.
+
+Because they are tagged, `Effect.catchTag` routes each failure with full type inference:
+
+```ts with-api
+import { Sha256Digest } from "@effected/sbom";
+import { Effect } from "effect";
+
+const program = Sha256Digest.parse("not-a-digest").pipe(
+  Effect.catchTag("InvalidSha256DigestError", (error) => Effect.succeed(`rejected: ${error.input}`)),
+);
+
+Effect.runPromise(program).then(console.log);
+// rejected: not-a-digest
+```
+
+That the list is this short is the design, not an omission. Three error channels in the code this package replaced described failures that could not actually fire — they existed because a dependency might throw, or guarded string interpolation over claims that were already present. Owning the model removed the failure, so the channel went with it, and `write` keeps one only because a filesystem genuinely has one. Signing adds two more, [`IdentityTokenError`](/sbom/api/class/identitytokenerror) and [`SigningError`](/sbom/api/class/signingerror), covered in the advanced guide.
+
+## Next steps
+
+- Ready to attest what you built — in-toto statements, SLSA provenance, and Sigstore signing over an inverted OIDC contract? See the [advanced guide](/sbom/advanced).
+- Every export, with full signatures, lives in the [API reference](/sbom/api) — start with [`Sbom`](/sbom/api/class/sbom), [`SbomMetadataSource`](/sbom/api/class/sbommetadatasource) and [`NtiaReport`](/sbom/api/class/ntiareport).

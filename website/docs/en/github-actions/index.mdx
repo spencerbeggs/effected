@@ -1,0 +1,75 @@
+---
+title: "@effected/github-actions"
+description: "The GitHub Actions runtime for Effect: inputs, outputs, state, logging, cache, artifacts, OIDC and the reporting suite."
+---
+
+# @effected/github-actions
+
+The GitHub Actions **runtime**: the services an action needs to talk to the runner it is executing inside. Read workflow inputs as typed `Config` values, set outputs and job-summary content, persist state across the `pre`/`main`/`post` phases, render logs as workflow commands, speak the runner's cache, artifact and OIDC protocols, and report what the run did onto a pull request comment or a check run. `Action.run` composes the whole runtime, runs your program, renders a failure as an `::error::` annotation and sets the exit code.
+
+## Why @effected/github-actions
+
+`@actions/core` and its siblings are the standard way to write an action, and each one owns its own ad hoc contract. `getInput` returns `""` for both "the workflow omitted this" and "the workflow set it to empty", with no way to tell them apart at the type level. Outputs, masking and workflow commands are separate globals reaching for `process.env` and `process.stdout` wherever they happen to be called. The cache and artifact clients each bring their own HTTP stack — `@actions/cache` alone drags in a dependency tree larger than this entire package.
+
+This package answers the same questions as one coherent set of Effect services. The absence rule is stated once and shared by every input accessor. Every mutation runs through an `R`-typed service a test can swap out. Every failure is a tagged error on the typed `E` channel rather than a thrown string or a silently swallowed default. And there is **no `@actions/*` dependency anywhere** — the cache, artifact and tool-cache protocols are implemented directly against their HTTP APIs, and globbing is [`@effected/glob`](/glob).
+
+It is also the one place in the kit where `@effect/platform-node` is a required peer, deliberately: a GitHub Action always compiles into a Node process on a GitHub-provided runner, so there is no second platform to abstract over.
+
+## Install
+
+```bash
+npm install @effected/github-actions effect @effect/platform-node
+```
+
+```bash
+pnpm add @effected/github-actions effect @effect/platform-node
+```
+
+Requires Node.js >=24.11.0. `effect` v4 and `@effect/platform-node` are both peer dependencies.
+
+## Quick start
+
+```ts with-api
+import { Action, ActionInput, ActionOutputs } from "@effected/github-actions";
+import { Config, Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const name = yield* ActionInput.string("name").pipe(Config.withDefault("world"));
+  const outputs = yield* ActionOutputs;
+  yield* outputs.set("greeting", `Hello, ${name}!`);
+});
+
+await Action.run(program);
+// exit code reflects success or failure;
+// a failure renders as an ::error:: annotation before the process exits
+```
+
+[`Action.run`](/github-actions/api/class/action) provides [`ActionServices`](/github-actions/api/type/actionservices) by default: [`ActionEnvironment`](/github-actions/api/class/actionenvironment), [`ActionLogger`](/github-actions/api/class/actionlogger), [`ActionOutputs`](/github-actions/api/class/actionoutputs), [`ActionState`](/github-actions/api/class/actionstate), the Node platform and an `HttpClient`. A capability with a heavier dependency — the cache, artifacts, the blob store — is one extra line: `Action.run(program, { layer: ActionCache.layer })`.
+
+## One absence rule, stated once
+
+The runner writes `INPUT_DRY_RUN=""` for an input the workflow omitted, so `""` and unset are indistinguishable at the protocol level. This package resolves that once, for every accessor on [`ActionInput`](/github-actions/api/class/actioninput): both mean **missing data**. An optional input therefore needs `Config.withDefault` (or `Config.option`) at the call site, and the compiler is what reminds you.
+
+A **present but malformed** value is a different class entirely. `dry-run: yes` is not a YAML 1.2 core-schema boolean, so `ActionInput.boolean` fails with a `ConfigError` carrying its `actual` rather than quietly falling through to the default — a workflow that meant to rehearse should stop, not perform the mutations it meant to skip.
+
+The accessors cover the shapes a workflow author actually writes: `string`, `boolean`, `integer`, `redacted`, `lines`, `list`, `pairs` and `schema`. `list` accepts a JSON array, a bullet list, or comma- and newline-separated values with full-line `#` comments dropped, so a workflow author's first instinct parses.
+
+## The runner's protocols, without @actions/*
+
+[`ActionCache`](/github-actions/api/class/actioncache) and [`Artifact`](/github-actions/api/class/artifact) speak the Actions Twirp v2 protocol directly. [`CacheKey`](/github-actions/api/class/cachekey) models a key and its restore-key ladder as a value — `hashFiles`, `matchingFiles` and `hashMatching` are byte-compatible with `@actions/glob`, so a key this package derives finds the entry a stock `actions/cache` step wrote. [`ToolInstaller`](/github-actions/api/class/toolinstaller) downloads, extracts and caches a toolchain, staging under the cache root and **renaming** into place so a partial download is never a cache hit. [`OidcTokenIssuer`](/github-actions/api/class/oidctokenissuer) reaches the runner's token service and decodes its claims for a provenance predicate.
+
+Those three modules are the only importers of the heavyweight `@azure/storage-blob` client, and [`ActionRuntime.layer`](/github-actions/api/class/actionruntime) deliberately excludes all of them. With `"sideEffects": false` and module-per-file output, an action that only sets an output never links a blob-storage client into its bundle.
+
+## Reporting back onto GitHub surfaces
+
+The other half of an action's job is saying what happened. [`GitHubMarkdown`](/github-actions/api/class/githubmarkdown) writes the bodies — `table`, `tableFor(schema)`, `heading`, `link`, `code`, `codeBlock`, `list`, `details` and `raw` — routing structure through [`@effected/markdown`](/markdown)'s serializer rather than string joining, so a cell carrying `>=1 || <2` escapes its pipes instead of shifting every column after it.
+
+[`ManagedDocument`](/github-actions/api/class/manageddocument) owns named regions inside text a human also edits: a sentinel comment identifies the document, marker comments delimit each region, and everything outside them survives byte-for-byte. [`CheckDocument`](/github-actions/api/class/checkdocument) puts a debounced reconciler on top — report a check as its state changes, and one write lands carrying the final state.
+
+## Typed failures
+
+Nothing here throws. Four failure types are tagged unions of one error class per reason rather than a single class carrying a `reason` field: [`ActionOutputError`](/github-actions/api/type/actionoutputerror), [`BlobEnvelopeError`](/github-actions/api/type/blobenvelopeerror), [`CacheKeyError`](/github-actions/api/type/cachekeyerror) and [`DetachedProcessError`](/github-actions/api/type/detachedprocesserror). Each name is a type alias over its members, so no signature changed when they split — but `Effect.catchTag` can now recover from one reason and leave the rest in the error channel, which a shared `reason` field made impossible.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/github-actions/api). New here? Start with the [getting started guide](/github-actions/getting-started), then the [advanced guide](/github-actions/advanced) for the cache, OIDC provenance and the reporting suite.

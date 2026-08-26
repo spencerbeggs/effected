@@ -1,0 +1,222 @@
+---
+title: Advanced
+description: Run a JSONL journal as shared state across processes — snapshot journals with appendPatch, resumable cursors, quiescence and reopening, the cooperative-writer contract, and testing it all in memory.
+---
+
+# Advanced
+
+## A mailbox two processes share
+
+Picture the system this package was built for. Two long-running agents pass work back and forth through one file: a reviewer appends `mail-received`, the implementer appends `snapshot` lines recording where it got to, and a `PreToolUse` hook — a short-lived script with no Effect runtime at all — has to answer *what round are we on* before the tool call proceeds. The file has to stay JSONL, because a human reads it mid-run and git diffs it in the pull request. Nobody holds a lock. Any of the three can be killed mid-append.
+
+Every hard property of that system is a property of the *file*, not of the format: what "current state" means when the last line is half-written, how a reader resumes after a restart without redelivering what it already processed, how a subscriber learns that another process appended, and how the whole thing ends. This guide covers those — snapshot journals, cursors, quiescence, the cooperative-writer contract and its one real race — and assumes the append-and-read basics from the [getting started guide](/jsonl/getting-started).
+
+## How it composes with Effect
+
+A journal is a `Context.Service` minted per registry, so several journals coexist in one layer graph with each one's operations typed by *its* registry. [`Journal.Service<Self>()(id, { events })`](/jsonl/api/variable/journal) returns a [`JournalClass`](/jsonl/api/interface/journalclass) whose `.layer(config)` is a `Layer<Self, PlatformError, FileSystem.FileSystem>` — the single edge requirement, provided once for the whole graph.
+
+Two properties of that layer are deliberate and easy to get wrong. Its error channel carries `PlatformError` because a journal that does not exist yet is a legal state and constructs cleanly, while a journal that exists and cannot be read (`EACCES`, a bad handle) is a real failure that would otherwise arrive as an untypeable defect. And the layer must be **bound to a const**: layers memoize by reference, so calling `.layer(...)` twice mints two independent journals over one file — two write permits, two watchers, two `latest` refs — whose appends are not serialized against each other. That is the in-process form of exactly the interleaving the cooperative-writer rules exist to prevent, and it typechecks perfectly.
+
+```ts with-api
+import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+const MailReceived = JsonlEvent.make("mail-received", {
+  data: Schema.Struct({ from: Schema.String, subject: Schema.String }),
+});
+const Snapshot = JsonlEvent.make("snapshot", {
+  data: Schema.Struct({ round: Schema.Number, phase: Schema.String }),
+});
+
+class MailJournal extends Journal.Service<MailJournal>()("docs/MailJournal", { events: [MailReceived] as const }) {}
+class StateJournal extends Journal.Service<StateJournal>()("docs/StateJournal", { events: [Snapshot] as const }) {}
+
+// Each layer is built ONCE and composed; the platform edge is provided once.
+export const JournalsLive = Layer.mergeAll(
+  MailJournal.layer({ path: ".claude/mailbox.jsonl" }),
+  StateJournal.layer({ path: ".claude/state.jsonl" }),
+).pipe(Layer.provide(NodeFileSystem.layer));
+
+const program = Effect.gen(function* () {
+  const mail = yield* MailJournal;
+  const state = yield* StateJournal;
+
+  yield* mail.append("mail-received", { from: "reviewer", subject: "round 7" }, { scope: "reviewer" });
+  return yield* state.appendPatch("snapshot", { round: 7 });
+});
+
+Effect.runPromise(program.pipe(Effect.provide(JournalsLive)));
+```
+
+[`JournalConfig`](/jsonl/api/interface/journalconfig) carries three more knobs beyond `path`. `capacity` bounds the internal subscriber hub *with backpressure*, so the journal never drops an envelope for a slow subscriber — slowness shows up at the producer, where it is visible, rather than as a silent gap in somebody's subscription. `shutdownPublishTimeout` bounds how long scope close waits for the terminal signal to be accepted, five seconds by default. `directory` names the directory to watch while the journal does not exist yet; it defaults to the parent derived from `path`, and you only set it when your path convention does not survive that derivation.
+
+## Snapshot journals: appendPatch
+
+A snapshot journal is one where each line is a *complete* state and most transitions change one field. Writing that by hand is a read-modify-write, and a read-modify-write between two writers is a lost update. `appendPatch` is the primitive: read the last valid envelope, shallow-merge the patch over its `data`, validate the result, and append it — with the whole sequence serialized under the journal's write permit, so two patches to different fields cannot silently revert each other.
+
+```ts with-api
+import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect, Schema } from "effect";
+
+const Snapshot = JsonlEvent.make("snapshot", {
+  data: Schema.Struct({ round: Schema.Number, phase: Schema.String, note: Schema.optionalKey(Schema.String) }),
+});
+const events = [Snapshot] as const;
+
+class StateJournal extends Journal.Service<StateJournal>()("docs/StateJournal", { events }) {}
+const StateJournalLive = StateJournal.layer({ path: ".claude/state.jsonl" });
+
+const program = Effect.gen(function* () {
+  const journal = yield* StateJournal;
+  yield* journal.create;
+
+  // A full state to start from.
+  yield* journal.append("snapshot", { round: 1, phase: "planning" });
+
+  // Then one field at a time — every other field is inherited from the tail.
+  yield* journal.appendPatch("snapshot", { phase: "implementing" });
+  return yield* journal.appendPatch("snapshot", { round: 2 });
+});
+
+Effect.runPromise(program.pipe(Effect.provide(StateJournalLive), Effect.provide(NodeFileSystem.layer)));
+// { round: 2, phase: "implementing" } — a complete line, not a diff
+```
+
+The merge is **shallow** by decision: a nested object in the patch replaces the one beneath it rather than merging into it. Model a state you intend to patch as a flat struct, or accept whole-subtree replacement for the nested parts. The merge is also hostile-input safe in the same way `@effected/config-file`'s is — properties are installed with `Object.defineProperty` rather than assignment, and `__proto__`, `constructor` and `prototype` are filtered from both sides — so a patch built from parsed JSON cannot pollute a prototype.
+
+Two more things follow from "the patch is merged over the last valid envelope". The result is validated against the registered schema *after* merging, so a patch that leaves the state incomplete or ill-typed fails with [`InvalidData`](/jsonl/api/class/invaliddata) and nothing is written. And the base is the last valid envelope of the journal — not of a slice — so `appendPatch` belongs on a journal whose tail is genuinely one state, which in practice means a dedicated snapshot file rather than a shared event log.
+
+## Resumable reads: cursors are byte offsets
+
+Every envelope carries its own position. `envelope.line` is a [`LineSlice`](/jsonl/api/class/lineslice) with `offset`, `end`, `length` and `terminated`, and `end` is the start of the next line — so persisting `end` and passing it back as a `cursor` replays exactly the unprocessed remainder: nothing redelivered, nothing skipped.
+
+```ts with-api
+import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect, Schema, Stream } from "effect";
+
+const MailReceived = JsonlEvent.make("mail-received", {
+  data: Schema.Struct({ from: Schema.String, subject: Schema.String }),
+});
+const events = [MailReceived] as const;
+
+class MailJournal extends Journal.Service<MailJournal>()("docs/MailJournal", { events }) {}
+const MailJournalLive = MailJournal.layer({ path: ".claude/mailbox.jsonl" });
+
+// Whatever the last run persisted; 0 on a first run.
+declare const savedCursor: number;
+
+const drainInbox = Effect.gen(function* () {
+  const journal = yield* MailJournal;
+
+  const batch = yield* Stream.runCollect(journal.query({ scopes: ["reviewer"], cursor: savedCursor }));
+
+  for (const envelope of batch) {
+    yield* Effect.log(`${envelope.data.from}: ${envelope.data.subject}`);
+  }
+
+  // Persist THIS value; it is where the next run starts.
+  return batch.at(-1)?.line.end ?? savedCursor;
+});
+
+Effect.runPromise(drainInbox.pipe(Effect.provide(MailJournalLive), Effect.provide(NodeFileSystem.layer)));
+```
+
+Those offsets are **UTF-8 byte** offsets, logical and post-BOM, never `String.length` — they persist across process restarts and are handed back to the filesystem as a read offset, so any other unit would be wrong the moment a line contains a non-ASCII character. If you do offset arithmetic yourself, measure with [`Line.byteLength`](/jsonl/api/class/line) rather than `.length`: `"\u{1F600}".length` is `2` and its byte length is `4`.
+
+The cursor is also what bounds a historical read. As built, `query` reads its requested region — `cursor` to the end of the file — in one allocation and buffers the matches before emitting the first, so an unsliced `query()` over a large journal does hold that journal in memory. The window-bounded reads are `latest` and the `lastValid`-backed paths, which cost the size of the answer rather than the age of the file. Emitting per window, so that an unsliced query costs a window rather than a file, is tracked as [spencerbeggs/effected#233](https://github.com/spencerbeggs/effected/issues/233); until then, a cursor is what a large journal wants, and a resuming consumer already has one.
+
+## Ending a journal: terminal, quiescent, reopen
+
+An event marked `terminal` declares that reaching the tail ends the journal. Once it is the tail, `quiescent` is `true`, further appends fail with [`TerminalViolation`](/jsonl/api/class/terminalviolation), and every `changes` stream **ends** rather than hanging — including a stream whose slice excludes the terminal event, and including a subscriber that attaches afterwards. An event marked `reopen` is the one thing allowed to follow a terminal tail.
+
+```ts with-api
+import { Journal, JsonlEvent } from "@effected/jsonl";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect, Schema } from "effect";
+
+const Snapshot = JsonlEvent.make("snapshot", { data: Schema.Struct({ round: Schema.Number }) });
+const Unlinked = JsonlEvent.make("unlinked", { data: Schema.Void, terminal: true });
+const Relinked = JsonlEvent.make("relinked", { data: Schema.Void, reopen: true });
+const events = [Snapshot, Unlinked, Relinked] as const;
+
+class LoopJournal extends Journal.Service<LoopJournal>()("docs/LoopJournal", { events }) {}
+const LoopJournalLive = LoopJournal.layer({ path: ".claude/loop.jsonl" });
+
+const program = Effect.gen(function* () {
+  const journal = yield* LoopJournal;
+  yield* journal.create;
+
+  yield* journal.append("unlinked", undefined);
+  const over = yield* journal.quiescent; // true — the loop is closed
+
+  // Only a `reopen` event may follow a terminal tail.
+  yield* journal.append("relinked", undefined);
+  return [over, yield* journal.quiescent] as const;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(LoopJournalLive), Effect.provide(NodeFileSystem.layer)));
+// [true, false]
+```
+
+`quiescent` is derived from `latest` rather than tracked separately, so the two cannot disagree. One limitation is worth knowing before you design around it: **terminal state is a property of the journal, not of a scope**. The terminal check reads the unsliced tail, so one scope's terminal event freezes every other scope's appends — which means a set of independent per-scope loops cannot collapse into a single shared journal today. Give each loop its own file; you also get per-loop deletion, `.gitignore` granularity and per-loop mtime as a change signal.
+
+Scope close is the other ending. The finalizer publishes a terminal signal so subscribers see a normal stream end rather than an interrupt, and it waits for that signal to be accepted — bounded by `shutdownPublishTimeout`, because a subscriber that never consumes cannot observe completion by definition and must not be able to hold shutdown hostage. An append that arrives after the scope has begun closing fails with [`JournalClosed`](/jsonl/api/class/journalclosed), a lifecycle fact rather than a data one.
+
+## Cross-process writers, and the one real race
+
+The service watches the journal file for the life of its layer scope and tracks the byte offset of everything it has decoded, so an append by another process arrives at your subscribers through the same stream as a local one — with no polling loop of your own, and with no way for a subscriber to tell the two apart. What that does and does not guarantee is worth stating exactly:
+
+- **The cooperative-writer contract is a discipline.** Every writer issues one `writeAll` of a complete, `\n`-terminated line to a handle opened `{ flag: "a" }`. There is no advisory lock, because a lock would only be honoured by writers who had already agreed to cooperate — and a shell script with `>>` is a legitimate participant.
+- **Atomicity is an OS property of `O_APPEND` at reasonable line sizes**, not an API guarantee. `writeAll` is a loop that can issue more than one syscall, so a short write can still split a line, and the larger the line the more opportunity there is. Bounded payloads are part of the contract, not an optimization.
+- **A torn tail is tolerated.** The unterminated fragment is walked over and the offset holds until the line completes. Check `line.terminated` on a [`MalformedLine`](/jsonl/api/class/malformedline): `false` means an unterminated fragment that only the *same* interrupted write can complete — a later append starts after those partial bytes and cannot repair them, so a writer that never comes back leaves a permanent malformed tail and the last valid envelope is the answer.
+- **Truncation or replacement is not repaired.** If the file shrinks or comes to name a different file under a live reader, that is a violated contract, and it fails typed as [`JournalResync`](/jsonl/api/class/journalresync) with `reason`, `expected` and `actual` rather than silently resyncing from zero. Discard every cursor-derived state, re-read from zero, and surface the breach — something wrote a journal that was supposed to be append-only.
+- **One race is real and unclosed.** A cooperating writer's append can land between this journal's own write and its size probe — a two-syscall window, taken under this journal's write permit. When it does, this journal's own line's reported offset is wrong by the length of the external write, the interleaved external line is dropped rather than ingested, and this journal's own line can be published twice. No lock-free scheme prevents it: `O_APPEND` never tells a writer where its bytes landed. A read-back after every write would detect it, at one extra read per append, and is declined for that cost.
+
+## Testing with @effect/vitest
+
+Journals need a `FileSystem`, and the kit's answer is [`@effected/memfs`](/memfs/api) rather than a hand-rolled double: `MemoryFileSystem.layerWith(seed)` gives you a real in-memory filesystem seeded with journal text, so a test can start from a torn tail or an unknown event without touching disk. Build the journal layer once per test, provide it, and assert with `assert.*` — never `expect`.
+
+```ts
+import { Journal, JsonlEvent } from "@effected/jsonl";
+import { MemoryFileSystem } from "@effected/memfs";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Layer, Option, Schema, SubscriptionRef } from "effect";
+
+const Snapshot = JsonlEvent.make("snapshot", { data: Schema.Struct({ round: Schema.Number }) });
+const events = [Snapshot] as const;
+
+class StateJournal extends Journal.Service<StateJournal>()("test/StateJournal", { events }) {}
+
+const PATH = "/journal/state.jsonl";
+
+// A journal whose last line was cut mid-append by a killed process.
+const seeded = (text: string) =>
+  StateJournal.layer({ path: PATH }).pipe(Layer.provide(MemoryFileSystem.layerWith({ [PATH]: text })));
+
+describe("state journal", () => {
+  it.effect("reads past a torn tail to the last valid envelope", () =>
+    Effect.gen(function* () {
+      const journal = yield* StateJournal;
+      const latest = yield* SubscriptionRef.get(journal.latest);
+      assert.isTrue(Option.isSome(latest));
+      assert.strictEqual(Option.getOrThrow(latest).data.round, 2);
+    }).pipe(
+      Effect.provide(
+        seeded(
+          '{"at":"2026-01-01T00:00:00.000Z","event":"snapshot","data":{"round":2}}\n' +
+            '{"at":"2026-01-01T00:00:01.000Z","event":"sna',
+        ),
+      ),
+    ));
+});
+```
+
+Two testing facts cost real debugging time if you meet them cold. `at` is stamped from the Effect `Clock`, so under `TestClock` timestamp assertions are exact rather than approximate — and ordering assertions must account for `at` collisions, which are ordinary at millisecond resolution and universal under a virtual clock (this is why a slice's `to` bound is exclusive). And a test exercising **graceful shutdown must advance the clock**: the scope-close finalizer bounds its wait with `Effect.timeout`, and under a virtual clock that timeout never elapses on its own, so the finalizer appears to hang for the real wall-clock duration unless the test calls `TestClock.adjust` past `shutdownPublishTimeout`.
+
+## Next steps
+
+- New to the package? Start with the [overview](/jsonl) for the envelope contract, or the [getting started guide](/jsonl/getting-started) for appending and reading.
+- Every export, with full signatures, lives in the [API reference](/jsonl/api). The surfaces this guide leaned on: [`Journal`](/jsonl/api/variable/journal) with its [`JournalShape`](/jsonl/api/interface/journalshape), [`JournalClass`](/jsonl/api/interface/journalclass) and [`JournalConfig`](/jsonl/api/interface/journalconfig); the [`Slice`](/jsonl/api/interface/slice) and [`CursoredSlice`](/jsonl/api/interface/cursoredslice) filter vocabulary; [`Envelope`](/jsonl/api/interface/envelope) and its [`LineSlice`](/jsonl/api/class/lineslice) offsets; and the [`JsonlError`](/jsonl/api/type/jsonlerror) taxonomy with the [`JournalWriteError`](/jsonl/api/type/journalwriteerror) and [`JournalReadError`](/jsonl/api/type/journalreaderror) channels.

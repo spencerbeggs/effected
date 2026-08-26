@@ -1,16 +1,12 @@
 [
 	{
 		"type": "section-header",
-		"label": "Documentation"
+		"label": "Packages"
 	},
 	{
 		"type": "file",
 		"name": "index.mdx",
-		"label": "Overview"
-	},
-	{
-		"type": "section-header",
-		"label": "Packages"
+		"label": "All Packages"
 	},
 	{
 		"type": "section-header",

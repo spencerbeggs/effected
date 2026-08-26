@@ -1,0 +1,262 @@
+---
+title: Getting Started
+description: Own a block inside a file your user also edits — declare it, sync it idempotently, check it for drift, and route every ambiguous document as a typed error with @effected/templates.
+---
+
+# Getting Started
+
+Reach for `@effected/templates` whenever your tool has to write into a file it does not own. A generated git hook that a developer also hand-edits. A `.gitignore` whose framework-managed entries sit beside personal ones. A README with a table your CLI regenerates and prose nobody else may touch. The naive approaches all fail the same way: rewrite the whole file and you destroy the user's work, append blindly and the file grows a duplicate block on every run, and search-and-replace on a marker string quietly corrupts anything it half-matches. This package gives you a delimited block with a stable identity, an idempotent write, and a typed failure for every document it cannot read without guessing.
+
+## Install
+
+```bash
+npm install @effected/templates effect
+```
+
+```bash
+pnpm add @effected/templates effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind. `FileSystem` comes from `effect` core, so you provide it once at the edge — `NodeFileSystem.layer` from `@effect/platform-node` on Node. `Path` is deliberately not required: every path is an opaque string handed straight to `FileSystem`.
+
+## Your first task: manage a block in a file the user also edits
+
+Here is a concrete, everyday goal. Your CLI installs a git hook at `.husky/pre-commit`. The shebang and your tool's invocation are yours; anything a developer adds around them is theirs, and must survive every future run. We will build that up one step at a time.
+
+A managed block is identified by a [`SectionId`](/templates/api/class/sectionid) — a `key` plus the [`CommentStyle`](/templates/api/class/commentstyle) its markers are written in. That pair is the block's whole identity, so the same `SectionId` finds the same block on every run no matter where in the file the user moved it. Calling `.section(content)` on the id turns it into a [`Section`](/templates/api/class/section): the identity plus the content you want the block to hold right now.
+
+From there, [`ManagedSection`](/templates/api/class/managedsection) is the service that does the file half — read, run the pure core, write back only if the text changed:
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+// 1. The block's identity: a key, and the comment style its markers use.
+const Hook = SectionId.make({ key: "my-tool", commentStyle: CommentStyle.hash });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+
+  // 2. Declare what the block should say, and make the file agree.
+  return yield* sections.sync(".husky/pre-commit", Hook.section("npx my-tool check --staged"));
+});
+
+Effect.runPromise(
+  program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer)),
+).then((outcome) => console.log(outcome._tag));
+// "Created" the first time, "Unchanged" every run after that
+```
+
+The file now contains, wherever the block was placed:
+
+```bash
+# --- BEGIN my-tool MANAGED SECTION ---
+npx my-tool check --staged
+# --- END my-tool MANAGED SECTION ---
+```
+
+Three results are worth pausing on. The file did not have to exist — a missing file is not an error here, it reads as an empty document and a sync creates it. The second run returns `Unchanged` and performs **no write at all**, so a file watcher does not see a phantom change. And every byte outside the markers survived, in order, including a leading byte-order mark if the file had one. That is the whole shape of a real managed block: identify, declare, sync, and let the outcome tell you what happened.
+
+One precondition is yours, not the package's: the parent directory must already exist. `Path` is absent from the service's requirements, so this package cannot create a directory, and a write into a missing one fails typed as a [`SectionFileError`](/templates/api/class/sectionfileerror).
+
+## Common operations
+
+Each snippet below is a complete program built only from the package's real exports.
+
+### Sync several blocks in one pass, in a fixed order
+
+`syncAll` reads the file once, reconciles every declared section against it, and writes the result — in the order you declared them. That ordering is a contract: list the preamble before the tool block and it will precede it, even in a file a user reordered by hand.
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const Header = SectionId.make({ key: "header", commentStyle: CommentStyle.hash });
+const Ignores = SectionId.make({ key: "tool-ignores", commentStyle: CommentStyle.hash });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+  return yield* sections.syncAll(".gitignore", [
+    Header.section("# managed by my-tool — edit around this block, not inside it"),
+    Ignores.section(".my-tool/cache\n.my-tool/tmp"),
+  ]);
+});
+
+Effect.runPromise(
+  program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer)),
+).then((outcomes) => console.log(outcomes.map((outcome) => outcome._tag)));
+// [ "Created", "Created" ]
+```
+
+### Check for drift without touching the file
+
+`check` and `checkAll` answer the same comparison `sync` would make, and change nothing — exactly what a `--check` flag or a CI lint job wants. The answer is a [`CheckOutcome`](/templates/api/type/checkoutcome): `Absent`, `UpToDate` or `Drifted`.
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const Hook = SectionId.make({ key: "my-tool", commentStyle: CommentStyle.hash });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+  const outcome = yield* sections.check(".husky/pre-commit", Hook.section("npx my-tool check --staged"));
+
+  switch (outcome._tag) {
+    case "UpToDate":
+      return "hook is current";
+    case "Drifted":
+      // Both sides are carried, so you can render whatever comparison you want.
+      return `hook drifted: file has ${outcome.onDisk.content.length} chars, expected ${outcome.expected.content.length}`;
+    case "Absent":
+      return "hook is not installed";
+  }
+});
+
+Effect.runPromise(
+  program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer)),
+).then(console.log);
+```
+
+`Drifted` carries `onDisk` and `expected` rather than a diff, so a CLI renders the comparison its users expect instead of one the library chose.
+
+### Read a block back, or ask whether it is there
+
+`read` returns an `Option` of the section as the file currently has it; `isManaged` answers the same question as a boolean; `readAll` returns every managed section in the file, in document order — including blocks other tools own, which is how you discover what else is managing the file.
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect, Option } from "effect";
+
+const Hook = SectionId.make({ key: "my-tool", commentStyle: CommentStyle.hash });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+  const current = yield* sections.read(".husky/pre-commit", Hook);
+  const all = yield* sections.readAll(".husky/pre-commit");
+
+  return {
+    ours: Option.map(current, (section) => section.content),
+    everyKey: all.map((section) => section.key),
+  };
+});
+
+Effect.runPromise(
+  program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer)),
+).then(console.log);
+```
+
+### Remove a block on uninstall
+
+`remove` deletes the block and returns `false` when it was not there. The blank lines around the removed block collapse into a single separator, so an install/uninstall cycle never leaves a growing gap behind.
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const Hook = SectionId.make({ key: "my-tool", commentStyle: CommentStyle.hash });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+  const removed = yield* sections.remove(".husky/pre-commit", Hook);
+  return removed ? "uninstalled" : "nothing to remove";
+});
+
+Effect.runPromise(
+  program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer)),
+).then(console.log);
+```
+
+### Manage a block in a file that is not a shell script
+
+`CommentStyle` is an open set. Six presets cover the common cases — `hash`, `slash`, `semicolon`, `dash`, `html` and `block` — and the wrapped ones (`<!-- … -->`, `/* … */`) mean a managed block can live in Markdown or CSS, not just source files. A comment style is part of a section's identity, so the same key in two styles is two different blocks.
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+// An HTML comment, so the markers are invisible in rendered Markdown.
+const Table = SectionId.make({ key: "package-table", commentStyle: CommentStyle.html });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+  return yield* sections.sync("README.md", Table.section("| package | version |\n| --- | --- |"));
+});
+
+Effect.runPromise(
+  program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer)),
+).then((outcome) => console.log(outcome._tag));
+```
+
+Need a style no preset covers? `CommentStyle.make({ prefix: "%" })` builds one — but a custom style must also be in the dialect that scans it, which the [advanced guide](/templates/advanced) covers.
+
+### Do it all without any IO
+
+Everything above is the service wrapping a pure core. When you already hold the text — a build plugin with the file in memory, a lint rule, a test — use [`SectionDocument`](/templates/api/class/sectiondocument) directly. `parseResult` is the synchronous primitive, so there is no runtime to build:
+
+```ts with-api
+import { CommentStyle, SectionDocument, SectionId } from "@effected/templates";
+import { Result } from "effect";
+
+const Tool = SectionId.make({ key: "tool", commentStyle: CommentStyle.hash });
+
+const doc = SectionDocument.parseResult("#!/usr/bin/env sh\n");
+
+if (Result.isSuccess(doc)) {
+  const next = doc.success.reconcile([Tool.section("npx tool run")]);
+  console.log(Result.isSuccess(next) ? next.success.text : next.failure.message);
+  // #!/usr/bin/env sh
+  //
+  // # --- BEGIN tool MANAGED SECTION ---
+  // npx tool run
+  // # --- END tool MANAGED SECTION ---
+}
+```
+
+The [`SectionReconciliation`](/templates/api/interface/sectionreconciliation) you get back carries `text`, one outcome per declared section in declared order, and a `changed` flag — which is precisely the flag the service uses to decide whether to write.
+
+## Handling errors
+
+Three tagged errors cover everything that can go wrong, and each one names a different half of the job.
+
+[`SectionParseError`](/templates/api/class/sectionparseerror) means the document cannot be read without guessing: `unterminatedSection`, `orphanedEnd`, `overlappingSections` or `duplicateSection`. It carries the 1-based `line`, the `key` when the failure names one, and the `path` when the service read it from a file. [`SectionRenderError`](/templates/api/class/sectionrendererror) means the output could not be produced safely: `markerInContent`, `unknownCommentStyle`, `duplicateDeclaration` or `invalidAttribute`. It is raised *before* anything is written. [`SectionFileError`](/templates/api/class/sectionfileerror) means the read or the write itself failed, and carries `path`, which `operation` failed, and the underlying platform error structurally rather than stringified.
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const Hook = SectionId.make({ key: "my-tool", commentStyle: CommentStyle.hash });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+  return yield* sections.sync(".husky/pre-commit", Hook.section("npx my-tool check"));
+});
+
+const safe = program.pipe(
+  Effect.map((outcome) => outcome._tag),
+  Effect.catchTag("SectionParseError", (error) =>
+    // The user's file is ambiguous — tell them where, and stop.
+    Effect.succeed(`cannot manage ${error.path ?? "the file"}: ${error.message}`),
+  ),
+  Effect.catchTag("SectionRenderError", (error) => Effect.succeed(`refused to write: ${error.message}`)),
+  Effect.catchTag("SectionFileError", (error) => Effect.succeed(`could not ${error.operation} ${error.path}`)),
+);
+
+Effect.runPromise(safe.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer))).then(
+  console.log,
+);
+```
+
+Handling all three narrows the failure channel to `never`. Drop any one of them and it is a compile error until every failure is accounted for — which is the whole point of the typed channel when the thing you are writing to is somebody else's file. Note that a *missing* file is not among them: read, check and probe treat it as an empty document, and sync creates it. An **unreadable** file, by contrast, fails typed rather than being reported as "no section here", because that conflation is exactly how a permissions problem becomes a duplicate block on the next run.
+
+## Next steps
+
+- Ready for custom marker dialects, provenance stamps on the marker line, the ordering and idempotency contracts in detail, and testing without a filesystem? See the [advanced guide](/templates/advanced).
+- Every export, with full signatures, lives in the [API reference](/templates/api) — start with [`SectionDocument`](/templates/api/class/sectiondocument), [`ManagedSection`](/templates/api/class/managedsection) and [`SectionId`](/templates/api/class/sectionid).

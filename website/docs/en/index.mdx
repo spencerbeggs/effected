@@ -2,34 +2,37 @@
 pageType: home
 
 hero:
-  name: vitest-agent
-  text: Test feedback built for AI agents
-  tagline: A Vitest plugin, CLI, and MCP server family that turns test runs into structured, token-efficient signal and a disciplined TDD workflow.
+  name: effected
+  text: An Effect v4 app kit
+  tagline: Thirty-one packages designed for Effect v4 from the start — parsers that are schemas, capabilities that are services, and failures that stay on the typed error channel.
   actions:
     - theme: brand
-      text: Get Started
+      text: Browse Packages
+      link: /packages
+    - theme: alt
+      text: Read the Docs
       link: /docs
     - theme: alt
       text: View on GitHub
-      link: https://github.com/spencerbeggs/vitest-agent
+      link: https://github.com/spencerbeggs/effected
 
 features:
-  - title: Agent-shaped reporting
-    details: A reporter that emits a compact, classified final frame instead of thousands of lines of console noise.
-    icon: 🧠
-  - title: MCP server for agents
-    details: Run tests, inspect failures, and drive a TDD loop through a typed MCP tool surface.
-    icon: 🔌
-  - title: Coverage policy and trends
-    details: Aspirational coverage targets layered on top of native Vitest thresholds, with per-project trend tracking.
-    icon: 📈
-  - title: Failure classification
-    details: Every run classifies tests as stable, new-failure, persistent, flaky, or recovered across a sliding window.
-    icon: 🔁
-  - title: Utility CLI
-    details: A focused command set for diagnostics and database inspection — doctor, db, and the agent plumbing namespace.
+  - title: Designed v4-first
+    details: Not a v3 codebase lifted forward. Every package was designed against Effect v4's consolidated core, so there are no compatibility shims and no leftover shapes that only made sense in v3.
+    icon: 🧬
+  - title: Parsers are schemas
+    details: JSONC, YAML, TOML, Markdown, SemVer, SPDX and globs all parse through Schema classes with a FromString codec. A version or a license expression embeds directly in your domain schema instead of being validated on the side.
+    icon: 🧩
+  - title: Nothing throws
+    details: Every failure a caller could reasonably handle is a tagged error on the typed E channel, carrying the offending input. Malformed data fails as a value, never as an unhandled exception.
+    icon: 🛡️
+  - title: A tier per package
+    details: Pure, boundary or integrated — a published statement of what depending on a package costs your install. Boundary packages require FileSystem and Path in R and never provide a backend, so the edge of your program decides.
+    icon: 📐
+  - title: Testable by construction
+    details: Because IO goes through core's service contracts, swapping a real disk for the in-memory volume in @effected/memfs is a layer change. Misbehaviour is injected as a fault handler rather than faked with a stub.
+    icon: 🧪
+  - title: Built for real tools
+    details: Monorepo graphs, pnpm catalogs and lockfiles, git introspection, the GitHub API, the Actions runtime, SBOMs and attestation, SQLite-backed state — the machinery CLIs and CI actually run on.
     icon: 🛠️
-  - title: Claude Code plugin
-    details: Hooks, skills, and a TDD task agent that turn the collected data into agent behavior.
-    icon: 🤖
 ---

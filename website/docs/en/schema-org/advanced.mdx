@@ -1,0 +1,208 @@
+---
+title: Advanced
+description: Compose @effected/schema-org into a real build — gate a JSON-LD graph on schema.org's own vocabulary offline, read the vocabulary directly, and keep every failure on the typed error channel.
+---
+
+# Advanced
+
+## A build step that has to prove its structured data is real
+
+Picture the job this package was built for. A documentation generator walks a TypeScript package's API model and its manifest, derives a JSON-LD graph — the source code, the article, the reference pages, the author — and emits a `<script type="application/ld+json">` block into every rendered page. Two things can go wrong there and neither announces itself. A description drawn from a TSDoc summary can carry the literal `</script>` and close the block early. And a property that reads perfectly plausible — `softwareVersion` on a `SoftwareSourceCode`, say — can be one schema.org does not define on that type, in which case every consumer downstream ignores it and nothing anywhere reports a problem.
+
+Both failures are invisible at the point they are introduced and expensive to find later, which is why the answers here are structural rather than advisory: one serializer, and it escapes; one validator, and it reads schema.org's own released vocabulary offline. This guide covers the four capabilities a real build leans on — the offline conformance gate, [`ConformanceOptions`](/schema-org/api/interface/conformanceoptions) as the policy dial, the [`Vocabulary`](/schema-org/api/class/vocabulary) read API on its own, and the catch-all that makes validation non-tautological — plus the failure modes and testing patterns a production pipeline needs. It assumes the assemble-and-serialize workflow from [getting started](/schema-org/getting-started).
+
+## How it composes with Effect
+
+Nothing in this package owns a service or a layer. Every entry point is either a pure function, a `Result`, or a plain `Effect` with an empty `R`, so it drops into an `Effect.fn` workflow and its tagged errors — [`InvalidNodeIdError`](/schema-org/api/class/invalidnodeiderror), [`DuplicateNodeIdError`](/schema-org/api/class/duplicatenodeiderror), [`ConflictingTermError`](/schema-org/api/class/conflictingtermerror), [`NonConformantGraphError`](/schema-org/api/class/nonconformantgrapherror) — join your program's typed `E` channel with no wrapping. There is nothing to provide and nothing to mock.
+
+The synchronous form is the primitive throughout, per the kit's sync-primitive policy: `JsonLdDocument.buildResult` and `Conformance.validateResult` return a `Result`, and `JsonLdDocument.build` and `Conformance.validate` are `Effect` twins *derived from them*, so the two can never disagree. That matters in practice because graph assembly usually runs inside a static-site render, where constructing a runtime to emit one `<script>` element would be absurd — and because the same code path is available unchanged when the caller *is* an Effect program.
+
+Because every node class is a `Schema.Class`, a node also composes as a schema: it can be a field of a larger domain schema, encoded with `Schema.encode`, or derived over. The decode direction is deliberately not supported — see [edge cases](#edge-cases-and-failure-modes).
+
+## Gate a graph on schema.org's own vocabulary
+
+The vocabulary and validator live behind the `@effected/schema-org/validate` subpath. That split is load-bearing: the vocabulary table is roughly 73 KB of compiled literals, and a graph-only consumer — the page render path — never pulls it in. Validation is the *other* half of the work, a build-time gate, so it pays for itself in CI and costs the page nothing.
+
+`Conformance.check` reports; `Conformance.validateResult` gates. Reporting is not a failure mode, so `check` is total — it never fails and never throws — and the gate is defined in terms of it, so the list and the gate cannot disagree about what is wrong with a graph:
+
+```ts with-api
+import { JsonLdDocument, SoftwareSourceCode } from "@effected/schema-org";
+import { Conformance } from "@effected/schema-org/validate";
+import { Effect, Result } from "effect";
+
+const doc = Result.getOrThrow(
+  JsonLdDocument.buildResult([
+    SoftwareSourceCode.make({
+      "@id": "https://example.com/pkg#source",
+      name: "example",
+      // A real schema.org property — but defined on SoftwareApplication, not here.
+      additional: { softwareVersion: "1.2.3" },
+    }),
+  ]),
+);
+
+const program = Conformance.validate(doc).pipe(
+  Effect.map(() => "conformant"),
+  Effect.catchTag("NonConformantGraphError", (error) =>
+    Effect.succeed(error.issues.map((issue) => `${issue._tag}: ${issue.message}`).join("\n")),
+  ),
+);
+
+Effect.runPromise(program).then(console.log);
+// PropertyNotOnType: https://example.com/pkg#source: schema.org does not define "softwareVersion" on SoftwareSourceCode
+```
+
+That is the issue that pays for the package. `softwareVersion` is a genuine schema.org term, it serializes fine, and it is silently ignored on a `SoftwareSourceCode` by everything that reads it. (The property is `version`.)
+
+Legality is the full inherited answer — the property's `domainIncludes` set intersected with the node type's `rdfs:subClassOf` ancestor closure — so an inherited property never produces a false positive. `license` carries exactly one `domainIncludes` entry, `CreativeWork`, and is legal on `SoftwareSourceCode` only through that chain.
+
+Two more rules are worth knowing before you read the output. **A prefixed term from a foreign vocabulary is skipped entirely**, with no issue: a consumer writing `gs1:telephone` has deliberately opted into a vocabulary this package does not claim to police. But `schema:license` is *native* — the prefixed spelling is legal JSON-LD and must validate identically to the bare one, so a blanket "has a colon, skip it" rule would quietly stop checking anything written in prefixed form. And **when a node's `@type` is unknown, its properties are not checked for domain legality**: there is no type to check them against, and reporting every property as misplaced would bury the one issue that matters.
+
+## Severity is your policy, not a fact about the graph
+
+[`ConformanceIssue`](/schema-org/api/type/conformanceissue) carries no severity field, on purpose. A dangling reference is a build failure in a closed graph and entirely correct in an open one, so the gate takes the policy as options and `check` always reports everything regardless.
+
+By default only the structural kind closes the gate. [`PropertyNotOnType`](/schema-org/api/class/propertynotontype) fails; [`UnknownTerm`](/schema-org/api/class/unknownterm) is reported without failing; [`DeprecatedType`](/schema-org/api/class/deprecatedtype), [`DeprecatedProperty`](/schema-org/api/class/deprecatedproperty) and [`DanglingReference`](/schema-org/api/class/danglingreference) are left to you. `ConformanceOptions` widens it:
+
+```ts with-api
+import type { JsonLdDocument } from "@effected/schema-org";
+import { Conformance } from "@effected/schema-org/validate";
+import { Result } from "effect";
+
+// A closed-world site that mints every @id it references and controls every term.
+export const gate = (doc: JsonLdDocument): ReadonlyArray<string> =>
+  Result.match(
+    Conformance.validateResult(doc, {
+      unknownTerms: "fail",
+      deprecations: "report",
+      danglingReferences: "report",
+    }),
+    {
+      onSuccess: () => [],
+      onFailure: (error) => error.issues.map((issue) => issue.message),
+    },
+  );
+```
+
+`unknownTerms: "fail"` is strict mode, for a caller who controls every term in their graph and wants an invented one to break the build. `deprecations: "report"` closes the gate on terms schema.org has superseded — they stay valid, which is why they are not fatal by default. `danglingReferences: "report"` is the one a closed-world site wants, and it is the same question `JsonLdDocument.danglingReferences` answers without the validator.
+
+`NonConformantGraphError` carries **every** issue the check found, failing or not, so a caller rendering the error never has to run the check a second time to see the rest.
+
+## Read the vocabulary directly
+
+`Vocabulary` is a read API over the vendored dataset, useful on its own to tooling that never builds a graph — a linter for hand-written JSON-LD, a code generator, an editor completion source. Every answer is offline and synchronous:
+
+```ts with-api
+import { Vocabulary } from "@effected/schema-org/validate";
+import { Option } from "effect";
+
+console.log(Vocabulary.version);
+// "30.0"
+
+// Inheritance is the whole content of this answer.
+console.log(Vocabulary.isPropertyOn("license", "SoftwareSourceCode"));
+// true — declared on CreativeWork, inherited through the subClassOf chain
+
+console.log(Vocabulary.ancestorsOf("TechArticle").has("CreativeWork"));
+// true
+
+console.log(Option.getOrElse(Vocabulary.supersededBy("episodes"), () => "current"));
+// "episode"
+```
+
+Three details govern how you read those answers. `ancestorsOf` returns a **set, not a chain**, because schema.org's hierarchy is a DAG — `HowToStep` is simultaneously a `ListItem`, a `CreativeWork` and an `ItemList`, and all three arms are present along with everything above them. `isPropertyOn` returns `false` when *either* term is unknown, so ask `hasType` or `hasProperty` when you need to tell "misplaced" from "misspelled" apart — which is exactly what `Conformance` does. And a deprecated term is **valid but flagged**, never reported unknown and never rejected by default; `supersededBy` returns `Option.some` with its replacement and `Option.none()` for a current term and for an unknown one.
+
+`Vocabulary.version` is surfaced at runtime so a CI job can record which vocabulary its gate ran against. A later disagreement about whether a term was legal cannot be attributed without it.
+
+## The catch-all is why validation is not tautological
+
+If every property in a graph came from a typed field, the validator would only ever confirm what the type system already guaranteed. `additional` is the one door an undefined-on-this-type property can enter through, which is precisely why the gate has work to do:
+
+```ts with-api
+import { JsonLdDocument, TechArticle } from "@effected/schema-org";
+import { Conformance } from "@effected/schema-org/validate";
+import { Result } from "effect";
+
+const doc = Result.getOrThrow(
+  JsonLdDocument.buildResult([
+    TechArticle.make({
+      "@id": "https://example.com/docs#guide",
+      headline: "Guide",
+      additional: {
+        // Legal on CreativeWork, inherited by TechArticle.
+        creditText: "Written by the docs team",
+        // Not a schema.org term at all.
+        readingTimeMinutes: 7,
+        // A foreign vocabulary — deliberately not policed.
+        "gs1:handledBy": "https://example.com/#org",
+      },
+    }),
+  ]),
+);
+
+console.log(Conformance.check(doc).map((issue) => `${issue._tag} ${issue.message}`));
+// [ 'UnknownTerm https://example.com/docs#guide: schema.org 30.0 defines no property "readingTimeMinutes"' ]
+```
+
+The catch-all is flattened into the node at serialization rather than nested under an `additional` key, so what you write is what appears on the wire. A key colliding with a typed field, with `@id` or with `@type` is refused at assembly with `ConflictingTermError` rather than silently overwriting one of them — which is also why the catch-all cannot be used to sneak past a typed field's shape.
+
+## Edge cases and failure modes
+
+Everything malformed arrives on the typed `E` channel — never as a thrown exception and never as a defect. Knowing which failure belongs to which stage is most of the battle.
+
+**Identity is checked at assembly, not at construction.** `NodeRef.to` and every node's `make` are total. A malformed `@id` surfaces from `JsonLdDocument.buildResult` as `InvalidNodeIdError`, so the whole class of identity failure arrives typed and in one place instead of throwing from an arbitrary call site. When you *do* want the check early, [`NodeRef.toCheckedResult`](/schema-org/api/class/noderef) validates immediately and `NodeRef.toChecked` is its `Effect` twin; `NodeRef.isValidId` is the bare predicate.
+
+**The `@id` rule is deliberately loose**: non-empty, no whitespace, no control characters. An `@id` is an IRI in your own namespace, and absolute IRIs, blank-node identifiers (`_:pkg`) and fragment forms are all legal JSON-LD. A stricter IRI grammar would reject legal input in order to catch a typo, which is the wrong trade for an identifier you mint yourself. The rule is exported as [`NodeId`](/schema-org/api/variable/nodeid) so you can reuse it by identity rather than re-deriving it.
+
+**A dangling reference is not an error.** It is how a node points at something described on another page, and refusing it would make the package wrong. `JsonLdDocument.danglingReferences` reports them so a closed-world consumer can gate; the validator reports the same thing as `DanglingReference` and, by default, does not fail on it.
+
+**Decoding the wire form is not supported.** The encode direction is the one this release implements. Decoding a JSON-LD document back through the schema *succeeds and silently drops the catch-all* — a flattened foreign term is an excess key from the schema's point of view — which is a half-working round trip, and worse than a failing one. A test pins that asymmetry so it cannot start half-working by accident. Treat this package as a writer.
+
+**Conformance is not rich-results eligibility.** Google requires properties schema.org does not, and revises its policy on its own schedule. A conformant graph is one schema.org defines every term of; it is not a promise of a rich result.
+
+**The package will not mint an `@id` for you** and will not map your domain onto node types. Both need a base URL and a modelling decision it cannot infer, and guessing either would be worse than declining.
+
+## Testing with @effect/vitest
+
+There is no IO and no service here, so nothing needs a layer or a double — which makes the tests unusually direct. Drive the `Effect` twins with `it.effect`, assert with `assert.*` — never `expect` — and prove a failure lands on the typed channel by flipping the effect and asserting on the error's `_tag`.
+
+```ts
+import { JsonLdDocument, Person, SoftwareSourceCode } from "@effected/schema-org";
+import { Conformance } from "@effected/schema-org/validate";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("structured data", () => {
+  it.effect("refuses two nodes claiming one @id", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        JsonLdDocument.build([
+          Person.make({ "@id": "https://example.com/#alice" }),
+          Person.make({ "@id": "https://example.com/#alice" }),
+        ]),
+      );
+      assert.strictEqual(error._tag, "DuplicateNodeIdError");
+      assert.strictEqual(error.id, "https://example.com/#alice");
+    }));
+
+  it.effect("gates a misplaced property", () =>
+    Effect.gen(function* () {
+      const doc = yield* JsonLdDocument.build([
+        SoftwareSourceCode.make({
+          "@id": "https://example.com/pkg#source",
+          additional: { softwareVersion: "1.2.3" },
+        }),
+      ]);
+      const error = yield* Effect.flip(Conformance.validate(doc));
+      assert.strictEqual(error._tag, "NonConformantGraphError");
+      assert.strictEqual(error.issues[0]?._tag, "PropertyNotOnType");
+    }));
+});
+```
+
+One assertion is worth writing even though it looks redundant: a **positive control** on the serializer. Assert that `JSON.stringify` of the same graph *does* contain `</script>` while `toScriptBody()` does not. Without it, the escaping assertions pass just as happily against an empty graph or a stubbed serializer, and the single most important guarantee in the package would be untested while looking tested.
+
+## Next steps
+
+- New here? Start with the [overview](/schema-org) for the shape of the package, then [getting started](/schema-org/getting-started) for assembling and serializing a graph.
+- Every export, with full signatures, lives in the [API reference](/schema-org/api). The types this guide leaned on: [`JsonLdDocument`](/schema-org/api/class/jsonlddocument) and the [`JsonLdNode`](/schema-org/api/type/jsonldnode) union, [`NodeRef`](/schema-org/api/class/noderef) with [`HasNodeId`](/schema-org/api/interface/hasnodeid), [`Conformance`](/schema-org/api/class/conformance) with [`ConformanceOptions`](/schema-org/api/interface/conformanceoptions) and the [`ConformanceIssue`](/schema-org/api/type/conformanceissue) union, [`Vocabulary`](/schema-org/api/class/vocabulary), and the tagged errors [`InvalidNodeIdError`](/schema-org/api/class/invalidnodeiderror), [`DuplicateNodeIdError`](/schema-org/api/class/duplicatenodeiderror), [`ConflictingTermError`](/schema-org/api/class/conflictingtermerror) and [`NonConformantGraphError`](/schema-org/api/class/nonconformantgrapherror).

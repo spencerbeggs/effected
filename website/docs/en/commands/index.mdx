@@ -1,0 +1,87 @@
+---
+title: "@effected/commands"
+description: "Structured command running and CLI tool discovery over Effect's core ChildProcessSpawner contract."
+---
+
+# @effected/commands
+
+Structured command running and CLI tool discovery over Effect's core `ChildProcessSpawner` contract. `Run.collect` / `text` / `lines` / `json` turn a spawned process into a typed result instead of a bag of streams to check by hand, and `ToolDiscovery` answers "is `biome` here, and which copy should I run" without a shell probe. `effect` is the only dependency of any kind.
+
+## Why @effected/commands
+
+Every subprocess concept in this package is core's, and no implementation of one is. `Run` is free functions over core's `ChildProcess.Command` and `ChildProcessSpawner` — never a second runner service wrapping them — and the package supplies only what core deliberately leaves unclassified: a typed outcome for a non-zero exit, secret redaction, transience vocabulary, and tool discovery. There is no `Command` type of its own, no spawner backend, no platform layer and no `node:child_process` import anywhere in the source. A command you build with core's constructors is the same value you hand to `Run`, and the same value you hand to core's spawner directly.
+
+Two of core's sharper edges get one clean fix each. `ChildProcess.setEnv` merges values into the command's environment but never sets `extendEnv`, so a command built with bare `setEnv({ TOKEN: x })` spawns a child whose *entire* environment is that one variable — no `PATH`, no `HOME`, silent at the type level. `Run.extendEnv` adds variables on top of the parent environment instead. And a non-zero exit, which core reports as a plain success, becomes a typed `CommandFailedError` for `Run.text`, `Run.lines` and `Run.json` — the three combinators whose callers actually want to branch on failure.
+
+## Install
+
+```bash
+npm install @effected/commands effect
+```
+
+```bash
+pnpm add @effected/commands effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind — no `node:child_process` import, no platform package, no parallel command vocabulary. `ChildProcessSpawner` comes from `effect` core rather than from a platform package, so an application provides it once at the edge (`NodeServices.layer` from `@effect/platform-node` on Node) and a test scripts it directly with this package's own `ScriptedSpawner`.
+
+## Quick start
+
+Run a command and get back trimmed stdout, with a non-zero exit as a typed failure rather than a stray stderr string to parse:
+
+```ts
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const program = Run.text(ChildProcess.make("git", ["rev-parse", "--short", "HEAD"]));
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+// example output (varies by environment): "a1b2c3d"
+```
+
+Resolve a CLI tool before running it, globally or through a project's package manager:
+
+```ts
+import { LocalExec, Run, Tool, ToolDiscovery } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const discovery = yield* ToolDiscovery;
+  const biome = yield* discovery.resolve(Tool.named("biome"));
+  return yield* Run.text(biome.command("--version"));
+});
+
+const AppLayer = ToolDiscovery.layer.pipe(Layer.provide(LocalExec.layerNone), Layer.provide(NodeServices.layer));
+
+Effect.runPromise(program.pipe(Effect.provide(AppLayer))).then(console.log);
+// example output (varies by environment): "Version: 1.9.4"
+```
+
+## A non-zero exit means different things to different callers
+
+`Run` splits its combinators along exactly that line, and the split is deliberate. `Run.collect`, `Run.exitCode`, `Run.succeeds` and `Run.jsonLine` treat a non-zero exit as a *result* — the process ran, and what it reported is data you branch on. `Run.text`, `Run.lines` and `Run.json` treat it as a typed `CommandFailedError`, because a caller who asked for the output of a successful command does not want a half-written string on failure.
+
+`CommandOutput` carries the untrimmed `stdout`, the untrimmed `stderr` and the `exitCode`, with a `succeeded` getter for the zero check. `Run.text` trims leading *and* trailing whitespace, which is right for a SHA or a version string and wrong for fixed-column output — parse `git status --porcelain`'s leading status column out of `Run.collect`'s untrimmed `stdout` instead.
+
+## Errors route on structure, never on prose
+
+`CommandFailedError` carries a `kind` of `"nonZero"`, `"spawn"` or `"timeout"`, plus the command, redacted argv and — when the process ran — the exit code and both captured streams. Its `notFound` getter is the structural "this executable is not installed" signal, derived from the absorbed platform error rather than from message text. `CommandOutputError` is separate because the process itself succeeded: `"notJson"`, `"schema"` or `"tooLarge"`. A schema drift and a crashed tool call for different responses, so they stay distinguishable.
+
+Nothing in this package asks you to substring-match a message. `Retry.isTransient` classifies a failure for `Effect.retry`, and it reads structure first: a missing executable is never transient (retrying cannot install a tool), and a timeout is not transient by default.
+
+## Discovery proves presence by running the tool
+
+`ToolDiscovery` decides whether a tool exists by whether the process **ran** — a spawn that completes proves existence whatever the exit code, and a spawn failure proves absence. There is deliberately no shell `command -v` probe and no filesystem scan, so a tool name is never interpolated into a command line, and the behavior is the same on Windows. Names that argv position zero should never accept (empty, or leading `-`) are refused *before* any process starts.
+
+The cache stores probe **evidence**, keyed by `(name, version probe)`, and applies policy (`source`, `onMismatch`) per call — so two callers with different constraints never share a stale answer. Only a positive result is remembered indefinitely: a tool that exists does not stop existing, but a tool that does not exist very often starts to.
+
+## Secrets are scrubbed from output and argv
+
+`RunOptions.redact` takes the `Redacted` values a run may leak, and every occurrence is removed from captured output and from any error the run raises — matching by exact value, so a secret disappears whichever flag carried it and even inside a larger string. `Redaction.scrubArgs` is a flag heuristic that runs *in addition*, catching the credentials a caller forgot to declare. An error's `args` is always stored redacted.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/commands/api).

@@ -1,0 +1,218 @@
+---
+title: Getting Started
+description: Run a child process and get a typed result — trimmed text, lines, decoded JSON or an exit code — with every spawn failure, non-zero exit and timeout on the typed error channel, using @effected/commands.
+---
+
+# Getting Started
+
+Reach for `@effected/commands` whenever a program has to *shell out and use the answer* — read a git SHA, ask a formatter for its version, parse a package manager's `--json` output, or check whether a tool is installed before you depend on it. Doing that by hand means wiring two output streams and an exit code yourself, remembering that a non-zero exit is not automatically an error, and hoping a token in argv never lands in a log. This package turns a spawn into one typed `Effect`: collected output as a value, a non-zero exit as a typed failure where that is the right reading, secrets scrubbed from both, and no vocabulary of its own to learn — the command you hand it is Effect core's own `ChildProcess.Command`.
+
+## Install
+
+```bash
+npm install @effected/commands effect
+```
+
+```bash
+pnpm add @effected/commands effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind. Spawning needs core's `ChildProcessSpawner`, which arrives through the `R` channel and is provided once at the edge of your application — on Node, `NodeServices.layer` from `@effect/platform-node` supplies it:
+
+```bash
+pnpm add @effect/platform-node
+```
+
+## Your first task: read a value out of a command
+
+Here is a concrete, everyday goal. You want the short commit SHA of the repository you are standing in, as a `string`, and you want a missing `git` or a failed invocation to arrive as a typed error rather than as a thrown exception or an empty string you forget to check.
+
+The first move is to describe the command. That is core's job, not this package's: `ChildProcess.make` takes an executable and its argv, and `ChildProcess.setCwd` and friends compose onto it. Then hand the command to `Run.text`, which collects stdout, requires a zero exit, and trims:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+// 1. Describe the command with core's own constructor.
+const command = ChildProcess.make("git", ["rev-parse", "--short", "HEAD"]);
+
+// 2. Run it for its stdout. A non-zero exit fails with CommandFailedError.
+const program = Run.text(command);
+
+// 3. Provide the spawner once, at the edge.
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+// example output (varies by environment): "a1b2c3d"
+```
+
+Two things are worth pausing on. The spawner is a *requirement*, not a dependency — `Run.text(command)` has type `Effect<string, CommandFailedError, ChildProcessSpawner>`, and until something provides that service the program cannot run, which is what lets a test swap in a scripted spawner with no mocking framework. And `Run.text` trims leading *and* trailing whitespace, which is exactly right for a SHA and exactly wrong for fixed-column output like `git status --porcelain`, whose leading status column is significant. For that, use `Run.collect` and read the untrimmed `stdout`.
+
+## Common operations
+
+Each snippet below is a complete program built only from the package's real exports. All of them need a spawner; the examples provide `NodeServices.layer` at the end.
+
+### Collect everything and decide for yourself
+
+`Run.collect` returns a [`CommandOutput`](/commands/api/class/commandoutput) — untrimmed `stdout`, untrimmed `stderr`, the `exitCode`, and a `succeeded` getter. A non-zero exit is a **result** here, not a failure, which is what you want for a command whose failure is meaningful data:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const program = Effect.gen(function* () {
+  const output = yield* Run.collect(ChildProcess.make("git", ["diff", "--quiet"]));
+  // `git diff --quiet` exits 1 when the tree is dirty — that is an answer, not an error.
+  return output.succeeded ? "clean" : "dirty";
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+// "clean" or "dirty"
+```
+
+### Read stdout as a list
+
+`Run.lines` splits stdout on newlines, trims each line and drops the empty ones — the shape almost every "list something" command wants. Like `Run.text`, it requires a zero exit:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const program = Run.lines(ChildProcess.make("git", ["tag", "--list", "v1.*"]));
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+// example output (varies by environment): [ "v1.0.0", "v1.1.0" ]
+```
+
+### Decode JSON output against a schema
+
+`Run.json` requires a zero exit, parses stdout as JSON and decodes it with the schema you pass, so the value you get back is already validated. A parse failure and a schema drift are both [`CommandOutputError`](/commands/api/class/commandoutputerror), distinguished by `kind`:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Schema } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const Manifest = Schema.Struct({
+  name: Schema.String,
+  version: Schema.String,
+});
+
+const program = Effect.gen(function* () {
+  const manifest = yield* Run.json(ChildProcess.make("npm", ["view", "effect", "--json"]), Manifest);
+  return `${manifest.name}@${manifest.version}`;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+// example output (varies by environment): "effect@4.0.0"
+```
+
+### Ask a yes/no question
+
+`Run.succeeds` collapses everything — a non-zero exit, a spawn failure, a missing executable — into a `boolean`, and never fails. It is the right combinator for a capability check and the wrong one for anything whose failure you need to explain:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const program = Run.succeeds(ChildProcess.make("git", ["rev-parse", "--git-dir"]));
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+// true inside a repository, false outside it
+```
+
+### Add environment variables without losing `PATH`
+
+This is the one API here that exists to fix a footgun rather than to add a capability. Core's `ChildProcess.setEnv` never sets `extendEnv`, so a command built with a bare `setEnv({ CI: "1" })` spawns a child whose *entire* environment is that one variable — no `PATH`, no `HOME`, and nothing in the type system to warn you. `Run.extendEnv` merges on top of the parent environment instead:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const command = ChildProcess.make("node", ["-p", "process.env.GREETING"]).pipe(
+  Run.extendEnv({ GREETING: "hello" }),
+);
+
+Effect.runPromise(Run.text(command).pipe(Effect.provide(NodeServices.layer))).then(console.log);
+// "hello"
+```
+
+A hermetic environment — deliberately dropping the parent's variables — is what bare `setEnv` is for. Use it when that is what you meant, and `Run.extendEnv` the rest of the time.
+
+### Follow a long-running command line by line
+
+`Run.stream` never accumulates output, so it is the combinator for a build log or anything larger than the capture ceiling. It yields a `Stream` of lines, optionally interleaving stderr:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Stream } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const program = Run.stream(ChildProcess.make("npm", ["install"]), { includeStderr: true }).pipe(
+  Stream.runForEach((line) => Effect.log(line)),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer)));
+```
+
+## Handling errors
+
+Everything that can go wrong arrives on the typed `E` channel. [`CommandFailedError`](/commands/api/class/commandfailederror) covers the process: `kind: "nonZero"` (it ran and exited non-zero), `"spawn"` (it never started) or `"timeout"` (a ceiling you set elapsed). [`CommandOutputError`](/commands/api/class/commandoutputerror) covers the output of a process that succeeded: `kind: "notJson"`, `"schema"` or `"tooLarge"`.
+
+Route on `_tag` with `Effect.catchTag`, then branch on `kind` — never on the message:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const program = Run.text(ChildProcess.make("definitely-not-installed", ["--version"]));
+
+const safe = program.pipe(
+  Effect.catchTag("CommandFailedError", (error) => {
+    if (error.notFound) return Effect.succeed("tool is not installed");
+    if (error.kind === "timeout") return Effect.succeed("tool took too long");
+    return Effect.succeed(`tool failed with exit ${error.exitCode ?? "unknown"}`);
+  }),
+);
+
+Effect.runPromise(safe.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+// "tool is not installed"
+```
+
+`notFound` is a getter, not a string check: it is true only for a spawn failure whose absorbed platform reason is `NotFound`, which is the structural way to say "the executable does not exist" and the reason `Retry.isTransient` refuses to retry it. Every error also carries the command and its **redacted** argv, so logging one never leaks a token you passed on the command line.
+
+Failures you want to bound rather than route get `RunOptions` instead. `timeout` has no default — a package-manager install and a `git rev-parse` cannot share one — and expiry kills the child and fails with `kind: "timeout"`:
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Redacted } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const token = Redacted.make("s3cr3t-token");
+
+const program = Run.text(ChildProcess.make("curl", ["-H", `Authorization: Bearer ${Redacted.value(token)}`, "https://example.com"]), {
+  timeout: "30 seconds",
+  redact: [token],
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).catch(console.error);
+// any failure reports the argv with the token replaced by "***"
+```
+
+## Next steps
+
+- Ready for tool discovery, project-local launchers, retry policy and testing without a real subprocess? See the [advanced guide](/commands/advanced).
+- Every export, with full signatures, lives in the [API reference](/commands/api) — start with [`Run`](/commands/api/class/run), [`RunOptions`](/commands/api/interface/runoptions) and [`ToolDiscovery`](/commands/api/class/tooldiscovery).

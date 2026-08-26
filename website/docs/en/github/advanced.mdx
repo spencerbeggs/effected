@@ -1,0 +1,351 @@
+---
+title: Advanced
+description: Compose @effected/github into a real Effect application — retarget the repository coordinate per call, bracket a check run so it always concludes, write the configuration half of a repository, authenticate as a GitHub App, and test against a recorded-response double that paginates for real.
+---
+
+# Advanced
+
+## The programs this package is built for
+
+Picture the two jobs that shaped it. A **release bot** reads a repository's tags to find the version it shipped last, moves a release branch to a new sha, opens or updates a pull request, leaves exactly one sticky comment, and reports its own progress as a check run that must never be left hanging. A **fleet configurator** takes one desired-state document and applies it across dozens of repositories — secrets, variables, rulesets, deployment environments, security toggles — where a truncated list read is not a slow answer but a *wrong* one, because the diff it feeds decides what gets deleted.
+
+Neither job is a thin wrapper over HTTP. Both need the endpoint's own types to survive to the call site, one error taxonomy to branch on, a retry policy that understands GitHub's rate-limit headers, and a repository coordinate that can be retargeted mid-program. This guide covers the five capabilities those jobs lean on — the repository coordinate in `R`, the check-run bracket, the configuration-writing tier, App authentication, and the typed escape hatch — plus the failure modes and testing patterns a production tool needs. It assumes the client-and-resource wiring from [Getting Started](/github/getting-started).
+
+## How it composes with Effect
+
+The split to internalize: **the client is resolved once, the repository is resolved per call.** [`GitHubClient`](/github/api/class/githubclient) is a `Context.Service` you build one layer for, and every resource service takes it as its own layer requirement, so a program that uses eight resources still holds one octokit instance, one retry policy and one pagination engine. [`Repo`](/github/api/class/repo) goes the other way — it stays in every resource method's `R` channel rather than being captured at layer construction, which is precisely what makes `Repo.provide(other)` work. Capture it at construction and a scoped override would compile and silently do nothing.
+
+Because the resources are ordinary `Context.Service` values and every failure is a tagged error, nothing here needs wrapping to join an existing program: the errors land in your typed `E` channel, the services land in `R`, and `Layer.provide` supplies them at the edge. There is no ambient state and no environment reading — the token and the coordinate both arrive through core's `ConfigProvider` when you want them env-driven, and as plain values when you do not.
+
+## Acting on more than one repository
+
+`Repo.provide` retargets one part of a program. That is the fleet configurator's whole shape: build the work once against `Repo`, then run it per target.
+
+```ts with-api
+import { GitHubClient, Repo, RepoRef, RepositoryVariable } from "@effected/github";
+import { Effect, Layer } from "effect";
+
+// The work, written once, against whichever repository is in scope.
+const stampBuildChannel = Effect.gen(function* () {
+  const variables = yield* RepositoryVariable;
+  yield* variables.set("BUILD_CHANNEL", "stable");
+});
+
+const targets = [
+  RepoRef.make({ owner: "acme", repo: "api" }),
+  RepoRef.make({ owner: "acme", repo: "web" }),
+  RepoRef.make({ owner: "acme", repo: "cli" }),
+];
+
+// Repo.provide discharges the Repo requirement per target — four at a time.
+const program = Effect.forEach(targets, (target) => stampBuildChannel.pipe(Repo.provide(target)), {
+  concurrency: 4,
+});
+
+const ClientLayer = GitHubClient.layerFromConfig();
+const Live = RepositoryVariable.layer.pipe(Layer.provide(ClientLayer));
+
+Effect.runPromise(program.pipe(Effect.provide(Live)));
+```
+
+No `Repo` layer is provided at the edge here at all — `Repo.provide` has already discharged the requirement for every branch. When a program acts on one repository throughout, provide `Repo.layer(ref)` once instead, or `Repo.layerFromConfig()` to read `GITHUB_REPOSITORY` through the ambient `ConfigProvider`. That last variant is *named* for being env-driven, which is the point: the package it replaces read `process.env.GITHUB_REPOSITORY` in three places, and that is most of what coupled a GitHub API client to the GitHub Actions runtime.
+
+## A check run that always concludes
+
+[`CheckRun.withCheckRun`](/github/api/class/checkrun) is the bracket the release bot cannot do without. It creates the run, hands your program the run's id and a `conclude` callback, and guarantees a terminal state on **every** exit path — success, typed failure, defect or interrupt. A run left `in_progress` is never reaped by GitHub and blocks branch protection until a human deletes it by hand, which is why the finalizer is exit-aware rather than a `tap`/`tapError` pair that fires on only two of the four.
+
+```ts with-api
+import { CheckRun, CheckRunOutput, GitHubClient, Repo, RepoRef } from "@effected/github";
+import { Effect, Layer } from "effect";
+
+declare const lint: () => Effect.Effect<ReadonlyArray<string>>;
+
+const program = Effect.gen(function* () {
+  const check = yield* CheckRun;
+
+  return yield* check.withCheckRun("lint", "9f3d2a1", (_id, conclude) =>
+    Effect.gen(function* () {
+      const findings = yield* lint();
+
+      // A recorded verdict wins on every exit path, including failure.
+      // Advisory findings are "neutral", not "failure".
+      yield* conclude(
+        findings.length === 0 ? "success" : "neutral",
+        CheckRunOutput.make({
+          title: "Lint",
+          summary: `${findings.length} finding(s)`,
+          text: findings.join("\n"),
+        }).truncated(),
+      );
+
+      return findings;
+    }),
+  );
+});
+
+const ClientLayer = GitHubClient.layerFromConfig();
+const Live = Layer.mergeAll(
+  CheckRun.layer.pipe(Layer.provide(ClientLayer)),
+  Repo.layer(RepoRef.make({ owner: "acme", repo: "api" })),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(Live)));
+```
+
+Left to itself the bracket concludes `"success"` on success, `"failure"` on a typed failure or a defect, and `"cancelled"` on an interrupt. Calling `conclude` overrides that verdict, which is how the other conclusions become reachable — and the override wins even when the surrounding program then fails, because *how the check ran* and *how the program ended* are different questions. The advisory `"neutral"` above is the motivating case. Only the success path can fail the effect on the conclusion's behalf; neither an interrupt nor an existing failure is replaced by whatever went wrong while reporting it.
+
+[`CheckRunOutput.truncated()`](/github/api/class/checkrunoutput) is pure byte arithmetic against GitHub's caps — 65535 **bytes** on `summary` and `text`, 50 annotations per request — and appends a notice when it had to cut. Call it on any output you did not author character by character; GitHub rejects an oversized body outright rather than trimming it for you.
+
+## Writing the configuration half of a repository
+
+Six services cover the policy half: [`RepositorySecret`](/github/api/class/repositorysecret), [`RepositoryVariable`](/github/api/class/repositoryvariable), [`Ruleset`](/github/api/class/ruleset), [`DeploymentEnvironment`](/github/api/class/deploymentenvironment), [`RepositorySecurity`](/github/api/class/repositorysecurity) and [`CodeScanning`](/github/api/class/codescanning). Every list read among them paginates to the end, because these are the reads a desired-state diff is computed from and a truncated page there becomes a deletion.
+
+Secrets carry the libsodium sealed box GitHub's API demands, which is why the value is a `Redacted<string>` rather than a plain one — the encryption lives in one module that only `RepositorySecret` imports, so a consumer that never writes a secret never links the crypto:
+
+```ts with-api
+import { GitHubClient, Repo, RepoRef, RepositorySecret } from "@effected/github";
+import { Effect, Layer, Redacted } from "effect";
+
+declare const npmToken: string;
+declare const deployKey: string;
+
+const program = Effect.gen(function* () {
+  const secrets = yield* RepositorySecret;
+
+  // Three stores on one repository, each with its own public key.
+  yield* secrets.set("NPM_TOKEN", Redacted.make(npmToken)); // "actions" by default
+  yield* secrets.setForEnvironment("production", "DEPLOY_KEY", Redacted.make(deployKey));
+
+  // Names only — GitHub returns a secret's value from no endpoint.
+  return yield* secrets.list("dependabot");
+});
+
+const ClientLayer = GitHubClient.layerFromConfig();
+const Live = Layer.mergeAll(
+  RepositorySecret.layer.pipe(Layer.provide(ClientLayer)),
+  Repo.layer(RepoRef.make({ owner: "acme", repo: "api" })),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(Live))).then(console.log);
+```
+
+That "names only" line has a consequence worth designing around: a diff against desired state can detect a secret that was *deleted*, and can never detect one that was *edited*. `actions`, `dependabot` and `codespaces` are the three [`SecretScope`](/github/api/type/secretscope) values, and `RepositoryVariable` mirrors the same six methods for the values that are not secret — its `set` lists first, because GitHub splits create and update across two routes.
+
+`Ruleset.upsert` carries the tier's sharpest landmine, and the reason its projection carries `source_type`:
+
+```ts with-api
+import { GitHubClient, Repo, RepoRef, Ruleset } from "@effected/github";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const rulesets = yield* Ruleset;
+
+  yield* rulesets.upsert({
+    name: "protect-main",
+    target: "branch",
+    enforcement: "active",
+    conditions: { ref_name: { include: ["refs/heads/main"], exclude: [] } },
+    rules: [{ type: "deletion" }, { type: "non_fast_forward" }],
+  });
+
+  // Every ruleset the repository sees — its own and the organization's.
+  return yield* rulesets.list();
+});
+
+const ClientLayer = GitHubClient.layerFromConfig();
+const Live = Layer.mergeAll(
+  Ruleset.layer.pipe(Layer.provide(ClientLayer)),
+  Repo.layer(RepoRef.make({ owner: "acme", repo: "api" })),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(Live))).then(console.log);
+```
+
+`upsert` matches an existing ruleset by name **and** `source_type`. `GET /repos/{owner}/{repo}/rulesets` returns the rulesets a repository *inherits* from its organization alongside its own, so matching on name alone would let a repository-scoped write `PUT` the organization's ruleset id — rewriting policy for every repository that organization owns. A ruleset also has no natural key on GitHub's side, only a numeric id assigned at creation, which means renaming one in your configuration creates a second rather than renaming the first; removing the orphan is your cleanup pass.
+
+The rest follow their endpoints' own grain. `DeploymentEnvironment.upsert` is a plain idempotent `PUT`, and its `delete` takes the environment's secrets and variables with it — which fixes the order of any cleanup. `RepositorySecurity` reads and writes the three toggles GitHub keeps off the repository endpoint. `CodeScanning.configure` applies a CodeQL default setup and returns as soon as GitHub accepts it: the endpoint answers `202` and configures asynchronously, and nothing here polls.
+
+[`GitHubRepository`](/github/api/class/githubrepository) owns the repository's own settings, and it is where `exactOptionalPropertyTypes` bites. octokit spells an optional field `has_issues?: boolean` rather than `has_issues?: boolean | undefined`, so a `Partial<T>` built from your own settings schema does not assign to it at all. [`repositoryPatch`](/github/api/function/repositorypatch) is the supported way out — it accepts a [`RepositoryPatchDraft`](/github/api/type/repositorypatchdraft) where every field may be an explicit `undefined`, and drops the undefined keys, because `PATCH` reads an absent field as "leave it alone" while an explicit `null` is a value:
+
+```ts with-api
+import { repositoryPatch } from "@effected/github";
+
+declare const config: { has_issues?: boolean | undefined; description?: string | undefined };
+
+// Build the draft as an object literal where you can — a key-by-key loop
+// defeats TypeScript's correlation between two indexed accesses.
+const patch = repositoryPatch({ has_issues: config.has_issues, description: config.description });
+```
+
+Above `updateSettings` sits `applySettings`, which takes an open map, routes each key to whichever API can actually set it — REST or GraphQL — and reports what it sent as an [`AppliedSettings`](/github/api/interface/appliedsettings) in your own key names. A map touching neither GraphQL-only setting never reads the node id, so the common case stays one request.
+
+## Authenticating as a GitHub App
+
+[`GitHubApp.clientLayer`](/github/api/class/githubapp) builds a `GitHubClient` authenticated as an app installation. The token's lifetime is the layer's scope: minted on build, **re-minted a minute before it expires**, and revoked on release, best-effort, so a workflow does not leave live credentials behind.
+
+```ts with-api
+import { GitHubApp, GitHubRepository } from "@effected/github";
+import { Effect, Layer, Redacted } from "effect";
+
+declare const privateKeyPem: string;
+
+// Bind once — layers memoize by reference, so two call sites build two clients.
+const AppClient = GitHubApp.clientLayer({
+  appId: "123456",
+  privateKey: Redacted.make(privateKeyPem),
+  owner: "acme", // discovers the installation; supplying installationId is cheaper
+});
+
+const Live = GitHubRepository.layer.pipe(Layer.provide(AppClient));
+
+const program = Effect.gen(function* () {
+  const repository = yield* GitHubRepository;
+  return yield* repository.defaultBranch;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(Live)));
+```
+
+Three properties matter in production. Installation **discovery** costs a JWT mint plus a paginated walk of `GET /app/installations`, so passing `installationId` instead of `owner` is strictly cheaper. A **PKCS#1** private key — the format github.com hands you — is converted to PKCS#8 automatically on Node; on a runtime without `node:crypto` it fails with an explicit `kind: "jwt"` error and the fix is to convert the key once with `openssl pkcs8 -topk8`. And a failure to obtain credentials surfaces to the caller as a `GitHubError` with `kind: "unauthorized"` carrying the [`GitHubAppError`](/github/api/class/githubapperror) as its cause, so it routes with every other client failure rather than needing its own arm.
+
+This module is also the **only** one in the package that imports a JWT signer, and a reachability test asserts it. That is why `clientLayer` lives on `GitHubApp` rather than as a third static on `GitHubClient`: statics on one class share one module, so putting it there would make every token-only consumer link the signer.
+
+## The typed escape hatch, and streaming a long walk
+
+A route outside GitHub's generated map — a pinned API version, an upload host — goes through `requestDecoded`, and the schema is **mandatory**. This is an escape hatch from the route table, never from typing: the payload still arrives decoded, and a shape mismatch fails as `kind: "decode"` rather than surfacing as a value nobody checked.
+
+```ts with-api
+import { GitHubClient } from "@effected/github";
+import { Effect, Schema } from "effect";
+
+const Attestations = Schema.Struct({
+  attestations: Schema.Array(Schema.Struct({ bundle_url: Schema.String })),
+});
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient;
+
+  return yield* client.requestDecoded(
+    "GET /repos/{owner}/{repo}/attestations/{subject_digest}",
+    {
+      owner: "acme",
+      repo: "api",
+      subject_digest: "sha256:abc123",
+      headers: { "x-github-api-version": "2022-11-28" },
+    },
+    Attestations,
+  );
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitHubClient.layerFromConfig()))).then(console.log);
+```
+
+`headers`, `mediaType` and `baseUrl` are the only three transport knobs the package accepts — octokit's own `RequestParameters` carries an index signature that would silently swallow every misspelled parameter, so [`RestExtras`](/github/api/interface/restextras) narrows it to the three that surveyed call sites genuinely need. One rule when you hand-write a route: **it owns its query parameters in the template**. Nothing outside the generated map tells octokit that `name` is a query parameter, so a template must spell `assets{?name}` or octokit drops it silently and GitHub answers 400.
+
+When the walk is long and the caller decides where to stop, `paginateStream` is lazy in requests — a downstream `Stream.take` stops the walk rather than filtering pages already fetched:
+
+```ts with-api
+import { GitHubClient, PageOptions } from "@effected/github";
+import { Effect, Stream } from "effect";
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient;
+
+  const firstFive = yield* client
+    .paginateStream("GET /repos/{owner}/{repo}/issues", { owner: "acme", repo: "api" }, PageOptions.all)
+    .pipe(
+      Stream.filter((issue) => issue.pull_request === undefined),
+      Stream.take(5),
+      Stream.runCollect,
+    );
+
+  return firstFive.length;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitHubClient.layerFromConfig()))).then(console.log);
+```
+
+## Edge cases and failure modes
+
+Everything reaches you on the typed `E` channel, and knowing which failure to expect is half the battle.
+
+**Nothing throttles on your behalf.** `client.rateLimit` reports what GitHub's headers said on the most recent response as a [`RateLimitSnapshot`](/github/api/class/ratelimitsnapshot) — `remaining`, `limit`, `millisUntilReset(now)` and `isExhausted`. It is observation, not policy. The client retries a `rateLimited` failure with GitHub's own advised delay; a caller that wants to *pace* itself proactively reads this and decides.
+
+**A sticky comment is a look-before-write, not a lock.** `PullRequestComment.upsert` and `GitHubIssue.commentOnce` both find the marked comment by paging the thread and matching the marker. Two runs racing the same issue can both observe no marker and both post. The guarantee is idempotence across *sequential* invocations — a re-run workflow, the motivating case — not mutual exclusion across concurrent ones. Treat the marker as the record rather than the check as a lock, and serialize externally if you need more.
+
+**`GitTag.latestSemver` means highest version, not most recent.** In a single-versioned repository those coincide. In a monorepo publishing independently versioned packages they are unrelated, and the failure is invisible: a stale-but-plausible tag comes back and never moves. Filter by the package's tag prefix so the comparison runs within one version line, or order by tagged-commit date instead.
+
+**Absence is an `Option`; a real failure is a `GitHubError`.** `GitBranch.shaOption`, `PullRequestComment.find` and `GitTag.latestSemver` all answer `Option.none()` for "not there", because a missing branch or an untagged repository is a normal state. A 404 that means "you cannot see this repository" is still a `GitHubError` with `kind: "notFound"` — the two are deliberately different channels.
+
+**Resource ids are `number`.** `@octokit/types` v17 spells them `number | bigint`; the package narrows once at the projection boundary, so the public surface stays `number` and no caller writes a cast.
+
+## Testing with @effect/vitest
+
+Two doubles cover two different questions, and reaching for the wrong one is the common mistake.
+
+When the subject is a **decision** — did the program conclude `neutral`, did it skip the comment — stub the resource. Every resource ships `layerTest(overrides?)`, and every member you did not stub **dies naming itself**, so the test proves it touched nothing it did not declare:
+
+```ts
+import { GitBranch, Repo, RepoRef } from "@effected/github";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Layer } from "effect";
+
+describe("release branch", () => {
+  const TestLayer = Layer.mergeAll(
+    GitBranch.layerTest({ upsert: () => Effect.succeed("created" as const) }),
+    Repo.layer(RepoRef.make({ owner: "acme", repo: "api" })),
+  );
+
+  it.effect("reports what it did", () =>
+    Effect.gen(function* () {
+      const branches = yield* GitBranch;
+      const outcome = yield* branches.upsert("release/1.2", "9f3d2a1");
+      assert.strictEqual(outcome, "created");
+    }).pipe(Effect.provide(TestLayer)));
+});
+```
+
+When the subject is an **endpoint** — what did the call send, how does a truncated page behave, what happens on a 422 — use [`GitHubClient.layerFixture`](/github/api/interface/githubfixtures) instead. It builds a page source over the recorded array and hands it to the same pagination engine the live client uses, so a paging path behaves identically under test and in production:
+
+```ts
+import { GitHubClient, GitHubError, Repo, RepoRef, Ruleset } from "@effected/github";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Layer } from "effect";
+
+describe("ruleset sync", () => {
+  it.effect("sends the ruleset it was given", () =>
+    Effect.gen(function* () {
+      const fixtures = {
+        request: {
+          // A recorded GitHubError *is* the response: this route fails with it.
+          "POST /repos/{owner}/{repo}/rulesets": GitHubError.notFound("Ruleset.upsert", "repo"),
+        },
+        paginate: { "GET /repos/{owner}/{repo}/rulesets": [] },
+        requested: [],
+      };
+
+      const TestLayer = Layer.mergeAll(
+        Ruleset.layer.pipe(Layer.provide(GitHubClient.layerFixture(fixtures))),
+        Repo.layer(RepoRef.make({ owner: "acme", repo: "api" })),
+      );
+
+      const rulesets = yield* Ruleset;
+      const error = yield* Effect.flip(
+        rulesets.upsert({ name: "protect-main", target: "branch", enforcement: "active" }),
+      );
+
+      assert.strictEqual(error.kind, "notFound");
+      // requested records every call's params — what a normalising write turns on.
+      assert.strictEqual(fixtures.requested.length, 2);
+    }).pipe(Effect.provide(Layer.empty)));
+});
+```
+
+Three contract details are worth knowing before you write against the fixture client. **An unstubbed route dies by default** — a missing fixture is test wiring rather than a domain outcome, and a typed failure would only be loud in code that does not catch; `unstubbed: "fail"` restores a typed not-found, and `"empty"` serves an empty value for a suite whose subject is decisions. **A recorded `GitHubError` value *is* the response**, which is how a suite stubs a 404, a 422 or a rate limit deliberately. And **`fixtures.requested` records every call** as a [`RecordedCall`](/github/api/interface/recordedcall) carrying the surface `kind`, the `route` (the document name for GraphQL), the `params`, and `perPage` for a paginated read.
+
+Assert with `assert.*`, never `expect`. The package's own suite drives the **real** client through octokit's documented `fetch` option rather than a double of its own service, which is why classification, header capture, retry and Link-following pagination are all genuinely exercised — the same seam is available to you through `GitHubClientOptions.fetch` when you want to test against canned HTTP responses.
+
+## Next steps
+
+- New to the package? Start with the [overview](/github) for the route-is-the-key model, or [Getting Started](/github/getting-started) for the first working program.
+- Every export, with full signatures, lives in the [API reference](/github/api). The types this guide leaned on: [`GitHubClient`](/github/api/class/githubclient) with its [`GitHubClientShape`](/github/api/interface/githubclientshape) and [`GitHubFixtures`](/github/api/interface/githubfixtures), [`Repo`](/github/api/class/repo) and [`RepoRef`](/github/api/class/reporef), [`CheckRun`](/github/api/class/checkrun) with [`CheckRunOutput`](/github/api/class/checkrunoutput), [`Ruleset`](/github/api/class/ruleset), [`RepositorySecret`](/github/api/class/repositorysecret), [`GitHubRepository`](/github/api/class/githubrepository) with [`repositoryPatch`](/github/api/function/repositorypatch), [`GitHubApp`](/github/api/class/githubapp), [`RetryPolicy`](/github/api/class/retrypolicy) and [`GitHubError`](/github/api/class/githuberror).

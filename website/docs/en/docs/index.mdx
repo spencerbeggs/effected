@@ -14,9 +14,11 @@ place by being something one of those five actually needs.
 
 ## How this ships
 
-Every package below is on npm, including [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) — it is not a
-library, so the tier taxonomy does not describe it, but it is a public package and it publishes like the
-rest. Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA.
+The kit is **31 publishable packages**: 30 libraries plus one companion. All of them are on npm except
+[@effected/schema-org](/schema-org), which is built and documented but has not cut its first release yet.
+[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) is the companion — it is not a library, so the tier
+taxonomy does not describe it, but it is a public package and it publishes like the rest. Everything is
+`0.x` and unstable; `1.0.0` waits for Effect v4 GA.
 
 Releases are changeset-driven. CI releases whatever the pending changesets name, which is sometimes the
 whole kit and sometimes one package on its own — both are ordinary, and versions move per package rather
@@ -65,6 +67,9 @@ optional for the kit, since it is what holds a consumer's versions where the lib
 | [@effected/markdown](/markdown) | pure | CommonMark 0.31.2 and GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format and project to and from mdast |
 | [@effected/glob](/glob) | pure | Full-fidelity glob matching as Effect schemas: the complete minimatch dialect compiled to pure string predicates |
 | [@effected/spdx](/spdx) | pure | SPDX license identifiers, exceptions and license expressions as Effect Schema classes |
+| [@effected/schema-org](/schema-org) | pure | The schema.org vocabulary as Schema classes, with a `JsonLdDocument` assembler, a script-safe serializer and offline conformance validation |
+| [@effected/github-references](/github-references) | pure | GitHub's issue-reference grammar as pure functions, across all three dialects |
+| [@effected/memfs](/memfs) | pure | A virtual POSIX volume behind core's `FileSystem` key — the kit's filesystem test double, with fault injection |
 | [@effected/lockfiles](/lockfiles) | pure | Lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests |
 | [@effected/package-json](/package-json) | boundary | package.json parsing, editing, validation and file IO as Effect schemas |
 | [@effected/tsconfig-json](/tsconfig-json) | boundary | tsconfig.json as Effect schemas: JSONC document and compiler-option schemas, tsc-parity `extends`-chain resolution and nearest-config discovery |
@@ -77,6 +82,7 @@ optional for the kit, since it is what holds a consumer's versions where the lib
 | [@effected/templates](/templates) | boundary | Managed-section blocks in user-editable files: parse, reconcile, sync and check delimited regions |
 | [@effected/jsonl](/jsonl) | boundary | Append-only, schema-validated JSONL journals as a definable Effect service |
 | [@effected/runtimes](/runtimes) | boundary | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
+| [@effected/cli](/cli) | boundary | The CLI boundary: a plain-line logger, a runtime that reports failures through the program's own logger and sets the exit code, and the issue renderers |
 | [@effected/store](/store) | integrated | Durable local state on SQLite: a schema-versioned migrated store and a TTL cache with eviction, over one shared migration ledger |
 | [@effected/workspaces](/workspaces) | integrated | Monorepo tooling: discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
 | [@effected/github](/github) | integrated | Typed GitHub REST and GraphQL services over the octokit core request surface, with app auth and resource helpers |

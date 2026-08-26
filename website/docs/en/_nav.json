@@ -8,7 +8,7 @@
 	{
 		"text": "Packages",
 		"link": "/packages",
-		"activeMatch": "^/(packages|app|config-file|glob|jsonc|lockfiles|npm|package-json|pnpm-plugin-effect|runtimes|semver|store|toml|walker|workspaces|xdg|yaml)(/(.*)?)?$",
+		"activeMatch": "^/(pnpm-plugin-effect|github-references|github-actions|tsconfig-json|package-json|config-file|schemastore|schema-org|workspaces|lockfiles|templates|commands|markdown|packages|runtimes|github|semver|walker|jsonc|jsonl|memfs|store|glob|sbom|spdx|toml|yaml|app|cli|git|npm|xdg)(/(.*)?)?$",
 		"position": "right",
 		"items": [
 			{
@@ -17,9 +17,39 @@
 				"activeMatch": "^/app/?$"
 			},
 			{
+				"text": "@effected/cli",
+				"link": "/cli",
+				"activeMatch": "^/cli/?$"
+			},
+			{
+				"text": "@effected/commands",
+				"link": "/commands",
+				"activeMatch": "^/commands/?$"
+			},
+			{
 				"text": "@effected/config-file",
 				"link": "/config-file",
 				"activeMatch": "^/config-file/?$"
+			},
+			{
+				"text": "@effected/git",
+				"link": "/git",
+				"activeMatch": "^/git/?$"
+			},
+			{
+				"text": "@effected/github",
+				"link": "/github",
+				"activeMatch": "^/github/?$"
+			},
+			{
+				"text": "@effected/github-actions",
+				"link": "/github-actions",
+				"activeMatch": "^/github-actions/?$"
+			},
+			{
+				"text": "@effected/github-references",
+				"link": "/github-references",
+				"activeMatch": "^/github-references/?$"
 			},
 			{
 				"text": "@effected/glob",
@@ -32,9 +62,24 @@
 				"activeMatch": "^/jsonc/?$"
 			},
 			{
+				"text": "@effected/jsonl",
+				"link": "/jsonl",
+				"activeMatch": "^/jsonl/?$"
+			},
+			{
 				"text": "@effected/lockfiles",
 				"link": "/lockfiles",
 				"activeMatch": "^/lockfiles/?$"
+			},
+			{
+				"text": "@effected/markdown",
+				"link": "/markdown",
+				"activeMatch": "^/markdown/?$"
+			},
+			{
+				"text": "@effected/memfs",
+				"link": "/memfs",
+				"activeMatch": "^/memfs/?$"
 			},
 			{
 				"text": "@effected/npm",
@@ -57,9 +102,29 @@
 				"activeMatch": "^/runtimes/?$"
 			},
 			{
+				"text": "@effected/sbom",
+				"link": "/sbom",
+				"activeMatch": "^/sbom/?$"
+			},
+			{
+				"text": "@effected/schema-org",
+				"link": "/schema-org",
+				"activeMatch": "^/schema-org/?$"
+			},
+			{
+				"text": "@effected/schemastore",
+				"link": "/schemastore",
+				"activeMatch": "^/schemastore/?$"
+			},
+			{
 				"text": "@effected/semver",
 				"link": "/semver",
 				"activeMatch": "^/semver/?$"
+			},
+			{
+				"text": "@effected/spdx",
+				"link": "/spdx",
+				"activeMatch": "^/spdx/?$"
 			},
 			{
 				"text": "@effected/store",
@@ -67,9 +132,19 @@
 				"activeMatch": "^/store/?$"
 			},
 			{
+				"text": "@effected/templates",
+				"link": "/templates",
+				"activeMatch": "^/templates/?$"
+			},
+			{
 				"text": "@effected/toml",
 				"link": "/toml",
 				"activeMatch": "^/toml/?$"
+			},
+			{
+				"text": "@effected/tsconfig-json",
+				"link": "/tsconfig-json",
+				"activeMatch": "^/tsconfig-json/?$"
 			},
 			{
 				"text": "@effected/walker",

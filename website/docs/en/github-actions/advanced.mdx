@@ -1,0 +1,203 @@
+---
+title: Advanced
+description: Compose @effected/github-actions into a real action — take the heavy protocols one layer at a time, attest a build with the runner's OIDC claims, report onto a pull request without clobbering a human, and test every service through its double.
+---
+
+# Advanced
+
+## An action that has to do more than echo a string
+
+Picture the job this package was built for. A release action runs in three phases: `pre` mints a GitHub App token, `main` restores a dependency cache, builds, publishes, attests the artifact with the runner's OIDC identity and keeps a sticky pull request comment up to date as each check resolves, and `post` revokes the token. Every one of those steps talks to the runner over a different protocol — runner files, Twirp v2, the OIDC token service, `::add-mask::` — and every one of them can fail in a way the workflow log has to explain.
+
+This guide covers the four capabilities that job leans on beyond the basics: taking a heavy service without paying for it everywhere, attesting a build from the runner's own identity, reporting onto a GitHub surface a human also edits, and testing the whole thing. It assumes the input/output/state workflow from the [getting started guide](/github-actions/getting-started).
+
+## How it composes with Effect
+
+[`ActionRuntime.layer`](/github-actions/api/class/actionruntime) is a bound constant, not a factory, and that is deliberate: layers memoize by reference, so a factory would rebuild the environment snapshot at every composition site. It merges the runner services — environment, logger, outputs, state — over `NodeServices.layer` and a `FetchHttpClient`, and it installs two things a caller would otherwise have to remember. The first is the workflow-command `Logger`, which renders every `Effect.log*` as an `::debug::`/`::notice::`/`::warning::`/`::error::` command. The second is an `INPUT_`-aware `ConfigProvider`: the runner publishes `INPUT_DRY_RUN`, so a bare `Config.boolean("dry-run")` finds nothing and silently takes its default. That provider tries the runner's derivation first and falls back to the ambient lookup unchanged.
+
+Everything heavier composes on top, one line at a time. [`ActionCache`](/github-actions/api/class/actioncache), [`Artifact`](/github-actions/api/class/artifact) and [`BlobStore`](/github-actions/api/class/blobstore) are the only modules that import `@azure/storage-blob`, and none of them is in the default runtime — so an action that merely sets an output does not link a blob-storage client. Their requirements are all satisfied by `ActionRuntime.layer`, which is what makes `{ layer: ActionCache.layer }` compile with no further wiring.
+
+The [`ActionRunOptions.layer`](/github-actions/api/interface/actionrunoptions) field takes a `Layer<R, never, ActionServices>` — note the `never`. A layer that reads a `Config` during construction, like [`DryRun.layer`](/github-actions/api/class/dryrun), carries a `ConfigError` and does not fit until you say what a malformed value means. Sink it with `Layer.orDie` when a bad `dry-run:` value should abort the run as a defect, or reach for `DryRun.layerFrom(enabled)` when the decision is already made:
+
+```ts with-api
+import { Action, DryRun } from "@effected/github-actions";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const dryRun = yield* DryRun;
+  // Every mutation goes through the guard: the fallback is what a rehearsal
+  // answers with, and the effect runs only for real.
+  return yield* dryRun.guard("publish", Effect.succeed("published"), "would publish");
+});
+
+await Action.run(program, { layer: Layer.orDie(DryRun.layer) });
+```
+
+`DryRun.guard(label, effect, fallback)` is the rehearsal seam every mutation passes through, and the label is what the log shows when the run is rehearsing. Because the fallback has the same type as the effect's success, a rehearsal cannot change the shape of the program downstream — only its consequences.
+
+## Cache keys are a value, not a string
+
+A restore key is a **prefix match**, and that single fact is behind the sharpest edge in the cache API. [`CacheKey`](/github-actions/api/class/cachekey) models the key and its ladder together so the prefix reasoning happens once, here, rather than at every call site:
+
+```ts with-api
+import { CacheKey } from "@effected/github-actions";
+
+const ordinary = CacheKey.of("Linux", "pnpm-store", "abc123");
+console.log(ordinary.key, ordinary.restoreKeys);
+// "Linux-pnpm-store-abc123" ["Linux-pnpm-store-", "Linux-"]
+
+const busted = ordinary.withNamespace("bust7");
+console.log(busted.key, busted.restoreKeys);
+// "bust7-Linux-pnpm-store-abc123" []
+```
+
+`withNamespace` puts its segment **first** and **drops the ladder**, and both halves are load-bearing. Segment-first means the namespaced key shares no prefix with an unnamespaced one, so an ordinary run's rungs cannot prefix-match a busted entry — folding the bust token in later would leave exactly that hole. Dropping the ladder means no rung reaches outside the namespace even when the segment happens to equal an ordinary leading segment. It is a safe default rather than a prohibition: follow with `withRestoreDepths([4, 3])` for a deliberate in-namespace ladder, where each depth is the number of leading segments that rung keeps and the order is the policy.
+
+The default every-prefix ladder is wrong for a key whose later segments must never be dropped alone. A `platform-arch-versionHash-branchHash-lockHash` key derives rungs without the version digest, and those resurrect stale cross-version caches — give that key an explicit ladder.
+
+One protocol detail matters when you write `save` and `restore` calls that must agree: the entry **version** is a digest of the *literal* pattern list, byte-compatible with `actions/cache`. `save` resolves globs to decide what to archive; `restore` does not, and does not need to — the archive already names its contents. Hand both calls the same literal list, or the restore looks for an entry the save never wrote.
+
+## Attest a build with the runner's own identity
+
+[`OidcTokenIssuer`](/github-actions/api/class/oidctokenissuer) reaches the runner's token service and decodes the claims without verifying the signature — deliberately. The token arrived over TLS from the runner's own token service, so the transport is the trust boundary, and nothing here branches on the claims for authorization. [`ActionsProvenance.capture`](/github-actions/api/class/actionsprovenance) turns those claims into an [`@effected/sbom`](/sbom) SLSA provenance predicate:
+
+```ts with-api
+import { Action, ActionsProvenance, OidcTokenIssuer } from "@effected/github-actions";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const provenance = yield* ActionsProvenance.capture();
+  // Derived from the workflow ref in the runner's own claims — not from
+  // anything the workflow could have passed in.
+  yield* Effect.log(`attested by ${provenance.runDetails.builder.id}`);
+});
+
+await Action.run(program, { layer: OidcTokenIssuer.layer });
+```
+
+`capture` owns the claims rename in exactly one place, and that is the point: eleven all-string fields, where a transposition typechecks and signs the wrong provenance. An [`OidcTokenError`](/github-actions/api/class/oidctokenerror) passes through untouched — not caught, not defaulted — because whether an unattested publish is allowed is the action's policy, not this package's. A `reason` of `"unavailable"` almost always means the workflow is missing `permissions: id-token: write`.
+
+The inverse direction is [`ActionsIdentityToken`](/github-actions/api/class/actionsidentitytoken). `@effected/sbom` must not depend on the Actions runtime — an SBOM emitter has no business linking a runner client — so the adapter that closes its narrow `IdentityToken` contract lives here, and a signer composes it as a layer.
+
+## Report onto a surface a human also edits
+
+[`GitHubMarkdown`](/github-actions/api/class/githubmarkdown) writes the body. Every member takes pre-rendered markdown and returns a string, but the structure around it goes through `@effected/markdown`'s serializer rather than string joining — so a cell carrying `>=1 || <2` escapes its pipes instead of shifting every column after it. `tableFor` goes further and takes the table's whole shape from a row schema:
+
+```ts with-api
+import { GitHubMarkdown } from "@effected/github-actions";
+import { Schema } from "effect";
+
+const Row = Schema.Struct({
+  name: Schema.String.annotate({ title: "Check" }),
+  outcome: Schema.String,
+});
+
+console.log(GitHubMarkdown.tableFor(Row).render([{ name: "build", outcome: "clean" }]));
+// | Check | outcome |
+// | --- | --- |
+// | build | clean |
+```
+
+Column order is field declaration order, each header is the field's `title` annotation, and each cell is the field's encoded form — so a typed field projects through its own codec, and a row cannot transpose columns because it is an object rather than a positional array.
+
+[`ManagedDocument`](/github-actions/api/class/manageddocument) owns the placement. A sentinel HTML comment identifies the document, marker comments delimit each named region, and everything outside them survives byte-for-byte — which is what makes a sticky comment safe to re-render under a human's edits. Regions are replaced from current state rather than appended, so applying the same region twice yields one region carrying the latest content:
+
+```ts with-api
+import { ManagedDocument } from "@effected/github-actions";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  // Create-or-update in one call: absent, empty and sentinel-free text are all
+  // legal starting points, so the caller never branches on "does it exist yet".
+  const doc = yield* ManagedDocument.parse({
+    namespace: "release-bot",
+    key: "checks",
+    text: "A human wrote this line, and it survives.",
+  });
+
+  const next = yield* doc.withRegions([
+    ["header", "## Validating release"],
+    ["footer", "_generated by release-bot_"],
+  ]);
+
+  return next.text;
+});
+```
+
+A region can also carry metadata: pass `[key, content, meta]` triples, and `entry(key)` reads the pairs back verbatim. Metadata rides the region's own marker, survives a writer that knows nothing about it, and **never takes part in addressing a region** — changing it updates that region in place rather than growing a second one.
+
+[`CheckDocument`](/github-actions/api/class/checkdocument) puts a debounced reconciler on top. Report a check as its state changes and a background fiber projects the registry onto the document, writing it through a narrow sink. The debounce is trailing with a max-wait, so a burst of reports coalesces into one write carrying the *final* state while a steady stream still surfaces progress:
+
+```ts with-api
+import { CheckDocument, CheckReport } from "@effected/github-actions";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const doc = yield* CheckDocument;
+  yield* doc.report("build", CheckReport.make({ state: "running" }));
+  yield* doc.report("build", CheckReport.make({ state: "pass", outcome: "clean" }));
+  return yield* doc.flush;
+});
+// "written"   — one write carrying the final state
+// "unchanged" — the render was byte-identical, so nothing was sent
+// "stale"     — a newer run owns the document; this pass was dropped
+```
+
+That third outcome is how two runs share one document — a re-run overlapping the delayed run it replaced. Give [`CheckDocument.layer`](/github-actions/api/interface/checkdocumentoptions) this run's `stamp` (`{ at, runId }`) and a sink that can `read` as well as `write`, and each pass reconciles against the live document instead of a private shadow of what this process last wrote. A pass whose stamp is strictly older than the newest stamp already on the document is dropped rather than written, and the reconciler logs the drop once, at the transition. Equal stamps pass, so a run may always refine its own regions — which is exactly why the stamp must be a **per-run constant** minted once at startup. A stamp that changes per pass would defeat write suppression: the same run rendering the same state would no longer produce byte-identical text.
+
+[`CheckState`](/github-actions/api/type/checkstate) is the vocabulary both surfaces speak, and it is deliberately wider than GitHub's conclusion set: `running` is a state rather than the absence of one, and `user_interaction_required` names a pipeline waiting on a human. [`projectCheckState`](/github-actions/api/function/projectcheckstate) maps each onto the wire form GitHub wants — a status, plus a conclusion exactly when the status is `completed`.
+
+## Edge cases and failure modes
+
+**Every failure is typed, and four of them are unions.** [`ActionOutputError`](/github-actions/api/type/actionoutputerror), [`BlobEnvelopeError`](/github-actions/api/type/blobenvelopeerror), [`CacheKeyError`](/github-actions/api/type/cachekeyerror) and [`DetachedProcessError`](/github-actions/api/type/detachedprocesserror) are type aliases over one error class per reason. Code that branched on `error.reason` matches on `_tag` instead, which is what buys the split: `Effect.catchTag` recovers from one reason and leaves the rest in the error channel.
+
+**A detached worker inverts the masking model.** Masking works because the runner parses *this* process's stdout. A detached child's stdout is a log file no runner reads, so a mask emitted inside the worker is inert and writes plaintext into that log. The rule: the parent masks, **before** the spawn, with `Secret.forChildEnv`; the worker composes `ActionOutputs.layerDetached`, whose `setSecret` is a documented no-op, so the same code cannot re-leak what the parent already masked.
+
+**Prepend to `PATH` through [`ChildEnv`](/github-actions/api/class/childenv), never a bare `env`.** Handing a child a fresh `env` object replaces its whole environment rather than extending it; `ChildEnv.prependPath` is the member that gets this right.
+
+**[`DetachedProcess`](/github-actions/api/class/detachedprocess)`.reap` guards its pid.** It takes a plain `number` and rejects `0`, because `process.kill(0, ...)` signals the entire process group — the guard is the API, not a formality.
+
+**A partial tool is never a cache hit.** [`ToolInstaller`](/github-actions/api/class/toolinstaller) stages a download under the cache root and *renames* into place, so an interrupted install leaves nothing a later run would mistake for a complete one. [`ToolInstallerError`](/github-actions/api/class/toolinstallererror) always names its `subject`.
+
+**The results backend only exists inside a `uses:` step.** `ActionCache` and `Artifact` need the runner-injected results endpoint; running the same code in a `run:` step reports `misconfigured` and **names the variable** that was missing, rather than failing with a bare transport error.
+
+**`GitHubToken.read` fails typed on expiry.** An installation token lives about an hour, and the credential that could mint a fresh one is the app's private key — which never reaches `GITHUB_STATE`, because persisting it through a plaintext runner file would trade a one-hour token for a permanent one. Expiry is a typed failure, not a token GitHub will answer with a bare 401.
+
+## Testing with @effect/vitest
+
+Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`. Unstubbed members die loudly and name themselves, so a test can only exercise what it deliberately wired — with three recorded exceptions that default instead: `ActionEnvironment.makeTest` seeds the twelve `GITHUB_*`/`RUNNER_*` variables, `ActionLogger.makeTest` is silent, and `DryRun.makeTest` rehearses, the safe direction.
+
+```ts
+import { ActionEnvironment, ActionOutputs, DryRun } from "@effected/github-actions";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Layer, Ref } from "effect";
+
+describe("greet action", () => {
+  it.effect("sets the greeting output", () =>
+    Effect.gen(function* () {
+      const recorded = yield* Ref.make<Array<readonly [string, string]>>([]);
+
+      const TestLayer = Layer.mergeAll(
+        ActionEnvironment.layerTest({ GITHUB_EVENT_NAME: "pull_request" }, { pull_request: { number: 42 } }),
+        ActionOutputs.layerTest({
+          set: (name, value) => Ref.update(recorded, (all) => [...all, [name, value] as const]),
+        }),
+        DryRun.layerFrom(false),
+      );
+
+      yield* Effect.gen(function* () {
+        const outputs = yield* ActionOutputs;
+        yield* outputs.set("greeting", "Hello, world!");
+      }).pipe(Effect.provide(TestLayer));
+
+      assert.deepStrictEqual(yield* Ref.get(recorded), [["greeting", "Hello, world!"]]);
+    }));
+});
+```
+
+`ActionEnvironment.layerTest` takes the webhook event payload as an optional second argument and serves it directly, instead of routing it through a `GITHUB_EVENT_PATH` filesystem read that a stubbed filesystem could never satisfy. Two more doubles are real rather than synthetic on purpose: `OidcTokenIssuer.layerFor(claims)` returns a genuinely decodable unsigned JWT built from the same claims `claims()` reports, and `BlobStore.layerMemory` runs the real envelope framing — both exist because a synthetic double once made the provenance path structurally untestable.
+
+## Next steps
+
+- New to the package? Start with the [overview](/github-actions) or the [getting started guide](/github-actions/getting-started).
+- Every export, with full signatures, lives in the [API reference](/github-actions/api). The types this guide leaned on: [`ActionRuntime`](/github-actions/api/class/actionruntime) and [`ActionRunOptions`](/github-actions/api/interface/actionrunoptions), [`ActionCache`](/github-actions/api/class/actioncache) with [`CacheKey`](/github-actions/api/class/cachekey), [`OidcTokenIssuer`](/github-actions/api/class/oidctokenissuer) and [`ActionsProvenance`](/github-actions/api/class/actionsprovenance), [`GitHubMarkdown`](/github-actions/api/class/githubmarkdown), [`ManagedDocument`](/github-actions/api/class/manageddocument), [`CheckDocument`](/github-actions/api/class/checkdocument) with [`CheckReport`](/github-actions/api/class/checkreport), [`GitHubToken`](/github-actions/api/class/githubtoken), [`ToolInstaller`](/github-actions/api/class/toolinstaller) and [`DetachedProcess`](/github-actions/api/class/detachedprocess).

@@ -1,0 +1,142 @@
+---
+title: Packages
+description: The 31 packages of the effected kit — 30 Effect v4 libraries plus one pnpm companion — grouped by the runtime cost of depending on them.
+---
+
+# Packages
+
+The kit is **31 publishable packages**: 30 libraries and one companion. They are not a grab bag of
+utilities that happened to end up in the same repo. Scope is closed by five consuming applications, and a
+library earns its place by being something one of those five actually needs — which is why there is a TOML
+parser and a SPDX expression evaluator here, and no HTTP client or ORM.
+
+Everything is designed for [Effect](https://effect.website/) v4 from the start rather than lifted from a v3
+predecessor. In practice that means the same few shapes recur: a parser is a `Schema` rather than a
+function that throws, a capability that needs the outside world is a `Context.Service` you provide a layer
+for, and every failure a caller might reasonably handle is a tagged error on the typed `E` channel instead
+of an exception. Learn those shapes once and the rest of the kit reads the same way.
+
+Every package below has an overview, a getting-started guide, an advanced guide and a generated API
+reference. If you are new here, [@effected/semver](/semver) is the one to read first — it is the repo's DX
+north star, and the conventions the other thirty follow all started there.
+
+## Start from what you are trying to do
+
+| If you need to… | Reach for |
+| --------------- | --------- |
+| Parse, edit or format a config format | [jsonc](/jsonc), [yaml](/yaml), [toml](/toml), [markdown](/markdown) |
+| Load a config file wherever it happens to live | [config-file](/config-file), [xdg](/xdg), [walker](/walker) |
+| Reason about version numbers or ranges | [semver](/semver), [runtimes](/runtimes) |
+| Read or validate a `package.json` / `tsconfig.json` | [package-json](/package-json), [tsconfig-json](/tsconfig-json) |
+| Understand a monorepo — graph, catalogs, lockfiles | [workspaces](/workspaces), [lockfiles](/lockfiles), [npm](/npm) |
+| Match paths against globs | [glob](/glob) |
+| Shell out to a tool, or find one on `PATH` | [commands](/commands), [git](/git) |
+| Talk to the GitHub API | [github](/github), [github-references](/github-references) |
+| Build a GitHub Action | [github-actions](/github-actions), [sbom](/sbom) |
+| Ship a CLI | [cli](/cli), [app](/app) |
+| Keep durable local state or a cache | [store](/store), [app](/app) |
+| Write to files a human also edits | [templates](/templates) |
+| Keep an append-only event log | [jsonl](/jsonl) |
+| Publish or consume JSON Schema documents | [schemastore](/schemastore), [schema-org](/schema-org) |
+| Check a license expression | [spdx](/spdx) |
+| Test code that touches the filesystem | [memfs](/memfs) |
+| Pin every version this kit was tested against | [pnpm-plugin-effect](/pnpm-plugin-effect) |
+
+## How to read a tier
+
+Every **library** declares a tier. The tier is a statement about the package's *dependency surface* — what
+depending on it drags into your install — not about whether it performs IO.
+
+* **pure** — peers on `effect`, takes only `@effected/*` edges, and does no IO. Safe anywhere, including a
+  bundle that has to stay small. A package with no IO still vendors its engine rather than take a runtime
+  dependency, which is why [glob](/glob) is pure despite carrying a full ported matcher.
+* **boundary** — the same dependency surface, but it does IO through Effect core's `FileSystem`, `Path` and
+  `ChildProcessSpawner` services. It *requires* those in `R` and never provides a backend, so you decide at
+  the edge of your program whether it talks to a real disk or to [memfs](/memfs).
+* **integrated** — imports at least one runtime package outside `effect` core. This is the tier that costs
+  you something at install time, and each one earns it: SQLite for [store](/store), octokit for
+  [github](/github), ajv for [schemastore](/schemastore).
+
+A **companion** is published and installable but is not a library: it exposes no API, so there is nothing
+to import. Companion is a category rather than a fourth tier — the three tiers sit on one axis, dependency
+surface, and that axis is meaningless for a package nothing can depend on.
+
+## Pure
+
+No IO, no runtime dependencies beyond `effect` itself.
+
+| Package | Description |
+| ------- | ----------- |
+| [@effected/semver](/semver) | Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas — the repo's DX north star |
+| [@effected/jsonc](/jsonc) | Zero-dependency JSONC parsing, editing and formatting as Effect schemas |
+| [@effected/yaml](/yaml) | Zero-dependency YAML 1.2 parse, edit and format with per-node comment fidelity, a public token stream, and a yamllint-class lint system with autofix |
+| [@effected/toml](/toml) | TOML parsing, editing and formatting on a from-scratch engine, with typed diagnostics, a lossless CST and first-class date-time values |
+| [@effected/markdown](/markdown) | CommonMark 0.31.2 and GFM as pure schemas: mdast-shaped nodes with byte offsets, editing, formatting, mdast projection and frontmatter codecs |
+| [@effected/glob](/glob) | The full minimatch dialect compiled to pure string predicates, on a vendored and hardened engine |
+| [@effected/spdx](/spdx) | SPDX license identifiers, exceptions and license expressions as Schema classes |
+| [@effected/schema-org](/schema-org) | The schema.org vocabulary as Schema classes, with a `JsonLdDocument` assembler, a script-safe serializer and offline conformance validation |
+| [@effected/github-references](/github-references) | GitHub's issue-reference grammar as pure functions, across all three dialects |
+| [@effected/memfs](/memfs) | A virtual POSIX volume behind core's `FileSystem` key — the kit's filesystem test double, with fault injection |
+| [@effected/lockfiles](/lockfiles) | bun, npm, pnpm and yarn Berry lockfiles normalized into one model, plus pure integrity checking against workspace manifests |
+
+## Boundary
+
+IO through Effect core's service contracts, required in `R` and never provided for you.
+
+| Package | Description |
+| ------- | ----------- |
+| [@effected/package-json](/package-json) | `package.json` schemas, validation and file IO |
+| [@effected/tsconfig-json](/tsconfig-json) | `tsconfig.json` schemas, tsc-parity `extends`-chain resolution and nearest-config discovery |
+| [@effected/config-file](/config-file) | Composable config loading: codec × resolver × strategy, with the JSON, JSONC, YAML and TOML codecs as free-standing named exports |
+| [@effected/npm](/npm) | Resolution contracts for `catalog:` and `workspace:` specifiers, plus the registry-read, tarball and publish services |
+| [@effected/walker](/walker) | Upward path traversal: ascend a directory chain and return the first candidate satisfying a predicate |
+| [@effected/xdg](/xdg) | XDG Base Directory resolution — app directories, native directories and config-file resolvers |
+| [@effected/commands](/commands) | Structured command running and CLI tool discovery over core's `ChildProcessSpawner` contract |
+| [@effected/git](/git) | Typed git introspection with a clearly-marked mutating tier, a pure config core, and argv redaction on every error |
+| [@effected/templates](/templates) | Managed `BEGIN`/`END` sections in files whose surrounding content belongs to the user |
+| [@effected/jsonl](/jsonl) | Append-only, schema-validated JSONL journals as a definable service, with filtered reads that never materialize the file |
+| [@effected/runtimes](/runtimes) | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
+| [@effected/cli](/cli) | The CLI boundary: a plain-line logger, a runtime that reports failures through the program's own logger and sets the exit code, and the issue renderers |
+
+[@effected/cli](/cli) is deliberately **not** a CLI framework. Argument parsing belongs to
+`effect/unstable/cli` in core; this package only owns the edge where a program becomes a process.
+
+## Integrated
+
+Carries at least one runtime dependency outside `effect` core.
+
+| Package | Description |
+| ------- | ----------- |
+| [@effected/store](/store) | Durable local state on SQLite: a schema-versioned migrated store and a TTL cache with tag invalidation and eviction, over one shared migration ledger |
+| [@effected/workspaces](/workspaces) | Monorepo tooling — discovery, the dependency graph, package-manager detection, pnpm catalogs, lockfile IO and git change detection |
+| [@effected/github](/github) | Typed GitHub REST and GraphQL over octokit, with App auth, the resource services and the configuration-write half |
+| [@effected/github-actions](/github-actions) | The GitHub Actions runtime: env, inputs, outputs, state, logging, cache, artifacts, blob storage, OIDC and the token bridge |
+| [@effected/sbom](/sbom) | Supply-chain artifacts: CycloneDX 1.6 SBOMs, the NTIA minimum-elements report, in-toto statements, SLSA provenance and Sigstore DSSE signing |
+| [@effected/schemastore](/schemastore) | Effect Schemas published as SchemaStore-shaped Draft-07 documents, with catalog modes, `fileMatch` lint, diffing and write-if-changed IO |
+| [@effected/app](/app) | The application control plane: one layer wiring XDG-namespaced directories, a migrated SQLite store, a TTL cache and a config file to the same place |
+
+[@effected/app](/app) sits at the top of the graph on purpose. It is the composition the earlier ports were
+building toward, and nothing else in the kit may depend on it.
+
+## Companion
+
+| Package | Description |
+| ------- | ----------- |
+| [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | The pnpm config dependency publishing the Effect catalogs every package here pins against, plus the `effected` catalogs naming the packages themselves |
+
+Installing it holds your `effect` versions, your `@effected/*` versions and both sets of peer floors at
+exactly the values this kit was built and tested against, rather than leaving you to resolve your own.
+
+## Versions and stability
+
+Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 31 packages are on npm except
+[@effected/schema-org](/schema-org), which is built and documented but has not cut its first release.
+
+Releases are changeset-driven, so versions move per package rather than in lockstep — a release is
+sometimes the whole kit and sometimes a single package, and both are ordinary. Each package's npm page is
+the source of truth for the version to install. What *is* coordinated is the Effect pin: every package is
+built against the single beta named in the `effect` catalog, so peer ranges agree with each other.
+
+For the project's own framing — how it is organized, how releases are cut, and what comes next — see the
+[documentation overview](/docs). The source lives at
+[spencerbeggs/effected](https://github.com/spencerbeggs/effected).

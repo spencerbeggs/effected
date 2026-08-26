@@ -1,0 +1,120 @@
+---
+title: "@effected/schema-org"
+description: "schema.org vocabulary as Effect Schema classes, with a script-safe JSON-LD serializer and offline conformance validation."
+---
+
+# @effected/schema-org
+
+schema.org as Effect Schema classes: build a JSON-LD graph out of typed nodes, cross-reference them by `@id`, serialize it safely into a `<script>` element, and check it against schema.org's own vocabulary offline. Six node types plus an open catch-all cover the structured data a documentation site or a package page actually emits, and the vocabulary ships vendored, so nothing here touches the network.
+
+## Why @effected/schema-org
+
+Structured data is usually assembled as an object literal and dropped into a template with `JSON.stringify`, which gets two things wrong at once.
+
+The first is a security bug. `JSON.stringify` does not escape `<`, so a single description containing the literal `</script>` closes the JSON-LD block early and injects whatever follows into the page. Every string in a graph comes from prose someone wrote — a summary, a headline, a TSDoc comment — so this is not an exotic input.
+
+The second is quieter. schema.org has a vocabulary; your object literal does not. A plausible-looking property that schema.org does not define on that type is silently ignored by every consumer downstream, with no error anywhere. `softwareVersion` on a `SoftwareSourceCode` is the canonical case: it reads correct, it serializes fine, and it does nothing. (The property is `version`.)
+
+This package fixes both at their source. [`toScriptBody()`](/schema-org/api/class/jsonlddocument) is the *only* text serializer and it is the escaped one, so the injection case cannot be reached by choosing the wrong function. The vocabulary is compiled in as TypeScript, so a build step rejects a misplaced property offline, in CI, with no network call and no crawler round trip.
+
+## Install
+
+```bash
+npm install @effected/schema-org effect
+```
+
+```bash
+pnpm add @effected/schema-org effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own and does no IO — the vocabulary is a compiled TypeScript literal, never a file read.
+
+## Quick start
+
+Assemble nodes into a graph, then serialize it:
+
+```ts with-api
+import { JsonLdDocument, NodeRef, SoftwareSourceCode, TechArticle } from "@effected/schema-org";
+import { Result } from "effect";
+
+const built = JsonLdDocument.buildResult([
+  SoftwareSourceCode.make({
+    "@id": "https://example.com/pkg#source",
+    name: "example",
+    version: "1.2.3",
+    codeRepository: "https://github.com/example/example",
+  }),
+  TechArticle.make({
+    "@id": "https://example.com/pkg/docs#intro",
+    headline: "Getting started",
+    isPartOf: [NodeRef.to("https://example.com/pkg#source")],
+  }),
+]);
+
+console.log(Result.getOrThrow(built).toScriptBody());
+```
+
+Then embed the body verbatim:
+
+```html
+<script type="application/ld+json">BODY</script>
+```
+
+`buildResult` is the entry point, not `make`: `Schema.Class` reserves `make` for its raw structural constructor, which runs none of the identity checks. [`JsonLdDocument.build`](/schema-org/api/class/jsonlddocument) is its `Effect` twin, derived from it — the synchronous form is the primitive, so a static-site build never has to construct a runtime to emit a page.
+
+## The serializer is the point
+
+`toScriptBody()` escapes `<`, `>` and `&` after stringify. All three are valid JSON string escapes, so a parser sees the original characters; with no `<` left in the body, neither `</script` nor `<!--` can appear and the element cannot be closed from inside. The `&` escape keeps the output well-formed when the document is served as XHTML, and the escaping is idempotent, so a second pass is safe rather than double-escaped.
+
+**There is deliberately no unescaped text serializer.** The escaped output is not a restricted form — it is semantically identical to anyone who parses it, which is everyone — so a second entry point could only ever be chosen wrongly.
+
+[`toJsonLd()`](/schema-org/api/class/jsonlddocument) returns the wire form as a plain value, for a framework that serializes JSON-LD itself. **If you are producing text, do not use it**: `JSON.stringify(doc.toJsonLd())` reintroduces exactly the bug this package exists to prevent. It is named only because the encoded value is reachable through `Schema.encode` regardless, and naming it is the only way to attach the warning.
+
+## Identity is checked at assembly
+
+`buildResult` fails on three things, all of them caller error rather than something to report to a user: a malformed `@id` ([`InvalidNodeIdError`](/schema-org/api/class/invalidnodeiderror)), two nodes claiming one `@id` ([`DuplicateNodeIdError`](/schema-org/api/class/duplicatenodeiderror)), and a catch-all key colliding with a typed field ([`ConflictingTermError`](/schema-org/api/class/conflictingtermerror)). Node construction itself is total — [`NodeRef.to`](/schema-org/api/class/noderef) and every `make` never throw — so the whole class of identity failure arrives typed, in one place.
+
+A **dangling reference is not a failure.** Pointing at an organization described on another page is correct JSON-LD, and refusing it would make this package wrong. `danglingReferences` reports them so a consumer whose graph is meant to be closed can gate on it; the package declines to decide which kind of graph yours is.
+
+## Validate offline
+
+The vocabulary and the validator live behind the `@effected/schema-org/validate` subpath, so a graph-only consumer never loads the vocabulary table.
+
+```ts with-api
+import { JsonLdDocument, SoftwareSourceCode } from "@effected/schema-org";
+import { Conformance, Vocabulary } from "@effected/schema-org/validate";
+import { Result } from "effect";
+
+const doc = Result.getOrThrow(
+  JsonLdDocument.buildResult([
+    SoftwareSourceCode.make({
+      "@id": "https://example.com/pkg#source",
+      // A real schema.org property — but defined on SoftwareApplication, not here.
+      additional: { softwareVersion: "1.2.3" },
+    }),
+  ]),
+);
+
+console.log(Vocabulary.version);
+// "30.0"
+
+for (const issue of Conformance.check(doc)) {
+  console.error(issue._tag, issue.message);
+}
+// PropertyNotOnType https://example.com/pkg#source: schema.org does not define "softwareVersion" on SoftwareSourceCode
+```
+
+[`Conformance.check`](/schema-org/api/class/conformance) is total — it never fails and never throws, because reporting is not a failure mode. `Conformance.validateResult` is the gate built on top of it, and `Conformance.validate` is its `Effect` twin. Legality is resolved through the full `rdfs:subClassOf` ancestor closure, so an inherited property is accepted: `license` is declared only on `CreativeWork` and is legal on `SoftwareSourceCode` because of that chain.
+
+**Conformance is not Google rich-results eligibility.** Google requires properties schema.org does not, and revises its policy on its own schedule. This tells you schema.org defines the term; it does not promise you a rich result.
+
+## What this package does not do
+
+- **Mint `@id`s.** They are IRIs in your namespace; the package cannot know your base URL and never derives one.
+- **Map your domain onto nodes.** That mapping is yours.
+- **Decode JSON-LD back into typed nodes.** Encode is the supported direction in this release, and a test pins the asymmetry so it cannot start half-working by accident.
+- **Model all of schema.org.** Six node types, plus an open `additional` catch-all for any term — which the validator then checks.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/schema-org/api). New here? Work through the [getting started guide](/schema-org/getting-started) first, then the [advanced guide](/schema-org/advanced) for validation, the vocabulary read API and the catch-all.

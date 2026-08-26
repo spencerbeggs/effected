@@ -1,0 +1,205 @@
+---
+title: Getting Started
+description: Give a command-line program plain output, a correct stderr split, failures reported through your own logger, and schema issues rendered as sentences with @effected/cli.
+---
+
+# Getting Started
+
+Reach for `@effected/cli` the first time you run your own binary and wince at what it printed. Effect's defaults are tuned for a long-running service: log records carry a timestamp, a level and a fiber id, and an unhandled failure is reported by the runtime's *own* logger on stdout. Both are correct for something being scraped by a log collector and wrong for a tool a person is watching. This package fixes exactly those defaults — plain lines, diagnostics on stderr, failures rendered by the logger *you* installed — and it does it without importing a platform package, so the same code runs on Node, Bun and Deno.
+
+It is **not** a CLI framework. `effect/unstable/cli` still owns argument parsing, flags, the command tree and help.
+
+## Install
+
+```bash
+npm install @effected/cli effect
+```
+
+```bash
+pnpm add @effected/cli effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own. `@effected/config-file` is an optional peer, needed only if you use [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer).
+
+## Your first task: make a program's output look like a tool
+
+Here is the everyday goal. You have a `sync` command that reports progress as it works and complains when something goes wrong, and you want the progress on stdout, the complaint on stderr, and nothing but the message on either line — so `mytool sync > report.txt` captures the report and still shows the failure on the terminal.
+
+Start from what the defaults give you. `Effect.log` is an `Info` record and `Effect.logError` is an `Error` record; with no logger installed, both print through Effect's structured default. Installing [`CliLogger`](/cli/api/class/clilogger) replaces it — `Logger.layer` replaces rather than merges, so nothing is emitted twice:
+
+```ts with-api
+import { CliLogger } from "@effected/cli";
+import { Effect } from "effect";
+
+const sync = Effect.gen(function* () {
+  yield* Effect.log("synced 3 repos");
+  yield* Effect.logError("one failed: acme/widgets");
+});
+
+Effect.runPromise(sync.pipe(Effect.provide(CliLogger.layer())));
+// stdout: synced 3 repos
+// stderr: one failed: acme/widgets
+```
+
+Two things happened, and only one of them is obvious. The obvious one is the formatting: no timestamp, no level, no fiber id, so a formatted table or a summary block survives being logged. The second is the **stream split**. `CliLogger` sends a record to stderr when its level is at or above `stderrFrom`, which defaults to `"Error"`; everything below goes to stdout. The comparison is ordinal rather than an equality test against a list of level names, so a level above `Error` — including one added upstream — lands on stderr without a change here.
+
+The logger reads the `Console` off the fiber to write, which is why it needs no platform package and why the split is testable: a test provides a capturing `Console` instead of stubbing a global.
+
+### Wire it into a real binary
+
+In an actual program the logger belongs in the layer you provide to the *whole* application, merged with the rest rather than provided beneath it. Merged, it also covers lines emitted during layer construction — which is exactly where a startup failure prints:
+
+```ts
+import { CliLogger, CliRuntime } from "@effected/cli";
+import { NodeRuntime } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+declare const AppLive: Layer.Layer<never>;
+declare const sync: Effect.Effect<void>;
+
+const MainLive = Layer.mergeAll(AppLive, CliLogger.layer());
+
+NodeRuntime.runMain(sync.pipe(CliRuntime.reportFailures(), Effect.provide(MainLive)));
+```
+
+You still call your own platform's runner. `@effected/cli` never wraps `runMain`, because doing so would bake a platform choice into a library that has no business making one.
+
+## Common operations
+
+Each snippet below is complete and built only from the package's real exports.
+
+### Prefix or reshape every line
+
+`render` turns a log message into the string that gets written. It receives `unknown` because `Effect.log("synced", 3, "repos")` is variadic and hands the logger an array; the default joins an array with spaces and `String`s anything else. Override it when your tool wants a prefix or a marker:
+
+```ts with-api
+import { CliLogger } from "@effected/cli";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  yield* Effect.log("synced", 3, "repos");
+  yield* Effect.logError("one failed");
+});
+
+const layer = CliLogger.layer({
+  render: (message) => (Array.isArray(message) ? `› ${message.map(String).join(" ")}` : `› ${String(message)}`),
+});
+
+Effect.runPromise(program.pipe(Effect.provide(layer)));
+// stdout: › synced 3 repos
+// stderr: › one failed
+```
+
+### Move the stderr threshold
+
+Some tools treat a warning as a diagnostic rather than as output. Lower the threshold with `stderrFrom` and `Warn` moves across, while `Info` stays on stdout:
+
+```ts with-api
+import { CliLogger } from "@effected/cli";
+import { Effect, References } from "effect";
+
+const program = Effect.gen(function* () {
+  yield* Effect.logInfo("scanning workspace");
+  yield* Effect.logWarning("skipping packages/legacy");
+}).pipe(Effect.provideService(References.MinimumLogLevel, "Debug"));
+
+Effect.runPromise(program.pipe(Effect.provide(CliLogger.layer({ stderrFrom: "Warn" }))));
+// stdout: scanning workspace
+// stderr: skipping packages/legacy
+```
+
+`References.MinimumLogLevel` is the reference that decides which records are emitted at all. Provide it as a service — there is no `Logger.withMinimumLogLevel` on the v4 line, and reaching for one is the usual first wrong turn.
+
+### Compose the logger into a set you already have
+
+`CliLogger.layer` is the common path. When you are assembling the logger set yourself — a file logger alongside the terminal one, say — reach for `CliLogger.make`, which hands you the `Logger` itself:
+
+```ts with-api
+import { CliLogger } from "@effected/cli";
+import { Effect, Logger } from "effect";
+
+const Loggers = Logger.layer([CliLogger.make({ stderrFrom: "Warn" })]);
+
+Effect.runPromise(Effect.log("ready").pipe(Effect.provide(Loggers)));
+// stdout: ready
+```
+
+### Report a failure through your own logger
+
+[`CliRuntime.reportFailures`](/cli/api/class/cliruntime) catches inside your program, renders the failure through the ambient logger, and re-fails with a marked error. Because the catch happens *inside*, the report goes through `CliLogger` and lands on stderr — where a platform `runMain`'s own report would have gone through Effect's default logger, on stdout:
+
+```ts with-api
+import { CliLogger, CliRuntime } from "@effected/cli";
+import { Effect } from "effect";
+
+const program = Effect.fail(new Error("no package.json in /tmp/project"));
+
+const main = program.pipe(CliRuntime.reportFailures({ exitCode: 2 }), Effect.provide(CliLogger.layer()));
+
+Effect.runPromiseExit(main).then((exit) => console.log(exit._tag));
+// stderr: Error: no package.json in /tmp/project
+// Failure
+```
+
+The program still fails — swallowing the failure would make a broken run exit `0`. `exitCode` is the code used when the error does not carry one of its own; an error already marked with `Runtime.errorExitCode` keeps it.
+
+### Turn a decode failure into sentences
+
+[`SchemaIssueRenderer.render`](/cli/api/class/schemaissuerenderer) flattens a `SchemaIssue` tree into one line per rejected value. Decode with `errors: "all"` and `onExcessProperty: "error"` to collect everything a user got wrong in a single pass rather than one mistake per run:
+
+```ts with-api
+import { SchemaIssueRenderer } from "@effected/cli";
+import { Effect, Schema } from "effect";
+
+const Config = Schema.Struct({
+  name: Schema.String,
+  retries: Schema.Number,
+});
+
+const decoded = Schema.decodeUnknownEffect(Config)(
+  { name: "app", retries: "three", rulesetz: true },
+  { errors: "all", onExcessProperty: "error" },
+);
+
+const program = decoded.pipe(
+  Effect.catchTag("SchemaError", (error) => Effect.succeed(SchemaIssueRenderer.render(error.issue))),
+);
+
+Effect.runPromise(program).then(console.log);
+// [ 'unknown key at rulesetz', 'Expected number at retries' ]
+```
+
+The renderer is a thin, deliberate wrapper over core's `SchemaIssue.makeFormatterStandardSchemaV1`, which is real but near-undiscoverable — it lives on `SchemaIssue` rather than on `SchemaError`, it is named `makeFormatter*`, and `SchemaError.message` does not use it. On top of it the renderer deduplicates lines (a union reports the same unknown key once per member) and rephrases core's `"Expected no excess property"`, which names the schema's rule, as `unknown key`, which names the user's mistake.
+
+## Handling errors
+
+This package raises **no errors of its own** — it is presentation, and a package that renders other people's failures must not invent new ones. What it gives you instead is control over how a failure leaves your program.
+
+`CliRuntime.reportFailures` handles the unhandled case. When a command reports its *own* diagnostics — a `validate` command printing every bad key, say — you want the report but not a second one from the runtime, and you still need the process to exit non-zero. That is what `CliRuntime.reported` is for: it marks an error as already reported and attaches an exit code.
+
+```ts
+import { CliRuntime, ConfigIssueRenderer } from "@effected/cli";
+import type { ConfigFileShape } from "@effected/config-file";
+import { Effect } from "effect";
+
+declare const configFile: ConfigFileShape<{ readonly name: string }>;
+
+const load = configFile.load.pipe(
+  Effect.catchTag("ConfigValidationError", (error) =>
+    Effect.gen(function* () {
+      yield* Effect.logError(String(error));
+      for (const line of ConfigIssueRenderer.render(error)) yield* Effect.logError(`  ${line}`);
+
+      // Re-fail, or the handler SUCCEEDS and the CLI exits 0 on invalid config.
+      return yield* Effect.fail(CliRuntime.reported(error, 78));
+    }),
+  ),
+);
+```
+
+Two details are worth internalizing before you rely on them. The marker `Runtime.errorReported` has **inverted polarity relative to its name** — `false` is what suppresses the runtime's own report, because the marker means "should this be reported"; the intuitive `true` produces exactly the double report it was meant to prevent. And an **interrupt is never reported**: `reportFailures` passes an interrupt-only cause straight through, since it is not a failure anyone wants rendered and the default teardown already maps it to `130`.
+
+## Next steps
+
+- Ready for exit-code semantics, the one-way `LogToStderr` override, the optional-peer discipline behind `ConfigIssueRenderer`, and testing the stream split? See the [advanced guide](/cli/advanced).
+- Every export, with full signatures, lives in the [API reference](/cli/api) — start with [`CliLogger`](/cli/api/class/clilogger), [`CliRuntime`](/cli/api/class/cliruntime) and [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer).

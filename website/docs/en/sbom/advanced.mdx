@@ -1,0 +1,193 @@
+---
+title: Advanced
+description: Compose @effected/sbom into a real release pipeline — deterministic documents, in-toto statements, SLSA provenance, Sigstore signing over an inverted OIDC contract, and the reachability wall that keeps them apart.
+---
+
+# Advanced
+
+## The pipeline this package was built for
+
+Picture a release job at the moment it has something to publish. It has a decoded `package.json`, a resolved dependency tree, and a tarball. Before that tarball reaches a registry it should carry three things a consumer can check independently: a bill of materials saying what is inside it, a provenance predicate saying which workflow on which commit produced it, and a signature binding both to an identity nobody in the job controls.
+
+Those are three artifacts, one dependency chain, and exactly one place a network appears. `@effected/sbom` owns the artifacts and the signing; the attestation *REST surface* — uploading a bundle to `POST /repos/{owner}/{repo}/attestations` — is [`@effected/github`](/github/api)'s, and the pipeline wiring them together is the consumer's. This guide covers the four capabilities a real pipeline leans on: deterministic document assembly, the statement and provenance model, signing over an inverted OIDC contract, and the reachability wall that keeps the first three free of the fourth's dependencies. It assumes the emit-and-validate workflow from the [getting-started guide](/sbom/getting-started).
+
+## How it composes with Effect
+
+Almost nothing here owns a service. [`Sbom.generate`](/sbom/api/class/sbom), `Sbom.toJson`, [`NtiaReport.of`](/sbom/api/class/ntiareport), [`InTotoStatement.of`](/sbom/api/class/intotostatement) and [`SlsaProvenance.forGitHubWorkflow`](/sbom/api/class/slsaprovenance) are plain total functions over `Schema.Class` values, so they drop into an `Effect.fn` workflow with no wrapping and no error channel to thread. `Sbom.write` requires core's `FileSystem` in `R` and nothing else.
+
+Two things are services, and both earn it because both are genuinely swappable: [`SigstoreSigner`](/sbom/api/class/sigstoresigner), which talks to Fulcio and Rekor, and [`IdentityToken`](/sbom/api/class/identitytoken), the one-method contract it gets a workload token from. That is the whole composition story — a value-level artifact layer that a build step can call directly, and one layered pair at the edge where cryptography and the network live.
+
+## Deterministic bytes, because the digest is the subject
+
+An SBOM's digest becomes an in-toto subject, so any nondeterminism in serialization propagates into an attestation that no longer matches the artifact it describes. Three properties of the emitter exist for that reason: components are sorted by name inside `generate`, absent optional fields are omitted rather than emitted as `null`, and `toJson` walks a fixed key order. Nothing reads a clock — the `timestamp` is your argument — so the only thing that changes between two runs over the same inputs is what you changed.
+
+The one key that is not what the model calls it is `bomRef`, which CycloneDX spells `bom-ref`. The rename happens in `toJson` and nowhere else, because emitting `bomRef` produces a document that looks correct and validates wrong.
+
+## Licenses render three ways, and picking wrong validates wrong
+
+A manifest's `license` is an SPDX **expression** field, and the specification renders its three legal shapes differently. Watch all three come out of one document:
+
+```ts with-api
+import { Sbom, SbomMetadataSource } from "@effected/sbom";
+
+const document = Sbom.generate({
+  // An expression: a one-element `[{ expression }]` tuple.
+  root: SbomMetadataSource.componentFor({
+    name: "@acme/widget",
+    version: "1.0.0",
+    license: "MIT OR Apache-2.0",
+  }),
+  components: [
+    // A catalog identifier: `{ license: { id } }`.
+    SbomMetadataSource.componentFor({ name: "effect", version: "4.0.0-rc.109", license: "MIT" }),
+    // Neither: `{ license: { name } }`.
+    SbomMetadataSource.componentFor({ name: "@acme/internal", version: "0.1.0", license: "UNLICENSED" }),
+  ],
+});
+
+console.log(Sbom.toJson(document, { space: 0 }));
+```
+
+The `id` field is constrained by the schema to the SPDX identifier enumeration, so emitting `MIT OR Apache-2.0` there is rejected — and emitting `UNLICENSED` there is *accepted by some tools and meaningless*, which is worse. Choosing between the shapes is [`@effected/spdx`](/spdx/api)'s job (`License.isKnownId`, `isValidExpression`), the kit's one SPDX engine, never a local regex.
+
+## Attest what you built: statements and provenance
+
+An [`InTotoStatement`](/sbom/api/class/intotostatement) is the value that gets signed. It names its subjects by digest, declares a `predicateType` URI, and carries a `predicate` whose shape is that URI's business — which is why the field is typed `unknown` rather than a union. A CycloneDX BOM, a SLSA provenance predicate and a caller's own shape all travel here, and the statement layer has no reason to introspect any of them.
+
+[`SlsaProvenance.forGitHubWorkflow`](/sbom/api/class/slsaprovenance) is the typed constructor for the common case: a pure projection of a [`GitHubWorkflowProvenance`](/sbom/api/interface/githubworkflowprovenance) record into a SLSA Provenance v1 predicate for a `workflow/v1` build. Every claim is a field, including `serverUrl` — upstream tooling reads that from `process.env.GITHUB_SERVER_URL` with no default, which writes the literal string `undefined` into every URL it builds when the variable is unset:
+
+```ts with-api
+import {
+  type GitHubWorkflowProvenance,
+  InTotoStatement,
+  SbomMetadataSource,
+  Sha256Digest,
+  SlsaProvenance,
+} from "@effected/sbom";
+
+declare const claims: GitHubWorkflowProvenance;
+declare const digest: Sha256Digest;
+
+const provenance = SlsaProvenance.forGitHubWorkflow(claims);
+
+const statement = InTotoStatement.forSubject({
+  name: SbomMetadataSource.npmPurl("@acme/widget", "1.0.0"),
+  digest,
+  predicateType: SlsaProvenance.predicateType,
+  predicate: provenance,
+});
+
+// The exact bytes a DSSE envelope carries: compact, fixed key order.
+console.log(statement.toJson());
+```
+
+`forSubject` takes a record rather than positional arguments on purpose — `name` and `predicateType` are both strings, and a positional constructor invites a statement that silently attests the wrong thing. For several subjects in one statement, build them with [`InTotoSubject.forSha256`](/sbom/api/class/intotosubject) and use `InTotoStatement.of`. To attest the BOM itself rather than the build, swap the predicate type for `CYCLONEDX_BOM_PREDICATE` and pass the document.
+
+The emitted provenance stays byte-compatible with what GitHub's own attest tooling produces, because a verifier must see the same structure whichever path built the attestation — and that is pinned by a vendored fixture rather than by intent.
+
+## Signing, and the contract that keeps Actions out of your bundle
+
+[`SigstoreSigner.sign`](/sbom/api/class/sigstoresigner) is one method that does four things: fetch a workload identity token, exchange it with Fulcio for a short-lived certificate, sign the statement's bytes as a DSSE envelope, and — unless you pass `witnesses: []` — log the result to Rekor. It returns a [`SigstoreBundle`](/sbom/api/class/sigstorebundle), the wire form of an attestation.
+
+The token comes from [`IdentityToken`](/sbom/api/class/identitytoken), a deliberately inverted dependency. Issuing an OIDC token on a GitHub runner needs the Actions runtime and its platform HTTP client, which would drag a `@effect/platform-node` peer into every consumer that only wanted an SBOM. So this package declares the narrow contract instead — one method, one audience, one `Redacted` token — and [`@effected/github-actions`](/github-actions/api) ships the layer that satisfies it. A CI system holding a token by any other route uses `IdentityToken.layerStatic`:
+
+```ts with-api
+import { IdentityToken, type InTotoStatement, SigstoreSigner } from "@effected/sbom";
+import { Effect, Layer } from "effect";
+
+declare const statement: InTotoStatement;
+declare const oidcToken: string;
+
+const program = Effect.gen(function* () {
+  const signer = yield* SigstoreSigner;
+  return yield* signer.sign(statement);
+});
+
+// The signer's one requirement is the token contract, provided at the edge.
+const Signing = SigstoreSigner.layer.pipe(Layer.provide(IdentityToken.layerStatic(oidcToken)));
+
+Effect.runPromise(program.pipe(Effect.provide(Signing))).then((bundle) => {
+  console.log(bundle.mediaType);
+  // application/vnd.dev.sigstore.bundle.v0.3+json
+});
+```
+
+Note what `sign` does *not* take: a token. The audience Fulcio requires is the signing protocol's business, not the caller's, so it lives beside the exchange and the token is fetched, declassified once and discarded inside the call. `sign(statement, { token })` reads simpler and forces every caller to learn a constant that is none of its business.
+
+Use [`layerWith`](/sbom/api/interface/sigstoresigneroptions) when you need to point somewhere else: `fulcioBaseUrl` and `rekorBaseUrl` reach the Sigstore staging instance, and `signer`/`witnesses` replace the default pair outright.
+
+## The attestation seam is a value, not an edge
+
+There is no dependency between `@effected/sbom` and [`@effected/github`](/github/api) in either direction. A bundle crosses that seam as a structural JSON value — `{ mediaType, verificationMaterial, dsseEnvelope }` — which github's attestation upload types structurally and a consumer wires together. `verificationMaterial` and `dsseEnvelope` are `unknown` here because their shapes belong to the Sigstore protobuf specifications; re-declaring them would be a second, drifting copy of a wire format nobody in this repository owns.
+
+One property of that wire format will bite you if you inspect a bundle. Protobuf JSON omits empty repeated fields, so a bundle signed with `witnesses: []` carries **no** `tlogEntries` key at all rather than an empty array. Reading `.tlogEntries.length` blindly throws on a legitimately unwitnessed bundle.
+
+## Errors and failure modes
+
+Everything malformed or refused arrives on the typed `E` channel. Which typed failure to expect is the whole question, and [`SigningError.kind`](/sbom/api/type/signingerrorkind) is sized to what a caller can actually act on:
+
+```ts with-api
+import type { SigningError, SigstoreBundle } from "@effected/sbom";
+import { Effect } from "effect";
+
+declare const sign: Effect.Effect<SigstoreBundle, SigningError>;
+
+const program = sign.pipe(
+  Effect.catchTag("SigningError", (error) =>
+    error.kind === "identity"
+      ? // Almost always a workflow missing `permissions: id-token: write`.
+        Effect.logError(`no usable identity: ${String(error.cause)}`)
+      : Effect.logError(`signing failed at the ${error.kind} step`),
+  ),
+);
+
+Effect.runPromise(program);
+```
+
+`identity` is a permissions problem on your side, `certificate` is Fulcio, `transparencyLog` is Rekor or a timestamp authority, and `bundle` is everything else about assembling the result. The attribution is read from Sigstore's own error codes (`IDENTITY_TOKEN_*`, `CA_*`, `TLOG_*`, `TSA_*`), not scraped from message text — and an unattributable failure is reported as `bundle`, literally "the bundle did not get built", rather than guessed into a step it may not belong to. The original failure is preserved structurally on `cause`, so nothing is lost to a flattening string.
+
+Two smaller ones round it out. [`IdentityTokenError`](/sbom/api/class/identitytokenerror) carries the `audience` a token was requested for, because a token minted for the wrong audience fails at the certificate authority — far from where the mistake was made. And `layerStatic` **ignores** the audience it is handed: it is the caller's job to have minted the token for the audience it will be used with, and a layer that pretended to check would be theatre.
+
+## Testing with @effect/vitest
+
+The two doubles in this package default in opposite directions, and the difference is the whole testing story.
+
+`SigstoreSigner.makeTest().sign` **dies** unless you stub it. There is no honest fabricated answer to "sign this" — a bundle that looks signed and is not is exactly the failure an attestation exists to prevent. `IdentityToken.makeTest` **answers**, because a fabricated OIDC token is a real answer to "give me a token". The test each time is: would a real implementation legitimately answer this?
+
+```ts
+import { InTotoStatement, SigstoreBundle, SigstoreSigner } from "@effected/sbom";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("release attestation", () => {
+  // A stubbed signer needs no IdentityToken layer — the token is never fetched.
+  const TestSigning = SigstoreSigner.layerTest({
+    sign: (statement: InTotoStatement) =>
+      Effect.succeed(
+        SigstoreBundle.make({
+          mediaType: "application/vnd.dev.sigstore.bundle.v0.3+json",
+          verificationMaterial: {},
+          dsseEnvelope: { payload: statement.toJson() },
+        }),
+      ),
+  });
+
+  it.effect("signs the statement it was given", () =>
+    Effect.gen(function* () {
+      const signer = yield* SigstoreSigner;
+      const bundle = yield* signer.sign(
+        InTotoStatement.of({ subject: [], predicateType: "https://example/p", predicate: {} }),
+      );
+      assert.strictEqual(bundle.mediaType, "application/vnd.dev.sigstore.bundle.v0.3+json");
+    }).pipe(Effect.provide(TestSigning)));
+});
+```
+
+A test that wants a *real* bundle without a network does not stub `sign` at all — it drives the real DSSE builder through `SigstoreSigner.layerWith({ signer, witnesses })` with a stub `Signer` and no witnesses, which genuinely exercises the pre-authentication encoding, envelope assembly and protobuf serialization. That is the difference between testing your own mock and testing the thing that ships.
+
+Everything on the SBOM side needs no doubles at all: `generate`, `toJson` and `NtiaReport.of` are total functions, and `write` is the only member wanting a `FileSystem` — supply [`@effected/memfs`](/memfs/api) rather than a hand-rolled stub.
+
+## Next steps
+
+- New to the package? Start with the [overview](/sbom) or the [getting-started guide](/sbom/getting-started).
+- Every export, with full signatures, lives in the [API reference](/sbom/api). The types this guide leaned on: [`Sbom`](/sbom/api/class/sbom) and [`SbomDocument`](/sbom/api/class/sbomdocument), [`InTotoStatement`](/sbom/api/class/intotostatement) with [`InTotoSubject`](/sbom/api/class/intotosubject) and [`Sha256Digest`](/sbom/api/variable/sha256digest), [`SlsaProvenance`](/sbom/api/class/slsaprovenance) over [`GitHubWorkflowProvenance`](/sbom/api/interface/githubworkflowprovenance), [`SigstoreSigner`](/sbom/api/class/sigstoresigner) with [`SigstoreSignerOptions`](/sbom/api/interface/sigstoresigneroptions), [`IdentityToken`](/sbom/api/class/identitytoken) with [`IdentityTokenShape`](/sbom/api/interface/identitytokenshape), and the tagged errors [`SigningError`](/sbom/api/class/signingerror) and [`IdentityTokenError`](/sbom/api/class/identitytokenerror).

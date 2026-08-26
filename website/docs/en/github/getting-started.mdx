@@ -1,0 +1,197 @@
+---
+title: Getting Started
+description: Wire a typed GitHub client, resolve a repository through the R channel, run REST and paginated reads without a cast, and route every failure through one tagged error with @effected/github.
+---
+
+# Getting Started
+
+Reach for `@effected/github` whenever a program has to *act* on a repository rather than just read one number out of it — post the report a CI job produced, move a release branch to a new sha, apply the same ruleset across a fleet, or answer "which issues does this pull request close". Doing that against raw octokit costs you the type system at exactly the wrong moment: the endpoint knows its own parameter and response shapes, but a `rest<T>(operation, callback)` helper throws that away and hands the burden back as casts. Here the route literal is the key, the failure arrives as one tagged error you branch on structurally, and the `{ owner, repo }` coordinate lives in the `R` channel instead of being threaded through every call.
+
+## Install
+
+```bash
+npm install @effected/github effect
+```
+
+```bash
+pnpm add @effected/github effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. All `@effected/*` packages are ESM-only: the exports map publishes only `import` conditions, so `require()` fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist.
+
+## Your first task: report a build result on a pull request
+
+Here is a concrete, everyday goal. A CI job just finished, and you want to leave one comment on the pull request that says what it found — updating the same comment on every re-run rather than burying the thread in duplicates. We will build it up one step at a time.
+
+Three things have to be in place before any call happens: a client that knows how to authenticate, a repository coordinate, and the resource services you actually use. [`GitHubClient.layerFromConfig`](/github/api/class/githubclient) reads `GITHUB_TOKEN` through the ambient `ConfigProvider` — not `process.env`, so a test supplies a provider instead of mutating the environment — and fails construction with core's `ConfigError` when no token is configured, which is an honest answer rather than a wire failure that means something else.
+
+```ts with-api
+import { CommentMarker, GitHubClient, PullRequest, PullRequestComment, Repo, RepoRef } from "@effected/github";
+import { Effect, Layer } from "effect";
+
+// The marker is how the same comment is found again on the next run.
+const marker = CommentMarker.make({ namespace: "ci-bot", key: "build-report" });
+
+const program = Effect.gen(function* () {
+  const pulls = yield* PullRequest;
+  const comments = yield* PullRequestComment;
+
+  // 1. Read the pull request. Every field is typed and decoded.
+  const pr = yield* pulls.get(1873);
+
+  // 2. Read what it changed — paginated to the end, not one page of 30.
+  const files = yield* pulls.listFiles(1873);
+
+  // 3. Write the report once, and edit it in place on every later run.
+  const body = `Build of \`${pr.headSha}\` succeeded — ${files.length} file(s) changed.`;
+  const record = yield* comments.upsert(pr.number, marker, body);
+
+  return record.url;
+});
+
+// Bind the client layer to a const: layers memoize by reference, so both
+// resources below share one client rather than building two.
+const ClientLayer = GitHubClient.layerFromConfig();
+
+const Live = Layer.mergeAll(
+  PullRequest.layer.pipe(Layer.provide(ClientLayer)),
+  PullRequestComment.layer.pipe(Layer.provide(ClientLayer)),
+  Repo.layer(RepoRef.make({ owner: "effect-ts", repo: "effect" })),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(Live))).then(console.log);
+// the comment's URL, e.g. "https://github.com/effect-ts/effect/pull/1873#issuecomment-…"
+```
+
+Two details are worth pausing on. `upsert` appends the marker to the body it writes, so the comment it creates is always findable by the same marker afterwards — and `find` paginates the issue's comments to the end rather than requesting one page of 100 and stopping, which is the bug that makes naive sticky comments silently duplicate on a busy pull request. And [`Repo`](/github/api/class/repo) is a service, not an argument: every resource method carries it in `R`, so the type checker refuses to run this program until you have said which repository it acts on.
+
+## Common operations
+
+Each snippet below is a complete program built only from the package's real exports. They all assume a client layer and a `Repo` layer are provided the same way as above.
+
+### Call any endpoint, typed, with no cast
+
+`client.request` takes a `"<METHOD> <path>"` route literal from GitHub's own OpenAPI description. The literal alone types the parameters *and* the response, so nothing here names a payload type by hand:
+
+```ts with-api
+import { GitHubClient } from "@effected/github";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient;
+
+  const repo = yield* client.request("GET /repos/{owner}/{repo}", {
+    owner: "effect-ts",
+    repo: "effect",
+  });
+
+  // Both fields are typed off the route — misspell one and it is a compile error.
+  return { branch: repo.default_branch, stars: repo.stargazers_count };
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitHubClient.layerFromConfig()))).then(console.log);
+```
+
+Notice `request` does **not** require `Repo` — it takes `owner` and `repo` as ordinary endpoint parameters, because at this level they are just two more typed fields. The `Repo` service exists for the resource tier above it.
+
+### Walk every page without writing a loop
+
+`paginate` collects every page of a paginating route, honoring [`PageOptions`](/github/api/class/pageoptions). Handing it a route that does not paginate is a compile error, not a runtime surprise:
+
+```ts with-api
+import { GitHubClient, PageOptions } from "@effected/github";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient;
+
+  const issues = yield* client.paginate(
+    "GET /repos/{owner}/{repo}/issues",
+    { owner: "effect-ts", repo: "effect", state: "open" },
+    PageOptions.all, // every page, 100 at a time — GitHub's maximum
+  );
+
+  return issues.length;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(GitHubClient.layerFromConfig()))).then(console.log);
+```
+
+`PageOptions.all` reads to the end. `PageOptions.first(10)` reads at most one page of ten, which is the shape an "is there any?" or "show me the newest few" question actually wants — walking every page for that is waste. When the caller decides where to stop, `paginateStream` gives the same traversal as a `Stream` and is lazy in requests: a downstream `Stream.take` stops the walk rather than filtering pages already fetched.
+
+### Move a branch, whether or not it exists
+
+The create-or-reset dance is the case the resource tier was built for. `GitBranch.upsert` collapses it, reporting which of the two happened:
+
+```ts with-api
+import { GitBranch } from "@effected/github";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const branches = yield* GitBranch;
+
+  // "created" on the first run, "reset" on every one after.
+  const outcome = yield* branches.upsert("release/1.2", "9f3d2a1");
+
+  return outcome;
+});
+// Effect<BranchOutcome, GitHubError, GitBranch | Repo>
+```
+
+That single call is one round trip in the common case and two in the raced one — never the four a create-then-catch-then-check-then-reset sequence costs. It works because the error taxonomy has a structural `alreadyExists` to branch on, rather than a message to grep.
+
+### Find the newest released version
+
+`GitTag.latestSemver` walks the repository's tags and picks the highest version-shaped one in a single pass, comparing synchronously through `@effected/semver` — no round trip per candidate:
+
+```ts with-api
+import { GitTag } from "@effected/github";
+import { Effect, Option } from "effect";
+
+const program = Effect.gen(function* () {
+  const tags = yield* GitTag;
+
+  const latest = yield* tags.latestSemver();
+
+  return Option.match(latest, {
+    onNone: () => "no released version yet",
+    onSome: (tag) => `${tag.version.toString()} at ${tag.sha}`,
+  });
+});
+// Effect<string, GitHubError, GitTag | Repo>
+```
+
+Absence is an `Option`, not a failure — a repository with no tags is a normal state, not an error. One caveat matters before you depend on it: *newest* here means **highest version, not most recent**. In a monorepo publishing independently versioned packages those are unrelated, and a `pkg-a@2.0.0` tag will outrank a `pkg-b@1.4.0` cut yesterday. Pass a `prefix` so the comparison runs within one version line.
+
+## Handling errors
+
+Every REST call in the package fails with one type, [`GitHubError`](/github/api/class/githuberror), carrying a structural `kind` — `notFound`, `alreadyExists`, `rejected`, `unauthorized`, `rateLimited`, `transport` or `decode` — plus the `operation` that was attempted and a human-readable `reason`. Branch on `kind`; the rendered `message` is for logs, never for routing.
+
+Because `kind` is a field rather than a tag, `Effect.catchIf` with `GitHubError.hasKind` is the idiomatic router:
+
+```ts with-api
+import { GitHubClient, GitHubError } from "@effected/github";
+import { Effect, Option } from "effect";
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient;
+  return yield* client.request("GET /repos/{owner}/{repo}", { owner: "effect-ts", repo: "no-such-repo" });
+}).pipe(
+  // A missing repository is an answer, not an outage.
+  Effect.map(Option.some),
+  Effect.catchIf(GitHubError.hasKind("notFound"), () => Effect.succeed(Option.none())),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(GitHubClient.layerFromConfig()))).then((result) =>
+  console.log(Option.isSome(result) ? "found" : "not found"),
+);
+```
+
+`hasKind` accepts several kinds at once, so one handler can absorb a related family. What it should *not* absorb is a `transport` or `rateLimited` failure, because those have already been retried for you: [`RetryPolicy.default`](/github/api/class/retrypolicy) is wired into the client, retries exactly those two with full-jitter backoff, and honors GitHub's server-advised `retry-after` up to a one-minute ceiling before giving the failure back. Past that ceiling it re-fails immediately rather than sleeping through a forty-five-minute rate-limit window and converting a failure into a hang. A `notFound`, `rejected` or `unauthorized` never retries at all — it cannot change its mind between attempts.
+
+GraphQL failures arrive as [`GitHubGraphQLError`](/github/api/class/githubgraphqlerror) instead, carrying GitHub's own `errors` array, and App authentication fails with [`GitHubAppError`](/github/api/class/githubapperror). Four error types cover the whole package, so a program's failure channel stays readable.
+
+## Next steps
+
+- Ready for multi-repository programs, the check-run bracket, the configuration-writing tier, App authentication and the recorded-response test double? See the [advanced guide](/github/advanced).
+- Every export, with full signatures, lives in the [API reference](/github/api) — start with [`GitHubClient`](/github/api/class/githubclient), [`Repo`](/github/api/class/repo) and [`GitHubError`](/github/api/class/githuberror).

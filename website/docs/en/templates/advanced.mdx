@@ -1,0 +1,265 @@
+---
+title: Advanced
+description: Compose @effected/templates into a real Effect application — custom marker dialects, provenance stamps on the marker line, the reconciliation and idempotency contracts, and testing the pure core with no filesystem at all.
+---
+
+# Advanced
+
+## A tool that owns part of a file it did not write
+
+Picture the job this package was built for. Your CLI scaffolds a project and then keeps parts of it current: a git hook whose invocation changes when you ship a new subcommand, a `.gitignore` whose tool-owned entries grow, a README table regenerated from the workspace. Every one of those files is also edited by a human, often between your runs, and often in ways you cannot anticipate — reordering, reindenting, adding their own lines above and below. The tool must be able to run a hundred times and change exactly what it owns, a hundred times, without ever touching a byte it does not.
+
+That is a harder guarantee than "find the markers and replace between them", and the difficulty is concentrated in cases that never appear in a happy-path test: a file whose `END` marker a merge conflict removed, a Windows checkout whose line endings differ from the ones your tool renders, a block a user copy-pasted so it now appears twice, content that itself contains something that looks like a marker. This guide covers what the package does with each of those, plus the extension points a real application reaches for — [custom dialects](#custom-marker-dialects), [provenance stamps](#provenance-stamps-on-the-marker-line), the [reconciliation contract](#the-reconciliation-contract), and [testing without a filesystem](#testing-with-effectvitest). It assumes the declare-and-sync workflow from the [getting started guide](/templates/getting-started).
+
+## How it composes with Effect
+
+The surface splits cleanly in two, and the split is what makes this package easy to compose. [`SectionDocument`](/templates/api/class/sectiondocument) and everything below it — [`Section`](/templates/api/class/section), [`SectionId`](/templates/api/class/sectionid), [`CommentStyle`](/templates/api/class/commentstyle), [`SectionDialect`](/templates/api/class/sectiondialect) — are `Schema.Class`es and pure functions. `parseResult` and `reconcile` return a `Result`, not an `Effect`, so a synchronous caller (a build plugin holding the file in memory, an ESLint rule, a property test) uses them with no runtime at all. Only `SectionDocument.parse` exists as an `Effect` twin, and only because parsing is the one boundary a consumer plausibly wants inside a workflow.
+
+[`ManagedSection`](/templates/api/class/managedsection) is the only service, and it requires exactly one thing: `FileSystem` from `effect` core. It has no `@effected` dependencies and does not require `Path`, so it slots into an application layer without dragging anything along, and its members all have `R = never` because `layer` resolves `FileSystem` once at construction. Its shape is exported as [`ManagedSectionShape`](/templates/api/interface/managedsectionshape), so you can type a function against the service without naming the class:
+
+```ts with-api
+import type { ManagedSectionShape } from "@effected/templates";
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const Hook = SectionId.make({ key: "my-tool", commentStyle: CommentStyle.hash });
+
+// A helper typed against the shape, not the service class.
+const installHook = (sections: ManagedSectionShape, path: string) =>
+  Effect.map(sections.sync(path, Hook.section("npx my-tool check --staged")), (outcome) => outcome._tag);
+
+// Reached from anywhere holding the service, however it was provided.
+const program = Effect.flatMap(ManagedSection, (sections) => installHook(sections, ".husky/pre-commit"));
+
+Effect.runPromise(
+  program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer)),
+).then(console.log);
+```
+
+Every member is data-first — the path comes first and nothing is dual — because the subject of these operations is a path, and nothing pipes a path.
+
+## Custom marker dialects
+
+A [`SectionDialect`](/templates/api/class/sectiondialect) is the marker vocabulary: the `phrase` that sits between the key and the closing rule, and the set of comment styles the scanner will recognize. `SectionDialect.default` uses the phrase `MANAGED SECTION` and all six presets, which is what every example so far has been using implicitly.
+
+Fix your own phrase when the blocks belong to a specific domain, and narrow `styles` when only one comment style should ever appear — a marker written in a style the dialect does not list fails to render rather than producing a block the same dialect cannot read back:
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionDialect } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+// HTML comments only, and our own phrase — markers that are invisible in
+// rendered Markdown and unmistakably ours.
+const Docs = SectionDialect.make({
+  phrase: "MANAGED REGION",
+  styles: [CommentStyle.html],
+});
+
+// A parameterized layer factory mints a fresh reference per call, and layers
+// memoize by reference — bind it to a const and reuse that.
+const DocsSections = ManagedSection.layerWith({ dialect: Docs });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+  return yield* sections.readAll("README.md");
+});
+
+Effect.runPromise(program.pipe(Effect.provide(DocsSections), Effect.provide(NodeFileSystem.layer))).then(
+  (found) => console.log(found.map((section) => section.key)),
+);
+```
+
+The `const` binding in that snippet is load-bearing. `ManagedSection.layerWith(...)` returns a new layer value every time it is called, and Effect memoizes layers by reference — call it at two composition sites and you build the service twice.
+
+`phrase` is validated against `[A-Za-z0-9][A-Za-z0-9 _]*`, which deliberately excludes the `-` character so a phrase can never contain the `---` rule and make a marker ambiguous. `dialect.recognizes(style)` tells you in advance whether a section written in a given style can be scanned back, which is worth checking when the style comes from user configuration:
+
+```ts with-api
+import { CommentStyle, SectionDialect } from "@effected/templates";
+
+const Docs = SectionDialect.make({ phrase: "MANAGED REGION", styles: [CommentStyle.html] });
+
+console.log(Docs.recognizes(CommentStyle.html)); // true
+console.log(Docs.recognizes(CommentStyle.hash)); // false — would fail to render
+```
+
+Fixing a dialect's parameters is the supported way to build a domain on top of this package. `@effected/github-actions`' managed PR-comment regions are exactly that: HTML comment style, a `MANAGED REGION` phrase and namespaced keys — a *narrowing* of the dialect, not a second engine. The region grammar, the line-ending invariant and the idempotence proof all stay here.
+
+## Provenance stamps on the marker line
+
+A `BEGIN` marker can carry `name="value"` pairs, passed as the second argument to `SectionId.section`. The point is that a tool can read a block's provenance without opening the block — which run wrote it, at what version, when — and therefore decide *whether to write at all*:
+
+```ts with-api
+import { CommentStyle, SectionDocument, SectionId } from "@effected/templates";
+import { Result } from "effect";
+
+const Tool = SectionId.make({ key: "tool", commentStyle: CommentStyle.hash });
+
+const doc = SectionDocument.parseResult("#!/usr/bin/env sh\n");
+
+if (Result.isSuccess(doc)) {
+  const next = doc.success.reconcile([Tool.section("npx tool run", { origin: "ci", runId: "1873" })]);
+  console.log(Result.isSuccess(next) ? next.success.text : next.failure.message);
+  // #!/usr/bin/env sh
+  //
+  // # --- BEGIN tool MANAGED SECTION origin="ci" runId="1873" ---
+  // npx tool run
+  // # --- END tool MANAGED SECTION ---
+}
+```
+
+Three rules govern them, and each one exists to prevent a specific corruption.
+
+**Attributes are metadata, never identity.** A section is found by key and comment style alone, so bumping `runId` updates that block *in place* rather than orphaning it and appending a second one.
+
+**They do count as difference.** `check` answers `Drifted` when a declared attribute disagrees with the marker on disk, which is what lets a tool rewrite a block whose only change is its stamp — without that, a stamp would be unwritable. Omitting the argument and passing `{}` are the same section, so a caller that never uses attributes sees no permanent drift against a bare marker. Emission follows the record's insertion order; equality does not.
+
+**The grammar has no escaping, deliberately.** Names match `[A-Za-z][A-Za-z0-9_-]*`, values are double-quoted and carry neither `"` nor a line break, and anything outside that fails as a [`SectionRenderError`](/templates/api/class/sectionrendererror) with `reason: "invalidAttribute"` naming the attribute — before a byte is written. An escape grammar would be a second parser hiding inside the first. An `END` marker never carries attributes, and an attribute run that does not parse cleanly (a mangled pair, one name declared twice) makes the whole line ordinary content rather than a marker — the ambiguity that creates then fails typed downstream, instead of being resolved by a guess in the scanner.
+
+One consequence is a genuine decision rather than a detail: **attributed markers are a one-way compatibility break.** A scanner predating this feature does not recognize an attributed marker at all — the line falls out as ordinary content, and the block it opened stops being a managed section for that tool. Writing attributes into a file another tool also manages is a choice to make deliberately.
+
+## The reconciliation contract
+
+`reconcile` is the whole algorithm; `sync` and `check` are it with one element. Understanding what it guarantees is what lets you depend on it.
+
+**Declared order is written into the file.** Existing sections are reassigned into the existing slots in declared order, which updates content in place *and* normalizes ordering. That is why listing a preamble before a tool block makes the preamble precede it, in a file a user reordered by hand.
+
+**A new section is placed next to its siblings, not appended blindly.** A declared section not yet in the document goes before the nearest present successor sibling, else after the nearest present predecessor, else at the end. So adding a middle block to an existing set lands it in the middle.
+
+**Foreign sections and surrounding text are preserved byte-for-byte.** Text spans outside any managed block are emitted verbatim; managed blocks this dialect does not own are emitted as their exact source bytes. Only your declared sections are re-rendered canonically.
+
+**Nothing is written until everything renders.** A refusal anywhere in the set leaves the document untouched — there is no partial write.
+
+The [`SectionReconciliation`](/templates/api/interface/sectionreconciliation) you get back carries `text`, one [`SyncOutcome`](/templates/api/type/syncoutcome) per declared section in declared order, and `changed`. That `changed` flag is exactly what the service consults to decide whether to write, which is where idempotency comes from: a second identical sync produces byte-identical text, all `Unchanged`, and **no write at all**. An unchanged write churns the file's mtime and makes every run look like a change to a watcher.
+
+Because the document exposes its parse as data, you can also use it as a diagnostic source. Every entry in `doc.sections` is a [`PlacedSection`](/templates/api/class/placedsection) carrying the exact span and the 1-based line of its `BEGIN` marker:
+
+```ts with-api
+import { SectionDocument } from "@effected/templates";
+import { Result } from "effect";
+
+const source = ["# top", "", "# --- BEGIN tool MANAGED SECTION ---", "npx tool run", "# --- END tool MANAGED SECTION ---", ""].join("\n");
+
+const doc = SectionDocument.parseResult(source);
+
+if (Result.isSuccess(doc)) {
+  for (const placed of doc.success.sections) {
+    // `text.slice(start, end)` is exactly the block as written.
+    console.log(`${placed.section.key} at line ${placed.line}: ${source.slice(placed.start, placed.end)}`);
+  }
+  // tool at line 3: the block exactly as written, markers included
+}
+```
+
+## Line endings and the BOM
+
+Two invariants that are invisible until they break, and both break silently in a naive implementation.
+
+**The document's dominant EOL is detected at parse** and exposed as [`Eol`](/templates/api/type/eol); markers and inserted separators render with it, and a brand-new file uses `\n`. An LF-only scanner leaves the `\r` inside the line in a CRLF file, so its markers never match — and every sync appends a fresh block below the ones it could not see.
+
+**Drift comparison is EOL-normalized on both sides**, and this is the load-bearing half. A consumer supplying LF content against a CRLF file would otherwise report drift, rewrite, and report drift again forever. Normalization happens at parse time and on the declared side in `check` and `reconcile`, deliberately *not* inside equality — putting it in a custom `Equal` would make `Equal.equals` dishonest for a consumer comparing two sections directly.
+
+**A leading byte-order mark survives.** The service reads bytes and decodes with `ignoreBOM: true` rather than going through `FileSystem.readFileString`, whose default `TextDecoder` strips a BOM — which would make the very first sync of a BOM-carrying file silently delete it, violating the package's central promise. A file with no trailing newline likewise stays that way, unless a section has to be appended.
+
+## Edge cases and failure modes
+
+Everything ambiguous or unsafe arrives on the typed `E` channel — never as a thrown exception or a defect.
+
+**An ambiguous document is a `SectionParseError`, and you should surface it, not repair it.** `unterminatedSection`, `orphanedEnd`, `overlappingSections` and `duplicateSection` each name a case where a silent choice corrupts a user's file, so the honest response is a diagnostic pointing at `error.line`. A predecessor of this package skipped unterminated markers, which made the next write append a second copy of the section; another picked the first `BEGIN`/`END` pair it found, so every sync updated the first duplicate while the stale second one lived on disk forever.
+
+```ts with-api
+import { SectionDocument } from "@effected/templates";
+import { Result } from "effect";
+
+// A merge conflict ate the END marker.
+const broken = "# --- BEGIN tool MANAGED SECTION ---\nnpx tool run\n";
+
+const doc = SectionDocument.parseResult(broken);
+
+console.log(Result.isFailure(doc) ? `${doc.failure.reason} @ line ${doc.failure.line}` : "parsed");
+// unterminatedSection @ line 1
+```
+
+**Content that contains a marker is refused, not escaped.** Rendering refuses anything it could not read back: `markerInContent` when the content itself carries a marker line, `unknownCommentStyle` when the section's style is not in the dialect, `duplicateDeclaration` when one identity appears twice in a single call, and `invalidAttribute` for an attribute outside the grammar. The refusal is typed, and it happens before any write.
+
+**Declaring one identity twice in a single call is an error, not a last-write-wins.** Two intentions for one block, and any choice between them is a guess.
+
+**A missing file is not an error; an unreadable one is.** `read`, `readAll`, `check` and `isManaged` treat an absent file as an empty document, and `sync` creates it. But a read that fails for any other reason — permissions, a directory where a file was expected — fails as a [`SectionFileError`](/templates/api/class/sectionfileerror) carrying `path`, the `operation` that failed, and the underlying platform error structurally. Answering `false` for an unreadable file would be indistinguishable from a file with no section, which is exactly how a permissions problem becomes a duplicate block on the next run.
+
+**The parent directory is the caller's responsibility.** `Path` is absent from the service's requirements, so this package cannot create a directory; a write into a missing one fails typed.
+
+**Two processes syncing one file race.** There is no locking here, per file or otherwise, and the caller owns that.
+
+## Testing with @effect/vitest
+
+The split pays off hardest in tests. Every interesting invariant — idempotency, text preservation, ordering, line endings, marker refusal — is a string-to-string property, so the majority of a suite needs no layer, no runtime and no filesystem at all:
+
+```ts
+import { CommentStyle, SectionDocument, SectionId } from "@effected/templates";
+import { assert, describe, it } from "@effect/vitest";
+import { Result } from "effect";
+
+const Tool = SectionId.make({ key: "tool", commentStyle: CommentStyle.hash });
+
+describe("managed block", () => {
+  it("reaches a fixed point after one sync", () => {
+    const first = SectionDocument.parseResult("# user prose\n");
+    assert.isTrue(Result.isSuccess(first));
+
+    const once = first.success.reconcile([Tool.section("npx tool run")]);
+    assert.isTrue(Result.isSuccess(once));
+    assert.isTrue(once.success.changed);
+
+    // Parsing the result and reconciling again must change nothing.
+    const second = SectionDocument.parseResult(once.success.text);
+    assert.isTrue(Result.isSuccess(second));
+
+    const twice = second.success.reconcile([Tool.section("npx tool run")]);
+    assert.isTrue(Result.isSuccess(twice));
+    assert.isFalse(twice.success.changed);
+    assert.strictEqual(twice.success.text, once.success.text);
+  });
+
+  it("preserves every byte outside the managed span", () => {
+    const doc = SectionDocument.parseResult("# user prose\n");
+    assert.isTrue(Result.isSuccess(doc));
+
+    const next = doc.success.reconcile([Tool.section("npx tool run")]);
+    assert.isTrue(Result.isSuccess(next));
+    assert.isTrue(next.success.text.startsWith("# user prose"));
+  });
+});
+```
+
+When you do need the service, `ManagedSection.layerTest(overrides)` supplies a double in which **every member you do not stub dies when called**, rather than returning a plausible-looking answer that makes a wrong test pass:
+
+```ts
+import { CommentStyle, ManagedSection, SectionId, SyncOutcome } from "@effected/templates";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+const Hook = SectionId.make({ key: "my-tool", commentStyle: CommentStyle.hash });
+
+describe("installer", () => {
+  it.effect("reports the hook it created", () =>
+    Effect.gen(function* () {
+      const sections = yield* ManagedSection;
+      const outcome = yield* sections.sync(".husky/pre-commit", Hook.section("npx my-tool check"));
+      assert.strictEqual(outcome._tag, "Created");
+    }).pipe(
+      Effect.provide(
+        ManagedSection.layerTest({
+          sync: (_path, section) => Effect.succeed(SyncOutcome.Created({ section })),
+        }),
+      ),
+    ));
+});
+```
+
+For the file half — the behavior that only shows up against a real volume, like "the second run writes nothing" — provide a real in-memory `FileSystem` under `ManagedSection.layer` rather than stubbing the service, and read back what the run left behind. A partial `FileSystem` double is a trap here: a deny-by-default stub fails unimplemented members with a typed `NotFound`, which this package correctly treats as "the file is absent", so a stub that implements only the read makes every test silently see an empty document.
+
+## Next steps
+
+- New to the package? Start with the [overview](/templates) for the model, or the [getting started guide](/templates/getting-started) for the declare-and-sync workflow.
+- Every export, with full signatures, lives in the [API reference](/templates/api). The types this guide leaned on: [`SectionDocument`](/templates/api/class/sectiondocument) and its [`SectionReconciliation`](/templates/api/interface/sectionreconciliation), [`ManagedSection`](/templates/api/class/managedsection) with [`ManagedSectionShape`](/templates/api/interface/managedsectionshape) and [`ManagedSectionOptions`](/templates/api/interface/managedsectionoptions), [`SectionDialect`](/templates/api/class/sectiondialect), [`Section`](/templates/api/class/section) / [`SectionId`](/templates/api/class/sectionid) / [`PlacedSection`](/templates/api/class/placedsection), the outcomes [`SyncOutcome`](/templates/api/type/syncoutcome) and [`CheckOutcome`](/templates/api/type/checkoutcome), and the tagged errors [`SectionParseError`](/templates/api/class/sectionparseerror), [`SectionRenderError`](/templates/api/class/sectionrendererror) and [`SectionFileError`](/templates/api/class/sectionfileerror).

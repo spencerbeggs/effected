@@ -1,0 +1,96 @@
+---
+title: "@effected/cli"
+description: "The boundary layer of an effect/unstable/cli program: plain output, failure reporting and schema-issue rendering."
+---
+
+# @effected/cli
+
+The boundary layer of a command-line program built on `effect/unstable/cli`: how output reaches a human, how a failure is reported, and how a schema issue becomes a sentence someone can act on. `CliLogger` renders log records as plain lines and routes diagnostics to stderr. `CliRuntime` reports failures through *your* logger, inside your program, then re-fails with the exit code the runtime should use. `SchemaIssueRenderer` and `ConfigIssueRenderer` flatten an issue tree into `unknown key at groups.g.rulesetz`.
+
+## Why @effected/cli
+
+Everything here shares one property: **you only discover you needed it by shipping bad output to a person.** None of it fails a type-check, a test, or a review of the code in isolation.
+
+Effect's default logger emits `[00:33:56.619] INFO (#2): message`. That is right for a service being scraped and wrong for a tool someone is watching — it turns a formatted table into noise — and nothing at the call site suggests it. A platform `runMain` then reports an unhandled failure through that *same* default logger, which sits outside the layers your program was provided, so a program that carefully installs a CLI logger still prints its failures in the format that logger exists to replace, on **stdout**, the one stream errors must not use. And a decode failure arrives as a structured tree when what a user needs is a sentence naming the key they got wrong.
+
+This package is **not a CLI framework**. `effect/unstable/cli` owns argument parsing, flags, the command tree and help; there are no prompts and no spinners, because `Prompt` already exists in core. The four exports are presentation, and nothing else.
+
+## Install
+
+```bash
+npm install @effected/cli effect
+```
+
+```bash
+pnpm add @effected/cli effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own and never imports a platform package, so it runs unchanged on Node, Bun and Deno.
+
+[`@effected/config-file`](/config-file) is an **optional** peer, needed only by [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer). It lives in its own module and is imported as a type, so a consumer who never installs it can still import the package without the resolver ever being asked.
+
+## Quick start
+
+Install the logger and the two streams sort themselves out — output on stdout, diagnostics on stderr, no timestamp, level or fiber id in front of either:
+
+```ts with-api
+import { CliLogger } from "@effected/cli";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  yield* Effect.log("building 3 packages");
+  yield* Effect.logError("nothing to build");
+});
+
+Effect.runPromise(program.pipe(Effect.provide(CliLogger.layer())));
+// stdout: building 3 packages
+// stderr: nothing to build
+```
+
+A real binary adds the failure-reporting combinator and its own platform runner. Note that `CliLogger.layer()` is **merged** into the application layer rather than provided beneath it — merged, it also covers lines emitted during layer construction, which is exactly where a startup failure prints:
+
+```ts
+import { CliLogger, CliRuntime } from "@effected/cli";
+import { NodeRuntime } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+declare const AppLive: Layer.Layer<never>;
+declare const program: Effect.Effect<void>;
+
+const MainLive = Layer.mergeAll(AppLive, CliLogger.layer());
+
+NodeRuntime.runMain(program.pipe(CliRuntime.reportFailures(), Effect.provide(MainLive)));
+```
+
+## The stream split is a guarantee, not a default
+
+`CliLogger` routes a record to stderr when its level is at or above `stderrFrom`, which defaults to `"Error"`. The comparison is **ordinal** — `LogLevel.isGreaterThanOrEqualTo` — never string equality against two hard-coded names, so a level added upstream lands on the right stream without a change here. `mytool run > log.txt` therefore still shows failures on the terminal.
+
+The one reference that can move the line is `References.LogToStderr`, and it is honoured in **one direction only**: it can force everything to stderr, and it can never move an error back onto stdout. That is the single guarantee this logger exists to make, and a reference should not be able to revoke it.
+
+The logger reads `Console.Console` off the fiber rather than writing to `process.stdout`. `Logger.make` takes a *synchronous* callback and a `Sink` write is an `Effect`, so `Stdio` is unreachable from a logger at all; `Console.Console` is a `Context.Reference`, so it carries a default, never appears in `R`, and a test swaps it instead of stubbing a global.
+
+## Failures report through your logger
+
+[`CliRuntime.reportFailures`](/cli/api/class/cliruntime) is a combinator you apply **inside** your program, not a replacement `runMain`. That placement is the whole fix: a platform `runMain` composes its reporting around the already-provided effect, so its report runs outside your layers. Catching inside means the failure renders through the logger you installed, on the stream you chose.
+
+It then re-fails with a marked error rather than swallowing the failure, so a broken run never exits `0`. The marks are core's own: `Runtime.errorExitCode` carries the process exit code — an error that already had one **keeps** it, since that was a deliberate choice by whatever raised it — and `Runtime.errorReported` suppresses the runtime's duplicate report. An interrupt is left alone; the default teardown already maps an interrupt-only cause to `130`.
+
+When a command reports its own diagnostics, `CliRuntime.reported(error)` applies the same two marks so you do not have to rediscover them.
+
+## Issues become sentences
+
+A decode failure arrives as a structured tree. [`SchemaIssueRenderer.render`](/cli/api/class/schemaissuerenderer) flattens it to one line per rejected value, deepest path last, over core's own `SchemaIssue.makeFormatterStandardSchemaV1`. Two things it adds are worth knowing: duplicate lines are removed, because a three-member union reports the same unknown-key line once per member and buries the per-branch lines that say which shapes *were* allowed; and core's `"Expected no excess property"` — which describes the schema's rule rather than the user's mistake — is rephrased as `unknown key`.
+
+```text
+ConfigValidationError: Config validation failed at "/home/me/.config/app/config.toml"
+  unknown key at variables.keep.KEEP_ME
+  Missing key at variables.keep.file
+  Missing key at variables.keep.value
+```
+
+`ConfigIssueRenderer.render` is the same treatment for `@effected/config-file`'s `ConfigValidationError`, taking the error rather than its `issue` because that is what a `catchTag` hands you. Neither renderer can throw: a value that is not an issue tree yields no lines, since a helper on an error path must never become the reason a program dies.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/cli/api).

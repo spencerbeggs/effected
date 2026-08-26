@@ -1,0 +1,224 @@
+---
+title: Getting Started
+description: Run a program against an isolated in-memory volume, seed a whole tree from one literal, assert on what was written, and keep every missing path an honest typed failure with @effected/memfs.
+---
+
+# Getting Started
+
+Reach for `@effected/memfs` whenever code you want to test — or run in a dry-run mode — asks for Effect's `FileSystem` service. Instead of writing to a temp directory and cleaning it up, or hand-stubbing the handful of methods you think the code path touches, you provide a complete, isolated virtual volume seeded from a single literal. The program under test does not change: it still requires `FileSystem.FileSystem`, and it still fails typed on a path nothing arranged, because the volume never fabricates content.
+
+## Install
+
+```bash
+npm install --save-dev @effected/memfs effect
+```
+
+```bash
+pnpm add -D @effected/memfs effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own. A dev dependency is the usual placement, since the volume is most often a test double — install it as a regular dependency when a shipped dry-run mode runs a program against it.
+
+## Your first task: run a real program against a fixture tree
+
+Here is a concrete, everyday goal. You have a function that reads a package manifest, adds a field, and writes the result back. You want to prove it does the right thing without touching a real directory. We will build it up one step at a time.
+
+Start with the program itself. It is ordinary Effect code — it takes `FileSystem.FileSystem` from the environment and knows nothing about memfs:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem } from "effect";
+
+// 1. The code under test. No memfs anywhere in it.
+const stampVersion = Effect.fn("stampVersion")(function* (path: string, version: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const manifest = JSON.parse(yield* fs.readFileString(path)) as Record<string, unknown>;
+  yield* fs.writeFileString(path, JSON.stringify({ ...manifest, version }, null, 2));
+});
+
+// 2. The fixture tree: absolute paths mapped to contents.
+const Volume = MemoryFileSystem.layerWith({
+  "/repo/package.json": `{ "name": "fixture" }`,
+});
+
+// 3. Provide the volume in place of a host-backed filesystem.
+const program = Effect.gen(function* () {
+  yield* stampVersion("/repo/package.json", "1.4.0");
+  const fs = yield* FileSystem.FileSystem;
+  return yield* fs.readFileString("/repo/package.json");
+}).pipe(Effect.provide(Volume));
+
+Effect.runPromise(program).then(console.log);
+// { "name": "fixture", "version": "1.4.0" }
+```
+
+Two things are worth pausing on. The volume is *isolated* — nothing on your disk was read or written, and no other test can see this tree. And parent directories were created for you: naming `/repo/package.json` brought `/repo` into existence, so a seed literal only lists the paths you actually care about.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built only from the package's real exports.
+
+### Seed a whole tree, including the things a string cannot express
+
+A seed value can be a plain `string` or `Uint8Array` — that is file content — or one of three tagged entries. `MemoryFileSystem.file(content, options)` attaches an initial mode (or a pinned `mtime`), `MemoryFileSystem.directory()` is the only way to express an *empty* directory, and `MemoryFileSystem.symlink(target)` stores a link target verbatim:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem } from "effect";
+
+const Volume = MemoryFileSystem.layerWith({
+  "/repo/package.json": `{ "name": "fixture" }`,
+  "/repo/tools/build.sh": MemoryFileSystem.file("#!/bin/sh\n", { mode: 0o755 }),
+  "/repo/.cache": MemoryFileSystem.directory(),
+  "/repo/latest": MemoryFileSystem.symlink("/repo/package.json"),
+});
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const script = yield* fs.stat("/repo/tools/build.sh");
+  return {
+    mode: script.mode.toString(8),
+    cache: yield* fs.readDirectory("/repo/.cache"),
+    // Reading through the symlink resolves to its target's contents.
+    latest: yield* fs.readFileString("/repo/latest"),
+  };
+}).pipe(Effect.provide(Volume));
+
+Effect.runPromise(program).then(console.log);
+// { mode: "755", cache: [], latest: '{ "name": "fixture" }' }
+```
+
+Files default to mode `0o644` and directories to `0o755`. A symlink's target may dangle — which is exactly what you want when the test is *about* a broken link.
+
+### Let a missing path fail honestly
+
+This is the contract the package is built around. A read of a path nothing seeded fails with a `PlatformError` whose `reason._tag` is `"NotFound"`; it is never an empty string, never an empty array, and never a thrown exception:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem } from "effect";
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  return yield* fs.readFileString("/repo/never-seeded.json");
+}).pipe(
+  Effect.provide(MemoryFileSystem.layer),
+  Effect.catchTag("PlatformError", (error) => Effect.succeed(`refused: ${error.reason._tag}`)),
+);
+
+Effect.runPromise(program).then(console.log);
+// refused: NotFound
+```
+
+Resist the urge to "fix" a test that fails this way by broadening the double. The failure is telling you the fixture is missing a path the code really reads — which is the bug a hand-written stub answering `""` would have hidden.
+
+### Assert on what a program wrote, without an Effect
+
+Routing every assertion back through an `Effect` read gets noisy. `MemoryFileSystem.layerInspectableWith(seed)` provides the `FileSystem` service *and* publishes `MemoryFileSystem.Volume`, a synchronous read-only view over the same volume:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem } from "effect";
+
+const Volume = MemoryFileSystem.layerInspectableWith({
+  "/repo/package.json": `{ "name": "root" }`,
+  "/repo/packages": MemoryFileSystem.directory(),
+});
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  yield* fs.writeFileString("/repo/packages/a.json", "{}");
+
+  const volume = yield* MemoryFileSystem.Volume;
+  return {
+    wrote: volume.text("/repo/packages/a.json"), // "{}"
+    listed: volume.readDirectory("/repo/packages"), // ["a.json"]
+    absent: volume.text("/repo/nothing.json"), // undefined
+  };
+}).pipe(Effect.provide(Volume));
+
+Effect.runPromise(program).then(console.log);
+// { wrote: "{}", listed: [ "a.json" ], absent: undefined }
+```
+
+The view is *live* — it reads the volume's state at call time, so a read after a write observes the write — and honest about absence: `undefined`, never `""` or `[]`.
+
+### Simulate a filesystem that misbehaves
+
+Permission modes are recorded but never enforced, so arranging a `0o444` mode will not make a write fail. Inject the failure instead. `MemoryFileSystem.layerFaultyWith(seed, faults)` seeds a volume and wraps it: handlers receive the real call arguments, and returning `undefined` declines the fault so the call reaches the volume normally:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem, PlatformError } from "effect";
+
+const Volume = MemoryFileSystem.layerFaultyWith(
+  { "/repo/package.json": `{ "name": "fixture" }`, "/repo/locked.json": "{}" },
+  {
+    // Only /repo/locked.json is denied; every other write delegates.
+    writeFileString: (path) =>
+      path === "/repo/locked.json"
+        ? Effect.fail(
+            PlatformError.systemError({
+              _tag: "PermissionDenied",
+              module: "FileSystem",
+              method: "writeFileString",
+              pathOrDescriptor: path,
+            }),
+          )
+        : undefined,
+  },
+);
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  yield* fs.writeFileString("/repo/package.json", "{}"); // delegates, succeeds
+  return yield* fs.writeFileString("/repo/locked.json", "{}"); // intercepted
+}).pipe(
+  Effect.provide(Volume),
+  Effect.catchTag("PlatformError", (error) => Effect.succeed(`denied: ${error.reason._tag}`)),
+);
+
+Effect.runPromise(program).then(console.log);
+// denied: PermissionDenied
+```
+
+The handler's return type is the method's own, so an injected failure has to be a real `PlatformError` — `Effect.fail(new Error("nope"))` does not typecheck. A test named for the `PlatformError` channel can never accidentally exercise a different one.
+
+## Testing with @effect/vitest
+
+Everything above transfers directly. Bind each layer to a `const`, provide it, and assert with `assert.*` — never `expect`:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, FileSystem } from "effect";
+
+describe("manifest writer", () => {
+  const Volume = MemoryFileSystem.layerInspectableWith({
+    "/repo/package.json": `{ "name": "fixture" }`,
+  });
+
+  it.effect("writes the stamped version back", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      yield* fs.writeFileString("/repo/package.json", `{ "version": "1.4.0" }`);
+
+      const volume = yield* MemoryFileSystem.Volume;
+      assert.strictEqual(volume.text("/repo/package.json"), `{ "version": "1.4.0" }`);
+    }).pipe(Effect.provide(Volume)));
+
+  it.effect("fails typed on a path nothing seeded", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const error = yield* Effect.flip(fs.readFileString("/repo/absent.json"));
+      assert.strictEqual(error.reason._tag, "NotFound");
+    }).pipe(Effect.provide(Volume)));
+});
+```
+
+One trap to internalize before you write many of these: **layer memoization is per-build, not per-value.** Every `Effect.provide` of a layer value — even the same bound `const`, as above — builds and re-seeds a *fresh* volume. That is usually what you want in tests, since it means the two cases above cannot leak state into each other. But it also means you cannot share one volume across two separately-provided effects by binding the layer once; that requires a single provide of one composed layer graph. The [advanced guide](/memfs/advanced) covers how to arrange that, and why `failTimes` counters follow the same rule.
+
+## Next steps
+
+- Ready for fault injection in depth, volume inspection, mtime-sensitive fixtures, the synchronous port and the boundaries of what a volume can see? See the [advanced guide](/memfs/advanced).
+- Every export, with full signatures, lives in the [API reference](/memfs/api) — start with [`MemoryFileSystem`](/memfs/api/class/memoryfilesystem), the seed types [`MemoryFileSystemSeed`](/memfs/api/interface/memoryfilesystemseed) and [`MemoryFileSystemSeedEntry`](/memfs/api/type/memoryfilesystemseedentry), and the inspection view [`MemoryFileSystemVolume`](/memfs/api/interface/memoryfilesystemvolume).

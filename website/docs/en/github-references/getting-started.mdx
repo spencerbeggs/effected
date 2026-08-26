@@ -1,0 +1,169 @@
+---
+title: Getting Started
+description: Read the issues a pull request closes out of its body — inline in prose, one per line, or a whole line naming several — with @effected/github-references.
+---
+
+# Getting Started
+
+Reach for `@effected/github-references` whenever a tool has to decide *which issues a piece of text refers to* — a release script harvesting a changelog entry, a commitlint rule checking that a pull request names something, an Action that comments on every issue a merge will close. The naive version of that job is a one-line regex, and the naive regex is wrong in ways nobody notices: it accepts spellings GitHub will not link, misses the ones it will, or reads only the first issue of a line that names four. This package is the grammar written once — the nine closing keywords, the three dialects that spell them, and the rulings on every case where those dialects disagree.
+
+## Install
+
+```bash
+npm install @effected/github-references effect
+```
+
+```bash
+pnpm add @effected/github-references effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own and does no IO.
+
+## Your first task: what does this pull request close?
+
+Here is the concrete, everyday goal. You have a pull request body, and you want the list of issue numbers that merging it will actually close — the input to a "comment on each closed issue" step, or to a check that refuses a pull request naming nothing.
+
+The complication is that a real body mixes postures. Some lines are generated trailers (`Closes: #12`), some are running prose that happens to contain a reference, and some name several issues at once. [`collectReferenceLists`](/github-references/api/function/collectreferencelists) is the entry point built for exactly that mixture: it reads a whole text line by line, trying each line first as a whole-line reference list and only harvesting it inline if it is not one, so a colon-less trailer line contributes its issues exactly once rather than once per posture.
+
+```ts with-api
+import { collectReferenceLists } from "@effected/github-references";
+
+const body = [
+  "Rewrite the scanner as a single left-to-right pass.",
+  "",
+  "Closes #247, #248 and #251",
+  "Refs: #12",
+].join("\n");
+
+// 1. Read every reference list in the body, in document order.
+const lists = collectReferenceLists(body);
+
+// 2. Keep only the ones whose keyword actually closes, and flatten to numbers.
+const closes = lists.filter((list) => list.closing).flatMap((list) => list.issueNumbers);
+
+console.log(closes);
+// [ 247, 248, 251 ]
+```
+
+Two results are worth pausing on. The `Refs: #12` line *is* read — it comes back as a [`ReferenceList`](/github-references/api/interface/referencelist) with `closing: false` — but it is filtered out here, because `refs` associates an issue without closing it. And the three issues on the `Closes` line arrive as one list rather than three separate readings, so `#248` and `#251` are not silently lost the way a one-reference-per-line parser would lose them. That is the whole shape of the task: read the text, keep the closing lists, flatten to numbers.
+
+## Common operations
+
+Each snippet below is a complete, runnable program built only from the package's real exports.
+
+### Harvest references out of running prose
+
+[`harvestIssueReferences`](/github-references/api/function/harvestissuereferences) scans running text for the inline dialect GitHub itself honours: a closing keyword, mandatory whitespace, then `#<number>`, with **no colon**. Every hit is an [`IssueReference`](/github-references/api/interface/issuereference) carrying the canonical lowercase `keyword` and `start` / `end` offsets into the input:
+
+```ts with-api
+import { harvestIssueReferences } from "@effected/github-references";
+
+console.log(harvestIssueReferences("Fixes #12 and closes #13."));
+// [ { issueNumber: 12, keyword: "fixes", start: 0, end: 9 },
+//   { issueNumber: 13, keyword: "closes", start: 14, end: 24 } ]
+```
+
+The colon spelling and the bare number are both rejected here on purpose, because GitHub does not link either one:
+
+```ts with-api
+import { harvestIssueReferences } from "@effected/github-references";
+
+console.log(harvestIssueReferences("closes: 123 and fixes #9"));
+// [ { issueNumber: 9, keyword: "fixes", start: 16, end: 24 } ]
+```
+
+### Read a generated references block
+
+A tool-written references region puts one reference on each line, usually with a colon. [`parseBareLines`](/github-references/api/function/parsebarelines) applies the bare-line dialect across a whole text and collects the hits in order, skipping any line that is not a reference:
+
+```ts with-api
+import { parseBareLines } from "@effected/github-references";
+
+console.log(parseBareLines("Closes: #12\nsome unrelated line\nFixed #34"));
+// [ { issueNumber: 12, keyword: "closes" }, { issueNumber: 34, keyword: "fixed" } ]
+```
+
+A [`BareLineReference`](/github-references/api/interface/barelinereference) has no offsets, and that is deliberate: in a dialect where the whole trimmed line is the reference, an offset would restate a constant.
+
+### Parse one line that names several issues
+
+[`parseClosingList`](/github-references/api/function/parseclosinglist) reads a whole line under a single closing keyword, with items separated by a comma, by `and`, or by the Oxford `, and`. It answers an `Option`, because a line either is such a list or is not:
+
+```ts with-api
+import { parseClosingList } from "@effected/github-references";
+import { Option } from "effect";
+
+const list = parseClosingList("Fixes #1, #2, and #3");
+
+console.log(Option.isSome(list) ? list.value.issueNumbers : []);
+// [ 1, 2, 3 ]
+
+console.log(Option.isNone(parseClosingList("Closes #1 and please review")));
+// true — trailing prose rejects the line rather than parsing a prefix
+```
+
+That rejection is the point of a whole-line dialect. A parser that took the prefix would report a confident reading of a line it did not actually understand.
+
+### Tell closing references from bare associations
+
+[`parseReferenceList`](/github-references/api/function/parsereferencelist) is the wider reading of the same line: it also accepts `ref`, `refs` and `references`, and reports which set matched through a `closing` flag. `parseClosingList` is the closing-only view of that engine, so the two disagree exactly where they should:
+
+```ts with-api
+import { parseClosingList, parseReferenceList } from "@effected/github-references";
+import { Option } from "effect";
+
+console.log(Option.getOrNull(parseReferenceList("Refs #7, #8")));
+// { keyword: "refs", closing: false, issueNumbers: [ 7, 8 ] }
+
+console.log(Option.isNone(parseClosingList("Refs #7, #8")));
+// true — a reference list, but not a closing one
+```
+
+Reach for `parseReferenceList` when you want to categorize everything a line mentions, and `parseClosingList` when you only care what merging will close.
+
+### Collapse twelve keyword spellings to four families
+
+[`keywordFamily`](/github-references/api/function/keywordfamily) projects any keyword from either set onto its tense-collapsed stem, so a report can key a map by intent instead of switching on `close`, `closes` and `closed` separately:
+
+```ts with-api
+import { collectReferenceLists, keywordFamily } from "@effected/github-references";
+
+const lists = collectReferenceLists("Closes #247, #248\nRefs: #12");
+const byFamily = lists.map((list) => [keywordFamily(list.keyword), list.issueNumbers] as const);
+
+console.log(byFamily);
+// [ [ "close", [ 247, 248 ] ], [ "ref", [ 12 ] ] ]
+```
+
+The projection is a total record over both keyword sets rather than a `startsWith` heuristic, so a keyword added upstream without a family entry is a compile error rather than a silent miscategorization.
+
+## Handling absence
+
+Nothing in this package throws, and nothing returns `null`. The two shapes are all you have to handle:
+
+- **The whole-line parsers** — `parseBareLineReference`, `parseClosingList`, `parseReferenceList` — answer `Option`. `Option.none()` means "this line is not that dialect", which for a whole-line dialect includes "it was *almost* that dialect but had a tail". Handle it with `Option.match`, `Option.getOrElse`, or an `Option.isSome` guard.
+- **The harvesters and the multi-line readers** — `harvestIssueReferences`, `harvestReferenceLists`, `parseBareLines`, `parseClosingLists`, `parseReferenceLists`, `collectReferenceLists` — answer a `ReadonlyArray`, empty when there is nothing to read. There is no "no matches" error to catch, only a length to check.
+
+```ts with-api
+import { parseBareLineReference } from "@effected/github-references";
+import { Option } from "effect";
+
+const describe = (line: string): string =>
+  Option.match(parseBareLineReference(line), {
+    onNone: () => `${line} — not a reference line`,
+    onSome: (reference) => `${line} — ${reference.keyword} #${reference.issueNumber}`,
+  });
+
+console.log(describe("Closes: #12"));
+// Closes: #12 — closes #12
+
+console.log(describe("closes #12 for real"));
+// closes #12 for real — not a reference line
+```
+
+Because there is no `Effect` in the surface at all, there is no failure channel to route and no layer to provide. These functions are ordinary synchronous calls that happen to speak `Option`, which is exactly what lets a plain release script and an Effect program share one grammar.
+
+## Next steps
+
+- Ready to wire the grammar into a real pipeline — rewriting text with offsets, harvesting lists inline, and the edge cases a production tool meets? See the [advanced guide](/github-references/advanced).
+- Every export, with full signatures, lives in the [API reference](/github-references/api) — start with [`harvestIssueReferences`](/github-references/api/function/harvestissuereferences), [`parseReferenceList`](/github-references/api/function/parsereferencelist) and [`collectReferenceLists`](/github-references/api/function/collectreferencelists).

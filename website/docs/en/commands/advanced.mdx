@@ -1,0 +1,334 @@
+---
+title: Advanced
+description: Compose @effected/commands into a real Effect application — discover CLI tools without a shell probe, run project-local binaries through a launcher, frame a JSON protocol on stdout, classify transient failures, and script a spawner in tests.
+---
+
+# Advanced
+
+## A toolchain that has to find its tools before it can run them
+
+Picture the job this package was built for. A release CLI, a lint runner or a GitHub Action needs to invoke `biome`, `git` or `deno` — but *which* copy? A monorepo checkout usually has a pinned, project-local one behind `pnpm exec`; a bare CI runner has only whatever is on `PATH`; a developer machine often has both, at different versions. Getting that wrong is not a crash, it is worse: the tool runs, it is the wrong version, and the output is subtly different from what the pinned copy would have produced.
+
+Answering it properly means three things a shell one-liner cannot do. You have to prove presence without a shell (a name interpolated into `command -v` is a command-injection surface, and the probe behaves differently on Windows), you have to know how *this* project runs a local binary without dragging in a workspace-detection engine, and you have to keep the answer honest across a process lifetime in which a tool may be installed midway. This guide covers the four capabilities a real application leans on — [`ToolDiscovery`](/commands/api/class/tooldiscovery) and its evidence cache, the [`LocalExec`](/commands/api/class/localexec) launcher seam, `Run.jsonLine`'s protocol framing, and [`Retry`](/commands/api/class/retry) as retry vocabulary — plus the failure modes and the testing pattern a production tool needs. It assumes the run-and-decode basics from the [getting-started guide](/commands/getting-started).
+
+## How it composes with Effect
+
+The package draws one sharp line, and it explains the whole surface. [`Run`](/commands/api/class/run), [`Redaction`](/commands/api/class/redaction) and `Retry` are **free functions**, not services: core's `ChildProcessSpawner` already *is* the subprocess service, and wrapping it in a second one is precisely the re-declaration this package exists not to repeat. So `Run.text(command)` is a plain `Effect` whose `R` is `ChildProcessSpawner`, its errors join your program's typed `E` channel with no wrapping, and a test stubs the spawner rather than stubbing `Run`.
+
+Two things genuinely are services, because they genuinely hold something. `ToolDiscovery` holds the probe cache, so it is a `Context.Service` you provide with `ToolDiscovery.layer`. `LocalExec` holds the answer to "how does this project run a local binary", which is ambient knowledge no pure function can derive. `ToolDiscovery.layer` requires both `ChildProcessSpawner` and `LocalExec`, and resolves them once at construction, so every method's own `R` is `never`:
+
+```ts with-api
+import { LocalExec, ToolDiscovery } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Layer } from "effect";
+
+// A single-package checkout: global resolution only, no workspace engine.
+const ToolsLive = ToolDiscovery.layer.pipe(
+  Layer.provide(LocalExec.layerNone),
+  Layer.provide(NodeServices.layer),
+);
+
+// A pnpm monorepo: local resolution goes through `pnpm exec` in the given directory.
+const MonorepoToolsLive = ToolDiscovery.layer.pipe(
+  Layer.provide(LocalExec.layerFor("pnpm", { directory: "/repo" })),
+  Layer.provide(NodeServices.layer),
+);
+```
+
+That `LocalExec` seam is an inversion, and it is why this package has zero `@effected/*` dependencies. `LocalExec` is declared *here* and implemented by [`@effected/workspaces`](/workspaces), so a consumer that already detects workspaces provides the real thing, and a consumer that just wants to know whether `tar` exists provides `LocalExec.layerNone` and never installs a workspace-detection engine.
+
+## Discover a tool, then run the copy you resolved
+
+`ToolDiscovery.resolve` takes a [`Tool`](/commands/api/class/tool) — a name, a version probe, a `source` requirement and a mismatch policy — and returns a [`ResolvedTool`](/commands/api/class/resolvedtool) that knows which copy won and how to invoke it. `Tool.named` is the 90% constructor: `--version`, `source: "any"`, `onMismatch: "preferLocal"`.
+
+```ts with-api
+import { LocalExec, Run, Tool, ToolDiscovery } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer, Option } from "effect";
+
+const program = Effect.gen(function* () {
+  const discovery = yield* ToolDiscovery;
+
+  // Prefer the project-local copy, fall back to a global one.
+  const biome = yield* discovery.resolve(Tool.named("biome"));
+
+  // `command` returns a core Command: bare for a global copy,
+  // launcher-prefixed and directory-scoped for a local one.
+  const report = yield* Run.text(biome.command("check", "."));
+
+  return {
+    source: biome.source,
+    version: Option.getOrElse(biome.version, () => "unknown"),
+    report,
+  };
+});
+
+const ToolsLive = ToolDiscovery.layer.pipe(
+  Layer.provide(LocalExec.layerFor("pnpm", { directory: "/repo" })),
+  Layer.provide(NodeServices.layer),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(ToolsLive))).then(console.log);
+```
+
+`ResolvedTool.command(...args)` is the piece that makes the abstraction pay off: it returns core's own `ChildProcess.Command`, not a wrapper, so it composes with core's combinators and with every `Run` combinator unchanged. For a global resolution it is a bare `biome check .`; for a local one it comes back as `pnpm exec biome check .` with the working directory set. The call site does not branch.
+
+The constraints are where the policy lives. `source` says where the tool must be found — `"any"`, `"global"`, `"local"` or `"both"` — and a failure to satisfy it is a typed [`ToolNotFoundError`](/commands/api/class/toolnotfounderror) naming exactly which locations were searched. `onMismatch` says what to do when the two copies report different versions: `"preferLocal"` (the default, and the one a monorepo wants), `"preferGlobal"`, or `"fail"` — which raises [`ToolVersionMismatchError`](/commands/api/class/toolversionmismatcherror) carrying both versions, so a CI job can refuse to run against a drifting toolchain rather than silently picking one.
+
+### Probing for a version that is not behind `--version`
+
+Not every tool answers `--version` in a readable form. The [`VersionProbe`](/commands/api/type/versionprobe) union covers the three real cases: [`VersionFlag`](/commands/api/class/versionflag) passes a flag and reads a version-shaped token out of stdout (with an optional capture pattern when the default is not enough), [`VersionJson`](/commands/api/class/versionjson) passes a flag, parses JSON and reads a dotted path, and [`VersionNone`](/commands/api/class/versionnone) declines to ask at all when presence is the only question.
+
+```ts with-api
+import { Tool, VersionFlag, VersionJson, VersionNone } from "@effected/commands";
+
+// Deno reports structured version info; read it from a path in the JSON.
+const deno = Tool.named("deno", {
+  version: VersionJson.make({ flag: "info --json", path: "deno.version" }),
+});
+
+// A noisy banner: capture the version with an explicit pattern.
+const legacy = Tool.named("legacy-cli", {
+  version: VersionFlag.make({ flag: "-V", pattern: "release ([0-9]+\\.[0-9]+\\.[0-9]+)" }),
+});
+
+// Presence is the whole question; do not spend a probe on a version.
+const tar = Tool.named("tar", { version: VersionNone.make(), source: "global" });
+```
+
+A capture pattern is developer-supplied and therefore trusted; it is never built from a tool's output. `VersionProbe` is part of the cache key, so two `Tool` values that ask for a version differently do not share evidence — while two that differ only in policy do.
+
+### The cache stores evidence, not answers
+
+`ToolDiscovery` caches what it *learned* — whether each location's probe ran, and what version it reported — keyed by `(name, version probe)`. Policy (`source`, `onMismatch`) is applied per call on top of that evidence. The consequence matters: two callers with different constraints get correct, different answers from one probe, instead of the second caller inheriting the first one's policy decision.
+
+Only a positive result is remembered indefinitely. A failed lookup and a "not found" both expire immediately, and the asymmetry is deliberate: a tool that exists does not stop existing, but a tool that does not exist very often starts to — an action that provisions a runtime and then uses it would otherwise see it as permanently absent. When you know you have changed the world, say so explicitly:
+
+```ts with-api
+import { LocalExec, Tool, ToolDiscovery } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const program = Effect.gen(function* () {
+  const discovery = yield* ToolDiscovery;
+  const deno = Tool.named("deno");
+
+  const before = yield* discovery.isAvailable(deno);
+
+  // ... provision the runtime here ...
+
+  // The positive evidence for a tool you just replaced is now stale.
+  yield* discovery.invalidate(deno);
+
+  const after = yield* discovery.isAvailable(deno);
+  return { before, after };
+});
+
+const ToolsLive = ToolDiscovery.layer.pipe(
+  Layer.provide(LocalExec.layerNone),
+  Layer.provide(NodeServices.layer),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(ToolsLive))).then(console.log);
+```
+
+`isAvailable` never fails — it collapses every resolution failure to `false`. `invalidateAll` clears the whole cache when a provisioning step changed more than one tool.
+
+## Run a project-local binary, a fetched one, or a script
+
+[`ExecContext`](/commands/api/class/execcontext) is the entire contract `ToolDiscovery` needs from a workspace: three argv prefixes and a directory. It carries no workspace root, no manifest and no package-manager semantics — `label` is for reporting only. Its three `apply` methods correspond to the three ways a package manager launches something, and [`LocalExec.prefixes`](/commands/api/class/localexec) is the single home of all four managers' argv:
+
+```ts with-api
+import { ExecContext, LocalExec } from "@effected/commands";
+import { ChildProcess } from "effect/unstable/process";
+
+const npm = LocalExec.prefixes("npm");
+console.log(npm.prefix, npm.dlxPrefix, npm.scriptPrefix);
+// [ "npx", "--no", "--" ] [ "npx" ] [ "npm", "run", "--" ]
+
+const context = ExecContext.make({
+  label: "pnpm",
+  prefix: ["pnpm", "exec"],
+  dlxPrefix: ["pnpm", "dlx"],
+  scriptPrefix: ["pnpm", "run"],
+  directory: "/repo",
+});
+
+// A project-local binary.
+const check = context.apply(ChildProcess.make("biome", ["check", "."]));
+
+// A binary that is not installed: fetch and run it.
+const scaffold = context.applyDlx(ChildProcess.make("create-vite", ["my-app"]));
+
+// A package.json script, by name.
+const build = context.applyScript(ChildProcess.make("build", ["--watch"]));
+```
+
+The three spellings exist because they are genuinely different operations, and a caller that only had `apply` would reach for a shell to express the other two. `scriptPrefix` is a **required** field precisely so an implementation cannot forget it — an optional one would force every implementer to answer "what does absent mean?", which an execution context has no honest answer to.
+
+One detail is load-bearing and lives here so that nothing else has to remember it: npm's script prefix is `["npm", "run", "--"]`, with the trailing `--`. Bare `npm run <script> --flag` silently claims `--flag` for npm itself instead of forwarding it to the script; the other three managers forward post-script arguments without help. A silently dropped argument is why that knowledge is allowed to live in exactly one place.
+
+## Frame a JSON protocol on stdout
+
+`Run.json` is the right combinator when a tool's *entire* stdout is a JSON document and a non-zero exit means the document is worthless. Plenty of children are not like that: they log progress to stdout, then print a single-line result envelope. `Run.jsonLine` is the combinator for those — and it is framing, not a lenient `Run.json`.
+
+It scans stdout's non-empty lines **from the end** and takes the first that both JSON-parses and decodes under your schema, so log noise on either side of the payload is tolerated. And it parses **regardless of the exit code**, because a protocol envelope discriminates success in-band: the child has already told you what happened, and the exit code is a second, cruder channel saying the same thing.
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Schema } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+// A required `ok` literal is what discriminates the envelope from any other
+// schema-valid line the child might emit.
+const Envelope = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true), artifact: Schema.String }),
+  Schema.Struct({ ok: Schema.Literal(false), reason: Schema.String }),
+]);
+
+const program = Effect.gen(function* () {
+  const result = yield* Run.jsonLine(ChildProcess.make("./build-tool", ["--json"]), Envelope);
+  return result.ok ? `built ${result.artifact}` : `refused: ${result.reason}`;
+});
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+```
+
+Two rules follow from the scan direction. A child must not emit two schema-valid lines — if two decode, the **last** one wins, which is why the envelope above carries a required `ok` literal rather than being a bare struct that any log line could accidentally satisfy. And when nothing decodes, the resulting `CommandOutputError` carries the exit code and both captured (already redacted) streams, so a missing payload is diagnosable without a second run. Never re-hand-roll last-line parsing at a call site; that is the whole job this combinator was factored out to do.
+
+## Retry what is worth retrying
+
+`Retry` is **vocabulary, not a runner**. Core's `Effect.retry` already accepts `{ while, schedule, times }`, so `Retry.transient()` simply hands it a policy — transient failures only, on a jittered exponential backoff, with a bounded attempt budget — and the caller keeps control of composition:
+
+```ts with-api
+import { Retry, Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const install = Run.text(ChildProcess.make("npm", ["install"]), { timeout: "5 minutes" });
+
+const program = install.pipe(
+  // Registry hiccups are worth another attempt; a missing npm is not.
+  Effect.retry(Retry.transient({ times: 4, also: ["registry returned 503"] })),
+);
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console.log);
+```
+
+Two classifications in `Retry.isTransient` are structural rather than textual, and they matter more than the pattern list. **A missing executable is never transient** — retrying cannot install a tool, so `kind: "spawn"` with `notFound` is permanent however many attempts remain. **A timeout is not transient by default**, because a command that hangs deterministically would burn its entire ceiling on every attempt; a caller who knows better opts in through `while`. Any *other* spawn failure — a busy or momentarily locked binary — is treated as transient, because that condition does clear.
+
+`also` extends the pattern list rather than forking it; `TRANSIENT_PATTERNS` is exported so you can see what you are extending. If you need to repair state between attempts — resetting a working tree, say — compose `Effect.retryOrElse` or `Effect.tapError` yourself. That reset is domain logic and does not belong in a retry policy.
+
+## Keep secrets out of logs
+
+Redaction is layered on purpose. The **primary** mechanism is by value: declare your secrets as `Redacted` in `RunOptions.redact`, and every occurrence is removed from captured output and from any error the run raises — matching by exact value, so a secret disappears whichever flag carried it and even when it is embedded in a larger string. The **backstop** is `Redaction.scrubArgs`, a flag heuristic for the credentials a caller forgot to declare; it runs *in addition*, never instead, and an error's `args` is always stored with both applied.
+
+```ts with-api
+import { Redaction } from "@effected/commands";
+import { Redacted } from "effect";
+
+// By value: the primary mechanism.
+const token = Redacted.make("s3cr3t");
+console.log(Redaction.apply("failed with token s3cr3t in the URL", [token]));
+// "failed with token *** in the URL"
+
+// The heuristic backstop: a known credential flag consumes its value.
+console.log(Redaction.scrubArgs(["publish", "--token", "s3cr3t", "--registry", "https://example.com"]));
+// [ "publish", "--token", "***", "--registry", "https://example.com" ]
+
+// Extend the recognised flags without forking the set.
+console.log(Redaction.scrubArgs(["--api-key", "s3cr3t"], { flags: ["--api-key"] }));
+// [ "--api-key", "***" ]
+```
+
+Value redaction sorts secrets longest-first, which is not cosmetic: redacting `"ab"` before `"abcd"` would rewrite `"abcd"` to `"***cd"` and leak a fragment of the longer secret. Empty values are dropped, and replacement is a literal split/join, so a secret containing regex metacharacters is never compiled as a pattern.
+
+## Tee, detach, and the capture ceiling
+
+Three smaller combinators exist for shapes the main ones cannot express.
+
+`Run.collectTee` collects output *and* writes it through to the terminal as it arrives, which is what a build tool wants when a human is watching. It is a separate combinator rather than an option on `Run.collect` because only it requires core's `Stdio` in `R`, and an option cannot vary the `R` channel. `NodeServices.layer` provides `Stdio` along with the spawner, so wiring it costs nothing extra.
+
+`Run.detach` spawns a child, unrefs it, and returns its pid — a process that outlives your program. The ordering is the whole point: the Node backend does not kill an unref'd child on scope close, so `unref` must run *before* the scope closes. Reversed, the child dies with the scope and nothing survives.
+
+```ts with-api
+import { Run } from "@effected/commands";
+import { NodeServices } from "@effect/platform-node";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const program = Run.detach(ChildProcess.make("my-daemon", ["--background"]));
+
+Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then((pid) => console.log(`started ${pid}`));
+```
+
+Every collecting combinator bounds its capture at `DEFAULT_MAX_OUTPUT_BYTES` (16 MiB per stream), tunable per run with `RunOptions.maxOutputBytes`. Exceeding it is a `CommandOutputError` of kind `"tooLarge"`, not a silent truncation — collecting a child's output without a bound is a memory-exhaustion vector. Output genuinely larger than that belongs on `Run.stream`, which never accumulates.
+
+## Edge cases and failure modes
+
+Everything malformed, absent or over budget arrives on the typed `E` channel. Knowing which failure to expect is half the battle.
+
+**Absence is a spawn failure, never an exit code.** `ToolDiscovery` decides presence by whether the process *ran*, so a tool whose `--version` exits 1 still exists. There is deliberately no `command -v` probe: a spawn that completes proves existence whatever the exit code, a spawn failure proves absence, it needs no shell, and it behaves the same on Windows.
+
+**A dangerous tool name is refused before any process starts.** An empty name, or one beginning with `-` — which the operating system would read as a flag rather than an executable — raises [`ToolRefusedError`](/commands/api/class/toolrefusederror) pre-spawn. `Tool.named("-rf")` never reaches a process, and this package never builds a shell command line in the first place.
+
+**`LocalExecError` is a mechanism failure, not an absence.** "There is no project-local way to run tools here" is `Option.none()` from `LocalExec.context` — a successful answer. [`LocalExecError`](/commands/api/class/localexecerror) means the context could not be *determined*: an unreadable manifest, a detection failure. That `None`-is-success convention is why an implementation never has to decide whether absence is exceptional.
+
+**`Run.text` trims, and that can corrupt fixed-column output.** It strips leading *and* trailing whitespace, which is right for a SHA and wrong for `git status --porcelain`, whose leading space is a status column. Parse that from `Run.collect`'s untrimmed `CommandOutput.stdout`.
+
+**A `timeout` has no default.** An unset `timeout` means no ceiling — a package-manager install and a `git rev-parse` cannot share one. When set, expiry closes the run's scope (killing the child) and fails with `CommandFailedError` of kind `"timeout"`, so your error channel stays this package's taxonomy rather than growing core's `TimeoutError`.
+
+## Testing with @effect/vitest
+
+Nothing here needs a mocking framework, because the spawner is a service. [`ScriptedSpawner`](/commands/api/class/scriptedspawner) is a **public** test double that provides core's own `ChildProcessSpawner` from a script — a function from `(command, args)` to a scripted outcome or a `PlatformError` — plus a live spawn log you assert against. Drive it with `it.effect` and assert with `assert.*`, never `expect`.
+
+```ts
+import { CommandFailedError, Run, ScriptedSpawner } from "@effected/commands";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+describe("commit reader", () => {
+  it.effect("returns the trimmed SHA", () =>
+    Effect.gen(function* () {
+      const spawner = ScriptedSpawner.make((command) =>
+        command === "git" ? { stdout: "abc123\n" } : ScriptedSpawner.notFound(command),
+      );
+
+      const sha = yield* Run.text(ChildProcess.make("git", ["rev-parse", "HEAD"])).pipe(
+        Effect.provide(spawner.layer),
+      );
+
+      assert.strictEqual(sha, "abc123");
+      // The spawn log makes "what did we actually run" a real assertion.
+      assert.strictEqual(spawner.spawns[0]?.command, "git");
+      assert.deepStrictEqual(spawner.spawns[0]?.args, ["rev-parse", "HEAD"]);
+    }));
+
+  it.effect("routes a missing executable through the typed channel", () =>
+    Effect.gen(function* () {
+      const spawner = ScriptedSpawner.make((command) => ScriptedSpawner.notFound(command));
+
+      const error = yield* Effect.flip(
+        Run.text(ChildProcess.make("git", ["rev-parse", "HEAD"])).pipe(Effect.provide(spawner.layer)),
+      );
+
+      assert.instanceOf(error, CommandFailedError);
+      assert.strictEqual(error.kind, "spawn");
+      assert.isTrue(error.notFound);
+    }));
+});
+```
+
+Each [`SpawnRecord`](/commands/api/interface/spawnrecord) captures the command, argv, `cwd`, `env`, `extendEnv`, the full options and whether `unref` actually ran — which is what makes assertions about probe counts, environment inheritance and detach ordering real rather than plausible. `ScriptedSpawner.notFound` and `ScriptedSpawner.permissionDenied` build the two common spawn-failure `PlatformError`s in the exact shape a platform backend produces, so a test of your `notFound` handling is testing the real mapping.
+
+For the layer above `Run`, the two services have test doubles that deliberately default *differently*. `ToolDiscovery.makeTest` dies on any member you did not stub, because no fabricated `ResolvedTool` is honest — it would leak into consumer logic as fact. `LocalExec.makeTest` does not, because its unstubbed answer is `Option.none()`, which is a real and correct answer ("no project-local context") rather than a fabrication. Both have matching `layerTest` helpers.
+
+One thing a scripted spawner cannot prove: pipe backpressure. `Run.collect` gathers stdout, stderr and the exit code with unbounded concurrency, and doing it sequentially deadlocks when either OS pipe buffer fills — a condition no in-memory double reproduces. That claim, along with detach ordering and the ENOENT mapping, is pinned by an end-to-end suite running a real process.
+
+## Next steps
+
+- New to the package? Start with the [getting-started guide](/commands/getting-started) for running a command and using its output.
+- Every export, with full signatures, lives in the [API reference](/commands/api). The types this guide leaned on: [`Run`](/commands/api/class/run) with [`RunOptions`](/commands/api/interface/runoptions) and [`CommandOutput`](/commands/api/class/commandoutput), [`ToolDiscovery`](/commands/api/class/tooldiscovery) with [`Tool`](/commands/api/class/tool) and [`ResolvedTool`](/commands/api/class/resolvedtool), [`LocalExec`](/commands/api/class/localexec) with [`ExecContext`](/commands/api/class/execcontext) and [`LauncherPrefixes`](/commands/api/interface/launcherprefixes), [`Redaction`](/commands/api/class/redaction), [`Retry`](/commands/api/class/retry), [`ScriptedSpawner`](/commands/api/class/scriptedspawner), and the errors [`CommandFailedError`](/commands/api/class/commandfailederror), [`CommandOutputError`](/commands/api/class/commandoutputerror) and [`ToolNotFoundError`](/commands/api/class/toolnotfounderror).

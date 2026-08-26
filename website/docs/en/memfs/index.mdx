@@ -1,0 +1,90 @@
+---
+title: "@effected/memfs"
+description: "An in-memory implementation of Effect's FileSystem service: an isolated virtual POSIX volume for tests and dry-run programs."
+---
+
+# @effected/memfs
+
+An in-memory implementation of Effect's `FileSystem` service: an isolated virtual POSIX volume — files, directories, symlinks, hard links, open descriptors, temp resources, globbing, watching — behind the standard `FileSystem.FileSystem` key. Provide `MemoryFileSystem.layer`, or `MemoryFileSystem.layerWith` a seed describing a whole tree, and any program that requires `FileSystem` runs against it unchanged, with no host filesystem IO and no temp directory to clean up.
+
+## Why @effected/memfs
+
+Core Effect ships exactly one stand-in for `FileSystem`: `FileSystem.layerNoop`, which is *deny-by-default*. Every method you do not supply dies, so testing a code path means hand-writing every method it happens to touch — and a hand stub encodes only what its author remembered. That is not a hypothetical failure mode. One such stub answered an unarranged read with `""` instead of failing, and a real changeset was silently dropped downstream because the code under test read the empty string as "the file exists and is empty".
+
+So the kit's house rule is: **a test that needs `FileSystem` provides `@effected/memfs`, never a hand-rolled `FileSystem.layerNoop` stub — and misbehaviour is injected as a fault handler, not written into a stub body.** The volume implements the whole service, so nothing is missing by accident; and the one thing it will never do is invent an answer.
+
+## Install
+
+```bash
+npm install --save-dev @effected/memfs effect
+```
+
+```bash
+pnpm add -D @effected/memfs effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds no runtime dependencies of its own. A dev dependency is the usual placement, since the volume is most often a test double — install it as a regular dependency when a shipped dry-run mode runs a program against it.
+
+## Quick start
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem } from "effect";
+
+const Volume = MemoryFileSystem.layerWith({
+  "/repo/package.json": `{ "name": "fixture" }`,
+});
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const manifest = yield* fs.readFileString("/repo/package.json");
+  yield* fs.writeFileString("/repo/copy.json", manifest);
+  return yield* fs.readDirectory("/repo");
+}).pipe(Effect.provide(Volume));
+
+Effect.runPromise(program).then(console.log);
+// [ "copy.json", "package.json" ]
+```
+
+Nothing about the program changed to make it testable. It still asks for `FileSystem.FileSystem` and still calls the same methods; only the layer under it is different.
+
+## Honest absence is the founding contract
+
+Reading, statting, or opening (without a create flag) a path nothing seeded fails typed with a `NotFound` `SystemError`, wrapped in the `PlatformError` the service's error channel already declares. The volume never fabricates content, never answers `""` for a missing file, and never answers `[]` for a missing directory. That single guarantee is why the package exists, and it is what makes a green test mean something: if the fixture forgot a path, the test fails loudly at the read rather than quietly at the assertion.
+
+Malformed input is typed too — `badArgument` or `systemError`, never a thrown exception and never a defect.
+
+## One seed literal describes a whole tree
+
+A seed maps absolute POSIX paths to entries. A plain `string` or `Uint8Array` is file content; three tagged helpers cover everything a literal otherwise could not express — initial permission modes, *empty* directories, and symbolic links:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+
+const Volume = MemoryFileSystem.layerWith({
+  "/repo/package.json": `{ "name": "fixture" }`,
+  "/repo/tools/build.sh": MemoryFileSystem.file("#!/bin/sh\n", { mode: 0o755 }),
+  "/repo/.cache": MemoryFileSystem.directory(),
+  "/repo/latest": MemoryFileSystem.symlink("/repo/package.json"),
+});
+```
+
+Parent directories are created recursively, so `/repo` and `/repo/tools` exist without being named. A symlink's target is stored verbatim and may dangle, which is exactly what you want when the test is about a broken link.
+
+## Misbehaviour is injected, not stubbed
+
+Permission modes are recorded faithfully and readable via `stat`, but **no operation enforces them**: the volume models no process identity, so nothing fails `PermissionDenied` on its own. To exercise a failure path — a denied `chmod`, a busy read, a write that fails twice and then succeeds — wrap the volume with `MemoryFileSystem.layerFaulty`. It is *delegate-by-default*, the deliberate inverse of `layerNoop`: only the methods you register are intercepted, handlers receive the real call arguments so a fault can key on one specific path, and a handler returning `undefined` declines and lets the call through. Faults are type-constrained to each method's own channel, so an injected failure has to be a genuine `PlatformError` — `Effect.fail(new Error(...))` does not compile. See the [advanced guide](/memfs/advanced) for the full pattern, including `failTimes` for retry tests.
+
+## Reading back what a program wrote
+
+The opt-in `MemoryFileSystem.layerInspectable` / `layerInspectableWith` constructors additionally publish `MemoryFileSystem.Volume`, a synchronous, read-only, live view over the same volume backing the service: `snapshot`, `text`, `bytes`, `has`, `paths` for contents, and `readDirectory`, `isDirectory`, `mtime`, `readLink` for structure. Absence is reported as `undefined` rather than an empty value, because `[]` is a genuinely empty directory and `0` is a file modified at the epoch — a signature built over mtimes must not read an absent file as one modified in 1970.
+
+For code that takes an injected synchronous port instead of requiring `FileSystem`, `MemoryFileSystem.syncFileSystem(volume)` adapts that view to the `node:fs` sync subset.
+
+## What the volume does not see
+
+memfs implements one thing: Effect's `FileSystem` service. It installs no hooks and patches no module registry, so the volume is visible to code that *asks for the service* and invisible to everything else. Direct `node:fs` calls, anything a child process does, native-binding IO, and `process.cwd()` all sit outside it. Each boundary is a property of the design rather than a gap — the [advanced guide](/memfs/advanced) explains what to reach for in each case.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/memfs/api).

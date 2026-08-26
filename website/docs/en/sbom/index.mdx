@@ -1,0 +1,78 @@
+---
+title: "@effected/sbom"
+description: "CycloneDX 1.6 SBOMs, NTIA reports, in-toto statements, SLSA provenance and Sigstore signing as Effect schemas."
+---
+
+# @effected/sbom
+
+Software-supply-chain artifacts as Effect schemas: a CycloneDX 1.6 bill of materials, the NTIA minimum-elements report, in-toto statements and SLSA provenance, and Sigstore DSSE signing. Assemble a document from a `package.json` manifest, serialize it to canonical JSON, check it against the seven minimum elements, wrap its digest in a statement, and sign that statement into a bundle a verifier can check. Assembling and serializing are total functions — they have no error channel because there is nothing in them that can fail.
+
+## Why @effected/sbom
+
+The obvious CycloneDX library is 6.6 MB with seven optional peer dependencies, and the roughly ten symbols an emitter actually needs from it are an object model and a JSON normalizer. The parts that would earn that weight — XML output, ajv-backed validation, SPDX expression parsing — are exactly the parts an emitter never calls, and its `spdx-expression-parse` peer would install a second SPDX engine beside [`@effected/spdx`](/spdx/api). This package owns its CycloneDX 1.6 model instead, and proves conformance against the published schema rather than promising it through a dependency.
+
+The second decision is the wall down the middle. Emitting an SBOM is pure computation over a manifest; signing one is network-bound cryptography against Fulcio and Rekor. Those are different kinds of work, and the module boundary follows the split exactly — which is why there is no `Sbom = { generate, sign }` convenience object anywhere in the package. Such an object would make every SBOM consumer reachable to Fulcio's HTTP stack, silently.
+
+## Install
+
+```bash
+npm install @effected/sbom effect
+```
+
+```bash
+pnpm add @effected/sbom effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. `@sigstore/sign` and `@sigstore/bundle` are runtime dependencies confined to one module — the signer — so a consumer that only emits an SBOM never loads them.
+
+## Quick start
+
+Generating an SBOM needs no layer, no service and no network call:
+
+```ts
+import { type Package, Sbom, SbomMetadataSource } from "@effected/sbom";
+
+declare const pkg: Package;
+
+const root = SbomMetadataSource.rootComponent(pkg);
+const metadata = SbomMetadataSource.fromPackage(pkg, { timestamp: "2026-08-26T00:00:00.000Z" });
+const components = [
+  SbomMetadataSource.componentFor({ name: "effect", version: "4.0.0-rc.109", license: "MIT" }),
+];
+
+const document = Sbom.generate({ root, components, metadata });
+console.log(Sbom.toJson(document));
+// canonical CycloneDX 1.6 JSON
+```
+
+Components are sorted by name, so two runs over the same inputs produce identical bytes. That matters more than tidiness: an SBOM's digest becomes an attestation subject, and a document that reordered itself between runs would change that digest for no reason.
+
+`Package`, `Person` and `Repository` come from [`@effected/package-json`](/package-json/api) and are re-exported here, so naming the type [`fromPackage`](/sbom/api/class/sbommetadatasource) takes does not mean declaring a dependency you would not otherwise have.
+
+## Two capabilities, and the wall between them
+
+[`SbomDocument`](/sbom/api/class/sbomdocument), [`Sbom`](/sbom/api/class/sbom), [`SbomMetadataSource`](/sbom/api/class/sbommetadatasource), [`NtiaReport`](/sbom/api/class/ntiareport), [`InTotoStatement`](/sbom/api/class/intotostatement) and [`SlsaProvenance`](/sbom/api/class/slsaprovenance) reach nothing but `effect`, `@effected/spdx` and — as a type-only import — `@effected/package-json`. Only the signer imports `@sigstore/*`. That confinement is not a convention anyone has to remember: a test walks the runtime import graph and asserts the edge set, with a control proving it can fail.
+
+The practical consequence is that a build step which emits and validates a BOM has the same dependency footprint as a JSON serializer, and only the step that actually signs pays for Fulcio's transport.
+
+## A license is an expression field, and it renders three ways
+
+`MIT`, `MIT OR Apache-2.0` and `UNLICENSED` are all legal `package.json` license values, and CycloneDX serializes them differently: `{license:{id}}` only for a catalog identifier, a one-element `[{expression}]` tuple for an expression, and `{license:{name}}` for anything else. Emitting every value as an `id` produces a document that looks right and fails validation. Which shape applies is [`@effected/spdx`](/spdx/api)'s question — `License.isKnownId`, `isValidExpression` — never a local regex.
+
+Package URLs get the same care. The canonical npm purl for a scoped package is `pkg:npm/%40scope/name@version`: the scope is the purl *namespace*, so the `@` is percent-encoded and the separating slash stays literal. A plain `encodeURIComponent` collapses that slash and produces a string that parses back as a namespace-less name.
+
+## NTIA compliance is a report, not a gate
+
+[`NtiaReport.of`](/sbom/api/class/ntiareport) is total: it answers for every document, including one that satisfies nothing. It returns one [`NtiaElement`](/sbom/api/class/ntiaelement) verdict per minimum element, plus a `compliant` getter and a `missing` list of stable identifiers. A caller that wants a hard gate writes its own `Effect.fail` on top — because emitting a non-compliant SBOM and warning about it is a legitimate choice a library should not make for you.
+
+## Nothing reads an ambient clock or environment
+
+A BOM's `timestamp` is an argument. So is the copyright year `formatCopyright` renders, and so is every claim [`SlsaProvenance.forGitHubWorkflow`](/sbom/api/class/slsaprovenance) projects — including `serverUrl`, which upstream tooling reads from `process.env.GITHUB_SERVER_URL` with no default and will happily write the literal string `undefined` into every URL it builds. A required field cannot do that.
+
+## Errors
+
+There are four, and the package's shape is visible in how few they are. [`SbomWriteError`](/sbom/api/class/sbomwriteerror) is the filesystem's, raised only by `Sbom.write`. [`InvalidSha256DigestError`](/sbom/api/class/invalidsha256digesterror) carries the string that was not a digest. [`IdentityTokenError`](/sbom/api/class/identitytokenerror) carries the audience a token was refused for. [`SigningError`](/sbom/api/class/signingerror) names which step failed — `identity`, `certificate`, `transparencyLog` or `bundle` — with the original failure preserved structurally on `cause` rather than flattened into a message.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/sbom/api).

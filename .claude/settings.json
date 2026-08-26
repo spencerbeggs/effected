@@ -1,6 +1,7 @@
 {
 	"enableAllProjectMcpServers": true,
 	"enabledPlugins": {
+		"api-docs@spencerbeggs": true,
 		"design-docs@spencerbeggs": true,
 		"effected@spencerbeggs": true,
 		"silk@savvy-web-systems": true,

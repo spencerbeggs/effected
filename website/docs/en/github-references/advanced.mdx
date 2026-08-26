@@ -1,0 +1,183 @@
+---
+title: Advanced
+description: Wire GitHub's issue-reference grammar into a real pipeline — mixed trailer and prose bodies, offset-accurate rewriting, inline lists, and the edge cases that make a hand-rolled regex wrong.
+---
+
+# Advanced
+
+## A pipeline that has to know what merging will do
+
+Picture the job this package was built for. A release Action reads a merged pull request's body and has to answer one question exactly: *which issues does merging this close?* Get it wrong in one direction and the Action comments on an issue that stays open; get it wrong in the other and an issue silently never gets closed, because the tool read only the first number on a line that named four. A commitlint rule faces the mirror image — it must decide whether a message references anything at all, and refuse the ones that only *look* like they do. Neither job is a substring search. `closes: 123` looks like a reference and GitHub will not link it; `Closes #247, #248 and #251` is one claim about three issues; `Refs #9` is a real, linked reference that closes nothing.
+
+The package's whole reason to exist is to make those readings exact: three dialects, each matched to the producer that writes it, with every disagreement between them settled as a ruling rather than averaged into one permissive pattern. This guide covers what a real application leans on — composing pure grammar into an Effect program, reading a body that mixes trailers and prose, rewriting text with offsets, harvesting lists inline — plus the edge cases and testing patterns a production tool needs. It assumes the dialect basics from the [getting started guide](/github-references/getting-started).
+
+## How it composes with Effect
+
+Nothing in this surface owns a service, a layer or an `R`. Every export is a pure synchronous function returning a value, an `Option` or a `ReadonlyArray`, so there is nothing to provide and nothing to stub. That makes composition into an Effect program almost invisible: call the parser inline inside `Effect.gen` or `Effect.fn`, and reach for the effect channel only where *your* policy introduces a decision — such as "a pull request that closes nothing is a failure".
+
+```ts with-api
+import { collectReferenceLists } from "@effected/github-references";
+import { Data, Effect } from "effect";
+
+// The failure is the *policy's*, not the grammar's — the grammar just answers [].
+class NoClosingReference extends Data.TaggedError("NoClosingReference")<{
+  readonly body: string;
+}> {}
+
+const closedIssues = Effect.fn("closedIssues")(function* (body: string) {
+  const lists = collectReferenceLists(body);
+  const numbers = [...new Set(lists.filter((list) => list.closing).flatMap((list) => list.issueNumbers))];
+  if (numbers.length === 0) {
+    return yield* new NoClosingReference({ body });
+  }
+  return numbers;
+});
+
+const program = closedIssues("Refs #9 only").pipe(
+  Effect.catchTag("NoClosingReference", () => Effect.succeed<ReadonlyArray<number>>([])),
+);
+
+Effect.runPromise(program).then(console.log);
+// []
+```
+
+Note the deduplication is the caller's, too. The parsers preserve duplicates in order — whether `#12, #12` means one issue or two is a question only the caller can answer, and a parser that collapsed them would destroy evidence a lint rule might be checking for. Here a `Set` collapses them because commenting on the same issue twice is pointless; a rule that flags repeated references would keep the array as written.
+
+## Reading a body that mixes trailers and prose
+
+Real pull request bodies are not one dialect. They are prose with a generated trailer block stapled underneath, and the two want different readings. [`collectReferenceLists`](/github-references/api/function/collectreferencelists) encodes the preference order that makes the mixture read correctly: each line is tried as a whole-line reference list first (colon-tolerant, per [`parseReferenceList`](/github-references/api/function/parsereferencelist)), and only a line that is *not* one is harvested inline (no colon, per [`harvestReferenceLists`](/github-references/api/function/harvestreferencelists)).
+
+```ts with-api
+import { collectReferenceLists } from "@effected/github-references";
+
+const body = ["Body text.", "", "Closes #5, #6", "", "Refs: #9", ""].join("\n");
+
+console.log(collectReferenceLists(body));
+// [ { keyword: "closes", closing: true, issueNumbers: [ 5, 6 ] },
+//   { keyword: "refs", closing: false, issueNumbers: [ 9 ] } ]
+```
+
+That order is the once-per-posture guarantee, and it is why the two probes must never be reversed. `Closes #5, #6` has no colon, so it matches *both* postures; taking the whole-line reading first means it contributes its list exactly once. Harvest first and the same line would be counted twice. The results carry no offsets, because this is the line-granular reading — a caller that needs spans reaches for `harvestReferenceLists` directly.
+
+## Rewriting text with offsets
+
+The inline dialect is the only one that carries positions, and it carries them so a tool can *edit* the text rather than merely report on it. `start` is the offset of the first character of the whole match (the keyword), `end` is one past the last digit — so `text.slice(start, end)` is exactly the matched reference, and the hits arrive in document order, which is what makes a single forward pass safe.
+
+```ts with-api
+import { harvestIssueReferences } from "@effected/github-references";
+
+const prose = "Fixes #12 and closes #13.";
+
+// Walk the hits in order, copying the gaps and annotating each match in place.
+let out = "";
+let cursor = 0;
+for (const hit of harvestIssueReferences(prose)) {
+  out += prose.slice(cursor, hit.start);
+  out += `${prose.slice(hit.start, hit.end)} (owner/repo#${hit.issueNumber})`;
+  cursor = hit.end;
+}
+out += prose.slice(cursor);
+
+console.log(out);
+// Fixes #12 (owner/repo#12) and closes #13 (owner/repo#13).
+```
+
+Build the output forward with a cursor, as above, rather than splicing into the original string in place — an in-place splice invalidates every later offset the moment it changes the string's length. The same shape strips references instead of annotating them: drop the middle `out +=` and the matches disappear while the surrounding prose survives intact.
+
+## Harvesting lists inline
+
+[`harvestReferenceLists`](/github-references/api/function/harvestreferencelists) is the fourth reading, and it exists because a real commit body writes list-shaped references *in a sentence*: `Landing this. Closes #1, #2 and refs #9 for context.` The single-reference harvester reads only the first number of each list, and the whole-line parsers reject the line outright for its surrounding prose. This one generalizes the list grammar to the inline posture — several lists may share a line, each ending at its own last valid item — and returns [`HarvestedReferenceList`](/github-references/api/interface/harvestedreferencelist) values, which are a `ReferenceList` plus the `start` / `end` offsets.
+
+```ts with-api
+import { harvestReferenceLists } from "@effected/github-references";
+
+console.log(harvestReferenceLists("Landing this. Closes #1, #2 and refs #9 for context."));
+// [ { keyword: "closes", closing: true, issueNumbers: [ 1, 2 ], start: 14, end: 27 },
+//   { keyword: "refs", closing: false, issueNumbers: [ 9 ], start: 32, end: 39 } ]
+```
+
+Both keyword sets play here, exactly as in `parseReferenceList`, and the trailing `for context.` is simply where the second candidate stopped — inline, a list ends at its last valid item instead of rejecting the line. The whitespace classes are split deliberately and must not be unified: the gap between a keyword and its *first* item accepts any whitespace including a newline, matching the prose harvester, but list continuation accepts `[ \t]` only, so once a candidate has an item the list can never cross a line.
+
+## Edge cases and failure modes
+
+Everything below is a deliberate ruling that a hand-rolled regex usually gets wrong. None of them throws; the reading is simply narrower than a permissive pattern would give you, and that narrowness is the feature.
+
+**The colon belongs to the line dialects, never inline.** GitHub's own scanner does not link `closes: 123`, so neither does the inline harvester. Accepting it would make a pipeline report an issue as closing that merging leaves open — the single most consequential bug in a hand-rolled copy of this grammar.
+
+**Unsafe issue numbers are skipped in prose and reject a list.** Past `Number.MAX_SAFE_INTEGER`, parsing the digits would round to a different, existing issue number. In prose the surrounding text makes no claim about the skipped match, so scanning continues; in a list the line is a single claim about a set, so a partial result would misrepresent it and the whole line is rejected instead.
+
+```ts with-api
+import { harvestIssueReferences, parseReferenceList } from "@effected/github-references";
+import { Option } from "effect";
+
+console.log(harvestIssueReferences("closes #99999999999999999999 but fixes #4"));
+// [ { issueNumber: 4, keyword: "fixes", start: 33, end: 41 } ]
+
+console.log(Option.isNone(parseReferenceList("Closes #99999999999999999999, #4")));
+// true — a list is one claim, so an unsafe item rejects the whole line
+```
+
+Do not "fix" these two into agreement; the asymmetry is the ruling.
+
+**The inline `and` separator is lowercase only.** `closes #1 AND #2` harvests `#1` alone, because a capitalized `AND` far more often starts a new clause than continues a list. Loosening it is a grammar change rather than a local fix.
+
+```ts with-api
+import { harvestIssueReferences } from "@effected/github-references";
+
+console.log(harvestIssueReferences("closes #1 AND #2"));
+// [ { issueNumber: 1, keyword: "closes", start: 0, end: 9 } ]
+```
+
+**Duplicates survive every reading.** Two identical trailer lines produce two lists, not one, so a caller that cares can lint for the repetition and a caller that does not can `Set` them away:
+
+```ts with-api
+import { collectReferenceLists } from "@effected/github-references";
+
+console.log(collectReferenceLists("Closes #5\nCloses #5\n"));
+// [ { keyword: "closes", closing: true, issueNumbers: [ 5 ] },
+//   { keyword: "closes", closing: true, issueNumbers: [ 5 ] } ]
+```
+
+**There is no length cap and no truncation.** The list dialect is parsed by a single left-to-right character scan with no regular expressions at all, so worst-case time is linear by construction and there is no catastrophic backtracking to defend against. A hostile line is slow only in proportion to its length, and — unlike the truncation a mega-regex forces — no input is silently shortened, so a long line's tail never just stops existing.
+
+**Cross-repo and URL references are not read.** `owner/repo#12` and a full issue URL are real GitHub spellings, and this package does not yet parse them; a body containing only those yields no references at all rather than a partial reading. If your tool needs them, handle them yourself for now rather than assuming a `#`-only reading covered them.
+
+## Testing with @effect/vitest
+
+There is no layer to provide and no IO to mock, which makes tests about the grammar rather than about the plumbing. Use `it.effect` for the effectful code *around* the parser, call the parser directly for the grammar itself, and assert with `assert.*` — never `expect`.
+
+```ts
+import { collectReferenceLists, parseClosingList } from "@effected/github-references";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Option } from "effect";
+
+describe("closing references", () => {
+  it("reads every issue a closing list names", () => {
+    const list = parseClosingList("Closes #247, #248 and #251");
+    assert.deepStrictEqual(Option.getOrNull(list), {
+      keyword: "closes",
+      issueNumbers: [247, 248, 251],
+    });
+  });
+
+  it("rejects a line with trailing prose rather than reading a prefix", () => {
+    assert.isTrue(Option.isNone(parseClosingList("Closes #1 and please review")));
+  });
+
+  it.effect("collects the closing issues from a mixed body", () =>
+    Effect.gen(function* () {
+      const body = yield* Effect.succeed("Closes #5, #6\n\nRefs: #9");
+      const closes = collectReferenceLists(body)
+        .filter((list) => list.closing)
+        .flatMap((list) => list.issueNumbers);
+      assert.deepStrictEqual(closes, [5, 6]);
+    }));
+});
+```
+
+Write the negative cases as deliberately as the positive ones. Most regressions in a grammar like this one are *widenings* — a pattern quietly starts accepting the colon inline, or reading a prefix of a line with a tail — and only a test that pins the rejection catches them.
+
+## Next steps
+
+- New to the package? Start with the [overview](/github-references) for the dialects and the rules behind them, or the [getting started guide](/github-references/getting-started) for the parse-and-collect basics.
+- Every export, with full signatures, lives in the [API reference](/github-references/api). The surfaces this guide leaned on: [`collectReferenceLists`](/github-references/api/function/collectreferencelists), [`harvestIssueReferences`](/github-references/api/function/harvestissuereferences) and [`harvestReferenceLists`](/github-references/api/function/harvestreferencelists), the result types [`IssueReference`](/github-references/api/interface/issuereference), [`ReferenceList`](/github-references/api/interface/referencelist) and [`HarvestedReferenceList`](/github-references/api/interface/harvestedreferencelist), and the keyword constants [`CLOSING_KEYWORDS`](/github-references/api/variable/closing_keywords) and [`REFERENCE_KEYWORDS`](/github-references/api/variable/reference_keywords).

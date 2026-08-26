@@ -1,0 +1,238 @@
+---
+title: Advanced
+description: Compose @effected/schemastore into a real build — run the emit pipeline over a target manifest, gate on findings as policy, check for drift in CI, version by classified change, and test without touching a disk.
+---
+
+# Advanced
+
+## A generator that has to stay publishable
+
+Picture the job this package was built for. A repo publishes two or three JSON Schemas — a config file, a lockfile format, a manifest — each generated from an Effect Schema that changes as the tool changes. A build script regenerates them. A CI job proves nobody hand-edited the output or forgot to run the generator. A release step decides whether this quarter's schema change needs a new versioned file or can transparently replace the last one. And every emitted document has to clear ajv strict mode, because that is the gate SchemaStore itself runs.
+
+None of that is one function call in the naive shape. It is a loop with two gates, a policy about which findings stop the build, a comparison that has to survive the repo's own formatter, and a change classification that has to be right in a specific asymmetric way. Three consumers had each re-implemented that loop and would have diverged on error shape and gating, which is why [`SchemaPipeline`](/schemastore/api/class/schemapipeline) is a shipped surface rather than a snippet in a README.
+
+This guide covers the four capabilities a real build leans on — the pipeline and its gating policy, drift checking, annotation carrying at the edges, and versioning by classified change — plus the failure modes and testing patterns. It assumes the generate-lint-write basics from the [getting-started guide](/schemastore/getting-started).
+
+## How it composes with Effect
+
+Almost nothing here owns a service. `StoreDocument`, `DocumentLint`, `DocumentDiff`, `CanonicalJson`, `SchemaVersioning`, `CatalogEntry` and `KeywordFamilies` are pure — plain functions or plain `Effect` values — so they drop into an `Effect.fn` workflow and their tagged errors join your program's typed `E` channel with no wrapping.
+
+Two things are services, and each earns it. [`SchemaFile`](/schemastore/api/class/schemafile) is the package's only IO, over core `FileSystem` and `Path` required in `R`; there is no platform package here, so the consumer supplies one at the edge. [`SchemaValidator`](/schemastore/api/class/schemavalidator) is the engine seam, and it ships *closed* — `SchemaValidator.layer` is a real ajv implementation, not a contract you have to fill in. The seam survives as an interface (`noop` to switch validation off, `makeTest`/`layerTest` for doubles, a substitutable engine) rather than as a requirement.
+
+`SchemaPipeline` is deliberately **not** a service. It needs `SchemaFile | SchemaValidator` in `R`, and those compose for free — making it a third service would only add wiring.
+
+## Run the whole emit loop
+
+`SchemaPipeline.run` walks a target manifest: generate each target's document, lint it, validate it with the engine, gate on the findings, write it. A [`SchemaTarget`](/schemastore/api/class/schematarget) names a schema, its `$id`, where the file goes, and optionally a catalog name and version.
+
+```ts with-api
+import { SchemaFile, SchemaPipeline, SchemaTarget, SchemaValidator } from "@effected/schemastore";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+const targets = [
+  SchemaTarget.make({
+    schema: Schema.Struct({ name: Schema.String }),
+    $id: "https://example.com/schemas/mytool.json",
+    path: "schemas/mytool.json",
+  }),
+];
+
+// One named layer, composed once, provided at the boundary.
+const SchemaStoreLive = Layer.mergeAll(SchemaFile.layer, SchemaValidator.layer).pipe(
+  Layer.provide(NodeServices.layer),
+);
+
+const program = SchemaPipeline.run(targets).pipe(Effect.provide(SchemaStoreLive));
+
+Effect.runPromise(program).then(console.log);
+// [ { $id: "...", path: "schemas/mytool.json", outcome: "written", change: "created", findings: [] } ]
+```
+
+`NodeServices` is composed **into** the layer with `Layer.provide` rather than stacked onto the program with a second `Effect.provide`. Both run correctly here — `SchemaFile` holds no state, so nothing observes the difference — but the composed form is the shape to copy. Stacking `Effect.provide` calls at the call site is how a layer ends up built more than once, and the first stateful service you add is where that starts to matter. Binding the composition to a named `const` also makes it reusable: the generator and the drift test that provide the same value cannot disagree about what the layer contains.
+
+`name` is optional on a target because only catalog naming reads it — a file-only target does not repeat its path's basename. Supply it when you also pass a `version`, since versioned naming is `<name>-<version>.json`; an overload pair makes version-without-name a compile error rather than a runtime surprise. `runOne` takes a single target and answers its one result directly, so a one-target caller need not prove element zero exists.
+
+## Gating is policy, not mechanism
+
+Both gates' findings normalize into one [`PipelineFinding`](/schemastore/api/class/pipelinefinding) shape — `source` (`"lint"` or `"validator"`), `severity`, an optional `check`, a JSON `path` and a `message` — so a single predicate judges them. `PipelineFinding.label` is the rendered name (`check ?? source`), because otherwise every consumer that logs findings writes the same fallback.
+
+`blocking` defaults to `severity === "warning"`. Replace the predicate rather than the loop when you disagree:
+
+```ts with-api
+import { SchemaPipeline, SchemaTarget } from "@effected/schemastore";
+import { Schema } from "effect";
+
+const targets = [
+  SchemaTarget.make({
+    schema: Schema.Struct({ name: Schema.String }),
+    $id: "https://example.com/schemas/mytool.json",
+    path: "schemas/mytool.json",
+  }),
+];
+
+// Only the engine's verdict stops this build; the owned lint stays advisory.
+const program = SchemaPipeline.run(targets, {
+  blocking: (finding) => finding.source === "validator",
+});
+```
+
+A blocking finding fails with [`SchemaGateError`](/schemastore/api/class/schemagateerror), carrying the `$id` and every finding that blocked, and the run stops there — a gated document is never written, and neither are the targets after it.
+
+Worth knowing which gate actually stops you. A target carries a `Schema`, so pipeline documents come from `fromSchema`, and the Draft-07 lowering drops undeclared keywords before the lint ever sees them: `UnknownKeyword` is effectively unreachable through this entry point, and **the engine gate is what blocks in practice**. The lint's warning checks earn their keep on depth and on documents the pipeline did not build — a hand-assembled `StoreDocument.draft07`, or one read back off disk.
+
+## Check for drift without writing
+
+`SchemaPipeline.check` is the same walk with no writes, and it is what a CI job wants. Where `run` enforces, `check` reports: it is **total over the targets** and never stops at a failing gate, so a repo with several broken documents learns about all of them in one run rather than one per run.
+
+```ts with-api
+import { SchemaFile, SchemaPipeline, SchemaTarget, SchemaValidator } from "@effected/schemastore";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+const targets = [
+  SchemaTarget.make({
+    schema: Schema.Struct({ name: Schema.String }),
+    $id: "https://example.com/schemas/mytool.json",
+    path: "schemas/mytool.json",
+  }),
+];
+
+const SchemaStoreLive = Layer.mergeAll(SchemaFile.layer, SchemaValidator.layer).pipe(
+  Layer.provide(NodeServices.layer),
+);
+
+const program = SchemaPipeline.check(targets).pipe(
+  Effect.map((results) => results.filter((result) => result.wouldWrite || result.blocked)),
+  Effect.provide(SchemaStoreLive),
+);
+
+Effect.runPromise(program).then((stale) => console.log(stale.map((result) => result.path)));
+// [] when every committed schema is current and clean
+```
+
+Each [`PipelineCheckResult`](/schemastore/api/interface/pipelinecheckresult) answers `wouldWrite`, `change`, `blocked` and `findings`. The `blocked` flag is why a document that could never be written is never mistaken for clean drift — without it, a target that fails its gate looks identical to one that is perfectly up to date. `check` never writes, which is the invariant a drift job depends on: a CI check that regenerates the artifact it is checking proves nothing.
+
+## Content comparison is what makes this survive a formatter
+
+`SchemaFile` compares by **content** by default, not bytes. That is not a performance nicety — it is what lets a generated schema live in a repo whose Biome or Prettier hook also owns the file's text. Under byte comparison the generator rewrote the file forever and `"unchanged"` was unreachable; under content comparison the formatter's reflow is invisible and you write no exclusion rule.
+
+Pass `compare: "bytes"` to opt back into byte-exactness when the emitted text is itself the artifact. And then remember the rule that comes with it: `outcome` and `wouldWrite` are the authoritative "was the file touched" answers, while `change` reports *content* — which reads `"none"` on a `compare: "bytes"` write that did in fact rewrite the file. `write` and `check` share one comparison helper, so they cannot disagree with each other.
+
+One more behavior worth internalizing: an existing file that does not parse is classified `"contract"` and repaired, not failed. A corrupted generated file stays regenerable, which is the whole point of generating it.
+
+## Versioning by classified change
+
+The release question — does this schema change need a new versioned file? — is [`DocumentDiff.classify`](/schemastore/api/class/documentdiff)'s job, and the classification is asymmetric on purpose. `default`, `examples`, `readOnly` and `writeOnly` count as **contract**, not documentation, because consumers act on them. Misreporting a contract change as `"annotations"` ships a silent break; the reverse only costs a version bump. The comparison is key-order insensitive and keyword-position aware, like the lint — a *property* named `unevaluatedProperties` is data, not a keyword.
+
+Use `DocumentDiff.isClean` for the clean case rather than spelling `"none"` yourself; `"created"` is deliberately not clean.
+
+Once the answer is "new version", [`SchemaVersioning`](/schemastore/api/class/schemaversioning) derives both catalog modes from the labels:
+
+```ts with-api
+import { SchemaVersioning } from "@effected/schemastore";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const versions = yield* Effect.forEach(["1.9.0", "1.10.0", "2.0.0-beta.1"], SchemaVersioning.parse);
+  return SchemaVersioning.catalogUrls({
+    baseUrl: "https://example.com/schemas",
+    name: "mytool",
+    versions,
+  });
+});
+
+const urls = Effect.runSync(program);
+
+console.log(urls.url);
+// https://example.com/schemas/mytool-2.0.0-beta.1.json
+console.log(Object.keys(urls.versions ?? {}));
+// [ "1.9.0", "1.10.0", "2.0.0-beta.1" ]
+```
+
+Labels order by real SemVer precedence — `1.10.0` above `1.9.0`, `2.0.0-beta.1` below `2.0.0` — because the grammar is enforced through [`@effected/semver`](/semver)'s parse rather than a parallel regex. The file-name convention around the label stays SchemaStore's own `<name>-<version>.json`; the label grammar is the one deliberate divergence, since the store's corpus uses partial labels like `1.2` that no SemVer parser accepts and that cannot be split back out of a file name unambiguously. Omit `versions` entirely for the unversioned single-file mode — an empty array is a contradiction and throws rather than guessing which mode you meant.
+
+## Carrying annotations at the edges
+
+The re-graft that keeps `markdownDescription` and `x-taplo` alive through the lowering is a **parallel walk**, not pointer arithmetic: it mirrors core's Draft-07 descent node for node, including the one coordinate move (2020-12 `prefixItems[i]` becomes Draft-07 `items[i]`, and a trailing `items` becomes `additionalItems`). There is no pointer mapping anywhere in the package, and consumers never have to know the lowered layout — owning that knowledge is the reason the package exists.
+
+Two boundaries follow from the mechanism, and both surprise people:
+
+**Carriers widen, they never narrow.** The declared families are always admitted. A caller-supplied `includeAnnotationKey` predicate is consulted *in addition*, but it cannot suppress a declared family — and keys it admits outside the declared families reach the 2020-12 document only to be dropped by the lowering. If you need a keyword to survive, it has to be a declared family, and [`KeywordFamilies`](/schemastore/api/class/keywordfamilies) is the single registry that decides. Both the carriers and the lint consume its one predicate, so lint and emission cannot drift on what counts as legitimate — and `SchemaValidator.layer` registers the same set with ajv before compiling, so the engine cannot reject what the lint deliberately allows.
+
+**Annotate at the definition site.** An annotation on a hoisted (identifier'd) schema applied at its *usage* site reaches neither the `$ref` node nor the `$defs` pool entry, even at 2020-12. It silently carries nothing. That is core behavior the package documents rather than papers over, and it is the single most common reason a keyword "disappears".
+
+## Canonical JSON
+
+[`CanonicalJson`](/schemastore/api/class/canonicaljson) is the deterministic serializer behind `serializeResult` and `SchemaFile.write`: insertion-order keys — **never sorted**, because assembly owns ordering — tab indentation by default, LF line endings and a single trailing newline, so equal documents serialize to equal bytes.
+
+Where `JSON.stringify` silently drops or rewrites `undefined`, `NaN` and non-plain objects, this fails typed instead:
+
+```ts with-api
+import { CanonicalJson } from "@effected/schemastore";
+import { Effect } from "effect";
+
+const program = CanonicalJson.serialize({ name: "mytool", count: Number.NaN }).pipe(
+  Effect.catchTag("NonJsonValueError", (error) => Effect.succeed(`not JSON at ${error.path}`)),
+);
+
+Effect.runPromise(program).then(console.log);
+// not JSON at /count
+```
+
+[`NonJsonValueError`](/schemastore/api/class/nonjsonvalueerror) carries a JSON pointer to the offending value, and [`JsonDepthExceededError`](/schemastore/api/class/jsondepthexceedederror) catches hostile nesting and cycles. Pass `indent` to switch to a numeric space indent when a downstream consumer insists on it.
+
+## Edge cases and failure modes
+
+**A depth cap guards four recursive surfaces.** Nesting beyond the cap degrades to a `DepthExceeded` finding in the lint — which stays total and never throws — and fails typed elsewhere ([`CarrierDepthExceededError`](/schemastore/api/class/carrierdepthexceedederror), `JsonDepthExceededError`). `DocumentDiff`'s leaf comparison uses a looser stack guard on purpose: one shared budget made a deep-but-identical document compare as *different*, which is the worst possible answer.
+
+**Findings are never errors, and errors are never findings.** A validator's error channel is for the mechanism failing — [`SchemaValidatorError`](/schemastore/api/class/schemavalidatorerror) — never for a document it successfully judged. ajv raises a strict-mode rejection by *throwing*; the layer converts that into a root-pathed [`ValidationFinding`](/schemastore/api/class/validationfinding), while meta-schema failures keep ajv's structured `instancePath` and `keyword`. Each call gets a fresh engine instance, so shared `$id`s never collide across targets.
+
+**The Draft-07 meta-schema constant keeps its trailing `#`** where core's URI constant omits it. That is a documented divergence matching what SchemaStore publishes, not a typo — [`DRAFT_07_META_SCHEMA`](/schemastore/api/variable/draft_07_meta_schema) is the value to compare against.
+
+**A version label is trimmed nowhere.** Surrounding whitespace is rejected rather than silently stripped, for the same round-tripping reason build metadata is: a padded label that parsed would round-trip into a file name with spaces in it.
+
+## Testing with @effect/vitest
+
+The two services are the only things needing wiring; everything else is pure, so there is no IO to mock. For the engine, `SchemaValidator.layerTest` supplies a double whose unstubbed members die naming the member — so a test that accidentally depends on validation fails loudly instead of silently passing. `SchemaValidator.noop` switches validation off deliberately when the test is about something else.
+
+```ts
+import { DocumentLint, SchemaValidator, StoreDocument } from "@effected/schemastore";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Schema } from "effect";
+
+describe("schema emission", () => {
+  it.effect("emits a Draft-07 document that lints clean", () =>
+    Effect.gen(function* () {
+      const Config = Schema.Struct({ name: Schema.String }).annotate({
+        description: "Configuration for My Tool.\nhttps://example.com/docs",
+      });
+
+      const document = yield* StoreDocument.fromSchema(Config, {
+        $id: "https://example.com/schemas/mytool.json",
+      });
+
+      assert.deepStrictEqual(DocumentLint.lint(document), []);
+    }));
+
+  it.effect("clears the engine gate in strict mode", () =>
+    Effect.gen(function* () {
+      const validator = yield* SchemaValidator;
+      const document = yield* StoreDocument.fromSchema(Schema.Struct({ name: Schema.String }), {
+        $id: "https://example.com/schemas/mytool.json",
+      });
+
+      const findings = yield* validator.validate(document.toJson(), { strict: true });
+      assert.strictEqual(findings.length, 0);
+    }).pipe(Effect.provide(SchemaValidator.layer)));
+});
+```
+
+Assert with `assert.*` — never `expect`. To prove a gate blocks, flip the effect and read the error's `_tag`: `Effect.flip(SchemaPipeline.run(targets))` yields a `SchemaGateError` whose `findings` you can assert on directly, which is a far better test than matching a log line.
+
+For `SchemaFile`, a test that should not touch a real disk provides an in-memory `FileSystem` in place of the platform layer — `SchemaFile.layer` requires core's `FileSystem` and `Path` and does not care where they come from. That is the same seam a Bun or Deno consumer swaps at the edge.
+
+## Next steps
+
+- New to the package? Start with the [overview](/schemastore) for the shape of the problem, or the [getting-started guide](/schemastore/getting-started) for the generate-lint-write basics.
+- Every export, with full signatures, lives in the [API reference](/schemastore/api). The types this guide leaned on: [`SchemaPipeline`](/schemastore/api/class/schemapipeline) with its [`PipelineResult`](/schemastore/api/interface/pipelineresult) and [`PipelineCheckResult`](/schemastore/api/interface/pipelinecheckresult), [`SchemaTarget`](/schemastore/api/class/schematarget), [`SchemaFile`](/schemastore/api/class/schemafile) with [`SchemaWriteOptions`](/schemastore/api/interface/schemawriteoptions), [`SchemaValidator`](/schemastore/api/class/schemavalidator), [`DocumentDiff`](/schemastore/api/class/documentdiff) and its [`SchemaChange`](/schemastore/api/type/schemachange), [`SchemaVersioning`](/schemastore/api/class/schemaversioning) with [`CatalogUrls`](/schemastore/api/interface/catalogurls), and [`CanonicalJson`](/schemastore/api/class/canonicaljson).

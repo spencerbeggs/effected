@@ -1,0 +1,301 @@
+---
+title: Advanced
+description: Compose @effected/memfs into a real test suite — inject faults instead of stubbing them, share or isolate a volume deliberately, inspect what a program wrote, adapt the volume to a synchronous port, and know exactly what a volume cannot see.
+---
+
+# Advanced
+
+## The double that does not lie
+
+Picture the bug this package was built for. A release tool reads a changeset file, and the test provides a hand-written `FileSystem` stub whose `readFileString` answers `""` for anything unarranged. The tool reads the empty string, concludes the changeset is empty, and drops it. Every test is green. The stub was not wrong about the method it implemented — it was wrong to answer at all.
+
+`FileSystem.layerNoop` is core Effect's only built-in stand-in, and it is *deny-by-default*: every method you do not supply dies, so exercising a code path means hand-writing each method it touches. What gets written is what the author remembered, and what gets remembered is shaped by the test that is passing. `@effected/memfs` inverts that: it implements the entire service against a real virtual POSIX volume, so nothing is missing by accident, and it holds one line absolutely — **honest absence.** Reading, statting, or opening (without a create flag) a path nothing seeded fails typed with a `NotFound` `SystemError`. Nothing fabricates content.
+
+This guide covers what a real suite leans on beyond seed-and-read: composition and volume lifetime, fault injection, the inspection view and mtime-sensitive fixtures, the synchronous port, and the four boundaries of what a volume can see. It assumes the seed-and-provide workflow from [Getting Started](/memfs/getting-started).
+
+## How it composes with Effect
+
+The package is pure tier: `effect` is its only peer, it has no runtime dependencies, and it does no host IO. Its layers *provide* `FileSystem.FileSystem` and require nothing — the `R` is `never` — so `MemoryFileSystem.layer` drops in wherever a host-backed filesystem layer would go, with no adapter and no wrapping. Nothing else in the kit is involved: memfs deliberately has **no `@effected/*` edge at all**, because it is the double every other kit package devDepends on, and an edge back into the kit would be a cycle.
+
+The one exception to "provides, requires nothing" is [`MemoryFileSystem.layerFaulty`](/memfs/api/class/memoryfilesystem), which is `Layer<FileSystem, never, FileSystem>` — it *requires* the filesystem it wraps, so it composes onto a volume with `Layer.provide` and can wrap any `FileSystem` implementation, not only this one:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem, Layer, PlatformError } from "effect";
+
+const Volume = MemoryFileSystem.layerWith({ "/repo/package.json": `{ "name": "root" }` });
+
+const Faulty = MemoryFileSystem.layerFaulty({
+  chmod: (path, mode) =>
+    mode === 0o444
+      ? Effect.fail(
+          PlatformError.systemError({
+            _tag: "PermissionDenied",
+            module: "FileSystem",
+            method: "chmod",
+            pathOrDescriptor: path,
+          }),
+        )
+      : undefined,
+}).pipe(Layer.provide(Volume));
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  yield* fs.chmod("/repo/package.json", 0o644); // declines, delegates
+  return yield* fs.chmod("/repo/package.json", 0o444); // intercepted
+}).pipe(
+  Effect.provide(Faulty),
+  Effect.catchTag("PlatformError", (error) => Effect.succeed(error.reason._tag)),
+);
+
+Effect.runPromise(program).then(console.log);
+// PermissionDenied
+```
+
+`MemoryFileSystem.layerFaultyWith(seed, faults)` is the self-contained one-step form of exactly that composition.
+
+## Volume lifetime: memoization is per-build, not per-value
+
+This is the single rule that most often produces a silent false green, so learn it before you build a suite around a shared fixture. **Every `Effect.provide` of a layer value builds and re-seeds a fresh volume — even the same bound `const`.** Binding the layer once does not give you one volume; it gives you one *recipe*.
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem } from "effect";
+
+const Volume = MemoryFileSystem.layerWith({ "/repo/package.json": `{ "name": "root" }` });
+
+const write = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  yield* fs.writeFileString("/repo/out.json", "{}");
+}).pipe(Effect.provide(Volume));
+
+const read = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  return yield* fs.exists("/repo/out.json");
+}).pipe(Effect.provide(Volume));
+
+const program = Effect.gen(function* () {
+  yield* write;
+  return yield* read;
+});
+
+Effect.runPromise(program).then(console.log);
+// false — two provides built two volumes; the write is not visible to the read
+```
+
+Sharing one volume requires **one provide over one composed layer graph**: compose the service under test with the volume (`Layer.provideMerge` is the usual move, or an `@effect/vitest` suite-boundary `layer(...)` block) and provide the composition once. Within that single build every consumer sees the same volume:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem } from "effect";
+
+const Volume = MemoryFileSystem.layerWith({ "/repo/package.json": `{ "name": "root" }` });
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  yield* fs.writeFileString("/repo/out.json", "{}");
+  return yield* fs.exists("/repo/out.json");
+}).pipe(Effect.provide(Volume));
+
+Effect.runPromise(program).then(console.log);
+// true — one provide, one volume
+```
+
+`Layer.fresh` has exactly one job here, and it is the inverse of what people reach for it to do: it opts one consumer *inside* an already-composed graph back out into its own volume. Across separate provides there is nothing to isolate — separate builds are already separate volumes.
+
+## Fault injection in depth
+
+[`MemoryFileSystem.makeFaulty`](/memfs/api/class/memoryfilesystem) and its layer forms wrap any `FileSystem` **delegate-by-default**, the deliberate inverse of `layerNoop`. Four properties are worth holding in mind:
+
+- **`undefined` declines.** A handler that returns nothing lets the call reach the wrapped volume, and methods absent from the [`MemoryFileSystemFaults`](/memfs/api/type/memoryfilesystemfaults) map are never intercepted at all. You register the one failure the test is about; the other several dozen methods keep working.
+- **Handlers receive the real arguments.** A [`MemoryFileSystemFaultHandler`](/memfs/api/type/memoryfilesystemfaulthandler) is typed as the method's own parameters, so a fault keys on the path or the mode of one specific call — distinguishing an unlock pass from a relock pass inside a single walk, say.
+- **Faults are constrained to the method's own channel.** The handler returns the method's return type, so an injected failure must be a genuine `PlatformError`. A test named for the `PlatformError` channel cannot accidentally fail with a bare `Error`.
+- **Faults propagate into derived members.** The wrapper rebuilds the service through `FileSystem.make`, so a fault on a core method reaches everything derived from it — `access` → `exists`, `readFile` → `readFileString`, `writeFile` → `writeFileString`, `open` → `stream`/`sink` — exactly as an OS failure would. Every function-valued member is also directly interceptable, `stream`, `sink` and `watch` included; their handlers return replacement `Stream`/`Sink` values.
+
+### Transient faults for retry policies
+
+[`MemoryFileSystem.failTimes(times, error)`](/memfs/api/interface/memoryfilesystemtransientfault) fails the first `times` intercepted calls and then delegates forever — the shape a retry-policy test needs. Because `Effect`-returning methods dispatch per *execution*, a retried effect re-consults the handler, so each retry attempt consumes one count:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem, PlatformError } from "effect";
+
+const Flaky = MemoryFileSystem.layerFaultyWith(
+  { "/config.json": `{ "retries": 3 }` },
+  {
+    readFileString: MemoryFileSystem.failTimes(
+      2,
+      PlatformError.systemError({
+        _tag: "Busy",
+        module: "FileSystem",
+        method: "readFileString",
+        pathOrDescriptor: "/config.json",
+      }),
+    ),
+  },
+);
+
+const program = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  // Two attempts fail Busy; the third delegates to the volume and succeeds.
+  return yield* fs.readFileString("/config.json").pipe(Effect.retry({ times: 3 }));
+}).pipe(Effect.provide(Flaky));
+
+Effect.runPromise(program).then(console.log);
+// { "retries": 3 }
+```
+
+The countdown is armed **per volume build**, which follows the memoization rule above with a sharper consequence. A suite-boundary `@effect/vitest` `layer(...)` block memoizes one build for the whole suite, so a transient fault declared there is consumed by whichever test runs first and every later test silently sees it exhausted. Declare a transient fault in a `Layer.fresh`-wrapped or per-test-provided layer instead. `failTimes` also slots into the `Effect`-returning methods only — a failing `Effect` cannot stand in for a `Stream` or `Sink`; use a handler returning `Stream.fail` there.
+
+### Permission modes are metadata, never enforced
+
+Modes set by seeding, `chmod`, `makeDirectory` or `writeFile` are recorded faithfully and readable via `stat`, but no operation checks them: the volume models no process identity — no uid, gid or umask — so nothing ever fails `PermissionDenied` on its own, and `access` checks existence only, deliberately ignoring its `readable`/`writable`/`ok` options. Arranging a `0o444` mode will not make a write fail. Fault injection is the sanctioned way to exercise a permission-failure path, and it is strictly better at the job: it can deny one path, one mode, or one call and let everything else through.
+
+## Inspecting a volume
+
+`MemoryFileSystem.layerInspectable` / `layerInspectableWith` publish [`MemoryFileSystem.Volume`](/memfs/api/interface/memoryfilesystemvolume) alongside the service — a synchronous, read-only, live view over the same volume. `snapshot()`, `text(path)`, `bytes(path)`, `has(path)` and `paths()` cover contents; `readDirectory(path)`, `isDirectory(path)`, `mtime(path)` and `readLink(path)` cover structure and timing. [`MemoryFileSystem.makeInspectable`](/memfs/api/interface/memoryfilesysteminspectable) and `makeInspectableWith(seed)` are the `Effect` forms, yielding `{ fileSystem, volume }` when you want the pair as values rather than as services.
+
+Two properties define the view, and both are deliberate:
+
+**It is literal.** A symbolic link is listed by its own name and never followed, so a link pointing at a directory answers `isDirectory` with `false` — a knowing divergence from `statSync(p).isDirectory()`, which resolves the link first. When you want link-following semantics, use the sync port below.
+
+**Absence is `undefined`, never an empty value.** `[]` is a genuinely empty directory and `0` is a file modified at the epoch; a signature built over mtimes must not read an absent file as one modified in 1970.
+
+### Fixtures with meaningful modification times
+
+Seeded entries all take the volume's clock at seed time, so a seed alone cannot express "this file is older than that one" — which is exactly what a cache-invalidation or fingerprinting test needs. `MemoryFileSystem.file(content, { mtime })` pins one in epoch milliseconds:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect } from "effect";
+
+const Volume = MemoryFileSystem.layerInspectableWith({
+  "/repo/src/index.ts": MemoryFileSystem.file("export {}\n", { mtime: 1_700_000_000_000 }),
+  "/repo/dist/index.js": MemoryFileSystem.file("export {}\n", { mtime: 1_700_000_060_000 }),
+});
+
+const program = Effect.gen(function* () {
+  const volume = yield* MemoryFileSystem.Volume;
+  const source = volume.mtime("/repo/src/index.ts");
+  const output = volume.mtime("/repo/dist/index.js");
+  return source !== undefined && output !== undefined && output > source;
+}).pipe(Effect.provide(Volume));
+
+Effect.runPromise(program).then(console.log);
+// true — the build output is newer than its source
+```
+
+Two unit traps sit on either side of that option, and each produces a wrong *time* rather than an error. Writes stamp the Effect `Clock`, so under `it.effect` every written entry reads as `0` until `TestClock` advances. And `FileSystem.utimes` reads a bare number as Unix **seconds** while this option is milliseconds — pass a `Date` to `utimes` when you mean milliseconds.
+
+## The synchronous port
+
+Some code takes an injected synchronous filesystem port instead of requiring `FileSystem` — a config-time hook that cannot await is the usual reason. [`MemoryFileSystem.syncFileSystem(volume)`](/memfs/api/interface/memoryfilesystemsyncfilesystem) adapts the inspection view to the `node:fs` sync subset those ports ask for: `exists`, `readFile`, `readDirectory`, `isDirectory`. It is a pure function over a volume — no service, no layer, no `Effect`:
+
+```ts with-api
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect } from "effect";
+
+const { volume } = Effect.runSync(
+  MemoryFileSystem.makeInspectableWith({
+    "/repo/package.json": `{ "name": "root" }`,
+    "/repo/packages/a/package.json": `{ "name": "a" }`,
+    "/repo/linked": MemoryFileSystem.symlink("/repo/packages/a"),
+  }),
+);
+
+const sync = MemoryFileSystem.syncFileSystem(volume);
+
+console.log(sync.readDirectory("/repo"));
+// [ "linked", "package.json", "packages" ]
+console.log(sync.isDirectory("/repo/linked"));
+// true — the port follows symlinks, unlike the literal view beneath it
+console.log(sync.exists("/repo/nothing.json"));
+// false
+```
+
+The link-following difference is the point rather than an inconsistency: the operations the port stands in for are defined in `stat` terms, so a link to a directory *is* a directory, a link is read through to its target, and a dangling link is absent exactly as `existsSync` reports it. Answering literally here would silently drop symlinked package directories from any consumer enumerating a workspace.
+
+Absence **throws**, because a synchronous non-`Effect` signature has no other failure channel — and the thrown error carries the `code`, `syscall` and `path` the Node binding would raise: `ENOENT` for absent, `EISDIR` for a directory read as a file, `ENOTDIR` for listing a non-directory. It is never papered over with `""` or `[]`. The shape is structural, so [`@effected/workspaces`](/workspaces/api)' `SyncFileSystem` — and anything else asking for those four operations — is satisfied with neither package importing the other.
+
+This is deliberately not a general escape hatch. Code that calls `node:fs` directly still does not see the volume; only code that accepts an injected port does. Where the call site can be changed, taking `FileSystem` from the environment remains the better answer, and it buys typed errors and the rest of the service's contract along the way.
+
+## Edge cases and failure modes
+
+**Everything malformed or missing arrives on the typed `E` channel.** Bad input fails `badArgument`, host-shaped failures fail `systemError`, and pathological directory or brace-nesting depth fails typed at the engine's nesting bound — never as a thrown exception and never as a defect.
+
+**Relative paths resolve from the virtual root.** The `FileSystem` contract has no working-directory operation and the volume models no process cwd, so `"tmp/x"` means `/tmp/x` here and something else on a host filesystem. Seed and address paths absolutely, and pass a base directory into the code under test rather than letting it read `process.cwd()` — which leaves the volume's model silently.
+
+**A contradictory seed dies rather than failing.** `layerWith` takes the wiring-bug posture: a seed that cannot be built is a bug in the test, not runtime input. Use `makeWith` when you want seeding failures in the error channel instead. `failTimes` follows the same rule, throwing a `RangeError` at construction for a negative or non-integer `times`.
+
+### What the volume does not see
+
+memfs implements one thing: Effect's `FileSystem` service. It installs no hooks, patches no module registry and intercepts nothing globally, so the volume is visible to code that *asks for the service* and invisible to everything else. Four boundaries follow, and each is a property of the design rather than a gap to be closed:
+
+- **Direct `node:fs` and `node:fs/promises` calls.** Such code reads and writes the real host filesystem, in the same process, while a volume sits unused beside it. No adapter changes that, deliberately — a filesystem-shaped facade would legitimize the bypass and grow a second, weaker sanctioned path. Bring the code under a volume by having it take `FileSystem` from the environment, or accept an injected port and pass it `syncFileSystem`.
+- **Anything a child process does.** A spawned command gets the host filesystem; nothing the parent provided travels across the process boundary. Test that seam with a `ChildProcessSpawner` double, not with a volume.
+- **Native-binding IO.** A native module that opens files through its own bindings — SQLite being the usual case — never touches the service. Use an in-memory database for that shape of test; it is the right tool, not a workaround.
+- **Globbing outside the service.** The volume answers `FileSystem.glob` from its own embedded matcher, which exists so that memfs can keep zero kit edges. It is not a general matching API — for that, use [`@effected/glob`](/glob/api), which of course reads through whatever `FileSystem` it is given, including this one.
+
+## Testing with @effect/vitest
+
+Provide the volume the same way you would any layer, drive it with `it.effect`, and assert with `assert.*` — never `expect`. The pattern below covers the three moves a filesystem test usually needs: assert on a write through the inspection view, prove a missing path fails typed, and prove a code path handles an injected failure.
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, FileSystem, PlatformError } from "effect";
+
+describe("build cache", () => {
+  const Volume = MemoryFileSystem.layerInspectableWith({
+    "/repo/src/index.ts": MemoryFileSystem.file("export {}\n", { mtime: 1_700_000_000_000 }),
+  });
+
+  it.effect("writes the compiled output next to its source", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      yield* fs.makeDirectory("/repo/dist");
+      yield* fs.writeFileString("/repo/dist/index.js", "export {}\n");
+
+      const volume = yield* MemoryFileSystem.Volume;
+      assert.deepStrictEqual(volume.readDirectory("/repo/dist"), ["index.js"]);
+      assert.strictEqual(volume.text("/repo/dist/index.js"), "export {}\n");
+    }).pipe(Effect.provide(Volume)));
+
+  it.effect("fails typed rather than inventing content", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const error = yield* Effect.flip(fs.readFileString("/repo/src/missing.ts"));
+      assert.strictEqual(error.reason._tag, "NotFound");
+    }).pipe(Effect.provide(Volume)));
+
+  it.effect("surfaces a denied write instead of swallowing it", () => {
+    const Denied = MemoryFileSystem.layerFaultyWith(
+      { "/repo/dist/index.js": "export {}\n" },
+      {
+        writeFileString: (path) =>
+          Effect.fail(
+            PlatformError.systemError({
+              _tag: "PermissionDenied",
+              module: "FileSystem",
+              method: "writeFileString",
+              pathOrDescriptor: path,
+            }),
+          ),
+      },
+    );
+
+    return Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const error = yield* Effect.flip(fs.writeFileString("/repo/dist/index.js", "{}"));
+      assert.strictEqual(error.reason._tag, "PermissionDenied");
+    }).pipe(Effect.provide(Denied));
+  });
+});
+```
+
+Note that each `it.effect` provides `Volume` separately and therefore gets its own fresh, re-seeded volume — which is what keeps the cases independent. When a suite genuinely needs one volume across several tests, provide a single composed graph at the suite boundary with `@effect/vitest`'s `layer(...)` helper, and remember that a transient `failTimes` fault declared there is shared, not re-armed.
+
+## Next steps
+
+- New to the package? Start with the [overview](/memfs) for the contract, or [Getting Started](/memfs/getting-started) for the seed-and-provide basics.
+- Every export, with full signatures, lives in the [API reference](/memfs/api). The types this guide leaned on: [`MemoryFileSystem`](/memfs/api/class/memoryfilesystem) itself, the seed types [`MemoryFileSystemSeed`](/memfs/api/interface/memoryfilesystemseed), [`MemoryFileSystemSeedEntry`](/memfs/api/type/memoryfilesystemseedentry), [`MemoryFileSystemSeedFile`](/memfs/api/interface/memoryfilesystemseedfile), [`MemoryFileSystemSeedDirectory`](/memfs/api/interface/memoryfilesystemseeddirectory) and [`MemoryFileSystemSeedSymlink`](/memfs/api/interface/memoryfilesystemseedsymlink); the fault types [`MemoryFileSystemFaults`](/memfs/api/type/memoryfilesystemfaults), [`MemoryFileSystemFaultHandler`](/memfs/api/type/memoryfilesystemfaulthandler), [`MemoryFileSystemFaultMethod`](/memfs/api/type/memoryfilesystemfaultmethod) and [`MemoryFileSystemTransientFault`](/memfs/api/interface/memoryfilesystemtransientfault); and the inspection types [`MemoryFileSystemVolume`](/memfs/api/interface/memoryfilesystemvolume), [`MemoryFileSystemInspectable`](/memfs/api/interface/memoryfilesysteminspectable) and [`MemoryFileSystemSyncFileSystem`](/memfs/api/interface/memoryfilesystemsyncfilesystem).

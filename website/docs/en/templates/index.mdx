@@ -1,0 +1,81 @@
+---
+title: "@effected/templates"
+description: "Managed BEGIN/END sections inside files whose surrounding content belongs to the user."
+---
+
+# @effected/templates
+
+Managed sections: delimited `BEGIN`/`END` blocks inside files whose surrounding content belongs to the user. A tool owns the block, the user owns everything else, and neither destroys the other. Parse a document, ask whether a block is present, compare a declared block against what is on disk, reconcile a whole set of them into the file, or remove one — and get a typed failure rather than a guess whenever the document is ambiguous.
+
+## Why @effected/templates
+
+Most managed-section implementations put the whole algorithm inside a service that also does file IO, so the hardest logic — deciding what changed, and where a new block belongs — can only be exercised by writing files to disk. This package splits the two apart. [`SectionDocument`](/templates/api/class/sectiondocument) is a pure string-to-string core with no `Effect`, no IO and no runtime: parse a document, inspect it, compare, reconcile, render. [`ManagedSection`](/templates/api/class/managedsection) is a thin service that reads a file, calls the pure core, and writes back only when the text actually changed.
+
+That split is not tidiness for its own sake. Idempotency, byte preservation outside a managed span, declared ordering, line-ending handling and marker-injection refusal are every invariant that matters here, and each one is a property of a string, assertable from a literal with no layer and no filesystem.
+
+## Install
+
+```bash
+npm install @effected/templates effect
+```
+
+```bash
+pnpm add @effected/templates effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind. `FileSystem` comes from `effect` core, so a consumer provides it once at the edge — `NodeFileSystem.layer` from `@effect/platform-node` on Node. `Path` is deliberately *not* required: this package treats every path as an opaque string handed straight to `FileSystem` and never joins, resolves or splits one.
+
+## Quick start
+
+Declare two sections and sync them into a file in one call. Declared order becomes file order, so `base` always precedes `tool`, however a user may have reordered the file by hand:
+
+```ts with-api
+import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
+import { NodeFileSystem } from "@effect/platform-node";
+import { Effect } from "effect";
+
+const Base = SectionId.make({ key: "base", commentStyle: CommentStyle.hash });
+const Tool = SectionId.make({ key: "tool", commentStyle: CommentStyle.hash });
+
+const program = Effect.gen(function* () {
+  const sections = yield* ManagedSection;
+  return yield* sections.syncAll(".husky/pre-commit", [
+    Base.section("#!/usr/bin/env sh"),
+    Tool.section("npx tool run"),
+  ]);
+});
+
+Effect.runPromise(
+  program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer)),
+).then((outcomes) => console.log(outcomes.map((outcome) => outcome._tag)));
+// on a fresh file:            [ "Created", "Created" ]
+// on a second identical run:  [ "Unchanged", "Unchanged" ]
+```
+
+The second run is the point. Nothing changed, so nothing is written — not even an identical byte sequence — because an unchanged write churns the file's mtime and makes every run look like a change to a watcher.
+
+## Ambiguity fails typed, never silently
+
+An unterminated `BEGIN`, an `END` that closes nothing, two overlapping spans, or the same identity declared twice in one call are all a [`SectionParseError`](/templates/api/class/sectionparseerror) carrying the 1-based line and, where the failure names one, the section key. Each of those is a case where a silent choice corrupts a user's file: skip an unterminated marker and the next write appends a *second* copy of the section; pick the first of two duplicates and every sync updates that one while the stale copy lives on disk forever. A malformed document is malformed input, so it fails through the typed channel and the user fixes their file.
+
+Rendering refuses in the same spirit, with a [`SectionRenderError`](/templates/api/class/sectionrendererror), and it refuses *before* a byte is written: content that itself contains a marker, a comment style the dialect cannot scan back, one identity declared twice, and an attribute outside the grammar. Nothing is rendered into the output until every declared section has rendered successfully, so a refusal leaves the document untouched.
+
+## Text preservation is the central promise
+
+Every byte outside a managed span survives a sync, in order — including a leading byte-order mark, which the service protects by reading bytes and decoding with `ignoreBOM: true` rather than going through `readFileString`. Line endings are a first-class invariant too: the document's dominant EOL is detected at parse, markers are rendered with it, and drift comparison is EOL-normalized on *both* sides, so a CRLF file compared against LF content does not report drift, rewrite, and report drift again forever.
+
+Declared order is a contract rather than a side effect. [`syncAll`](/templates/api/interface/managedsectionshape) rewrites the document into the order you listed, which is what lets a consumer say "the preamble block precedes the tool block" and have it stay true in a file a user reordered by hand. Sections this dialect does not own are preserved as their exact source bytes.
+
+## Marker attributes
+
+A `BEGIN` marker can carry `name="value"` pairs, so a tool reads a block's provenance — which run wrote it, and when — off the marker line without opening the block. Attributes are metadata, never identity: a section is found by key and comment style alone, so bumping a run id updates that block in place instead of orphaning it and appending a second one. They *do* count as difference, which is what lets a tool rewrite a block whose only change is its stamp.
+
+The grammar has no escaping, deliberately — names match `[A-Za-z][A-Za-z0-9_-]*`, values are double-quoted and carry neither `"` nor a line break — because an escape grammar is a second parser hiding inside the first.
+
+## Outcomes are answers, not diffs
+
+[`SyncOutcome`](/templates/api/type/syncoutcome) is `Created` / `Updated` / `Unchanged`; [`CheckOutcome`](/templates/api/type/checkoutcome) is `Absent` / `UpToDate` / `Drifted`. Both are tagged enums you `$match` on, and both carry the sections involved — `Updated` carries `before` and `after`, `Drifted` carries `onDisk` and `expected` — rather than a diff. A caller that wants a rendering diffs the two contents with the diff library of its choice; the package ships no diff engine, because a naive set-difference one deduplicates, ignores order, and reports a pure reordering as no change at all.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/templates/api).

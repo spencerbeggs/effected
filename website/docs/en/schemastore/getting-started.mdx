@@ -1,0 +1,252 @@
+---
+title: Getting Started
+description: Generate a SchemaStore-shaped Draft-07 document from an Effect Schema, lint and validate it, and write it to disk only when it actually changed with @effected/schemastore.
+---
+
+# Getting Started
+
+Reach for `@effected/schemastore` when your project defines its config with an Effect Schema and you want editors to understand that config too — autocomplete in VS Code, hovers in IntelliJ, diagnostics from taplo or the YAML language server. Getting there means emitting a Draft-07 JSON Schema in the exact shape [SchemaStore](https://www.schemastore.org) publishes, clearing ajv strict mode, and keeping the whole thing regenerable from a build script. Core generates the schema; this package owns the publication shape, the gates and the write.
+
+## Install
+
+```bash
+npm install @effected/schemastore effect
+```
+
+```bash
+pnpm add @effected/schemastore effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency; `ajv` and [`@effected/semver`](/semver) arrive as regular dependencies, so nothing below needs an extra install. Writing files needs a platform layer for core's `FileSystem` and `Path` — add `@effect/platform-node` (or `@effect/platform-bun`) when you get to that step.
+
+## Your first task: emit a schema a build script can regenerate
+
+Here is the concrete goal. Your tool reads `mytool.config.json`, you already describe that file with an Effect Schema, and you want a published `mytool.json` schema that editors pick up — regenerated on every build, gated so a broken document never ships. We will build it one step at a time.
+
+Start with the document itself. [`StoreDocument.fromSchema`](/schemastore/api/class/storedocument) runs core's 2020-12 generation, the Draft-07 lowering, the `$ref` rewrite back to the `$defs` pool and the annotation re-graft, then hands you a `StoreDocument`. `serializeResult()` turns it into canonical text — a `Result`, because serialization can fail on a value JSON cannot represent, which `Effect.fromResult` lifts onto the error channel:
+
+```ts with-api
+import { StoreDocument } from "@effected/schemastore";
+import { Effect, Schema } from "effect";
+
+const Config = Schema.Struct({
+  name: Schema.String,
+  strict: Schema.Boolean,
+});
+
+const program = Effect.gen(function* () {
+  // 1. Generate, lower, rewrite refs and re-graft annotations — one call.
+  const document = yield* StoreDocument.fromSchema(Config, {
+    $id: "https://example.com/schemas/mytool.json",
+  });
+
+  // 2. Canonical text: tab indent, LF, one trailing newline.
+  return yield* Effect.fromResult(document.serializeResult());
+});
+
+const text = Effect.runSync(program);
+
+console.log(text.split("\n")[0]);
+// {
+```
+
+Two things happened that are easy to miss. The document declares Draft-07 (`$schema` is `http://json-schema.org/draft-07/schema#`), because that is the dialect the language servers actually support. And `additionalProperties: false` appears without you asking — core's default for a struct — which is usually what a config schema wants and is worth knowing before a user reports a "spurious" error on an extra key.
+
+Now gate it. [`DocumentLint.lint`](/schemastore/api/class/documentlint) is total: it returns findings as values and never fails, so it costs you nothing to call and never becomes an exception you did not plan for:
+
+```ts with-api
+import { DocumentLint, StoreDocument } from "@effected/schemastore";
+import { Effect, Schema } from "effect";
+
+// The root description carries no docs URL — SchemaStore's convention.
+const Config = Schema.Struct({ name: Schema.String }).annotate({
+  description: "Configuration for My Tool",
+});
+
+const program = Effect.gen(function* () {
+  const document = yield* StoreDocument.fromSchema(Config, {
+    $id: "https://example.com/schemas/mytool.json",
+  });
+  return DocumentLint.lint(document).map((finding) => `${finding.severity} ${finding.check}`);
+});
+
+console.log(Effect.runSync(program));
+// [ "advisory DescriptionWithoutUrl" ]
+```
+
+Every finding carries a `check`, a `severity` (`"warning"` for structural defects, `"advisory"` for best practices), a JSON `path` pointer into the flat document and a `message`. Nothing is logged for you — the wording of your build output stays yours.
+
+Finally, write it. [`SchemaFile`](/schemastore/api/class/schemafile) serializes, compares against what is on disk and writes only on difference. It needs core's `FileSystem` and `Path`, which you supply once at the edge:
+
+```ts with-api
+import { SchemaFile, StoreDocument } from "@effected/schemastore";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+const SchemaFileLive = SchemaFile.layer.pipe(Layer.provide(PlatformLive));
+
+const program = Effect.gen(function* () {
+  const files = yield* SchemaFile;
+  const document = yield* StoreDocument.fromSchema(Schema.Struct({ name: Schema.String }), {
+    $id: "https://example.com/schemas/mytool.json",
+  });
+
+  const first = yield* files.write("schemas/mytool.json", document);
+  const second = yield* files.write("schemas/mytool.json", document);
+  return [first, second] as const;
+}).pipe(Effect.provide(SchemaFileLive));
+
+Effect.runPromise(program).then(console.log);
+// [ { outcome: "written", change: "created" }, { outcome: "unchanged", change: "none" } ]
+```
+
+That second call is the whole point of write-if-changed: nothing on disk moved, so the file's mtime is untouched and a watcher does not fire. The comparison is by **content**, not bytes, so if your repo's formatter reflows the emitted JSON the next run still says `"unchanged"` — you write no exclusion rule for the generated file.
+
+Read `outcome` to learn whether the filesystem was touched. Read `change` to learn what the difference *meant*. They answer different questions, and under `compare: "bytes"` they genuinely disagree.
+
+## Common operations
+
+Each snippet below is a complete program built only from the package's real exports.
+
+### Carry an editor annotation into the emitted keyword
+
+Effect Schema annotations take arbitrary string keys, and the declared language-server families are always admitted and re-grafted after the lowering. Annotate **at the definition site** — a usage-site annotation on a hoisted schema carries nothing:
+
+```ts with-api
+import { StoreDocument } from "@effected/schemastore";
+import { Effect, Schema } from "effect";
+
+const Config = Schema.Struct({
+  name: Schema.String.annotate({
+    markdownDescription: "The **display name** shown in the UI.",
+    "x-taplo": { docs: { main: "The display name." } },
+  }),
+});
+
+const program = Effect.gen(function* () {
+  const document = yield* StoreDocument.fromSchema(Config, {
+    $id: "https://example.com/schemas/mytool.json",
+  });
+  return document.root.properties;
+});
+
+console.log(Effect.runSync(program));
+// { name: { type: "string", markdownDescription: "...", "x-taplo": { ... } } }
+```
+
+### Validate with the real engine
+
+[`SchemaValidator.layer`](/schemastore/api/class/schemavalidator) is ajv, shipped. There is no adapter to write — provide the layer and validation works, in the strict mode SchemaStore itself gates on:
+
+```ts with-api
+import { SchemaValidator, StoreDocument } from "@effected/schemastore";
+import { Effect, Schema } from "effect";
+
+const program = Effect.gen(function* () {
+  const validator = yield* SchemaValidator;
+  const document = yield* StoreDocument.fromSchema(Schema.Struct({ name: Schema.String }), {
+    $id: "https://example.com/schemas/mytool.json",
+  });
+  return yield* validator.validate(document.toJson());
+}).pipe(Effect.provide(SchemaValidator.layer));
+
+Effect.runPromise(program).then((findings) => console.log(findings.length));
+// 0 — an empty array is a clean pass
+```
+
+`validate` takes the flat serialized record that `toJson()` produces, so the seam stays engine-shaped rather than coupled to this package's classes. An empty array is a clean pass; findings come back as values.
+
+### Assemble a catalog entry
+
+[`CatalogEntry.assemble`](/schemastore/api/class/catalogentry) derives both catalog modes from the same inputs. Pass `versions` for the versioned mode and the `versions` map plus a latest-pointing `url` fall out; omit it for the single-file mode:
+
+```ts with-api
+import { CatalogEntry, SchemaVersioning } from "@effected/schemastore";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const versions = yield* Effect.forEach(["1.9.0", "1.10.0"], SchemaVersioning.parse);
+  return CatalogEntry.assemble({
+    name: "My Tool",
+    description: "Configuration for My Tool. https://example.com/docs",
+    fileMatch: ["mytool.config.json"],
+    baseUrl: "https://example.com/schemas",
+    fileBaseName: "mytool",
+    versions,
+  });
+});
+
+console.log(Effect.runSync(program).url);
+// https://example.com/schemas/mytool-1.10.0.json
+```
+
+`1.10.0` wins over `1.9.0` because ordering is real SemVer precedence, not a string sort. Labels are full three-component SemVer — `1.2` does not parse — so a label can always be split back out of a file name unambiguously.
+
+### Check `fileMatch` hygiene before you submit
+
+SchemaStore's reviewers reject generic patterns and ask for complex globs to be expanded. The lint is pure shape analysis — it never matches a pattern against a path, so there is no glob engine behind it:
+
+```ts with-api
+import { CatalogEntry } from "@effected/schemastore";
+
+const findings = CatalogEntry.lintFileMatch(["config.toml", "**/{a,b}.json"]);
+
+console.log(findings.map((finding) => finding.check));
+// [ "GenericFileMatch", "ComplexFileMatch" ]
+```
+
+### Decide whether a change needs a new version
+
+[`DocumentDiff.classify`](/schemastore/api/class/documentdiff) compares two emitted documents and answers `"none"`, `"annotations"` or `"contract"`. Only the last one demands a new schema version:
+
+```ts with-api
+import { DocumentDiff, StoreDocument } from "@effected/schemastore";
+
+const before = StoreDocument.draft07({
+  $id: "https://example.com/schemas/mytool.json",
+  root: { type: "object", properties: { name: { type: "string" } } },
+});
+
+const after = StoreDocument.draft07({
+  $id: "https://example.com/schemas/mytool.json",
+  root: {
+    type: "object",
+    properties: { name: { type: "string", description: "The display name." } },
+  },
+});
+
+console.log(DocumentDiff.classify(before.toJson(), after.toJson()));
+// annotations
+```
+
+Only prose moved, so the new document replaces its predecessor transparently. Had `required` or a `type` changed, the answer would be `"contract"` — the version-bump signal.
+
+## Handling errors
+
+Findings and errors are deliberately different things here. A lint or validation *finding* is a report about a document and comes back as a value; the typed error channel is reserved for a mechanism failing or an input that cannot be interpreted at all.
+
+The tagged errors you will actually route on: [`SchemaConversionError`](/schemastore/api/class/schemaconversionerror) when core cannot convert a schema (it carries the `$id` and the structured cause), [`InvalidSchemaVersionError`](/schemastore/api/class/invalidschemaversionerror) when a version label does not parse, the `SchemaFile` trio for IO, and [`SchemaGateError`](/schemastore/api/class/schemagateerror) when the pipeline's gate blocks.
+
+```ts with-api
+import { SchemaVersioning } from "@effected/schemastore";
+import { Effect } from "effect";
+
+// Build metadata is rejected: precedence ignores it, so two labels differing
+// only in build would compare equal and both claim to be the latest.
+const program = SchemaVersioning.parse("1.0.0+build.5").pipe(
+  Effect.catchTag("InvalidSchemaVersionError", (error) => Effect.succeed(`rejected: ${error.input}`)),
+);
+
+Effect.runPromise(program).then(console.log);
+// rejected: 1.0.0+build.5
+```
+
+Because the failure is tagged, `Effect.catchTag` routes it with full inference and handling it narrows the channel to `never`. Drop the handler and it is a compile error until the malformed label is accounted for — so a bad version can never escape as an unhandled exception into a build script.
+
+The `SchemaFile` failures stay apart on purpose: `SchemaFileNotFoundError` for a missing file on `read`, `SchemaFileReadError` when the *comparison* read fails for any other reason (the write then fails rather than silently overwriting a file it could not compare), `SchemaFileWriteError` for the filesystem write, and `CanonicalJsonError` when the document does not serialize at all.
+
+## Next steps
+
+- Ready to run the whole emit loop over a target manifest, gate it in CI and test it? See the [advanced guide](/schemastore/advanced).
+- Every export, with full signatures, lives in the [API reference](/schemastore/api) — start with [`StoreDocument`](/schemastore/api/class/storedocument), [`SchemaPipeline`](/schemastore/api/class/schemapipeline) and [`SchemaFile`](/schemastore/api/class/schemafile).

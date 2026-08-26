@@ -1,0 +1,193 @@
+---
+title: Getting Started
+description: Write a GitHub Action as an Effect program — read typed inputs, set outputs, log steps as workflow commands, persist state across phases, and route every failure through the typed error channel.
+---
+
+# Getting Started
+
+Reach for `@effected/github-actions` when you are writing a GitHub Action and want the runner to be a set of services rather than a pile of globals. Everything an action does to its runner — reading an input, setting an output, masking a secret, writing the job summary, saving state for the `post` phase, restoring a cache — goes through a typed service you can provide, override in a test, and reason about in the compiler. `Action.run` is the single entry point: it composes the runtime, runs your program, renders whatever went wrong as an `::error::` annotation, and sets the exit code the runner reads.
+
+## Install
+
+```bash
+npm install @effected/github-actions effect @effect/platform-node
+```
+
+```bash
+pnpm add @effected/github-actions effect @effect/platform-node
+```
+
+Requires Node.js >=24.11.0. `effect` v4 and `@effect/platform-node` are both peer dependencies.
+
+## Your first action: read inputs, do work, set an output
+
+Here is a concrete, everyday goal. A workflow calls your action with a `name` input and an optional `dry-run` flag, and the action reports back through a step output another job can consume. We will build it one piece at a time.
+
+Inputs come first. Every accessor on `ActionInput` returns a `Config` — not an `Effect` — which is why an optional input is spelled with `Config.withDefault` rather than a conditional. That is the whole absence rule in one line: the runner cannot distinguish "omitted" from "set to empty", so this package treats both as missing data and makes you say what missing means:
+
+```ts with-api
+import { Action, ActionInput, ActionLogger, ActionOutputs } from "@effected/github-actions";
+import { Config, Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  // 1. Read the inputs. `name` is required; `dry-run` is optional, so it
+  //    names its own default rather than relying on the runner's "".
+  const name = yield* ActionInput.string("name");
+  const dryRun = yield* ActionInput.boolean("dry-run").pipe(Config.withDefault(false));
+
+  // 2. Do the work inside a named step, so the log stays readable.
+  const logger = yield* ActionLogger;
+  const greeting = yield* logger.withStep("greet", Effect.succeed(`Hello, ${name}!`));
+
+  // 3. Report back. A dry run says what it would have done and stops.
+  const outputs = yield* ActionOutputs;
+  if (dryRun) {
+    yield* outputs.summary(`Would have greeted **${name}**.`);
+    return;
+  }
+  yield* outputs.set("greeting", greeting);
+});
+
+await Action.run(program);
+```
+
+Three things are worth pausing on. `ActionInput.string("name")` has no default, so a workflow that forgets the input fails with a `ConfigError` naming it — the action stops at the top instead of doing half its work with an empty string. `logger.withStep` buffers the step's log output and trades it for a single `✅ greet` line on success, while a failure flushes the whole transcript under a `❌ greet` header. And `Action.run` needs nothing else: the program requires `ActionOutputs` and `ActionLogger`, both of which live in [`ActionServices`](/github-actions/api/type/actionservices), so the runtime is already complete.
+
+## Common operations
+
+Each snippet below is a complete program built only from the package's real exports.
+
+### Read the shapes a workflow author actually writes
+
+`list` accepts a JSON array, a bullet list, or comma- and newline-separated values, dropping full-line `#` comments. `pairs` reads `key=value` lines into a record. `redacted` wraps the value in a `Redacted` so it cannot be logged by accident:
+
+```ts with-api
+import { ActionInput } from "@effected/github-actions";
+import { Config, Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const paths = yield* ActionInput.list("paths").pipe(Config.withDefault([]));
+  const env = yield* ActionInput.pairs("env").pipe(Config.withDefault({}));
+  const token = yield* ActionInput.redacted("token");
+  return { paths, env, token };
+});
+// paths: readonly string[] — [] when the input was omitted
+// env:   Record<string, string>
+// token: Redacted<string> — printing it yields "<redacted>"
+```
+
+`pairs` rejects an **empty key** unconditionally and names the offending line, because a stray `=value` does its damage far from the typo. An empty *value* is legitimate; pass `{ requireValue: true }` to reject that too.
+
+### Set an output, an environment variable and the job summary
+
+`ActionOutputs` covers every direction an action writes to the runner. Each member writes through the runner file the protocol actually uses, with a derived delimiter rather than a random one:
+
+```ts with-api
+import { ActionOutputs } from "@effected/github-actions";
+import { Effect, Schema } from "effect";
+
+const Report = Schema.Struct({ passed: Schema.Number, failed: Schema.Number });
+
+const program = Effect.gen(function* () {
+  const outputs = yield* ActionOutputs;
+  yield* outputs.set("status", "green");
+  yield* outputs.setJson("report", { passed: 41, failed: 0 }, Report);
+  yield* outputs.exportVariable("BUILD_ID", "20260826.1");
+  yield* outputs.addPath("/opt/toolchain/bin");
+  yield* outputs.summary("### Build passed\n\n41 checks, 0 failures.");
+});
+```
+
+`setJson` encodes through the schema you hand it, so an output's wire form is the schema's encoded form — a consuming job never has to guess how a field was serialized.
+
+### Persist state across `pre`, `main` and `post`
+
+A three-phase action is three separate processes. Nothing survives between them except what `GITHUB_STATE` carries, which is what [`ActionState`](/github-actions/api/class/actionstate) manages — through a schema, so the `post` phase decodes what `pre` encoded rather than re-parsing a string:
+
+```ts with-api
+import { ActionState } from "@effected/github-actions";
+import { Effect, Option, Schema } from "effect";
+
+// In `pre`: record when the run began.
+const pre = Effect.gen(function* () {
+  const state = yield* ActionState;
+  yield* state.save("started-at", "2026-08-26T12:00:00Z", Schema.String);
+});
+
+// In `post`: read it back, tolerating a `pre` that never ran.
+const post = Effect.gen(function* () {
+  const state = yield* ActionState;
+  const startedAt = yield* state.getOptional("started-at", Schema.String);
+  return Option.getOrElse(startedAt, () => "unknown");
+});
+```
+
+`getOptional` returns an `Option` because a `post` phase running after a `pre` that failed early is normal, not exceptional. Use `get` when the value's absence really is a bug, and `saveSecret` when the value is sensitive — it masks in the runner log before it writes, since `GITHUB_STATE` is plaintext by GitHub's own protocol.
+
+### Declassify a secret exactly once
+
+[`Secret`](/github-actions/api/class/secret) is the only place in the package a `Redacted` becomes a plain string, and masking and declassification are the same call. Every member registers the value with the runner's `::add-mask::` filter **before** returning plaintext, so there is no window in which an unmasked secret exists:
+
+```ts with-api
+import { ActionInput, Secret } from "@effected/github-actions";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const token = yield* ActionInput.redacted("token");
+  // Masked with the runner first, then handed back as a child environment.
+  const env = yield* Secret.forChildEnv({ MY_TOKEN: token });
+  return env;
+});
+// env: Record<string, string> — every value already masked in the log
+```
+
+There are four seams, one per destination: `forChildEnv` for a subprocess, `forRunnerFile` for `GITHUB_STATE` or `GITHUB_OUTPUT`, `forSigning` for a crypto call, and `forProcessEnv` for this process. Picking the right one is the whole API — a new destination means a new member, never a call to `Redacted.value`.
+
+### Restore and save the runner's cache
+
+The cache is not in the default runtime, because it is one of three modules that link a blob-storage client. Taking it costs exactly one line:
+
+```ts with-api
+import { Action, ActionCache, CacheKey } from "@effected/github-actions";
+import { Effect, Option } from "effect";
+
+const program = Effect.gen(function* () {
+  const cache = yield* ActionCache;
+  const key = CacheKey.of("Linux", "pnpm-store", "abc123");
+
+  const hit = yield* cache.restore(["~/.pnpm-store"], key);
+  if (Option.isNone(hit)) {
+    // Cold cache — do the work, then write the entry for next time.
+    yield* cache.save(["~/.pnpm-store"], key);
+  }
+});
+
+await Action.run(program, { layer: ActionCache.layer });
+```
+
+A miss is `Option.none()`, not a failure — a cold cache is the normal state of a new branch. Passing a [`CacheKey`](/github-actions/api/class/cachekey) rather than a bare string supplies the restore-key ladder automatically: `Linux-pnpm-store-abc123` falls back to `Linux-pnpm-store-` and then `Linux-`.
+
+## Handling errors
+
+Every failure in this package arrives on the typed `E` channel. Because the errors are tagged, `Effect.catchTag` routes each one by its `_tag` with full inference, and you recover from exactly the reason you meant to:
+
+```ts with-api
+import { CacheKey } from "@effected/github-actions";
+import { Effect, Option } from "effect";
+
+const digest = CacheKey.hashMatching({
+  workspace: ".",
+  patterns: ["**/pnpm-lock.yaml"],
+}).pipe(Effect.catchTag("CacheKeyBadPatternError", () => Effect.succeed(Option.none<string>())));
+// Effect<Option<string>, CacheKeyReadError, FileSystem | Path>
+// a bad pattern becomes "no digest"; a read failure stays in the error channel
+```
+
+That is what the split into per-reason error classes buys. [`CacheKeyError`](/github-actions/api/type/cachekeyerror) is a type alias over [`CacheKeyBadPatternError`](/github-actions/api/class/cachekeybadpatternerror) and [`CacheKeyReadError`](/github-actions/api/class/cachekeyreaderror), so no signature changed when they split — but a handler that only meant to answer "the caller wrote a bad glob" no longer swallows "the filesystem could not be read", which a single class carrying a `reason` field made impossible to express.
+
+Failures you do not handle are not lost either. `Action.run` catches whatever reaches the top, renders it through [`describeCause`](/github-actions/api/function/describecause) as a `[Tag] message` line inside an `::error::` annotation, and exits non-zero — so the first red line in a workflow log is the one worth reading.
+
+## Next steps
+
+- Ready for the cache and artifact protocols, OIDC provenance, the reporting suite and the testing doubles? See the [advanced guide](/github-actions/advanced).
+- Every export, with full signatures, lives in the [API reference](/github-actions/api) — start with [`Action`](/github-actions/api/class/action), [`ActionInput`](/github-actions/api/class/actioninput) and [`ActionOutputs`](/github-actions/api/class/actionoutputs).

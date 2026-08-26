@@ -1,0 +1,78 @@
+---
+title: "@effected/github"
+description: "Typed GitHub REST and GraphQL for Effect: the route literal types both the parameters and the response, with one error taxonomy, one retry policy and one pagination engine."
+---
+
+# @effected/github
+
+Typed GitHub REST and GraphQL for Effect v4. `client.request("GET /repos/{owner}/{repo}", { owner, repo })` types both the parameters and the returned `data` from the route literal alone — no `operation: string`, no callback, no type parameter, no cast. One `GitHubError` covers every REST failure with a `kind` you branch on instead of grepping a message, one pagination engine backs every paginating route and its `Stream` form, and a set of resource services turn multi-call dances — "does this branch already exist?", "conclude this check run no matter how the program exits" — into a single expression.
+
+## Why @effected/github
+
+Hand-rolled octokit wrappers converge on the same shape: a `rest<T>(operation: string, fn)` helper where `T` is whatever the caller wrote and nothing connects it to the endpoint. `@octokit/types` already generates a complete, **types-only** map of every endpoint from GitHub's own OpenAPI description, and `@octokit/core`'s `request` already consumes it — so this package makes [the route the key](/github/api/type/restroute) rather than reinventing either. Nothing here is `unknown`, and the escape hatch for a route outside the generated map still demands a schema.
+
+The error model gets the same treatment. [`GitHubError.kind`](/github/api/variable/githuberrorkind) is a literal union — `notFound`, `alreadyExists`, `rejected`, `unauthorized`, `rateLimited`, `transport`, `decode` — produced by one classification step rather than one hand-written mapper per resource. That single discriminant is what makes [`GitBranch.upsert`](/github/api/class/gitbranch) one round trip in the common case instead of a create-then-catch-then-check-then-reset dance repeated at every call site.
+
+This package also owns the octokit runtime so nothing downstream has to, and it owns it narrowly. `@octokit/rest` and `@octokit/auth-app` are deliberately absent — the rest wrapper is a request-logging plugin plus 1.4 MB of duplicate endpoint types, and `auth-app` drags in roughly 492 KB of OAuth machinery this package never calls. App JWTs are signed by the same zero-dependency signer `@octokit/auth-app` itself uses, and it lives in [`GitHubApp`](/github/api/class/githubapp) alone: a consumer authenticating with a token it already holds never links it. That split is structural, and a reachability test asserts it rather than a comment promising it.
+
+## Install
+
+```bash
+npm install @effected/github effect
+```
+
+```bash
+pnpm add @effected/github effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. All `@effected/*` packages are ESM-only: the exports map publishes only `import` conditions, so `require()` fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist.
+
+## Quick start
+
+```ts
+import { GitHubClient, Repo, RepoRef } from "@effected/github";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+  const client = yield* GitHubClient;
+  const repo = yield* client.request("GET /repos/{owner}/{repo}", {
+    owner: "effect-ts",
+    repo: "effect",
+  });
+  return repo.default_branch; // string — typed from the route literal, no cast
+});
+
+// layerFromConfig reads GITHUB_TOKEN through the ambient ConfigProvider.
+const ClientLayer = GitHubClient.layerFromConfig();
+const RepoLayer = Repo.layer(RepoRef.make({ owner: "effect-ts", repo: "effect" }));
+
+Effect.runPromise(program.pipe(Effect.provide(ClientLayer), Effect.provide(RepoLayer))).then(console.log);
+// the repository's default branch name, e.g. "main"
+```
+
+[`Repo`](/github/api/class/repo) carries the `{ owner, repo }` coordinate in the `R` channel rather than as a per-call argument, which is what makes every resource method below read as a single expression. It is resolved **per call**, not captured at layer construction, so `Repo.provide(otherRef)` around one part of a program genuinely retargets it.
+
+## Resource services
+
+Each resource is a service over `GitHubClient` with its own `layer`, `makeTest` and `layerTest`. They exist to collapse a known multi-call sequence into one intent:
+
+- [`GitBranch`](/github/api/class/gitbranch) and [`GitTag`](/github/api/class/gittag) sit on the Git Database API. `upsert` creates the ref or resets it, one round trip in the common case and two in the raced one — never four. `GitTag.latestSemver` walks tags and picks the newest version-shaped one in a single pass over `@effected/semver`'s synchronous comparator.
+- [`CheckRun`](/github/api/class/checkrun) owns `withCheckRun`, a bracket that concludes the run on **every** exit path — success, typed failure, defect or interrupt — so a run never sticks at `in_progress` and blocks branch protection until someone deletes it by hand.
+- [`PullRequest`](/github/api/class/pullrequest), [`PullRequestComment`](/github/api/class/pullrequestcomment) and [`GitHubIssue`](/github/api/class/githubissue) cover the review surface: an upsert for the pull request itself, a marker-tagged sticky comment, and `commentOnce` for an announcement that should be posted exactly once and never edited.
+- [`GitHubCommit`](/github/api/class/githubcommit), [`GitCommit`](/github/api/class/gitcommit), [`GitHubContent`](/github/api/class/githubcontent) and [`GitHubRelease`](/github/api/class/githubrelease) read history, write commits through the Git Data API, read file contents and publish releases with their assets.
+
+A second tier writes the half of a repository that is policy rather than content — [`RepositorySecret`](/github/api/class/repositorysecret), [`RepositoryVariable`](/github/api/class/repositoryvariable), [`Ruleset`](/github/api/class/ruleset), [`DeploymentEnvironment`](/github/api/class/deploymentenvironment), [`RepositorySecurity`](/github/api/class/repositorysecurity) and [`CodeScanning`](/github/api/class/codescanning) — shaped for a program applying the same configuration across a fleet. Every list read there paginates to the end, so a truncated page never becomes a wrong decision.
+
+## Errors are one taxonomy, retries are one policy
+
+Four error types cover the package, not one per resource: [`GitHubError`](/github/api/class/githuberror) for REST, [`GitHubGraphQLError`](/github/api/class/githubgraphqlerror) for GraphQL, [`GitHubAppError`](/github/api/class/githubapperror) for authentication, and [`TokenPermissionError`](/github/api/class/tokenpermissionerror) from the pure permission comparator. Classification happens exactly once, in `GitHubError.fromOctokit`; nothing else in the package inspects a status code.
+
+Retrying happens once too, in the client. [`RetryPolicy.default`](/github/api/class/retrypolicy) retries a `transport` or `rateLimited` failure with full-jitter backoff, honoring GitHub's `retry-after` header up to a configurable ceiling; `RetryPolicy.none` disables it. A `notFound`, `rejected` or `unauthorized` failure never retries — it cannot change its mind between attempts. Resources inherit the client's policy and carry none of their own.
+
+## Testing is part of the surface
+
+Every resource ships `makeTest(overrides?)` and `layerTest(overrides?)`: stub the members a test exercises, and every other member **dies** naming itself, so a test proves it touched nothing it did not stub. [`GitHubClient.layerFixture`](/github/api/interface/githubfixtures) goes further — it is a recorded-response double that pages for real, building a page source over the recorded array and handing it to the same pagination engine the live client uses, so a truncation path behaves identically under test and in production.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/github/api).

@@ -1,0 +1,325 @@
+---
+title: Advanced
+description: Compose @effected/markdown into a real Effect application — splice documents by byte offset, write frontmatter back, resolve self-describing $schema blocks, stream a tree walk, and cross the mdast boundary in both directions.
+---
+
+# Advanced
+
+## A pipeline that rewrites files people wrote by hand
+
+Picture the job this package was built for. A repository holds hundreds of markdown files that are read and rewritten by *programs* far more often than by people — agent skill files, context documents, changelogs, a doc site's guide spine. A tool has to open them, validate their frontmatter against a schema, retitle a heading, drop a stale section, stamp a release date — and hand the file back so that a reviewer's diff shows only the change that was asked for. The moment the tool re-serializes the whole tree, that diff fills with re-wrapped paragraphs, converted bullets and moved blank lines, and nobody can review it.
+
+The package's whole reason to exist is to make that round trip exact. Every node carries byte offsets alongside unist positions, so an edit is a splice against the original source; `MarkdownEdit` is field-identical to `JsoncEdit`, `YamlEdit` and `TomlEdit`, so the same editing vocabulary spans every format in the kit; frontmatter is decoded and written through free-standing per-format codecs; and the mdast projection is the door to the remark ecosystem when you need it. This guide covers the capabilities a real application leans on beyond parse-and-navigate — offset-splice editing, the frontmatter write mirror, self-describing `$schema` blocks, string-level frontmatter, streaming tree walks, and the mdast boundary in both directions — plus the failure modes and testing patterns a production tool needs. It assumes the parse, navigate and decode workflow from the [getting-started guide](/markdown/getting-started).
+
+## How it composes with Effect
+
+Nothing in this package owns a service or a layer, and nothing performs IO. `Markdown.parse`, `MarkdownDocument.parse`, `MarkdownFrontmatter.schema` and `MarkdownFormat.modify` are plain `Effect` values, so they drop into an `Effect.fn` workflow and their tagged errors — `MarkdownParseError`, the five frontmatter errors, `MarkdownModificationError`, `MdastDecodeError` — join your program's typed `E` channel with no wrapping. `MarkdownFormat.format`, `MarkdownEdit.applyAll` and `FrontmatterSource.split` are pure and total; `parseResult`, `stringifyResult` and `fromMdastResult` are `Result`-returning twins for callers that have no runtime at hand, like a Vite plugin or a language-server tick.
+
+Because `MarkdownDocument` is a `Schema.Class`, a document embeds in a domain schema, and `Markdown.MarkdownFromString` is a two-way `Schema.Codec<Root, string>` you can compose directly. Reading a file is somebody else's job by design: pair the package with `@effected/memfs` or a platform `FileSystem` in tests and production alike, and the markdown layer stays pure on both sides.
+
+## Splice a document by byte offset
+
+The navigation accessors exist to feed the edit layer. A `DocumentSection`'s `range` spans the whole section *including its subsections*, so removing a stale release from a changelog is one edit — and every byte outside that span survives untouched, blank lines and all:
+
+```ts with-api
+import { MarkdownDocument, MarkdownEdit } from "@effected/markdown";
+import { Effect } from "effect";
+
+const changelog = `# Changelog
+
+## 1.2.3
+
+Fixed a bug in the table parser.
+
+## 1.2.2
+
+Initial release.
+`;
+
+const program = Effect.gen(function* () {
+  const document = yield* MarkdownDocument.parse(changelog);
+  const stale = document.sectionByHeading("1.2.2", { depth: 2 });
+  if (stale === undefined) return document.source;
+
+  const edit = MarkdownEdit.make({ offset: stale.range.offset, length: stale.range.length, content: "" });
+  return MarkdownEdit.applyAll(document.source, [edit]);
+});
+
+Effect.runPromise(program).then(console.log);
+// # Changelog
+//
+// ## 1.2.3
+//
+// Fixed a bug in the table parser.
+```
+
+`applyAll` sorts by descending offset before applying, so earlier offsets stay valid and you can hand it a batch computed in document order. Overlapping edits are a *programmer error*, not hostile input: they throw as a defect rather than failing typed, which is deliberate — a tool that computed two edits over the same span has a bug that a caught error would hide. `MarkdownFormat` never produces them.
+
+When the replacement is a node rather than a raw string, prefer `MarkdownFormat.modify`. It matches the target by identity in the document's own tree, refuses targets whose splice could not re-parse (list items, table rows, frontmatter and the root, plus multi-line replacements inside a container whose continuation lines a single splice cannot prefix), and renders replacements through the canonical stringifier — so a modified document re-parses cleanly by construction. `modify` returns the edits for batching; `modifyToString` applies them in one step.
+
+## Write frontmatter back
+
+`MarkdownFrontmatter.set` is the exact mirror of `.schema`: it schema-*encodes* your typed data, serializes it through the codec, and returns the edits that install the block — always exactly one. A document with a capture of the codec's format gets a replacement spanning the whole block, both fence lines included; a document with none gets a single insert at offset 0. `setToString` applies the result:
+
+```ts with-api
+import { MarkdownDocument, MarkdownFrontmatter, MarkdownParseOptions, YamlFrontmatter } from "@effected/markdown";
+import { Effect, Schema } from "effect";
+
+const Post = Schema.Struct({ title: Schema.String, draft: Schema.Boolean });
+const writePost = MarkdownFrontmatter.setToString(Post, YamlFrontmatter);
+
+const source = `---
+title: Release notes
+draft: true
+---
+
+# Release notes
+`;
+
+const program = Effect.gen(function* () {
+  const document = yield* MarkdownDocument.parse(source, MarkdownParseOptions.make({ frontmatter: true }));
+  return yield* writePost(document, { title: "Release notes", draft: false });
+});
+
+Effect.runPromise(program).then(console.log);
+// ---
+// title: Release notes
+// draft: false
+// ---
+//
+// # Release notes
+```
+
+Three properties to internalize before you depend on it. The writer has the **same `frontmatter: true` precondition** as the reader, and for a sharp reason: parse with the toggle off and the writer sees no capture, takes the insert path, and doubles a block the parse ignored. The block is re-serialized **whole** from the encoded data — gray-matter parity, not surgical editing — so anything the format's data model does not carry is lost: comments inside a yaml block do **not** survive a `set`. And the fences are **never switched**: handing a toml codec a `---` capture fails with `FrontmatterFormatMismatchError` rather than rewriting the document's format out from under its author. Note also that `FrontmatterWriteError` deliberately omits `FrontmatterMissingError` — absence is the insert path, not a failure.
+
+## Let a document declare its own schema
+
+A corpus of agent documents is rarely one shape. `SchemaResolver` handles the `$schema` convention without any IO: `classify` sorts a declaration value into a tagged union — `ByUrl`, `ByPath`, `Inline`, `ByName` — `declarationOf` extracts and classifies it from decoded frontmatter data (with `requireDeclaration` as the strictness knob), and `fromRegistry` resolves `ByName` declarations against schemas you register under `name[@version]` keys. URLs, paths and inline documents are carried as data and never fetched.
+
+```ts with-api
+import { MarkdownDocument, MarkdownParseOptions, SchemaResolver, YamlFrontmatter } from "@effected/markdown";
+import { Effect, Schema } from "effect";
+
+const SkillV2 = Schema.Struct({ $schema: Schema.String, name: Schema.String });
+const resolver = SchemaResolver.fromRegistry({ "@savvy/skill@2.1.0": SkillV2 });
+
+const source = `---
+$schema: "@savvy/skill@2.1.0"
+name: review
+---
+
+# Review
+`;
+
+const program = Effect.gen(function* () {
+  const document = yield* MarkdownDocument.parse(source, MarkdownParseOptions.make({ frontmatter: true }));
+  const node = document.frontmatter;
+  if (node === undefined) return "no frontmatter block";
+
+  const data = yield* YamlFrontmatter.decode(node);
+  const declaration = yield* Effect.fromResult(SchemaResolver.declarationOf(data, { requireDeclaration: true }));
+  const schema = yield* resolver.resolve(declaration, data);
+  return schema === SkillV2 ? "resolved @savvy/skill@2.1.0" : "resolved another registration";
+});
+
+Effect.runPromise(program).then(console.log);
+// resolved @savvy/skill@2.1.0
+```
+
+The `name[@version]` grammar splits at the **last** `@`, so an npm scope survives intact, and versions are `X[.Y[.Z]]` — no prerelease, no ranges. Resolution is exact numeric segment equality today (`2.1.0` and `02.1.00` are the same version; `2` does not match a `2.1.0` registration), with prefix resolution a committed future refinement. The failures are separate on purpose: `SchemaDeclarationInvalidError` for a value outside the grammar, `SchemaDeclarationMissingError` for no declaration at all, `SchemaNameUnknownError` for an unregistered name, and `SchemaVersionUnresolvableError` for a known name at an unknown version.
+
+`FrontmatterSchemaResolver` is an ordinary interface, so the registry is only the built-in implementation. A resolver that dispatches on the whole decoded data — keying on a `type` field rather than `$schema` — implements the same seam in a few lines, and this package never learns about your convention.
+
+## Frontmatter without parsing the body
+
+Sometimes the body must not go through the CommonMark engine at all: an MDX page, a template full of placeholders, a snapshot-hash contract that needs byte-exact boundaries. `FrontmatterSource` runs the parser's own closed fence grammar over the raw string and nothing else. It is total and pure — no `Effect`, no `Result`, absence a representable result rather than an error:
+
+```ts with-api
+import { FrontmatterSource, FrontmatterSourceBlock, FrontmatterSourceSplit } from "@effected/markdown";
+
+const page = `---
+title: Home
+---
+
+# Home
+`;
+
+const split = FrontmatterSource.split(page);
+
+console.log(split.frontmatter?.format, JSON.stringify(split.frontmatter?.value));
+// yaml "title: Home\n"
+
+const rewritten = FrontmatterSource.join(
+  FrontmatterSourceSplit.make({
+    frontmatter: FrontmatterSourceBlock.make({ format: "yaml", value: "title: Home page\n" }),
+    body: split.body,
+  }),
+);
+
+console.log(JSON.stringify(rewritten));
+// "---\ntitle: Home page\n---\n\n# Home\n"
+```
+
+`body` is always exactly `source.slice(bodyOffset)`, so the string and the offset can never disagree, and `bodyOffset` sits immediately after the closing fence line *and its terminator* — gray-matter's body boundary. `FrontmatterSourceBlock.value` is the exact bytes between the fence **lines**, each value line with its terminator — deliberately unlike the `Frontmatter` node's value — which is what keeps `""` and `"\n"` distinct and makes an unmodified `split`-then-`join` byte-exact. Two edges normalize rather than reproduce: a closing fence that ends the document without a terminator gains one, and fence lines with mismatched terminators re-emit with the opening fence's. Neither the value nor the body is ever parsed here; decoding stays the codec modules' business.
+
+## Walk a tree as a Stream
+
+`MarkdownVisitor.visit` streams the same pre-order walk `find` uses, as `Enter` and `Exit` events carrying the node, its child-index path and its depth. The stream is lazy per subscription, so combining it with `Stream.take` stops the walk early instead of materializing the whole tree:
+
+```ts with-api
+import { MarkdownDocument, MarkdownVisitor } from "@effected/markdown";
+import { Effect, Stream } from "effect";
+
+const program = Effect.gen(function* () {
+  const document = yield* MarkdownDocument.parse("# Title\n\nA *b* c\n");
+  const events = yield* MarkdownVisitor.visit(document.root).pipe(Stream.take(5), Stream.runCollect);
+  return Array.from(events).map((event) =>
+    event._tag === "Error" ? `Error:${event.diagnostic.code}` : `${event._tag}:${event.node.type}`,
+  );
+});
+
+Effect.runPromise(program).then(console.log);
+// [ "Enter:root", "Enter:heading", "Enter:text", "Exit:text", "Exit:heading" ]
+```
+
+The walk is infallible at the type level, and the third variant explains why there is no error channel: a tree from `Markdown.parse` can never trip the depth guard, because the parser refuses deeper input in the first place — but a foreign tree admitted through `Mdast.fromMdast` can, and that trip arrives as a terminal `Error` event carrying a `NestingDepthExceeded` diagnostic. Handle the variant or narrow it away; do not assume every event has a `node`.
+
+## Cross the mdast boundary in both directions
+
+The node classes already use mdast's exact type names and field shapes, so interop is a projection rather than a conversion. `Mdast.toMdast` strips this package's fidelity fields — bullet characters, fence style, ATX-versus-setext spelling — and emits plain, spec-valid mdast JSON, the same shape `mdast-util-from-markdown` produces. Every mdast utility, `mdast-util-to-hast` included, works on it unchanged:
+
+```ts with-api
+import { Markdown, Mdast } from "@effected/markdown";
+import { Result } from "effect";
+
+const parsed = Markdown.parseResult("A ~~struck~~ sentence.\n");
+
+if (Result.isSuccess(parsed)) {
+  const tree = Mdast.toMdast(parsed.success);
+  console.log(JSON.stringify(tree).slice(0, 46));
+  // {"type":"root","children":[{"type":"paragrap
+}
+```
+
+`Mdast.fromMdast` (and its `fromMdastResult` twin) is the checked admission boundary going the other way: it validates a foreign tree into this package's node classes and synthesizes zero-width sentinel positions wherever one is absent or incomplete. Trees admitted that way serve tree-level workflows and canonical `stringify` — but **not** offset splicing, which needs the real positions only a parse produces. The boundary also strips everything outside spec mdast, fidelity fields included, so a `fenceChar` set on a plain mdast tree *before* admission is silently dropped. Set fidelity fields on the decoded tree.
+
+Rendering HTML is deliberately not this package's job. The mdast projection is the bridge; what you run over it is your choice.
+
+## Synthesize trees, MDX included
+
+Node classes construct in one line — `position` defaults to the zero-width synthetic sentinel — and `Markdown.stringify` serializes them in the package's canonical form:
+
+```ts with-api
+import { Heading, Markdown, Paragraph, Root, Text } from "@effected/markdown";
+import { Effect } from "effect";
+
+const tree = Root.make({
+  children: [
+    Heading.make({ depth: 2, children: [Text.make({ value: "Fixed" })] }),
+    Paragraph.make({ children: [Text.make({ value: "Tables keep their trailing cells." })] }),
+  ],
+});
+
+Effect.runPromise(Markdown.stringify(tree)).then(console.log);
+// ## Fixed
+//
+// Tables keep their trailing cells.
+```
+
+`stringify` takes **no options**, and that is a published commitment: the canonical form is pinned by byte-level tests, cross-checked against commonmark.js over the full CommonMark 0.31.2 corpus, and changing any of it is a breaking change rather than a patch. A test may assert on those bytes. ATX headings at every depth, `***` thematic breaks, `-` bullets, `*`/`**` emphasis, exactly one blank line between blocks, one trailing newline. A node that carries a fidelity field overrides the matching default, which is how a parsed document re-serializes in its author's spelling. To normalize an *existing* document to different choices, use `MarkdownFormat` with `MarkdownFormattingOptions` — that is the configurable surface, and this one deliberately is not.
+
+The MDX vocabulary lives in the same commitment. The parser reads no MDX syntax; these nodes exist so a synthesized tree can carry JSX and serialize to valid MDX instead of joining strings:
+
+```ts with-api
+import { Markdown, MdxJsxAttribute, MdxJsxFlowElement, Root } from "@effected/markdown";
+import { Effect } from "effect";
+
+const page = Root.make({
+  children: [
+    MdxJsxFlowElement.make({
+      name: "Callout",
+      attributes: [MdxJsxAttribute.make({ name: "type", value: "warning" })],
+      children: [],
+    }),
+  ],
+});
+
+Effect.runPromise(Markdown.stringify(page)).then(console.log);
+// <Callout type="warning" />
+```
+
+Serialization matches `mdxJsxToMarkdown`'s defaults, and the extra `{`-escaping MDX requires is **presence-keyed**: a tree carrying any MDX node escapes braces in text, a tree with none serializes byte-identically to the plain canonical form. Shapes with no MDX spelling are unconstructible rather than late serialization errors — a fragment (`name: null`) cannot carry attributes, and an attribute requires a non-empty name; both are refused at `make` and at decode.
+
+## Edge cases and failure modes
+
+**There is no malformed markdown.** Every string is a valid CommonMark document, so `MarkdownParseError` carries only hardening-guard trips: the 256-deep nesting cap that turns a crafted nesting bomb into a typed failure instead of a `RangeError`. Recoverable oddities arrive as `diagnostics` on the document, never as failures. Do not write a catch expecting "bad syntax" — write one expecting a hostile input.
+
+**Performance is a guarantee, not a hope.** The delimiter-stack algorithm defeats markdown's classic quadratic emphasis and link blowups, pinned by cmark's pathological suite with calibrated budgets. The one remaining quadratic — the bare link-destination scan — is capped at 32 open parens.
+
+**Frontmatter capture is off by default, and that has knock-on effects.** With the toggle off, a document opening with `---` parses spec-conformantly as a thematic break plus a setext heading; `document.frontmatter` is `undefined`, `hasFrontmatterBlock` is what tells "no block" from "you parsed with the toggle off", and `FrontmatterMissingError.reason` carries the same distinction into the error. On the write side, the toggle is what stops `set` from inserting a duplicate block.
+
+**Section matching is exact, deliberately.** `sectionByHeading` compares trimmed heading text for equality, and `depth` is equality rather than a maximum — so `"1.2.3"` never matches `## 1.2.30`, which in a changelog sits earlier and would publish the wrong release notes. `DocumentSection.body` is untrimmed for the same reason: the string and its offsets must agree.
+
+**Navigation accessors recompute on every access.** `headings`, `sections`, `links`, `find` and `findAll` are synchronous getters derived from the tree with no error channel and no memoization. Bind the result to a `const` when you check it repeatedly in a loop.
+
+**Formatting skips what it cannot do safely.** `MarkdownFormat` normalizes markers only, never content, and declines hazardous conversions rather than attempting them cleverly. Code-block style is the one whose default surprises people: absent `codeBlockStyle`, a block keeps whichever spelling it has, and a language-less `Code` node with no `fenceChar` serializes *indented*. Both conversion directions are whole-block rewrites, so both are restricted to root-level flush-left blocks, and the indented direction refuses every re-parse hazard — a non-blank preceding line, a preceding list or footnote definition, an adjacent language-less block that would merge, or values with blank or whitespace-only edge lines.
+
+**`definition` nodes stay in the tree.** References are emitted unresolved, per mdast, and the resolved targets live in `document.definitions` — an editing library must not silently inline what the author wrote as a reference.
+
+## Testing with @effect/vitest
+
+There is no service, no layer and no IO to mock, which makes tests unusually direct: build a source string, run the effect, assert on the result. Use `it.effect` and `assert.*` — never `expect`. The assertion worth writing first for any editing tool is the *byte-preservation* one, because that is the property the whole package exists to protect:
+
+```ts
+import { MarkdownDocument, MarkdownEdit, MarkdownFrontmatter, YamlFrontmatter } from "@effected/markdown";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Schema } from "effect";
+
+const source = `# Guide
+
+<!-- a comment nobody should touch -->
+
+## Stale
+
+Drop me.
+
+## Keep
+
+Hand-tuned    spacing.
+`;
+
+describe("section pruner", () => {
+  it.effect("removes one section and leaves every other byte alone", () =>
+    Effect.gen(function* () {
+      const document = yield* MarkdownDocument.parse(source);
+      const stale = document.sectionByHeading("Stale", { depth: 2 });
+      if (stale === undefined) throw new Error("the fixture has a Stale section");
+
+      const pruned = MarkdownEdit.applyAll(document.source, [
+        MarkdownEdit.make({ offset: stale.range.offset, length: stale.range.length, content: "" }),
+      ]);
+
+      assert.notInclude(pruned, "Drop me.");
+      assert.include(pruned, "<!-- a comment nobody should touch -->");
+      assert.include(pruned, "Hand-tuned    spacing.");
+    }));
+
+  it.effect("tells an uncaptured block apart from an absent one", () =>
+    Effect.gen(function* () {
+      const decodePost = MarkdownFrontmatter.schema(Schema.Struct({ title: Schema.String }), YamlFrontmatter);
+      // Parsed without MarkdownParseOptions, so capture is off.
+      const document = yield* MarkdownDocument.parse("---\ntitle: Guide\n---\n\n# Guide\n");
+
+      const failure = yield* Effect.flip(decodePost(document));
+      assert.strictEqual(failure._tag, "FrontmatterMissingError");
+      assert.strictEqual(document.hasFrontmatterBlock, true);
+    }));
+});
+```
+
+Two habits pay off. Assert `position` with `deepStrictEqual`, never `strictEqual` — `make` re-constructs nested values, so a position that is structurally right is a different object. And when you assert on generated markdown bytes, set `fenceChar` on every `Code` node that carries neither a `lang` nor one already: representability outranks the canonical table, so a language-less indented block directly after a list emits fenced instead, and the choice then leaves the emitter entirely rather than depending on a node's neighbours.
+
+## Next steps
+
+- New to the package? Start with the [overview](/markdown) or the [getting-started guide](/markdown/getting-started).
+- Every export, with full signatures, lives in the [API reference](/markdown/api). The types this guide leaned on: [`MarkdownDocument`](/markdown/api/class/markdowndocument) with its [`DocumentSection`](/markdown/api/class/documentsection), [`MarkdownEdit`](/markdown/api/class/markdownedit) and [`MarkdownRange`](/markdown/api/class/markdownrange), [`MarkdownFormat`](/markdown/api/class/markdownformat) with [`MarkdownFormattingOptions`](/markdown/api/class/markdownformattingoptions), [`MarkdownFrontmatter`](/markdown/api/class/markdownfrontmatter) and the [`FrontmatterCodec`](/markdown/api/interface/frontmattercodec) interface, [`FrontmatterSource`](/markdown/api/class/frontmattersource), [`SchemaResolver`](/markdown/api/class/schemaresolver), [`MarkdownVisitor`](/markdown/api/class/markdownvisitor) and [`Mdast`](/markdown/api/class/mdast).
