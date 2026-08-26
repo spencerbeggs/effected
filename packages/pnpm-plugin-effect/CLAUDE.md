@@ -71,6 +71,8 @@ The v3/v4 peer-resolution defect is fixed in pnpm 11.12.0; there is no expected-
 
 ## Hazards
 
+- **`pnpm add --config` destroys integrity pinning, including for packages it was not asked about.** Reproduced on pnpm 11.24.0: the entry it adds is written with no `+sha512-…` suffix, and every OTHER `configDependencies` entry loses its suffix too. A subsequent plain `pnpm install` does not restore them; a hand-written hash is accepted and preserved. Config dependencies install ahead of the tree and can run hooks, so this silently removes the guard on the packages with the most reach — and it is invisible unless someone diffs a file they had no reason to open. This repo's own entry (`@savvy-web/pnpm-plugin-silk`) carries its hash; check it after any `--config` add. Found by a consumer following this package's own documented install step (dogfood loop, round 2).
+
 - **Always check the lockfile diff after an install** — a plain install once stripped turbo / biome / tsgo platform binaries from it.
 - Never set `"private": false` — `publishConfig` (`directory: dist/dev/pkg`, `linkDirectory: true`) produces the publishable manifest at build time.
 - Never write to `.repos/effect` (read-only vendored Effect source).

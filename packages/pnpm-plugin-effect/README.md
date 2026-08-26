@@ -38,11 +38,27 @@ pnpm add --config @effected/pnpm-plugin-effect
 
 Requires pnpm 11 or newer, and Node.js >=24.11.0. There is no npm or yarn equivalent: config dependencies and catalogs are pnpm features.
 
-The command writes the package into your `pnpm-workspace.yaml`, filling in the version and the required integrity hash for you:
+The command writes the package into your `pnpm-workspace.yaml`:
 
 ```yaml
 configDependencies:
   "@effected/pnpm-plugin-effect": <version>+sha512-...
+```
+
+**Check that file afterwards, and expect to fix it by hand.** On pnpm 11.24.0 `pnpm add --config` writes the new entry **without** an integrity hash, and strips the `+sha512-…` suffix from every *other* config dependency already listed — including ones the command had no reason to touch. A later `pnpm install` does not restore them. Config dependencies are installed ahead of everything else and can contribute hooks that run during install, so the integrity pin is the thing standing between you and an unverified package with that reach.
+
+Hand-written hashes are accepted and preserved, so the fix is to put them back:
+
+```yaml
+configDependencies:
+  "@effected/pnpm-plugin-effect": 0.6.11+sha512-...
+  "@your-org/other-config-dep": 1.2.3+sha512-...   # restore this one too
+```
+
+You can read the correct hash for a version out of the registry:
+
+```bash
+npm view "@effected/pnpm-plugin-effect@<version>" dist.integrity
 ```
 
 ## Usage
