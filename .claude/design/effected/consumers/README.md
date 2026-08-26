@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-08-26
+last-synced: 2026-08-26
 completeness: 90
 related:
   - reposets.md
@@ -48,7 +48,7 @@ These documents exist because the kit's scope is closed by its consumers rather 
 | spencerbeggs/claude-code-marketplace-manager | [claude-code-marketplace-manager.md](claude-code-marketplace-manager.md) | Comment-preserving JSONC editing plus the branch-and-pull-request landing path. |
 | savvy-web/systems | [systems.md](systems.md) | The source monorepo the kit took its GitHub and Actions code from, and now a heavy consumer in its own right. |
 | spencerbeggs/reposets | [reposets.md](reposets.md) | The application control plane and the terminal: `app`, `store` and the repository-configuration write surface, from a CLI rather than an action. |
-| spencerbeggs/tsdoctor | [tsdoctor.md](tsdoctor.md) | Durable local state at scale, and the pure document tier: `store`, `xdg`, `tsconfig-json`, `markdown` and `package-json` inside a build pipeline. |
+| spencerbeggs/tsdoctor | [tsdoctor.md](tsdoctor.md) | Durable local state at scale, and the pure document tier: `store`, `xdg`, `tsconfig-json`, `markdown` and `package-json` inside a build pipeline. In round 2, the only consumer to have named a kit package into existence (`schema-org`). |
 
 ## Document shape
 
@@ -76,6 +76,10 @@ Adoption by these applications produced a run of upstream corrections, and the p
 **That pattern is a property of arriving second, not a law**, and [reposets](reposets.md) is where it broke: the first consumer of the application control plane and the first to run at a terminal found genuine absence — a resolver chain, a read-through cache, a UTF-8 codec, decode options, six unrepresented route families — and, twice, wrote the missing surface itself for this repo to fold in. **Expect the first consumer of any surface to find absence and later ones to find projections**, and read a projection-only round as evidence that the surface was already shaped by someone else.
 
 **A third shape showed up once surfaces started meeting their *second* environment.** [tsdoctor](tsdoctor.md) arrived at `store`, `yaml`, `markdown` and `package-json` after all four had shipped, and found neither absence nor mis-projection: it found the **option axis** — driver options a durable-SQLite consumer must pass through, a compat mode for a downstream YAML 1.1 resolver, sync primitives beside effectful ones. These are additive by construction and cost the kit nothing to grant, which is the tell. **Absence means the surface was never designed; an option ask means it was designed against one environment.** Neither is a defect in the consumer, and only the first is a defect in the design.
+
+**A fourth shape is a consumer naming a package the kit did not have.** tsdoctor's round 2 produced [`@effected/schema-org`](../packages/schema-org.md) — the first dogfood output that was a new kit member rather than an extension of an existing one. The test that made it decidable was **not the consumer count**: it was the shape of the split. The half asked for is defined by an external standard and contains nothing of the consumer's domain, exactly as an extraction's does, so "one consumer" is enough where the boundary is drawn by someone other than that consumer. A general capability wanted by one consumer and shaped by that consumer is the case this does **not** license.
+
+That round also produced a warning about the kit's own instincts, worth carrying into the next vocabulary-shaped package: two of `schema-org`'s central decisions are declining `@effected/*` edges that looked obviously right from the kit's side and were wrong from the vocabulary's. **A standard's ranges are the contract; a neighbouring kit package's grammar is not**, and the pull toward the familiar grammar is strong enough to name.
 
 The hazards that could not be absorbed are recorded in the owning package's design doc, in its own terms and current tense, rather than duplicated here:
 

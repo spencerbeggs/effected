@@ -5,7 +5,15 @@
 // (`res/schema/bom-1.6.SNAPSHOT.schema.json` in the published library), not
 // from memory: `component.tags` exists, `component.authors` and
 // `metadata.authors` exist. `funding` was checked the same way and has NO
-// externalReference type in 1.6, so it is deliberately absent from this file.
+// externalReference type in 1.6, which is why it was absent from this file.
+//
+// `funding` HAS SINCE BEEN MODELLED, and its tests live in `Funding.test.ts`.
+// It did not arrive through this file's CycloneDX lens and it still has no
+// 1.6 externalReference type — it earned its place when a consumer named a
+// target for it (a docs site crediting maintainers). The scope rule this
+// header encodes is "something consumes it", not "CycloneDX or nothing", so
+// this file's coverage stays CycloneDX/NTIA-shaped and `funding` is simply
+// out of ITS scope rather than out of the model.
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";

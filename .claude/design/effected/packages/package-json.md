@@ -3,10 +3,12 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-08-26
+last-synced: 2026-08-26
 completeness: 95
 related:
+  - ../consumers/tsdoctor.md
+  - schema-org.md
   - ../architecture.md
   - ../effect-standards.md
   - ../package-inventory.md
@@ -39,7 +41,7 @@ Per the [module-per-concept standard](../effect-standards.md#module-layout-modul
 
 - `Package.ts` — the core model, the wire transform and `.extend()` story, and the reusable `@public` field codecs.
 - `PackageManifest.ts` and `LenientManifest.ts` — the two tolerant tiers; see [the tolerance ladder](#the-tolerance-ladder).
-- The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `PackageManagerRange.ts`, `Person.ts`, `Repository.ts`, `DevEngines.ts`, `Dependency.ts`. `Repository.ts` holds both location models, because they share the shorthand-or-object encoding and the wire-provenance machinery and splitting them would duplicate it.
+- The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `PackageManagerRange.ts`, `Person.ts`, `Repository.ts`, `Funding.ts`, `DevEngines.ts`, `Dependency.ts`. `Repository.ts` holds both location models, because they share the shorthand-or-object encoding and the wire-provenance machinery and splitting them would duplicate it.
 - `PackageValidator.ts` — the validation service, its rule interface, the default rule set and a parameterized layer factory.
 - `PackageJsonFile.ts` — **the only IO module**: one service, read/write and [surgical modify](package-json-text.md#surgical-edits-preserve-every-untouched-byte) over core `FileSystem`/`Path`, plus its error tags.
 - `EntryPoint.ts` — [entry-point resolution](#resolveentrypoint-exports-encapsulates-the-package), pure and IO-free, and the one module whose input is deliberately *structural* rather than a `Package`.
@@ -78,6 +80,10 @@ The rich `Schema.Class`, and the single best DX pattern in the repo:
 
 **`SpdxLicense`** validates the `license` field, delegating core SPDX-expression validity to [`@effected/spdx`](spdx.md) and keeping only the npm-specific `UNLICENSED` and `SEE LICENSE IN <file>` cases, which are npm semantics rather than SPDX grammar.
 
+**A branded `SpdxLicense` is therefore not necessarily parseable as SPDX**, and that gap is a trap the package now closes with a mechanism rather than with prose. `licenseExpressionOf(license: SpdxLicense) => Option<SpdxExpression>` is the accessor to reach for whenever a branded value has to become an actual expression — a license URL, a badge, structured data, a policy check. It yields `none` for a spelling that is not an expression.
+
+**Its implementation deliberately contains no screen for npm's two special cases**, and that absence is load-bearing: the SPDX grammar already declines `UNLICENSED` and `SEE LICENSE IN <file>`, so *discarding the parse failure is the screen*. An earlier draft branched on the two spellings by hand; removing those branches changed no test, which is what proved them dead. The reason to keep it that way is the day npm admits a **third** special case — the grammar answers "not an expression" for it too, with no change here, where a hand-maintained list would silently produce a wrong answer. This is knowledge the two packages jointly own and neither consumer should have had to rediscover; keeping it as a function rather than a paragraph is what makes that true.
+
 **`PackageManager`** parses corepack's `<name>@<version>[+<integrity>]` triple. Both strict halves are **shared by identity** with the packages that own them rather than re-derived: the version field IS [semver](semver.md)'s `PinnableVersionString`, and integrity is [npm](npm.md)'s `CorepackIntegrityHash`, held in a genuine `Schema.Option` because absence is branched on. Sharing the version schema is a deliberate strictening — padded versions, leading zeroes and empty prerelease identifiers all fail typed now, matching corepack's own validity check minus its trim — and because the check sits on the *field*, `make` refuses a malformed version rather than producing a manifest value that re-parses differently.
 
 That sharing is **runtime-asserted by identity**, not by source text, and the assertions must not be downgraded: a `Schema.check` is erased from the built `.d.ts`, so severing either schema would not be a type error and nothing else would catch it.
@@ -96,23 +102,63 @@ Those getters return `Option`, because `repository` is caller data and a value w
 
 `RepositoryField` stays exported and `@deprecated`: `Package.repository` decodes through the typed codec, but the raw union stays named for any consumer matching on it.
 
+#### `directoryUrl`: where *this package* lives
+
+`browseUrl` answers where the **repository** is, which for a monorepo member is the wrong answer to the question a consumer usually has — every member of the repository reports the same location, and that URL is exactly what a docs site's structured data uses to tell two packages apart. `directoryUrl` descends `browseUrl` into `directory` and has three deliberately distinct outcomes:
+
+- **No `directory`** — the package *is* the repository root, so this is `browseUrl`. A correct answer, not a missing one. A `directory` that resolves to the root (`"."`, `"/"`, empty) is the same case.
+- **`directory` on a known host** — GitHub (`tree/HEAD`), GitLab (`-/tree/HEAD`, routed under `/-/` to keep clear of group and project namespaces) or Bitbucket (`src/HEAD`) — the descended URL. `HEAD` rather than a branch name, because the default branch is **not knowable from a manifest** and every one of these hosts resolves `HEAD` to it.
+- **`directory` on any other host, or one containing `..`** — `Option.none()`. The subdirectory-browsing path convention is per-forge and cannot be guessed, and a fabricated one produces a URL that resolves to nothing while looking authoritative. A `..` segment would climb out of the repository the manifest names.
+
+**What to do with that `none` is left to the caller, on purpose**, because it depends on what is being filled in: falling back to `browseUrl` is reasonable wherever a less precise answer beats none — the repository root is a *true* location for the package, merely one that does not distinguish it from its siblings — and omitting the value is right wherever that lack of distinction is the whole point. What is never reasonable is inventing a path for an unrecognized host, which is the case this `none` exists to prevent. Adding a host to the known set is a one-line change; guessing is not a change at all.
+
 ### Wire provenance, and why the replay is guarded
 
-`Person`, `Repository` and `Bugs` each remember the exact wire value the instance decoded from, in a `WeakMap`, and replay it on encode for byte-level fidelity.
+`Person`, `Repository`, `Bugs` and `Funding` each remember the exact wire value the instance decoded from, in a `WeakMap`, and replay it on encode for byte-level fidelity.
 
 **The replay must be guarded on the value still matching its provenance, and the guard is load-bearing rather than defensive.** `Schema.Class` instances are not frozen at runtime, so an instance mutated in place keeps a provenance entry that no longer describes it — and an unguarded replay writes the *original* value back, silently discarding the edit. A surviving mutant is what surfaced this: the guard was written, the test for it was not.
+
+**The bug the rule predicted was then found in this package, in the object branch.** `Person` guarded both of its branches; `Repository` and `Bugs` guarded only the **shorthand string** branch and replayed a remembered **object** wire unconditionally. So an instance decoded from the object form and edited afterwards re-encoded as the stale original, and the edit vanished — silently, on the exact fidelity path the class exists to serve. Both now carry `Person`-style faithfulness guards over `url`, the named fields and `rest`. Two lessons, and the second is the transferable one:
+
+1. **A guard on one branch is not a guard.** The shorthand branch is the one a reader thinks about, because shape fidelity makes it interesting; the object branch is the boring one and is where the bug lived.
+2. **Every replay branch needs its own mutate-in-place test.** As the rule below already says, a test that rebuilds the value cannot reach the replay path at all — so a suite can look thorough while never executing the code that was wrong.
+
+#### Provenance keys must be leaf instances, never rebuilt containers
+
+**A `decodeTo` target of `Schema.Array(...)` or `Schema.Struct(...)` does NOT preserve the object identity the transform returned.** The container is rebuilt on the way out of the transform, so a `WeakMap`/`WeakSet` keyed on it is **empty by the time `encode` runs** — no error, no warning, just provenance that is silently never found and a fidelity guarantee that quietly degrades to the canonical form.
+
+Every provenance model in the kit depends on this and no doc stated it, so: **key provenance on the leaf instance the transform constructed, never on the container it was placed into.** `Funding` is where it was found and is the worked example — the field's arity provenance (was this written bare, or as an array?) rides the single entry that *was* the field, not the decoded array, and the replay is then guarded on that entry still being alone. It was diagnosed the only way it can be: the arity round-trip test failed under the array-keyed version.
 
 Two traps come with it, both recorded in the package CLAUDE.md and worth knowing before touching either class. The guard must treat `rest` as disqualifying for the shorthand branch, because a shorthand has no syntax for extra keys — the named fields still match, so without an explicit clause the added keys vanish on write. And a test that rebuilds with `make({ ...person, x })` **cannot catch any of this**, because it produces a new instance with no provenance and never reaches the replay path; the instance must be mutated in place.
 
 An edited shorthand **re-emits as a shorthand**; the object form is the fallback only when the shorthand genuinely cannot carry the value. Shape fidelity is the promise — a manifest's `author` must not silently change representation because one field was edited — and data fidelity outranks it in the one case where they conflict. One predicate decides both, deliberately: split them and a person can be refused the replay yet handed back as a shorthand, dropping the very keys the refusal detected.
 
-**Any object-shaped model inherits the catch-all obligation.** `Package`, `Person`, `Repository` and `Bugs` are the current set; every other leaf is a scalar or a closed shape. The rule, not the enumeration, is what governs — check every new sub-object class against a round-trip test.
+**Any object-shaped model inherits the catch-all obligation.** `Package`, `Person`, `Repository`, `Bugs` and `Funding` are the current set; every other leaf is a scalar or a closed shape. The rule, not the enumeration, is what governs — check every new sub-object class against a round-trip test.
+
+### `Funding`
+
+npm's `funding` accepts three encodings — a bare URL string, an object with `url` and an optional `type`, or an array mixing either — and the model **normalizes the read side only**: `Funding.FromField` always decodes to an array, so a consumer crediting maintainers never branches on arity.
+
+**The write side is deliberately not normalized**, and that asymmetry is the whole difficulty. The [fidelity obligation](../formatter-convention.md#decision-5--the-fidelity-obligation) means a formatter must not rewrite one legal encoding into another, so a lone entry read bare re-encodes bare rather than as a one-element array, and an entry read from the string form re-encodes to that exact string. Two pieces of provenance carry that: the entry's wire value, and whether it was the whole field written bare. Both live beside the instance rather than in it, because provenance must not appear in the encoded output, must not affect structural equality, and must not survive being copied into a hand-built value — and both are keyed per [the leaf-instance rule](#provenance-keys-must-be-leaf-instances-never-rebuilt-containers).
+
+The arity replay is **guarded on the entry still being alone**: pushing a second entry into a decoded field upgrades it to the array form rather than silently dropping the addition. Shape fidelity for a single entry follows `Person`'s rule exactly — an edited string entry re-emits as a *string* rebuilt from the new url, and the object form is the fallback only when the string genuinely cannot carry the value, which is precisely when the entry gained a `type` or an unknown key, since a string has no syntax for either.
+
+**`url` is required**, unlike `Bugs.url`. The two look parallel and are not: an email-only `bugs` entry is legal npm, whereas npm's funding object carries no other way to say where the money goes, so an entry without one is a decode **failure** rather than a partially-populated value. That failure is expressed as a schema issue, which the manifest tiers normalize to `PackageDecodeError` at their decode boundary — never as a degradation, which is [`LenientManifest`](#the-tolerance-ladder)'s job alone. `type` (`"individual"`, `"github"`, …) is caller data and is kept **verbatim**, never normalized.
+
+`LenientManifest` carries the field at its own tier, with the permissive guard "a string, an object, or an array of either" — so a malformed `funding` degrades to absence and records an issue rather than failing a discovery read.
 
 ## The compliance field set
 
-The modeled field set is scoped to **every manifest field the CycloneDX 1.6 plus NTIA-minimum-elements mapping reads**, derived from [`@effected/sbom`](sbom.md)'s metadata-source mapping rather than from a general sweep of npm's documentation. Each field is present because something consumes it: name and version (which the `purl` also derives from), description, license, author, contributors, maintainers, keywords, repository, bugs and homepage.
+The modeled field set is scoped to **every manifest field a named consumer's mapping reads**, drawn first from [`@effected/sbom`](sbom.md)'s CycloneDX 1.6 plus NTIA-minimum-elements metadata-source mapping rather than from a general sweep of npm's documentation. Each field is present because something consumes it: name and version (which the `purl` also derives from), description, license, author, contributors, maintainers, keywords, repository, bugs, homepage and — since a second mapping target appeared — `funding`.
 
-**`funding` was evaluated and deliberately NOT added.** npm documents it, but CycloneDX 1.6 has no funding external-reference type — verified by enumerating the published type set, not from memory. A field with no target in the mapping would be exactly the arbitrary growth this scope rule exists to prevent; it earns its place the day a consumer names a target for it.
+**`funding` was evaluated, deliberately NOT added, and has since been added — the condition was met.** The original ruling stands as reasoning and is preserved rather than deleted, because the reasoning is the valuable part: npm documents the field, but CycloneDX 1.6 has no funding external-reference type — verified by enumerating the published type set, not from memory — and a field with no target in the mapping would be exactly the arbitrary growth this scope rule exists to prevent. The exclusion carried its own release condition: *it earns its place the day a consumer names a target for it.*
+
+[tsdoctor named one](../consumers/tsdoctor.md): schema.org's `funding` property, emitted into a documented package's JSON-LD. So the field is now modeled ([`Funding`](#funding), below) under the rule as written, not by relaxing it. Two things are worth carrying away, and they are why this reads as a rule working rather than a rule bending:
+
+- **The scope rule is not "CycloneDX 1.6 or nothing".** It is *something consumes it*, and the CycloneDX mapping was simply the only consumer that existed when the field set was first drawn. A second mapping target is a legitimate way to satisfy it.
+- **A recorded exclusion with a stated condition is what made this cheap.** The question "should we add `funding`" was already answered, with the answer's expiry condition attached, so the work was checking whether the condition had fired rather than relitigating the field. **Write exclusions this way.**
+
+**Known stale claim, flagged not fixed:** `__test__/ComplianceFields.test.ts` carries the pre-flip rationale in its header comment, asserting that `funding` is deliberately absent. That file is a test rather than documentation, so it is outside this doc's remit — but the claim is now false and the header needs the same flip.
 
 ## The tolerance ladder
 

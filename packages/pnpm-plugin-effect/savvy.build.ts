@@ -282,6 +282,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/schema-org": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/schemastore": {
 							range: "^0.4.0",
 							peer: "^0.4.0",

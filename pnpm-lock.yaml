@@ -629,6 +629,28 @@ importers:
         version: 7.0.2
     publishDirectory: dist/dev/pkg
 
+  packages/schema-org:
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
+      '@savvy-web/bundler':
+        specifier: ^2.1.27
+        version: 2.1.27(@effected/jsonc@0.8.0(effect@4.0.0-rc.109))(@effected/semver@0.5.0(effect@4.0.0-rc.109))(@effected/walker@0.5.0(@effected/glob@0.4.0(effect@4.0.0-rc.109))(effect@4.0.0-rc.109))(@types/node@26.3.0)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(tsx@4.23.12)(typescript@7.0.2)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.3.0
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-rc.109
+      oxc-parser:
+        specifier: ^0.144.0
+        version: 0.144.0
+      typescript:
+        specifier: catalog:build
+        version: 7.0.2
+    publishDirectory: dist/dev/pkg
+
   packages/schemastore:
     dependencies:
       '@effected/semver':
@@ -1002,6 +1024,9 @@ importers:
       '@effected/sbom':
         specifier: workspace:*
         version: link:../packages/sbom/dist/dev/pkg
+      '@effected/schema-org':
+        specifier: workspace:*
+        version: link:../packages/schema-org/dist/dev/pkg
       '@effected/schemastore':
         specifier: workspace:*
         version: link:../packages/schemastore/dist/dev/pkg

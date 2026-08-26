@@ -29,6 +29,7 @@
 		"@effected/pnpm-plugin-effect": "workspace:*",
 		"@effected/runtimes": "workspace:*",
 		"@effected/sbom": "workspace:*",
+		"@effected/schema-org": "workspace:*",
 		"@effected/schemastore": "workspace:*",
 		"@effected/semver": "workspace:*",
 		"@effected/spdx": "workspace:*",

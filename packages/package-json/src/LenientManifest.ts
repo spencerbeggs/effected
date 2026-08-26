@@ -92,6 +92,13 @@ const FIELD_GUARDS: ReadonlyMap<string, FieldGuard> = new Map<string, FieldGuard
 	["keywords", { expected: "an array of strings", test: isStringArray }],
 	["repository", stringOrRecordGuard],
 	["bugs", stringOrRecordGuard],
+	[
+		"funding",
+		{
+			expected: "a string, an object, or an array of either",
+			test: (value) => isStringOrRecord(value) || isStringOrRecordArray(value),
+		},
+	],
 	["homepage", stringGuard],
 	["dependencies", stringRecordGuard],
 	["devDependencies", stringRecordGuard],
@@ -203,6 +210,7 @@ export class LenientManifest extends Schema.Class<LenientManifest>("LenientManif
 	keywords: Schema.optionalKey(Schema.Array(Schema.String)),
 	repository: Schema.optionalKey(StringOrRecord),
 	bugs: Schema.optionalKey(StringOrRecord),
+	funding: Schema.optionalKey(Schema.Union([StringOrRecord, Schema.Array(StringOrRecord)])),
 	homepage: Schema.optionalKey(Schema.String),
 	dependencies: Schema.optionalKey(StringRecord),
 	devDependencies: Schema.optionalKey(StringRecord),

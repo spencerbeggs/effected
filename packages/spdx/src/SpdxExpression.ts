@@ -1,7 +1,7 @@
-import { Effect, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { Effect, Option, Result, Schema, SchemaIssue, SchemaTransformation } from "effect";
 import type { RawExpression, RawSimpleLicense } from "./internal/parser.js";
 import { parse as parseRaw } from "./internal/parser.js";
-import { InvalidSpdxExpressionError } from "./License.js";
+import { InvalidSpdxExpressionError, License } from "./License.js";
 
 /**
  * The structural shape the AST instances and their encoded POJOs share: every
@@ -251,6 +251,118 @@ const FromString: Schema.Codec<SpdxExpression, string> = Schema.String.pipe(
 );
 
 /**
+ * Resolve one simple-license leaf to its catalog {@link License}.
+ *
+ * @remarks
+ * The `+` ("or later") marker is dropped: it qualifies a catalog entry rather
+ * than naming a different one, and `License` models identifiers, not operators.
+ * A leaf whose id is neither a catalog member nor a well-formed reference
+ * yields none — unreachable for a parser-built AST, whose ids are already
+ * validated, but a hand-built node can carry anything.
+ */
+const licenseOfLeaf = (leaf: LicenseNode | LicenseRefNode): Option.Option<License> =>
+	Result.getSuccess(License.parseResult(leaf._tag === "License" ? leaf.id : serialize(leaf)));
+
+/** Append every license leaf, left to right, skipping ids that do not resolve. */
+const collectLicenses = (expr: SpdxExpression, into: Array<License>): void => {
+	switch (expr._tag) {
+		case "License":
+		case "LicenseRef": {
+			const license = licenseOfLeaf(expr);
+			if (Option.isSome(license)) into.push(license.value);
+			return;
+		}
+		case "WithException":
+			// The exception qualifies the license; the license is what is carried.
+			collectLicenses(expr.license, into);
+			return;
+		case "And":
+		case "Or":
+			collectLicenses(expr.left, into);
+			collectLicenses(expr.right, into);
+			return;
+	}
+};
+
+/**
+ * Every license named by an expression, in the order it is written, without
+ * duplicates.
+ *
+ * @remarks
+ * Reach for this wherever a target permits more than one license. Collapsing
+ * `(MIT OR Apache-2.0)` to a single value discards a choice the author
+ * deliberately offered, and collapsing `(MIT AND Apache-2.0)` discards a term
+ * that still binds — this is the accessor that does neither.
+ *
+ * De-duplication is by identifier, keeping first appearance, so `(MIT OR MIT)`
+ * yields one license.
+ *
+ * @example
+ * ```ts
+ * import { SpdxExpression } from "@effected/spdx";
+ *
+ * const expr = SpdxExpression.parseResult("(MIT OR Apache-2.0)");
+ * // => [License("MIT"), License("Apache-2.0")]
+ * ```
+ *
+ * @param expr - the expression to read
+ * @returns the licenses it names, in written order
+ */
+const licensesOf = (expr: SpdxExpression): ReadonlyArray<License> => {
+	const collected: Array<License> = [];
+	collectLicenses(expr, collected);
+	const seen = new Set<string>();
+	return collected.filter((license) => {
+		if (seen.has(license.id)) return false;
+		seen.add(license.id);
+		return true;
+	});
+};
+
+/**
+ * The single license an expression can be said to be under, when there is one.
+ *
+ * @remarks
+ * Reach for this wherever a target permits exactly one license — schema.org's
+ * `license`, a badge, a summary line.
+ *
+ * The rule is deliberately narrow, because the alternative is a confident
+ * wrong answer:
+ *
+ * - **A simple license, or one with an exception** — that license.
+ * - **`OR`** — the leftmost, which is the choice the author wrote first and
+ *   npm's convention treats as preferred.
+ * - **`AND`** — `Option.none()`. A conjunction means every term binds at once,
+ *   so no single license represents it, and picking one would silently drop a
+ *   term that legally applies. A caller that reaches this should emit the array
+ *   from {@link (SpdxExpression:variable).licensesOf} instead.
+ *
+ * @example
+ * ```ts
+ * import { SpdxExpression } from "@effected/spdx";
+ *
+ * // "(MIT OR Apache-2.0)"  => Option.some(License("MIT"))
+ * // "(MIT AND Apache-2.0)" => Option.none()
+ * ```
+ *
+ * @param expr - the expression to read
+ * @returns the primary license, or none when the expression has no single one
+ */
+const primaryLicense = (expr: SpdxExpression): Option.Option<License> => {
+	switch (expr._tag) {
+		case "License":
+		case "LicenseRef":
+			return licenseOfLeaf(expr);
+		case "WithException":
+			return licenseOfLeaf(expr.license);
+		case "Or":
+			return primaryLicense(expr.left);
+		case "And":
+			return Option.none();
+	}
+};
+
+/**
  * The SPDX license-expression facade: the AST union schema plus the parse,
  * validate and codec entry points. The `SpdxExpression` name is both the AST
  * type (above) and this value namespace.
@@ -286,4 +398,16 @@ export const SpdxExpression = {
 	 * from. Reach for it at synchronous boundaries.
 	 */
 	parseResult,
+	/**
+	 * The single license an expression can be said to be under, or none when it
+	 * has no single one — notably for `AND`, where every term binds at once.
+	 * Pair with {@link (SpdxExpression:variable).licensesOf} for the array form.
+	 */
+	primaryLicense,
+	/**
+	 * Every license an expression names, in written order, de-duplicated by
+	 * identifier. The accessor to reach for wherever more than one license is
+	 * permitted.
+	 */
+	licensesOf,
 } as const;

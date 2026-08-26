@@ -44,8 +44,9 @@ export {
 	UnresolvedEntryPointError,
 	resolveEntryPoint,
 } from "./EntryPoint.js";
+export { Funding } from "./Funding.js";
 export { type LenientFieldIssue, LenientManifest } from "./LenientManifest.js";
-export { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx } from "./License.js";
+export { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx, licenseExpressionOf } from "./License.js";
 export {
 	BinField,
 	DependencyMapField,

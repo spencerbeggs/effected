@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Equal, Exit, Schema } from "effect";
+import { Cause, Effect, Equal, Exit, Option, Result, Schema } from "effect";
 import * as fc from "effect/testing/FastCheck";
-import { InvalidSpdxExpressionError } from "../src/License.js";
+import { InvalidSpdxExpressionError, License } from "../src/License.js";
 import type { SpdxExpression as SpdxExpressionAst } from "../src/SpdxExpression.js";
 import {
 	AndNode,
@@ -194,4 +194,107 @@ describe("SpdxExpression", () => {
 			assert.strictEqual(reEncoded, encoded);
 		}),
 	);
+});
+
+describe("SpdxExpression — collapsing an expression to licenses", () => {
+	const parse = (input: string) => {
+		const result = SpdxExpression.parseResult(input);
+		assert.isTrue(Result.isSuccess(result), input);
+		return (result as Result.Success<SpdxExpressionAst, never>).success;
+	};
+
+	it("a simple license is its own primary", () => {
+		assert.deepStrictEqual(SpdxExpression.primaryLicense(parse("MIT")), Option.some(License.of("MIT")));
+	});
+
+	it("OR takes the leftmost — the choice the author wrote first", () => {
+		assert.deepStrictEqual(SpdxExpression.primaryLicense(parse("MIT OR Apache-2.0")), Option.some(License.of("MIT")));
+		assert.deepStrictEqual(
+			SpdxExpression.primaryLicense(parse("(GPL-3.0-only OR MIT) OR Apache-2.0")),
+			Option.some(License.of("GPL-3.0-only")),
+		);
+	});
+
+	it("AND has no single license, and says so rather than dropping a term", () => {
+		// The whole reason this returns an Option: a conjunction binds every
+		// term at once, so answering with one of them is a legal claim that is
+		// simply false.
+		assert.isTrue(Option.isNone(SpdxExpression.primaryLicense(parse("MIT AND Apache-2.0"))));
+	});
+
+	it("an OR whose left branch is an AND has no primary either", () => {
+		// Recursion must not sidestep the AND rule by descending past it.
+		assert.isTrue(Option.isNone(SpdxExpression.primaryLicense(parse("(MIT AND Apache-2.0) OR GPL-3.0-only"))));
+	});
+
+	it("an exception qualifies its license, and the license is the primary", () => {
+		assert.deepStrictEqual(
+			SpdxExpression.primaryLicense(parse("GPL-2.0-only WITH Bison-exception-2.2")),
+			Option.some(License.of("GPL-2.0-only")),
+		);
+	});
+
+	it("the `+` marker qualifies a catalog entry, it does not name another", () => {
+		assert.deepStrictEqual(SpdxExpression.primaryLicense(parse("AFL-2.0+")), Option.some(License.of("AFL-2.0")));
+	});
+
+	it("a LicenseRef resolves as a reference", () => {
+		assert.deepStrictEqual(
+			SpdxExpression.primaryLicense(parse("LicenseRef-Proprietary")),
+			Option.some(License.of("LicenseRef-Proprietary")),
+		);
+		assert.deepStrictEqual(
+			SpdxExpression.primaryLicense(parse("DocumentRef-spdx-tool:LicenseRef-Proprietary")),
+			Option.some(License.of("DocumentRef-spdx-tool:LicenseRef-Proprietary")),
+		);
+	});
+
+	it("a deprecated id keeps its deprecated flag through the collapse", () => {
+		const primary = SpdxExpression.primaryLicense(parse("GPL-3.0"));
+		assert.isTrue(Option.isSome(primary));
+		assert.strictEqual((primary as Option.Some<License>).value.id, "GPL-3.0");
+		assert.isTrue((primary as Option.Some<License>).value.deprecated);
+	});
+
+	it("licensesOf keeps every term, in written order", () => {
+		assert.deepStrictEqual(
+			SpdxExpression.licensesOf(parse("MIT OR Apache-2.0")).map((license) => license.id),
+			["MIT", "Apache-2.0"],
+		);
+		assert.deepStrictEqual(
+			SpdxExpression.licensesOf(parse("MIT AND Apache-2.0")).map((license) => license.id),
+			["MIT", "Apache-2.0"],
+		);
+	});
+
+	it("licensesOf answers where primaryLicense declines", () => {
+		// The pairing the API depends on: AND yields none from one accessor and
+		// the full set from the other.
+		const expr = parse("MIT AND Apache-2.0");
+		assert.isTrue(Option.isNone(SpdxExpression.primaryLicense(expr)));
+		assert.strictEqual(SpdxExpression.licensesOf(expr).length, 2);
+	});
+
+	it("licensesOf flattens nesting left to right", () => {
+		assert.deepStrictEqual(
+			SpdxExpression.licensesOf(parse("(MIT OR Apache-2.0) AND (GPL-3.0-only WITH Bison-exception-2.2)")).map(
+				(license) => license.id,
+			),
+			["MIT", "Apache-2.0", "GPL-3.0-only"],
+		);
+	});
+
+	it("licensesOf de-duplicates by identifier, keeping first appearance", () => {
+		assert.deepStrictEqual(
+			SpdxExpression.licensesOf(parse("(Apache-2.0 OR MIT) AND MIT")).map((license) => license.id),
+			["Apache-2.0", "MIT"],
+		);
+	});
+
+	it("licensesOf of a simple license is that one license", () => {
+		assert.deepStrictEqual(
+			SpdxExpression.licensesOf(parse("MIT")).map((license) => license.id),
+			["MIT"],
+		);
+	});
 });

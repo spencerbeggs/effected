@@ -2,9 +2,10 @@
 // SPDX expressions plus the `UNLICENSED` and `SEE LICENSE IN` special cases)
 // and the `InvalidSpdxLicenseError` the concept raises.
 
-import { isValidExpression } from "@effected/spdx";
-import type { Brand } from "effect";
-import { Schema } from "effect";
+import type { SpdxExpression } from "@effected/spdx";
+import { SpdxExpression as SpdxExpressionOps, isValidExpression } from "@effected/spdx";
+import type { Brand, Option } from "effect";
+import { Result, Schema } from "effect";
 
 /**
  * Indicates that a string is not a valid SPDX license identifier or expression.
@@ -39,6 +40,17 @@ export const isValidSpdx = (value: string): boolean => {
  * A valid SPDX license identifier, expression, `UNLICENSED`, or
  * `SEE LICENSE IN <file>`.
  *
+ * @remarks
+ * **A branded value here is not necessarily parseable as SPDX.** npm's
+ * `license` field admits two strings that the SPDX grammar does not —
+ * `UNLICENSED` and `SEE LICENSE IN <file>` — and this brand accepts both,
+ * because it models what a manifest may legally carry, not what SPDX defines.
+ * Feeding a branded value straight to `SpdxExpression.parse` therefore fails
+ * on exactly those two forms. Do not hand-screen for them — reach for
+ * {@link licenseExpressionOf}, which answers "what expression is this, if any"
+ * and yields `Option.none()` for a spelling that is not one. Reach for
+ * {@link isValidSpdx} when the question is instead "may a manifest carry this".
+ *
  * @public
  */
 export const SpdxLicense = Schema.String.pipe(
@@ -54,3 +66,44 @@ export const SpdxLicense = Schema.String.pipe(
  * @public
  */
 export type SpdxLicense = string & Brand.Brand<"SpdxLicense">;
+
+/**
+ * The parsed SPDX expression a manifest's `license` denotes, or `Option.none()`
+ * when it denotes no expression at all.
+ *
+ * @remarks
+ * This is the accessor to reach for whenever a branded `SpdxLicense` has
+ * to become an actual expression — a license URL, a badge, structured data, a
+ * policy check. It exists because the brand and the grammar disagree, and that
+ * disagreement is knowledge these two packages jointly own rather than
+ * something each consumer should rediscover.
+ *
+ * `UNLICENSED` and `SEE LICENSE IN <file>` are legal in a manifest and are not
+ * SPDX expressions, so they yield `Option.none()`. Everything else parses.
+ * A consumer screening for those two spellings by hand gets it wrong the day
+ * npm admits a third — this accessor is the mechanism that prose could not be,
+ * and it needs no change on that day, because "not an expression" is answered
+ * by the grammar rather than by a list of spellings kept in step with npm.
+ *
+ * @example
+ * ```ts
+ * import { licenseExpressionOf } from "@effected/package-json";
+ * import { SpdxExpression } from "@effected/spdx";
+ *
+ * // "MIT"          => Option.some(<LicenseNode MIT>)
+ * // "UNLICENSED"   => Option.none()
+ * // "SEE LICENSE IN LICENSE.txt" => Option.none()
+ * ```
+ *
+ * @param license - a branded manifest license value
+ * @returns the parsed expression, or none for a spelling that is not one
+ *
+ * @public
+ */
+export const licenseExpressionOf = (license: SpdxLicense): Option.Option<SpdxExpression> =>
+	// No explicit screen for npm's two spellings: the grammar already declines
+	// them, so discarding the parse failure IS the screen. An earlier draft
+	// checked them by hand; removing those branches changed no test, which is
+	// what proved them dead. The absence is load-bearing — it is why a future
+	// third npm special case needs no change here.
+	Result.getSuccess(SpdxExpressionOps.parseResult(license));

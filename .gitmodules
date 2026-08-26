@@ -34,3 +34,11 @@
 	path = .repos/mdast-util-mdxjs-esm
 	url = https://github.com/syntax-tree/mdast-util-mdxjs-esm.git
 	shallow = true
+[submodule ".repos/spdx-license-list-data"]
+	path = .repos/spdx-license-list-data
+	url = https://github.com/spdx/license-list-data.git
+	shallow = true
+[submodule ".repos/schemaorg"]
+	path = .repos/schemaorg
+	url = https://github.com/schemaorg/schemaorg.git
+	shallow = true

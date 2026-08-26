@@ -14,7 +14,7 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
-import { Bugs, Repository } from "../src/index.js";
+import { Bugs, Person, Repository } from "../src/index.js";
 
 const decode = <A, I>(schema: Schema.Codec<A, I>, input: I) => Schema.decodeUnknownEffect(schema)(input);
 const encode = <A, I>(schema: Schema.Codec<A, I>, value: A) => Schema.encodeUnknownEffect(schema)(value);
@@ -206,6 +206,205 @@ describe("Bugs", () => {
 			const input = "https://github.com/effected/kit/issues";
 			const encoded = yield* encode(Bugs.FromValue, yield* decode(Bugs.FromValue, input));
 			assert.strictEqual(encoded, input);
+		}),
+	);
+});
+
+describe("Repository — directoryUrl", () => {
+	it.effect("descends into `directory` on each host it knows", () =>
+		Effect.gen(function* () {
+			// The motivating case: every member of a monorepo has the same
+			// `url` and differs only by `directory`, so `browseUrl` reports one
+			// location for all of them.
+			const cases = [
+				["effected/kit", "https://github.com/effected/kit/tree/HEAD/packages/spdx"],
+				["gitlab:effected/kit", "https://gitlab.com/effected/kit/-/tree/HEAD/packages/spdx"],
+				["bitbucket:effected/kit", "https://bitbucket.org/effected/kit/src/HEAD/packages/spdx"],
+			] as const;
+			for (const [url, expected] of cases) {
+				const repo = yield* decode(Repository.FromValue, { url, directory: "packages/spdx" });
+				assert.deepStrictEqual(repo.directoryUrl, Option.some(expected), url);
+			}
+		}),
+	);
+
+	it.effect("two members of one repository get two different URLs", () =>
+		Effect.gen(function* () {
+			// The property the consumer actually depends on: this is the field a
+			// crawler uses to tell two packages apart.
+			const spdx = yield* decode(Repository.FromValue, { url: "effected/kit", directory: "packages/spdx" });
+			const glob = yield* decode(Repository.FromValue, { url: "effected/kit", directory: "packages/glob" });
+			assert.notDeepEqual(spdx.directoryUrl, glob.directoryUrl);
+			assert.deepStrictEqual(spdx.browseUrl, glob.browseUrl);
+		}),
+	);
+
+	it.effect("without `directory` the package is the root, and that is an answer", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, "effected/kit");
+			assert.deepStrictEqual(repo.directoryUrl, Option.some("https://github.com/effected/kit"));
+			assert.deepStrictEqual(repo.directoryUrl, repo.browseUrl);
+		}),
+	);
+
+	it.effect("a `directory` naming the root itself is the root", () =>
+		Effect.gen(function* () {
+			for (const directory of [".", "/", "", "./"]) {
+				const repo = yield* decode(Repository.FromValue, { url: "effected/kit", directory });
+				assert.deepStrictEqual(repo.directoryUrl, Option.some("https://github.com/effected/kit"), directory);
+			}
+		}),
+	);
+
+	it.effect("an unknown host yields none rather than the repository root", () =>
+		Effect.gen(function* () {
+			// The whole point: falling back to `browseUrl` here would hand back
+			// the repository root for a package that does not live there, and it
+			// would look like a real answer.
+			const repo = yield* decode(Repository.FromValue, {
+				url: "https://git.example.com/team/thing",
+				directory: "packages/spdx",
+			});
+			assert.deepStrictEqual(repo.browseUrl, Option.some("https://git.example.com/team/thing"));
+			assert.isTrue(Option.isNone(repo.directoryUrl));
+		}),
+	);
+
+	it.effect("a gist has no subdirectories to descend into", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, { url: "gist:abc123def", directory: "packages/spdx" });
+			assert.isTrue(Option.isNone(repo.directoryUrl));
+		}),
+	);
+
+	it.effect("a `directory` that climbs out of the repository is refused", () =>
+		Effect.gen(function* () {
+			for (const directory of ["../elsewhere", "packages/../../elsewhere", ".."]) {
+				const repo = yield* decode(Repository.FromValue, { url: "effected/kit", directory });
+				assert.isTrue(Option.isNone(repo.directoryUrl), directory);
+			}
+		}),
+	);
+
+	it.effect("segments are percent-encoded, and separators survive", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, {
+				url: "effected/kit",
+				directory: "packages/my package",
+			});
+			assert.deepStrictEqual(
+				repo.directoryUrl,
+				Option.some("https://github.com/effected/kit/tree/HEAD/packages/my%20package"),
+			);
+		}),
+	);
+
+	it.effect("an uninterpretable url stays uninterpretable", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, { url: "", directory: "packages/spdx" });
+			assert.isTrue(Option.isNone(repo.directoryUrl));
+		}),
+	);
+
+	it.effect("reading directoryUrl does not rewrite the field", () =>
+		Effect.gen(function* () {
+			// Wire fidelity holds for the derived getters, same as browseUrl.
+			const input = { url: "effected/kit", directory: "packages/spdx" };
+			const repo = yield* decode(Repository.FromValue, input);
+			assert.isTrue(Option.isSome(repo.directoryUrl));
+			assert.deepStrictEqual(yield* encode(Repository.FromValue, repo), input);
+		}),
+	);
+});
+
+describe("Repository and Bugs — the object wire is replayed only while it is faithful", () => {
+	// `Person` has always guarded this; `Repository` and `Bugs` replayed the
+	// remembered object unconditionally, so an instance edited after decoding
+	// re-encoded as the stale original and the edit vanished with no error.
+	// Wire fidelity means "do not rewrite one legal encoding into another", not
+	// "write back whatever was read".
+
+	it.effect("an edited url does not re-encode as the original", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, { type: "git", url: "effected/kit" });
+			(repo as { url: string }).url = "effected/other";
+			assert.deepStrictEqual(yield* encode(Repository.FromValue, repo), {
+				type: "git",
+				url: "effected/other",
+			});
+		}),
+	);
+
+	it.effect("an edited directory does not re-encode as the original", () =>
+		Effect.gen(function* () {
+			// The field item 6 exists to read — a stale replay here would hand
+			// back a directoryUrl for the wrong package.
+			const repo = yield* decode(Repository.FromValue, { url: "effected/kit", directory: "packages/spdx" });
+			(repo as { directory: string }).directory = "packages/glob";
+			assert.deepStrictEqual(yield* encode(Repository.FromValue, repo), {
+				url: "effected/kit",
+				directory: "packages/glob",
+			});
+		}),
+	);
+
+	it.effect("an unedited object still replays verbatim, key order and all", () =>
+		Effect.gen(function* () {
+			// The guard must not cost the fidelity it protects: an untouched
+			// value re-encodes as the exact bytes it was read from.
+			const input = { type: "git", url: "git+https://github.com/effected/kit.git", directory: "packages/spdx" };
+			const repo = yield* decode(Repository.FromValue, input);
+			const encoded = yield* encode(Repository.FromValue, repo);
+			assert.deepStrictEqual(encoded, input);
+			assert.strictEqual(JSON.stringify(encoded), JSON.stringify(input));
+		}),
+	);
+
+	it.effect("an unknown key survives an unrelated edit", () =>
+		Effect.gen(function* () {
+			const repo = yield* decode(Repository.FromValue, { url: "effected/kit", homepage: "https://example.com" });
+			(repo as { url: string }).url = "effected/other";
+			assert.deepStrictEqual(yield* encode(Repository.FromValue, repo), {
+				url: "effected/other",
+				homepage: "https://example.com",
+			});
+		}),
+	);
+
+	it.effect("Bugs: an edited url does not re-encode as the original", () =>
+		Effect.gen(function* () {
+			const bugs = yield* decode(Bugs.FromValue, { url: "https://example.com/a" });
+			(bugs as { url?: string }).url = "https://example.com/b";
+			assert.deepStrictEqual(yield* encode(Bugs.FromValue, bugs), { url: "https://example.com/b" });
+		}),
+	);
+
+	it.effect("Bugs: an edited email does not re-encode as the original", () =>
+		Effect.gen(function* () {
+			const bugs = yield* decode(Bugs.FromValue, { email: "old@example.com" });
+			(bugs as { email?: string }).email = "new@example.com";
+			assert.deepStrictEqual(yield* encode(Bugs.FromValue, bugs), { email: "new@example.com" });
+		}),
+	);
+
+	it.effect("Bugs: an unedited object still replays verbatim", () =>
+		Effect.gen(function* () {
+			const input = { url: "https://github.com/effected/kit/issues", email: "bugs@example.com" };
+			const bugs = yield* decode(Bugs.FromValue, input);
+			assert.deepStrictEqual(yield* encode(Bugs.FromValue, bugs), input);
+		}),
+	);
+
+	it.effect("CONTROL — Person, which has always guarded this, behaves identically", () =>
+		Effect.gen(function* () {
+			// If this control ever fails, the bug is in the shared understanding
+			// of provenance, not in the two classes being fixed here.
+			const person = yield* decode(Person.FromValue, { name: "Ada", email: "ada@example.com" });
+			(person as { name: string }).name = "Grace";
+			assert.deepStrictEqual(yield* encode(Person.FromValue, person), {
+				name: "Grace",
+				email: "ada@example.com",
+			});
 		}),
 	);
 });

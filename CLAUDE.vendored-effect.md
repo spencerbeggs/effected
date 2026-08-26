@@ -1,6 +1,6 @@
-# Vendored Effect source — effected
+# Vendored repos — effected
 
-Child context file for `.repos/effect`, the read-only vendored Effect v4 tree.
+Child context file for `.repos/`: the read-only vendored Effect v4 tree and its sibling spec/dataset submodules.
 
 **Parent:** [CLAUDE.md](./CLAUDE.md)
 
@@ -23,6 +23,10 @@ Sparse checkout: only `packages/effect`, `packages/vitest`, `migration`, `ai-doc
 Re-pin when the catalog bumps, **in the same commit**: `savvy repos pin effect effect@<new-tag>` (or the `repos_manage` MCP tool, action `pin`). Both arguments are **positional** — there is no `--ref` flag, and passing one fails with `Unrecognized flag: --ref`. It stages the gitlink and manifest and returns a ready-made commit message; review any `staleNoteIds` it flags.
 
 Full recipe → `@./.claude/design/effected/architecture.md` — Load when: performing the re-pin.
+
+## Sibling vendored repos
+
+`.repos/` also holds spec and dataset submodules a single package generates from or checks against — `schemaorg` (v30.0, `@effected/schema-org`), `spdx-license-list-data` (v3.28.0, `@effected/spdx`) and the CommonMark/mdast set (`@effected/markdown`). Same rules: read-only, `savvy repos pin` to re-pin, and a re-pin lands in the same commit as the regenerated data it feeds. The owning package's `CLAUDE.md` states its re-pin obligation.
 
 ## Empty checkouts
 

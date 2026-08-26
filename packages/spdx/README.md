@@ -70,8 +70,10 @@ console.log(isValidExpression("MIT AND"));
 ## Features
 
 - `License` — a validated SPDX license identifier (`Schema.Class`), with `parse` (Effect) and `parseResult` (sync `Result`) constructors, an `of(...)` convenience for known-good values, and the static predicates `isKnownId`, `isDeprecatedId` and `isLicenseRef`.
+- License metadata from the vendored dataset, as getters on a `License`: `name` and `referenceUrl` (both `Option`, `none` for a `LicenseRef-` identifier the list does not describe) and the `osiApproved` / `fsfLibre` flags, for a UI or a policy gate that needs more than the identifier.
 - `LicenseException` — the same pattern over the SPDX exception identifiers, with its own catalog and `parse` / `parseResult` / `of`.
 - `SpdxExpression` — the recursive license-expression AST (`LicenseNode`, `LicenseRefNode`, `WithExceptionNode`, `AndNode`, `OrNode`), an Effect `parse`, the sync `isValidExpression` predicate, a `FromString` codec for embedding in your own schemas, and a canonical, fully-parenthesized `.toString()`.
+- `SpdxExpression.licensesOf` / `SpdxExpression.primaryLicense` — every license an expression names, in written order and deduplicated, and the single one to display where only one fits. `primaryLicense` is deliberately `none` for an `AND` expression: a conjunction imposes all of its terms at once, so no one of them stands for the whole, and picking a side would misstate the obligations. Reach for `licensesOf` wherever more than one can be shown.
 - `InvalidSpdxExpressionError` — the package's single typed error; malformed grammar and an unknown identifier both fail through it, never as a defect.
 - Deprecated license and exception identifiers parse successfully and carry `deprecated: true` rather than being rejected outright.
 
