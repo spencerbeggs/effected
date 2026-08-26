@@ -1,5 +1,31 @@
 # @effected/app
 
+## 0.13.1
+
+### Documentation
+
+- The bundled `effected-packages` skill (part of the "effected" Claude Code
+  plugin) now covers the kit's 31st package:
+
+- Added a `@effected/schema-org` row to the package index, and a new&#10;`references/schema-org.md` reference covering both entrypoints, the&#10;`buildResult`-not-`make` construction rule, the script-safe serializer's
+  idempotent escaping, and the validator's prefix-resolution rules.
+
+- The skill's routing `description` now mentions "emitting and validating
+  schema.org JSON-LD structured data" — the phrase a router matches against
+  to decide whether the skill loads at all, so this is what makes the new
+  package discoverable rather than merely documented.
+
+- Added `references/constructs/schema-org.md` and regenerated&#10;`references/constructs/package-json.md` (now listing `Funding` and&#10;`licenseExpressionOf`) from the build-emitted API Extractor models.
+
+- No change to the plugin's own runtime behavior — routing and reference
+  content only. [#539][#539]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#539]: https://github.com/spencerbeggs/effected/pull/539
+
 ## 0.13.0
 
 ### Features

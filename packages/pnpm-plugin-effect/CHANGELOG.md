@@ -1,5 +1,44 @@
 # @effected/pnpm-plugin-effect
 
+## 0.6.11
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/schema-org | workspace | added | — | ^0.1.0 |
+
+- `@effected/schema-org` added to the `effected` and `effected:peers` catalogs
+  at `^0.1.0`. [#539][#539]
+
+### Maintenance
+
+#### Updates 4 catalog:effected versions
+
+- `@effected/app` ^0.13.0 -\> ^0.13.1 (peer ^0.13.0)
+- `@effected/package-json` ^0.12.0 -\> ^0.13.0 (peer ^0.13.0)
+- `@effected/schema-org` ^0.0.0 -\> ^0.1.0 (peer ^0.1.0)
+- `@effected/spdx` ^0.4.0 -\> ^0.5.0 (peer ^0.5.0) [#539][#539]
+
+* `catalog:check` and `catalog:sync` now verify catalog **membership**, not only
+  the versions of packages the catalog already names.
+
+* The upgrade CLI they delegate to walks the catalog literal, so a publishable
+  package absent from it was invisible: `catalog:check` reported "Catalogs are in
+  sync" on a tree whose catalog was incomplete, and the only thing that noticed
+  was a test computing membership separately. `check` now exits non-zero and&#10;`sync` refuses before writing, both naming the missing packages and how to add
+  them.
+
+* The membership test stays, pinning the same rule independently: the gate and
+  the test live in different TypeScript projects, so sharing one function would
+  mean widening a tsconfig to buy less than two independent checks already give. [#539][#539]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#539]: https://github.com/spencerbeggs/effected/pull/539
+
 ## 0.6.10
 
 ### Maintenance
