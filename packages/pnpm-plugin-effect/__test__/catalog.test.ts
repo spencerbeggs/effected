@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "vitest";
@@ -75,13 +75,21 @@ function readCatalogEntries(catalog: string): Map<string, string> {
 function publishablePackages(): string[] {
 	return readdirSync(PACKAGES_DIR, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory())
-		.map(
-			(entry) =>
-				JSON.parse(readFileSync(join(PACKAGES_DIR, entry.name, "package.json"), "utf8")) as {
+		.flatMap((entry) => {
+			// A directory without a manifest is not a package. Build output survives a
+			// branch switch while tracked files do not, so `packages/<name>/` routinely
+			// exists holding only `dist/` and `node_modules/` for a package the checked
+			// out branch does not have. Reading straight through crashed this test with
+			// an ENOENT naming a package.json nobody deleted.
+			const manifest = join(PACKAGES_DIR, entry.name, "package.json");
+			if (!existsSync(manifest)) return [];
+			return [
+				JSON.parse(readFileSync(manifest, "utf8")) as {
 					name: string;
 					publishConfig?: { access?: string };
 				},
-		)
+			];
+		})
 		.filter((manifest) => manifest.publishConfig?.access === "public")
 		.map((manifest) => manifest.name);
 }
