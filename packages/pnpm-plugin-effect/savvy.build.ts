@@ -277,7 +277,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/sbom": {
-							range: "^0.4.3",
+							range: "^0.4.4",
 							peer: "^0.4.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -337,7 +337,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/workspaces": {
-							range: "^0.18.2",
+							range: "^0.18.3",
 							peer: "^0.18.0",
 							strategy: "lock-minor",
 							source: "workspace",
