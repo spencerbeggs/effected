@@ -42,6 +42,7 @@
 		"scratchpad:probe": "pnpm --filter scratchpad probe",
 		"scratchpad:reset": "pnpm --filter scratchpad reset",
 		"test": "vitest run --passWithNoTests",
+		"test:bats": "bats --recursive plugin",
 		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest --watch",
 		"typecheck": "turbo run types:check --log-prefix=none --log-order=grouped",

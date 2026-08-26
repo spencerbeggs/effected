@@ -50,6 +50,18 @@ Two behaviours follow, and both are deliberate:
 
 **The sync cannot close the gap itself, and should not try.** Adding an entry means choosing a range, a peer range and a strategy for a package whose next release version is a judgement — for a first release it is not derivable from a workspace at all. The script therefore reports the gap with the exact instruction, and a human writes the entry inline at the `PnpmConfigPlugin(...)` call site. Publishability is `publishConfig.access === "public"`, never `private === false`: every source manifest here is private, so a check written against `private` reports an empty set and passes every comparison it appears in.
 
+## Ripple bumps are not the CLI's question either
+
+The upgrade CLI resolves a `source: "workspace"` entry from the package manifest plus the **pending changesets**. A package that changesets bumps only as a **dependency ripple** carries no changeset naming it, so the CLI leaves it where it is — and the catalog goes stale the moment the release branch bumps it.
+
+This is the version half of the same failure the [membership section](#membership-is-not-the-clis-question) describes, and it bit for real: at the `release: 7 packages` commit, the catalog named `@effected/sbom` `^0.4.3` and `@effected/workspaces` `^0.18.2` against packages the release had already moved to `0.4.4` and `0.18.3`. Both were ripples off `package-json` and `spdx`. It is reliably wrong on the one branch where the catalog matters most.
+
+It was also self-concealing in the way this document keeps describing: the catalog-sync **workflow** checks out `ref: main`, so it reported *pass* on the very release PR whose branch was drifted. Both answers were right about different trees.
+
+**`changeset status --output` already computes the true plan, ripples included**, so the sync asks it rather than reimplementing changesets' dependency resolution. `check` fails on ripple drift even when the CLI is green; `sync` rewrites the affected entries' `range` and floors the `peer` patch per `lock-minor`. An unreadable plan is not fatal — the CLI's own resolution still covers every directly-bumped package, so the behaviour degrades to what it was rather than failing a sync that is otherwise correct.
+
+The alternative was re-syncing after `changeset version` in the release workflow, which is where the ripple versions first become concrete. It was rejected because that workflow lives in another repository, and because a sync run there writes a changeset that re-versions the release already in flight — the circularity recorded in effected#542.
+
 ## Two output modes, two audiences
 
 `catalog:sync` runs the CLI with `--json`. That document is used for **reporting** which entries moved. Whether the catalog moved at all is decided by diffing `savvy.build.ts` around the invocation, because the file is the artifact that matters and a diff of it cannot disagree with itself. The split is deliberate: a change in the CLI's JSON shape degrades the log line rather than the verdict.

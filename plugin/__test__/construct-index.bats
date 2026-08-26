@@ -36,8 +36,10 @@ setup_file() {
 	# TSDoc summary extracted, first paragraph only, no @example bleed
 	grep -q "A document's standing against the NTIA minimum elements." "$out/demo.md"
 	! grep -q "@example" "$out/demo.md"
-	# merged Variable+Interface renders one row with both kinds
-	[ "$(grep -c '| \`IdentityToken\` |' "$out/demo.md")" -eq 1 ]
+	# merged Variable+Interface renders one row with both kinds. -F, not a BRE:
+	# GNU grep reads \` as the start-of-buffer anchor, so the escaped-backtick
+	# spelling matched on BSD grep and could never match in CI.
+	[ "$(grep -cF '| `IdentityToken` |' "$out/demo.md")" -eq 1 ]
 	grep -q "Variable + Interface" "$out/demo.md"
 	# pipe in a docComment is escaped so the table row survives
 	grep -qF "report's \\|" "$out/demo.md"

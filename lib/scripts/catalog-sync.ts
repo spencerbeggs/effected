@@ -8,7 +8,8 @@
  * freeze path, which made a developer's `build:dev` and every CI build mutate the repo.
  */
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,6 +28,8 @@ export interface SyncOptions {
 	readonly root?: string;
 	/** Override the upgrade invocation. Defaults to the real CLI. */
 	readonly run?: UpgradeRunner;
+	/** Override the `changeset status` invocation. Defaults to the real CLI. */
+	readonly status?: StatusRunner;
 }
 
 /** The package whose build config carries the catalog, and which the changeset bumps. */
@@ -246,6 +249,28 @@ const MEMBERSHIP_CATALOG = "effected";
  * invisible to the rewriter, and importing `savvy.build.ts` would run the
  * bundler.
  */
+/**
+ * The index of the `}` closing the `{` at or after `from`, by depth scan.
+ *
+ * Shared by the reader (`catalogEntries`) and the writer (`applyRipples`) deliberately:
+ * a naive first-`}` search agrees with a depth scan only while every entry body stays
+ * flat, and the day one gains a nested field the writer would truncate it mid-entry —
+ * silently, against the file that gates a release.
+ */
+function matchingBrace(source: string, from: number): number {
+	const open = source.indexOf("{", from);
+	if (open === -1) return -1;
+	let depth = 0;
+	for (let i = open; i < source.length; i++) {
+		if (source[i] === "{") depth++;
+		else if (source[i] === "}") {
+			depth--;
+			if (depth === 0) return i;
+		}
+	}
+	return -1;
+}
+
 export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALOG): ReadonlyMap<string, string> {
 	const source = readConfig(root);
 	const anchor = source.indexOf(`${catalog}: {`);
@@ -260,18 +285,8 @@ export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALO
 	if (packagesAt === -1) return new Map();
 
 	const open = source.indexOf("{", packagesAt);
-	let depth = 0;
-	let close = open;
-	for (let i = open; i < source.length; i++) {
-		if (source[i] === "{") depth++;
-		else if (source[i] === "}") {
-			depth--;
-			if (depth === 0) {
-				close = i;
-				break;
-			}
-		}
-	}
+	const close = matchingBrace(source, packagesAt);
+	if (close === -1) return new Map();
 
 	const body = source.slice(open + 1, close);
 	const entries = new Map<string, string>();
@@ -282,18 +297,8 @@ export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALO
 		// `strategy` and `source` are policy, and a presence-only check cannot tell
 		// a changed policy from an intact one.
 		const valueOpen = body.indexOf("{", match.index);
-		let depth = 0;
-		let valueClose = valueOpen;
-		for (let i = valueOpen; i < body.length; i++) {
-			if (body[i] === "{") depth++;
-			else if (body[i] === "}") {
-				depth--;
-				if (depth === 0) {
-					valueClose = i;
-					break;
-				}
-			}
-		}
+		const valueClose = matchingBrace(body, match.index);
+		if (valueClose === -1) continue;
 		entries.set(name, body.slice(valueOpen, valueClose + 1));
 	}
 	return entries;
@@ -358,6 +363,122 @@ export function membershipFailure(missing: readonly string[]): string {
 	].join("\n");
 }
 
+// ── Ripple bumps ────────────────────────────────────────────────────────
+//
+// The upgrade CLI resolves a `source: "workspace"` entry to its next release
+// version from the package manifest plus the pending changesets. A package
+// that changesets bumps only as a DEPENDENCY RIPPLE has no changeset naming
+// it, so the CLI leaves it at its current version and the catalog goes stale
+// the moment the release branch bumps it — reliably, on the one branch where
+// the catalog matters most (effected#542).
+//
+// `changeset status --output` already computes the true plan, ripples
+// included, so this asks it rather than reimplementing changesets' dependency
+// resolution.
+
+/** One package's next release version, as changesets computes it. */
+export type ReleasePlan = ReadonlyMap<string, string>;
+
+/** Runs `changeset status --output`. Injectable so tests need no changesets CLI. */
+export type StatusRunner = (outputPath: string, cwd: string) => Promise<UpgradeResult>;
+
+const defaultStatusRunner: StatusRunner = (outputPath, cwd) =>
+	new Promise((resolve, reject) => {
+		const child = spawn("pnpm", ["exec", "changeset", "status", `--output=${outputPath}`], {
+			cwd,
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		let stdout = "";
+		child.stdout.setEncoding("utf8");
+		child.stdout.on("data", (chunk: string) => {
+			stdout += chunk;
+		});
+		child.on("error", reject);
+		child.on("close", (code) => resolve({ code: code ?? 1, stdout }));
+	});
+
+/**
+ * Every package changesets would release, and the version it would get.
+ *
+ * @remarks
+ * Empty when there are no pending changesets — `changeset status` exits
+ * non-zero in that case, which is not an error here: no changesets means no
+ * ripples, so there is nothing for this to contribute.
+ */
+export async function releasePlan(root: string, run: StatusRunner = defaultStatusRunner): Promise<ReleasePlan> {
+	const dir = mkdtempSync(join(tmpdir(), "catalog-plan-"));
+	const outputPath = join(dir, "status.json");
+	try {
+		await run(outputPath, root);
+		if (!existsSync(outputPath)) return new Map();
+		const doc = JSON.parse(readFileSync(outputPath, "utf8")) as {
+			releases?: { name: string; newVersion: string; type: string }[];
+		};
+		const plan = new Map<string, string>();
+		for (const release of doc.releases ?? []) {
+			// `type: "none"` entries are listed but not released; taking their
+			// version would pin the catalog to a version nothing publishes.
+			if (release.type !== "none") plan.set(release.name, release.newVersion);
+		}
+		return plan;
+	} catch {
+		// A plan this cannot read is not worth failing a sync over; the CLI's own
+		// resolution still covers every directly-bumped package.
+		return new Map();
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+/** `lock-minor`: the peer floors the patch, so `0.4.5` advertises `^0.4.0`. */
+function peerFor(version: string): string {
+	const [major = "0", minor = "0"] = version.split(".");
+	return `^${major}.${minor}.0`;
+}
+
+/** Catalogued packages whose entry does not name the version the plan would release. */
+export function rippleMismatches(
+	root: string,
+	plan: ReleasePlan,
+): readonly { pkg: string; from: string; to: string }[] {
+	const mismatches: { pkg: string; from: string; to: string }[] = [];
+	for (const [pkg, spec] of catalogEntries(root)) {
+		const planned = plan.get(pkg);
+		if (planned === undefined) continue;
+		const range = /\brange:\s*"([^"]+)"/.exec(spec)?.[1];
+		const expected = `^${planned}`;
+		if (range !== undefined && range !== expected) mismatches.push({ pkg, from: range, to: expected });
+	}
+	return mismatches;
+}
+
+/**
+ * Rewrite each mismatched entry's `range` and `peer` in place.
+ *
+ * @remarks
+ * A targeted per-entry replacement rather than a re-render: the literal is
+ * hand-maintained and inline at the `PnpmConfigPlugin(...)` call site, and the
+ * upgrade CLI owns rewriting it wholesale. This only touches the two fields of
+ * the entries the CLI could not see.
+ */
+function applyRipples(root: string, mismatches: readonly { pkg: string; from: string; to: string }[]): void {
+	if (mismatches.length === 0) return;
+	const file = configFile(root);
+	let source = readFileSync(file, "utf8");
+	for (const { pkg, to } of mismatches) {
+		const at = source.indexOf(`"${pkg}": {`);
+		if (at === -1) continue;
+		const close = matchingBrace(source, at);
+		if (close === -1) continue;
+		const body = source.slice(at, close);
+		const rewritten = body
+			.replace(/\brange:\s*"[^"]+"/, `range: "${to}"`)
+			.replace(/\bpeer:\s*"[^"]+"/, `peer: "${peerFor(to.slice(1))}"`);
+		source = source.slice(0, at) + rewritten + source.slice(close);
+	}
+	writeFileSync(file, source);
+}
+
 /**
  * Apply the sync. Returns whether the catalog moved.
  *
@@ -389,10 +510,21 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 		console.log(`  ${entry.catalog}.${entry.pkg}  ${entry.from} -> ${entry.to}`);
 	}
 
+	// The CLI cannot see a package bumped only as a dependency ripple, so ask
+	// changesets for the real plan and close the gap it leaves.
+	const ripples = rippleMismatches(root, await releasePlan(root, options.status));
+	applyRipples(root, ripples);
+	for (const ripple of ripples) {
+		console.log(`  effected.${ripple.pkg}  ${ripple.from} -> ${ripple.to}  (ripple)`);
+	}
+
 	if (readConfig(root) === before) return false;
 
 	// Peers are read AFTER the rewrite, from the file the CLI just wrote.
-	const moves = movesWithPeers(root, changed);
+	const moves = movesWithPeers(root, [
+		...changed,
+		...ripples.map((r) => ({ catalog: "effected", pkg: r.pkg, from: r.from, to: r.to })),
+	]);
 	writeFileSync(join(root, CHANGESET_PATH), moves.length > 0 ? renderChangeset(moves) : CHANGESET_BODY);
 	writeFileSync(join(root, COMMIT_MESSAGE_PATH), renderCommitMessage(moves));
 	return true;
@@ -421,6 +553,19 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 	const missing = missingFromCatalog(root);
 	if (missing.length > 0) {
 		process.stdout.write(`${membershipFailure(missing)}\n`);
+		return code === 0 ? 1 : code;
+	}
+
+	// Ripple drift is invisible to the CLI for the same reason it is invisible
+	// to the sync: no changeset names the package, so its own resolution never
+	// moves it. Asking changesets for the plan is what makes this gate honest
+	// on a release branch (effected#542).
+	const ripples = rippleMismatches(root, await releasePlan(root, options.status));
+	if (ripples.length > 0) {
+		const lines = ripples.map((r) => `  ${r.pkg}  ${r.from} -> ${r.to}`).join("\n");
+		process.stdout.write(
+			`Catalog is behind on ${ripples.length} dependency-ripple bump(s):\n${lines}\n\nThese carry no changeset of their own, so the upgrade CLI cannot see them. Run \`pnpm catalog:sync\`.\n`,
+		);
 		return code === 0 ? 1 : code;
 	}
 

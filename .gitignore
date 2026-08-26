@@ -49,8 +49,7 @@ docs/superpowers/
 # Docs ignores
 website/lib/models/*
 website/docs/en/*/api/
-website/api-docs-snapshot.db-*
-website/api-docs-snapshot.db
+**/.api-docs/snapshot/api-docs.db-*
 
 # Scratchpad working areas — agent probes are disposable, the shell is committed
 scratchpad/probes/
