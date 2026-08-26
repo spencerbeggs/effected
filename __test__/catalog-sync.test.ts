@@ -2,8 +2,16 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, assert, describe, it } from "vitest";
-import type { UpgradeResult, UpgradeRunner } from "../lib/scripts/catalog-sync.js";
-import { CHANGESET_PATH, CONFIG_PATH, PLUGIN, check, sync } from "../lib/scripts/catalog-sync.js";
+import type { CatalogMove, UpgradeResult, UpgradeRunner } from "../lib/scripts/catalog-sync.js";
+import {
+	CHANGESET_PATH,
+	CONFIG_PATH,
+	PLUGIN,
+	check,
+	renderChangeset,
+	renderCommitMessage,
+	sync,
+} from "../lib/scripts/catalog-sync.js";
 
 const SYNCED = 'range: "^0.10.0"';
 const DRIFTED = 'range: "^0.11.0"';
@@ -65,7 +73,11 @@ describe("catalog:sync", () => {
 		await sync({ root, run: runner(DRIFTED) });
 		await sync({ root, run: runner('range: "^0.12.0"') });
 
-		assert.deepStrictEqual(readdirSync(join(root, ".changeset")), ["catalog-sync.md"]);
+		// Changesets only: the sync also writes a commit-message file beside them,
+		// which is gitignored and never committed. The property under test is that
+		// repeated runs do not ACCUMULATE changesets, so count those.
+		const changesets = readdirSync(join(root, ".changeset")).filter((name) => name.endsWith(".md"));
+		assert.deepStrictEqual(changesets, ["catalog-sync.md"]);
 	});
 
 	it("writes no changeset when only the plugin itself bumped", async () => {
@@ -125,5 +137,82 @@ describe("catalog:check", () => {
 		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--check"]);
 		assert.strictEqual(readFileSync(join(root, CONFIG_PATH), "utf8"), SYNCED);
 		assert.isFalse(existsSync(join(root, CHANGESET_PATH)));
+	});
+});
+
+describe("catalog:sync message rendering", () => {
+	const moves: CatalogMove[] = [
+		{ catalog: "effected", pkg: "@effected/spdx", from: "^0.4.0", to: "^0.5.0", peer: "^0.5.0" },
+		{ catalog: "effected", pkg: "@effected/app", from: "^0.13.0", to: "^0.13.1", peer: "^0.13.0" },
+	];
+
+	it("names every package and both of its ranges, sorted", () => {
+		const body = renderChangeset(moves);
+		assert.include(body, `"${PLUGIN}": patch`);
+		assert.include(body, "### Updates 2 catalog:effected versions");
+		// Sorted by package, not by the order the CLI happened to report them.
+		assert.isBelow(body.indexOf("@effected/app"), body.indexOf("@effected/spdx"));
+		assert.include(body, "- `@effected/app` ^0.13.0 -> ^0.13.1 (peer ^0.13.0)");
+		assert.include(body, "- `@effected/spdx` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)");
+	});
+
+	it("keeps the peer range, which the CLI never reports", () => {
+		// `lock-minor` derives the peer from the new range rather than moving it
+		// independently, so it appears in no CLI output and is read back out of
+		// the rewritten literal. A caller reading only the range would miss that
+		// app's peer floors the patch it just gained.
+		assert.include(renderChangeset(moves), "^0.13.0 -> ^0.13.1 (peer ^0.13.0)");
+	});
+
+	it("pluralizes on the count", () => {
+		const one = moves.slice(0, 1);
+		assert.include(renderChangeset(one), "Updates 1 catalog:effected version\n");
+		assert.include(renderChangeset(moves), "Updates 2 catalog:effected versions");
+	});
+
+	it("drops the peer parenthetical rather than printing undefined", () => {
+		const unknown: CatalogMove[] = [
+			{ catalog: "effected", pkg: "@effected/spdx", from: "^0.4.0", to: "^0.5.0", peer: undefined },
+		];
+		const body = renderChangeset(unknown);
+		assert.include(body, "- `@effected/spdx` ^0.4.0 -> ^0.5.0");
+		assert.notInclude(body, "undefined");
+	});
+
+	it("groups a multi-catalog rewrite under one heading each", () => {
+		const mixed: CatalogMove[] = [
+			...moves,
+			{ catalog: "other", pkg: "@effected/zzz", from: "^1.0.0", to: "^1.1.0", peer: "^1.1.0" },
+		];
+		const body = renderChangeset(mixed);
+		assert.include(body, "### Updates 2 catalog:effected versions");
+		assert.include(body, "### Updates 1 catalog:other version");
+	});
+
+	it("renders a commit message with a conventional headline and a blank line", () => {
+		const message = renderCommitMessage(moves);
+		const [headline, blank] = message.split("\n");
+		assert.strictEqual(headline, "chore(pnpm-plugin-effect): update 2 catalog:effected versions");
+		assert.strictEqual(blank, "", "commitlint requires a blank line before the body");
+		assert.include(message, "- @effected/app ^0.13.0 -> ^0.13.1 (peer ^0.13.0)");
+	});
+
+	it("keeps backticks out of the commit body", () => {
+		// The commit contract allows at most two inline-code spans in a body, and a
+		// per-package list would pass that instantly. The changeset carries the
+		// formatted version; the commit carries the plain one.
+		assert.notInclude(renderCommitMessage(moves), "`");
+	});
+
+	it("headline stays under the 100-character limit for a large rewrite", () => {
+		const many: CatalogMove[] = Array.from({ length: 30 }, (_, i) => ({
+			catalog: "effected",
+			pkg: `@effected/package-number-${i}`,
+			from: "^0.1.0",
+			to: "^0.2.0",
+			peer: "^0.2.0",
+		}));
+		const headline = renderCommitMessage(many).split("\n")[0] ?? "";
+		assert.isBelow(headline.length, 100, headline);
 	});
 });
