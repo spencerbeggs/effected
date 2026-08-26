@@ -200,7 +200,7 @@ export class License extends Schema.Class<License>("License")({
 	 */
 	get referenceUrl(): Option.Option<string> {
 		// Templated rather than vendored: every upstream entry's `reference` is
-		// exactly this form, and scripts/generate-data.ts asserts that for every
+		// exactly this form, and lib/scripts/generate-data.ts asserts that for every
 		// id on regeneration, so the template is a checked invariant.
 		return LICENSE_META.has(this.id) ? Option.some(`https://spdx.org/licenses/${this.id}.html`) : Option.none();
 	}

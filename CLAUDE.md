@@ -112,7 +112,7 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.buil
 
 **A release does not need a hand-run `catalog:sync` — CI guarantees it.** `.github/workflows/catalog-sync.yml` runs on every PR to `main` **and to `changeset-release/main`**, so opening the release PR is itself the trigger: the job syncs the catalog, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before publishing. The catalog therefore cannot publish out of step with the packages it names.
 
-**That guarantee covers versions, not membership.** The upgrade CLI walks the catalog literal, so a package absent from it is invisible to the sync and cannot be added by one. `catalog:check` now fails on a membership gap and `catalog:sync` refuses before writing, both naming the missing packages — but closing the gap is a hand edit at the `PnpmConfigPlugin(...)` call site, because a new package's first release range is a judgement rather than something derivable from the workspace.
+**That guarantee covers direct bumps; membership and dependency ripples each needed their own answer.** The upgrade CLI walks the catalog literal, so a package absent from it is invisible to the sync and cannot be added by one. `catalog:check` now fails on a membership gap and on a package bumped only as a dependency ripple (which carries no changeset, so the upgrade CLI cannot see it either), and `catalog:sync` refuses before writing, both naming the affected packages — but closing the gap is a hand edit at the `PnpmConfigPlugin(...)` call site, because a new package's first release range is a judgement rather than something derivable from the workspace.
 
 Two properties of that job surprise readers, and neither is a bug:
 

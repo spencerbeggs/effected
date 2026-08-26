@@ -1,5 +1,5 @@
 // Vendored SPDX license metadata. The entry array below is machine-generated
-// by `scripts/generate-data.ts` from the SPDX workgroup's own published
+// by `lib/scripts/generate-data.ts` from the SPDX workgroup's own published
 // catalog, committed at `lib/data/spdx-licenses.json`
 // (https://github.com/spdx/license-list-data), CC0-1.0, which republishes the
 // SPDX License List (https://spdx.org/licenses/). Do not edit the array by

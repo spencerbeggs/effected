@@ -1,5 +1,5 @@
 // Run by hand only:
-//   pnpm --filter @effected/spdx exec tsx scripts/generate-data.ts
+//   pnpm --filter @effected/spdx exec tsx lib/scripts/generate-data.ts
 //
 // Regenerates the vendored SPDX id arrays in src/internal/licenseIds.ts and
 // src/internal/exceptions.ts from the installed spdx-license-ids and
@@ -138,7 +138,7 @@ const deprecatedLicenseIds = require("spdx-license-ids/deprecated.json") as read
 const activeExceptionIds = require("spdx-exceptions/index.json") as readonly string[];
 const deprecatedExceptionIds = require("spdx-exceptions/deprecated.json") as readonly string[];
 
-regenerateFile(resolve(scriptDir, "../src/internal/licenseIds.ts"), [
+regenerateFile(resolve(scriptDir, "../../src/internal/licenseIds.ts"), [
 	{
 		exportName: "ACTIVE_LICENSE_IDS",
 		content: renderIdArray("spdx:license-ids:active:start", "spdx:license-ids:active:end", activeLicenseIds),
@@ -153,7 +153,7 @@ regenerateFile(resolve(scriptDir, "../src/internal/licenseIds.ts"), [
 	},
 ]);
 
-regenerateFile(resolve(scriptDir, "../src/internal/exceptions.ts"), [
+regenerateFile(resolve(scriptDir, "../../src/internal/exceptions.ts"), [
 	{
 		exportName: "ACTIVE_EXCEPTION_IDS",
 		content: renderIdArray("spdx:exceptions:active:start", "spdx:exceptions:active:end", activeExceptionIds),
@@ -218,7 +218,7 @@ function quoted(value: string): string {
 }
 
 function renderLicenseMeta(ids: readonly string[]): string {
-	const catalogPath = resolve(scriptDir, "../lib/data/spdx-licenses.json");
+	const catalogPath = resolve(scriptDir, "../data/spdx-licenses.json");
 	const upstream = JSON.parse(readFileSync(catalogPath, "utf8")) as { readonly licenses: readonly UpstreamLicense[] };
 	const byId = new Map(upstream.licenses.map((license) => [license.licenseId, license]));
 
@@ -263,7 +263,7 @@ function renderLicenseMeta(ids: readonly string[]): string {
 	return renderLiteral("spdx:license-meta:start", "spdx:license-meta:end", elements);
 }
 
-regenerateFile(resolve(scriptDir, "../src/internal/licenseMeta.ts"), [
+regenerateFile(resolve(scriptDir, "../../src/internal/licenseMeta.ts"), [
 	{
 		exportName: "LICENSE_META_ROWS",
 		content: renderLicenseMeta([...activeLicenseIds, ...deprecatedLicenseIds]),

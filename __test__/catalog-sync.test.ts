@@ -2,14 +2,16 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, assert, describe, it } from "vitest";
-import type { CatalogMove, UpgradeResult, UpgradeRunner } from "../lib/scripts/catalog-sync.js";
+import type { CatalogMove, StatusRunner, UpgradeResult, UpgradeRunner } from "../lib/scripts/catalog-sync.js";
 import {
 	CHANGESET_PATH,
 	CONFIG_PATH,
 	PLUGIN,
+	catalogEntries,
 	check,
 	renderChangeset,
 	renderCommitMessage,
+	rippleMismatches,
 	sync,
 } from "../lib/scripts/catalog-sync.js";
 
@@ -302,5 +304,81 @@ describe("catalog membership gate", () => {
 		mkdirSync(join(root, "packages/leftover-build-output"), { recursive: true });
 
 		assert.strictEqual(await check({ root, run: async () => ({ code: 0, stdout: "" }) }), 0);
+	});
+});
+
+describe("dependency-ripple bumps", () => {
+	/** A `changeset status --output` double: writes the plan the real CLI would. */
+	function planRunner(releases: readonly { name: string; newVersion: string; type?: string }[]): StatusRunner {
+		return async (outputPath) => {
+			writeFileSync(outputPath, JSON.stringify({ releases: releases.map((r) => ({ type: "patch", ...r })) }));
+			return { code: 0, stdout: "" };
+		};
+	}
+
+	it("spots a package the plan bumps that the catalog does not name at that version", () => {
+		// The whole defect: `@effected/sbom` is bumped as a ripple off another
+		// package, so no changeset names it and the upgrade CLI never moves it.
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		const mismatches = rippleMismatches(root, new Map([["@effected/sbom", "0.4.5"]]));
+		assert.deepStrictEqual(mismatches, [{ pkg: "@effected/sbom", from: "^0.1.0", to: "^0.4.5" }]);
+	});
+
+	it("says nothing about a package already at its planned version", () => {
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		assert.deepStrictEqual([...rippleMismatches(root, new Map([["@effected/sbom", "0.1.0"]]))], []);
+	});
+
+	it("ignores a package the plan does not release", () => {
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		assert.deepStrictEqual([...rippleMismatches(root, new Map())], []);
+	});
+
+	it("check fails on ripple drift even when the upgrade CLI is green", async () => {
+		// Both halves matter: the CLI reports success because it resolved every
+		// package it can see, and the catalog is still wrong.
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		addPublishable(root, "@effected/sbom");
+
+		const code = await check({
+			root,
+			run: async () => ({ code: 0, stdout: "" }),
+			status: planRunner([{ name: "@effected/sbom", newVersion: "0.4.5" }]),
+		});
+
+		assert.notStrictEqual(code, 0, "a green CLI must not carry stale ripple versions to success");
+	});
+
+	it("sync rewrites the range and floors the peer patch", async () => {
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		addPublishable(root, "@effected/sbom");
+
+		await sync({
+			root,
+			run: runner(),
+			status: planRunner([{ name: "@effected/sbom", newVersion: "0.4.5" }]),
+		});
+
+		const spec = catalogEntries(root).get("@effected/sbom") ?? "";
+		assert.include(spec, 'range: "^0.4.5"');
+		// lock-minor floors the peer patch: a caret on 0.x pins the minor, so the
+		// peer stays open across the patch line the range just advanced within.
+		assert.include(spec, 'peer: "^0.4.0"');
+	});
+
+	it("a plan that cannot be read is not fatal", async () => {
+		// The CLI's own resolution still covers every directly-bumped package, so
+		// an unreadable plan degrades to the previous behaviour rather than
+		// failing a sync that is otherwise correct.
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		addPublishable(root, "@effected/sbom");
+
+		const code = await check({
+			root,
+			run: async () => ({ code: 0, stdout: "" }),
+			status: async () => ({ code: 1, stdout: "" }),
+		});
+
+		assert.strictEqual(code, 0);
 	});
 });
