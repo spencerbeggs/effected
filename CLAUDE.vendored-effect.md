@@ -26,7 +26,9 @@ Full recipe → `@./.claude/design/effected/architecture.md` — Load when: perf
 
 ## Sibling vendored repos
 
-`.repos/` also holds spec and dataset submodules a single package generates from or checks against — `schemaorg` (v30.0, `@effected/schema-org`), `spdx-license-list-data` (v3.28.0, `@effected/spdx`) and the CommonMark/mdast set (`@effected/markdown`). Same rules: read-only, `savvy repos pin` to re-pin, and a re-pin lands in the same commit as the regenerated data it feeds. The owning package's `CLAUDE.md` states its re-pin obligation.
+`.repos/` also holds spec submodules a single package checks against — the CommonMark/mdast set (`@effected/markdown`). Same rules: read-only, `savvy repos pin` to re-pin, and a re-pin lands in the same commit as whatever it feeds.
+
+**A single data FILE is committed, not submoduled.** `@effected/spdx` and `@effected/schema-org` generate from one published document each, held in the package's own `lib/data/`. Both were briefly submodules and should not be again: the upstream repos are 1.86 GB and 254 MB, the files read from them are 332 KB and 1.5 MB, and the submodules roughly tripled CI checkout time because a sparse checkout is local configuration that does not travel. Vendor a repo when a package reads the *repo*; commit the file when it reads one file.
 
 ## Empty checkouts
 

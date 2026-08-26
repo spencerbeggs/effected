@@ -261,7 +261,7 @@ The gate answers one question offline: *does schema.org define this `@type`, and
 
 ### How legality is resolved: five traps, all confirmed against the vendored data
 
-A naive `domainIncludes.includes(type)` check is wrong in five separate ways, and the first one rejects the consumer's very first graph. Each is stated with the number that proves it, re-measured directly against `.repos/schemaorg` at v30.0.
+A naive `domainIncludes.includes(type)` check is wrong in five separate ways, and the first one rejects the consumer's very first graph. Each is stated with the number that proves it, re-measured directly against the v30.0 vocabulary document.
 
 **The counts here are over schema-native terms only: 933 classes and 1,521 properties.** The document's `@graph` also carries 77 foreign classes and 155 foreign properties (`fibo-`, `gs1:`, `unece:`, `snomed:`, `foaf:`, `sarif:`, `cmns-`), present only as equivalence targets. They carry `@type: "rdfs:Class"` and `@type: "rdf:Property"` just like native terms, **so they must be filtered by `@id` prefix, never by `@type`** — filtering by type is how a table ends up with 1,010 classes and 1,676 properties, most of the extras being terms schema.org does not define.
 
@@ -315,7 +315,9 @@ The generalization: **when a union is switched on to decide a policy, exhaustive
 
 ### The source is vendored and pinned
 
-`.repos/schemaorg` — `schemaorg/schemaorg` at tag **v30.0**, sparse to `data/releases/30.0/schemaorg-current-https.jsonld` (the core vocabulary) and `schemaorg-all-https.jsonld` (additionally carrying retired and pending terms), 1.5 MB each. Added through the silk repos tooling exactly as `.repos/spdx-license-list-data` was. Everything under `.repos/` is **read-only** — silk's PreToolUse guards deny writes; the generator reads it and writes only into `packages/schema-org/src/internal/`.
+`lib/data/schemaorg-current-https.jsonld` — schema.org's published release document at **v30.0**, 1.5 MB, committed into this package. The generator reads it and writes only into `packages/schema-org/src/internal/`.
+
+It was briefly a sparse submodule of `schemaorg/schemaorg` and should not be again. That repo is **254 MB** and this is the single file read from it; sparse configuration lives in a submodule's own `.git/config` and does not travel, so every clone and every CI checkout paid the full history. Together with `@effected/spdx`'s 1.86 GB submodule it roughly tripled CI checkout time. **Submodule a repo when a package needs to read the repo; commit the file when it needs one file.**
 
 The generator reads **the vendored file, never the network**: the gate is offline, pinned and reproducible, and a regeneration on any machine at any time produces the same literals. That is the whole reason the source is a submodule rather than a fetch.
 
@@ -380,7 +382,7 @@ It sits under `lib/` rather than `scripts/` because `lib/` is where this repo ke
 
 **The generator imports `Graph` from `effect`, and that is correct — do not "fix" it.** It uses `Graph.directed` plus `Graph.isAcyclic` to assert the `rdfs:subClassOf` parent relation is a DAG ([trap 3](#how-legality-is-resolved-five-traps-all-confirmed-against-the-vendored-data)), reporting any cycle by its strongly-connected component so a failure names the classes involved rather than merely asserting. Core owns the graph algorithms and the package must not re-implement them. This import is precisely why the package's own node-document type [is not called `Graph`](#three-names-were-changed-to-clear-effects-root-exports) — the generator was deliberately left out of that rename sweep, because its `Graph` is `effect`'s and always was.
 
-It reads `.repos/schemaorg/data/releases/30.0/schemaorg-current-https.jsonld` — the *current* document, not `-all`, since retired terms are not something we want to accept. It applies exactly one filter — the `schema:` id-prefix filter of [trap 5](#how-legality-is-resolved-five-traps-all-confirmed-against-the-vendored-data) — and no section include-list, because every section ships. The release path is the one constant that must be re-pointed in the same commit as a submodule re-pin.
+It reads `lib/data/schemaorg-current-https.jsonld` — the *current* document, not `-all`, since retired terms are not something we want to accept. It applies exactly one filter — the `schema:` id-prefix filter of [trap 5](#how-legality-is-resolved-five-traps-all-confirmed-against-the-vendored-data) — and no section include-list, because every section ships. The release constant is what must move in the same commit as a replacement of that file.
 
 ## What the consumer must do that this package will not
 
