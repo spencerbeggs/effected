@@ -1,5 +1,6 @@
-import { Effect, Result, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { DEPRECATED_LICENSE_IDS, LICENSE_IDS } from "./internal/licenseIds.js";
+import { LICENSE_META, META_FLAG_FSF_LIBRE, META_FLAG_OSI_APPROVED } from "./internal/licenseMeta.js";
 
 /**
  * Indicates that a string is not a valid SPDX expression fragment: an
@@ -172,6 +173,68 @@ export class License extends Schema.Class<License>("License")({
 	 */
 	static of(id: string, deprecated = false): License {
 		return License.make({ id, deprecated });
+	}
+
+	// ── Catalog metadata ────────────────────────────────────────────────
+
+	/**
+	 * The canonical SPDX web page for this license — for example
+	 * `https://spdx.org/licenses/MIT.html` — or `Option.none()` when `id` is not
+	 * a catalog member.
+	 *
+	 * A `LicenseRef-`/`DocumentRef-` reference names a license that lives in the
+	 * consuming document, not on spdx.org, and so has no page; the same holds
+	 * for an id this catalog does not know. `None` is the honest answer there —
+	 * templating the URL anyway would hand callers a confidently broken link.
+	 *
+	 * @example
+	 * ```ts
+	 * import { License } from "@effected/spdx";
+	 * import { Option } from "effect";
+	 *
+	 * console.log(Option.getOrNull(License.of("MIT").referenceUrl));
+	 * // => "https://spdx.org/licenses/MIT.html"
+	 * console.log(Option.getOrNull(License.of("LicenseRef-Acme").referenceUrl));
+	 * // => null
+	 * ```
+	 */
+	get referenceUrl(): Option.Option<string> {
+		// Templated rather than vendored: every upstream entry's `reference` is
+		// exactly this form, and scripts/generate-data.ts asserts that for every
+		// id on regeneration, so the template is a checked invariant.
+		return LICENSE_META.has(this.id) ? Option.some(`https://spdx.org/licenses/${this.id}.html`) : Option.none();
+	}
+
+	/**
+	 * The license's full title from the SPDX License List — `"MIT License"` for
+	 * `MIT` — or `Option.none()` when `id` is not a catalog member, including
+	 * every `LicenseRef-`/`DocumentRef-` reference.
+	 */
+	get name(): Option.Option<string> {
+		const meta = LICENSE_META.get(this.id);
+		return meta === undefined ? Option.none() : Option.some(meta[1]);
+	}
+
+	/**
+	 * Whether the OSI has approved this license. `false` for a reference and for
+	 * any uncataloged id — the flag is an assertion about a known license, so
+	 * the absence of a catalog entry is never "approved".
+	 */
+	get osiApproved(): boolean {
+		return ((LICENSE_META.get(this.id)?.[2] ?? 0) & META_FLAG_OSI_APPROVED) !== 0;
+	}
+
+	/**
+	 * Whether the FSF lists this license as libre. `false` for a reference and
+	 * for any uncataloged id.
+	 *
+	 * @remarks
+	 * The FSF's list is much shorter than the OSI's and the two disagree in both
+	 * directions: `0BSD` is OSI-approved and not FSF-libre, `Apache-1.0` is
+	 * FSF-libre and not OSI-approved. Never derive one flag from the other.
+	 */
+	get fsfLibre(): boolean {
+		return ((LICENSE_META.get(this.id)?.[2] ?? 0) & META_FLAG_FSF_LIBRE) !== 0;
 	}
 
 	// ── Display ─────────────────────────────────────────────────────────

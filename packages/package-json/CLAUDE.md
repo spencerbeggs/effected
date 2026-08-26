@@ -92,9 +92,30 @@ re-exports below it).
   `reason` — `noRootExport`, `noConditionMatched` (naming the conditions tried),
   `unsupportedExportsForm`; never collapse it to one sentinel.
 - **`Dependency.ts`** — one class with a `kind` field (typed against `@effected/npm`'s kit-wide `DependencyKind`), replacing v3's four copy-pasted tagged classes; the protocol getters delegate to npm's `DependencySpecifier`.
+- **`Repository.ts`** — `Repository` and `Bugs`, both wire-fidelity models (see
+  the provenance rule below). `browseUrl` answers where the *repository* is;
+  **`directoryUrl` answers where this package is** — the descended URL for a
+  monorepo member on GitHub, GitLab or Bitbucket, `browseUrl` when there is no
+  `directory`, and `Option.none()` for a `directory` on an unknown host or one
+  escaping with `..`. Never fabricate a subdirectory path for an unrecognized
+  forge; that `none` exists to stop it, and handling it is the caller's policy.
+- **`Funding.ts`** — the `funding` field. `Funding.FromField` normalizes the
+  READ side (bare string, object, or array of either) to **always an array**,
+  so no consumer branches on arity; the WRITE side is deliberately not
+  normalized — an entry read bare re-encodes bare, never as a one-element
+  array. `url` is REQUIRED (unlike `Bugs`): an object entry without one is a
+  decode failure, not a degradation. Arity provenance is keyed by the **entry**,
+  not the array — `Schema.Array` rebuilds the array inside the transform, so an
+  array-keyed `WeakMap` is empty by encode time. `LenientManifest` carries the
+  field too.
 - **`PackageName.ts`**, **`License.ts`**, **`PackageManager.ts`**,
   **`Person.ts`**, **`DevEngines.ts`** — leaf concepts, each owning its own
-  statics and its own error. `PackageManager` models the same
+  statics and its own error. **`License.ts`'s brand is wider than the SPDX
+  grammar** — `UNLICENSED` and `SEE LICENSE IN <file>` are legal in a manifest
+  and parse as no expression — so use `licenseExpressionOf` to turn a branded
+  value into an `Option<SpdxExpression>` rather than hand-screening for those
+  two spellings; `isValidSpdx` answers the different question of whether a
+  manifest may carry the string at all. `PackageManager` models the same
   `<name>@<version>[+<integrity>]` triple as `@effected/npm`'s
   `PackageManagerPin`, and **shares both strict pieces with it rather than
   re-deriving them**: `integrity` is npm's `CorepackIntegrityHash` (the shared
@@ -184,18 +205,35 @@ re-exports below it).
   back on encode, so the on-disk shape never carries a literal `rest` key.
   Check every new sub-object class against a round-trip test.
 - **Wire provenance is remembered in a `WeakMap`, and `Schema.Class` instances
-  are NOT frozen — so the replay must be guarded.** `Person` and `Repository`
-  both remember the exact wire value each instance was decoded from and replay
-  it on encode for byte-level fidelity. An instance mutated **in place** keeps
-  its provenance entry while no longer being described by it; an unguarded
-  replay then writes the ORIGINAL value back and the edit is silently
-  discarded. `Person.isFaithful` / `Repository`'s `wire === url` check are what
-  prevent it. Two traps if you touch either:
+  are NOT frozen — so the replay must be guarded.** `Person`, `Repository`,
+  `Bugs` and `Funding` each remember the exact wire value an instance was
+  decoded from and replay it on encode for byte-level fidelity. An instance
+  mutated **in place** keeps its provenance entry while no longer being
+  described by it; an unguarded replay then writes the ORIGINAL value back and
+  the edit is silently discarded. **Every replay branch must therefore be
+  guarded by a faithfulness check** — on the object branches
+  `Person.isFaithful`, `isFaithfulRepository`, `isFaithfulBugs` and `Funding`'s
+  `isFaithfulObject`; on the string branches value equality on the url AND an
+  expressibility predicate (`isShorthandExpressible`,
+  `isStringExpressibleRepository`, `isStringExpressibleBugs`,
+  `Funding`'s `isStringExpressible`), because a shorthand carries only the url
+  and silently drops anything the value gained that it has no syntax for.
+  `Repository` and `Bugs` once shipped this bug on BOTH branches: the object
+  branches replayed unconditionally, and the string branches checked only that
+  the url still matched, so a value that gained a field the shorthand cannot
+  express re-encoded without it. A new replay branch is presumed to have that
+  bug until a mutate-in-place round-trip test says otherwise — and the string
+  branch needs its OWN such test, because an object-input one never reaches it. Three
+  traps if you touch any of them:
   - **`rest` is the field the string branch forgets.** A shorthand has no
     syntax for extra keys, so a person decoded from `"Ann"` that later gains
     `rest` is *not* faithfully described by it — the three named fields still
     match, and without an explicit clause the added keys vanish on write.
     `isShorthandExpressible` is that clause.
+  - **`rest` counts as part of the value on the object branch too.** A
+    faithfulness check comparing only the named fields passes while a key
+    added to `rest` after decoding is silently dropped, so each check compares
+    `rest` against the remembered wire's unknown keys as well.
   - **A test that rebuilds with `Person.make({ ...person, x })` cannot catch
     any of this.** That produces a NEW instance with no provenance, so the
     replay path is never reached. Mutate the same instance in place.

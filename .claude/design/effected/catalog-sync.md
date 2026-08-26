@@ -24,12 +24,31 @@ The kit publishes its own version surface — the `effected` / `effected:peers` 
 - `lib/scripts/catalog-sync.ts` — the `catalog:sync` and `catalog:check` entry points, wired as root `package.json` scripts and covered by `__test__/catalog-sync.test.ts`.
 - `.github/workflows/catalog-sync.yml` — the job itself: triggered by pull requests, it reads and repairs the catalog on `main` and reports a `Catalog Sync` check run.
 - `packages/pnpm-plugin-effect/turbo.json` — the build-input override that makes turbo see the version sources the plugin's build actually reads.
-- `packages/pnpm-plugin-effect/savvy.build.ts` — the catalog literal the CLI rewrites; `packages/pnpm-plugin-effect/__test__/catalog.test.ts` pins its membership.
+- `packages/pnpm-plugin-effect/savvy.build.ts` — the catalog literal the CLI rewrites. Membership is checked in two independent places: the gate in `lib/scripts/catalog-sync.ts`, and `packages/pnpm-plugin-effect/__test__/catalog.test.ts` (see [Membership is not the CLI's question](#membership-is-not-the-clis-question)).
 - `.github/workflows/release.yml` — carries `catalog:check` as the release's [`on-build` gate](#the-release-gate).
 
 ## The CLI is the only writer
 
 `rolldown-pnpm-config upgrade --yes` resolves each `source: "workspace"` entry against the local workspace and rewrites the literal in place. **Builds never write.** An earlier revision of the seam rewrote the config from the build's freeze path, which made every developer's `build:dev` and every CI build mutate the repo; the writer is a script a human or a workflow invokes deliberately, and nothing else.
+
+## Membership is not the CLI's question
+
+`rolldown-pnpm-config upgrade` walks the catalog **literal**. It answers one question — *are the versions of the packages the catalog already names current* — and it is correct about that. It never asks whether every publishable package is named at all, because a package absent from the literal is not something a walk of the literal can see.
+
+So for a newly added package, `--check` reports **"Catalogs are in sync"** on a tree whose catalog is incomplete. That is not a bug in the CLI; it is a successful-looking answer to a question that was never evaluated, which is this document's recurring failure class in a new place.
+
+It has happened. `@effected/schema-org` reached a release branch absent from the catalog while `catalog:check` stayed green. The only thing that caught it was `catalog.test.ts`, which computed membership **separately** — so the tool that could see the gap was not the tool the gate ran, and the two disagreed without either being wrong.
+
+**The fix is to make the gate ask the question.** `lib/scripts/catalog-sync.ts` computes membership itself — `catalogMembers`, `publishablePackages`, `missingFromCatalog` — reading the literal as source text the same way the CLI does, and fails on a gap.
+
+`catalog.test.ts` keeps its own derivation rather than importing that one, and the redundancy is deliberate. The two live in different TypeScript projects: the root config cannot see a package's files, and the package's `rootDir` cannot see the root's, so sharing a function means widening a tsconfig. Two independent checks of one rule is worth more than the coupling that would remove one of them — the original defect was never that the two disagreed, it was that only one of them was asking.
+
+Two behaviours follow, and both are deliberate:
+
+- **`check` fails on a membership gap even when the CLI is green.** Its exit code becomes non-zero and it prints which packages are missing and how to add them.
+- **`sync` refuses before it runs.** A sync that upgraded versions while a package was missing entirely would write a changeset and commit, reporting success for a catalog that is still incomplete.
+
+**The sync cannot close the gap itself, and should not try.** Adding an entry means choosing a range, a peer range and a strategy for a package whose next release version is a judgement — for a first release it is not derivable from a workspace at all. The script therefore reports the gap with the exact instruction, and a human writes the entry inline at the `PnpmConfigPlugin(...)` call site. Publishability is `publishConfig.access === "public"`, never `private === false`: every source manifest here is private, so a check written against `private` reports an empty set and passes every comparison it appears in.
 
 ## Two output modes, two audiences
 

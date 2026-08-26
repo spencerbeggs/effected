@@ -34,11 +34,11 @@ Detail lifted out of this file. Load on demand:
 
 - Build and test mechanics → `@./CLAUDE.build-and-test.md` — Load when: asking how the turbo/bundler pipeline, typechecking or the vitest setup actually works.
 - Dependency catalogs and peer closure → `@./CLAUDE.dependencies.md` — Load when: reading a `pnpm peers check` warning, or touching catalogs and peer declarations.
-- Vendored Effect source → `@./CLAUDE.vendored-effect.md` — Load when: consulting, syncing or re-pinning `.repos/effect`.
+- Vendored repos → `@./CLAUDE.vendored-effect.md` — Load when: consulting, syncing or re-pinning `.repos/effect` or a sibling vendored submodule.
 
 ### Kit composition
 
-The kit is **30 publishable packages**: 29 libraries plus the `pnpm-plugin-effect` companion. Every package in the kit has published. New packages follow the migration playbook: design doc first, then port.
+The kit is **31 publishable packages**: 30 libraries plus the `pnpm-plugin-effect` companion. All but `schema-org` — built 2026-08-26, not yet released — have published. New packages follow the migration playbook: design doc first, then port.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object**: it would drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 
@@ -50,7 +50,7 @@ The kit is **30 publishable packages**: 29 libraries plus the `pnpm-plugin-effec
 - `plugin/` — "effected", a Claude Code plugin (skills and specialist agents), in development.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
 - `scratchpad/` — private agent-probe workspace: every kit package at `workspace:*`, three runners, never published, invisible to CI. Read `scratchpad/CLAUDE.md` before working there.
-- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. **Never write to anything under `.repos/`** — silk's PreToolUse guards deny it. Detail → `@./CLAUDE.vendored-effect.md`.
+- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. Sibling submodules vendor spec and dataset inputs for specific packages (`schemaorg`, `spdx-license-list-data`, the CommonMark/mdast set). **Never write to anything under `.repos/`** — silk's PreToolUse guards deny it. Detail → `@./CLAUDE.vendored-effect.md`.
 - `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
 
 ### Package context files
@@ -64,6 +64,7 @@ Each package has its own `CLAUDE.md` and documents itself. Read it before workin
 - `markdown` — CommonMark 0.31.2 + GFM as pure schemas: parse to mdast-shaped nodes with byte offsets, edit, format, mdast projection, frontmatter codecs; second in size only to `yaml` (pure).
 - `glob` — the full minimatch dialect as pure string→predicate schemas; vendored, hardened engine (pure).
 - `spdx` — SPDX identifiers, exceptions and license expressions as Schema classes; vendors the datasets as devDep-generated TypeScript (pure).
+- `schema-org` — schema.org vocabulary as Schema classes, a `JsonLdDocument` assembler, a script-safe serializer and offline conformance validation over a vendored v30.0 vocabulary; two entrypoints, `.` and `./validate` (pure).
 - `lockfiles` — bun/npm/pnpm/yarn lockfile parsers normalized into one `Lockfile` model, plus pure integrity checking (pure).
 - `memfs` — a virtual POSIX volume behind core's `FileSystem` key: the kit's filesystem test double (pure). **No `@effected/*` edge, ever.**
 - `github-references` — GitHub's issue-reference grammar as pure functions: three dialects; `github` keeps a droppable compat re-export (pure).
@@ -109,6 +110,8 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.buil
 **Agents may run** `pnpm catalog:check` (read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effect/savvy.build.ts` and one fixed-name changeset. They keep the published `effected` catalog current — do not lump them in with the `pnpm:*` class.
 
 **A release does not need a hand-run `catalog:sync` — CI guarantees it.** `.github/workflows/catalog-sync.yml` runs on every PR to `main` **and to `changeset-release/main`**, so opening the release PR is itself the trigger: the job syncs the catalog, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before publishing. The catalog therefore cannot publish out of step with the packages it names.
+
+**That guarantee covers versions, not membership.** The upgrade CLI walks the catalog literal, so a package absent from it is invisible to the sync and cannot be added by one. `catalog:check` now fails on a membership gap and `catalog:sync` refuses before writing, both naming the missing packages — but closing the gap is a hand edit at the `PnpmConfigPlugin(...)` call site, because a new package's first release range is a judgement rather than something derivable from the workspace.
 
 Two properties of that job surprise readers, and neither is a bug:
 

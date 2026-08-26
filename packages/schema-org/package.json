@@ -1,0 +1,48 @@
+{
+	"name": "@effected/schema-org",
+	"version": "0.0.0",
+	"private": true,
+	"description": "schema.org vocabulary as Effect Schema classes, with a script-safe JSON-LD serializer",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/schema-org#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/schema-org"
+	},
+	"license": "MIT",
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./validate": "./src/conformance-entry.ts",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:effect",
+		"@savvy-web/bundler": "^2.1.27",
+		"@types/node": "catalog:build",
+		"effect": "catalog:effect",
+		"oxc-parser": "^0.144.0",
+		"typescript": "catalog:build"
+	},
+	"peerDependencies": {
+		"effect": "catalog:effect:peers"
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}

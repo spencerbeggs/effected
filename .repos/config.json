@@ -161,6 +161,40 @@
 				},
 				"startHere": "lib/index.js is the whole reference (node assembly + toMarkdown handler for mdxjsEsm); complex-types.d.ts states the node type shape; test/ has round-trip fixtures."
 			}
+		},
+		"spdx-license-list-data": {
+			"url": "https://github.com/spdx/license-list-data.git",
+			"ref": "v3.28.0",
+			"purpose": "SPDX's own published license and exception metadata (json/licenses.json, json/exceptions.json) — the authority behind @effected/spdx's vendored catalog literals, carrying name, isOsiApproved, isFsfLibre and reference URLs that the spdx-license-ids devDependency (ids only) cannot supply.",
+			"sparse": [
+				"json/licenses.json",
+				"json/exceptions.json"
+			],
+			"orientation": {
+				"layout": "Sparse checkout: json/licenses.json and json/exceptions.json only — the two published catalog documents. Everything else in the upstream repo (per-license details/, text/, html/, rdfa/) is deliberately excluded; it is license TEXT, which this kit does not vendor.",
+				"keyPaths": {
+					"licenses": "json/licenses.json",
+					"exceptions": "json/exceptions.json"
+				},
+				"startHere": "json/licenses.json is the metadata authority: each entry carries licenseId, name, isOsiApproved, isFsfLibre (present only when true), reference (the https://spdx.org/licenses/<id>.html page) and isDeprecatedLicenseId. packages/spdx/scripts/generate-data.ts reads it to regenerate the vendored catalog literal. IDs still come from the spdx-license-ids devDependency, NOT from here — that keeps the differential oracle test's id provenance unchanged; this repo supplies metadata for those ids only."
+			}
+		},
+		"schemaorg": {
+			"url": "https://github.com/schemaorg/schemaorg.git",
+			"ref": "v30.0",
+			"purpose": "The schema.org vocabulary itself, as published: the machine-readable JSON-LD release that defines every type, every property, and the domainIncludes/rangeIncludes relations between them — the authority @effected/schema-org's node vocabulary mirrors and its offline conformance validator checks against.",
+			"sparse": [
+				"data/releases/30.0/schemaorg-current-https.jsonld",
+				"data/releases/30.0/schemaorg-all-https.jsonld"
+			],
+			"orientation": {
+				"layout": "Sparse checkout: the published JSON-LD release documents under data/releases/30.0/ only. The upstream repo also carries the site generator, the .ttl sources, per-term example files and every historical release — all deliberately excluded. `schemaorg-current-https.jsonld` is the core vocabulary; `schemaorg-all-https.jsonld` additionally carries retired and pending terms.",
+				"keyPaths": {
+					"vocabulary": "data/releases/30.0/schemaorg-current-https.jsonld",
+					"vocabulary-with-retired": "data/releases/30.0/schemaorg-all-https.jsonld"
+				},
+				"startHere": "data/releases/30.0/schemaorg-current-https.jsonld is the authority. It is a single JSON-LD document whose @graph holds every term: entries with @type rdfs:Class are the types, entries with @type rdf:Property are the properties, and a property's schema:domainIncludes names the types it is legal on (schema:rangeIncludes names what it may hold). That domainIncludes relation is exactly what @effected/schema-org's conformance validator checks — the real failure mode is not malformed JSON but a plausible-looking property schema.org does not define on that type. A property may carry MULTIPLE domainIncludes entries, and inherited properties come via rdfs:subClassOf, so a validator that ignores the class hierarchy will produce false rejections."
+			}
 		}
 	}
 }

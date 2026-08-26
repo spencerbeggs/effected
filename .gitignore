@@ -55,3 +55,6 @@ website/api-docs-snapshot.db
 # Scratchpad working areas — agent probes are disposable, the shell is committed
 scratchpad/probes/
 scratchpad/__test__/*.test.ts
+
+# Written by catalog:sync for the workflow to read as a commit message; never committed.
+.changeset/catalog-sync.commit.txt

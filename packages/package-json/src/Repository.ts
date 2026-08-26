@@ -31,6 +31,19 @@ const PREFIXED_SHORTHAND = /^([a-z]+):(.+)$/;
 /** The scp-like form git accepts: `git@host:owner/name.git`. */
 const SCP_LIKE = /^(?:([\w.-]+)@)?([\w.-]+):(.+)$/;
 
+/**
+ * How each known forge spells "browse this subdirectory". `HEAD` is used
+ * rather than a branch name because the default branch is not knowable from a
+ * manifest, and every one of these hosts resolves `HEAD` to it.
+ */
+const DIRECTORY_PATHS: ReadonlyMap<string, string> = new Map([
+	["github.com", "tree/HEAD"],
+	// GitLab routes repository browsing under `/-/` to keep it clear of group
+	// and project namespaces, which can otherwise collide with `tree`.
+	["gitlab.com", "-/tree/HEAD"],
+	["bitbucket.org", "src/HEAD"],
+]);
+
 const stripGitSuffix = (value: string): string => (value.endsWith(".git") ? value.slice(0, -4) : value);
 
 /**
@@ -90,6 +103,58 @@ const bugsWires = new WeakMap<Bugs, FieldWire>();
 const KNOWN_REPOSITORY_KEYS: ReadonlySet<string> = new Set(["type", "url", "directory"]);
 const KNOWN_BUGS_KEYS: ReadonlySet<string> = new Set(["url", "email"]);
 
+// A remembered OBJECT wire is replayed only while it still describes the value
+// faithfully — the same discipline `Person` already applies, and for the same
+// reason. An unguarded replay hands back the bytes that were read, so a value
+// edited after decoding re-encodes as the stale original and the edit is
+// silently lost. `Person` guarded this; `Repository` and `Bugs` did not.
+const sameRest = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+
+/** The keys of `wire` outside the documented set, which is what `rest` holds. */
+const restOf = (wire: { readonly [k: string]: unknown }, known: ReadonlySet<string>): Record<string, unknown> => {
+	const rest: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(wire)) {
+		if (!known.has(key)) rest[key] = value;
+	}
+	return rest;
+};
+
+/**
+ * Whether the shorthand string can still carry everything this value holds.
+ *
+ * @remarks
+ * A shorthand is only a `url` — it has no syntax for `type`, `directory` or an
+ * unknown key. So a repository decoded from a string that later GAINS one of
+ * those is no longer described by the wire it remembers, and replaying that
+ * wire drops the addition silently. This is the same stale-provenance class the
+ * object branch guards, reached through the one field the shorthand cannot
+ * express, and `Person.isShorthandExpressible` / `Funding.isStringExpressible`
+ * already gate their own string branches this way.
+ *
+ * `directory` is the live case: this package ships `Repository.directoryUrl`,
+ * so a consumer reading a bare-string `repository` and making it a monorepo
+ * member is the natural mutator.
+ */
+const isStringExpressibleRepository = (repository: Repository): boolean =>
+	repository.type === undefined &&
+	repository.directory === undefined &&
+	Object.keys(repository.rest ?? {}).length === 0;
+
+/** Whether the bare URL string can still carry everything this `bugs` entry holds. */
+const isStringExpressibleBugs = (bugs: Bugs): boolean =>
+	bugs.email === undefined && Object.keys(bugs.rest ?? {}).length === 0;
+
+const isFaithfulRepository = (wire: { readonly [k: string]: unknown }, repository: Repository): boolean =>
+	(wire.url as unknown) === repository.url &&
+	(wire.type as unknown) === repository.type &&
+	(wire.directory as unknown) === repository.directory &&
+	sameRest(restOf(wire, KNOWN_REPOSITORY_KEYS), repository.rest);
+
+const isFaithfulBugs = (wire: { readonly [k: string]: unknown }, bugs: Bugs): boolean =>
+	(wire.url as unknown) === bugs.url &&
+	(wire.email as unknown) === bugs.email &&
+	sameRest(restOf(wire, KNOWN_BUGS_KEYS), bugs.rest);
+
 /**
  * Where a package's source lives.
  *
@@ -131,6 +196,68 @@ export class Repository extends Schema.Class<Repository>("Repository")({
 	}
 
 	/**
+	 * The browsable URL of **this package** — {@link Repository.browseUrl}
+	 * descended into `directory` when the package is a monorepo
+	 * member.
+	 *
+	 * @remarks
+	 * Prefer this over `browseUrl` whenever the question is "where does this
+	 * package live". For a monorepo, `browseUrl` answers with the repository
+	 * root, so every member of the repository reports the same location — which
+	 * matters because that URL is exactly what a consumer (a docs site's
+	 * structured data, say) uses to tell two packages apart.
+	 *
+	 * The three outcomes are deliberately distinct:
+	 *
+	 * - **No `directory`** — the package *is* the repository root, so this is
+	 *   `browseUrl`. A correct answer, not a missing one.
+	 * - **`directory` on a host this model knows** (GitHub, GitLab, Bitbucket) —
+	 *   the descended URL.
+	 * - **`directory` on any other host** — `Option.none()`. The path convention
+	 *   for browsing a subdirectory is per-forge and cannot be guessed, and
+	 *   fabricating one would produce a URL that resolves to nothing while
+	 *   looking authoritative.
+	 *
+	 * What to do with that `none` is a policy this getter deliberately leaves to
+	 * the caller, because it depends on what is being filled in. Falling back to
+	 * {@link Repository.browseUrl} is reasonable wherever a less precise answer
+	 * beats no answer — the repository root is a *true* location for the package,
+	 * merely one that does not distinguish it from its siblings. Omit the value
+	 * instead wherever that lack of distinction is the whole point. What is never
+	 * reasonable is inventing a subdirectory path for a host this model does not
+	 * recognize, which is the case this `none` exists to prevent.
+	 *
+	 * A `directory` that escapes the repository (any `..` segment) is refused the
+	 * same way. One that resolves to the root itself (`"."`, `"/"`) is the root.
+	 *
+	 * @example
+	 * ```ts
+	 * // { url: "effected/kit", directory: "packages/spdx" }
+	 * // => https://github.com/effected/kit/tree/HEAD/packages/spdx
+	 * ```
+	 */
+	get directoryUrl(): Option.Option<string> {
+		const directory = this.directory;
+		if (directory === undefined) return this.browseUrl;
+
+		const segments = directory
+			.split("/")
+			.map((segment) => segment.trim())
+			.filter((segment) => segment !== "" && segment !== ".");
+		// `..` would climb out of the repository the manifest names.
+		if (segments.some((segment) => segment === "..")) return Option.none();
+		// `"."`, `"/"`, `""` — the member is the root after all.
+		if (segments.length === 0) return this.browseUrl;
+
+		return Option.flatMap(this.browseUrl, (url) => {
+			const host = /^https:\/\/([^/]+)/.exec(url)?.[1];
+			const path = host === undefined ? undefined : DIRECTORY_PATHS.get(host);
+			if (path === undefined) return Option.none();
+			return Option.some(`${url}/${path}/${segments.map((segment) => encodeURIComponent(segment)).join("/")}`);
+		});
+	}
+
+	/**
 	 * The `repository` field: the shorthand string or the object form, always
 	 * decoded to a {@link Repository}, and always re-encoded in the form it was
 	 * read from.
@@ -165,8 +292,9 @@ export class Repository extends Schema.Class<Repository>("Repository")({
 					const wire = repositoryWires.get(repository);
 					// Replay the shorthand only while it still describes this value —
 					// an edited url must not re-encode as the stale original.
-					if (typeof wire === "string" && wire === repository.url) return wire;
-					if (wire !== undefined && typeof wire !== "string") return wire;
+					if (typeof wire === "string" && wire === repository.url && isStringExpressibleRepository(repository))
+						return wire;
+					if (wire !== undefined && typeof wire !== "string" && isFaithfulRepository(wire, repository)) return wire;
 					return {
 						...(repository.type !== undefined && { type: repository.type }),
 						url: repository.url,
@@ -224,8 +352,8 @@ export class Bugs extends Schema.Class<Bugs>("Bugs")({
 				},
 				encode: (bugs: Bugs): string | { readonly [k: string]: unknown } => {
 					const wire = bugsWires.get(bugs);
-					if (typeof wire === "string" && wire === bugs.url && bugs.email === undefined) return wire;
-					if (wire !== undefined && typeof wire !== "string") return wire;
+					if (typeof wire === "string" && wire === bugs.url && isStringExpressibleBugs(bugs)) return wire;
+					if (wire !== undefined && typeof wire !== "string" && isFaithfulBugs(wire, bugs)) return wire;
 					return {
 						...(bugs.url !== undefined && { url: bugs.url }),
 						...(bugs.email !== undefined && { email: bugs.email }),

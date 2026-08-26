@@ -11,6 +11,7 @@ import { SemVer } from "@effected/semver";
 import { Effect, Function as Fn, HashMap, Option, Pipeable, Schema, SchemaTransformation } from "effect";
 import { Dependency } from "./Dependency.js";
 import { DevEnginesSchema } from "./DevEngines.js";
+import { Funding } from "./Funding.js";
 import { renderJson, resolveFormatOptions } from "./internal/format.js";
 import { makeWire } from "./internal/wire.js";
 import { InvalidSpdxLicenseError, SpdxLicense, isValidSpdx } from "./License.js";
@@ -201,6 +202,7 @@ export class Package extends Schema.Class<Package>("Package")({
 	keywords: Schema.optionalKey(Schema.Array(Schema.String)),
 	repository: Schema.optionalKey(Repository.FromValue),
 	bugs: Schema.optionalKey(Bugs.FromValue),
+	funding: Schema.optionalKey(Funding.FromField),
 	homepage: Schema.optionalKey(Schema.String),
 	dependencies: DependencyMapField,
 	devDependencies: DependencyMapField,

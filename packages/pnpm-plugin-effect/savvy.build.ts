@@ -175,7 +175,7 @@ await build({
 				effected: {
 					packages: {
 						"@effected/app": {
-							range: "^0.13.0",
+							range: "^0.13.1",
 							peer: "^0.13.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -265,8 +265,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/package-json": {
-							range: "^0.12.0",
-							peer: "^0.12.0",
+							range: "^0.13.0",
+							peer: "^0.13.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -279,6 +279,12 @@ await build({
 						"@effected/sbom": {
 							range: "^0.4.3",
 							peer: "^0.4.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/schema-org": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -295,8 +301,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/spdx": {
-							range: "^0.4.0",
-							peer: "^0.4.0",
+							range: "^0.5.0",
+							peer: "^0.5.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},

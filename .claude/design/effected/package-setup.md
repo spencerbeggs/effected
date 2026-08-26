@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-08-25
-last-synced: 2026-08-25
-completeness: 92
+updated: 2026-08-26
+last-synced: 2026-08-26
+completeness: 95
 related:
   - catalog-sync.md
   - architecture.md
@@ -55,13 +55,48 @@ Mirror [`packages/yaml/package.json`](../../../packages/yaml/package.json) as th
 - `private: true` is deliberate — the bundler's `publishConfig`-driven transform produces the publishable manifest at build time. NEVER set `private: false` in source (see the Build Pipeline note in the root `CLAUDE.md`).
 - `repository.directory` must be `packages/X` — a per-package field that is easy to leave pointing at the copied sibling.
 - `homepage` must be `https://github.com/spencerbeggs/effected/tree/main/packages/X#readme`. The `/tree/main/` segment is **load-bearing**: the shorter `https://github.com/spencerbeggs/effected/packages/X#readme` form 404s (GitHub reads `/packages/` as a repo route, not a path). Per-package field — easy to leave pointing at the copied sibling.
-- `exports`: `{ ".": "./src/index.ts", "./package.json": "./package.json" }`.
+- `exports`: `{ ".": "./src/index.ts", "./package.json": "./package.json" }`. A package that needs a second published entrypoint adds one key here and one entry file — see [a second published entrypoint](#a-second-published-entrypoint), which is not a free choice.
 - `scripts`: `build:dev` = `node savvy.build.ts --target dev`, `build:prod` = `node savvy.build.ts --target prod`, `types:check` = `tsc --noEmit`. A package that depends on a sibling `@effected/*` package ALSO needs `prepare` = `turbo run build:dev` — see [cross-package build dependencies](#cross-package-build-dependencies).
 - `devDependencies`: `@savvy-web/bundler` (a plain semver range, not catalogued); `@effect/vitest` and `effect` at `catalog:effect`; `@types/node` and `typescript` at `catalog:build`. The bundler is what `savvy.build.ts` imports, so every package that builds declares it. It is a **`devDependency`** — never a `dependency`, even in a package that has a `dependencies` block, or the publishable manifest ships a build tool at runtime. `typescript` is the typechecker behind `types:check`; do **not** add `@effect/tsgo` (see [the typechecker](#the-typechecker-tsc-not-tsgo)).
 - `peerDependencies`: `effect` at `catalog:effect:peers` — libraries keep `effect` as a peer, and the peer declaration draws from the `effect:peers` catalog, not `effect` (which is what the `devDependencies` entry uses).
 - Sibling `@effected/*` edges use `workspace:^`, whether they are dependencies or peers ([effect-standards.md](effect-standards.md#cross-effected-dependencies)). The one exception is the `devDependency` that satisfies an auto-installed peer: that stays `workspace:*`, because it is never published.
 - `engines`: `node >=24.11.0`, matching every sibling and the root manifest.
 - `publishConfig`: `{ access: public, directory: dist/dev/pkg, linkDirectory: true, targets: { npm: true } }`.
+
+## A second published entrypoint
+
+Most packages ship a single `.` entrypoint and the manifest shape above is all there is to it. Two do not — [`@effected/workspaces`](../../../packages/workspaces)' `./node-sync` and [`@effected/schema-org`](packages/schema-org.md#module-layout-and-the-two-entrypoints)'s `./validate` — and nothing recorded how a second one is wired, so this section does.
+
+### What a second entrypoint costs and what it buys
+
+**`"sideEffects": false` does not make a subpath unnecessary, and believing it does is the trap.** The two claims sound like the same claim and are not:
+
+- For a **bundled** consumer, a re-export barrel tree-shakes correctly. The named exports stay individually reachable, so importing one class from `src/index.ts` retains only that class's graph. This is the case `sideEffects: false` describes, and it is why the [no-barrel rule](effect-standards.md#no-barrel-re-exports) permits entrypoints to re-export at all.
+- For an **unbundled Node consumer** — a CLI, a test run, a server, anything running the published files directly — there is no tree-shaker. `import { TechArticle } from "@effected/schema-org"` evaluates `index.ts`, which evaluates every module it re-exports, which loads **the whole module graph** whether or not a single binding from it is read.
+
+So a subpath entrypoint is the only mechanism that makes a heavy, optional part of a package cost zero for the consumers that do not use it. That is the entire justification, and it is a measurement rather than a preference: `schema-org` split `./validate` because the vocabulary table behind it is 74,834 B raw that a graph-only consumer would otherwise load on every import. **Quote the raw figure, not the gzip one** — parse cost is what an unbundled consumer pays.
+
+The corollary is the test obligation. Review cannot enforce a reachability boundary, so a package with a split ships a **structural test asserting it, with a positive control**: assert that the light entrypoint's transitive module graph excludes the heavy module, *and* assert that the heavy entrypoint's includes it, so a test that has quietly stopped resolving anything fails instead of passing vacuously.
+
+### The wiring
+
+1. One extra `exports` key, e.g. `"./validate": "./src/conformance-entry.ts"`.
+2. One entry file beside `src/index.ts`, re-exports only, carrying a `@packageDocumentation` block that says why the split exists.
+3. Nothing else. Turbo, the bundler and the api-extractor model path are per-package, not per-entrypoint.
+
+A type named by a second entrypoint's signatures must be exported **from that entrypoint**, not merely from `.`. Type-only re-exports (`export type { … }`) are erased at runtime and so cost the split nothing — but where API Extractor needs the **class** and not just its type (a class used as a parameter type of an exported function), the value re-export is required and is the honest cost of the split. Record which one it is and why, at the re-export site.
+
+### The case-collision rule
+
+**A subpath export key must not differ from a concept module's name only in case, and neither must the entry file.** This bites on a case-insensitive filesystem — which is every macOS dev machine — and it fails at *two* layers, the second of which reports the wrong file and the wrong symbol:
+
+1. **Source layer.** `src/conformance.ts` beside `src/Conformance.ts` is a `tsc` error outright: **TS1149**, "differs from already included file name only in casing".
+2. **Declaration layer.** Renaming the *source* file does not fix it, because the emitted declaration name derives from the **export key**. `"./conformance"` emits `conformance.d.ts`, which collides with the module's own `Conformance.d.ts`; the bundler sidesteps the collision by writing `conformance2.d.ts`, and API Extractor — still pointed at `conformance.d.ts` — resolves case-insensitively onto the **module** instead of the entry. The symptom is a **CI-fatal `ae-forgotten-export`** naming a symbol the entry visibly exports, which sends a reader hunting a missing export that is not missing.
+
+This is a live trap rather than a curiosity, because the house convention is **PascalCase concept modules named for their API** ([file names are API names](effect-standards.md#module-layout-module-per-concept)), so any package growing a subpath named after one of its concepts walks straight into it. Two fixes exist and only one is correct:
+
+- **Name the subpath for what it does, not for the class it happens to lead with**, and give the entry file a distinct name (`./validate` → `src/conformance-entry.ts`). This is the fix. It usually produces a better key anyway — `./validate` describes the entry's whole contents where `./conformance` described one of its exports.
+- **Renaming the concept module** to dodge the collision is the wrong fix: it sacrifices the API-name convention to a build-tool artifact.
 
 ## Cross-package build dependencies
 

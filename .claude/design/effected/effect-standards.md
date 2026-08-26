@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-08-26
+last-synced: 2026-08-26
 completeness: 95
 related:
   - architecture.md
@@ -39,6 +39,19 @@ Replaces kind-based folders. Structure per package:
 
 Rationale: file names ARE the API names, eliminating verbose disambiguation suffixes — no more `SemVerParserLive.ts`, no one-class `InvalidVersionError.ts` files, no `utils/` floating-function files (those become statics/methods on the schema classes). This follows "define errors near their domain or module boundary" (error-handling guide) and "service identifier and shape live in one place" (layers guide).
 
+### A public name must not collide with an `effect` root export
+
+Every consumer file in this ecosystem already imports from `effect`, so a kit name that duplicates a core root export is not an unlucky edge case — it is the **default** import situation, forcing an alias at the call site or, worse, letting a reader resolve the name to the wrong construct silently.
+
+Check a candidate public name against `effect`'s root exports before committing to it. The check is cheap and the rename is not: renaming a published symbol is a breaking change, and the collision is easiest to see before anyone depends on it.
+
+[`@effected/schema-org`](packages/schema-org.md#three-names-were-changed-to-clear-effects-root-exports) is the worked example, where three names moved — `Graph` → `JsonLdDocument`, `GraphNode` → `JsonLdNode`, `Ref` → `NodeRef`. Two riders from it:
+
+- **`Ref` is the sharpest name to avoid.** Core's `Ref` is among the most-used constructs and means a mutable reference cell; any domain meaning of "reference" collides with it head-on.
+- **Treat a collision as a prompt to re-ask whether the name was right.** `Graph` turned out to name the *key* (`@graph`) rather than the thing, and the class's own prose already called it a JSON-LD document — so the forced rename produced a name that was better independently of the clash. This is common enough to expect.
+
+The rule constrains **public** names only. A package's internal or build-time code may legitimately import and use the core construct under its own name — `schema-org`'s vocabulary generator uses `effect`'s `Graph` for an acyclicity assertion, which is exactly right and must not be "corrected".
+
 ### No barrel re-exports
 
 Only entrypoint files — `src/index.ts` and any published subpath entrypoints — may re-export. Every other module imports the values and types it uses explicitly from their defining module: no intermediate barrel files, no blanket `export * from` facades and no re-exporting a dependency's surface. Two failure modes justify the rule, both observed in the predecessor libraries: a blanket re-export facade creates a phantom dependency nothing in `src/` uses, and entrypoint-based static wiring couples module load order to the entrypoint, forcing `sideEffects` declarations and deep imports on consumers.
@@ -46,6 +59,10 @@ Only entrypoint files — `src/index.ts` and any published subpath entrypoints �
 **A namespace object is a barrel in different syntax, and a worse one.** `export const Codecs = { json, jsonc, yaml, toml }` collects independent implementations behind one binding exactly as `export *` collects independent modules behind one module. It is worse because a bundler can see through a re-export barrel — the named exports stay individually reachable — but a namespace object is a **single live binding**: reference it at all and every member is reachable, so every member's whole module graph is retained. The failure is **silent**. No error, no warning, just a bundle carrying engines the consumer never named.
 
 `@effected/config-file`'s [four codecs](package-inventory.md#the-four-codecs-live-in-config-file) are where this was found and where it is measured: with the codecs as free-standing named exports, a consumer importing only `JsonCodec` bundles a few hundred bytes; collected into a namespace object it would pull the JSONC, YAML and TOML engines too, into six figures of bytes. The rule that follows: **a set of alternative implementations that each reach a different dependency belongs in one module each, exported by name — never gathered into an object.**
+
+**`"sideEffects": false` protects a bundled consumer and does nothing for an unbundled one.** The permission above — entrypoints may re-export — is stated against bundlers, where a barrel's named exports stay individually reachable and a tree-shaker retains only what is named. An **unbundled Node consumer** has no tree-shaker: importing one binding from `src/index.ts` evaluates that module, which evaluates every module it re-exports, loading the **whole module graph** regardless. So `sideEffects: false` is not an answer to "does a consumer that wants one class pay for the rest of the package".
+
+The only mechanism that *is* an answer is a **published subpath entrypoint**, which is why one exists in the kit for a heavy optional part rather than as a matter of taste: `@effected/schema-org`'s `./validate` keeps a 74,834 B vocabulary table off the path of a consumer that only builds graphs. The decision is a measurement, the boundary is pinned by a structural test with a positive control, and the wiring — plus the case-collision trap a subpath brings with it — is in [package-setup.md](package-setup.md#a-second-published-entrypoint).
 
 Grouped statics are not banned outright — `MergeStrategy.firstMatch` / `.layeredMerge` and `ConfigResolver`'s resolver family stay grouped, because they are variants of one concept, live in one module and reach nothing heavier than each other. The hazard is proportional to **what sits behind each member**: group siblings that share a module, never siblings that each drag in a distinct engine. When in doubt, split — the cost of a separate module is a line in `index.ts`, and the cost of getting it wrong is invisible until someone measures a bundle.
 
@@ -134,7 +151,7 @@ Two standing rules come out of it. **Probe the shape, do not read the name** —
 ## Schema standards
 
 - Named domain models are `Schema.Class` / `Schema.TaggedClass`; the schema IS the class with methods. `Schema.Struct` only for small anonymous local shapes.
-- Construct with `X.make(...)`, never `new X(...)`.
+- Construct with `X.make(...)`, never `new X(...)`. This rule is about **constructing from fields**, and it does not reserve `make` as the name for every entry point into a class. A model with an encoded **string** form needs a differently-named parser — `make` takes the field record, not the string, and applies only field-level schema checks — so the house spelling for that is `parse` (Effect) plus `parseResult` (Result), with `make` still the fields constructor. [`@effected/spdx`](packages/spdx.md#public-api) is the worked example; read it and this line together, because either alone reads as though the two disagree.
 - Never define parallel schemas for one logical entity when only encoding differs — use field-level transformations (`Schema.decodeTo`/`encodeTo`), or derive variants with `pick`/`omit`/`partial`/`mutable`. Duplication only for genuinely different models (creation payload vs persisted entity, public API vs internal domain).
 - `Schema.optionalKey` for omissible object fields (`optional` produces `T | undefined`).
 - `Schema.brand` for validated scalar identifiers; `Schema.Opaque` for schema-backed nominal types.
@@ -143,6 +160,17 @@ Two standing rules come out of it. **Probe the shape, do not read the name** —
 - `Schema.suspend` for recursive schemas.
 - In Effect code prefer `Schema.decodeUnknownEffect` / `encodeUnknownEffect`; `Sync` variants only at explicit sync boundaries.
 - Use `.annotate(...)` metadata; derived tooling (`toJsonSchemaDocument`, `toArbitrary`, `toEquivalence`) is how docs/tests derive from the single schema source of truth.
+
+### Wire provenance keys on leaf instances, never on rebuilt containers
+
+Several kit models remember the exact wire value an instance decoded from — in a `WeakMap` or `WeakSet` beside the instance, never in it — and replay it on encode for byte-level fidelity. Provenance is kept outside the value on purpose: it must not appear in the encoded output, must not affect structural equality, and must not survive being copied into a hand-built value.
+
+**The trap: a `decodeTo` target of `Schema.Array(...)` or `Schema.Struct(...)` does NOT preserve the object identity the transform returned.** The container is rebuilt on the way out, so a map keyed on it is **empty by the time `encode` runs**. There is no error and no warning — provenance is simply never found, and a fidelity guarantee degrades silently to the canonical form, which is the failure mode hardest to notice in review because the output is still legal.
+
+Two rules follow, and every provenance model in the kit depends on both:
+
+1. **Key provenance on the leaf instance the transform constructed**, never on the container it was placed into. Where the fact being remembered is about the *container* — "this field was written bare rather than as an array" — hang it on the single leaf that was the field, and guard the replay on that leaf still being alone.
+2. **Guard every replay branch on the value still matching its provenance, and test each branch by mutating in place.** `Schema.Class` instances are not frozen, so an unguarded replay writes the original back and discards the edit. A test that *rebuilds* the value cannot reach the replay path at all, so a suite can look thorough while never executing the branch that is wrong — which is exactly how [`@effected/package-json`](packages/package-json.md#wire-provenance-and-why-the-replay-is-guarded) shipped a guarded shorthand branch beside an unguarded object branch.
 
 ## Services and layers standards
 
