@@ -15,7 +15,7 @@
 | `DevEnginesSchema` | Variable | The `devEngines` field schema, modeling runtime and package-manager constraints as optional `DevEngine` slots. | devEngines field schema, runtime and package manager os cpu libc constraints |
 | `EntryPointManifest` | Interface | The manifest fields entry resolution reads. | |
 | `ExportsField` | Variable | The `exports` field: a single string entry point or an open object of conditional exports. Not meant to be referenced directly. | exports field shape, string entry point or conditional exports object |
-| `Funding` | Class | Where to send money for a package: one funding entry. | |
+| `Funding` | Class | Where to send money for a package: one funding entry. | read a package's funding field, where to sponsor a maintainer, single entry or array |
 | `InvalidPackageNameError` | Class | Indicates that a string could not be used as a valid npm package name. | handle invalid npm package name, failed naming rules |
 | `InvalidSpdxLicenseError` | Class | Indicates that a string is not a valid SPDX license identifier or expression. | handle invalid spdx license field, unrecognized identifier or expression |
 | `LenientFieldIssue` | Interface | One degraded field from a lenient decode: the top-level `field` that did not match its permissive shape, a human-readable description of the `expected` shape, and the raw `value` found there (also preserved verbatim under `LenientManifest.rest[field]`). | |
@@ -59,7 +59,7 @@
 | `defaultRules` | Variable | The default validation rules: license, description, repository and not-private. | default package.json validation rule set, license description repository not-private |
 | `isUnresolvedDependency` | Function | Type guard narrowing any dependency-like value to `UnresolvedDependency`, preserving the concrete type. | check if a dependency has an unresolved workspace or catalog specifier |
 | `isValidSpdx` | Function | Whether a string is a valid SPDX license identifier or expression, or one of the npm special cases `UNLICENSED` / `SEE LICENSE IN <file>`. | check if a string is a valid spdx license, or UNLICENSED |
-| `licenseExpressionOf` | Function | The parsed SPDX expression a manifest's `license` denotes, or `Option.none()` when it denotes no expression at all. | |
+| `licenseExpressionOf` | Function | The parsed SPDX expression a manifest's `license` denotes, or `Option.none()` when it denotes no expression at all. | turn a manifest license field into a parsed spdx expression, skipping UNLICENSED and SEE LICENSE IN |
 | `noLocalDepsRule` | Variable | A rule that fails when any dependency uses a local `file:`, `link:` or `portal:` specifier. | validation rule rejecting local file link portal dependencies |
 | `noUnresolvedDepsRule` | Variable | A rule that fails when any dependency uses an unresolved `workspace:` or `catalog:` specifier. | validation rule rejecting unresolved workspace or catalog dependencies |
 | `resolveEntryPoint` | Function | Resolve a package's root entry point from its manifest. | resolve a package's root entry point, exports map condition resolution, main fallback |

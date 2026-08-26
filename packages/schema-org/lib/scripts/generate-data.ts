@@ -7,7 +7,9 @@
 //
 // Regenerates the vendored schema.org vocabulary literals in
 // src/internal/vocabulary.ts from the vendored release document at
-// .repos/schemaorg (read-only input — never written here). Locates each target
+// lib/data/schemaorg-current-https.jsonld — the published release document,
+// committed rather than vendored as a submodule: the upstream repo is 254 MB and
+// this is the single release file we read from it. Locates each target
 // literal by its exported const identifier via oxc-parser and splices only
 // that initializer's byte span, leaving the module header, types and the
 // hand-authored derived lookups untouched; the header's regeneration-notes
@@ -36,10 +38,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 
 /** The vendored release. Re-pointing this is part of a submodule re-pin, never a lone edit. */
 const RELEASE = "30.0";
-const SOURCE = resolve(
-	scriptDir,
-	`../../../../.repos/schemaorg/data/releases/${RELEASE}/schemaorg-current-https.jsonld`,
-);
+const SOURCE = resolve(scriptDir, "../data/schemaorg-current-https.jsonld");
 const TARGET = resolve(scriptDir, "../../src/internal/vocabulary.ts");
 
 /**

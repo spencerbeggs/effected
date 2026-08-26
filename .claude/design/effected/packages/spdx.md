@@ -32,7 +32,7 @@ Owning the grammar rather than depending on `spdx-expression-parse` is what keep
 
 No cross-`@effected` runtime edges: package-json depends on spdx, never the reverse, and the graph runs from boundary toward pure as [the acyclic-graph rule](../effect-standards.md#cross-effected-dependencies) requires.
 
-Everything SPDX-adjacent — the upstream `spdx-license-ids` and `spdx-exceptions` datasets, the canonical `spdx-expression-parse` (kept as the [differential oracle](#testing) and as the algorithm reference), and the parser used by the regeneration tool — is a **devDependency only**. Never import any of them from `src/**`. The same holds for `.repos/spdx-license-list-data`, the vendored submodule behind the [metadata table](#catalog-metadata): it is a **build-time input to the generator and nothing else**, and it carries a [re-pin obligation](#the-generator-has-two-sources-and-only-one-of-them-is-a-package).
+Everything SPDX-adjacent — the upstream `spdx-license-ids` and `spdx-exceptions` datasets, the canonical `spdx-expression-parse` (kept as the [differential oracle](#testing) and as the algorithm reference), and the parser used by the regeneration tool — is a **devDependency only**. Never import any of them from `src/**`. The same holds for `lib/data/spdx-licenses.json`, the committed catalog behind the [metadata table](#catalog-metadata): it is a **build-time input to the generator and nothing else**, and it carries a [refresh obligation](#the-generator-has-two-sources-and-only-one-of-them-is-a-package).
 
 ## Module layout
 
@@ -116,7 +116,9 @@ A **hand-run regeneration tool** in `scripts/` keeps them current: a devDep scri
 
 ### The generator has two sources, and only one of them is a package
 
-The identifier sets come from the `spdx-license-ids` / `spdx-exceptions` **devDependencies**. The [metadata table](#catalog-metadata) does not: `licenseMeta.ts` is generated from **`.repos/spdx-license-list-data`**, the SPDX workgroup's own published catalog, vendored read-only as a submodule pinned at tag **v3.28.0**. It carries the titles and approval flags the npm packages do not.
+The identifier sets come from the `spdx-license-ids` / `spdx-exceptions` **devDependencies**. The [metadata table](#catalog-metadata) does not: `licenseMeta.ts` is generated from **`lib/data/spdx-licenses.json`**, the SPDX workgroup's own published catalog at release **v3.28.0**, committed into this package. It carries the titles and approval flags the npm packages do not.
+
+It is a committed FILE rather than a vendored submodule, and that distinction cost a CI outage to learn. The upstream `spdx/license-list-data` repo is **1.86 GB**; the file read from it is **332 KB**. A sparse checkout makes that bearable locally, but sparse configuration lives in a submodule's own `.git/config` and does not travel — so every clone and every CI checkout paid the full history to reach a rounding error's worth of JSON, and validation went from ~6m45s to over 19 minutes. The rule that generalizes: **submodule a repo when a package needs to read the repo; commit the file when it needs one file.**
 
 **That vendoring creates a re-pin obligation this package did not previously carry**, and it is recorded here because nothing else states it: under the silk `repos` skill's re-pin-on-dependency-bump rule, bumping `spdx-license-ids` now means **re-pinning the submodule tag as well**, and re-running the generator, and diffing — as one change. The two sources describe the same license list and must be advanced together; the version pinned in `.repos/config.json` and the version resolved for `spdx-license-ids` are two clocks that will silently diverge otherwise.
 

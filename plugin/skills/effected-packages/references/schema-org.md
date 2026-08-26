@@ -56,7 +56,7 @@ Outcomes are three-valued: `UnknownTerm` is always reported and never silently p
 
 ## The vocabulary
 
-Vendored from schema.org **v30.0** at `.repos/schemaorg`, generated into `src/internal/vocabulary.ts` by a hand-run script under `lib/scripts/`. **Every schema-native term ships** — 933 classes and 1,521 properties, interned — not a subset scoped to the six modeled types. Scoping was measured and rejected: those six types' properties name 69 distinct range types and 64 fall outside such a scope, so ordinary graphs would report unknown on day one. With a subset, "unknown" is irreducibly ambiguous between *misspelled* and *not shipped*, and a validator that cannot tell you which is worse than none.
+Vendored from schema.org **v30.0**, committed at `lib/data/schemaorg-current-https.jsonld` and generated into `src/internal/vocabulary.ts` by a hand-run script under `lib/scripts/`. **Every schema-native term ships** — 933 classes and 1,521 properties, interned — not a subset scoped to the six modeled types. Scoping was measured and rejected: those six types' properties name 69 distinct range types and 64 fall outside such a scope, so ordinary graphs would report unknown on day one. With a subset, "unknown" is irreducibly ambiguous between *misspelled* and *not shipped*, and a validator that cannot tell you which is worse than none.
 
 Regeneration is a **vocabulary review, not a version bump** — a term that moved domain changes what the gate accepts. The generator asserts its own invariants and fails rather than emitting a damaged table.
 

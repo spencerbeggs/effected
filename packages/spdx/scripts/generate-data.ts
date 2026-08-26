@@ -5,7 +5,10 @@
 // src/internal/exceptions.ts from the installed spdx-license-ids and
 // spdx-exceptions devDependencies, and the metadata table in
 // src/internal/licenseMeta.ts from the vendored SPDX catalog at
-// .repos/spdx-license-list-data (read-only input — never written here).
+// lib/data/spdx-licenses.json — SPDX's own published catalog, committed rather
+// than vendored as a submodule: the upstream repo is 1.86 GB and this is the one
+// 332 KB file we read from it, so a submodule cost every clone and every CI
+// checkout that entire history to reach a rounding error's worth of JSON.
 // Locates each target array by its exported const identifier via oxc-parser
 // and splices only the ArrayExpression's byte span, leaving the attribution
 // header, types, and Set exports untouched. Never run in CI or the test suite
@@ -215,7 +218,7 @@ function quoted(value: string): string {
 }
 
 function renderLicenseMeta(ids: readonly string[]): string {
-	const catalogPath = resolve(scriptDir, "../../../.repos/spdx-license-list-data/json/licenses.json");
+	const catalogPath = resolve(scriptDir, "../lib/data/spdx-licenses.json");
 	const upstream = JSON.parse(readFileSync(catalogPath, "utf8")) as { readonly licenses: readonly UpstreamLicense[] };
 	const byId = new Map(upstream.licenses.map((license) => [license.licenseId, license]));
 
@@ -247,7 +250,7 @@ function renderLicenseMeta(ids: readonly string[]): string {
 	if (missing.length > 0) {
 		throw new Error(
 			`${catalogPath}: no metadata for ${missing.length} vendored id(s): ${missing.join(", ")}. ` +
-				"Re-pin .repos/spdx-license-list-data to a tag that covers the installed spdx-license-ids.",
+				"Refresh lib/data/spdx-licenses.json from the SPDX release that covers the installed spdx-license-ids.",
 		);
 	}
 	if (badReference.length > 0) {
