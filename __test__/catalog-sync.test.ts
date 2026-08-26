@@ -349,6 +349,33 @@ describe("dependency-ripple bumps", () => {
 		assert.notStrictEqual(code, 0, "a green CLI must not carry stale ripple versions to success");
 	});
 
+	it("sync rewrites an entry whose body carries a nested field", async () => {
+		// The reader scans braces by depth; the writer once searched for the first
+		// `}`. They agree only while every body is flat, so a nested field made the
+		// writer truncate the entry mid-object — silently, in the file that gates a
+		// release. Nothing declares a nested field today, which is why this fixture
+		// has to plant one.
+		// The nested field must sit BEFORE `range`: a first-`}` slice then ends at
+		// meta's brace, so `range`/`peer` fall outside the body the rewrite sees and
+		// the sync reports success having changed nothing. A trailing nested field
+		// is harmless — the slice boundaries reassemble symmetrically — which is
+		// exactly why this fixture is ordered the way it is.
+		const config = catalogConfig(["@effected/sbom"]).replace("{ range:", '{ meta: { note: "nested" }, range:');
+		const root = makeRoot(config);
+		addPublishable(root, "@effected/sbom");
+
+		await sync({
+			root,
+			run: runner(),
+			status: planRunner([{ name: "@effected/sbom", newVersion: "0.4.5" }]),
+		});
+
+		const spec = catalogEntries(root).get("@effected/sbom") ?? "";
+		assert.include(spec, 'range: "^0.4.5"');
+		assert.include(spec, 'meta: { note: "nested" }', "the nested field must survive the rewrite");
+		assert.include(spec, 'source: "workspace"', "the trailing field must survive the rewrite");
+	});
+
 	it("sync rewrites the range and floors the peer patch", async () => {
 		const root = makeRoot(catalogConfig(["@effected/sbom"]));
 		addPublishable(root, "@effected/sbom");

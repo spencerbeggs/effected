@@ -249,6 +249,28 @@ const MEMBERSHIP_CATALOG = "effected";
  * invisible to the rewriter, and importing `savvy.build.ts` would run the
  * bundler.
  */
+/**
+ * The index of the `}` closing the `{` at or after `from`, by depth scan.
+ *
+ * Shared by the reader (`catalogEntries`) and the writer (`applyRipples`) deliberately:
+ * a naive first-`}` search agrees with a depth scan only while every entry body stays
+ * flat, and the day one gains a nested field the writer would truncate it mid-entry —
+ * silently, against the file that gates a release.
+ */
+function matchingBrace(source: string, from: number): number {
+	const open = source.indexOf("{", from);
+	if (open === -1) return -1;
+	let depth = 0;
+	for (let i = open; i < source.length; i++) {
+		if (source[i] === "{") depth++;
+		else if (source[i] === "}") {
+			depth--;
+			if (depth === 0) return i;
+		}
+	}
+	return -1;
+}
+
 export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALOG): ReadonlyMap<string, string> {
 	const source = readConfig(root);
 	const anchor = source.indexOf(`${catalog}: {`);
@@ -263,18 +285,8 @@ export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALO
 	if (packagesAt === -1) return new Map();
 
 	const open = source.indexOf("{", packagesAt);
-	let depth = 0;
-	let close = open;
-	for (let i = open; i < source.length; i++) {
-		if (source[i] === "{") depth++;
-		else if (source[i] === "}") {
-			depth--;
-			if (depth === 0) {
-				close = i;
-				break;
-			}
-		}
-	}
+	const close = matchingBrace(source, packagesAt);
+	if (close === -1) return new Map();
 
 	const body = source.slice(open + 1, close);
 	const entries = new Map<string, string>();
@@ -285,18 +297,8 @@ export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALO
 		// `strategy` and `source` are policy, and a presence-only check cannot tell
 		// a changed policy from an intact one.
 		const valueOpen = body.indexOf("{", match.index);
-		let depth = 0;
-		let valueClose = valueOpen;
-		for (let i = valueOpen; i < body.length; i++) {
-			if (body[i] === "{") depth++;
-			else if (body[i] === "}") {
-				depth--;
-				if (depth === 0) {
-					valueClose = i;
-					break;
-				}
-			}
-		}
+		const valueClose = matchingBrace(body, match.index);
+		if (valueClose === -1) continue;
 		entries.set(name, body.slice(valueOpen, valueClose + 1));
 	}
 	return entries;
@@ -466,7 +468,8 @@ function applyRipples(root: string, mismatches: readonly { pkg: string; from: st
 	for (const { pkg, to } of mismatches) {
 		const at = source.indexOf(`"${pkg}": {`);
 		if (at === -1) continue;
-		const close = source.indexOf("}", at);
+		const close = matchingBrace(source, at);
+		if (close === -1) continue;
 		const body = source.slice(at, close);
 		const rewritten = body
 			.replace(/\brange:\s*"[^"]+"/, `range: "${to}"`)

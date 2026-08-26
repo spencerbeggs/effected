@@ -81,7 +81,10 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.buil
 
 **A release does not need a hand-run `catalog:sync` — CI guarantees it.** `.github/workflows/catalog-sync.yml` runs on every PR to `main` **and to `changeset-release/main`**, so opening the release PR is itself the trigger: the job syncs the catalog, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before publishing. The catalog therefore cannot publish out of step with the packages it names.
 
-**That guarantee covers direct bumps; membership and dependency ripples each needed their own answer.** The upgrade CLI walks the catalog literal, so a package absent from it is invisible to the sync and cannot be added by one. `catalog:check` now fails on a membership gap and on a package bumped only as a dependency ripple (which carries no changeset, so the upgrade CLI cannot see it either), and `catalog:sync` refuses before writing, both naming the affected packages — but closing the gap is a hand edit at the `PnpmConfigPlugin(...)` call site, because a new package's first release range is a judgement rather than something derivable from the workspace.
+**That guarantee covers direct bumps; membership and dependency ripples each needed their own answer, and the two resolve oppositely.** The upgrade CLI walks the catalog literal, so a package absent from it is invisible to the sync and cannot be added by one, and a package bumped only as a dependency **ripple** carries no changeset naming it, so the CLI cannot see that either. `catalog:check` now fails on both, naming the affected packages. From there they part company:
+
+- **A membership gap is yours to close by hand**, at the `PnpmConfigPlugin(...)` call site — `catalog:sync` refuses before writing rather than guessing, because a new package's first release range is a judgement rather than something derivable from the workspace.
+- **A ripple gap closes itself.** `catalog:sync` reads the real release plan from `changeset status --output` and rewrites the affected entries, flooring each peer patch per `lock-minor`. Do not hand-edit one — the next sync overwrites it.
 
 Two properties of that job surprise readers, and neither is a bug:
 

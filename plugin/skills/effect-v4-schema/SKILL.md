@@ -391,7 +391,25 @@ Schema.decodeUnknownSync(Schema.String.pipe(Schema.decodeTo(Schema.instanceOf(It
 // true — same reference, and still true nested in Schema.Array and Schema.Struct
 ```
 
-Two riders, both learned the hard way in that package:
+**The target you switch to validates less.** `Schema.instanceOf(C)` is an
+`instanceof` check and nothing more — it does not apply `C`'s field schemas or
+its checks, so whatever the transform returns passes straight through. Moving
+the target from `C` to `Schema.instanceOf(C)` to keep identity therefore also
+removes the field validation the class target was performing, and the
+transform has to carry it instead:
+
+```ts
+const invalid = Object.assign(Item.make({ url: "ok" }), { url: 1 })
+Schema.decodeUnknownSync(Schema.instanceOf(Item))(invalid)  // accepted, url === 1
+Schema.decodeUnknownSync(Item)(invalid)                     // rejected
+```
+
+Construct with `C.make` inside the transform, and validate any input the
+constructor does not — `@effected/package-json`'s `Person.schema` decodes the
+raw object through a separate `PersonFields` struct first, precisely so the
+issue tree stays identical to what a direct class decode produced.
+
+Two more riders, both learned the hard way in that package:
 
 - **Key the map on the element, never on a container.** `Schema.Array` rebuilds
   the array itself, so an array-keyed `WeakMap` is empty by the time `encode`
