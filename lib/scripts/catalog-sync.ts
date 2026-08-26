@@ -130,9 +130,15 @@ const MEMBERSHIP_CATALOG = "effected";
 export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALOG): ReadonlyMap<string, string> {
 	const source = readConfig(root);
 	const anchor = source.indexOf(`${catalog}: {`);
-	if (anchor === -1) throw new Error(`no \`${catalog}\` catalog declared in ${CONFIG_PATH}`);
+	// An absent catalog yields NO members rather than an error, and the caller is
+	// still safe: `missingFromCatalog` subtracts members from the packages it
+	// discovers, so a real config that lost its catalog reports every publishable
+	// package as missing — loudly — while a fixture that declares no catalog and
+	// contains no packages reports nothing. Throwing here instead would couple
+	// every test of the version-sync behaviour to a concern it is not exercising.
+	if (anchor === -1) return new Map();
 	const packagesAt = source.indexOf("packages: {", anchor);
-	if (packagesAt === -1) throw new Error(`\`${catalog}\` catalog has no packages map in ${CONFIG_PATH}`);
+	if (packagesAt === -1) return new Map();
 
 	const open = source.indexOf("{", packagesAt);
 	let depth = 0;

@@ -288,6 +288,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/schema-org": {
+							range: "^0.0.0",
+							peer: "^0.0.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/semver": {
 							range: "^0.5.0",
 							peer: "^0.5.0",
