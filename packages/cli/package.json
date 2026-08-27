@@ -34,7 +34,7 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@effected/config-file": "workspace:*",
-		"@savvy-web/bundler": "^2.1.28",
+		"@savvy-web/bundler": "^2.1.29",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
