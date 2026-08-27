@@ -151,7 +151,9 @@ const main = () => {
 	const { command, flags } = parseArgs(process.argv.slice(2));
 	const packagesDir = resolve(String(flags.get("packages") ?? join(repoRoot, "packages")));
 	const annotationsPath = resolve(
-		String(flags.get("annotations") ?? join(repoRoot, "plugins", "claude-code", "scripts", "construct-annotations.json")),
+		String(
+			flags.get("annotations") ?? join(repoRoot, "plugins", "claude-code", "scripts", "construct-annotations.json"),
+		),
 	);
 	const packages = listPackages(packagesDir);
 
@@ -215,7 +217,9 @@ const main = () => {
 			}
 			if (unannotated > 0) {
 				console.error(`\n${unannotated} value-kind constructs lack an intent annotation.`);
-				console.error("Author them in plugins/claude-code/scripts/construct-annotations.json (see .claude/skills/constructs).");
+				console.error(
+					"Author them in plugins/claude-code/scripts/construct-annotations.json (see .claude/skills/constructs).",
+				);
 				failed = true;
 			}
 		}
@@ -228,7 +232,10 @@ const main = () => {
 	}
 
 	const outDir = resolve(
-		String(flags.get("out") ?? join(repoRoot, "plugins", "claude-code", "skills", "effected-packages", "references", "constructs")),
+		String(
+			flags.get("out") ??
+				join(repoRoot, "plugins", "claude-code", "skills", "effected-packages", "references", "constructs"),
+		),
 	);
 	mkdirSync(outDir, { recursive: true });
 	for (const pkg of packages) {
