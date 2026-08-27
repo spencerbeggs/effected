@@ -1,17 +1,17 @@
 ---
 name: improve
-description: Use when maintaining the "effective" plugin's skills in plugin/skills/ — harvesting falsified skill claims from a finished migration into GitHub tickets, or draining those tickets by verifying each claim against the vendored Effect v4 source and amending the skill. Enforces the evidence ladder (docs settle renames, source settles existence, only a probe settles semantics) and the probe preconditions that make a probe non-vacuous.
+description: Use when maintaining the "effective" plugin's skills in plugins/claude-code/skills/ — harvesting falsified skill claims from a finished migration into GitHub tickets, or draining those tickets by verifying each claim against the vendored Effect v4 source and amending the skill. Enforces the evidence ladder (docs settle renames, source settles existence, only a probe settles semantics) and the probe preconditions that make a probe non-vacuous.
 ---
 
 # Improving the plugin's skills
 
-This skill maintains `${CLAUDE_PROJECT_DIR}/plugin/skills/`. It is a **project-level** skill and lives outside the plugin on purpose: the plugin carries no machinery for grading itself, and this skill is free to assume the layout of this repo — most importantly the vendored source at `${CLAUDE_PROJECT_DIR}/.repos/effect`, which a published plugin could never rely on.
+This skill maintains `${CLAUDE_PROJECT_DIR}/plugins/claude-code/skills/`. It is a **project-level** skill and lives outside the plugin on purpose: the plugin carries no machinery for grading itself, and this skill is free to assume the layout of this repo — most importantly the vendored source at `${CLAUDE_PROJECT_DIR}/.repos/effect`, which a published plugin could never rely on.
 
 It has two modes. **Harvest** turns a finished migration into tickets. **Tune** turns tickets into skill edits. Together they close the loop the plugin's ethos already implies: migrations falsify skill claims, and something has to carry the falsifications back.
 
 ## The problem this exists to solve
 
-Every skill in `${CLAUDE_PROJECT_DIR}/plugin/skills/` was written from Effect's own documentation. Every serious error found in those skills was a place where the documentation was *right* and the skill's inference from it was wrong — or where the documentation was silent and v3 memory filled the gap.
+Every skill in `${CLAUDE_PROJECT_DIR}/plugins/claude-code/skills/` was written from Effect's own documentation. Every serious error found in those skills was a place where the documentation was *right* and the skill's inference from it was wrong — or where the documentation was silent and v3 memory filled the gap.
 
 Re-reading the docs harder cannot find those errors. That is the whole reason for the ladder below.
 
@@ -91,7 +91,7 @@ Run against open skill tickets.
 
 1. List them: `gh issue list --repo spencerbeggs/effected --state open`. Skill tickets are titled `<skill-name>: …`.
 2. For each ticket, classify the claim — rename, existence, or semantics — and climb to exactly that rung. No further, no less.
-3. Amend the skill in `plugin/skills/<name>/SKILL.md`. State the corrected fact **and the trap it replaces**, so a future reader recognises the error rather than re-deriving it.
+3. Amend the skill in `plugins/claude-code/skills/<name>/SKILL.md`. State the corrected fact **and the trap it replaces**, so a future reader recognises the error rather than re-deriving it.
 4. Close the ticket citing the evidence. Rung 2 cites a file and line under `.repos/effect`. Rung 3 pastes the probe and its output, including the resolved version line.
 5. Reload plugins so the edit takes effect in-session.
 
@@ -102,7 +102,7 @@ Stop if you catch yourself doing any of these. Each has happened.
 - **Editing a skill to match a doc passage** when the claim is about runtime behaviour. That is the original error, repeated.
 - **"Fixing" something already correct.** During the `config-file` cycle two agents nearly re-exported a deliberately-deleted internal symbol onto the public API because they trusted a stale reference over the current tree. Read the current code before you believe a ticket.
 - **Widening a suppression to make a gate green.** The `_base` suppression in each `savvy.build.ts` is narrow and four packages depend on it staying narrow.
-- **Spreading `.repos/effect` across the plugin.** While the plugin is dogfooded from this repo alone, its agents and skills *may* assume the vendored tree — but exactly one file names the path: `${CLAUDE_PROJECT_DIR}/plugin/skills/effect-v4-source-lookup/SKILL.md`. Everything else consults that skill. If you find a second hardcoded reference, collapse it. See [pre-publish debt](#pre-publish-debt).
+- **Spreading `.repos/effect` across the plugin.** While the plugin is dogfooded from this repo alone, its agents and skills *may* assume the vendored tree — but exactly one file names the path: `${CLAUDE_PROJECT_DIR}/plugins/claude-code/skills/effect-v4-source-lookup/SKILL.md`. Everything else consults that skill. If you find a second hardcoded reference, collapse it. See [pre-publish debt](#pre-publish-debt).
 - **Trusting a green build you did not run correctly.** `node savvy.build.ts --target prod` run directly skips `build:dev`, produces no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. Build with `pnpm build --filter <pkg>` from the repo root.
 - **Pointing a *writing* tool at the vendored tree.** `${CLAUDE_PROJECT_DIR}/.repos/effect` is read-only reference. On 2026-07-09, running `markdownlint-cli2` against it — merely to *check* whether it was excluded — silently rewrote 19 files, among them `migration/services.md` and `migration/forking.md`, because the repo's markdownlint config sets `"fix": true`. A corrupted rung-1 source is undetectable by reading it. If you must confirm the tree is untouched, `savvy repos status` (or the `repos_inspect` MCP tool) reports per-repo dirtiness. The fs and Bash guards now deny writes into `.repos/**` outright, but the status check remains the way to *verify*.
 
@@ -121,17 +121,17 @@ The plugin is currently loaded only from this repo (`claude --plugin-dir plugin`
 
 Two invariants remain this skill's to keep:
 
-1. Keep the path in one file. Re-verify each agent (`${CLAUDE_PROJECT_DIR}/plugin/agents/*.md`) names the ladder but not the directory:
+1. Keep the path in one file. Re-verify each agent (`${CLAUDE_PROJECT_DIR}/plugins/claude-code/agents/*.md`) names the ladder but not the directory:
 
    ```bash
-   test "$(grep -rl '\.repos/effect' plugin/ | wc -l)" -eq 1
+   test "$(grep -rl '\.repos/effect' plugins/claude-code/ | wc -l)" -eq 1
    ```
 
 2. **Never trade the loud failure for a quiet fallback.** Every step of the ladder resolves to a version-exact source tree or does not resolve; no step resolves to recollection. Silent degradation to v3 memory is the precise failure the plugin exists to prevent, and it is indistinguishable from success.
 
 ## Where things are
 
-- Skills under maintenance: `plugin/skills/*/SKILL.md`
+- Skills under maintenance: `plugins/claude-code/skills/*/SKILL.md`
 - Migration ledger and retractions: `.superpowers/sdd/progress.md`
 - Vendored v4 source, pinned to the `effect` catalog tag: `.repos/effect`, a git submodule managed by the silk repos tooling (see `.claude/design/effected/architecture.md`)
 - Migration notes (rung 1): `.repos/effect/migration/*.md`

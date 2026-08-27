@@ -6,11 +6,18 @@
 		"@savvy-web/changelog",
 		{
 			"packages": {
-				"@effected/app": {
-					"additionalScopes": ["plugin/**"],
+				"@effected/claude-code-plugin": {
 					"versionFiles": [
 						{
-							"glob": "plugin/.claude-plugin/plugin.json",
+							"glob": "plugins/claude-code/.claude-plugin/plugin.json",
+							"paths": ["$.version"]
+						}
+					]
+				},
+				"@effected/copilot-plugin": {
+					"versionFiles": [
+						{
+							"glob": "plugins/copilot/plugin.json",
 							"paths": ["$.version"]
 						}
 					]

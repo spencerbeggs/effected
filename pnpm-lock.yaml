@@ -965,6 +965,10 @@ importers:
         version: 7.0.2
     publishDirectory: dist/dev/pkg
 
+  plugins/claude-code: {}
+
+  plugins/copilot: {}
+
   scratchpad:
     dependencies:
       '@effected/app':

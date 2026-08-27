@@ -1,0 +1,6 @@
+{
+	"name": "@effected/claude-code-plugin",
+	"version": "0.13.1",
+	"private": true,
+	"description": "This package does not publish to npm. It just exists to provide changeset versioning for the Claude Code plugin."
+}

@@ -22,7 +22,7 @@ The foundational design docs live in `.claude/design/effected/` (config: `.claud
 - Catalog sync → `@./.claude/design/effected/catalog-sync.md` — Load when: touching the published `effected` catalog literal, the `catalog:sync` / `catalog:check` scripts, or `.github/workflows/catalog-sync.yml`.
 - Formatter convention → `@./.claude/design/effected/formatter-convention.md` — Load when: designing a formatting or parsing entry point, or reasoning about a formatter's fidelity guarantee.
 - Sync primitive policy → `@./.claude/design/effected/sync-primitive-policy.md` — Load when: designing a pure boundary's surface shape, or deciding whether to expose a sync `Result` primitive alongside an `Effect` form.
-- Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugin/` on the "effected" Claude Code plugin.
+- Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugins/` on the "effected" Claude Code plugin or its experimental Copilot port.
 - GitHub Action canon → `@./.claude/design/effected/github-action-canon.md` — Load when: building or reviewing a GitHub Action repository on the kit, or editing the Actions skill suite that teaches it.
 - Scratchpad → `@./.claude/design/effected/scratchpad.md` — Load when: changing the scratchpad workspace's committed shell or its ghost-workspace exclusions.
 
@@ -48,12 +48,12 @@ The kit is **31 publishable packages**: 30 libraries plus the `pnpm-plugin-effec
 ## Repository Layout
 
 - `packages/` — the workspace packages.
-- `plugin/` — "effected", a Claude Code plugin (skills and specialist agents), in development.
+- `plugins/` — two agent plugins: `claude-code/` ("effected", skills and specialist agents) and the experimental `copilot/` port. Each has a private tracking package — `@effected/claude-code-plugin`, `@effected/copilot-plugin` — that versions and tags it but **never publishes to npm**; a plugin release is a git tag plus a GitHub release. Read `plugins/CLAUDE.md` before working there.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
 - `scratchpad/` — private agent-probe workspace: every kit package at `workspace:*`, three runners, never published, invisible to CI. Read `scratchpad/CLAUDE.md` before working there.
 - `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. Sibling submodules vendor spec inputs for specific packages (the CommonMark/mdast set). **Never write to anything under `.repos/`** — silk's PreToolUse guards deny it. Detail → `@./CLAUDE.vendored-effect.md`.
 - **A generator's data input is a committed file, not a submodule.** `@effected/spdx` and `@effected/schema-org` each read one published document from their own `lib/data/`. Vendoring those as submodules cost every clone and every CI checkout the upstream repos' full history — 1.86 GB and 254 MB — to reach 332 KB and 1.5 MB of JSON, and roughly tripled CI checkout time. Submodule a source repo when the package needs to *read the repo*; commit the file when it needs one file.
-- `.claude/skills/improve` — project-level skill that maintains `plugin/skills/`.
+- `.claude/skills/improve` — project-level skill that maintains `plugins/claude-code/skills/`.
 
 ### Package context files
 
