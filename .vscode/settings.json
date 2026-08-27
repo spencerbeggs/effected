@@ -1,27 +1,4 @@
 {
-	"[github-actions-workflow]": {
-		"editor.defaultFormatter": "redhat.vscode-yaml"
-	},
-	"[markdown]": {
-		"editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
-	},
-	"[md]": {
-		"editor.defaultFormatter": "DavidAnson.vscode-markdownlint",
-		"editor.formatOnPaste": true,
-		"editor.formatOnSave": true
-	},
-	"[yaml]": {
-		"editor.defaultFormatter": "redhat.vscode-yaml"
-	},
-	"biome.enabled": true,
-	"biome.requireConfiguration": true,
-	"editor.codeActionsOnSave": {
-		"source.fixAll.biome": "explicit",
-		"source.fixAll.markdownlint": "explicit",
-		"source.fixAll.ts": "explicit",
-		"source.organizeImports.biome": "explicit"
-	},
-	"eslint.enable": false,
 	"files.exclude": {
 		"**/.coverage": true,
 		"**/.rslib": true,
@@ -31,26 +8,6 @@
 		"**/dist": false,
 		"**/node_modules": false
 	},
-	"formattingToggle.affects": [
-		"editor.formatOnSave",
-		"editor.formatOnPaste",
-		"editor.formatOnType",
-		"editor.codeActionsOnSave"
-	],
-	"formattingToggle.statusBarText": {
-		"formattingDisabled": "Formatting: $(x)",
-		"formattingEnabled": "Formatting: $(check)"
-	},
-	"json.schemas": [
-		{
-			"fileMatch": ["**/.github/workflows/*.yml", "**/.github/workflows/*.yaml"],
-			"url": "https://json.schemastore.org/github-workflow.json"
-		},
-		{
-			"filesMatch": ["**/.github/actions/**/action.yml", "**/.github/actions/**/action.yaml"],
-			"url": "https://www.schemastore.org/github-action.json"
-		}
-	],
 	"markdown.styles": [".vscode/static/github-markdown.css"],
 	"markdownlint.configFile": "./lib/configs/.markdownlint-cli2.jsonc",
 	"search.exclude": {
@@ -64,6 +21,5 @@
 		"**/dist": true,
 		"**/node_modules": true,
 		"pnpm-lock.yaml": true
-	},
-	"yaml.validate": true
+	}
 }

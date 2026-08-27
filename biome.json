@@ -3,9 +3,6 @@
 	"extends": ["@savvy-web/silk/biome"],
 	"overrides": [
 		{
-			// savvy.build.ts scripts resolve @savvy-web/bundler from the workspace
-			// root via Node's upward walk (see CLAUDE.md, Build Pipeline) — the
-			// dependency is deliberately not declared in package manifests.
 			"includes": ["**/savvy.build.ts"],
 			"linter": {
 				"rules": {
