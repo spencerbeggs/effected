@@ -50,8 +50,10 @@ Everything published is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. Rele
 
 - `packages/*` — one directory per `@effected` library; see [package-setup.md](package-setup.md) for how a package is scaffolded.
 - `packages/pnpm-plugin-effect` — the kit's [companion](effect-standards.md#companion-packages-published-but-not-a-library) (pnpm catalog/config plugin): published with the kit and installable by consumers, but not a library, so it carries no tier.
-- `plugin/` — the "effected" Claude Code plugin; see [plugin.md](plugin.md).
-- `.claude/skills/improve` — the project-level self-improvement skill that maintains `plugin/skills/`; see [plugin.md](plugin.md).
+- `plugins/` — the repo's two agent plugins, each a workspace member with a private tracking package that versions it but never publishes to npm; see [plugin.md](plugin.md).
+  - `plugins/claude-code/` — the "effected" Claude Code plugin, and the source of truth for all skill and agent content.
+  - `plugins/copilot/` — an experimental GitHub Copilot plugin, currently a stub, ported downstream from the Claude Code tree.
+- `.claude/skills/improve` — the project-level self-improvement skill that maintains `plugins/claude-code/skills/`; see [plugin.md](plugin.md).
 - `.repos/` — read-only vendored sources as sparse git submodules, `.repos/effect` chief among them; see [Vendored source](#vendored-source).
 - `website/` — RSPress docs site with per-package api-extractor models under `website/lib/models/`.
 - `scratchpad/` — a private agent-probe workspace member, never published and invisible to CI; see [scratchpad.md](scratchpad.md).
