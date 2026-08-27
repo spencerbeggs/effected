@@ -2,35 +2,13 @@
 	"[github-actions-workflow]": {
 		"editor.defaultFormatter": "redhat.vscode-yaml"
 	},
-	"[javascript]": {
-		"editor.defaultFormatter": "biomejs.biome"
-	},
-	"[json]": {
-		"editor.defaultFormatter": "biomejs.biome"
-	},
-	"[jsonc]": {
-		"editor.defaultFormatter": "biomejs.biome"
-	},
 	"[markdown]": {
-		"editor.defaultFormatter": "DavidAnson.vscode-markdownlint",
-		"editor.formatOnPaste": true,
-		"editor.formatOnSave": true
+		"editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
 	},
 	"[md]": {
 		"editor.defaultFormatter": "DavidAnson.vscode-markdownlint",
 		"editor.formatOnPaste": true,
 		"editor.formatOnSave": true
-	},
-	"[mdx]": {
-		"editor.defaultFormatter": "unifiedjs.vscode-mdx",
-		"editor.formatOnPaste": true,
-		"editor.formatOnSave": true
-	},
-	"[toml]": {
-		"editor.defaultFormatter": "tombi-toml.tombi"
-	},
-	"[typescript]": {
-		"editor.defaultFormatter": "biomejs.biome"
 	},
 	"[yaml]": {
 		"editor.defaultFormatter": "redhat.vscode-yaml"
@@ -43,14 +21,11 @@
 		"source.fixAll.ts": "explicit",
 		"source.organizeImports.biome": "explicit"
 	},
-	"editor.defaultFormatter": "biomejs.biome",
 	"eslint.enable": false,
-	"explorer.sortOrder": "foldersNestsFiles",
-	"explorer.sortOrderLexicographicOptions": "unicode",
 	"files.exclude": {
 		"**/.coverage": true,
 		"**/.rslib": true,
-		"**/.turbo": true,
+		"**/.turbo": false,
 		"**/.vitest": true,
 		"**/*.tsbuildinfo": true,
 		"**/dist": false,
@@ -66,56 +41,29 @@
 		"formattingDisabled": "Formatting: $(x)",
 		"formattingEnabled": "Formatting: $(check)"
 	},
-	"geminicodeassist.enable": false,
-	"github-actions.workflows.pinned.refresh.enabled": true,
-	// GitHub Actions IDE configuration
-	"github-actions.workflows.pinned.workflows": [".github/workflows/validate.yml", ".github/workflows/claude.yml"],
-	"gitlens.gitkraken.cli.integration.enabled": true,
-	"gitlens.statusBar.pullRequests.enabled": true,
-	"js/ts.experimental.useTsgo": true,
-	"js/ts.implicitProjectConfig.target": "ES2023",
-	"js/ts.tsdk.promptToUseWorkspaceVersion": true,
 	"json.schemas": [
 		{
-			"fileMatch": ["**/_meta.json"],
-			"url": "./website/node_modules/@rspress/core/meta-json-schema.json"
+			"fileMatch": ["**/.github/workflows/*.yml", "**/.github/workflows/*.yaml"],
+			"url": "https://json.schemastore.org/github-workflow.json"
 		},
 		{
-			"fileMatch": ["**/_nav.json"],
-			"url": "./website/node_modules/@rspress/core/nav-json-schema.json"
-		},
-		{
-			"fileMatch": [".claude/design/design.config.json"],
-			"url": ".claude/skills/design-config/json-schemas/current.json"
+			"filesMatch": ["**/.github/actions/**/action.yml", "**/.github/actions/**/action.yaml"],
+			"url": "https://www.schemastore.org/github-action.json"
 		}
 	],
-	"markdown-preview-github-styles.colorTheme": "light",
-	"markdown-preview-github-styles.lightTheme": "light",
 	"markdown.styles": [".vscode/static/github-markdown.css"],
 	"markdownlint.configFile": "./lib/configs/.markdownlint-cli2.jsonc",
-	"prettier.enable": false,
 	"search.exclude": {
-		"**/.claude/design": true,
-		"**/.claude/plans": true,
 		"**/.coverage": true,
 		"**/.repos": true,
 		"**/.rslib": true,
 		"**/.turbo": true,
 		"**/.vitest": true,
 		"**/*.tsbuildinfo": true,
+		"**/CHANGELOG.md": true,
 		"**/dist": true,
 		"**/node_modules": true,
 		"pnpm-lock.yaml": true
-	},
-	"turbo.useLocalTurbo": true,
-	"vitest.disableWorkspaceWarning": true,
-	"yaml.completion": true,
-	"yaml.hover": true,
-	"yaml.schemaStore.enable": true,
-	// YAML schema and validation
-	"yaml.schemas": {
-		"https://json.schemastore.org/github-workflow.json": [".github/workflows/*.yml", ".github/workflows/*.yaml"],
-		"https://json.schemastore.org/pnpm-workspace.json": ["pnpm-workspace.yaml"]
 	},
 	"yaml.validate": true
 }
