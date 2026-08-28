@@ -1,5 +1,19 @@
 # @effected/jsonc
 
+## 0.8.1
+
+### Performance
+
+- Reduced string-token scan cost for escape-heavy JSONC by accumulating decoded segments and joining once, instead of repeatedly concatenating in the scanner loop.
+
+- Output, public API, and JSONC compatibility behavior are unchanged; this only changes how token text is assembled internally. [#560][#560]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#560]: https://github.com/spencerbeggs/effected/pull/560
+
 ## 0.8.0
 
 ### Features
