@@ -100,57 +100,69 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 	};
 
 	const scanString = (): string => {
-		let result = "";
+		const chunks: Array<string> = [];
+		const finish = (end: number): string => {
+			const tail = text.substring(start, end);
+			if (chunks.length === 0) {
+				return tail;
+			}
+			if (tail.length > 0) {
+				chunks.push(tail);
+			}
+			return chunks.join("");
+		};
 		pos++; // skip opening quote
 		let start = pos;
 		while (pos < len) {
 			const ch = text.charCodeAt(pos);
 			if (ch === 0x22) {
 				// closing quote
-				result += text.substring(start, pos);
+				const value = finish(pos);
 				pos++;
-				return result;
+				return value;
 			}
 			if (ch === 0x5c) {
 				// backslash
-				result += text.substring(start, pos);
+				if (start < pos) {
+					chunks.push(text.substring(start, pos));
+				}
 				pos++;
 				if (pos >= len) {
 					tokenError = "UnexpectedEndOfString";
-					return result;
+					return finish(pos);
 				}
 				const escaped = text.charCodeAt(pos);
 				pos++;
 				switch (escaped) {
 					case 0x22: // "
-						result += '"';
+						chunks.push('"');
 						break;
 					case 0x5c: // \
-						result += "\\";
+						chunks.push("\\");
 						break;
 					case 0x2f: // /
-						result += "/";
+						chunks.push("/");
 						break;
 					case 0x62: // b
-						result += "\b";
+						chunks.push("\b");
 						break;
 					case 0x66: // f
-						result += "\f";
+						chunks.push("\f");
 						break;
 					case 0x6e: // n
-						result += "\n";
+						chunks.push("\n");
 						break;
 					case 0x72: // r
-						result += "\r";
+						chunks.push("\r");
 						break;
 					case 0x74: // t
-						result += "\t";
+						chunks.push("\t");
 						break;
 					case 0x75: {
 						// u
 						const value = scanHexDigits(4);
 						if (value >= 0) {
-							result += String.fromCharCode(value);
+							chunks.push(String.fromCharCode(value));
 						} else {
 							tokenError = "InvalidUnicode";
 						}
@@ -163,7 +175,7 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 				start = pos;
 			} else if (isLineBreak(ch)) {
 				tokenError = "UnexpectedEndOfString";
-				return result + text.substring(start, pos);
+				return finish(pos);
 			} else if (ch <= 0x1f) {
 				// Unescaped C0 control characters are invalid inside strings (JSON
 				// grammar); keep scanning so the token stays intact for recovery.
@@ -174,7 +186,7 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 			}
 		}
 		tokenError = "UnexpectedEndOfString";
-		return result + text.substring(start, pos);
+		return finish(pos);
 	};
 
 	const scanNumber = (): string => {
