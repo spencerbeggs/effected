@@ -1,0 +1,280 @@
+---
+name: effect-v4-house-style
+description: >-
+  The house style for Effect v4 library code — module layout, naming, typed-error taxonomy,
+  API-surface and TSDoc habits, layer conventions, test organization, and observability posture.
+  Use when writing or reviewing any Effect v4 module and deciding how to lay out files, name
+  things, shape errors, document exports, wire layers, or organize tests — or when asked why this
+  codebase "looks the way it does". Distilled from the @effected kit with the DX-north-star
+  package (semver), a parser engine (toml), a boundary package (config-file) and the app plane
+  (app) as the evidence base. Cross-cutting rules only; Schema depth lives in effect-v4-schema,
+  hardening in hardening-a-parser-port.
+---
+
+# Effect v4 house style
+
+The rules that make the code read as one hand's work. Each rule is stated
+once here (or linked to the skill that owns it); when writing new code, match
+these before inventing a local convention.
+
+## Module layout
+
+- **One PascalCase file per public concept; the file name IS the API name.**
+  `SemVer.ts` exports `SemVer`. No generic suffixes (`SemVerParserLive.ts`),
+  no one-class error files — an error class rides in the file of the concept
+  that raises it.
+- **`src/index.ts` is the ONLY re-exporting module.** Flat named re-exports,
+  types marked explicitly (per-line `export type { X }` or inline
+  `export { type X, Y }` — both occur in the kit), no `export *`. Every other module
+  imports explicitly from the defining module. A barrel anywhere else — or a
+  namespace object collecting cross-module implementations — is forbidden:
+  a namespace object that gathers implementations pulling different engines
+  kills tree-shaking silently (measured in this kit: 506 bytes vs 129.4 kB).
+- **Grouped statics are the sanctioned exception, and their form is a static
+  class**: same-module variants of one concept ship as
+  `export class X { private constructor() {} static readonly a = a; … }`,
+  never as an `as const` object — an `as const` object's member types are
+  inferred in the built `.d.ts`, which silently drops every member's TSDoc
+  (kit-wide conversion, 2026-07-25: 19 containers across 11 packages). The
+  line is *same module, one concept* — never cross-module, never
+  one-per-engine. The only legitimate `as const` holdouts are name
+  collisions: a class cannot merge with a same-named type alias
+  (`SpdxExpression`, `EncryptedCodecKey`) or a generic interface without a
+  default type parameter (`MergeStrategy`); a same-named *data* interface
+  merges fine (`ResolvedTsconfig`).
+- **`src/internal/` holds the engine; `index.ts` never exports from it.**
+  Composition-only packages own no `internal/` at all — "no engine, only
+  composition" is a legitimate shape.
+- **The cycle firewall**: the internal engine throws/returns raw untyped
+  carriers (`{ code, message, offset, length }` records, plain `Error`
+  subclasses); the facade catches, triages with ordered `isX` guards, and
+  materializes the public Schema classes. The dependency edge runs facade →
+  engine only. Sanctioned exception: the engine may import leaf value
+  classes with no outward edges (a `TomlNode` that imports only `effect`).
+- **File splits can be load-bearing for bundles, not just readability**: two
+  sibling modules that must not drag each other's dependencies (config vs
+  SQLite) simply never import each other — document that the split is
+  deliberate.
+
+## Naming
+
+- **No floating functions.** Instance methods are canonical; cross-cutting
+  operations are `Function.dual` statics on the owning class that mirror the
+  instance method's exact name (`SemVer.gt` wraps `self.gt(that)`).
+- **`Schema.Class` member placement — one rule.** Anything that **produces or
+  classifies** a value is a `static`: constructors and parsers (`parse` /
+  `parseResult` — `make` is reserved, see `effect-v4-schema`), decoders,
+  combinators over the type, and stateless taxonomy/predicates on raw inputs.
+  Anything that **operates on an already-decoded instance** is an instance
+  method. Worked precedents in the kit: `Manifest` (static `schema`/`decode`,
+  instance `resolve()`/`toRecord()`) and `ReleaseAgeGate` (static
+  `combine`/`matchesExclude`, instance `isExcluded`/`filterVersions`). Note
+  `matchesExclude` appears in both shapes deliberately — the static takes the
+  patterns as an argument, the instance method reads `this.exclude`; when both
+  are useful, the instance method delegates to the static rather than
+  duplicating it. Two implementation agents each had to infer this rule by
+  reading `Manifest`, which is why it is written down here.
+- **Service shape interfaces are `<Concept>Shape`** (`VersionCacheShape`,
+  `ConfigFileShape<A>`). **Options records are `<Concept>Options`**, all
+  fields `readonly`, non-obvious defaults documented per field.
+- **Errors are `<Concept><FailureNoun>Error`** — never `Exception`, never
+  `Failure`. Structured code fields get a parallel `<Concept><Stage>ErrorCode`
+  literal-union schema.
+- **Per-operation failure unions are type-only aliases named
+  `<Operation>Error`** (`ConfigLoadError = A | B | C`), each with TSDoc
+  stating exactly what is excluded and why. A type-only union costs nothing
+  and is not a namespace object.
+- **String codecs are class statics named `FromString`**, explicitly typed
+  `Schema.Codec<Self, string>` (the annotation breaks circular inference).
+- Static-namespace facades: `class X { private constructor() {} }` with
+  `static readonly` members, for schema/parse AND layer-factory facades
+  alike — the `as const` object form was retired kit-wide (member TSDoc does
+  not survive into the built `.d.ts`; see the grouped-statics rule above for
+  the collision-blocked holdouts). Do not invent a third shape.
+
+## Typed error taxonomy
+
+- **Never a free-form `reason: string` field.** The token appears in TSDoc
+  `@remarks` only as the v3 anti-pattern being fixed. A `reason` field typed
+  as a `Schema.Literals` union (glob, lockfiles, tsconfig-json do this) is
+  fine — the rule bans free-form strings, not the field name; new code should
+  still prefer the `<Concept><Stage>ErrorCode` naming below. Structured
+  diagnostics carry a positional core:
+  `code` (literal union), `message`, `offset`/`length`, `line`/`character` —
+  the same shape across every format package, deliberately.
+- **Foreign failures ride in `cause: Schema.Defect()`**, never stringified —
+  the original `Error` instance survives to the consumer. Schema issues ride
+  in `issue: Schema.Defect()` (v4 exposes no `Schema` for `Issue`; say so in
+  the remarks). Normalize `SchemaError` to a domain error at the boundary
+  with `Effect.catchTag("SchemaError", ...)`.
+- **`message` is always a getter derived from structured fields at read
+  time** — never a stored, preformatted string.
+- **Failure vs defect, the house line**: malformed *input* fails through the
+  typed error channel, always (see `hardening-a-parser-port`); bad *wiring*
+  (an invalid namespace at layer construction, a NaN depth cap) dies as a
+  defect, deliberately, and gets a regression test asserting it dies. A
+  recoverable environmental failure (missing directory) must surface typed
+  even when the underlying platform API would defect — never `orDie` it away.
+- **Caller-supplied callbacks**: decide absorb-vs-defect by one rule — does
+  the callback's RESULT participate in the operation's outcome? A migration
+  `up` or a `validate` (yes) stays a defect on throw — a contract violation;
+  a fire-and-forget event hook (no — `Effect<void>`, discarded) is absorbed
+  and `logDebug`'d. Wrap callback invocation in `Effect.suspend` so a throw
+  during construction dies the same way as one during execution.
+- **Decorators widen, never flatten**: a wrapper over a codec/service is
+  generic in the inner error and returns `Inner<E | NewError>` — the inner
+  error type survives in the union.
+- **A parse failure carries an ARRAY of diagnostics** even when only one is
+  populated today — the array is the cross-package contract.
+
+## Sum types: a domain-named discriminant on `Schema.Class` variants
+
+The kit's model for a sum type — production-proven by
+`@effected/github-actions`' `InstalledPackageManager` and named "the model"
+by its first consumer — is two (or more) `Schema.Class` variants carrying
+`Schema.tag` on a **domain-named** discriminant (`source`, not `_tag`),
+unioned via `Schema.Union`. Narrowing needs no ceremony
+(`x.source === "tool-cache"` narrows), `Schema.tag` auto-fills the
+discriminant in `make` so a double cannot mint a mismatched variant, and an
+impossible state becomes unrepresentable rather than guarded (the consumer
+deleted an `Effect.die` guard and its test on adoption). Prefer this over
+one class with `optionalKey` fields plus a prose invariant.
+
+Two adoption traps, both hit live and both documented on the worked
+precedent's union TSDoc (`PackageManagerInstaller.ts`): the union's
+inherited `make` typechecks against **both** variants and yields a
+confusing two-branch error — construct the variant classes; and
+`Partial<Variant>` includes the auto-filled tag field, so overrides-style
+doubles want `Partial<Omit<typeof Variant.Type, "source">>`. The
+`Schema.tag` mechanics live in `effect-v4-schema`'s foreign-contracts
+section.
+
+## API surface and TSDoc
+
+- **Every exported symbol carries `@public`; everything in `internal/`
+  carries `@internal`.** The inline class-factory + scoped `_base`
+  suppression idiom that keeps API Extractor at zero warnings is owned by
+  `effect-api-extractor-bases` — a package with no class factories carries
+  no suppression at all.
+- **`@remarks` record WHY, not what** — including naming the v3 anti-pattern
+  the shape replaces ("v3 flattened it to `reason: String(e)`") and the
+  looks-right-but-isn't traps. Signature restatement is noise.
+- **`@example` blocks are runnable and minimal**: pure APIs end with
+  `console.log` and a `// =>` comment showing the literal output; boundary
+  APIs show the layer-composition shape instead.
+- **The bind-to-a-const warning is boilerplate, verbatim, on every
+  factory**: any schema-producing or layer-returning function's TSDoc repeats
+  the house phrase — each call mints fresh derivation/memoization identity;
+  bind the result to a `const` or the resource builds twice. Consistent
+  wording beats novel prose.
+
+### When misuse is SILENT, document the wrong spelling and what it cost
+
+For any API whose wrong call sequence **typechecks, runs, and reports
+success**, ordinary "here is the right way" documentation does not work. The
+reader is not looking anything up — they already believe they know the shape,
+and nothing will contradict them. `GitBranch.upsert`
+(`packages/github/src/GitBranch.ts`) is the worked example, mirrored as a
+"Never" in `packages/github/CLAUDE.md`. Three ingredients, all cheap:
+
+1. **Spell out the wrong sequence literally** — "never `upsert(branch,
+   targetHead)` followed by `commitFiles`". It must match what the reader is
+   *about to write*, not only what they should write instead. Prose describing
+   the correct shape never collides with a plan; the wrong spelling does.
+2. **State what it cost, concretely.** The ~3-second window where the branch
+   equals its base, an open PR with an empty diff, GitHub auto-closing it, a
+   consumer losing its release PR while the run reported success. Severity is
+   what converts "noted" into "stop".
+3. **Name the consumer that hit it.** That is how a reader recognizes their
+   own code in the description.
+
+It works. A port onto the kit read that docstring, recognized the sequence in
+the action it was porting, and flagged it as a decision needing a human ruling
+— finding a live bug instead of faithfully reproducing it. Literal parity
+would have carried the defect forward.
+
+Apply it deliberately to the other ordering-sensitive and upsert-shaped
+surfaces, not just where someone has already been burned. The test for whether
+an API qualifies: **would the wrong call go green?** If yes, the anti-pattern
+belongs in the docstring.
+
+## Services and layers
+
+The mechanics live in `effect-v4-services-layers`; the house habits:
+
+- **A service's layer(s) live in the same file as the service** (`static
+  readonly layer` on the class). Naming: `layer`, `layerTest`, `layerConfig`,
+  `layerSqlite` — never `Default`/`Live`.
+- **`Layer.unwrap(Effect.gen(...))` is the idiom** for a layer that must read
+  an ambient service before constructing its own value.
+- **Composition vocabulary**: `Layer.mergeAll` for independent siblings,
+  `Layer.provideMerge` to satisfy AND expose, `Layer.provide` to satisfy
+  without exposing.
+- **Require core contracts in `R`; never own a platform backend.** No
+  `node:` imports in production `src/` — platform packages appear only as
+  devDependencies for integration tests, and the consumer provides one
+  platform layer at the edge.
+- **Test layers provide their platform internally** (`Layer.provide`, not
+  merge) so `R = never` by construction, not by cast — pin it with a test
+  comment: "if this fixture ever needs a platform import, the layer stopped
+  doing its job."
+- **Ambient identity over parameters**: when two sibling layers must agree
+  on an identity string (a namespace), the second reads it from the ambient
+  service the first established — never a second string parameter that can
+  drift. Pin the absence of the parameter with a regression test.
+
+## Test organization
+
+The false-green catalogue and `@effect/vitest` mechanics live in
+`effect-v4-testing`; the house habits:
+
+- Tests in `__test__/`, never co-located: `*.test.ts` units at the top,
+  `integration/*.int.test.ts`, `e2e/*.e2e.test.ts`. `assert.*` exclusively —
+  `expect` does not appear. `it.effect` is the default mode.
+- **Shared setup is one top-level `layer(...)((it) => {...})` per group** —
+  not `Effect.provide` repeated per test body. Sanctioned deviation: when
+  fixtures genuinely differ per test (different files on disk per case), a
+  `layerFor(...)` helper per test is correct — but say so.
+- **Fakes, not mocks — and fakes deliberately missing methods.** A read-only
+  fake filesystem implements exactly the operations the read path uses, so a
+  test that unexpectedly writes fails loudly. Document each fake's
+  restriction where it is defined.
+- **Shared guard-case fixtures**: one exported case-matrix function
+  (`filenameGuardCases`) consumed by every module with the same option, so a
+  new rejected shape is added once and pins every guard.
+- **Property tests state the invariant as a sentence** ("round-trips
+  decode(encode(v))") over the class schema as the arbitrary; comments cite
+  the review/bug that motivated an exact bound.
+- **Corpus/compliance suites are loop-generated** (one `it.effect` per corpus
+  file, name = relative path) and FIRST assert the corpus walk found the
+  expected counts — a silently-empty walk is a false green.
+- **A differential oracle is one pinned devDependency imported by exactly
+  one test file**, with the tiebreak written down: the spec corpus wins on
+  disagreement.
+- Integration tests assert on real side effects at the joined path, never an
+  echoed option value — and include the "naive composition" control proving
+  the defect the package exists to prevent.
+
+## Observability posture
+
+Details in `effect-v4-observability`; the house numbers:
+
+- **`Effect.fn("Concept.op")` on every fallible public boundary; nothing
+  else.** Pure/total helpers are plain functions; never-failing service
+  methods are plain arrows; internal helpers shared by public spans are NOT
+  wrapped, with a comment stating the caller already opened the span.
+- **Log density is near zero.** The one sanctioned `Effect.log*` shape in a
+  library is `logDebug` recording a deliberately absorbed defect. No
+  metrics in libraries — those belong to boundaries apps own. Libraries stay
+  telemetry-agnostic; apps compose OTel at the edge.
+- A consumer-facing event stream (a domain `PubSub`) is a FEATURE, not the
+  observability channel — keep it separate from spans and say so in TSDoc.
+
+## Related skills
+
+`effect-v4-schema` (Schema depth: Class-vs-Struct, optionality, make-vs-new,
+brands — plus its `references/house-style.md` for Schema-specific house
+patterns), `effect-v4-services-layers` (memoization discipline),
+`effect-v4-testing` (false greens), `effect-api-extractor-bases` (the `_base`
+idiom), `hardening-a-parser-port` (input hardening), `effected-packages`
+(what the kit ships).

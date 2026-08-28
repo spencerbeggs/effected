@@ -1,0 +1,71 @@
+# @effected/store
+
+Durable local state: `Store` is a schema-versioned, migrated SQLite `SqlClient`; `Cache` is a `key → Uint8Array` TTL cache with tags, eviction and an event stream. **Store is your schema — migrations create your tables, `client` queries them.** It is not a key-value store; the KV shape is `Cache` (or core's `KeyValueStore`). Integrated tier: it owns the one real backend dependency in the kit (`@effect/sql-sqlite-node`), and depending on it makes YOUR package integrated too.
+
+## Import
+
+```ts
+import { Cache, Store } from "@effected/store";
+```
+
+Single entrypoint; no subpaths.
+
+**Platform**: nothing to provide for `layerSqlite`/`layerTest` — the SQLite driver (`@effect/sql-sqlite-node`) ships as a regular dependency, which makes those layers Node-only. The abstract `Store.layer`/`Cache.layer` take any `SqlClient` you provide in `R`, so a different driver can be wired at the edge.
+
+## Core API
+
+- **`Store`** (`Context.Service`) — `client: SqlClient` (tagged-template SQL), `migrate`, `rollback(toId)`, `status`. Layers: `Store.layer(options)` (abstract — needs a `SqlClient` in `R`), `Store.layerSqlite(options & { filename })` (batteries included; the parent directory of `filename` must already exist — see Gotchas), `Store.layerTest(options)` (`:memory:`). A `StoreMigration`'s `up`/`down` return `Effect<unknown, SqlError>`.
+- **Sqlite layer options** (`Store.layerSqlite` and `Cache.layerSqlite` alike) — `client` passes the remaining driver options through (`disableWAL`, `busyTimeout`, `prepareCacheSize`/`prepareCacheTTL`, `readonly`, `spanAttributes`; NOT the name-transform options, which would break the internal ledger queries), and `checkpointOnClose: true` registers the `PRAGMA wal_checkpoint(TRUNCATE)` finalizer that runs before the driver closes the connection.
+- **`Cache`** (`Context.Service`) — `get`, `set`, `has`, `entries` (metadata only; never loads BLOBs), `invalidate`/`invalidateByTag`/`invalidateAll`/`prune` (each with an optional transactional `onRemoved` callback), `events: PubSub<CacheEvent>`. Same layer trio: `Cache.layer` / `Cache.layerSqlite` / `Cache.layerTest`.
+- **`Cache.through(key, schema, options?)(onMiss)`** and **`Cache.throughVerbose`** — read-through caching in one call. `get` → decode → run `onMiss` → encode → `set` was ~25 lines every consumer wrote for itself. **Statics, not shape members**: they take `Cache` from context, so `R` includes `Cache` and no test double needs an implementation. `throughVerbose` returns `{ value, hit }` for a caller that wants to print *(cached)* — the `CacheEvent` PubSub is telemetry and the wrong channel for that. Two policies the package owns: **a stored value that fails to decode (or is not valid UTF-8) is a MISS, not a failure**, and is overwritten; **`CacheError` is surfaced, not swallowed** — catch it yourself with `catchTag` if a broken cache should not stop you.
+- **`Uint8ArrayFromUtf8`** — a `Schema.Codec<Uint8Array, string>`. Cache values are bytes, and core's Schema ships only `Uint8ArrayFromBase64` / `…Base64Url` / `…FromHex` — **nothing for UTF-8** — so "encode through a schema" could not be completed and every consumer hand-wired a `TextEncoder`. Encoding fails on malformed UTF-8 rather than substituting `U+FFFD`. Prefer a core equivalent if one ever ships.
+- Errors: `StoreError`, `StoreMigrationError`, `CacheError`; events: `CacheEvent`/`CacheEventPayload`.
+
+## Usage
+
+```ts
+import { Store } from "@effected/store";
+import { Effect } from "effect";
+
+const StoreLive = Store.layerSqlite({
+ filename: "app.db",
+ migrations: [{ id: 1, name: "init", up: (sql) => sql`CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)` }],
+});
+
+const program = Effect.gen(function* () {
+ const store = yield* Store;
+ yield* store.client`INSERT INTO notes (body) VALUES ('hi')`;
+}).pipe(Effect.provide(StoreLive));
+```
+
+Tag-based invalidation with a transactional callback — `onRemoved` runs inside the same delete transaction, before it commits, and only when something was actually removed:
+
+```ts
+import { Cache } from "@effected/store";
+import { Effect } from "effect";
+
+const program = Effect.gen(function* () {
+ const cache = yield* Cache;
+ yield* cache.set({ key: "pkg:effect", value: new TextEncoder().encode("4.0.0-beta.98"), tags: ["registry"] });
+ const { count, keys } = yield* cache.invalidateByTag("registry", (result) =>
+  Effect.log(`evicting ${result.count} entries: ${result.keys.join(", ")}`),
+ );
+ return { count, keys };
+});
+```
+
+## Testing machinery
+
+**`Store.layerTest(options)`** and **`Cache.layerTest(options)`** are exported hermetic `:memory:` layers — use them directly in consumer test suites.
+
+**Testing expiry has an ordering rule**: provide `TestClock.layer()` **outside** the `Effect.provide` that supplies the cache, never beneath it. Underneath, the test body has no `TestClock` in its own context and `TestClock.adjust` **dies as a defect** — so nothing you try to expire ever expires.
+
+## Gotchas
+
+- The layer statics are parameterized factories and layers memoize BY REFERENCE: calling `Store.layerSqlite(...)` at two provide sites opens the database twice (and two Cache PubSubs each see half the events). Bind to a `const` and reuse.
+- `SqliteClient.layer` has no error channel — a `filename` whose parent directory doesn't exist is a defect; ensure the directory first (or let `@effected/app` do it).
+- No defect laundering: a throwing migration or `onRemoved` callback stays a defect, never a typed error.
+- `invalidateByTag` matches JSON-encoded tags with escaped LIKE metacharacters — tags containing backslashes/quotes won't match raw-string comparisons.
+- Eviction is least-recently-WRITTEN (rowid order), not LRU-read.
+- There is no `@effect/sql` package on v4 — `SqlClient`/`SqlError` live in `effect/unstable/sql`.
+- A database previously migrated by `effect/unstable/sql/Migrator` keeps its ledger in `effect_sql_migrations`, which Store does not read — first construction re-runs every migration. Harmless if they are idempotent; otherwise seed `_store_migrations` before the first layer build (exact SQL in the package README's "Adopting a database migrated by effect's Migrator").
