@@ -229,7 +229,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/jsonc": {
-							range: "^0.8.0",
+							range: "^0.8.1",
 							peer: "^0.8.0",
 							strategy: "lock-minor",
 							source: "workspace",
