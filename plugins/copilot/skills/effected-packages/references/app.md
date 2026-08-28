@@ -1,0 +1,59 @@
+# @effected/app
+
+The application control plane: one composition layer wiring XDG-namespaced directories, a migrated SQLite `Store`, a TTL `Cache` and a config file to the same place. A thin composition over `xdg` + `store` + `config-file` with no domain logic of its own. Integrated tier (inherited from `store`).
+
+**The rule: no library or package may depend on `@effected/app`** — the application at the top of the graph is exactly what's meant to provide and use it, so "nothing may depend on it" bars *other libraries*, not the application itself. A library taking the control plane as a dependency drags integrated tier into every consumer; libraries compose the underlying packages directly. If you're building the app, `@effected/app` is precisely your control plane — reach for it.
+
+## Import
+
+```ts
+import { App, AppCache, AppConfig, AppStore } from "@effected/app";
+```
+
+Single entrypoint; exactly four value exports (plus their option types and the `AppError` type alias), nothing re-exported from beneath — if you only want config files, import `@effected/config-file` directly.
+
+**Platform**: `App.layer` requires `FileSystem` and `Path` at the edge — `@effect/platform-node`'s `NodeServices.layer` (as in the example) or `NodeFileSystem.layer` + `NodePath.layer`, or the `@effect/platform-bun` equivalents. `App.layerTest` requires nothing (`R = never`).
+
+## Core API
+
+- **`App.layer(options)`** → `Layer<Xdg | AppDirs | Store | Cache, AppError, FileSystem | Path>` — wires all four services from a namespace + `store` (migrations, required) + `cache` options. Always opens BOTH databases.
+- **`App.layerTest(options)`** — same services with `R = never`: synthetic XDG paths, `:memory:` databases, `FileSystem.layerNoop` internally.
+- **`AppStore.layer(options)` / `AppCache.layer(options)`** — the state-dir / cache-dir SQLite glue alone (`R = AppDirs | Path`).
+- **`AppConfig.layer(tag, options)`** — the XDG-flavored `ConfigFile.layer` preset: `{ filename, schema, codec, strategy?, validate?, events?, native? }`. Requires an explicit `codec` (never defaulted or inferred from `filename`'s extension — that would hard-code a format choice into a composition layer); takes NO `namespace` parameter — it reads the namespace from the ambient `AppDirs` service so the two can never drift. `native` (default `true`) probes the OS-native config directory as a fallback, after the XDG resolver — pass `false` to drop it. **`resolvers?`** prepends caller resolvers AHEAD of the XDG chain — this is how a CLI's `--config` flag outranks the app's own search path (`ConfigResolver.explicitPath` for a file, `staticDir` for a directory); absent, the chain is unchanged. A prepended resolver that finds nothing **falls through** to XDG (every resolver's error channel is `never` by contract, so a `--config` naming a missing file is a miss, not an error — guard it yourself before building the layer), and the save path is unaffected. **`parseOptions?`** threads `SchemaAST.ParseOptions` into every decode, chiefly `onExcessProperty: "error"` so a typo'd section or a removed field is reported instead of silently dropped; pair it with `errors: "all"` or a file with three typos surfaces one per run. Reaches only `@effected/xdg` + `@effected/config-file`, never the SQLite driver, so a consumer wanting XDG-placed config alone imports `AppConfig` without pulling a database into their graph.
+
+## Usage
+
+```ts
+import { App, AppConfig } from "@effected/app";
+import { ConfigFile, JsonCodec } from "@effected/config-file";
+import { Store } from "@effected/store";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+
+class Settings extends Schema.Class<Settings>("Settings")({ registry: Schema.String }) {}
+class SettingsFile extends ConfigFile.Service<SettingsFile, Settings>()("myapp/Settings") {}
+
+// Bind once — calling App.layer twice opens two databases.
+const AppLive = App.layer({ namespace: "myapp", store: { migrations: [] }, cache: { maxEntries: 500 } });
+const ConfigLive = AppConfig.layer(SettingsFile, { filename: "config.json", schema: Settings, codec: JsonCodec });
+const MainLive = ConfigLive.pipe(Layer.provideMerge(AppLive), Layer.provide(NodeServices.layer));
+
+const main = Effect.gen(function* () {
+ const store = yield* Store;
+ yield* store.client`INSERT INTO runs (id) VALUES (${crypto.randomUUID()})`;
+});
+
+NodeRuntime.runMain(main.pipe(Effect.provide(MainLive)));
+```
+
+## Testing machinery
+
+**`App.layerTest(options)`** is exported for consumer suites: `R = never`, no platform package needed. Known limit: it stubs the filesystem, so code paths calling `ensure*` directory creation die against the noop fs — use `App.layer` with a temp-directory `HOME` to exercise real directory behavior.
+
+## Gotchas
+
+- The memoization trap at maximum cost: every export is a parameterized layer factory — inline calls at two provide sites open duplicate databases with split event streams. Bind each layer once.
+- Never pass a namespace to `AppConfig` — it comes solely from `AppDirs` via `App.layer`.
+- `filename` options must be a single path component — `.` and `..` die at construction.
+- `AppError` is a type-only union alias (`XdgEnvError | AppDirsError | StoreError | StoreMigrationError | CacheError`) for `catchTags` convenience — constituent errors flow through unwrapped.
+- No `App`-level spans exist deliberately — every fallible op is already spanned by its owning package.
