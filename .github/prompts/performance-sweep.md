@@ -154,65 +154,11 @@ Notes that will otherwise cost a cycle:
 - Never run `savvy.build.ts` with a production target directly. Build through `pnpm build --filter @effected/<pkg>`.
 - Do not hand-format. The pre-commit hook runs Biome over staged files and re-stages the result. It also strips the executable bit from `.sh` files, which is deliberate.
 
-## Phase 6 — commit
-
-Conventional Commits, enforced by commitlint on the `commit-msg` hook, **plus a DCO sign-off**. A missing sign-off fails a required check.
-
-```text
-type(scope): subject
-
-body (optional — a few dash bullets)
-
-Signed-off-by: Full Name <email@example.com>
-```
-
-**Type** — one of `ai`, `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `release`, `revert`, `style`, `tdd`, `test`. Nothing else. Use `perf` for a genuine speedup, `fix` when correcting something that claimed to be one and was not.
-
-**Subject** — imperative mood, lowercase first letter by convention, no trailing period, no markdown, and the whole `type(scope): subject` header at most **100 characters**.
-
-**Body** — optional; an absent body is a correct body. Dash bullets are allowed and preferred, three to five of them, each one continuous line. The `silk/body-no-markdown` rule rejects code fences, links, bold, horizontal rules, numbered lists, and more than two inline-code spans. Lines are capped at 300 characters, but anything past ~200 means the content is wrong rather than the formatting. Never cite a `.claude/plans/` or `.claude/design/` path.
-
-Let git write the trailer:
-
-```bash
-git commit -s -F <message-file>
-```
-
-Put the measurement narrative in the pull request, not here — this repository squash-merges, so a long commit body is discarded at merge. Never pass `--no-verify`; if a hook blocks you, the message or the code is what needs fixing.
-
-## Phase 7 — changeset
-
-**Any change to a publishable package needs one.** Releases are changeset-driven: with no changeset, the improvement never reaches npm.
-
-The stock `changesets` prompt does not produce the house format, so write the file yourself at `.changeset/<three-kebab-words>.md`. Use `patch` for a performance change that does not alter the API.
-
-```markdown
----
-"@effected/<pkg>": patch
----
-
-## Performance
-
-<What is faster, for whom, and by how much.>
-
-- <What did NOT change: the output, the API, the compatibility guarantee.>
-```
-
-`## Performance` is one of thirteen valid `##` headings, and matching is exact and case-sensitive (Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other). Also enforced: no `#` heading, no skipped heading depths, nothing before the first `##`, no empty sections, and a language on every code fence. Validate before committing:
-
-```bash
-pnpm exec savvy changeset check
-```
-
-Write for someone reading release notes, not for the reviewer of the diff.
-
-## Phase 8 — open the pull request
+## Phase 6 — open the pull request
 
 Branch from an up-to-date `main`; never push to `main`.
 
-**Title** is a conventional-commit subject and is validated by CI as its own check — same format and 100-character cap as the commit subject.
-
-**Body** is ordinary markdown and is *not* held to the commit-message rules: headings, bullets, tables and code fences are all fine here. Two rules do apply — never cite `.claude/plans/`, `.claude/design/` or any internal design-doc path, since this repository is public and those paths are not readable by most people who will see the pull request; and link issues with a bare `Closes #N` on its own line, outside every fence, because a reference inside a fenced block is inert.
+The body is ordinary markdown — headings, bullets, tables and code fences are all fine. Two rules apply: never cite `.claude/plans/`, `.claude/design/` or any internal design-doc path, since this repository is public and those paths are not readable by most people who will see the pull request; and link issues with a bare `Closes #N` on its own line, outside every fence, because a reference inside a fenced block is inert.
 
 You are opening an ordinary feature pull request, which has **no managed region**. The `<!-- silk-release:start -->` markers belong to release pull requests, which the release action regenerates on every push — do not synthesize them.
 
@@ -225,20 +171,6 @@ Structure the description as:
 - **Candidates considered** — the other nine, one line each.
 
 Do not recap the diff file by file; GitHub renders it already.
-
-Because the repository squash-merges, include the eventual commit message as a fenced block so a maintainer can use it directly:
-
-````markdown
-```proposed-squash-commit
-perf(<pkg>): <subject>
-
-- <bullet>
-
-Signed-off-by: <Name> <email>
-```
-````
-
-Its contents must satisfy Phase 6, sign-off included. Note that issue references take a different spelling in each place: one comma-separated `Closes #12, #34` line inside the fence, and bare one-per-line `Closes #12` outside it. Neither consumer accepts the other's form.
 
 ## Landing nothing is a valid outcome
 
