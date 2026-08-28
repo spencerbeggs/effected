@@ -4,7 +4,7 @@
 		"sessionStart": [
 			{
 				"type": "command",
-				"bash": "./hooks/session-start/orientation.sh",
+				"bash": "\"${COPILOT_PLUGIN_ROOT}/hooks/session-start/orientation.sh\"",
 				"timeoutSec": 5
 			}
 		]
