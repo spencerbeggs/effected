@@ -1,5 +1,17 @@
 # @effected/copilot-plugin
 
+## 0.2.0
+
+### Features
+
+- Mirrors CLaude Code plugin setup with agents skills and hooks. [#558][#558]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#558]: https://github.com/spencerbeggs/effected/pull/558
+
 ## 0.1.0
 
 ### Features
