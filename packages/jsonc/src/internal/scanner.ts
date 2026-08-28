@@ -109,7 +109,8 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 			if (tail.length > 0) {
 				chunks.push(tail);
 			}
-			return chunks.join("");
+			const value = chunks.join("");
+			return value;
 		};
 		pos++; // skip opening quote
 		let start = pos;
@@ -129,7 +130,9 @@ export const createScanner = (text: string, ignoreTrivia = false): Scanner => {
 				pos++;
 				if (pos >= len) {
 					tokenError = "UnexpectedEndOfString";
-					return finish(pos);
+					start = pos;
+					const value = finish(pos);
+					return value;
 				}
 				const escaped = text.charCodeAt(pos);
 				pos++;
