@@ -102,6 +102,22 @@ describe("JsoncVisitor", () => {
 				assert.isTrue(events.some((e) => JsoncVisitorEvent.$is("Error")(e) && e.code === "NestingDepthExceeded"));
 			}),
 		);
+
+		it.effect("keeps literal values stable for trailing-backslash unterminated strings", () =>
+			Effect.gen(function* () {
+				const withPrefix = yield* Stream.runCollect(JsoncVisitor.visit('"abc\\'));
+				const withPrefixLiteral = withPrefix.find(JsoncVisitorEvent.$is("LiteralValue"));
+				assert.isDefined(withPrefixLiteral);
+				assert.strictEqual(withPrefixLiteral?._tag === "LiteralValue" ? withPrefixLiteral.value : undefined, "abc");
+				assert.isTrue(withPrefix.some((e) => JsoncVisitorEvent.$is("Error")(e) && e.code === "UnexpectedEndOfString"));
+
+				const emptyPrefix = yield* Stream.runCollect(JsoncVisitor.visit('"\\'));
+				const emptyPrefixLiteral = emptyPrefix.find(JsoncVisitorEvent.$is("LiteralValue"));
+				assert.isDefined(emptyPrefixLiteral);
+				assert.strictEqual(emptyPrefixLiteral?._tag === "LiteralValue" ? emptyPrefixLiteral.value : undefined, "");
+				assert.isTrue(emptyPrefix.some((e) => JsoncVisitorEvent.$is("Error")(e) && e.code === "UnexpectedEndOfString"));
+			}),
+		);
 	});
 
 	describe("visitCollect replacement", () => {
