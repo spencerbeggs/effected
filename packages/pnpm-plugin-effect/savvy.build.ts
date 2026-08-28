@@ -271,7 +271,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/runtimes": {
-							range: "^0.4.4",
+							range: "^0.4.5",
 							peer: "^0.4.0",
 							strategy: "lock-minor",
 							source: "workspace",
