@@ -27,7 +27,7 @@
 		"@savvy-web/bundler": "^2.1.29",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"oxc-parser": "^0.144.0",
+		"oxc-parser": "^0.147.0",
 		"spdx-exceptions": "2.5.0",
 		"spdx-expression-parse": "5.0.0",
 		"spdx-license-ids": "3.0.23",
