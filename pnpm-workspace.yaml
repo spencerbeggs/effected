@@ -24,7 +24,7 @@ catalogs:
     "@effect/sql-libsql": 4.0.0-rc.109
     "@effect/sql-mssql": 4.0.0-rc.109
     "@effect/sql-mysql2": 4.0.0-rc.109
-    "@effect/sql-pg": 4.0.0-rc.109
+    "@effect/sql-pg": 4.0.0-rc.112
     "@effect/sql-pglite": 4.0.0-rc.109
     "@effect/sql-sqlite-bun": 4.0.0-rc.109
     "@effect/sql-sqlite-do": 4.0.0-rc.109
@@ -53,7 +53,7 @@ catalogs:
     "@effect/sql-libsql": 4.0.0-rc.109
     "@effect/sql-mssql": 4.0.0-rc.109
     "@effect/sql-mysql2": 4.0.0-rc.109
-    "@effect/sql-pg": 4.0.0-rc.109
+    "@effect/sql-pg": 4.0.0-rc.112
     "@effect/sql-pglite": 4.0.0-rc.109
     "@effect/sql-sqlite-bun": 4.0.0-rc.109
     "@effect/sql-sqlite-do": 4.0.0-rc.109
