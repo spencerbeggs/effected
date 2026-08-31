@@ -60,8 +60,8 @@ catalogs:
       version: 1.0.1
   effect:
     '@effect/platform-node':
-      specifier: 4.0.0-rc.109
-      version: 4.0.0-rc.109
+      specifier: 4.0.0-rc.112
+      version: 4.0.0-rc.112
     '@effect/sql-sqlite-node':
       specifier: 4.0.0-rc.109
       version: 4.0.0-rc.109
@@ -92,7 +92,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -145,7 +145,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -167,7 +167,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -201,7 +201,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -248,7 +248,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -292,7 +292,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -377,7 +377,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -464,7 +464,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -528,7 +528,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -611,7 +611,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -662,7 +662,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -757,7 +757,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -897,7 +897,7 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)
+        version: 4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.109(effect@4.0.0-rc.109)(vitest@4.1.11)
@@ -1419,6 +1419,13 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       effect: ^4.0.0-rc.109
+      redis: '>=5.0.0 <7.0.0'
+
+  '@effect/platform-node@4.0.0-rc.112':
+    resolution: {integrity: sha512-/BMAcdNGQQskLmI0Zoa95KfTZkr9HV9N4NSxaSrusG6GeW6Ulp9KvZ+Rlaiw8lnOt43CXjFLdfll5/k5rxL4hQ==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      effect: ^4.0.0-rc.112
       redis: '>=5.0.0 <7.0.0'
 
   '@effect/sql-sqlite-node@4.0.0-rc.109':
@@ -6485,6 +6492,17 @@ snapshots:
       - utf-8-validate
 
   '@effect/platform-node@4.0.0-rc.109(effect@4.0.0-rc.109)(redis@6.2.1)':
+    dependencies:
+      '@effect/platform-node-shared': 4.0.0-rc.112(effect@4.0.0-rc.109)
+      effect: 4.0.0-rc.109
+      mime: 4.1.0
+      redis: 6.2.1
+      undici: 8.10.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.109)(redis@6.2.1)':
     dependencies:
       '@effect/platform-node-shared': 4.0.0-rc.112(effect@4.0.0-rc.109)
       effect: 4.0.0-rc.109
