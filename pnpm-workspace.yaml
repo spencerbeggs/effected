@@ -15,7 +15,7 @@ catalogs:
     "@effect/atom-vue": 4.0.0-rc.109
     "@effect/openapi-generator": 4.0.0-rc.109
     "@effect/opentelemetry": 4.0.0-rc.109
-    "@effect/platform-browser": 4.0.0-rc.109
+    "@effect/platform-browser": 4.0.0-rc.112
     "@effect/platform-bun": 4.0.0-rc.109
     "@effect/platform-node": 4.0.0-rc.109
     "@effect/platform-node-shared": 4.0.0-rc.109
@@ -44,7 +44,7 @@ catalogs:
     "@effect/atom-vue": 4.0.0-rc.109
     "@effect/openapi-generator": 4.0.0-rc.109
     "@effect/opentelemetry": 4.0.0-rc.109
-    "@effect/platform-browser": 4.0.0-rc.109
+    "@effect/platform-browser": 4.0.0-rc.112
     "@effect/platform-bun": 4.0.0-rc.109
     "@effect/platform-node": 4.0.0-rc.109
     "@effect/platform-node-shared": 4.0.0-rc.109
