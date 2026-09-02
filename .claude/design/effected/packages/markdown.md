@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-18
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 92
 related:
   - ../effect-standards.md
@@ -104,7 +104,11 @@ The edit model is therefore the house pattern — an offset/length/content edit 
 
 Apply-all adopts toml's overlap-rejection posture, and range filtering adopts toml's owning-node-intersection posture. Apply-all is harmonized across all four format packages; the **range-filter posture** is the one place they document different filters, and markdown follows toml's.
 
-**Canonical stringify serializes fidelity-first** with a recorded defaults table, and its escaping is a conservative always-escape set plus line-start and raw-source-autolink defenses, with the corpus-wide re-parse equivalence property as the authority. One default is worth naming here because it surprised a real consumer: a **language-less code node with no explicit fence char stringifies as an indented block.** That is correct and canonical; the TSDoc names it outright rather than leaving it to be discovered.
+**Canonical stringify serializes fidelity-first** with a recorded defaults table, and its escaping is an always-escape set (backslash, backtick, `*`, `[`, `]`, `<`, `~`, `|`) plus line-start and raw-source-autolink defenses, with the corpus-wide re-parse equivalence property as the authority. **Four characters escape only where CommonMark could bind them**, so `parse ∘ stringify` is the identity on ordinary prose — the first thing the downstream consumer tsdoctor asked for (dogfood round 1, 2026-09-02), whose page emitter had been hand-rolling an unescape shim over `snake_case`, `R&D` and `a > b`. `_` is raw between two Unicode alphanumerics (an intraword underscore can neither open nor close emphasis; a value boundary counts as not alphanumeric, so an edge `_` stays escaped whatever sibling follows). `&` is raw unless the rest of the text value is entity-shaped, with a value-final `&` escaped only when an inline sibling follows (the split `Text("&") + Text("amp;")` must not fuse). `>` escapes only at a line start, the one place it binds. A heading's `#` escapes only when it heads a run preceded by whitespace or the value start and followed by nothing but whitespace to the value end — the ATX closing-sequence shape — or when a following sibling exists, since that sibling may contribute only blank content. `*` stays in the always set on purpose: an intraword `*` *can* open emphasis. The MDX presence-keyed `{` escape is [unchanged](markdown-mdx.md). A side fix the narrowing exposed: setext heading content is now serialized as a line start (CommonMark example 102) — it had silently relied on `>` being always-escaped.
+
+**Entity-shaped means the engine's own `ENTITY` grammar in `src/internal/unescape.ts`, which the parser and the stringifier share**, so the two ends cannot disagree on what a character reference looks like. The entity map is deliberately not consulted: any name-shaped run escapes, because the parser decides validity later and the stringifier only needs to know where it might try.
+
+One default is worth naming here because it surprised a real consumer: a **language-less code node with no explicit fence char stringifies as an indented block.** That is correct and canonical; the TSDoc names it outright rather than leaving it to be discovered.
 
 **`format` is conservative-by-skipping**: marker-normalization options only, with hazardous conversions skipped rather than attempted cleverly, and both zero-edits-on-canonical and format idempotence pinned.
 
