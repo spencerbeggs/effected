@@ -8,3 +8,27 @@ if ! { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }; then
   git ls-files -z '*.sh' | xargs -0 chmod +x 2>/dev/null || true
 fi
 # --- END SAVVY-HOOKS MANAGED SECTION ---
+
+# --- BEGIN SAVVY-TOOLCHAIN MANAGED SECTION ---
+if ! { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }; then
+  toolchain_root=$(git rev-parse --show-toplevel 2>/dev/null)
+  toolchain_pm=""
+  toolchain_pin=""
+  if [ -n "$toolchain_root" ] && [ -f "$toolchain_root/package.json" ] && command -v jq >/dev/null 2>&1; then
+    toolchain_pm=$(jq -r '.devEngines.packageManager.name // empty' "$toolchain_root/package.json" 2>/dev/null)
+    toolchain_pin=$(jq -r '.devEngines.packageManager.version // empty' "$toolchain_root/package.json" 2>/dev/null | cut -d'+' -f1)
+  fi
+  # Only an exact pin is comparable: drop ranges (^ ~ >= ||) and wildcards (x, *).
+  case "$toolchain_pin" in ""|[!0-9]*|*[!0-9A-Za-z.-]*|*x*|*X*) toolchain_pin="" ;; esac
+  if [ -n "$toolchain_pm" ] && [ -n "$toolchain_pin" ] && command -v "$toolchain_pm" >/dev/null 2>&1; then
+    toolchain_have=$("$toolchain_pm" --version 2>/dev/null | head -n 1 | tr -d '[:space:]')
+    # A manager that failed or answered with prose says nothing about drift.
+    case "$toolchain_have" in [!0-9]*|*[!0-9A-Za-z.-]*) toolchain_have="" ;; esac
+    if [ -n "$toolchain_have" ] && [ "$toolchain_have" != "$toolchain_pin" ]; then
+      printf '⚠ %s %s does not match %s, the version pinned in devEngines.packageManager.\n' "$toolchain_pm" "$toolchain_have" "$toolchain_pin" >&2
+      printf '  Lockfiles written by this version may differ from CI. Fix: corepack use %s@%s\n' "$toolchain_pm" "$toolchain_pin" >&2
+    fi
+  fi
+  unset toolchain_root toolchain_pm toolchain_pin toolchain_have
+fi
+# --- END SAVVY-TOOLCHAIN MANAGED SECTION ---
