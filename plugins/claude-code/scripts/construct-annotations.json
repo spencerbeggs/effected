@@ -762,6 +762,7 @@
 	},
 	"tsconfig-json": {
 		"CompilerOptions": "tsconfig compilerOptions schema, target module lib jsx strict flags, forward-tolerant passthrough",
+		"CompilerOptionsFromProgrammatic": "accept ts.CompilerOptions or numeric enums, decode and validate into tsconfig strings",
 		"FallbackPolling": "watchOptions.fallbackPolling enum, polling strategy when native watching is unavailable",
 		"Jsx": "compilerOptions.jsx enum, react-jsx react-jsxdev preserve classic transform",
 		"JsxConfig": "derive bundler jsx runtime from compilerOptions, automatic vs classic transform, jsxImportSource default",
