@@ -527,3 +527,81 @@ describe("Cache", () => {
 		);
 	});
 });
+
+describe("Cache.degrading", () => {
+	// The case the combinator exists for, and the one a failure-only catch
+	// misses: SqliteClient reports a filename whose parent directory does not
+	// exist as a DEFECT, not a typed failure.
+	const unopenable = Cache.layerSqlite({ filename: join(tmpdir(), "effected-store-no-such-dir-xyz", "cache.db") });
+
+	it.effect("substitutes a working cache when construction fails as a defect", () =>
+		Effect.gen(function* () {
+			const cache = yield* Cache;
+			assert.isTrue(cache.degraded);
+
+			// Reads miss, writes are discarded, and nothing fails.
+			yield* cache.set({ key: "k", value: bytes("v") });
+			assert.isTrue(Option.isNone(yield* cache.get("k")));
+			assert.isFalse(yield* cache.has("k"));
+			assert.deepStrictEqual(yield* cache.entries, []);
+		}).pipe(Effect.provide(Cache.degrading(unopenable))),
+	);
+
+	it.effect("reports nothing removed rather than failing on every removal form", () =>
+		Effect.gen(function* () {
+			const cache = yield* Cache;
+			yield* cache.invalidate("k");
+			assert.deepStrictEqual(yield* cache.invalidateByTag("t"), { count: 0, keys: [] });
+			assert.deepStrictEqual(yield* cache.invalidateAll(), { count: 0, keys: [] });
+			assert.deepStrictEqual(yield* cache.prune(), { count: 0, keys: [] });
+		}).pipe(Effect.provide(Cache.degrading(unopenable))),
+	);
+
+	it.effect("leaves a working cache untouched and reports degraded false", () =>
+		Effect.gen(function* () {
+			const cache = yield* Cache;
+			assert.isFalse(cache.degraded);
+			yield* cache.set({ key: "k", value: bytes("v") });
+			const entry = yield* cache.get("k");
+			assert.isTrue(Option.isSome(entry));
+		}).pipe(Effect.provide(Cache.degrading(Cache.layerTest()))),
+	);
+
+	// Interruption is the caller shutting down, not a broken cache. A
+	// hand-written Layer.catchCause swallows it and hands back a working cache
+	// for a fiber that was meant to stop — the half this combinator exists to
+	// get right.
+	it.effect("propagates interruption instead of degrading", () =>
+		Effect.gen(function* () {
+			const interrupted: Layer.Layer<Cache> = Layer.effect(Cache, Effect.interrupt);
+			const exit = yield* Effect.exit(Effect.provide(Effect.succeed("unreachable"), Cache.degrading(interrupted)));
+			assert.isTrue(Exit.isFailure(exit));
+			if (Exit.isFailure(exit)) assert.isTrue(Cause.hasInterrupts(exit.cause));
+		}),
+	);
+
+	// Re-raising with Effect.interrupt would report THIS fiber as the
+	// interruptor and lose the one that actually cancelled the work. Layer has
+	// no failCause on this release line, so the cause is rebuilt by hand from
+	// the original's interruptors; this pins that it survives.
+	it.effect("preserves the interrupting fiber rather than minting a fresh interrupt", () =>
+		Effect.gen(function* () {
+			const interruptedBy = 4242;
+			const interrupted: Layer.Layer<Cache> = Layer.effectContext(Effect.failCause(Cause.interrupt(interruptedBy)));
+			const exit = yield* Effect.exit(Effect.provide(Effect.void, Cache.degrading(interrupted)));
+			assert.isTrue(Exit.isFailure(exit));
+			if (Exit.isFailure(exit)) assert.isTrue(Cause.interruptors(exit.cause).has(interruptedBy));
+		}),
+	);
+
+	it.effect("degrades on a typed failure as well as a defect", () =>
+		Effect.gen(function* () {
+			const cache = yield* Cache;
+			assert.isTrue(cache.degraded);
+		}).pipe(
+			Effect.provide(
+				Cache.degrading(Layer.effect(Cache, Effect.fail(new CacheError({ operation: "setup", cause: "boom" })))),
+			),
+		),
+	);
+});

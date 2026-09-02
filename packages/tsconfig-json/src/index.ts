@@ -15,6 +15,8 @@ export {
 	NewLine,
 	Target,
 } from "./CompilerOptions.js";
+export type { ProgrammaticRecord } from "./CompilerOptionsFromProgrammatic.js";
+export { CompilerOptionsFromProgrammatic } from "./CompilerOptionsFromProgrammatic.js";
 export { JsxConfig } from "./JsxConfig.js";
 export type { PortableTsconfigOptions } from "./PortableTsconfig.js";
 export { PortableTsconfig } from "./PortableTsconfig.js";

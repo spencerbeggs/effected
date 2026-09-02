@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-13
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../roadmap.md
@@ -49,7 +49,7 @@ The two-layer instinct survives as **internal architecture**: pure schema and co
 
 ## Module layout
 
-Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept), one concept per file, every public name a file name, no barrels beyond `index.ts`. The document schema, option schemas, merge engine, enum codec, portable filter and JSX projection are all **pure** and never import `FileSystem`; only the loader, its sync facade, discovery and the internal target resolver touch the `R` channel. The merge engine takes an injected `join` rather than the `Path` service, which is what keeps it on the pure side.
+Per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept), one concept per file, every public name a file name, no barrels beyond `index.ts`. The document schema, option schemas, merge engine, enum codec, the programmatic-input codec, portable filter and JSX projection are all **pure** and never import `FileSystem`; only the loader, its sync facade, discovery and the internal target resolver touch the `R` channel. The merge engine takes an injected `join` rather than the `Path` service, which is what keeps it on the pure side.
 
 Three shape choices are worth naming:
 
@@ -134,6 +134,25 @@ The enum-family keys are typed as optional numbers, which is sound because a dec
 One **documented internal assertion** bridges the codec's internal record to the assignable value union, owned once here rather than re-cast at every call site — exactly as the compiler's own index signature makes the identical unproven claim about passthrough values. A compile-time assignability test pins the result against a cited structural replica, with no `typescript` import.
 
 That free assignability targets the **TypeScript 6 consumer specifically**: TypeScript 7 dropped the index signature while keeping nominal enums, so the structural-subset argument holds against the TS6 shape the encode target's consumer pins. Worth recording as the version-coupled nuance it is.
+
+### The validating door in: a codec, not a normalizer
+
+Encode gave callers a typed way **out** to the programmatic spelling; there was no typed way **in** for a caller who already holds it — someone writing options in TypeScript naturally reaches for `ts.ScriptTarget.ES2025` over `"es2025"`. Downstream, that gap was being closed with a laundering cast into the encode function.
+
+The request that surfaced it asked for a `normalizeCompilerOptions` function. That is the wrong shape, and the reason is worth recording because it will be proposed again:
+
+- **The normalizer already exists.** Whole-object decode does the entire value-level job — numeric to canonical string, `lib` from any of its three spellings to the short form, strings untouched so it is already idempotent on canonical input and already tolerant of mixed input.
+- **So the gap is typing, not normalization — and no total function can close it.** Decode's open-record return is deliberate and documented above: an unmappable numeric passes through, so the validated option type is not available to a function that must return something for every input. A `normalizeCompilerOptions(): CompilerOptions.Type` would re-assert exactly what the downstream cast asserts, one layer up. The cast stands in for missing **validation**, not a missing function.
+
+So the door is a **codec** composing the existing normalizer with the schema's own decode. This buys three things a function could not:
+
+- **"Never guess" becomes enforced rather than documented.** The unmappable numeric survives normalization as a number and is then rejected by the enum-family schemas as a typed decode failure. Pass-through stays correct one layer down, where the codec is chartered as pure data movement; a boundary that *promises* the validated type has to fail loudly.
+- **Case-insensitivity comes free**, from the schema's existing case-insensitive literal decode. This would have been a silent hole in the function version — a literal-union input type cannot accept `["ESNext", "DOM"]`, which is exactly what real callers write.
+- **The synchronous consumer keeps its shape**, decoding through the schema's `Result` entry point with no `Effect` in the path.
+
+Scope is the **exact inverse of the encode direction**: the same six compiler-option families plus `lib`, and deliberately not the watch families, which belong to a different document node.
+
+It is its own module. The data codec is chartered as pure data with no schema and no validation, and putting the codec in the schema module would invert the dependency — the schema module importing the data module at runtime while the data module type-imports it back.
 
 ## Portable tsconfig
 
