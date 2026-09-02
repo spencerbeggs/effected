@@ -1,6 +1,6 @@
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import type { Duration } from "effect";
-import { Context, DateTime, Effect, Layer, Option, PubSub, Schema } from "effect";
+import { Cause, Context, DateTime, Effect, Layer, Option, PubSub, Schema } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlError from "effect/unstable/sql/SqlError";
 import { bytesToUtf8, utf8ToBytes } from "./Bytes.js";
@@ -291,6 +291,22 @@ export interface CacheShape {
 	 * public fallible method is also a named span.
 	 */
 	readonly events: PubSub.PubSub<CacheEvent>;
+	/**
+	 * Whether this is the degrade-to-miss fallback rather than a live cache.
+	 *
+	 * @remarks
+	 * `false` for every real cache; `true` only for the fallback
+	 * {@link Cache.degrading} substitutes when construction fails. Without it a
+	 * cold cache and a broken one are indistinguishable — every `get` misses
+	 * either way — so a consumer that wants to report degradation (or skip work
+	 * that is only worth doing when results can be cached) has no way to tell.
+	 *
+	 * It is a plain field rather than a {@link (CacheEventPayload:variable)}
+	 * member because degradation is decided once, at construction, before any
+	 * subscriber exists: an event published then would reach nobody, since the
+	 * `events` hub does not replay.
+	 */
+	readonly degraded: boolean;
 }
 
 /**
@@ -719,6 +735,62 @@ const make = (options: CacheOptions): Effect.Effect<CacheShape, CacheError, SqlC
 			invalidateAll,
 			prune,
 			events: pubsub,
+			degraded: false,
+		} satisfies CacheShape;
+	});
+
+/**
+ * The degrade-to-miss fallback {@link Cache.degrading} substitutes when the
+ * real cache cannot be constructed: every read misses, every write is
+ * discarded, every removal reports nothing removed, and no operation can fail.
+ *
+ * The construction failure is logged once, at warning level, with the cause
+ * attached — a silently degraded cache is a build that gets mysteriously
+ * slower with nothing to point at.
+ */
+/**
+ * Re-raise an interrupt without degrading, preserving the interrupting fiber
+ * rather than minting a fresh interrupt.
+ *
+ * `Layer` has no `failCause` on this release line, so the only way to fail a
+ * layer is an effect inside one. `Effect.interrupt` would be the obvious
+ * spelling and is the wrong one: it reports THIS fiber as the interruptor, so
+ * the fiber that actually cancelled the build is lost from the cause. Rebuilding
+ * the interrupt from {@link Cause.interruptors} keeps it, and stays
+ * `Cause<never>` so the combinator's `never` error channel survives.
+ *
+ * `interruptors` is a set, and this keeps the first of it: with more than one
+ * interrupting fiber the rest are dropped, and an interrupt cause recording no
+ * interruptor at all yields `undefined`, which reproduces the same empty
+ * attribution the fresh form gives. Preserving the whole set would need a
+ * multi-interruptor cause constructor that this release line does not offer.
+ */
+const propagateInterrupt = <A, E>(cause: Cause.Cause<E>): Layer.Layer<A> => {
+	const [interruptor] = Cause.interruptors(cause);
+	return Layer.effectContext(Effect.failCause(Cause.interrupt(interruptor)));
+};
+
+const makeDegraded = (cause: Cause.Cause<unknown>): Effect.Effect<CacheShape> =>
+	Effect.gen(function* () {
+		yield* Effect.logWarning("Cache construction failed; degrading to a no-op cache").pipe(
+			Effect.annotateLogs({ cause: Cause.pretty(cause) }),
+		);
+		const pubsub = yield* PubSub.unbounded<CacheEvent>();
+		const nothingRemoved: CacheRemovalResult = { count: 0, keys: [] };
+		return {
+			get: () => Effect.succeedNone,
+			set: () => Effect.void,
+			has: () => Effect.succeed(false),
+			entries: Effect.succeed([]),
+			// The `onRemoved` callbacks are deliberately NOT run: they exist to
+			// react to entries leaving the cache, and nothing ever entered this
+			// one. Running them would report removals that never happened.
+			invalidate: () => Effect.void,
+			invalidateByTag: () => Effect.succeed(nothingRemoved),
+			invalidateAll: () => Effect.succeed(nothingRemoved),
+			prune: () => Effect.succeed(nothingRemoved),
+			events: pubsub,
+			degraded: true,
 		} satisfies CacheShape;
 	});
 
@@ -773,6 +845,59 @@ export class Cache extends Context.Service<Cache, CacheShape>()("@effected/store
 	/** An in-memory (`:memory:`) layer for tests. */
 	static layerTest(options?: CacheOptions): Layer.Layer<Cache, CacheError> {
 		return Cache.layerSqlite({ ...(options ?? {}), filename: ":memory:" });
+	}
+
+	/**
+	 * Wrap any `Cache` layer so that a **construction** failure yields a
+	 * working, empty cache instead of failing the layer — reads miss, writes
+	 * are discarded, and {@link CacheShape.degraded} reads `true`.
+	 *
+	 * @remarks
+	 * **Opt-in on purpose.** A consumer that wants a cache problem to be fatal,
+	 * or that wants the narrower per-operation posture
+	 * (`Effect.orElseSucceed(() => Option.none())` on `get`, layer left fatal),
+	 * keeps exactly that by not calling this. The plain constructors' typed
+	 * error channels are unchanged.
+	 *
+	 * **Why this exists at layer level.** The same posture written inside each
+	 * service method holds only while the layer is built inside those methods.
+	 * Hoisting construction to the runtime — an ordinary performance fix, since
+	 * building the driver per call is wasteful — moves the failure to runtime
+	 * build time, where it aborts the whole program. Nothing about that change
+	 * looks like a behavior change, and a test suite that never fails
+	 * construction cannot catch it; the only signal is the layer's error
+	 * channel widening.
+	 *
+	 * **It catches failures and defects, and deliberately not interruption.**
+	 * Defects matter here specifically: `SqliteClient.layer` reports driver
+	 * construction failures — a `filename` whose parent directory does not
+	 * exist, the common case — as **defects, not typed failures**, so a
+	 * failure-only catch would miss the very case this exists for. Interruption
+	 * is not a broken cache: it is the caller shutting down, and swallowing it
+	 * would substitute a working cache for a fiber that was meant to stop.
+	 * A hand-written `Layer.catchCause` gets the defect half right and this
+	 * half wrong.
+	 *
+	 * The two cases are not disjoint, and interruption wins when they overlap.
+	 * A cause carrying **both** — parallel layer construction where one branch
+	 * fails and another is interrupted — takes the interrupt path, and the
+	 * failure half is not reported. That is the right posture, since a
+	 * shutting-down fiber must not be handed a working cache, but it is lossy:
+	 * the failure that also occurred is not in the re-raised cause.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Cache } from "@effected/store";
+	 *
+	 * const CacheLayer = Cache.degrading(Cache.layerSqlite({ filename: "cache.db" }));
+	 * ```
+	 */
+	static degrading<E, R>(self: Layer.Layer<Cache, E, R>): Layer.Layer<Cache, never, R> {
+		return self.pipe(
+			Layer.catchCause((cause) =>
+				Cause.hasInterrupts(cause) ? propagateInterrupt(cause) : Layer.effect(Cache, makeDegraded(cause)),
+			),
+		);
 	}
 
 	/**

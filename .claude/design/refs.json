@@ -448,8 +448,8 @@
 		{
 			"source": "packages/store/CLAUDE.md",
 			"target": ".claude/design/effected/packages/store.md",
-			"hash": "55bfdd6595bf59973a4939b4f840e4066eb6ea6de959e5af5b05c26c589546c1",
-			"recordedAt": "2026-08-25"
+			"hash": "882ec06038921857f6d14a907b1d2cfe796ad83af3990d2b4266919771e47749",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "packages/templates/CLAUDE.md",
@@ -472,8 +472,8 @@
 		{
 			"source": "packages/tsconfig-json/CLAUDE.md",
 			"target": ".claude/design/effected/packages/tsconfig-json.md",
-			"hash": "47f1e24ebe21c7bedf0360f94040dc444cedf8c2d9d7af6f20843b87771b8d3c",
-			"recordedAt": "2026-08-25"
+			"hash": "80e8c616b124b8469687e977cc516713d5604f7ff666c46ee723df7edcb2c716",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "packages/walker/CLAUDE.md",

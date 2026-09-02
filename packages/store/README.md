@@ -195,6 +195,25 @@ The invariants worth knowing:
 - **`onRemoved` runs inside the delete transaction.** `invalidate`, `invalidateByTag`, `invalidateAll` and `prune` each take an optional callback that runs before the delete commits: a typed failure rolls the delete back and suppresses the event, and your error type survives in the signature as `CacheError | E`. This is how you keep a cache entry and the file it points at from drifting apart.
 - **Keys and tags are data, never SQL.** Everything reaches SQLite through the tagged-template `SqlClient`, and tag matching escapes `%`, `_` and `\` before it interpolates, so a tag containing a backslash matches its own entries.
 
+### Degrading to a miss
+
+A cache that cannot be constructed fails its layer, and that failure belongs to the whole program. `Cache.degrading` wraps any `Cache` layer so a construction failure yields a working, empty cache instead: reads miss, writes are discarded, removals report nothing removed, no operation can fail, and the cause is logged once at warning level.
+
+```ts
+import { Cache } from "@effected/store";
+import { Effect } from "effect";
+
+const CacheLive = Cache.degrading(Cache.layerSqlite({ filename: "cache.db" }));
+
+const program = Effect.gen(function* () {
+  const cache = yield* Cache;
+  return cache.degraded;
+  // false for a live cache; true when construction failed and this is the fallback
+});
+```
+
+It is opt-in because the opposite posture is legitimate — a consumer that wants a cache problem to be fatal, or that wants the narrower per-operation form, keeps exactly that by not calling it. Two details make it worth having rather than hand-writing. The SQLite driver reports construction failures — a `filename` whose parent directory does not exist, the common case — as *defects* rather than typed failures, so a failure-only catch misses the case this exists for. And interruption is deliberately re-raised with its interrupting fiber intact, because a caller shutting down is not a broken cache. `degraded` is a plain field rather than a `CacheEvent` because degradation is decided at construction, before any subscriber exists, and the events hub does not replay.
+
 ### Read-through, in one call
 
 The loop above — get, decode, fetch on a miss, encode, set — is the entire reason to have a cache, so it is a single call rather than twenty-five lines in every consumer:
@@ -248,6 +267,7 @@ Defects are not errors here. A throwing migration callback, a throwing `onRemove
 
 - `Store` — a migrated `SqlClient` with `migrate`, `rollback`, `status` and the raw `client` for your own schema-aware queries.
 - `Cache` — TTL, tags, bulk invalidation, a `maxEntries` eviction policy and a `CacheEvent` stream, over `key → Uint8Array`.
+- `Cache.degrading` — an opt-in layer combinator that turns a construction failure into a working, empty cache; the `degraded` field on the service tells the two apart.
 - `layer` / `layerSqlite` / `layerTest` on both — driver-agnostic, batteries-included and in-memory, with the same options.
 - `StoreError`, `StoreMigrationError`, `CacheError` — tagged errors carrying the underlying `SqlError` structurally, never a `reason` string.
 - `CacheEntry`, `CacheEntryMeta`, `CacheRemovalResult`, `StoreMigrationStatus` — the returned records; `entries` lists metadata without loading BLOBs.
