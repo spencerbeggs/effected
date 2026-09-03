@@ -76,6 +76,7 @@ import type {
 	PhrasingContent,
 	Root,
 	Table,
+	Text,
 } from "../MarkdownNode.js";
 import { GuardExceeded } from "./carriers.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
@@ -166,29 +167,37 @@ const isAlphanumericAt = (value: string, index: number): boolean => {
 /**
  * Whether the `#` at `value[index]` heads a run that would read as an ATX
  * closing sequence: preceded by whitespace or the value start, and followed
- * by nothing but whitespace to the value end. A following sibling may
- * contribute only blank content, so it keeps the escape (conservative).
+ * by nothing but whitespace to the end of the contiguous text (this value
+ * plus `followingText`). A non-text sibling after that may contribute only
+ * blank content, so it keeps the escape (conservative).
  */
-const isClosingHashRun = (value: string, index: number, hasFollowingSibling: boolean): boolean => {
+const isClosingHashRun = (value: string, index: number, followingText: string, nonTextFollows: boolean): boolean => {
 	const before = value[index - 1];
 	if (before !== undefined && before !== " " && before !== "\t") return false;
-	let end = index;
-	while (value[end] === "#") end += 1;
-	return hasFollowingSibling || /^[ \t\n]*$/.test(value.slice(end));
+	const rest = value.slice(index) + followingText;
+	let end = 0;
+	while (rest[end] === "#") end += 1;
+	return nonTextFollows || /^[ \t\n]*$/.test(rest.slice(end));
 };
+
+/** A run that a later sibling could still complete into a character reference. */
+const reEntityPrefix = /^&[#a-z0-9]*$/i;
 
 /**
  * Escape one text value into `out`, tracking line starts. Returns whether the
- * emission ended at a line start. `hasFollowingSibling` says whether another
- * inline follows this value in its run, which decides the conservative
- * value-end cases (`&`, and `#` in a heading).
+ * emission ended at a line start. `followingText` is the concatenated value
+ * of the contiguous text siblings after this one (the parser never splits a
+ * text run, but a synthesized tree may), and `nonTextFollows` says whether a
+ * non-text inline comes after those; together they decide the value-end
+ * cases (`&`, and `#` in a heading) against what will actually be emitted.
  */
 const escapeText = (
 	value: string,
 	context: InlineContext,
 	atLineStart: boolean,
 	mdx: boolean,
-	hasFollowingSibling: boolean,
+	followingText: string,
+	nonTextFollows: boolean,
 ): { text: string; atLineStart: boolean } => {
 	let out = "";
 	let lineStart = atLineStart;
@@ -264,15 +273,18 @@ const escapeText = (
 			out += "\\_";
 			continue;
 		}
-		// `&` binds only as a character reference; a value-final `&` is
-		// escaped when a sibling follows, since the split is unknowable
-		// here (Text("&") + Text("amp;") must not fuse).
+		// `&` binds only as a character reference, tested against the
+		// contiguous text that will actually be emitted (Text("&a") +
+		// Text("mp;") must not fuse). A run a non-text sibling could still
+		// complete (`&`, `&am`, `&#12`) is escaped, since that sibling's
+		// bytes are unknowable here.
 		if (char === "&") {
-			const entityShaped = index === value.length - 1 ? hasFollowingSibling : reEntityAhead.test(value.slice(index));
+			const ahead = value.slice(index) + followingText;
+			const entityShaped = reEntityAhead.test(ahead) || (nonTextFollows && reEntityPrefix.test(ahead));
 			out += entityShaped ? "\\&" : "&";
 			continue;
 		}
-		if (context.inHeading && char === "#" && isClosingHashRun(value, index, hasFollowingSibling)) {
+		if (context.inHeading && char === "#" && isClosingHashRun(value, index, followingText, nonTextFollows)) {
 			out += "\\#";
 			continue;
 		}
@@ -418,7 +430,13 @@ const serializeInlines = (
 		};
 		switch (child.type) {
 			case "text": {
-				const escaped = escapeText(child.value, context, atLineStart, state.mdx, index < children.length - 1);
+				let followingText = "";
+				let next = index + 1;
+				while (next < children.length && children[next]?.type === "text") {
+					followingText += (children[next] as Text).value;
+					next += 1;
+				}
+				const escaped = escapeText(child.value, context, atLineStart, state.mdx, followingText, next < children.length);
 				out += escaped.text;
 				atLineStart = escaped.atLineStart;
 				break;

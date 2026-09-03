@@ -763,11 +763,28 @@ describe("Markdown.stringify", () => {
 			it("an unknown but name-shaped run is still escaped", () => paragraphCase("&zzzz;", "\\&zzzz;\n"));
 			it("a one-letter name is not entity-shaped", () => paragraphCase("AT&T;", "AT&T;\n"));
 			it("a value-final ampersand with no sibling stays raw", () => paragraphCase("a &", "a &\n"));
-			it("a value-final ampersand before a sibling stays escaped", () => {
-				// Text("&") + Text("amp;") must not fuse into a reference.
-				const emitted = out(rootOf(paragraph(text("a &"), text("amp;"))));
-				assert.strictEqual(emitted, "a \\&amp;\n");
-				assert.strictEqual(reparsedText(emitted, "paragraph"), "a &amp;");
+			it("an entity split across text siblings is detected", () => {
+				// Text("&") + Text("amp;") and Text("&a") + Text("mp;") must not fuse.
+				for (const [head, tail] of [
+					["a &", "amp;"],
+					["a &a", "mp;"],
+					["a &#12", "3;"],
+				] as const) {
+					const emitted = out(rootOf(paragraph(text(head), text(tail))));
+					assert.strictEqual(emitted, `a \\&${(head + tail).slice(3)}\n`);
+					assert.strictEqual(reparsedText(emitted, "paragraph"), head + tail);
+				}
+			});
+			it("a value-final ampersand before plain text siblings stays raw", () => {
+				const emitted = out(rootOf(paragraph(text("a &"), text(" b"))));
+				assert.strictEqual(emitted, "a & b\n");
+				assert.strictEqual(reparsedText(emitted, "paragraph"), "a & b");
+			});
+			it("an entity-prefix run before a non-text sibling is conservatively escaped", () => {
+				const emitted = out(
+					rootOf(paragraph(text("a &am"), Strong.make({ children: [text("p;")], position: span() }))),
+				);
+				assert.strictEqual(emitted, "a \\&am**p;**\n");
 			});
 			it("parse ∘ stringify is the identity on `Getters & Setters`", () => stringIdentity("Getters & Setters\n"));
 		});
@@ -788,9 +805,13 @@ describe("Markdown.stringify", () => {
 				headingCase(2, "Trailing ##", "## Trailing \\##\n");
 			});
 			it("a `#` that is the whole heading text is escaped", () => headingCase(2, "#", "## \\#\n"));
-			it("a trailing `#` before a sibling is conservatively escaped", () => {
+			it("a trailing `#` before a non-text sibling is conservatively escaped", () => {
 				const emitted = out(rootOf(heading(2, text("a #"), Strong.make({ children: [text("b")], position: span() }))));
 				assert.strictEqual(emitted, "## a \\#**b**\n");
+			});
+			it("a `#` run is judged against the contiguous text siblings", () => {
+				assert.strictEqual(out(rootOf(heading(2, text("a #"), text("b")))), "## a #b\n");
+				assert.ok(out(rootOf(heading(2, text("a #"), text(" ")))).startsWith("## a \\#"));
 			});
 			it("a `#` outside a heading is untouched mid-line", () => paragraphCase("Issue #12 #", "Issue #12 #\n"));
 		});
