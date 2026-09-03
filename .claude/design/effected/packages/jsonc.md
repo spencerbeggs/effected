@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../architecture.md
@@ -33,7 +33,7 @@ Pure tier — no IO anywhere. `effect` is the only peer. No `@effect/platform*` 
 
 Module-per-concept per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept); `src/index.ts` is the only re-exporting module and carries the full export list.
 
-- `Jsonc.ts` — the facade: a namespace object of statics over the parser and schema layers, not a schema class. Owns the parse and stringify option/error vocabulary.
+- `Jsonc.ts` — the facade: a static class over the parser and schema layers, not a schema class. Owns the parse and stringify option/error vocabulary.
 - `JsoncNode.ts` — the recursive AST node, with the `JsoncPath` / `JsoncSegment` aliases.
 - `JsoncEdit.ts` — the edit class plus `applyAll`, and the shared `JsoncRange` / `JsoncFormattingOptions` vocabulary.
 - `JsoncFormatter.ts`, `JsoncModifier.ts`, `JsoncVisitor.ts` — formatting, path modification and the SAX stream.

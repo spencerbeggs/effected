@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - github-actions.md
@@ -46,13 +46,13 @@ Three shape decisions:
 - **`meta` is always present, never optional.** A region whose marker carries no attributes reports `{}`, so a reader never branches on absence — the same reason the underlying field is a defaulted record rather than an optional key.
 - **Metadata is not addressable.** `entry` looks a region up by key exactly as `region` does; attributes decide nothing about *which* region a marker names, only what it says about itself. The [staleness guard](#the-staleness-guard-two-runs-one-document) is the first reader, and it is a reader of values, not of identity.
 
-`ManagedDocumentError` grows an `invalidAttribute` kind with the offending attribute's name, mapped from the render refusal underneath. **The name reported is the consumer's region key, not the namespaced wire key** — the same translation the other kinds already do, and the reason to keep the mapping rather than let the underlying error surface.
+`ManagedDocumentError` carries an `invalidAttribute` kind with the offending attribute's name, mapped from the render refusal underneath. **The name reported is the consumer's region key, not the namespaced wire key** — the same translation the other kinds already do, and the reason to keep the mapping rather than let the underlying error surface.
 
 ## `GitHubMarkdown` — the writer, and the only importer of the engine
 
 A fluent writer for GitHub's surfaces: tables, headings, links, code, lists, collapsible sections and raw passthrough. **Every member takes pre-rendered markdown and returns a string**, so compositions read as plain string assembly; what the writer owns is the *structure*.
 
-The defect it exists to delete is live: a predecessor **joined strings**, and joining is precisely what corrupts a table when a cell contains a pipe — every column after it shifts. Here a cell's pipes are escaped, a fence inside a code block widens the fence and a URL with spaces is bracketed. That is also why the serializer's impossible arm is a **defect, not a fallback**: quietly degrading to string joining on a tree that cannot occur is how the corruption came back last time.
+The defect it exists to delete is live: **joining strings** is precisely what corrupts a table when a cell contains a pipe — every column after it shifts. Here a cell's pipes are escaped, a fence inside a code block widens the fence and a URL with spaces is bracketed. That is also why the serializer's impossible arm is a **defect, not a fallback**: quietly degrading to string joining on a tree that cannot occur is how the corruption returns.
 
 It is the **only** module permitted to import [`@effected/markdown`](markdown.md), and that confinement is [reachability-tested with a control](github-actions.md#bundle-reachability-confining-the-heavy-edges) exactly as the Azure client is — which constrains the **import** graph, not the resolver graph: the engine is a declared dependency of this package either way, so what the confinement buys is that a consumer writing a check document without calling the writer links none of it and a tree-shaking bundler can drop it.
 
@@ -60,7 +60,7 @@ It is the **only** module permitted to import [`@effected/markdown`](markdown.md
 
 The serializer's only failure is a nesting-depth guard, and it is **unreachable from this writer** — not because these trees happen to be small, but because **their depth does not depend on input**. Every member takes pre-rendered markdown and wraps it in exactly one passthrough node, so a composition nests **strings**, not nodes, and the deepest tree any member can build is a table's own fixed nesting whatever it is handed. Pinned by tests that nest the writer's own output a thousand deep.
 
-Consumers therefore need not wrap a render in a try. One call site did, defensively, because nothing on the public surface said whether wrapping was prudence or superstition — and wrapping also widens the catch to anything else thrown inside the builder, hiding a real defect behind a caught error. The one reachable throw in this area is the **typed-table codec**, for a value smuggled past the types, not the serializer.
+Consumers therefore need not wrap a render in a try — and should not, because a defensive wrap widens the catch to anything else thrown inside the builder, hiding a real defect behind a caught error. The one reachable throw in this area is the **typed-table codec**, for a value smuggled past the types, not the serializer.
 
 **Maintenance note:** a future member that accepts a node, or that re-parses a fragment back into one, makes depth input-dependent and collapses this argument. If that lands, the claim must be re-earned, not assumed.
 
@@ -89,11 +89,11 @@ Two workflow runs can be in flight against one document — a re-run started whi
 
 Two independent, opt-in mechanisms close it, and they are separable on purpose: reading fixes *what a pass reconciles against*, stamping fixes *whether a pass may write at all*.
 
-**The sink may now be read as well as written.** `CheckDocumentSink` widens from a function to function-or-`{ write, read? }`, and a bare function is exactly `{ write }` — no existing caller moves. With a `read`, every pass fetches the live text and reconciles against that instead of the shadow, so each run sees what the other actually wrote; `undefined` means nothing is there yet, a fresh document. **The read carries the same timeout bound as the write**, for the same non-defensive reason: the pass holds the reconciler's single permit and the finalizer's last flush waits on it, so an unbounded read stalls scope teardown exactly as an unbounded write would. A failed read is its own error kind rather than a rendering failure, because "GitHub would not tell us the current comment" is a different problem from "the state could not be rendered".
+**The sink may be read as well as written.** `CheckDocumentSink` is a function or `{ write, read? }`, and a bare function is exactly `{ write }`. With a `read`, every pass fetches the live text and reconciles against that instead of the shadow, so each run sees what the other actually wrote; `undefined` means nothing is there yet, a fresh document. **The read carries the same timeout bound as the write**, for the same non-defensive reason: the pass holds the reconciler's single permit and the finalizer's last flush waits on it, so an unbounded read stalls scope teardown exactly as an unbounded write would. A failed read is its own error kind rather than a rendering failure, because "GitHub would not tell us the current comment" is a different problem from "the state could not be rendered".
 
 **A stamp decides who wins.** The `stamp` option is a per-run `{ at, runId }`; when set, every region a pass writes carries that pair as marker metadata, and a pass whose stamp is **strictly older** than the most recent stamp already on the document is dropped without writing. `CheckDocumentStamp.isAtLeastAsRecent` is the whole rule and it is deliberately **total and reflexive**: `at` compares as epoch milliseconds when both sides parse as dates and lexically otherwise, `runId` breaks ties numerically when both sides are **non-blank** and finite and lexically otherwise, and equal stamps pass so a run may keep refining its own regions. Totality is the point — a comparator with an "I cannot tell" case has to choose between dropping and clobbering on garbage input, and both choices are wrong somewhere.
 
-**The blank guard on `runId` is load-bearing, not defensive trim.** `Number("")` and `Number("  ")` are both a finite `0`, so without it a blank runId — plausible whenever `GITHUB_RUN_ID` is unset, which is the ordinary local and self-hosted case — compares numerically *equal* to `"0"` and *outranks* `"-1"`: a stamp carrying no run identity would silently win ties against real ones. Requiring both sides non-blank sends those pairs to the lexical branch, where the order is still total and blankness sorts as the string it is. It is a deliberate divergence-as-improvement from the hand-rolled comparator this rule was modeled on, of the same class as making `at` `Date.parse`-aware rather than string-comparing timestamps: the consumer's version supplied the shape, not the specification, and both refinements exist because a *total* comparator has to be right on the inputs a real run actually produces.
+**The blank guard on `runId` is load-bearing, not defensive trim.** `Number("")` and `Number("  ")` are both a finite `0`, so without it a blank runId — plausible whenever `GITHUB_RUN_ID` is unset, which is the ordinary local and self-hosted case — compares numerically *equal* to `"0"` and *outranks* `"-1"`: a stamp carrying no run identity would silently win ties against real ones. Requiring both sides non-blank sends those pairs to the lexical branch, where the order is still total and blankness sorts as the string it is. It is of the same class as making `at` `Date.parse`-aware rather than string-comparing timestamps: both refinements exist because a *total* comparator has to be right on the inputs a real run actually produces.
 
 Four consequences worth carrying:
 
@@ -102,7 +102,7 @@ Four consequences worth carrying:
 - **Unstamped regions are ignored by the drop rule.** A region carrying no stamp is not evidence of a newer run — it is evidence of a run that never opted in — so treating it as an obstacle would let an unstamped consumer block itself forever.
 - **The metadata keys are bare `at` and `runId`.** An implicit protocol between the stamp writer and the stamp reader, documented rather than namespaced, and the reason `CheckDocumentOptions.render` still returns two-tuples: the reconciler injects the stamp itself. Letting a consumer's own region metadata through would need a **merge policy** against the injected pair, and inventing one before a consumer has asked is how a speculative API gets designed twice.
 
-**`flush` answers `written` | `unchanged` | `stale`** instead of `void`, because a caller that flushes explicitly at the end of a run needs to know its report was dropped; a plain literal union keeps every caller that ignored the old `void` compiling untouched. And **a drop announces itself once, at the transition** — INFO on the first stale pass, debug on every repeat. Once stale, a run is stale for the rest of its life (the stamp is constant), and the debounced pass plus the explicit flush is the ordinary pair, so a per-report line would turn one fact into noise in exactly the log a person reads when the report looks wrong.
+**`flush` answers `written` | `unchanged` | `stale`**, because a caller that flushes explicitly at the end of a run needs to know its report was dropped; a plain literal union costs a caller that ignores the result nothing. And **a drop announces itself once, at the transition** — INFO on the first stale pass, debug on every repeat. Once stale, a run is stale for the rest of its life (the stamp is constant), and the debounced pass plus the explicit flush is the ordinary pair, so a per-report line would turn one fact into noise in exactly the log a person reads when the report looks wrong.
 
 **What this does not do, stated so it is not read as more:** there is no compare-and-swap or ETag on the sink, so read-then-write still races inside one pass. The guard narrows the window from "the whole run" to "one pass", which is what makes the flicker stop; it does not make the write atomic, and nothing on GitHub's comment API offers a conditional write to build that on.
 

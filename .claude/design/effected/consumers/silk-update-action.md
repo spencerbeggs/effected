@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 88
 related:
   - README.md
@@ -21,7 +21,7 @@ related:
 
 ## Overview
 
-`/Users/spencer/workspaces/savvy-web/silk-update-action` keeps a repository's dependencies current: it resolves registry versions, rewrites catalogs and manifests, upgrades the package manager and the runtime, runs the install, emits changesets, and opens the update PR.
+`/Users/spencer/workspaces/savvy-web/silk-update-action` keeps a repository's dependencies current: it resolves registry versions, rewrites catalogs and manifests, upgrades the package manager and the runtime, runs the install, emits changesets and opens the update PR.
 
 It reaches `workspaces`, `npm`, `runtimes`, `lockfiles`, `semver`, `yaml`, `commands`, `git`, `github` and `github-actions` — the widest use of the kit's **monorepo** half, as distinct from silk-release-action's supply-chain half. It is one of the three actions the [action canon](../github-action-canon.md) was derived from.
 
@@ -31,7 +31,7 @@ It reaches `workspaces`, `npm`, `runtimes`, `lockfiles`, `semver`, `yaml`, `comm
 
 **Catalog and lockfile reality.** pnpm catalogs, `configDependencies`, workspace discovery, the dependency graph and lockfile reading, all against a real monorepo rather than a fixture. It is the kit's most demanding `@effected/workspaces` consumer after savvy-web/systems.
 
-**A hand-roll that became kit surface.** Its `corepackHashFromIntegrity` converted a registry SRI hash into the corepack pin form, which is now [`CorepackIntegrityHash.FromSri` / `fromSri`](../packages/npm.md#sri-to-corepack-conversion) in `@effected/npm` (effected#281). The generalizing part is why it could not stay downstream: the two spellings are both kit-typed vocabulary, so a consumer converting between them by hand is re-deciding the kit's own edge cases — non-sha512 input, non-canonical base64, JSON-quoted registry values — one call site at a time.
+**A hand-roll that became kit surface.** Its `corepackHashFromIntegrity` converted a registry SRI hash into the corepack pin form, which is now [`CorepackIntegrityHash.FromSri` / `fromSri`](../packages/npm.md#sri-to-corepack-conversion) in `@effected/npm`. The generalizing part is why it could not stay downstream: the two spellings are both kit-typed vocabulary, so a consumer converting between them by hand is re-deciding the kit's own edge cases — non-sha512 input, non-canonical base64, JSON-quoted registry values — one call site at a time.
 
 **Runtime resolution as a manifest concern.** `@effected/runtimes` resolves which Node, Bun or Deno version satisfies a range; this repo is what makes that useful, because it then writes the answer into `devEngines.runtime`.
 

@@ -5,9 +5,15 @@ library and neither publishes to npm; both are repo infrastructure that ships to
 users through the `spencerbeggs/bot` marketplaces.
 
 **Design doc:** `@../.claude/design/effected/plugin.md` — Load when: changing a
-skill, an agent, the hooks or the construct index; it owns the skill catalog, the
-agent roster, the skill shape contract and what the bats suite pins. Do not
-restate that material here.
+skill, an agent or the hooks; it owns the skill catalog, the agent roster, the
+skill shape contract and what the bats suite pins. Do not restate that material
+here.
+
+**Construct index:** `@../.claude/design/effected/plugin-construct-index.md` —
+Load when: adding or annotating an exported construct, or touching
+`generate-constructs.mts`, `construct-annotations.json` or `construct-index.bats`;
+it owns the generator, the annotations sidecar, the bats pin and the
+`.claude/skills/constructs` loop.
 
 ## Layout
 

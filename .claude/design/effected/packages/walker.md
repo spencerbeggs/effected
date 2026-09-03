@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -146,7 +146,7 @@ Suites in `__test__/`, one per concept module, with the descend suite's in-memor
 
 Walker needs **no platform package, even for `descend`**: tests provide core's `Path.layer` (POSIX) plus a real in-memory volume from [`@effected/memfs`](memfs.md), a devDependency. A boundary package that does real IO can still be tested without a platform package when the IO surface is small enough.
 
-That replaced a hand-rolled `FileSystem.layerNoop` tree which had to **re-derive the directory set from its file keys** and hand-model the two semantics `descend` actually reads — `stat` **follows** symlinks, `readLink` succeeds **only** on links. The volume owns both, so the path arithmetic is deleted rather than maintained; symlinks are seeded as entries. The unreadable-ancestor and vanished-directory cases are injected as `readDirectory` faults that decline for every other path, which is also how a permission failure is reached at all against a volume that records modes but never enforces them. A `layer(...)` boundary cannot vary per test, so each distinct tree gets its own block.
+A hand-rolled `FileSystem.layerNoop` tree would have to **re-derive the directory set from its file keys** and hand-model the two semantics `descend` actually reads — `stat` **follows** symlinks, `readLink` succeeds **only** on links. The volume owns both, so there is no path arithmetic to maintain; symlinks are seeded as entries. The unreadable-ancestor and vanished-directory cases are injected as `readDirectory` faults that decline for every other path, which is also how a permission failure is reached at all against a volume that records modes but never enforces them. A `layer(...)` boundary cannot vary per test, so each distinct tree gets its own block.
 
 The invariants the suite pins, each watched failing against a deliberately broken implementation: per-candidate absorption; the `catch`-not-`catchCause` defect boundary; that an unreadable ancestor cannot hide a valid root above it; that the ceiling is inclusive and stops at the ancestor it *names* rather than the string it is spelled with; that a relative ceiling dies and survives the absorbing config-file caller reconstructed in the suite; and that nearer directories win.
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 92
 related:
   - effect-standards.md
@@ -61,7 +61,7 @@ Four rules, stated so a reviewer can check a package against them.
 | `markdown` | `MarkdownFormat.format` / `.formatToString` | same shape | No — an unparseable document yields no edits |
 | `package-json` | `PackageJsonFormat.sortValue` / `.formatToString` | `T → T` / `string → Result<string, …>` | Text path fails on non-JSON only |
 
-The four format packages converged **independently** on the same shape: a `*Format`/`*Formatter` concept class carrying total statics, edit-based (`format` returns edits, `formatToString` applies them), degrading to identity when the document cannot be parsed. That convergence is the strongest available evidence about what the convention should be. (`MarkdownFormat` also carries `modify`/`modifyToString`, which replace a node by identity through the canonical stringifier — an editing operation rather than a formatting entry point, and not governed by [Decision 3](#decision-3--return-type-convention).)
+The four format packages converged **independently** on the same shape: a `*Format`/`*Formatter` concept class carrying total statics, edit-based (`format` returns edits, `formatToString` applies them), degrading to identity when the document cannot be parsed. That convergence is the strongest available evidence about what the convention should be. (`MarkdownFormat` and `PackageJsonFormat` also carry `modify`/`modifyToString`, which replace a node or field through the canonical emitter — an editing operation rather than a formatting entry point, and not governed by [Decision 3](#decision-3--return-type-convention).)
 
 `package-json` differs for a real reason: it is the only one of the five with a *schema* between text and text, so it is the only one where a formatting path could ever have hard-failed on legal input. The other four satisfy C1 by construction.
 
@@ -150,7 +150,7 @@ A fidelity suite must not smuggle IO into a pure-tier package. `yaml`, `toml`, `
 
 ## Decision 6 — the sync primitive policy
 
-Generalized past formatting and moved to its own document: **[sync-primitive-policy.md](sync-primitive-policy.md)**. It answers the same question this doc asks — what shape does a pure kit boundary expose? — for every pure boundary in the kit rather than for formatters alone, and it carries the scope test, the derivation, the `*Result` naming rule and the codec exemption.
+Generalized past formatting and stated in its own document: **[sync-primitive-policy.md](sync-primitive-policy.md)**. It answers the same question this doc asks — what shape does a pure kit boundary expose? — for every pure boundary in the kit rather than for formatters alone, and it carries the scope test, the derivation, the `*Result` naming rule and the codec exemption.
 
 [Decision 3](#decision-3--return-type-convention) above is that policy's formatting-specific case.
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-17
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -19,7 +19,7 @@ related:
 
 `@effected/github-references` is GitHub's issue-reference grammar as pure functions: the nine closing keywords, a separate non-closing reference set and three dialects that read them. Strings in, values out — no service, no layer, no client. `src/` is three modules: the two prose-and-line dialects, the list dialect with its inline form and the keyword-family projection.
 
-It is a package rather than a corner of [`@effected/github`](github.md) because the grammar and the GitHub *client* have opposite dependency costs. The grammar shipped inside `github` first, under the rule that [pure-but-GitHub-shaped belongs in the kit rather than in a consumer](github.md#bundle-reachability) — which is right, and says nothing about *which* kit package. Hosting it beside the client cost `github`'s own consumers nothing and cost an octokit-free consumer six runtime dependencies for roughly forty lines of pure regex. That is what the extraction settles: the test before hosting the next pure vendor rule is not "does a client already link here" but "can the consumers most likely to re-derive it actually reach it".
+It is a package rather than a corner of [`@effected/github`](github.md) because the grammar and the GitHub *client* have opposite dependency costs. The rule that [pure-but-GitHub-shaped belongs in the kit rather than in a consumer](github.md#bundle-reachability) is right, and says nothing about *which* kit package: hosting the grammar beside the client costs `github`'s own consumers nothing and costs an octokit-free consumer the whole client tree for a few lines of pure string work. The test before hosting the next pure vendor rule is not "does a client already link here" but "can the consumers most likely to re-derive it actually reach it".
 
 ## Tier and dependencies
 
@@ -68,7 +68,7 @@ The head pattern is **derived from the two keyword constants** rather than spell
 
 ## Drift settlements
 
-Three downstream hand-rolled copies of this grammar disagreed with each other. The kit is the place that settles the disagreement, and each settlement is a ruling, not an average:
+Downstream hand-rolled copies of this grammar disagree with each other. The kit is the place that settles the disagreement, and each settlement is a ruling, not an average:
 
 | Question | Settlement |
 | --- | --- |
@@ -79,9 +79,9 @@ Three downstream hand-rolled copies of this grammar disagreed with each other. T
 
 **One accepted behavior delta**, agreed downstream in advance: the kit's `[ \t]+` separator is tighter than their `\s+`. It is the same choice as the newline rule above — a whole-line dialect whose separator class contains newlines is not really a whole-line dialect. The [inline harvester](#the-inline-list-grammar) keeps that separator class unchanged and admits the wider `\s` set in exactly one place, the keyword-to-first-item gap, where the inline posture requires it.
 
-## The four additive follow-ups
+## The companion surfaces
 
-Four surfaces landed after the extraction, all driven by the first downstream adoption and all **additive** — none of them reopens a ruling above, and none of them widens the [compat re-export](#the-github-compat-re-export):
+Four surfaces sit beside the dialects, all **additive** — none reopens a ruling above, and none is part of the [compat re-export](#the-github-compat-re-export):
 
 - **`harvestReferenceLists(text)`** — the list grammar worn inline. The two original families each covered half of GitHub's real inline grammar: `harvestIssueReferences` is inline but one `#N` per match and ignores the reference keywords, while `parseReferenceList` does lists and `Refs` but whole-line only. `Closes #123, Fixes #456` on one line is a spelling GitHub links and neither read. Results are `HarvestedReferenceList` — a `ReferenceList` widened with `start`/`end` offsets.
 - **`parseBareLines`, `parseClosingLists`, `parseReferenceLists`** — the per-line application every call site was writing as a `split("\n")` plus an `Option`-collect loop.
@@ -128,7 +128,7 @@ The projection is a **separate function, not a field on the results**. A `family
 `@effected/github` **re-exports exactly the six names the grammar was extracted from it under** — `CLOSING_KEYWORDS`, `ClosingKeyword`, `IssueReference`, `harvestIssueReferences`, `BareLineReference`, `parseBareLineReference` — so consumers that adopted the grammar in its old home keep compiling. That re-export is the **only** reason `github` depends on this package. Two riders:
 
 - It is **droppable at a later `github` bump**, once consumers import from the new home. It is a migration affordance, not a permanent surface.
-- The closing-list surfaces and the four follow-ups above are deliberately **not** re-exported from `github`. New consumers import this package; widening the compat surface would make the re-export permanent by accident.
+- The closing-list surfaces and the [companion surfaces](#the-companion-surfaces) are deliberately **not** re-exported from `github`. New consumers import this package; widening the compat surface would make the re-export permanent by accident.
 
 **The promise is a test, not a comment.** `github`'s `__test__/IssueReferencesCompat.test.ts` exercises the value exports through the entry point and annotates values with the type exports, so compiling *is* the assertion for the types. A future bump that drops the re-export deletes that suite deliberately, which is the point: the surface cannot lapse silently.
 
@@ -138,4 +138,4 @@ The projection is a **separate function, not a field on the results**. A `family
 
 The suite carries the [drift settlements](#drift-settlements) as executable rulings rather than as prose: keyword casing and canonicalization, the optional colon, each separator form including the Oxford comma, mandatory `#` cited to its drift row, trailing-prose rejection, duplicate preservation and the whole-line rejection on an unsafe digit run sitting beside `harvestIssueReferences`'s skip-in-prose behavior for contrast. A hostility case pins the ReDoS posture — a pathological long line parses in linear time and is neither truncated nor hung on.
 
-The follow-ups pin their own rules the same way: the inline harvester's two whitespace classes, its word boundaries, the lowercase-only `and` asymmetry and the whole-candidate skip on an unsafe item; the per-line forms' order-preserving collection and CRLF handling; `keywordFamily` asserted **exhaustively over every keyword** rather than sampled, since totality is the point of the explicit record; and `collectReferenceLists`'s once-per-posture preference, including a colon-less line proven to contribute once rather than twice.
+The companion surfaces pin their own rules the same way: the inline harvester's two whitespace classes, its word boundaries, the lowercase-only `and` asymmetry and the whole-candidate skip on an unsafe item; the per-line forms' order-preserving collection and CRLF handling; `keywordFamily` asserted **exhaustively over every keyword** rather than sampled, since totality is the point of the explicit record; and `collectReferenceLists`'s once-per-posture preference, including a colon-less line proven to contribute once rather than twice.

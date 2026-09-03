@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -26,7 +26,7 @@ related:
 
 `@effected/github-actions` is the **GitHub Actions runtime** for the kit: the services an action needs to talk to the runner it is executing inside.
 
-The line against [`@effected/github`](github.md) is sharp and worth stating first, because the package this replaced blurred it: **`github` talks to the GitHub API, `github-actions` talks to the runner.** Nothing here reads a `GITHUB_*` variable on `github`'s behalf, and nothing there imports a workflow command. The two meet at exactly two seams — the token bridge and the `Logger` that maps Effect logs onto workflow commands — and both live here.
+The line against [`@effected/github`](github.md) is sharp and worth stating first: **`github` talks to the GitHub API, `github-actions` talks to the runner.** Nothing here reads a `GITHUB_*` variable on `github`'s behalf, and nothing there imports a workflow command. The two meet at exactly two seams — the token bridge and the `Logger` that maps Effect logs onto workflow commands — and both live here.
 
 The package covers four subsystems, each with its own doc:
 
@@ -72,7 +72,7 @@ The same rule shapes composition, not just imports: the composed runtime layer d
 
 ## Module topology
 
-Module-per-concept, no barrels, `src/index.ts` re-exports only. See `src/`, and the four subsystem docs for what each module decides. The shape of the growth is worth recording: the modules that were *added* rather than ported — the blob envelope, cache-key derivation, the secret seam, detached-process lifecycle and the whole reporting suite — were all **consumer-side hand-rolls** found by surveying real actions, not new inventions.
+Module-per-concept, no barrels, `src/index.ts` re-exports only. See `src/`, and the four subsystem docs for what each module decides. The blob envelope, cache-key derivation, the secret seam, detached-process lifecycle and the whole reporting suite each absorb a **consumer-side hand-roll** found in real actions, not a new invention.
 
 `internal/` holds the request signer, the Twirp client and the results-backend reader, and is import-restricted by the reachability rule above.
 
@@ -80,17 +80,15 @@ Module-per-concept, no barrels, `src/index.ts` re-exports only. See `src/`, and 
 
 Typed errors per concept module, with foreign failures wrapped structurally rather than stringified. Input failures are **`ConfigError`**, not a bespoke error class, because inputs are `Config`-backed — one fewer error class and a strictly better message, since `ConfigError` names the missing key.
 
-**The `reason`-field shape is being retired in favour of per-reason tagged unions.** The original convention was one class per module carrying a `reason` literal plus the one or two fields a caller branches on. Four modules — `ActionOutputs`, `BlobEnvelope`, `CacheKey` and `DetachedProcess` — have moved, and the reasoning generalizes to any error whose reasons do not share a field set:
+**Two error shapes coexist, and the per-reason tagged union is the target.** The older convention is one class per module carrying a `reason` literal plus the one or two fields a caller branches on; `ActionOutputs`, `BlobEnvelope`, `CacheKey` and `DetachedProcess` carry per-reason unions instead, and the reasoning generalizes to any error whose reasons do not share a field set:
 
 - **Every member carries exactly the fields its own message needs**, non-optional. Under the collapsed shape those fields are all `optionalKey`, so a value constructed short a field is not a compile error — it is a message that renders `"undefined"` at the moment someone is reading logs to find out what broke.
 - **`Effect.catchTag` can recover from one reason without catching the others.** Under the collapsed shape a caller recovering from one reason writes a `catchTag` plus an inner `reason` check plus a re-fail, and the re-fail is the part that gets forgotten.
-- **The migration cost is zero for consumers, by construction.** Every exported *name* survives as a union type alias — `CacheKeyError` is now `CacheKeyReadError | CacheKeyBadPatternError` — so no signature changed and no import broke; a consumer that never matched on `reason` never notices. That is what made this admissible as a batch rather than one module at a time.
+- **Splitting costs consumers nothing, by construction.** Every exported *name* survives as a union type alias — `CacheKeyError` is the union of its members — so no signature changes and no import breaks; a consumer that never matched on `reason` never notices.
 
-The judgement, so this does not become a ritual: **split when the reasons carry different fields, or when a caller plausibly recovers from one alone.** An error whose reasons are a closed set over one shared field set stays one class — there the discriminant is the whole information and splitting buys nothing but names.
+The judgement, so this does not become a ritual: **split when the reasons carry different fields, or when a caller plausibly recovers from one alone.** An error whose reasons are a closed set over one shared field set stays one class — there the discriminant is the whole information and splitting buys nothing but names. The modules still on the collapsed shape are split candidates by that test as their consumers grow; [`TarballError`](npm.md#packagetarball--reading-a-published-package-back) in `@effected/npm` is the same situation one package over. Read the divergence as sequencing, not as a second convention.
 
-**The kit is mid-migration and says so.** [`TarballError`](npm.md#packagetarball--reading-a-published-package-back) shipped in the same wave still carrying a `reason` field, and by the test above it is a split candidate: its reasons do carry different fields. It stays collapsed for now because it is new API whose consumers are one, and moving it later is the same zero-cost alias move performed here. Read the divergence as sequencing, not as a second convention.
-
-**Audit every ported error channel for whether it can actually fire.** The package this replaced had at least two structurally unreachable channels — a pure body wrapped in `Effect.try`, so the catch arm was dead. A channel that cannot fire is worse than no channel: it forces every caller to handle a case that does not exist and makes the type a lie about the operation. When porting a member, either demonstrate the failure path with a test or delete it from the signature.
+**Audit every error channel for whether it can actually fire.** A pure body wrapped in `Effect.try` has a dead catch arm. A channel that cannot fire is worse than no channel: it forces every caller to handle a case that does not exist and makes the type a lie about the operation. When adding a member, either demonstrate the failure path with a test or delete it from the signature.
 
 ## Shared vocabulary with `@effected/github`
 
@@ -112,21 +110,21 @@ Per the [observability standard](../effect-standards.md#observability-standards)
 
 ## Testing
 
-`@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. **No `./testing` subpath**, and none of the predecessor's behaviour-reimplementing doubles is ported.
+`@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. **No `./testing` subpath**, and no behaviour-reimplementing doubles.
 
-- **Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`,** with unstubbed members dying loudly and naming themselves. This is the direct fix for a predecessor double that returned **exit 0 for unregistered commands**, leaving consumer tests green on a documented lie.
-- **Honest-default exceptions are recorded rather than assumed.** Three doubles get real defaults because dying would make them useless: the environment double seeds the standard context variables (a block a survey found duplicated byte-identically across six consumer test files), the logger double defaults to silent and the dry-run double defaults to *on* — the safe direction. Every other member dies.
+- **Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`,** with unstubbed members dying loudly and naming themselves. A double that answers **exit 0 for an unregistered command** leaves consumer tests green on a lie.
+- **Honest-default exceptions are recorded rather than assumed.** Three doubles get real defaults because dying would make them useless: the environment double seeds the standard context variables, the logger double defaults to silent and the dry-run double defaults to *on* — the safe direction. Every other member dies.
 - **Real IO where the claim is about the filesystem**, and **opt-in integration** for the two network protocols, skipped-not-green without credentials.
-- **The runner-file doubles are a real in-memory volume** ([`@effected/memfs`](memfs.md), a devDependency) — the shape `ActionEnvironment`'s own TSDoc points consumers at. `ActionOutputs` and `ActionState` both write with `flag: "a"`, and the previous `Map` stubs were **re-implementing append by concatenation**: filesystem behaviour hand-modelled inside the test of something else, where any disagreement with the real semantics would read as a passing test. The volume appends; the fixture only seeds the runner-file directory, because a write needs its parent.
+- **The runner-file doubles are a real in-memory volume** ([`@effected/memfs`](memfs.md), a devDependency) — the shape `ActionEnvironment`'s own TSDoc points consumers at. `ActionOutputs` and `ActionState` both write with `flag: "a"`, and a `Map` stub **re-implements append by concatenation**: filesystem behaviour hand-modelled inside the test of something else, where any disagreement with the real semantics reads as a passing test. The volume appends; the fixture only seeds the runner-file directory, because a write needs its parent.
 - **Mutate the edges before declaring green.** The subsystem docs each name the mutants that discriminate.
 
 Four testing facts have bitten repeatedly and are worth carrying: **interleaving tests must use a `Latch`, never `Effect.sleep`** (a sleep under the virtual clock hangs to the vitest timeout); **a two-latch interleaving is load-bearing**, because a single-latch version passes against a deliberately wrong save-and-restore implementation, which is LIFO-correct whenever two overrides nest properly; **a spy on a process global must be released on the failure path** with `acquireUseRelease`, since a try/finally inside `Effect.gen` leaks when an assertion fails and a leaked spy produces a false *green* in a later test; and **a test that sets the process exit code must restore it**, or a green suite fails the vitest process instead.
 
-## What adoption keeps asking for
+## The class of feedback this package absorbs
 
-Every module and option this package gained after it was declared complete came from adoption against real actions, and the *shape* of that feedback is the useful part: almost none of it was a missing service. It was a **projection** a consumer had to write between two things the kit already owned, and got wrong in a way that typechecked — a many-field claim rename, GFM escaping, a step-summary shape, a table's columns respelled per call site. That is the class this package should keep absorbing, and it is why the reporting suite's formatters are type-*required* rather than defaulted: the defect these modules delete is never "no API for it", it is **"the obvious spelling is silently wrong"**.
+What adoption against real actions asks for is almost never a missing service. It is a **projection** a consumer had to write between two things the kit already owned, and got wrong in a way that typechecked — a many-field claim rename, GFM escaping, a step-summary shape, a table's columns respelled per call site. That is the class this package should keep absorbing, and it is why the reporting suite's formatters are type-*required* rather than defaulted: the defect these modules delete is never "no API for it", it is **"the obvious spelling is silently wrong"**.
 
-**One exception is worth more than the pattern.** The [staleness guard](github-actions-reporting.md#the-staleness-guard-two-runs-one-document) came from a *coordination* gap: two workflow runs writing one living document, where the reconciler's private "last text I wrote" shadow meant neither could see the other. No consumer could have fixed that by projecting better, because the missing thing was an assumption — that a reporting document has one writer — baked into the reconciler and stated nowhere. It landed as **options on an existing service** rather than a module, which is the right shape: the coordination is opt-in, and a consumer that genuinely has one writer pays nothing. The generalisation to carry past this suite is that **feedback finds wrong projections easily and unstated single-writer assumptions only by racing them**, so a service that writes anything shared should say in its own doc what it assumes about other writers.
+**One exception is worth more than the pattern.** The [staleness guard](github-actions-reporting.md#the-staleness-guard-two-runs-one-document) closes a *coordination* gap: two workflow runs writing one living document, where a reconciler's private "last text I wrote" shadow means neither can see the other. No consumer can fix that by projecting better, because the missing thing is an assumption — that a reporting document has one writer — baked into the reconciler and stated nowhere. It is **options on an existing service** rather than a module, which is the right shape: the coordination is opt-in, and a consumer that genuinely has one writer pays nothing. The generalisation to carry past this suite is that **feedback finds wrong projections easily and unstated single-writer assumptions only by racing them**, so a service that writes anything shared should say in its own doc what it assumes about other writers.
 
 **`optionalDependencies` is rejected for the heavy dependencies, and stays rejected.** All of them are hard static imports that throw at module load rather than degrade, and several sit on the common reporting path, so the subpath split that makes optionality work elsewhere does not work here.
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-14
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 92
 related:
   - ../effect-standards.md
@@ -41,7 +41,7 @@ The pins are the anti-drift record: re-evaluating against a newer upstream head 
 
 **Pure tier.** The package performs no host IO — the volume is immutable in-memory state (`HashMap`-backed inode table) behind a one-permit semaphore — and it *provides* `FileSystem` rather than requiring anything: the layer's `R` is `never`. `effect` is the only peer; zero runtime dependencies ([R1](../effect-standards.md#dependency-policy)).
 
-**The zero-edges law: no `@effected/*` edge, ever — runtime, peer, or dev.** The package's whole purpose is to be the filesystem double every kit package's tests consume as a devDependency, [`@effected/glob`](glob.md) included. Any edge from `memfs` back into the kit creates the cycle that law exists to prevent. Its one structural consequence: the engine **keeps the upstream mini-glob** (brace expansion, character classes, globstar) for the `FileSystem.glob` member, a deliberate duplication of capability `@effected/glob` also ships. Do not "deduplicate" by importing `@effected/glob`; the duplication is the price of the law, and the mini-glob serves only `fs.glob`, never a public matching API.
+**The zero-edges law: no `@effected/*` edge, ever — runtime, peer or dev.** The package's whole purpose is to be the filesystem double every kit package's tests consume as a devDependency, [`@effected/glob`](glob.md) included. Any edge from `memfs` back into the kit creates the cycle that law exists to prevent. Its one structural consequence: the engine **keeps the upstream mini-glob** (brace expansion, character classes, globstar) for the `FileSystem.glob` member, a deliberate duplication of capability `@effected/glob` also ships. Do not "deduplicate" by importing `@effected/glob`; the duplication is the price of the law, and the mini-glob serves only `fs.glob`, never a public matching API.
 
 `@effect/platform-node` (`catalog:effect`) is a **devDependency only**, confined to the differential-oracle integration test.
 
@@ -58,7 +58,7 @@ The layer forms are **parameterized factories**: each call mints a fresh referen
 
 ### Seed entries
 
-A seed value is a `MemoryFileSystemSeedEntry`: the original `string | Uint8Array` contents, unchanged, or one of three tagged entries built by statics — `file(content, { mode?, mtime? })`, `directory({ mode? })`, `symlink(target)`. One seed literal therefore describes a whole tree: files with initial modes (`0o644` default), *empty* directories (the only way a seed can express one) with modes (`0o755` default), and symbolic links whose target is stored verbatim and may dangle. A directory's mode is applied by a post-`makeDirectory` `chmod` so it lands even when that directory already exists — created implicitly as an earlier entry's parent.
+A seed value is a `MemoryFileSystemSeedEntry`: plain `string | Uint8Array` contents or one of three tagged entries built by statics — `file(content, { mode?, mtime? })`, `directory({ mode? })`, `symlink(target)`. One seed literal therefore describes a whole tree: files with initial modes (`0o644` default), *empty* directories (the only way a seed can express one) with modes (`0o755` default), and symbolic links whose target is stored verbatim and may dangle. A directory's mode is applied by a post-`makeDirectory` `chmod` so it lands even when that directory already exists — created implicitly as an earlier entry's parent.
 
 `file`'s `mtime` pins a modification time in epoch milliseconds. Without it every seeded entry takes the volume's clock at seed time, so a seed alone cannot express "this file is older than that one" — which is exactly what a consumer fingerprinting a tree by mtime needs to test. Only `file` takes the option; a pinned directory or symlink time waits for a consumer that needs one. The two unit traps it sits between are recorded in [ledger entry 9](#adaptation-ledger), because each produces a wrong *time* rather than an error.
 
@@ -100,7 +100,7 @@ The view's semantics are documented, not incidental:
 - **Regular files only** in `snapshot`/`paths`; directories and symbolic links never appear. `paths()` is exactly `snapshot()`'s key set, sorted lexicographically.
 - **Symlinks are never followed anywhere in the view.** `has` sees the link itself (its target unconsulted, dangling allowed); `text`/`bytes` answer `undefined` for it, because reading *through* a link is the `FileSystem` API's job. The view is literal by design — following links here would make an inspection read silently disagree with the tree it claims to describe. `isDirectory` is literal for the same reason: a symbolic link *pointing at* a directory answers `false`, a deliberate divergence from `statSync(p).isDirectory()`.
 - **Hard links fan out**: one entry per directory entry, each path carrying the same content.
-- **Query paths normalize lexically only** (`//`, `.`, `..`, and relative paths resolving from `/` as the engine does) — normalization never touches the filesystem, so it cannot follow a link either.
+- **Query paths normalize lexically only** (`//`, `.`, `..` and relative paths resolving from `/` as the engine does) — normalization never touches the filesystem, so it cannot follow a link either.
 - **Absence is always `undefined`, never a plausible empty value.** `text`/`bytes` answer `undefined` for a path holding no regular file, so `""` only ever means a genuinely empty file; `readDirectory` answers `undefined` rather than `[]`, and `mtime` `undefined` rather than `0`, because a genuinely empty directory and a file modified at the epoch are real values a caller must be able to tell apart from absence. `readDirectory` reports names, not paths, as `readdir` does.
 - **`has("/tmp")` is `true` on an unseeded volume**: the engine pre-creates the temp directory at build. `snapshot`/`paths` are unaffected, since it is a directory.
 
@@ -123,7 +123,7 @@ Internal engine in `src/internal/volume.ts` (adapted from upstream's `internal/m
 
 ## Behavioral contracts
 
-- **Honest absence** — the #249 contract: reading, statting, or opening (without a create flag) any unseeded path fails typed with reason `NotFound`; nothing in the package can fabricate content for a path nothing arranged.
+- **Honest absence** — the #249 contract: reading, statting or opening (without a create flag) any unseeded path fails typed with reason `NotFound`; nothing in the package can fabricate content for a path nothing arranged.
 - **Error normalization**: every failure is core's `PlatformError` — `systemError` with a truthful `_tag`/`method`/`pathOrDescriptor`, or `badArgument` for malformed caller input. Malformed input **never defects**. The only `Effect.die` sites are genuine internal-invariant violations inherited from upstream.
 - **Isolation**: each `make`/layer *build* is one volume. **Layer memoization is per-build, not per-value**: every `Effect.provide` of a layer value — even the same bound `const` — builds and re-seeds a fresh volume (and re-arms `failTimes` counters). Sharing one volume across several effects requires one provide of one composed layer graph; `Layer.fresh`'s only role is opting a consumer *inside* that graph back out into its own volume. Under `@effect/vitest`, `layer(...)` memoizes one build for the whole suite, so a `failTimes` fault declared there is consumed by whichever test runs first and later tests silently see it exhausted.
 - **Modes are metadata, never enforced.** Modes set by seeding, `chmod`, `makeDirectory` or `writeFile` are recorded faithfully and readable via `stat`, but no operation checks them: the volume models no process identity (no uid/gid/umask), so nothing ever fails `PermissionDenied` on its own — a write to a `0o444` file succeeds. This is intended rather than a gap: modeling process identity is a large feature that **fault injection replaces more cheaply**, and injecting the failure is the sanctioned way to exercise a permission-failure path. `access` ignoring its `readable`/`writable`/`ok` options is the same contract, not a separate quirk.
@@ -150,7 +150,7 @@ Deliberate deltas from the pinned upstream. Every delta is also recorded in the 
 
 ## Provenance and refusals
 
-The kit extensions are not speculative API design: every one was requested with a blocked call site by a downstream consumer or an internal one, and each round closed with zero handoff discrepancies. What is worth keeping is the **refusals**, because each is a standing decision rather than an unexplored corner:
+The kit extensions are not speculative API design: every one was requested with a blocked call site by a downstream consumer or an internal one. What is worth keeping is the **refusals**, because each is a standing decision rather than an unexplored corner:
 
 - **An `fs.promises`-shaped facade was declined** and reshaped into [`syncFileSystem`](#the-sync-filesystem-port). Reading the downstream call sites found that the shape actually wanted was the sync port `@effected/workspaces` already defines; neither side saw that from where it was standing.
 - **`seedFromDirectory` was withdrawn by the consumer** that asked for it, once its own survey found the only on-disk fixtures were subprocess-e2e trees a volume can never serve, and that every other fixture is composed inline as literals with no directory to seed *from*. It stays an [open question](#open-questions).
@@ -161,9 +161,9 @@ Downstream deliberately keeps some suites on real tmpdirs, where the point is th
 
 ## In-kit adoption
 
-Seven kit packages consume the volume in tests: [`walker`](walker.md), [`tsconfig-json`](tsconfig-json.md), [`xdg`](xdg.md) (`AppDirs`), [`workspaces`](workspaces.md), [`templates`](templates.md), [`npm`](npm.md) and [`github-actions`](github-actions.md)'s runner-file doubles. Each migration off a hand-rolled `FileSystem.layerNoop` double was mutation-checked rather than declared done on a green suite: disabling a fault handler, or swallowing a write while still counting it, has to kill tests, and in every package it did.
+The kit packages consuming the volume in tests are [`walker`](walker.md), [`tsconfig-json`](tsconfig-json.md), [`xdg`](xdg.md) (`AppDirs`), [`workspaces`](workspaces.md), [`templates`](templates.md), [`npm`](npm.md) and [`github-actions`](github-actions.md)'s runner-file doubles. Each migration off a hand-rolled `FileSystem.layerNoop` double was mutation-checked rather than declared done on a green suite: disabling a fault handler, or swallowing a write while still counting it, has to kill tests, and in every package it did.
 
-**The migration surfaced four real defects across three packages**, which is the whole return on it:
+**The migration surfaced real defects**, which is the whole return on it:
 
 - `tsconfig-json`'s documented file-only divergence — it probes with `exists`, which is directory-true, where tsc uses a file-only `fileExists` — was **invisible** because map membership made directories not exist. A test asserting `None` had been passing for the wrong reason. Against the volume the directory exists, the divergence is observable, and the test now pins it.
 - A second `tsconfig-json` fixture had seeded a file *and* a directory at one path, a contradiction only map membership permits, and had been silently skipping its test.
@@ -174,7 +174,7 @@ The pattern in all four: a stub agreed with the code under test because the same
 
 **[`@effected/jsonl`](jsonl.md) is deliberately not a consumer.** Its `__test__/helpers/memfs.ts` is a **control harness**, not storage: a write gate with a vacuity guard, deterministic watch emission, a synchronous `unlink`. Migrating it would trade determinism for storage it does not need. The name collision is unfortunate and the distinction is the point — a double that exists to control *timing* is a different artifact from one that exists to hold *bytes*, and only the second is this package's job.
 
-Still pending on the write-path side: `schemastore`, `app`, xdg's `XdgConfig` and `jsonl`'s storage half.
+Not yet migrated: `schemastore`, [`app`](app.md#testing), xdg's `XdgConfig` suite and `jsonl`'s storage half.
 
 ## Test strategy: the differential oracle
 

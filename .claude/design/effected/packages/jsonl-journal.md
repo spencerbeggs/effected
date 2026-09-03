@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - jsonl.md
@@ -17,7 +17,7 @@ related:
 
 ## Overview
 
-The journal service is the write half of [`@effected/jsonl`](jsonl.md): the operations, the write critical section and the ordering that hangs off it, lifecycle and shutdown, and the process model that lets several cooperating writers share one file. What it guarantees is the property every reader depends on — an appended line is complete, validated against its event's schema, ordered against every other writer's, and observable to them once it lands.
+The journal service is the write half of [`@effected/jsonl`](jsonl.md): the operations, the write critical section and the ordering that hangs off it, lifecycle and shutdown and the process model that lets several cooperating writers share one file. What it guarantees is the property every reader depends on — an appended line is complete, validated against its event's schema, ordered against every other writer's and observable to them once it lands.
 
 Everything that consumes those lines — the `Slice` vocabulary, `query`, `changes` and `projection` — is [the read half](jsonl-reads.md), and the [envelope contract](jsonl.md#the-envelope-contract) each line obeys belongs to the package doc, since both halves are built on it.
 
@@ -36,7 +36,7 @@ See `src/Journal.ts`. The shapes worth knowing before reading it:
 
 ### The merge guard is asymmetric, and config-file's is not
 
-`appendPatch`'s merge guard requires both sides to be record-like **and** the patch not to bring a conflicting prototype — it may be plain, null-prototype, or the base's own.
+`appendPatch`'s merge guard requires both sides to be record-like **and** the patch not to bring a conflicting prototype — it may be plain, null-prototype or the base's own.
 
 The asymmetry is forced by the primary use case rather than chosen for elegance. A caller's partial patch is a **plain object literal even when the base is a schema-class instance**, so [`config-file`'s *symmetric* guard](config-file.md) — both sides record-like and sharing a prototype, which is exactly right for merging two peer documents — would reject the main case here. Same hazard, different shape of operands; the pollution filtering is identical and only the prototype rule differs.
 
@@ -75,7 +75,7 @@ Two shapes are rejected on the record. **Publishing inside the permit** is the d
 
 ### The ordering stage is a chained-deferred baton
 
-The mechanism satisfying pin 2 without violating pin 1. Each append, **while holding the write permit**, links a fresh `Deferred` onto a chain — linking is non-suspending and O(1), which is the entire reason it is legal inside the critical section. It then releases the permit, awaits its predecessor, publishes, and passes the baton on via `ensuring`, so an interruption mid-publish cannot strand its successors.
+The mechanism satisfying pin 2 without violating pin 1. Each append, **while holding the write permit**, links a fresh `Deferred` onto a chain — linking is non-suspending and O(1), which is the entire reason it is legal inside the critical section. It then releases the permit, awaits its predecessor, publishes and passes the baton on via `ensuring`, so an interruption mid-publish cannot strand its successors.
 
 **Rejected refinement, on the record:** a *second semaphore* acquired under the write permit. It looks equivalent and is not — when contended it suspends inside the critical section, which is pin 1's exact prohibition and reintroduces the deadlock through a smaller door. The ordering primitive must be one that can be *taken* without ever *waiting* while the write lock is held.
 

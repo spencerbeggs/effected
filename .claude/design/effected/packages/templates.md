@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -155,15 +155,15 @@ Per the [observability standard](../effect-standards.md#observability-standards)
 
 **The pure suites need no layers at all** — plain `it` plus `assert` over string literals. That is the split paying for itself: the reconciliation scenarios that would cost a filesystem are string-to-string assertions here. The invariants worth mutation-proving are idempotency (property-tested), **text preservation** (every byte outside a declared span survives, in order — the property a scenario test is worst at proving), the parse/render round trip, the full scenario set re-run against CRLF fixtures, marker-injection refusal asserted on both the failure *and* the document being unmodified, and each ambiguity failing typed.
 
-**The service suite runs on a real in-memory volume** ([`@effected/memfs`](memfs.md), a devDependency) built fresh per test and provided at the test boundary, because the volume is mutable and a suite-level layer cannot vary per test. This package was memfs 0.3.0's first consumer of the volume **inspection** API, and the fixture's shape is why: every service test runs the code and then reads back what the run left behind.
+**The service suite runs on a real in-memory volume** ([`@effected/memfs`](memfs.md), a devDependency) built fresh per test and provided at the test boundary, because the volume is mutable and a suite-level layer cannot vary per test. It leans on memfs's volume **inspection** API, and the fixture's shape is why: every service test runs the code and then reads back what the run left behind.
 
 Three things about that fixture generalize:
 
 - **Assertion timing dictates the constructor family.** The pair is built eagerly with `makeInspectableWith` and wrapped in `Layer.succeed`, *not* `layerInspectableWith`. A memfs layer re-seeds a fresh volume on every `Effect.provide` — right as a default, wrong here, because the assertions run after the provide and would read a volume nobody wrote to.
 - **The write counter is a fault handler that declines**, so the write is counted *and* really happens. A stub body that swallowed it would leave every later read reporting pre-write contents; the mutant that does exactly that fails the read-back assertions across the service suite, which is what makes them load-bearing rather than decorative.
-- **The old `Map` double was hiding an untested precondition.** This package requires `FileSystem` and [deliberately not `Path`](#tier-and-dependencies), so it cannot create a parent directory — "the caller guarantees the directory exists" is a real contract that had never been exercised, because a `Map` happily accepts a write into a directory that does not exist. The volume refuses it. Do not seed around this by making the fixture create parents implicitly; the refusal *is* the contract surfacing.
+- **The volume exercises a precondition a `Map` double cannot.** This package requires `FileSystem` and [deliberately not `Path`](#tier-and-dependencies), so it cannot create a parent directory — "the caller guarantees the directory exists" is a real contract, and a `Map` happily accepts a write into a directory that does not exist. The volume refuses it. Do not seed around this by making the fixture create parents implicitly; the refusal *is* the contract surfacing.
 
-The trap the old double documented still holds in its general form: `FileSystem.layerNoop` fails unimplemented members with a typed `NotFound`, which this package reads as "file absent", so a partial stub makes every test silently see an empty document. That is deny-by-default's specific cost here, and the reason the double is a real volume now.
+The general trap: `FileSystem.layerNoop` fails unimplemented members with a typed `NotFound`, which this package reads as "file absent", so a partial stub makes every test silently see an empty document. That is deny-by-default's specific cost here, and the reason the double is a real volume.
 
 **The integration suite is what justified itself twice.** `FileSystem.readFileString` **strips a leading BOM**, so reading through it silently deleted a user's BOM — a direct violation of the text-preservation promise, invisible to any in-memory double. The service reads `fs.readFile` and decodes with `ignoreBOM: true`. The suite also covers a genuinely unreadable file, real CRLF bytes surviving the OS round trip, an unchanged-means-unchanged mtime, and a read failure that is *not* `NotFound` (reading a directory), which proves the missing-file degrade is not over-applied.
 

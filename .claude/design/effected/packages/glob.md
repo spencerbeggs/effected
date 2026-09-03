@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 96
 related:
   - ../effect-standards.md
@@ -76,7 +76,7 @@ The error is a `Schema.TaggedError` carrying the pattern, a `reason` literal uni
 
 **`enumerationPrefix` is meaningful for NON-NEGATED patterns only.** It is computed from the *inner* pattern, but a negated pattern's `matches` **inverts**, so it matches everything the inner pattern does not — and those matches can land anywhere, including outside the prefix. A negated pattern's walk must therefore ignore the prefix entirely: **start at the walk root and deep-walk unconditionally**, regardless of `crossesSegments`. Deep-walking *from the inner prefix* is the tempting half-fix that still silently misses every match outside it. Neither getter is wrong here — the inversion is simply not theirs to express, which is why the caveat lives with the contract rather than in each consumer's memory.
 
-The contract has held under three independent consumers unmodified — the [workspaces](workspaces.md) enumerator it was designed against, [walker](walker.md)'s `descend`, and [github-actions](github-actions.md)' cache-path search-root derivation, the last under real filesystem enumeration with round-trip and real-runner coverage. That is the useful part: a contract that survives its second and third consumer unchanged generalizes rather than encoding its first caller.
+The contract has held under three independent consumers unmodified — the [workspaces](workspaces.md) enumerator it was designed against, [walker](walker.md)'s `descend` and [github-actions](github-actions.md)' cache-path search-root derivation, the last under real filesystem enumeration with round-trip and real-runner coverage. That is the useful part: a contract that survives its second and third consumer unchanged generalizes rather than encoding its first caller.
 
 What remains open is narrow: no dedicated conformance run against a reference enumerator has been performed, so the enumeration semantics are **materially de-risked, not closed**. Nothing yet asserts case-by-case agreement with `@actions/glob` or another reference implementation.
 

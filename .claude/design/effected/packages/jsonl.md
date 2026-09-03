@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-03
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -26,8 +26,8 @@ The subject is not the JSONL *format* — one JSON value per line is a two-sente
 
 This document covers the envelope contract and the package's positioning. The two subsystems built on it have their own docs:
 
-- **[The journal service](jsonl-journal.md)** — the append path, the write critical section and publish ordering, lifecycle and shutdown, and the cooperative-writer process model with its watcher.
-- **[The read surfaces](jsonl-reads.md)** — the `Slice` vocabulary shared by every read, the consumption model, and the read economy that motivates the whole design.
+- **[The journal service](jsonl-journal.md)** — the append path, the write critical section and publish ordering, lifecycle and shutdown and the cooperative-writer process model with its watcher.
+- **[The read surfaces](jsonl-reads.md)** — the `Slice` vocabulary shared by every read, the consumption model and the read economy that motivates the whole design.
 
 ## Motivation: the token economy as an API contract
 
@@ -49,7 +49,7 @@ The closest kin in the kit is [`config-file`](config-file.md): a pure core under
 
 ### Why not core's eventlog
 
-`effect/unstable/eventlog` is a replication-oriented event-sourcing system: MessagePack-encoded entries, encryption, SQL-backed journals, remote sync and session auth. Those are the right goals for a distributed event log and the wrong goals for a file a human greps, a hook reads with `jq`, and git diffs in a pull request. A binary, encrypted, SQL-backed journal fails the first requirement this package has.
+`effect/unstable/eventlog` is a replication-oriented event-sourcing system: MessagePack-encoded entries, encryption, SQL-backed journals, remote sync and session auth. Those are the right goals for a distributed event log and the wrong goals for a file a human greps, a hook reads with `jq` and git diffs in a pull request. A binary, encrypted, SQL-backed journal fails the first requirement this package has.
 
 What is borrowed is the **shape of an event definition**: a tag plus a payload schema, defined once and collected into a group, is prior art worth matching so a reader who knows core's `Event` recognizes `JsonlEvent`. The mechanism is ours; the vocabulary is theirs.
 
@@ -116,7 +116,7 @@ It is also why a generic "any line schema" reader stays **internal**. Exposing i
 
 Module-per-concept per the [module layout standard](../effect-standards.md#module-layout-module-per-concept); no barrels, no namespace objects. See `src/`:
 
-- **The pure core**, synchronous and `Result`-based per the [sync primitive policy](../sync-primitive-policy.md): `Line.ts` and `LineSlice.ts` (split text into candidate lines, parse one, walk back to the last valid one, and keep byte-offset bookkeeping), plus `Envelope.ts` and `JsonlEvent.ts` (event definitions, the registry, the frame schema, the derived union type and the sync decode/encode primitives, each `Effect` form defined in terms of its sync twin so the two cannot diverge).
+- **The pure core**, synchronous and `Result`-based per the [sync primitive policy](../sync-primitive-policy.md): `Line.ts` and `LineSlice.ts` (split text into candidate lines, parse one, walk back to the last valid one and keep byte-offset bookkeeping), plus `Envelope.ts` and `JsonlEvent.ts` (event definitions, the registry, the frame schema, the derived union type and the sync decode/encode primitives, each `Effect` form defined in terms of its sync twin so the two cannot diverge).
 - **The service**: `Journal.ts` — see [the journal doc](jsonl-journal.md).
 - **The errors**: `JsonlError.ts` — one taxonomy whose tags each name a distinct recovery a caller would actually make, with core `PlatformError` **passed through rather than wrapped**. Two distinctions are load-bearing and easy to get wrong: shutdown refusal is a **lifecycle** condition (the service is going away; the recovery is a new layer) while a terminal-event refusal is a **journal-state** condition (the recovery is an event declared `reopen`), and a truncation-or-replacement breach is its own tag because its recovery — discard all cursor-derived state and re-read from zero — matches nothing else. Reusing the not-found tag for that breach would tell the consumer to **create** a journal and destroy the evidence.
 
@@ -158,7 +158,7 @@ Per the [observability standard](../effect-standards.md#observability-standards)
 
 `@effect/vitest`, `assert.*` and never `expect`, with tests in `__test__/` and integration under `__test__/integration/` per the [testing standard](../effect-standards.md#testing-standards).
 
-- **Property tests** over line splitting and corrupt tails. The generators must emit torn final lines, embedded newlines inside string payloads, and lines that are valid JSON but not valid envelopes, because those are the three shapes a real journal produces.
+- **Property tests** over line splitting and corrupt tails. The generators must emit torn final lines, embedded newlines inside string payloads and lines that are valid JSON but not valid envelopes, because those are the three shapes a real journal produces.
 - **`TestClock` drives `at` stamping**, so timestamp assertions are exact rather than approximate.
 - **Two type-level guarantees are tested as types, not behaviour**: a payload schema requiring services is a *compile* error at registration, and a slice's event list narrows the element type. A runtime-only test would pass while either was broken.
 - **Integration tests run the watcher against real temporary directories** and are the only tests that provide a platform layer. Watcher behaviour that does not need a real filesystem is driven through the [`FileSystem` double's `watch`](jsonl-journal.md#the-watcher-and-activation) instead, so those assertions are deterministic and timer-free.

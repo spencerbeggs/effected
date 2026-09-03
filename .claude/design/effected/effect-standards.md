@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-26
-last-synced: 2026-08-26
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - architecture.md
@@ -45,7 +45,7 @@ Every consumer file in this ecosystem already imports from `effect`, so a kit na
 
 Check a candidate public name against `effect`'s root exports before committing to it. The check is cheap and the rename is not: renaming a published symbol is a breaking change, and the collision is easiest to see before anyone depends on it.
 
-[`@effected/schema-org`](packages/schema-org.md#three-names-were-changed-to-clear-effects-root-exports) is the worked example, where three names moved — `Graph` → `JsonLdDocument`, `GraphNode` → `JsonLdNode`, `Ref` → `NodeRef`. Two riders from it:
+[`@effected/schema-org`](packages/schema-org.md#module-layout-and-the-two-entrypoints) is the worked example, where three names moved — `Graph` → `JsonLdDocument`, `GraphNode` → `JsonLdNode`, `Ref` → `NodeRef`. Two riders from it:
 
 - **`Ref` is the sharpest name to avoid.** Core's `Ref` is among the most-used constructs and means a mutable reference cell; any domain meaning of "reference" collides with it head-on.
 - **Treat a collision as a prompt to re-ask whether the name was right.** `Graph` turned out to name the *key* (`@graph`) rather than the thing, and the class's own prose already called it a JSON-LD document — so the forced rename produced a name that was better independently of the clash. This is common enough to expect.
@@ -82,7 +82,7 @@ The three tiers classify **libraries by dependency surface**: they answer the on
 - **Boundary** — the same dependency surface as pure, but performs IO through `effect`-core platform abstractions (`FileSystem`, `Path`, `PlatformError`). The consumer provides the platform layer at the edge.
 - **Integrated** — imports at least one runtime package outside `effect` **core**. Effect-org packages (`@effect/sql-sqlite-node`, `@effect/cli`, `@effect/platform-node`) count exactly the same as third-party ones (`spdx-expression-parse`, `@pnpm/catalogs.*`): the line is `effect` core versus everything else. It is drawn there because it is checkable from `package.json` alone, and because this repo's peer-closure pain (documented in `CLAUDE.dependencies.md`) comes precisely from non-core `@effect/*` packages dragging v3-wanting closures into consumers.
 
-Tier assignments per package are provisional until confirmed at migration time; see [package-inventory.md](package-inventory.md). Not every published package is a library, and the packages that are not carry **no tier at all** — see [Companion packages](#companion-packages-published-but-not-a-library).
+Each package's tier is recorded in [package-inventory.md](package-inventory.md) and argued in its own design doc. Not every published package is a library, and the packages that are not carry **no tier at all** — see [Companion packages](#companion-packages-published-but-not-a-library).
 
 ### Companion packages: published, but not a library
 
@@ -102,17 +102,17 @@ Four rules govern how tier and dependencies relate. The framing default is to st
 
 **The worked example of exercising that clause is `@effected/schemastore`** (boundary → integrated, taking `ajv`): the only package in the kit retiered after publishing. What made it admissible is worth naming, because R1's cost model is what the retier has to argue against — nothing in the kit depends on it, so [R2](#dependency-policy) propagates the tier to nobody, and it is build-time tooling a consumer installs as a devDependency, so the runtime-graph weight R1 guards against was never on anyone's bill. Note also what it *replaced*: a contract seam every consumer closed with the same copied adapter. **A seam that every consumer closes identically is not a boundary, it is an unshipped default** — which is the strongest available argument for a retier, and the one to look for before accepting another. The full reasoning is in [packages/schemastore.md](packages/schemastore.md#the-validation-gate-ajv-ships-closed); the contrasting case, a package that declined the same move, is `npm`'s guardrail in [package-inventory.md](package-inventory.md).
 
-R1 **replaces** the old inference chain "parsing has no IO, so a format package is pure, so it may not take a runtime dependency." That chain is broken by the three-tier scheme: tier 3 is now defined by *dependencies alone*, so a package that does no IO can still legally be tier 3. `@effected/toml` and `@effected/glob` vendor their engines **because of R1**, not because they happen to lack IO. The supporting economics are unchanged: `smol-toml` is BSD-3-Clause and zero-dependency, and `@effected/jsonc` and `@effected/yaml` already vendor ported-with-attribution engines into `src/internal/` the same way — so vendoring *is* the wrapper, hardened per the input-hardening standards below. R1 is the reason; the low cost is why R1 rarely bites. The rule bites only where the third-party code is large, encumbered or itself dependency-laden, and in that case a tier-1/2 shape was wrong to begin with.
+R1 is not the inference "parsing has no IO, so a format package is pure, so it may not take a runtime dependency." Tier 3 is defined by *dependencies alone*, so a package that does no IO can still legally be tier 3. `@effected/toml` and `@effected/glob` vendor their engines **because of R1**, not because they happen to lack IO. The supporting economics are unchanged: `smol-toml` is BSD-3-Clause and zero-dependency, and `@effected/jsonc` and `@effected/yaml` already vendor ported-with-attribution engines into `src/internal/` the same way — so vendoring *is* the wrapper, hardened per the input-hardening standards below. R1 is the reason; the low cost is why R1 rarely bites. The rule bites only where the third-party code is large, encumbered or itself dependency-laden, and in that case a tier-1/2 shape was wrong to begin with.
 
 **R2 — tier 3 propagates.** Depending on a tier-3 `@effected` package makes you tier 3, whatever your own imports say, because that package's external code lands in your consumer's tree transitively.
 
-**R3 — tier 2 does not propagate.** A boundary package's IO is discharged by the app's platform layer, provided once at the edge, so a consumer of a tier-2 package pays no external install for it. Live example: `@effected/config-file` (boundary) depends on `@effected/walker` (boundary) and stays boundary rather than being pushed up a tier. R3 is the justification the old doc lacked when it asserted that tier follows a package's own surface.
+**R3 — tier 2 does not propagate.** A boundary package's IO is discharged by the app's platform layer, provided once at the edge, so a consumer of a tier-2 package pays no external install for it. Live example: `@effected/config-file` (boundary) depends on `@effected/walker` (boundary) and stays boundary rather than being pushed up a tier. R3 is what justifies R4's claim that tier follows a package's own surface.
 
 **R4 — tier follows a package's own surface** (plus R2 for propagation), never its consumers'. A package that wraps `parse`/`stringify` and never touches `FileSystem` is pure even when its only consumer is a boundary library — `@effected/lockfiles` is pure for exactly this reason: every entrypoint takes `content: string`, and the file reading lives in `@effected/workspaces`. Conversely a package is boundary the moment it performs IO itself, however thin.
 
 R3 and R4 together are what keep `@effected/config-file` at boundary even though it absorbs the four codecs and peers on the pure `jsonc`, `yaml` and `toml` format packages ([package-inventory.md](package-inventory.md#the-four-codecs-live-in-config-file)): `@effected/*` edges do not propagate tier, only [R2](#dependency-policy) tier-3 does.
 
-The scheme buys two things worth stating. First, it explains the runtimes CLI split ([packages/runtimes.md](packages/runtimes.md#tier-and-dependencies)): `@effect/platform-node` is tier 3, the resolver core is tier 2, and a tier-2 package's consumers should not have to pay a tier-3 install — so the split is what R1 requires, not an ad-hoc fix. Second, without the scheme `@effected/config-file` had to state in prose that it carries zero external runtime dependencies, because "boundary" alone could not distinguish it from `@effected/workspaces`; the tier label now carries that information directly.
+The scheme buys two things worth stating. First, it explains the runtimes CLI split ([packages/runtimes.md](packages/runtimes.md#tier-and-dependencies)): `@effect/platform-node` is tier 3, the resolver core is tier 2, and a tier-2 package's consumers should not have to pay a tier-3 install — so the split is what R1 requires, not an ad-hoc fix. Second, the tier label carries the dependency fact directly: "boundary" on `@effected/config-file` says it carries zero external runtime dependencies, which is what distinguishes it from integrated `@effected/workspaces` without a sentence of prose.
 
 ## The consolidated core, and the require-in-R default
 

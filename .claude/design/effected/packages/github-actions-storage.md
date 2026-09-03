@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 94
 related:
   - github-actions.md
@@ -32,9 +32,9 @@ A raw get/put/has store over byte arrays has **no metadata channel**, so the con
 - **Metadata is the caller's schema, not a fixed shape.** The package owns *framing*; the consumer owns *meaning*.
 - **The primitives are `Result`-returning**, per the [sync-primitive policy](../sync-primitive-policy.md): framing is pure computation.
 
-**The stored value is `StoredBlob<A>`, renamed from `Blob<A>`.** The old name collided with the DOM's global `Blob` — harmlessly in source, and *not* harmlessly in the published docs model, where API Extractor disambiguated it to `Blob_2`. A generated name with a numeric suffix is a name no consumer can search for, so the rename is a documentation fix as much as a clarity one.
+**The stored value is `StoredBlob<A>`, not `Blob<A>`.** That name collides with the DOM's global `Blob` — harmlessly in source, and *not* harmlessly in the published docs model, where API Extractor disambiguates it to `Blob_2`. A generated name with a numeric suffix is a name no consumer can search for.
 
-**The envelope's failures are a [per-reason tagged union](github-actions.md#errors)**: `BlobEnvelopeError` aliases `NotABlobEnvelopeError | TruncatedBlobEnvelopeError | UnsupportedBlobEnvelopeVersionError | BlobMetadataDecodeError | BlobMetadataEncodeError`. The split matters most precisely here, because the framing failures are the ones a caller *recovers from selectively* — "not an envelope" and "unsupported version" are both ordinary cache misses on a migrating consumer, while a truncated frame or a metadata decode failure is a corrupt entry worth reporting.
+**The envelope's failures are a [per-reason tagged union](github-actions.md#errors)** — `BlobEnvelopeError` aliases the members declared in `src/BlobEnvelope.ts`. The split matters most precisely here, because the framing failures are the ones a caller *recovers from selectively* — "not an envelope" and "unsupported version" are both ordinary cache misses on a migrating consumer, while a truncated frame or a metadata decode failure is a corrupt entry worth reporting.
 
 **The service takes the schema per call**, which is not a new idiom — it is exactly the shape the state service already has, which is the consistency argument for choosing it over a layer-baked or type-parameterized service. There is **no list and no delete**: eviction is the backend's, no consumer wants them and adding them would mean designing an eviction story for two backends that both already have one.
 
@@ -50,7 +50,7 @@ It settles a duplication question that looks like sloppiness and is not: **each 
 
 ## Protocol details worth not re-deriving
 
-**The RPC client decides retryability structurally.** One module owns the call, the conflict sentinel and the retry policy, and **applies the retry itself** so no protocol can ship without it. Its failure value is structural — transport, status, malformed, with the status when there was one — rather than a formatted string a predecessor tested for substrings, under which rewording a message was a silent policy change. Two corrections travel with it: **both field spellings are read** (camelCase *and* snake_case), because the backend is an internal protocol whose two halves disagree and a predecessor read only one — the failure mode of guessing wrong is "the cache silently never hits", which is the hardest cache failure to notice. And **a non-retryable failure never sleeps**, which is what keeps every ordinary failure test clock-free.
+**The RPC client decides retryability structurally.** One module owns the call, the conflict sentinel and the retry policy, and **applies the retry itself** so no protocol can ship without it. Its failure value is structural — transport, status, malformed, with the status when there was one — rather than a formatted string tested for substrings, under which rewording a message is a silent policy change. Two rules travel with it: **both field spellings are read** (camelCase *and* snake_case), because the backend is an internal protocol whose two halves disagree — reading only one fails as "the cache silently never hits", which is the hardest cache failure to notice. And **a non-retryable failure never sleeps**, which is what keeps every ordinary failure test clock-free.
 
 **The results backend is only reachable from a `uses:` step.** Its two environment variables are injected into action execution contexts and **not** into shell steps, so identical code works from a bundled action and fails when a workflow invokes it directly. All three services report that as a misconfiguration **naming the absent variable**, because nothing else in the environment distinguishes the two cases. They read the variables **per call through the environment service**, not at layer construction: resolving at construction would make merely *composing* the layer fail outside Actions, including for an action that never touches the cache.
 
@@ -58,9 +58,9 @@ It settles a duplication question that looks like sloppiness and is not: **each 
 
 **Artifact facts that are easy to get wrong**, each with a test: the create call's protocol version is unrelated to the version in the marketplace action's name (which is the obvious wrong guess); finalization hashes the **stored archive, streamed** rather than read, because an artifact is the one payload here with no upper bound on size; entries are stored **relative to the root directory**, or a download rebuilds a tree named after the runner that produced it; and a conflict on create is a **failure**, unlike the cache, because a run may hold one artifact per name.
 
-**The cross-run artifact lookup is deliberately not implemented.** Every path through it in the package this replaced fails with "not yet implemented", so porting the parameter would ship a surface that answers no question: **a parameter whose only behaviour has ever been a typed refusal is a ported lie.** Adding it back when a consumer produces a real cross-run lookup is additive; shipping it and later removing it would not be. If it returns, its token field is a redacted value rather than a bare string, because it is a credential and this package has a seam for declassifying one.
+**The cross-run artifact lookup is deliberately not implemented.** A parameter whose only behaviour would be a typed "not yet implemented" refusal is a surface that answers no question. Adding it when a consumer produces a real cross-run lookup is additive; shipping it and later removing it would not be. If it arrives, its token field is a redacted value rather than a bare string, because it is a credential and this package has a seam for declassifying one.
 
-The artifact module is **provisional by ruling** in a way the others are not: it was ported without a call site to shape it against — a thorough search found no direct consumer, and the near-miss that reads like one is a *storage record* on a different API, one import line away and differing by a suffix. Recording that collision is the point, so the absence is not re-litigated from the same confusion. The first consumer to adopt it is the one whose feedback reshapes it.
+The artifact module is **provisional** in a way the others are not: it has no call site shaping it — the near-miss that reads like one is a *storage record* on a different API, one import line away and differing by a suffix. Recording that collision is the point, so the absence is not re-litigated from the same confusion. The first consumer to adopt it is the one whose feedback reshapes it.
 
 ## Cache keys, and where file hashing lives
 
@@ -74,7 +74,7 @@ Three properties earned their tests, and each is a way the obvious implementatio
 
 **`withNamespace` is the cache-bust primitive, and it drops the ladder deliberately.** A busted run must match nothing an unbusted run wrote, *and* its own entries must be invisible to unbusted runs — one intent, and spelling the two halves separately is what makes getting it wrong undetectable. Restore keys are **prefix matches**, so folding a bust token in after the retained prefix leaves an ordinary run's rung prefix-matching busted entries: the cache still appears to work while quietly serving poisoned entries into unrelated runs. Two decisions make the combinator safe for *any* segment value, with no prefix reasoning at the call site: the segment goes **first**, so a namespaced key shares no prefix with an unnamespaced one, and the ladder is **dropped**, so no rung can reach outside the namespace even when the segment happens to equal an ordinary leading segment — which a prepend alone would not survive. Dropping the ladder is a safe default rather than a prohibition: the segments are all still there, so a caller who wants one busted run to warm from another follows with `withRestoreDepths` and gets an in-namespace ladder **deliberately**.
 
-`CacheKeyError` also became a [per-reason union](github-actions.md#errors) — `CacheKeyReadError` carries a required `path`, `CacheKeyBadPatternError` a required `pattern` — which is the case where the old shape's optional fields were most visibly wrong: half the messages could render `"undefined"`.
+`CacheKeyError` is a [per-reason union](github-actions.md#errors) whose members each carry their own required field, the case where a collapsed shape's optional fields are most visibly wrong: half the messages could render `"undefined"`.
 
 **File hashing is byte-compatible with the official glob action**: sorted, de-duplicated and each file's digest fed into the accumulator as **binary, not hex**. A hex-fed accumulator produces a perfectly plausible digest that never matches a cache entry written by any other action, so the test pins the digest as a literal.
 
@@ -82,7 +82,7 @@ Three properties earned their tests, and each is a way the obvious implementatio
 
 The two halves are separate statics rather than one, which is what lets a caller reuse the discovery, and walking from the workspace root makes "never hash a file outside the workspace" **structural** rather than a remembered check. Two behaviours earned tests and one is a real trap: candidates are matched by their path **relative to the workspace**, and **directories are excluded by an explicit stat** — a directory named like a file matches a file pattern and is not a file, so without the check it reaches the hasher, which fails on the read. A glob that will not compile is this module's own typed error rather than a dependency's error leaking onto its surface.
 
-**Recorded escalation: if a second, non-Actions consumer wants file hashing, it moves** — into a small hashing package, or back into `walker` once core grows a digest contract. It is here because this package is integrated already and may use `node:crypto`. Not a permanent home, the honest one today.
+**Recorded escalation: if a second, non-Actions consumer wants file hashing, it moves** — into a small hashing package or back into `walker` once core grows a digest contract. It is here because this package is integrated already and may use `node:crypto`. Not a permanent home, the honest one today.
 
 ## Tool and package-manager installation
 

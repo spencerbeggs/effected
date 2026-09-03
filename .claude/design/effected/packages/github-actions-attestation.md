@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - github-actions.md
@@ -25,7 +25,7 @@ The rule they exist to serve: **`@effected/sbom` must not depend on the Actions 
 
 It lives here rather than in `sbom` because it reads the runner's token-request variables, which exist only when a workflow declares `id-token: write`. Its surface is the token and the token's **decoded claims**.
 
-**Decoded claims are a typed value on the surface, not a nullable hand-parse at the call site**, and that is the fix for a structurally untestable provenance path: a predecessor's test double returned a synthetic non-JWT, so a consumer's own claim decode yielded null, so the provenance branch was **never reached** — with four separate apologetic comments in one consumer repo about it. With claims on the issuer's surface a test double returns real decodable claims and the path becomes reachable.
+**Decoded claims are a typed value on the surface, not a nullable hand-parse at the call site**, and that is what keeps the provenance path testable: a test double that returns a synthetic non-JWT makes a consumer's own claim decode yield null, so the provenance branch is **never reached**. With claims on the issuer's surface a test double returns real decodable claims and the path is reachable.
 
 **The decode deliberately does NOT verify the JWT signature.** Three reasons, recorded so a future agent does not "fix" it:
 
@@ -37,7 +37,7 @@ If a consumer ever needs a *verified* token, that is a different operation with 
 
 ## `ActionsIdentityToken`
 
-The layer closing `sbom`'s identity contract over the issuer. Without it, every action wanting a signed attestation wrote the adapter itself — from a contract in one package against a service in another — which is exactly the work an inverted contract is supposed to have already done. `sbom`'s static-token layer remains the path for a consumer that already holds a token.
+The layer closing `sbom`'s identity contract over the issuer. Without it, every action wanting a signed attestation writes the adapter itself — from a contract in one package against a service in another — which is exactly the work an inverted contract is supposed to have already done. `sbom`'s static-token layer remains the path for a consumer that already holds a token.
 
 ## `ActionsProvenance`
 

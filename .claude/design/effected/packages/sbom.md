@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -122,7 +122,7 @@ The invariant: **an SBOM-only consumer must not reach `@sigstore/*`, and a signi
 
 That distinction has a live consequence rather than a theoretical one: [`@effected/github-actions`](github-actions.md) depends on this package for [two small seam adapters](github-actions-attestation.md), so **every consumer of that package installs this one's dependencies even if it never signs anything**. The claim this design supports is "a consumer that does not import the signer links nothing from it, and a tree-shaking bundler can drop it"; the claim it does **not** support is "the dependency is absent from the consumer's tree by construction". A predecessor's bundler ignore list is deleted by *this* package's confinement only for consumers that bundle and tree-shake — not by the split alone.
 
-**The walker's comment-stripping order is load-bearing, and the obvious order is wrong.** Stripping block comments before line comments lets a `/*`-containing token in prose open a block comment and delete everything to the end of the next doc comment, imports included — a module importing `effect` was reported as importing nothing. An under-reporting walker makes a confinement test pass for the wrong reason. Line comments come out first here; sibling packages that copied an earlier walker have the opposite order and are safe only while no prose in them contains `/*`.
+**The walker's comment-stripping order is load-bearing, and the obvious order is wrong.** Stripping block comments before line comments lets a `/*`-containing token in prose (`@sigstore/*` in a line comment, say) open a block comment and delete everything to the end of the next doc comment, imports included — so a module importing `effect` is reported as importing nothing, and an under-reporting walker makes a confinement test pass for the wrong reason. Line comments come out first here, and `__test__/reachability.test.ts` pins it with a positive control.
 
 ## Testing
 

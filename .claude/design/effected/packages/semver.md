@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../architecture.md
@@ -26,7 +26,7 @@ Pure tier — no IO anywhere. `effect` is the only peer; there are no cross-`@ef
 
 ## Module layout
 
-Module-per-concept per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept). One module per domain concept — `SemVer`, `Comparator`, `Range`, `VersionDiff`, `VersionCache` — each owning its own tagged errors rather than the kind-based `errors/` + `schemas/` folders the v3 source used. `src/index.ts` is the only re-exporting module; see it for the full export list.
+Module-per-concept per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept). One module per domain concept — `SemVer`, `Comparator`, `Range`, `VersionDiff`, `VersionCache` — each owning its own tagged errors rather than kind-based `errors/` and `schemas/` folders. `src/index.ts` is the only re-exporting module; see it for the full export list.
 
 `src/internal/` holds the parsing pipeline: `grammar.ts` (recursive descent), `desugar.ts` (caret/tilde/x-range/hyphen), `normalize.ts` (comparator sort plus build-ignoring dedupe) and `order.ts`. `order.ts` exists to break a cycle: both `SemVer` and `Range` need the spec's compare primitives, so they live once in a module neither imports from the other.
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 88
 related:
   - README.md
@@ -17,9 +17,9 @@ related:
 
 ## Overview
 
-`/Users/spencer/workspaces/spencerbeggs/claude-code-marketplace-manager` is a single-purpose GitHub Action: it edits a Claude Code marketplace manifest — comment-preserving JSONC — validates the result, and lands the change either directly or through a pull request.
+`spencerbeggs/claude-code-marketplace-manager` is a single-purpose GitHub Action: it edits a Claude Code marketplace manifest — comment-preserving JSONC — validates the result, and lands the change either directly or through a pull request.
 
-It is the smallest consumer in the register and the only one outside the savvy-web org. Its whole interesting surface is one service, `src/services/ManifestCommitter.ts`.
+It is the smallest consumer in the register and the only one outside the savvy-web org. Its whole interesting surface is one service, `src/services/ManifestCommitter.ts`. There is no local checkout of it at present; this record reflects the survey of 2026-08-25.
 
 ## What it exercises
 
@@ -33,7 +33,7 @@ It is the smallest consumer in the register and the only one outside the savvy-w
 
 ## Where the kit's edge sits
 
-- **Structural validation stays local.** `src/services/ManifestValidator.ts` runs Ajv against a bundled JSON Schema alongside Effect Schema decoders. No kit package offers this pairing and none is planned.
+- **Structural validation stays local.** `src/services/ManifestValidator.ts` runs Ajv against a bundled JSON Schema alongside Effect Schema decoders. No kit package offers this pairing; it is not a kit concern.
 - **Marketplace-manifest vocabulary** — the schemas, the report shaping and the persisted state.
 - **The JSON Schema generation script**, which derives schema files from the repo's own Effect Schemas and drift-checks the committed copies.
 

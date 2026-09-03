@@ -3,8 +3,8 @@ status: current
 module: effected
 category: meta
 created: 2026-07-06
-updated: 2026-08-26
-last-synced: 2026-08-26
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 90
 related:
   - architecture.md
@@ -53,7 +53,7 @@ related:
 
 ## Overview
 
-The current `@effected/*` package set and where each package came from. The kit is **thirty-one publishable packages** — thirty libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library). Thirty of them have published; `@effected/schema-org`, built 2026-08-26, is the one that has not yet, and `@effected/github-references`, built and released 2026-08-17, was the last to publish. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
+The current `@effected/*` package set and where each package came from. The kit is **thirty-one publishable packages** — thirty libraries plus the `pnpm-plugin-effect` [companion](effect-standards.md#companion-packages-published-but-not-a-library) — and every one of them has published; `@effected/schema-org` is the newest. The directory listing of `packages/` is the authority on membership; this document is the authority on where each package came from and why it is shaped the way it is. Tier definitions are in [effect-standards.md](effect-standards.md); the release mechanics and consumer mapping are in [releases.md](releases.md); open work is in [roadmap.md](roadmap.md). Each package's own design doc under `packages/` is authoritative for its API and as-built decisions.
 
 The kit's scope is closed by the consuming applications in [releases.md](releases.md), not by how many predecessor libraries exist. A predecessor is not by itself a commitment to carry it forward: the JSON Schema package fell off under that test (see [Off the roadmap](#off-the-roadmap)).
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - workspaces.md
@@ -58,7 +58,7 @@ The rules have two sources: the `pnpm-workspace.yaml` block (`pnpm:export` mater
 
 One measured caveat, stated so nobody "fixes" it: **this repo's plugin merges onto the seed; another plugin could overwrite it.** Under seeding that is pnpm's own behaviour reproduced, not a defect introduced here.
 
-Two axes ride along unapplied. `ignoreMissing` and `allowAny` are separate suppression mechanisms nobody has measured, and an unmeasured suppression is precisely what produced the bug being fixed — so they travel through the seam and no kit code acts on them. **Only `allowedVersions` is applied, and rules whose `ignoreMissing` or `allowAny` is non-empty make the report `unverified` (`peerRulesNotApplied`) rather than being silently ignored** — an unimplemented axis degrades to fail-closed instead of to a wrong answer, since a workspace suppressing missing optional peers that way would otherwise get exactly the false-positive class this work removes. A field that exists and does nothing reads as a feature; this one announces that it did nothing. Measuring the two axes and applying them is filed as **effected#430**; until it lands, the degradation above *is* the behaviour, not a stopgap to be quietly removed.
+Two axes ride along unapplied. `ignoreMissing` and `allowAny` are separate suppression mechanisms nobody has measured, and an unmeasured suppression is precisely what produced the bug being fixed — so they travel through the seam and no kit code acts on them. **Only `allowedVersions` is applied, and rules whose `ignoreMissing` or `allowAny` is non-empty make the report `unverified` (`peerRulesNotApplied`) rather than being silently ignored** — an unimplemented axis degrades to fail-closed instead of to a wrong answer, since a workspace suppressing missing optional peers that way would otherwise get exactly the false-positive class this work removes. A field that exists and does nothing reads as a feature; this one announces that it did nothing. Until the two axes are measured and applied, the degradation above *is* the behaviour, not a stopgap to be quietly removed.
 
 ### How pnpm matches an allowedVersions key — measured, not documented
 

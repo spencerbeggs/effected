@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-21
-updated: 2026-08-25
-last-synced: 2026-08-25
-completeness: 90
+updated: 2026-09-02
+last-synced: 2026-09-02
+completeness: 92
 related:
   - architecture.md
   - releases.md
@@ -29,7 +29,7 @@ The kit publishes its own version surface — the `effected` / `effected:peers` 
 
 ## The CLI is the only writer
 
-`rolldown-pnpm-config upgrade --yes` resolves each `source: "workspace"` entry against the local workspace and rewrites the literal in place. **Builds never write.** An earlier revision of the seam rewrote the config from the build's freeze path, which made every developer's `build:dev` and every CI build mutate the repo; the writer is a script a human or a workflow invokes deliberately, and nothing else.
+`rolldown-pnpm-config upgrade --yes` resolves each `source: "workspace"` entry against the local workspace and rewrites the literal in place. **Builds never write.** A writer on the build path makes every developer's `build:dev` and every CI build mutate the repo; the writer is a script a human or a workflow invokes deliberately, and nothing else.
 
 ## Membership is not the CLI's question
 
@@ -37,11 +37,11 @@ The kit publishes its own version surface — the `effected` / `effected:peers` 
 
 So for a newly added package, `--check` reports **"Catalogs are in sync"** on a tree whose catalog is incomplete. That is not a bug in the CLI; it is a successful-looking answer to a question that was never evaluated, which is this document's recurring failure class in a new place.
 
-It has happened. `@effected/schema-org` reached a release branch absent from the catalog while `catalog:check` stayed green. The only thing that caught it was `catalog.test.ts`, which computed membership **separately** — so the tool that could see the gap was not the tool the gate ran, and the two disagreed without either being wrong.
+A new package has reached a release branch absent from the catalog while `catalog:check` stayed green; only `catalog.test.ts`, computing membership **separately**, saw the gap — the tool that could see it was not the tool the gate ran, and the two disagreed without either being wrong.
 
-**The fix is to make the gate ask the question.** `lib/scripts/catalog-sync.ts` computes membership itself — `catalogMembers`, `publishablePackages`, `missingFromCatalog` — reading the literal as source text the same way the CLI does, and fails on a gap.
+**So the gate asks the question itself.** `lib/scripts/catalog-sync.ts` computes membership — `catalogMembers`, `publishablePackages`, `missingFromCatalog` — reading the literal as source text the same way the CLI does, and fails on a gap.
 
-`catalog.test.ts` keeps its own derivation rather than importing that one, and the redundancy is deliberate. The two live in different TypeScript projects: the root config cannot see a package's files, and the package's `rootDir` cannot see the root's, so sharing a function means widening a tsconfig. Two independent checks of one rule is worth more than the coupling that would remove one of them — the original defect was never that the two disagreed, it was that only one of them was asking.
+`catalog.test.ts` keeps its own derivation rather than importing that one, and the redundancy is deliberate. The two live in different TypeScript projects: the root config cannot see a package's files, and the package's `rootDir` cannot see the root's, so sharing a function means widening a tsconfig. Two independent checks of one rule is worth more than the coupling that would remove one of them — the defect was never that the two disagreed, it was that only one of them was asking.
 
 Two behaviours follow, and both are deliberate:
 
@@ -54,13 +54,11 @@ Two behaviours follow, and both are deliberate:
 
 The upgrade CLI resolves a `source: "workspace"` entry from the package manifest plus the **pending changesets**. A package that changesets bumps only as a **dependency ripple** carries no changeset naming it, so the CLI leaves it where it is — and the catalog goes stale the moment the release branch bumps it.
 
-This is the version half of the same failure the [membership section](#membership-is-not-the-clis-question) describes, and it bit for real: at the `release: 7 packages` commit, the catalog named `@effected/sbom` `^0.4.3` and `@effected/workspaces` `^0.18.2` against packages the release had already moved to `0.4.4` and `0.18.3`. Both were ripples off `package-json` and `spdx`. It is reliably wrong on the one branch where the catalog matters most.
+This is the version half of the same failure the [membership section](#membership-is-not-the-clis-question) describes: a release that bumps two packages only as ripples leaves the catalog naming their previous versions, reliably wrong on the one branch where the catalog matters most. It is also self-concealing — the catalog-sync **workflow** checks out `ref: main`, so it reports *pass* on the very release PR whose branch is drifted. Both answers are right about different trees.
 
-It was also self-concealing in the way this document keeps describing: the catalog-sync **workflow** checks out `ref: main`, so it reported *pass* on the very release PR whose branch was drifted. Both answers were right about different trees.
+**`changeset status --output` already computes the true plan, ripples included**, so the sync asks it rather than reimplementing changesets' dependency resolution. `check` fails on ripple drift even when the CLI is green; `sync` rewrites the affected entries' `range` and floors the `peer` patch per `lock-minor`. An unreadable plan is not fatal — the CLI's own resolution still covers every directly-bumped package, so the behaviour degrades to that rather than failing a sync that is otherwise correct.
 
-**`changeset status --output` already computes the true plan, ripples included**, so the sync asks it rather than reimplementing changesets' dependency resolution. `check` fails on ripple drift even when the CLI is green; `sync` rewrites the affected entries' `range` and floors the `peer` patch per `lock-minor`. An unreadable plan is not fatal — the CLI's own resolution still covers every directly-bumped package, so the behaviour degrades to what it was rather than failing a sync that is otherwise correct.
-
-The alternative was re-syncing after `changeset version` in the release workflow, which is where the ripple versions first become concrete. It was rejected because that workflow lives in another repository, and because a sync run there writes a changeset that re-versions the release already in flight — the circularity recorded in effected#542.
+The alternative — re-syncing after `changeset version` in the release workflow, where the ripple versions first become concrete — is rejected because that workflow lives in another repository, and because a sync run there writes a changeset that re-versions the release already in flight.
 
 ## Two output modes, two audiences
 
@@ -111,7 +109,7 @@ The job's outcome is published as a **`Catalog Sync` check run**, written once, 
 
 - **One write, never create-early-then-complete-late.** A run opened as `in_progress` and closed by a later step stays `in_progress` **forever** whenever the job is cancelled or dies before reaching that step — and a hung check is indistinguishable from a slow one, with nothing timing it out. A run that is only ever written once cannot hang.
 - **The head SHA, never `github.sha`.** On a `pull_request` event `github.sha` is the ephemeral merge commit; a check run posted there does not appear in the PR's own status list and no branch-protection rule keyed on the check can see it, so the gate silently never applies. The step uses `github.event.pull_request.head.sha` and falls back to `github.sha` for `workflow_dispatch`. This is the same merge-ref blindness that makes head-scoped check *queries* lie.
-- **The conclusion is `catalog:check`'s exit code, and that step runs BEFORE the sync.** This is the fix for the defect that prompted the work: the job ran only `catalog:sync`, which repairs drift and then exits 0, so it reported success on a branch whose catalog was wrong. A check run placed after the mutation is worthless for the same reason — by then the catalog is in sync by construction. The gate is the read-only `catalog:check`, run first, with `continue-on-error: true` so its exit code survives as a signal while the remediation below still runs.
+- **The conclusion is `catalog:check`'s exit code, and that step runs BEFORE the sync.** A job that ran only `catalog:sync` would repair drift and exit 0, reporting success on a branch whose catalog was wrong; a check run placed after the mutation is worthless for the same reason — by then the catalog is in sync by construction. The gate is the read-only `catalog:check`, run first, with `continue-on-error: true` so its exit code survives as a signal while the remediation below still runs.
 - **Read `steps.catalog-check.outcome`, never `.conclusion`.** `continue-on-error` rewrites `conclusion` to `success`; `outcome` is the step's real result. Reading the wrong one reports green on exactly the drift runs the gate exists to catch.
 - **A repaired catalog still reports `failure`.** The check answers "was the catalog correct at this ref", not "did the automation cope". A run that silently fixes drift teaches nobody that the drift happened, and the summary says the repair landed and names the commit, so the failure is informative rather than obstructive. It goes green on a re-run once the sync commit is in the branch.
 - **`catalog:check` reporting drift while `catalog:sync` rewrites nothing is its own failure**, distinctly worded: the two halves disagree, so one is broken, and neither answer may be treated as a clean catalog.

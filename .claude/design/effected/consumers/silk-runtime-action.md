@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 88
 related:
   - README.md
@@ -35,7 +35,7 @@ Four capabilities exist in the kit because this action needed them, and it remai
 
 **Cache policy is composed from pure kit facts.** `src/steps/cache-config.ts` decides what the dependency cache is keyed on and what it covers by composing `@effected/lockfiles`' `filenamesFor` with `@effected/npm`'s `PackageManagerCache` — lockfile names on one side of the seam, store locations on the other — and then lays out the key with `CacheKey`. The result is total and host-argument-driven, so a test pins the Windows store paths without a runner, a filesystem or a mocked `process`. This is the register's clearest case of pure kit vocabulary turning a runner-shaped decision into a testable function.
 
-**`CacheKey.hashFiles` is provisionally housed.** It lives in `@effected/github-actions` because this is its only consumer; a second, non-Actions consumer moves it to a hashing package or into `walker` once core grows a digest contract.
+**`CacheKey.hashFiles` is housed by its consumer, not its nature.** It lives in `@effected/github-actions` because this is its only consumer; a non-Actions consumer would be the case for moving it somewhere purer.
 
 ## Where the kit's edge sits
 

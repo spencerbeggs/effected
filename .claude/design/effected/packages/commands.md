@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -88,7 +88,7 @@ Module-per-concept, no barrels; `src/index.ts` re-exports only. See `src/`:
 
 Two properties are the design rather than conveniences. If **multiple** lines decode, the **last** wins, so a child must not emit two schema-valid lines and a consumer's envelope should be discriminated (a required `ok` literal) so an accidental log line cannot satisfy it. And it parses **regardless of the exit code**, because a protocol payload discriminates success in-band and therefore outranks the code: a child that crashes after flushing its payload still reported. When nothing decodes anywhere the typed `CommandOutputError` carries the run's context — exit code and both redacted streams — with `kind: "schema"` plus the last parseable line's decode failure when at least one line was JSON, and `"notJson"` only when none was.
 
-`@effected/workspaces`' `ConfigDependencyHooks.layerSubprocess` is the in-kit consumer and deleted its hand-rolled copy of this framing when the combinator landed. Do not re-hand-roll last-line parsing at a call site.
+`@effected/workspaces`' `ConfigDependencyHooks.layerSubprocess` is the in-kit consumer. Do not hand-roll last-line parsing at a call site.
 
 ### `Run.detach` encodes an ordering invariant
 
@@ -148,10 +148,10 @@ Per the [observability standards](../effect-standards.md#observability-standards
 
 - **Unit suites stub core's spawner with the public `ScriptedSpawner`,** which is why the double is itself directly tested: it is load-bearing machinery for every suite here and downstream. The spawn log is what makes "cached", "concurrent resolves share one probe" and "the guard refuses before any spawn" real assertions about probe counts rather than plausible ones.
 - **Redaction gets a property test**, not examples: no rendered message, no `args` array and no captured stream ever contains a secret's value. It is the one invariant where a counterexample is a security bug.
-- **e2e runs real processes through `@effect/platform-node`**: the ENOENT → `NotFound` mapping the whole absence classification rests on, the dual-stream backpressure deadlock, and `detach` surviving its scope both ways.
+- **e2e runs real processes through `@effect/platform-node`**: the ENOENT → `NotFound` mapping the whole absence classification rests on, the dual-stream backpressure deadlock and `detach` surviving its scope both ways.
 - **Run vitest from the repo root.** A project-filtered run from inside the package prints `Tests: 0/0 passed` and exits 0.
 
-Build through `pnpm build --filter @effected/commands`, never the raw script. `savvy.build.ts` carries the narrow `_base` suppression for the synthesized class-factory bases; never widen it — the two genuine `ae-unresolved-link` warnings this package hit were **fixed** (a schema-declared field and a shape-interface member are not `{@link}` targets; use backticks), not suppressed.
+Build through `pnpm build --filter @effected/commands`, never the raw script. `savvy.build.ts` carries the narrow `_base` suppression for the synthesized class-factory bases; never widen it. A genuine `ae-unresolved-link` warning is **fixed**, not suppressed: a schema-declared field and a shape-interface member are not `{@link}` targets, so spell them in backticks.
 
 ## Consumers
 

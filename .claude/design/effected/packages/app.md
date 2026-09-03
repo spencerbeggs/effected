@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 92
 related:
   - ../effect-standards.md
@@ -87,7 +87,7 @@ A **type-only** alias unioning the constituent packages' errors. It erases, so i
 
 **No new error classes.** The constituent errors flow through typed and unwrapped — a `StoreMigrationError` that reaches an application still carries its migration identity, and re-wrapping it would destroy exactly the structure the three ports' error redesigns built.
 
-**Wiring defects** per the [input-vs-wiring ruling](../effect-standards.md#error-handling-standards): a `filename` — store's, cache's or config's — dies at layer construction unless it is a single path component. The guard in `internal/filename.ts` rejects the empty string, anything containing a separator, and the two traversal names `.` and `..`. Do not weaken it to "empty or contains a separator": `".."` contains no separator and still escapes the namespace directory. This package has no numeric options of its own; pass-through numerics are guarded by store, which owns them.
+**Wiring defects** per the [input-vs-wiring ruling](../effect-standards.md#error-handling-standards): a `filename` — store's, cache's or config's — dies at layer construction unless it is a single path component. The guard in `internal/filename.ts` rejects the empty string, anything containing a separator and the two traversal names `.` and `..`. Do not weaken it to "empty or contains a separator": `".."` contains no separator and still escapes the namespace directory. This package has no numeric options of its own; pass-through numerics are guarded by store, which owns them.
 
 ## Observability
 
@@ -103,9 +103,9 @@ Every export is a **parameterized layer factory**, so [store's layer-memoization
 
 ## Testing
 
-Suites in `__test__/`, integration under `__test__/integration/`. `@effect/platform-node` backs the integration suite on the merits — the ordering proofs are claims about a real filesystem — and stays there. The unit suites are a different question: they sit on [`@effected/memfs`](memfs.md#in-kit-adoption)'s pending migration list.
+Suites in `__test__/`, integration under `__test__/integration/`. `@effect/platform-node` backs the integration suite on the merits — the ordering proofs are claims about a real filesystem — and stays there. The unit suites still stub `FileSystem` with `FileSystem.layerNoop`, against the kit rule that a test needing `FileSystem` provides [`@effected/memfs`](memfs.md#in-kit-adoption); they are on that package's migration list.
 
-Re-examine [`layerTest`'s internal `FileSystem.layerNoop`](#applayertest--the-hermetic-control-plane) in that pass. A seeded volume would make its documented limit — that any path exercising `ensure*` dies — go away rather than stay documented, which is strictly better than a caveat. It is the same open question `@effected/github-actions` carries for `ActionEnvironment.layerTest`, and the two should be answered together: what a published `layerTest` provides for `FileSystem` is a kit convention, not a per-package taste.
+The same question hangs over [`layerTest`'s internal `FileSystem.layerNoop`](#applayertest--the-hermetic-control-plane): a seeded volume would remove its documented limit — that any path exercising `ensure*` dies — rather than leave it documented. `@effected/github-actions` carries the identical question for `ActionEnvironment.layerTest`, and the two should be answered together, because what a published `layerTest` provides for `FileSystem` is a kit convention rather than a per-package taste.
 
 The ordering proofs carry the design's weight — the ensure-before-open ordering is this package's only real claim, and a test that does not watch it fail proves nothing. The properties to preserve if these suites are ever rewritten:
 

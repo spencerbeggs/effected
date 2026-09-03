@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-08-26
-last-synced: 2026-08-26
-completeness: 88
+updated: 2026-09-02
+last-synced: 2026-09-02
+completeness: 90
 related:
   - architecture.md
   - catalog-sync.md
@@ -34,7 +34,9 @@ related:
   - packages/config-file.md
   - packages/pnpm-plugin-effect.md
   - packages/schemastore.md
+  - packages/schema-org.md
   - consumers/README.md
+  - consumers/tsdoctor.md
 ---
 
 # Release criteria
@@ -56,7 +58,7 @@ Version and stability are separate axes.
 - **Version.** Every package stays below `1.0.0` until Effect `4.0.0` GA, pinning a single Effect v4 prerelease throughout development. Graduation to `1.0.0` follows Effect `4.0.0`. Until then the `effect` peer range names the prerelease pinned in the `effect` catalog in `pnpm-workspace.yaml`, and a catalog bump is a coordinated change across the whole kit — one changeset per package, one wave.
 - **Stability.** A per-package `stable | unstable` axis independent of the version number. **Every package is `unstable`.** Consumers pin exact versions, so an accidental break surfaces in their type-checking rather than silently through a range — the pre-release contract made mechanical.
 
-**A branch build reports the *previous* release's version, and that collides with the registry.** Changesets bump at release, so `dist/**` on an unreleased branch carries the version of the last release while the code contains the unreleased work — and the registry is serving that same number. A consumer linked against a local build therefore sees a version identical to the published one, for different code. A dogfood consumer nearly pinned `^0.9.1` on that basis and would have resolved to code they had never run (`@spencerbeggs/reposets`, 2026-08-14; they caught it and asked for the published numbers rather than inferring them).
+**A branch build reports the *previous* release's version, and that collides with the registry.** Changesets bump at release, so `dist/**` on an unreleased branch carries the version of the last release while the code contains the unreleased work — and the registry is serving that same number. A consumer linked against a local build therefore sees a version identical to the published one, for different code — a dogfood consumer that pins from the linked build resolves, on its next clean install, to code it has never run.
 
 The rule that follows: **a linked consumer must not derive its pin from the linked build's version.** Take the version from the release — the `release` mail, or `npm view <pkg> version` — never from the artifact you are linked against. The upstream owes those numbers explicitly at exit for the same reason.
 
@@ -89,7 +91,7 @@ The release criterion is "the kit can replace the business logic of these five."
 
 ## The gate
 
-The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion. It is a closed historical set — the table below is the record of why each one had to exist before the kit could publish at all, not a filter on anything now. The kit is thirty publishable packages today ([package-inventory.md](package-inventory.md)); how the other eleven arrived is [below](#joining-the-release-stream-after-the-gate).
+The gate is the union of what those consumers need, and it is met. The gate set was **nineteen publishable packages**: eighteen libraries plus the `pnpm-plugin-effect` companion. It is a closed historical set — the table below is the record of why each one had to exist before the kit could publish at all, not a filter on anything now. The kit is thirty-one publishable packages today ([package-inventory.md](package-inventory.md)); how the other twelve arrived is [below](#joining-the-release-stream-after-the-gate).
 
 | Package | Tier | Why it is on the gate |
 | --- | --- | --- |
@@ -119,14 +121,15 @@ The gate is the union of what those consumers need, and it is met. The gate set 
 
 ### Joining the release stream after the gate
 
-Eleven packages arrived after the gate: `markdown`, `schemastore`, `jsonl`, `cli`, `memfs`, `github-references`, and the [github-split five](package-inventory.md#the-github-split-packages) — `commands`, `templates`, `github`, `github-actions` and `sbom`. None entered through this document's criterion, because that criterion is the union of what the five applications need and it was met without them.
+Twelve packages arrived after the gate: `markdown`, `schemastore`, `jsonl`, `cli`, `memfs`, `github-references`, `schema-org`, and the [github-split five](package-inventory.md#the-github-split-packages) — `commands`, `templates`, `github`, `github-actions` and `sbom`. None entered through this document's criterion, because that criterion is the union of what the five applications need and it was met without them.
 
 What scoped them instead:
 
 - The github-split five are scoped by the program's six consumer repos — the five savvy-web action repos plus claude-code-marketplace-manager — all mapped in [consumers/](consumers/README.md), and **all six have since completed the migration onto them**. Only silk-update-action of those is also one of the five applications.
 - `markdown`, `schemastore`, `jsonl` and [`cli`](packages/cli.md) were each scoped by a named consumer and built design-doc-first, then published in the next wave whose changesets named them. `cli` came out of the [reposets](consumers/reposets.md) loop — the kit's first consumer that runs at a terminal rather than on a runner — with its doc written and reviewed by that consumer before the port.
 - [`memfs`](packages/memfs.md) was scoped by the kit itself: it is the filesystem test double every other package's suite needs, which is why it carries **no `@effected/*` edge, ever**.
-- [`github-references`](packages/github-references.md) is the newest, released 2026-08-17 and completing the set. It is the kit's first **extraction driven by install weight rather than by design**: a pure grammar left `github` because an octokit-free consumer could not reach it, and `github` keeps a droppable compat re-export so the move is not a breaking change for the consumer that adopted it in its old home.
+- [`github-references`](packages/github-references.md) is the kit's first **extraction driven by install weight rather than by design**: a pure grammar left `github` because an octokit-free consumer could not reach it, and `github` keeps a droppable compat re-export so the move is not a breaking change for the consumer that adopted it in its old home.
+- [`schema-org`](packages/schema-org.md) is the newest. It was named into existence by [tsdoctor](consumers/tsdoctor.md), the register's only library monorepo, and is the kit's second package with a published subpath entrypoint.
 
 That is the whole mechanism, and it is deliberately the same one a version bump uses: **gate membership is history, not a filter.** The gate answered "what must exist before the kit publishes at all", and that question is closed.
 

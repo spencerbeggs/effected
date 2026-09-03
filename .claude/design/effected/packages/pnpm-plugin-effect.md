@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 90
 related:
   - ../architecture.md
@@ -35,7 +35,7 @@ Tier answers "what does depending on this cost you?" and nothing can depend on t
 
 It is a real npm-targeted package that **publishes with the kit, on the release gate like every other package** ([releases.md](../releases.md#versioning)). Being a companion makes it structurally free to release on its own schedule, but the release is coordinated by design so consumers get one internally consistent graph. Do not infer release intent from surface signals: every source manifest in this repo is `"private": true`, and the bundler's `publishConfig` transform emits the publishable manifest at build time ([package-setup.md](../package-setup.md)).
 
-Its value was largest under Effect v3, where computing peer floors by hand was genuinely hard; v4 makes that easier, so **installing it is optional for the consumer** — but it is a supported, shipped option, not an internal tool that happens to be publishable.
+**Installing it is optional for the consumer** — a workspace can pin Effect by hand — but it is a supported, shipped option, not an internal tool that happens to be publishable.
 
 ## How it generates the catalogs
 
@@ -57,11 +57,11 @@ The `effected` / `effected:peers` catalogs list **every publishable kit package 
 Four properties are load-bearing.
 
 - **`@effected/pnpm-plugin-effect` is deliberately absent from its own catalog, and must stay absent.** It is the package the catalog ships inside: catalogue it and every rewrite bumps the plugin, which invalidates the catalog, which writes another changeset — a release loop with no termination condition. The omission *is* the termination condition. Two tests in [`__test__/catalog.test.ts`](../../../../packages/pnpm-plugin-effect/__test__/catalog.test.ts) pin it.
-- **Publishability is `publishConfig.access === "public"`, never `private === false`.** All thirty source manifests here are `private: true` and the bundler's `publishConfig` transform emits the publishable one at build time ([package-setup.md](../package-setup.md)). Any membership check written against `private` classifies the entire kit as unpublishable and silently produces an empty catalog.
+- **Publishability is `publishConfig.access === "public"`, never `private === false`.** Every source manifest here is `private: true` and the bundler's `publishConfig` transform emits the publishable one at build time ([package-setup.md](../package-setup.md)). Any membership check written against `private` classifies the entire kit as unpublishable and silently produces an empty catalog.
 - **The literal must stay inline at the `PnpmConfigPlugin(...)` call site.** `rolldown-pnpm-config`'s `upgrade` CLI finds it by statically walking that call argument for `.catalogs.<name>.packages`; hoisting it into an exported `const` makes it invisible to the rewriter. `savvy.build.ts` is a top-level `await build({...})`, so a test cannot import it either — the test reads the source the same way the CLI does, which is why that parsing exists at all.
 - **Entries hold next-release versions.** See [catalog-sync.md](../catalog-sync.md#catalog-entries-hold-next-release-versions) for what follows from that, including why a first sync flooring a peer patch is correct rather than drift.
 
-Keeping the catalog current is automated; the machinery, and the release gate that is not yet wired, are in [catalog-sync.md](../catalog-sync.md).
+Keeping the catalog current is automated — a pull-request sync that repairs `main` and a release gate that refuses to publish a drifted catalog; both are in [catalog-sync.md](../catalog-sync.md).
 
 ## The retired effect3 interop catalogs
 
@@ -88,7 +88,7 @@ Three root scripts drive catalog maintenance. They regenerate the plugin's defin
 - **`pnpm pnpm:export`** — writes the generated catalogs and the allowed-versions table into the root `pnpm-workspace.yaml`, and surfaces any drift between the plugin's definitions and what the workspace pins.
 - **`pnpm pnpm:preview`** — previews the generated output without writing.
 
-Advancing the beta is `pnpm pnpm:up` then `pnpm pnpm:export`, and the submodule is re-pinned in the same commit ([architecture.md](../architecture.md#re-pinning-when-the-effect-catalog-bumps)).
+Advancing the Effect pin is `pnpm pnpm:up` then `pnpm pnpm:export`, and the submodule is re-pinned in the same commit ([architecture.md](../architecture.md#re-pinning-when-the-effect-catalog-bumps)).
 
 The two `catalog:` scripts are a different class and are **not** in the user-run-only set: `pnpm catalog:sync` and `pnpm catalog:check` touch only `savvy.build.ts` and one fixed-name changeset, never the lockfile or `pnpm-workspace.yaml`, and CI runs them on every pull request to `main` and to `changeset-release/main` ([catalog-sync.md](../catalog-sync.md)).
 
@@ -103,6 +103,6 @@ The install steps and the two patterns are the package [README](../../../../pack
 
 ## Relationship to the workspace peer discipline
 
-These catalogs are the mechanism behind the [peer-dependency discipline](../effect-standards.md#peer-dependency-discipline) in the standards. Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key, `autoInstallPeers: true` — no `dedupePeerDependents`, no `dedupeDirectDeps`, no `.npmrc`. Do not reintroduce any of them. The v3/v4 peer-resolution bug that once required pnpm-resolver workarounds is fixed upstream.
+These catalogs are the mechanism behind the [peer-dependency discipline](../effect-standards.md#peer-dependency-discipline) in the standards. Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key, `autoInstallPeers: true` — no `dedupePeerDependents`, no `dedupeDirectDeps`, no `.npmrc`. Do not reintroduce any of them; the pnpm-resolver workarounds they once served are fixed upstream.
 
-**The direct `effect` (`catalog:effect`) devDependency here is load-bearing — do not remove it as unused.** With no `effect` of its own, this package let pnpm bind the bundler's `@effected/*` peers to whatever older `effect` the toolchain carried, loading v4 code against it at build time. The hazard class outlives any one such instance — the toolchain still carries its own older `effect` for the resolver to reach for — so the devDependency stays: it exists purely to give the resolver the right version to bind, and the companion still ships no `effect`-importing code.
+**The direct `effect` (`catalog:effect`) devDependency here is load-bearing — do not remove it as unused.** Without an `effect` of its own, this package lets pnpm bind the bundler's `@effected/*` peers to whatever older `effect` the toolchain carries, loading v4 code against it at build time. The devDependency exists purely to give the resolver the right version to bind; the companion still ships no `effect`-importing code.
