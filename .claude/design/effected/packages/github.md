@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -30,9 +30,9 @@ related:
 
 Three properties define the package, and each corrects a measured failure in the package it replaces:
 
-1. **Nothing is `unknown`.** octokit ships a complete, generated, **types-only** description of every GitHub endpoint. A predecessor that took an operation string plus an untyped callback threw all of it away and pushed the typing burden onto consumers, who paid it in sixteen cast sites across four repos and dozens more inside the library itself. Here [the endpoint route **is** the key](github-rest.md), and both the parameters and the response data come from it.
+1. **Nothing is `unknown`.** octokit ships a complete, generated, **types-only** description of every GitHub endpoint. A predecessor that took an operation string plus an untyped callback threw all of it away and pushed the typing burden onto consumers, who paid it in a cast at every projection. Here [the endpoint route **is** the key](github-rest.md), and both the parameters and the response data come from it.
 2. **A light consumer cannot reach a heavy engine.** A predecessor put octokit, an OAuth arm, an SBOM library and a signing stack behind one entry point, which is why one consumer shipped a hand-written bundler ignore list for XML libraries it never invoked. Here the split is structural and [measured](#bundle-reachability).
-3. **Errors are sized to what consumers read.** A read census across six repos found consumers reading a reason string, a status, an operation name and a tag — and nothing else, against eighteen error classes demanding up to five mandatory fields each. Here it is [four errors with a structural discriminant](github-errors.md).
+3. **Errors are sized to what consumers read.** A read census of the consumer repos found them reading a reason string, a status, an operation name and a tag — and nothing else, against a predecessor's sprawl of error classes each demanding several mandatory fields. Here it is [four errors with a structural discriminant](github-errors.md).
 
 Scope is closed by the consumer repos, not by GitHub's API. An endpoint earns a resource method when a consumer needs it typed; everything else is reachable through the typed request surface without a cast, so "not modelled" never means "not usable".
 
@@ -93,15 +93,13 @@ The crypto pair rides mechanism 1 as well: `internal/crypto.ts` is imported by `
 
 ## Module topology
 
-Module-per-concept, no barrels, `src/index.ts` re-exports only. `src/` holds the route vocabulary and the client, the App module, the repo coordinate, resilience, GraphQL, one module per resource service and the pure permission comparator; `src/internal/` holds the octokit factory, the one pagination engine, the crypto leaf, the id funnel and header parsing.
-
-Three predecessor services are simply **gone**: a rate-limit state cell and a rate limiter, both folded into the client, and the auth wrapper. One more became a pure class, the permission comparator. Two modules have no predecessor at all — the route vocabulary and the repo coordinate.
+Module-per-concept, no barrels, `src/index.ts` re-exports only. `src/` holds the route vocabulary and the client, the App module, the repo coordinate, resilience, GraphQL, one module per resource service and the pure permission comparator; `src/internal/` holds the octokit factory, the one pagination engine, the crypto leaf, the id funnel and header parsing. There is no rate-limit service and no auth wrapper: rate-limit state is folded into the client and the permission comparator is a pure class.
 
 **Repository settings live on `GitHubRepository`, not in a service of their own**, because the endpoint a settings service would want is one `GitHubRepository` already owns — the module-per-*concept* rule biting, not a size judgement. The attempt that established it cost a failure worth remembering: the candidate module's name collided with the `RepositorySettings` **type alias** the entry point already exported, and nothing said so. A collision with an existing export of the same name is silent through `tsc`, the bundler and API Extractor alike, since a valid export by that name exists — a green suite, zero warnings and a module no consumer could import. `__test__/reachability.test.ts` therefore asserts every module in `src/` is re-exported from the entry point, which is the only check that could have caught it: the per-module suites could not, because nearly every test file imports its module path directly rather than through the entry point.
 
 ## The repo coordinate
 
-A predecessor read the repository slug from the environment in three places, which is what coupled the GitHub client to the Actions runtime. Here it is a first-class value (`RepoRef`) behind its own context service (`Repo`), with layers taking a value, a slug, or reading through the ambient config provider — the env-driven variant **named for being env-driven**.
+A predecessor read the repository slug from the environment in three places, which is what coupled the GitHub client to the Actions runtime. Here it is a first-class value (`RepoRef`) behind its own context service (`Repo`), with layers taking a value, a slug or reading through the ambient config provider — the env-driven variant **named for being env-driven**.
 
 **Every resource method takes `Repo` in its `R` and no method takes owner and repo arguments.** That is what makes a resource call a single expression, and what makes the scoped override work:
 
@@ -109,11 +107,11 @@ A predecessor read the repository slug from the environment in three places, whi
 yield* Effect.forEach(targets, (target) => syncOneRepo.pipe(Repo.provide(target)), { concurrency: 4 });
 ```
 
-**Resolving it per call rather than once at layer construction is a correction the build produced.** Built the designed way — resources resolving both the client and the repo at construction — **the scoped override silently does nothing**, because the resource already holds the repository it was built with, so the multi-repository story would have been decorative. A test caught it. The client stays resolved at construction; the coordinate is read per call. The general rule this refines: **resolve a dependency once when it is stable, per call when varying it is the point.**
+**Resolving it per call rather than once at layer construction is load-bearing.** With resources resolving both the client and the repo at construction, **the scoped override silently does nothing**, because the resource already holds the repository it was built with, and the multi-repository story is decorative; a test pins this. The client stays resolved at construction; the coordinate is read per call. The general rule this refines: **resolve a dependency once when it is stable, per call when varying it is the point.**
 
 **The scope of a method follows the API, never the consumer's call pattern.** The rule above has an obvious-looking exception — a route that is not `/repos/{owner}/{repo}` — and the exception is narrower than it appears. An org-scoped route still sources its org from `Repo.owner` when the org *is* the repository's owner (`ArtifactMetadata.createStorageRecord` is the worked example, annotating the span as `org` to say which meaning is in play). Only a method needing an org that is **not** the repository's owner takes an explicit argument, because there `Repo` would be lying about its scope.
 
-The case worth recording is one that *looked* like the exception and was not. `GitHubRepository.ownerType` calls an account route, and its first consumer calls it once per run outside their repository loop — which argues for an owner argument, or an eighth owner-scoped module, until you notice that **"my call site is outside the loop" is a property of that consumer's engine, not of the API**. Encoding it in the signature would freeze one program's control flow into a shared service, and the next consumer calling it per repository would find an argument they have to thread for no reason. It is `Repo`-scoped like everything else. The consumer who raised the exception tested it against this rule and withdrew it, then found that moving the call *inside* the loop makes every repository in a fleet share one request, because their cache keys on owner alone.
+The case worth recording is one that *looks* like the exception and is not. `GitHubRepository.ownerType` calls an account route, and a consumer calling it once per run outside its repository loop is tempted to ask for an owner argument, or an owner-scoped module — until you notice that **"my call site is outside the loop" is a property of that consumer's engine, not of the API**. Encoding it in the signature would freeze one program's control flow into a shared service, and the next consumer calling it per repository would find an argument they have to thread for no reason. It is `Repo`-scoped like everything else, and a consumer that caches on owner gets the once-per-fleet request by moving the call inside the loop.
 
 The generalisation, which is not GitHub-specific: **a service's shape is determined by the contract it wraps and the axis its consumers vary, never by where any one consumer happens to call it.** A speculative owner-scoped module for a single caller is surface the kit does not need; the same reasoning rejected it.
 
@@ -144,7 +142,7 @@ Recorded per concept rather than defaulted:
 
 `@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. **No `./testing` subpath**, and none of the predecessor's behaviour-reimplementing doubles is ported.
 
-- **Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`**, with unstubbed members dying loudly and naming themselves. This deletes, in one move, a consumer's seven dying-stream stubs and six whole-service reimplementations in test files.
+- **Every service ships `makeTest(overrides?)` and `layerTest(overrides?)`**, with unstubbed members dying loudly and naming themselves, so no consumer needs a whole-service reimplementation in a test file.
 - **Tests drive the *real* client through octokit's documented `fetch` option**, not a double of our own service, so classification, header capture, retry and link-following pagination are all genuinely exercised. Two harness facts to know first: a hand-built response has an empty URL, and octokit's paginator constructs a URL from it for any payload carrying a total count — so the harness must define that property or you get an invalid-URL failure classified as a transport fault. And octokit percent-encodes path parameters, so assert against the recorded decoded path rather than the URL.
 - **One recorded-fixture client double exists, and it reimplements nothing.** It pages recorded arrays through **the same pagination engine the live layer uses** and records the page requests it issued, which is what makes truncation testable at all — a predecessor's double ignored both page options and never invoked the callback, so "did the caller ask for page N?" was unanswerable. That shared engine is why this is the narrow exception to the no-behaviour-reimplementing-doubles ban.
 - **`GitHubFixtures.requested` records every call, not only the paginated ones**, as a `RecordedCall` carrying kind and params. Recording only pages answered which route a method hit and nothing about what it *sent*, which is the question [a normalising write](github-resources.md#the-configuration-write-half) turns on — and it is why a consumer hand-rolled a parallel harness. It is also the probe that found the silent settings drop recorded there, against the built artifact rather than the source.
@@ -162,4 +160,4 @@ Per the [observability standards](../effect-standards.md#observability-standards
 
 Build through `pnpm build --filter @effected/github`. Naming third-party generic types on a public signature is **fine** — API Extractor resolves a declared dependency's types as externals and emits real imports — so the only suppressed entries are the synthesized schema-class bases; never widen that suppression. Three TSDoc-link rules the build enforces: a link resolves only to symbols **the entry point exports**, under **the name it exports them by**; a schema-declared field is not a linkable member (use backticks); and a module-local const is not linkable at all.
 
-Two smaller build-taught facts, both now comments at their sites: **a `static readonly layer` must wrap its factory in an arrow** or it throws an access-before-initialization error at import time while typechecking clean, and a commit's author can arrive as an empty record rather than null.
+Two smaller build-taught facts, both commented at their sites: **a `static readonly layer` must wrap its factory in an arrow** or it throws an access-before-initialization error at import time while typechecking clean, and a commit's author can arrive as an empty record rather than null.

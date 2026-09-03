@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 90
 related:
   - markdown.md
@@ -16,7 +16,7 @@ related:
 
 ## Overview
 
-The MDX vocabulary is a construction-and-serialization-only extension of [`@effected/markdown`](markdown.md)'s node model: eight node classes in `src/MarkdownNode.ts`, the three unions they widen, and the serialization rules `src/internal/stringify.ts` applies to them.
+The MDX vocabulary is a construction-and-serialization-only extension of [`@effected/markdown`](markdown.md)'s node model: the MDX node classes in `src/MarkdownNode.ts`, the three unions they widen and the serialization rules `src/internal/stringify.ts` applies to them.
 
 **The scope cut is deliberate and permanent: MDX parse is not supported.** The engine reads no MDX syntax — a bare `<` or `{` in source is CommonMark text or HTML, exactly as it is in a package build without this vocabulary. A consumer builds a tree carrying these nodes by hand (or via a schema encode) and `Markdown.stringify` emits valid MDX. That keeps the parser's near-total CommonMark contract untouched — no new syntax to disambiguate, no new parse errors, no new hardening surface — while a markdown-emitting consumer (documentation generators, codegen) can still produce `.mdx` output through the same canonical stringifier the plain-markdown path guarantees byte-stable. Full MDX parsing is a distinct and much larger undertaking (a JS-expression parser, a JSX grammar) and is off this scope, not deferred inside it.
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../architecture.md
@@ -16,6 +16,7 @@ related:
   - semver.md
   - commands.md
   - memfs.md
+  - ../consumers/silk-update-action.md
 ---
 
 # @effected/npm design
@@ -103,20 +104,20 @@ A `FromString` codec decodes the brand to a **coarse five-case tagged union** �
 ## The vocabulary modules
 
 - **`DependencySection`** — one concept as two literal schemas: the short dependency kinds and the manifest field names, with a single source-of-truth mapping and its inverse derived from it. Replaces the private copies package-json, lockfiles and workspaces each carried.
-- **`IntegrityHash`** — an SRI brand covering **three** textual forms, because lockfile integrity is not all-SRI: npm/pnpm record SRI, corepack records its own pin form, and yarn Berry records cache checksums. Dropping the yarn form would silently discard integrity the [lockfiles](lockfiles.md) model treats as load-bearing. `CorepackIntegrityHash` is the corepack-only narrowing shared with package-json's manifest field, so both sides assert against one home, and it is where the [SRI bridge](#sri-to-corepack-conversion) hangs.
+- **`IntegrityHash`** — an SRI brand covering **three** textual forms, because lockfile integrity is not all-SRI: npm/pnpm record SRI, corepack records its own pin form and yarn Berry records cache checksums. Dropping the yarn form would silently discard integrity the [lockfiles](lockfiles.md) model treats as load-bearing. `CorepackIntegrityHash` is the corepack-only narrowing shared with package-json's manifest field, so both sides assert against one home, and it is where the [SRI bridge](#sri-to-corepack-conversion) hangs.
 - **`PackageManagerPin`** — the corepack pin triple as a first-class class, independent of any package.json field. It shares the strict version ruling with package-json's field model but deliberately diverges on the name grammar: the pin vocabulary is a closed literal set where the field model is permissive.
 - **`PackageManagerCache`** — the per-manager default-cache-directory facts table: a pure function of manager, platform and home that a CI action, a workspace tool or a doctor command can all read without a runner, a filesystem or a subprocess. The alternative is shelling a config query per run for a value that on a freshly provisioned machine is always the default. **Every row is cited to the manager's own authority on the member**, because two of the three prior-art rows it replaces were folklore and wrong. yarn is two rows, because the two majors cache differently and nothing about a bare manager name says which is in play.
 
 ### SRI-to-corepack conversion
 
-The two integrity spellings the kit already types — npm's SRI `sha512-<base64>` and corepack's `sha512.<hex>` — encode the same digest, and moving between them is a real consumer need: writing a `packageManager` pin from a registry read means converting a value the registry hands over in SRI form. silk-update-action hand-rolled a `corepackHashFromIntegrity` for exactly that, which is the evidence this belongs here (effected#281).
+The two integrity spellings the kit already types — npm's SRI `sha512-<base64>` and corepack's `sha512.<hex>` — encode the same digest, and moving between them is a real consumer need: writing a `packageManager` pin from a registry read means converting a value the registry hands over in SRI form. [silk-update-action](../consumers/silk-update-action.md) hand-rolled exactly that conversion, which is the evidence it belongs here.
 
 The conversion is a **`Schema` transformation**, `CorepackIntegrityHash.FromSri`, decoding a `string` to the same branded value every other integrity field carries, plus `CorepackIntegrityHash.fromSri` — the `Effect` convenience over it for the imperative call site, failing with a typed `InvalidSriIntegrityHashError` that carries the offending input. Schema-first because the transformation then **composes with `PackageManagerPin`'s decoding**, whose `integrity` field *is* `CorepackIntegrityHash` rather than a copy that agrees with it: a pin assembled from registry data decodes through one pipeline instead of a caller converting by hand and hoping the result parses.
 
 Four rulings carry it:
 
 - **Non-sha512 input fails typed decode** rather than producing garbage. The other algorithms are valid `IntegrityHash` values and a lenient converter would emit a pin corepack rejects at install time, which is the worst place to learn about it. The **digest length is checked too** — sha512 is 64 bytes, and an SRI value carrying anything else cannot be one.
-- **The base64 reader is strict and hand-rolled.** `Buffer` is Node-only *and* lenient — it drops invalid characters and truncates — and lenience is exactly what an integrity conversion must not have. A non-canonical spelling (a length no base64 output has, mismatched padding, an interior `=`, non-zero trailing bits) is rejected rather than repaired, because a second spelling of the same bytes is a value npm never emits. Core's `Encoding.decodeBase64` was re-evaluated here at `4.0.0-rc.109` and **kept out for the same reason `Buffer` is**: probed, it decodes `QQ==`, `QR==` and `QV==` to the same byte and strips embedded CRLF, while rejecting the unpadded form this reader accepts — lenient and stricter than us at once, so it is a drop-in in neither direction. This is the [canonical-value mismatch](../effect-standards.md#core-owning-a-primitive-is-not-the-same-as-cores-primitive-fitting) in its purest form, and it is **decode-only**: core's `Encoding.encodeBase64` emits the canonical spelling by construction, which is why [`PackageTarball`](#packagetarball--reading-a-published-package-back) verifies through it with no module-private encoder while this reader stays hand-rolled. One codec, two directions, two different answers.
+- **The base64 reader is strict and hand-rolled.** `Buffer` is Node-only *and* lenient — it drops invalid characters and truncates — and lenience is exactly what an integrity conversion must not have. A non-canonical spelling (a length no base64 output has, mismatched padding, an interior `=`, non-zero trailing bits) is rejected rather than repaired, because a second spelling of the same bytes is a value npm never emits. Core's `Encoding.decodeBase64` was evaluated and **kept out for the same reason `Buffer` is**: probed, it decodes `QQ==`, `QR==` and `QV==` to the same byte and strips embedded CRLF, while rejecting the unpadded form this reader accepts — lenient and stricter than us at once, so it is a drop-in in neither direction. This is the [canonical-value mismatch](../effect-standards.md#core-owning-a-primitive-is-not-the-same-as-cores-primitive-fitting) in its purest form, and it is **decode-only**: core's `Encoding.encodeBase64` emits the canonical spelling by construction, which is why [`PackageTarball`](#packagetarball--reading-a-published-package-back) verifies through it with no module-private encoder while this reader stays hand-rolled. One codec, two directions, two different answers.
 - **The conversion is one-way from SRI.** An already-corepack-form input does **not** pass through decode; accepting it would let a caller feed pins back in and mask a wiring bug. The codec's *encode* direction is the exact inverse — corepack back to canonical padded SRI, failing typed for the corepack forms SRI cannot carry, such as corepack's own sha224 default pins — which is a codec being a codec, not a second acceptance rule.
 - **JSON-quoted registry values are tolerated.** Registry payloads round-trip through JSON in enough consumer paths that one surrounding pair of quotes is a normal input, not a malformed one. One layer only, and encode never re-quotes.
 
@@ -126,7 +127,7 @@ pnpm's publish-time **release-age gate** is shared npm vocabulary, so it is resi
 
 This is a **schema-first port of the gate vocabulary only**, and three behaviours carry the design:
 
-- **`combine` is variadic and total.** It assembles the effective gate from partial contributions across sources: **strictest age wins**, exclude sets **union** into a deduplicated, sorted, contribution-order-independent wire form, and zero contributions yield the inert zero gate. It never throws — which is why the partial input shape does not clamp; `combine` is the single clamping authority.
+- **`combine` is variadic and total.** It assembles the effective gate from partial contributions across sources: **strictest age wins**, exclude sets **union** into a deduplicated, sorted, contribution-order-independent wire form and zero contributions yield the inert zero gate. It never throws — which is why the partial input shape does not clamp; `combine` is the single clamping authority.
 - **Exclude matching is flat-string with `@pnpm/matcher` parity, where `*` crosses `/`.** A bare `*` matches a scoped name and a scope pattern matches a whole scope. This is **deliberately not [@effected/glob](glob.md)'s minimatch dialect**, where `*` refuses to cross `/`; pnpm treats the package name as a flat string, and routing through glob would silently change which packages a gate exempts. **Do not "fix" it.**
 - **Version filtering is pure with a caller-supplied clock.** It drops versions younger than the cutoff and versions whose timestamp is missing or unparseable — pnpm's strict posture, that an unestablishable age is too young — while a version exactly at the cutoff is kept. It reads no wall clock and has no error channel.
 
@@ -140,7 +141,7 @@ Three services replacing a shelled-out `npm` CLI wherever the work can be done s
 
 Replaces every shelled `npm view`. A 404 is detected **structurally** from the typed HTTP error, not by matching an error code on stderr. Four decisions carry it:
 
-- **The model is keyed by `(registry, package, version)`, and the registry is a per-call argument, never layer-baked.** The publish flow probes two registries for one package inside a single program, which is precisely what a layer-baked registry cannot express. This shape came from two shipped test doubles breaking: one keyed by package alone so it could not serve two versions, the other keyed by name alone so it could not answer for two registries.
+- **The model is keyed by `(registry, package, version)`, and the registry is a per-call argument, never layer-baked.** The publish flow probes two registries for one package inside a single program, which is precisely what a layer-baked registry cannot express — a double keyed by package alone cannot serve two versions, and one keyed by name alone cannot answer for two registries.
 - **404 is `Option.none()`, not an error** — extending the resolver contracts' `None`-is-success convention to registry reads, so the whole package answers absence one way.
 - **`integrity` is typed as `IntegrityHash`**, not a bare string. The brand already lives here and already covers the form the registry stores, so typing it is free and kills a compare-two-strings-and-hope at the publish call site.
 - **One error sized to the reads that exist**, discriminated by a transport/status/decode literal rather than a prose reason consumers match on.
@@ -237,13 +238,13 @@ Anything not modeled is **preserved verbatim** — package-json rides unmodeled 
 
 Suites in `__test__/` per concept. The resolver surface is contracts, so those tests are light: the no-op layers answer `None`, a stub implementation proves the contract is implementable, and the resolution error preserves its structured cause.
 
-The vocabulary tests carry the weight — specifier classification across the protocol set, the round-trip property, the resolution projections, the section mapping, integrity across all three forms, and the release-age gate's strictest-wins/union/totality, matcher parity and cutoff boundary cases. The manifest suite drives the tolerance boundary in both directions, plus resolution over stub resolver layers.
+The vocabulary tests carry the weight — specifier classification across the protocol set, the round-trip property, the resolution projections, the section mapping, integrity across all three forms and the release-age gate's strictest-wins/union/totality, matcher parity and cutoff boundary cases. The manifest suite drives the tolerance boundary in both directions, plus resolution over stub resolver layers.
 
 Registry reads run against a stubbed `HttpClient` — core-declared, no platform package — and publishing runs against commands' scripted-spawner fixture, which records argv, so **"the token never reached argv" is an assertion, not a hope**.
 
 The tarball suite is where [`@effected/memfs`](memfs.md) enters as a devDependency: verification and extraction are claims about bytes on a volume, and the fault-injectable in-memory volume is what lets a write failure be a *test input* rather than a stub body. Its discriminating claims are the ordering ones — that a mismatched digest fails **before** anything is written, and that a non-2xx never reaches the extractor — both of which pass against a naive implementation until the assertion is about ordering rather than outcome.
 
-Each claim this doc calls load-bearing was proven by deliberate mutation and observed red — the lookalike-domain guard, 404-as-absence, `dlx` refusing to degrade and the reachability test itself among them. A guardrail nobody has watched fail is prose.
+Each claim this doc calls load-bearing has a test that a deliberate mutation turns red — the lookalike-domain guard, 404-as-absence, `dlx` refusing to degrade and the reachability test itself among them. A guardrail nobody has watched fail is prose.
 
 ## Deferred
 

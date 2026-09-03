@@ -4,7 +4,10 @@ schema.org vocabulary as Effect Schema classes, a `JsonLdDocument` that assemble
 
 **Pure tier:** `dependencies: {}`, peer-depends on `effect` only, no IO, `"sideEffects": false`. The vendored vocabulary is a compiled TypeScript literal, never a file read — if validation ever needed to *fetch* the vocabulary this would become a boundary package. Never add a filesystem, network or clock dependency.
 
-**Design doc:** `@../../.claude/design/effected/packages/schema-org.md` — load before changing the public surface, the node vocabulary, the serializer or the vendored dataset.
+**Design docs:**
+
+- `@../../.claude/design/effected/packages/schema-org.md` — load before changing the `.` entrypoint: the node vocabulary, `JsonLdDocument`, node identity or the serializer.
+- `@../../.claude/design/effected/packages/schema-org-conformance.md` — load before changing the `./validate` entrypoint: `Conformance`, `Vocabulary`, the interned table, the committed data file or the generator.
 
 ## The one invariant
 
@@ -33,9 +36,7 @@ The `__test__/serializer.test.ts` fixture is mandatory and includes a **positive
 - **Identity is validated at graph assembly, not node construction.** `NodeRef.to` and every `make` are total; `JsonLdDocument.buildResult` raises `InvalidNodeIdError`, `DuplicateNodeIdError` and `ConflictingTermError` on the `E` channel. The `@id` rule is deliberately loose (non-empty, no whitespace, no control characters) because absolute IRIs, `_:blank` and fragments are all legal.
 - **A dangling reference is not an error** — it is how a node points at something described on another page. `JsonLdDocument.danglingReferences` reports them so a closed-world consumer can gate; the package refuses to decide whether your graph is closed.
 - **The decode direction is declared unimplemented.** Decoding the wire form **succeeds and silently drops the catch-all**, because a flattened term is an excess key — a half-working round trip, which is worse than a failing one. `__test__/JsonLdDocument.test.ts` pins that asymmetry so it cannot start half-working by accident.
-- **The vocabulary table's index rows are comma-joined strings (`"12,44,90"`), not nested number arrays — do not "tidy" them.** A long nested array is re-wrapped by Biome at 120 columns, so the generator and the formatter would fight forever and the file would never be a fixpoint; a string literal is one Biome cannot break, and it is smaller. Rows decode lazily and memoize per type index.
-- **The generator lives at `lib/scripts/generate-data.ts`**, which is where this repo keeps package-local tooling that is not shipped source (`packages/runtimes/lib/scripts/generate-defaults.ts` and `packages/spdx/lib/scripts/generate-data.ts` are the other two). Its input is the `-current` vocabulary document committed at `lib/data/schemaorg-current-https.jsonld` (release v30.0), and bumping the vocabulary means replacing that file and re-running the generator in the same commit. It is committed rather than submoduled because the upstream repo is 254 MB and this is the single release file we read from it. Hand-run, idempotent, and it **asserts rather than assumes**: every `domainIncludes` target must resolve, every parent must resolve or carry a prefix the document's own `@context` declares, every interned index must be in range. The upstream document is data, not truth — at v30.0 three properties name a class `-current` never declares, and those drops are recorded in the generated header.
-- **A prefixed term is resolved three ways, and two of them are easy to get silently wrong.** `schema:license` is native and validates identically to `license`; a prefix the vocabulary document's `@context` declares (`gs1:`, `fibo-…`) is skipped in silence; an undeclared prefix (`bogus:`) is **reported**. A "has a colon, skip it" rule stops validating everything a consumer writes in prefixed form — a validator answering a question it never evaluated.
+- **The `./validate` side has its own rules** — the interned table's comma-joined index rows, the generator at `lib/scripts/generate-data.ts` over the committed `lib/data/schemaorg-current-https.jsonld` (v30.0, replaced and regenerated in the same commit), and the three-way resolution of prefixed terms. Read the conformance design doc before touching any of them.
 - `package.json` stays `"private": true`. The bundler emits the publishable manifest.
 
 ## Test and build

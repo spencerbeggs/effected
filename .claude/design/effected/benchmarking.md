@@ -3,8 +3,8 @@ status: draft
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 60
 related:
   - yaml-lint.md
@@ -33,7 +33,7 @@ The system adds two new top-level folders. The split is not cosmetic — it is w
 
 The chain is `kit → app → suite`. Each hop is a real `workspace:*` edge, so turbo orders them without any hand-written task wiring: turbo's tasks depend on their upstream counterpart (`dependsOn: ["^build:dev"]` in `turbo.json`), and topological order falls out of the dependency edges. See the [turbo naming note](#turbo-naming) — the repo has no plain `build` task, so the chain rides `^build:dev`, not `^build`.
 
-Both `benchmarks/apps` and `benchmarks/suites` are new pnpm-workspace globs, added to `packages:` in `pnpm-workspace.yaml`. **`website` and `scratchpad` are the precedent** — both are already non-`packages/*` members of that list, so adding two more is a pattern the workspace uses, not a new capability. Both folders are kept out of the release and publish gate (they never ship to npm) but are still wired into turbo so the build chain holds; see [keeping the folders off the release gate](#keeping-the-folders-off-the-release-gate).
+Both `benchmarks/apps` and `benchmarks/suites` are new pnpm-workspace globs, added to `packages:` in `pnpm-workspace.yaml`. **`plugins/*`, `website` and `scratchpad` are the precedent** — all three are already non-`packages/*` members of that list, so adding two more is a pattern the workspace uses, not a new capability. Both folders are kept out of the release and publish gate (they never ship to npm) but are still wired into turbo so the build chain holds; see [keeping the folders off the release gate](#keeping-the-folders-off-the-release-gate).
 
 ## Gate model
 

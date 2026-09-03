@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - formatter-convention.md
@@ -28,7 +28,7 @@ The lint system is mostly composition over surfaces the package already ships. G
 
 It builds on the lex → CST → compose → stringify engine under `src/internal/`, `Yaml.parse` / `Yaml.parseResult`, the composed `YamlDocument` / `YamlNode` AST, `YamlVisitor.visit`, `YamlEdit` (the positioned replacement plus `applyAll`, the fix substrate) and `YamlDiagnostic`, the engine's structured diagnostic — wrapped, not reused, by parse-validity.
 
-The internal lexer token in `src/internal/token.ts` was documented there as private "until an LSP-tooling consumer materializes". The lint system is that consumer, which is why the layer is now promoted to public surface as `YamlToken`.
+The lint system is the consumer that earned the internal lexer token (`src/internal/token.ts`) a public surface, `YamlToken`; the engine underneath is unchanged.
 
 ## The governing constraint: the pure half only
 
@@ -145,7 +145,7 @@ Rulings that hold across the catalog:
 - **`line-length` defaults to the kit-native width, not yamllint's 80.** The rule ids are the compatibility surface; the option surface and defaults are ours.
 - **The marker rules (`document-start`, `document-end`) ship outside both presets.** Whether a file leads with `---` is a house convention, not a defect, and a preset that flagged every unmarked file by default would train users to disable presets. They are one config entry away for anyone who wants them.
 - **`key-duplicates` owns duplicate policy outright**, which is why the [`LintContext`](#lintcontext) composes with `uniqueKeys: false`. One configurable rule reporting duplicates beats a rule and an engine warning reporting the same key twice at two severities nobody can reconcile.
-- **`indentation` checks indent style only** — a consistent unit per level, and one sequence-under-key policy — because structural *legality* is the parser's job and parse-validity already reports it. It was deliberately built last, after the harness had proven itself on the mechanical rules, since it is the only rule that must reason about block structure rather than about a token and its neighbours and was therefore the most likely to force a change in `LintContext`. It did not.
+- **`indentation` checks indent style only** — a consistent unit per level, and one sequence-under-key policy — because structural *legality* is the parser's job and parse-validity already reports it. It is the only rule that reasons about block structure rather than about a token and its neighbours, and it does so over the same `LintContext` as the rest.
 
 ## Config inference
 
@@ -200,4 +200,4 @@ A differential against Python yamllint is **explicitly rejected**. It would inst
 
 `comments-spacing` needs to know whether a comment is an own-line comment or a trailing one to say anything true about the space before its `#`. That distinction lives in the node-level [comment model](packages/yaml.md#comment-model), which the rule is written against.
 
-The same model is why [autofix](#autofix-surgical-and-comment-safe) is surgical by design rather than by necessity. Routing fixes through `YamlFormat.formatToString` once lost per-node comments; that is fixed, and autofix still must not route through `format` — surgical edits are the right shape for a linter, not merely the safe one.
+The same model is why [autofix](#autofix-surgical-and-comment-safe) is surgical by design rather than by necessity: `YamlFormat.formatToString` preserves per-node comments too, and autofix still must not route through it — surgical edits are the right shape for a linter, not merely the safe one.

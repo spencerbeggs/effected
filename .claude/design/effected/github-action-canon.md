@@ -4,7 +4,7 @@ module: effected
 category: architecture
 created: 2026-08-04
 updated: 2026-08-25
-last-synced: 2026-08-25
+last-synced: 2026-09-02
 completeness: 90
 related:
   - plugin.md

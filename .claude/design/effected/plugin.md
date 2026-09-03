@@ -3,15 +3,17 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-08-27
-last-synced: 2026-08-27
-completeness: 90
+updated: 2026-09-02
+last-synced: 2026-09-02
+completeness: 92
 related:
   - architecture.md
   - effect-standards.md
   - migration-playbook.md
   - releases.md
   - github-action-canon.md
+  - plugin-construct-index.md
+  - scratchpad.md
   - packages/app.md
 ---
 
@@ -22,7 +24,7 @@ related:
 `plugins/` houses the repo's agent-tooling plugins for Effect v4 development. There are two, and they are not peers:
 
 - **`plugins/claude-code/`** — the "effected" Claude Code plugin: a catalog of skills, four specialist subagents and a SessionStart briefing hook, dogfooded during package work (see [migration-playbook.md](migration-playbook.md)). This is the mature artifact and **the source of truth** for all skill and agent content. During dogfooding it is loaded via `claude --plugin-dir plugins/claude-code` (the root `package.json` `claude` script).
-- **`plugins/copilot/`** — an **experimental** GitHub Copilot plugin, currently a stub (manifest plus empty `agents/`, `skills/`, `hooks/`). It exists because the team wants to try Copilot for effected development; it is a downstream port of the Claude Code plugin, not an independent product, and nothing here should be read as claiming parity.
+- **`plugins/copilot/`** — an **experimental** GitHub Copilot plugin: a port of the same skills, agents and session-start hook into Copilot's formats (`*.agent.md` agents, a root `plugin.json`, a `hooks.json` with a `sessionStart` entry). It exists because the team wants to try Copilot for effected development; it is a downstream port of the Claude Code plugin, not an independent product, and nothing here should be read as claiming parity.
 
 Both are [repo infrastructure, not `@effected` libraries](architecture.md). Everything below that is not explicitly scoped to Copilot describes the Claude Code plugin, because that is where the content lives.
 
@@ -38,7 +40,7 @@ plugins/
     skills/ agents/ hooks/ scripts/ __test__/
   copilot/              # the experimental Copilot plugin — downstream port
     plugin.json         # manifest, at the directory root
-    hooks.json
+    hooks.json          # sessionStart → hooks/session-start/orientation.sh
     package.json        # @effected/copilot-plugin (private, versioning only)
     skills/ agents/ hooks/
 ```
@@ -61,7 +63,7 @@ Skills live under `plugins/claude-code/skills/`, each a `SKILL.md` whose frontma
 **Routing** — consulted first, so nobody designs a capability core or the kit already ships:
 
 - `effect-v4-module-index` — the routing map for Effect v4 core: every core module in one table (what it is, when to reach for it, where it lives in the vendored source). Rows route; the other skills teach.
-- `effected-packages` — the sibling routing map for the kit: one table row per package (what it contains, when to reach for it, tier), plus per-package `references/` covering entrypoints, core services, testing machinery and gotchas, and the generated [construct index](#the-construct-index) searchable by intent. Preloaded by all four agents. **The references are deliberately not one-to-one with the table**: the github-split packages route to the actions suite instead, because a skill that teaches a package beats a reference that describes it and carrying both is how the two drift.
+- `effected-packages` — the sibling routing map for the kit: one table row per package (what it contains, when to reach for it, tier), plus per-package `references/` covering entrypoints, core services, testing machinery and gotchas, and the generated [construct index](plugin-construct-index.md) searchable by intent. Preloaded by all four agents. **The references are deliberately not one-to-one with the table**: the github-split packages route to the actions suite instead, because a skill that teaches a package beats a reference that describes it and carrying both is how the two drift.
 
 **Process** — decides *what* to write:
 
@@ -113,51 +115,15 @@ Three `.bats` files under `plugins/claude-code/__test__/` hold the plugin's stru
 
 - `session-start-orientation.bats` — the skill roster in the briefing hook, derived from the directories on disk with a minimum-count guard, so a new skill cannot ship without its briefing bullet.
 - `agent-skill-registration.bats` — each agent's frontmatter `skills` list, including a membership test naming every Actions skill `action-engineer` must list. That pins the preload-the-whole-suite decision, so dropping one fails a test instead of silently reverting the call. It also catches a skill name leaking into an agent's `tools` block, which would satisfy any test that merely greps the file for the name.
-- `construct-index.bats` — the executable pin on the [construct index](#the-construct-index): generator fixture tests, a drift test that regenerates the committed index into a temp dir and diffs, and the strict annotation gate. It replaced `construct-coverage.bats` and its allow-list; detail lives in [that section's enforcement notes](#enforcement).
+- `construct-index.bats` — the executable pin on the [construct index](plugin-construct-index.md#enforcement): generator fixture tests, a drift test that regenerates the committed index into a temp dir and diffs, and the strict annotation gate.
 
 **What no check pins is prose about the kit rather than about the plugin.** The construct index pins that an exported identifier is *indexed and annotated*; no check can tell whether a sentence about it is still true. Package counts, tier labels and publication status sitting inside the `effected-packages` routing map are exactly that class, and a re-verification pass found them aged. Two things contain it, neither of them a test: the voice rule requiring a load-bearing count to be written as the grep that produces it, and re-verifying kit-surface claims as part of a release wave rather than on discovery.
 
-**CI runs the suite through the org release-validate workflow's auto-discovered Shell Tests check**, with no custom build step: the one file that needs build artifacts, `construct-index.bats`, self-provisions them (see [enforcement](#enforcement)) — which is what closed the #243 gap for this suite.
+**CI runs the suite through the org release-validate workflow's auto-discovered Shell Tests check**, with no custom build step: the one file that needs build artifacts, `construct-index.bats`, self-provisions them.
 
 ## The construct index
 
-The construct index is the systemic fix for the #188 incident class — a capability discoverable only by whoever already knows its name — closing that issue's re-scoped residuals (per its 2026-08-15 triage comment): construct-level discoverability by intent, and full-kit coverage of the old construct-coverage check. [The canon doc](github-action-canon.md) names it as such. Built 2026-08-25 from the plan at `.claude/plans/2026-08-25-construct-index.md`.
-
-### Why it exists
-
-`effected-packages` routes by package, and before the index no construct-level surface was searchable by intent — "validate NTIA" or "run a binary" found nothing, which is exactly how #188's four false "the kit ships no successor" declarations happened. The mention-floor predecessor, `construct-coverage.bats`, covered only 6 of 28 packages and parsed each `src/index.ts` with awk/grep — fragile, with a NUL-byte hazard on record (#187).
-
-### The artifact
-
-One generated file per workspace package at `plugins/claude-code/skills/effected-packages/references/constructs/<pkg>.md` — 30 files, **1175 rows**. The doc models expose the full `export declare` surface; api-extractor's 512 synthesized `X_base` members are filtered whenever the sibling `X` is exported. Each file is a table with four columns — **construct | kind | purpose | intent keywords**, purpose being the TSDoc summary mechanically extracted, intent keywords agent-authored — under a generated/do-not-edit header. The committed output is a fixed point of the pre-commit markdown fix pass: empty cells render in markdownlint's compacted form and the intent column is pipe-escaped, so the hook has nothing to rewrite.
-
-**No new plugin skill.** The hand-written `effected-packages/SKILL.md` carries a "Search by intent" section teaching agents to grep the constructs directory when they know what they want but not its name, and its frontmatter routes constructs searches.
-
-**Cross-package contract↔implementation pairs render as explicit rows in both packages' files** — the generator inverts each `implements` link into the contract side's file: `ActionsIdentityToken` implements `sbom.IdentityToken`, `Workspaces` implements `commands.LocalExec`, and `WorkspaceCatalogs` / `WorkspaceDiscovery` implement `npm.CatalogResolver` / `npm.WorkspaceResolver`. A reader landing on either side sees the other.
-
-### Data model and generator
-
-Intent keywords and cross-links live in a sidecar `plugins/claude-code/scripts/construct-annotations.json` — plain JSON (not JSONC, so no parser dependency), agent/human-owned, keyed package → construct, holding intent-keyword strings plus an optional `implements` field — the `implementedBy` side is never authored; the generator derives it by inverting the `implements` links. It holds **815 entries** (811 required value-kind, 4 optional), authored from source by a 12-agent fan-out; intent strings run at most 12 words (a small 13–14-word residual band exists), with emphasis-active tokens code-spanned so the markdown stays inert.
-
-The generator is **dependency-free**: `plugins/claude-code/scripts/generate-constructs.mts`, run with bare Node as `node <file>.mts` like the website scripts, parsing each package's api-extractor doc model as plain JSON — it does **not** use `@microsoft/api-extractor-model`, which is only in the tree transitively and would need a new devDep. Its CLI is `generate` / `check [--require-intent]`, with exit codes 0/1/2: ok, annotation problems, missing doc models.
-
-The canonical doc-model input is the package build output, `packages/<dir>/dist/prod/npm/meta/<dir>.api.json`, produced by `pnpm build --filter @effected/<dir>` — authoritative on exports, carrying kind, releaseTag and TSDoc, and immune to the source-parsing fragility class. The copies under `website/lib/models/` are secondary gitignored artifacts and are avoided — among other things they carry stale directories for removed packages (ts-vfs, runtime-resolver-cli). The generator enumerates packages **by reading the `packages/` directory on disk** — subdirectories containing a `package.json` — never from a models directory. Rendering is deterministic: facts from the doc model joined with the annotations.
-
-### Coverage bar (tiered)
-
-Class, Function and Variable entries **require** an intent annotation — a missing one is a `check --require-intent` failure naming the construct; 811 rows carry one today. Interface and TypeAlias rows ride on their TSDoc summary alone; annotating them is optional (4 are). The rationale: every documented miss in #188 was a value-level capability.
-
-### Enforcement
-
-`plugins/claude-code/__test__/construct-index.bats` pins the index: five fixture tests for the generator, a repo drift test that regenerates the committed index into a temp dir and diffs, and the strict `check --require-intent` test. A `setup_file()` hook self-provisions missing doc models by running `pnpm build`, triggered by the generator's exit code 2, so the org release-validate workflow's auto-discovered Shell Tests check needs no custom build step — closing the #243 gap for this suite. `construct-coverage.bats` and its allow-list are retired: the index strictly subsumes the mention floor.
-
-### Maintenance
-
-A **project-level** skill at `.claude/skills/constructs` — a sibling to [`improve`](#the-improve-skill), and outside the plugin for the same reason — documents the build → check → annotate → regenerate loop. Each PR adding an export gets a one-row increment prompted by the failing check.
-
-### Accepted trade-off
-
-The doc-model input adds a build dependency to the check, where the old grep-over-src approach had none — accepted because turbo caching makes builds cheap, and the doc model eliminates the fragility class and provides TSDoc for free.
+One generated table per kit package, listing every exported construct with an agent-authored intent column so a capability can be found without knowing its name. It is a subsystem in its own right — a dependency-free generator over the api-extractor doc models, an annotations sidecar, a bats drift pin and a project-level maintenance skill — and is documented in [plugin-construct-index.md](plugin-construct-index.md).
 
 ## The `improve` skill
 
@@ -188,8 +154,8 @@ Silence is the *gentler* failure, and treating it as the only one understates th
 
 Encoded as skill preconditions because each was learned by being burned:
 
-- **Probes run from inside the package.** The workspace root resolves the v3 `effect` and will report the v3 surface without hesitation. Every probe prints its resolved `effect` version.
-- **Probe files live at the package root.** The tsconfig `include` is `${configDir}/*.ts`, which does not match subdirectories — a probe in a subdirectory silently leaves the compilation program and false-passes its control.
+- **Probes run from the [`scratchpad/` workspace](scratchpad.md)** in this repo, or from inside the package elsewhere — never from the harness's own `/tmp` scratch directory, which has no `node_modules`. Every probe prints its resolved `effect` version, because a wrong resolution (a v3 `effect` at some other repo's root) is otherwise indistinguishable from a right one.
+- **A probe file must be inside the compilation program.** A package tsconfig whose `include` is `${configDir}/*.ts` does not match subdirectories, so a probe placed in one silently leaves the program and false-passes its control.
 - **The control assertion runs first.** A probe that cannot fail is worse than no probe.
 
 ### Recorded coupling: the vendored path
@@ -204,7 +170,7 @@ What remains before promoting the plugin to end users is validation in a repo wi
 
 `plugins/claude-code/hooks/hooks.json` registers a `SessionStart` hook (no matcher, so it fires on resume and compact too) that runs `session-start/orientation.sh`. The script briefs the main agent on the skills and agents the plugin ships and tells it to delegate whole write/review/migrate Effect tasks to the matching agent rather than hand-rolling them inline. Its `dogfood_feedback` block carries two loops — plugin feedback (wrong or unhelpful skill/agent/hook guidance) and `@effected` package feedback (service gaps, fluency suggestions, candidate new constructs) — and filing an issue always requires the user's explicit agreement. It is built on silk's hook pattern: `lib/hook-output.sh` provides the `emit_context` / `emit_noop` helpers, and the hook fails open when `jq` is absent.
 
-`plugins/copilot/hooks.json` is an empty stub (`{}`). Copilot's hook format diverges from Claude Code's, so porting the briefing is a rewrite rather than a copy — see [the development workflow](#development-workflow-claude-code-first-then-port).
+`plugins/copilot/hooks.json` registers the same briefing as a `sessionStart` command hook running `hooks/session-start/orientation.sh` under `COPILOT_PLUGIN_ROOT`. Copilot's hook format diverges from Claude Code's, so the port is a rewrite of the wiring rather than a copy — see [the development workflow](#development-workflow-claude-code-first-then-port).
 
 ## Versioning: two private tracking packages
 
@@ -223,9 +189,7 @@ Both are `"private": true` with **no `publishConfig`**, so by the repo's [publis
 
 To version a plugin, add a changeset naming `@effected/claude-code-plugin` or `@effected/copilot-plugin`. The tag looks like `@effected/copilot-plugin@0.1.0` and carries a GitHub release.
 
-**This replaces the old arrangement, in which the Claude Code plugin's version tracked [`@effected/app`](packages/app.md)** via an `additionalScopes` of `plugin/**` on the app package — versioning the plugin meant adding a changeset for a *library*, which coupled the plugin's cadence to a kit release wave and gave the plugin no way to ship on its own. It no longer does: each plugin now versions and releases independently of the kit's [release waves](releases.md), and a changeset for `@effected/app` moves nothing in `plugins/`.
-
-**Known in-flight condition, not a permanent fact:** `silk-release-action` was designed for this GitHub-release-without-npm flow but has not been exercised recently, so `.github/workflows/release.yml` is temporarily pinned to `spencerbeggs/.github/.github/workflows/release.yml@dev` while the maintainer shakes it out. Expect that pin to return to a released ref; do not treat the `@dev` ref as the intended steady state.
+Each plugin versions and releases independently of the kit's [release waves](releases.md): a changeset for a library moves nothing in `plugins/`, and a plugin release never waits on one. The plugins deliberately do **not** ride on a library's changeset scope — tying a plugin's version to [`@effected/app`](packages/app.md) or any other package would couple its cadence to a kit wave and leave it no way to ship on its own.
 
 ## Distribution
 
@@ -247,4 +211,4 @@ claude plugin marketplace add spencerbeggs/bot
 claude plugin add spencerbeggs/effected --scope project
 ```
 
-It is **published but not advertised** — shipped, unannounced, and promoted to end users only when the maintainer is ready. The Copilot plugin is a stub and is not ready for anyone, including the team.
+It is **published but not advertised** — shipped, unannounced, and promoted to end users only when the maintainer is ready. The Copilot plugin is experimental and for the team's own trial only.

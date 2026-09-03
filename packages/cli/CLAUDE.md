@@ -101,5 +101,3 @@ obvious first reach. `@effect/vitest`, `it.effect`, `assert.*` — never
 pnpm vitest run packages/cli        # from the repo root
 pnpm build --filter @effected/cli   # cold; never the raw savvy.build.ts
 ```
-
-Unreleased: the manifest sits at `0.0.0` until the changeset naming it ships.

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-14
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - architecture.md
@@ -81,9 +81,9 @@ The committed `scratchpad/CLAUDE.md` states: the purpose (rung-3 probes); the tw
 
 ## Plugin guidance
 
-Two surgical amendments to existing plugin skills, no new skill: `effect-v4-source-lookup` names the scratchpad as the sanctioned rung-3 venue (replacing hand-rolled `node -e` guidance and lifting its placement/deletion preconditions inside the scratchpad), and `effect-v4-planning`'s probe step points the same way. The wording degrades gracefully since the plugin ships to other repos: "if the repo has a `scratchpad/` workspace, use it; otherwise inline probe."
+Two plugin skills point here and no skill is dedicated to it: `effect-v4-source-lookup` names the scratchpad as the sanctioned rung-3 venue, and `effect-v4-planning`'s probe step points the same way. The wording degrades gracefully since the plugin ships to other repos: "if the repo has a `scratchpad/` workspace, use it; otherwise inline probe."
 
-**The name collides with the agent harness's own scratch directory, and the collision is a real failure mode.** Most sessions are handed a private scratch *directory* for temporary files — an absolute path under `/tmp`, named in the system prompt — which has no `node_modules`, so a probe written there dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'`. That failure is reached by a route that feels like *following* the venue rule rather than breaking it, which is why the skill now names the distinction explicitly: the venue is a `scratchpad/` directory **inside the repo**, resolved from the repo root. Re-proven 2026-08-23, a probe in the harness scratchpad failed to resolve `effect` and the identical file copied into a package directory ran first try.
+**The name collides with the agent harness's own scratch directory, and the collision is a real failure mode.** Most sessions are handed a private scratch *directory* for temporary files — an absolute path under `/tmp`, named in the system prompt — which has no `node_modules`, so a probe written there dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'`. That failure is reached by a route that feels like *following* the venue rule rather than breaking it, which is why the skill and `scratchpad/CLAUDE.md` both name the distinction explicitly: the venue is a `scratchpad/` directory **inside the repo**, resolved from the repo root.
 
 ## Dogfood harness landing path
 

@@ -22,32 +22,32 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/architecture.md",
-			"hash": "ad5881e1495f0aa89b160aa42e62146730b6c89c48a69140534f0f318d268840",
-			"recordedAt": "2026-08-25"
+			"hash": "0ff9c55ddeda4229251956ce599a1f9333e3233c340f2d0574af92885b06de16",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/catalog-sync.md",
-			"hash": "dd3d548822cbc295cbdca11762e6edb4f97855ca53a871417f3ffb12af3cdd4d",
-			"recordedAt": "2026-08-25"
+			"hash": "33c3d88aea853e867a867cd06d84de1138ef45fa9a53cc8ea2ce5aa8f6209f02",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/effect-standards.md",
-			"hash": "9e40e1cd0e97db1dea81bd61914bc0bbca5f4328c77efc1eab0c9dd5ff9fd3a3",
-			"recordedAt": "2026-08-26"
+			"hash": "6537bc05bc8226a6ca6401510a6dc5c824525e40d94b1a212c81ddef12f7f87d",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/formatter-convention.md",
-			"hash": "789fec3cf9e4f254b5f2cd0e349c976cfafd80422e77e352903a185c343bc813",
-			"recordedAt": "2026-08-25"
+			"hash": "8222e1fbf77e7225d18a52bf41c118142fb935c8d3ea25ae1f13297e4b00e940",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/github-action-canon.md",
-			"hash": "fe67d307aa95eecc5d93334569adeb02cdcbfb25b6f1988be0220dadcf60c901",
-			"recordedAt": "2026-08-25"
+			"hash": "54d56493159638c6065f3c412d99c619dcb2b48a871cdacc6276479ff19704af",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -58,14 +58,14 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-inventory.md",
-			"hash": "d9ba15c5892ce26da485e051b96b5a994025631f6e78b2e807a973ed26d95cf8",
-			"recordedAt": "2026-08-26"
+			"hash": "3226c240d39e143d8b34ca534a855fc69025aa980d3f5e2237828861ea64eed0",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/package-setup.md",
-			"hash": "94dc037ba4ed977abd8c03fd365f7d54f146a1a8c0576abceaa44c3e598b23b5",
-			"recordedAt": "2026-08-26"
+			"hash": "5b9b31616140e8f6479fac122ae846cb9d9e7114d60eb9fbf323b2b07a6aba9a",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -75,33 +75,39 @@
 		},
 		{
 			"source": "CLAUDE.md",
+			"target": ".claude/design/effected/plugin-construct-index.md",
+			"hash": "765cd4e431d403edad946d6193c81644eebda333ff508e61891e9b5b2f5beac3",
+			"recordedAt": "2026-09-02"
+		},
+		{
+			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/plugin.md",
-			"hash": "0cbe264d0f98e8262bc817dc76c8c91cc420fb122fadf60933b2dc077b05c648",
-			"recordedAt": "2026-08-26"
+			"hash": "200aebc2728d76092d24424dfc185cc787d093ab75826b8d2dc437442c739b93",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/releases.md",
-			"hash": "8d5423a1ddfa6bf3416513278cc123d95d150a979ea8ce676424f023a545686e",
-			"recordedAt": "2026-08-26"
+			"hash": "82a3e0f545643a1531b0e01a4903a48d9424440dff020f6f80e4588c2381ebf3",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/roadmap.md",
-			"hash": "21dbb9f21a9cd1f80688403ef5480c9ab26cd905f07ef3935ef629152c38d9f1",
-			"recordedAt": "2026-08-25"
+			"hash": "d353d277ff1d6a9b6730ffde34bbb353755173fb8854fe5095a9edab97e3fbce",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/scratchpad.md",
-			"hash": "51e4f73fd479f0590dff3cb28eed106e762e39dcbeb20d30f5156ba635e87af2",
-			"recordedAt": "2026-08-25"
+			"hash": "22ff6607c8258a523dcf5cb21370dc65e0f0d264d25975faa887353623d40306",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/sync-primitive-policy.md",
-			"hash": "9ae82502f5e142e872fc6df831ad55642ab976f799d495fd88d3679e27575aa9",
-			"recordedAt": "2026-08-25"
+			"hash": "4069043f050522ae1e810e222151d0dca79ed4371d986cdf56b91313aee0ca0d",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "CLAUDE.vendored-effect.md",
@@ -118,14 +124,14 @@
 		{
 			"source": "packages/cli/CLAUDE.md",
 			"target": ".claude/design/effected/consumers/reposets.md",
-			"hash": "5fcb5dc919b169ab34d46514d94d35684821fb85575fee15f4fa2a6fa6f37a0d",
-			"recordedAt": "2026-08-25"
+			"hash": "4ce9fc18ed84c08e99da01539b74f33f8233f2ccd3a5e4bd9cb743745bdd0904",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "packages/cli/CLAUDE.md",
 			"target": ".claude/design/effected/packages/cli.md",
-			"hash": "812ebff3d1e44b9bb7fb4dfca69bbf8805f84fe30a311bece48fd360fb5a5796",
-			"recordedAt": "2026-08-25"
+			"hash": "e30e78bbb4ad0a289208548addc1fa530eb4868e527d5d307e722b5f06f71295",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "packages/commands/CLAUDE.md",
@@ -399,9 +405,15 @@
 		},
 		{
 			"source": "packages/schema-org/CLAUDE.md",
+			"target": ".claude/design/effected/packages/schema-org-conformance.md",
+			"hash": "7b8414ccbe8534494a13ef7aafc7f970ecc35c904cca8cc6bf65b9da4fe23bd4",
+			"recordedAt": "2026-09-02"
+		},
+		{
+			"source": "packages/schema-org/CLAUDE.md",
 			"target": ".claude/design/effected/packages/schema-org.md",
-			"hash": "4abaa14def957dd53f720eb73f2a12c8dae1a2e0821d4bb15689986965c655ae",
-			"recordedAt": "2026-08-26"
+			"hash": "21adce52664bf508676bd683d8b677f6d7eb3f3ba2cc12bac37c89b1edfb1e28",
+			"recordedAt": "2026-09-02"
 		},
 		{
 			"source": "packages/schemastore/CLAUDE.md",
@@ -558,6 +570,18 @@
 			"target": ".claude/design/effected/yaml-lint.md",
 			"hash": "4a10c58b0a040424644155e9708ff547bcf1dfcc3740cb20a66edab323dc2069",
 			"recordedAt": "2026-08-25"
+		},
+		{
+			"source": "plugins/CLAUDE.md",
+			"target": ".claude/design/effected/plugin-construct-index.md",
+			"hash": "765cd4e431d403edad946d6193c81644eebda333ff508e61891e9b5b2f5beac3",
+			"recordedAt": "2026-09-02"
+		},
+		{
+			"source": "plugins/CLAUDE.md",
+			"target": ".claude/design/effected/plugin.md",
+			"hash": "200aebc2728d76092d24424dfc185cc787d093ab75826b8d2dc437442c739b93",
+			"recordedAt": "2026-09-02"
 		}
 	]
 }

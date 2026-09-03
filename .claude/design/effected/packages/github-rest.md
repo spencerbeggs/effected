@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - github.md
@@ -23,14 +23,14 @@ What it owns is the wire mechanics, and only those. Which endpoints earn a domai
 
 ## The route is the key
 
-`client.request("GET /repos/{owner}/{repo}", { owner, repo })` types **both** the parameters and the returned data from the route literal alone. There is no operation string, no callback, no type parameter to invent and **no cast** — the surface this replaced cost four consumer repos sixteen cast sites, and the library itself dozens more inside its own implementation layers, all for the same reason: with a typed route, the projection from response to domain model is a checked mapping rather than a cast.
+`client.request("GET /repos/{owner}/{repo}", { owner, repo })` types **both** the parameters and the returned data from the route literal alone. There is no operation string, no callback, no type parameter to invent and **no cast** — with a typed route, the projection from response to domain model is a checked mapping rather than a cast, where an operation-string surface costs a cast at every projection in the library and in every consumer.
 
 The route vocabulary lives in one types-only module (`src/Rest.ts`, which emits no runtime code) over octokit's generated endpoint map. Two narrowings against octokit's own surface are deliberate:
 
 - **The parameter type intersects a three-field extras record, not octokit's own request parameters.** That type carries an index signature, and intersecting it would silently accept every typo. The three kept fields are the ones evidence proves are needed: headers (an asset content type, a pinned API version), a media-type format (raw content reads) and a base URL (the upload host). Everything else a caller might reach for is a real parameter and is already typed.
 - **The element type of a paginating route is derived here**, because the plugin's own helper — which handles the array-versus-`{ total_count, items }` split — is not exported. Ten lines, one place, and it is what makes a paginated read return domain values rather than `unknown[]`.
 
-**`operation: string` is gone.** There is nothing left for it to name: the route names the endpoint and the span carries it. One consumer had filled it with an invented key unrelated to any endpoint; that has no successor and needs none.
+**There is no `operation: string` parameter.** There is nothing for it to name: the route names the endpoint and the span carries it. A free-text operation field only ever invites an invented key unrelated to any endpoint.
 
 ### `repositoryPatch` owns the cast consumers were writing
 
@@ -46,7 +46,7 @@ The no-cast property has one place it does not hold for free, and `src/GitHubRep
 
 One internal leaf (`src/internal/ids.ts`, importing nothing) narrows it, and **every response-mapping site that reads an id goes through it** — the check-run ref, the comment record, the App identity's user id, the issue-comment writes. A local cast at each site would have been the same number of edits and would have scattered the assumption; one funnel makes it a single documented decision instead. **A new mapping site adds a call, never a cast.**
 
-If GitHub ever does cross 2^53, the coercion is not the fix and must not be made to look like one: the `id: number` fields on the record classes have to be redesigned, and the funnel is where that shows up. This is the shape an upstream-types widening takes generally — **narrow once at the projection boundary, keep the domain model honest** — and it is why the majors this rode in on (`@octokit/plugin-paginate-rest` 15, `@octokit/types` 17) cost no public change.
+If GitHub ever does cross 2^53, the coercion is not the fix and must not be made to look like one: the `id: number` fields on the record classes have to be redesigned, and the funnel is where that shows up. This is the shape an upstream-types widening takes generally — **narrow once at the projection boundary, keep the domain model honest** — and it is why an octokit major that widens a wire type costs no public change here.
 
 ## The escape hatch is from the route table, never from typing
 
@@ -64,7 +64,7 @@ Layer variants: from an explicit token, and from the ambient config provider. Th
 
 ## Pagination
 
-Three defects in the predecessor drove the model: six call sites silently accepted the maximum page size with no caller control, one resource did not paginate at all (so a pull request with more than a page of comments silently lost its sticky-comment marker), and the shipped test double **ignored both page options**, which made truncation structurally untestable.
+Three hazards shape the model: a list read that hard-codes its page size gives the caller no control, a list read that does not paginate silently truncates (a pull request with more than a page of comments loses its sticky-comment marker) and a test double that **ignores page options** makes truncation structurally untestable.
 
 Four rules:
 

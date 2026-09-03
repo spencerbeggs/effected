@@ -4,7 +4,7 @@ module: effected
 category: meta
 created: 2026-07-06
 updated: 2026-08-25
-last-synced: 2026-08-25
+last-synced: 2026-09-02
 completeness: 85
 related:
   - architecture.md

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -25,6 +25,7 @@ related:
   - git.md
   - commands.md
   - memfs.md
+  - schema-org.md
 ---
 
 # @effected/workspaces design
@@ -87,7 +88,7 @@ The second inverted contract this package fills, on the same reasoning. [@effect
 
 **The R2 direction is what makes this safe.** The commands edge is a dependency on a *boundary* package, and [R2](../effect-standards.md#dependency-policy) taxes only tier-3 edges — so taking it changes nothing about this package's tier and costs a consumer nothing extra. **The inversion exists to protect commands and its dependents, not this package.**
 
-**The argv knowledge is not duplicated.** Commands owns the one table of the four managers' exec, dlx and script prefixes; this layer detects *which* manager owns the directory and asks commands what that manager's argv looks like. The tests assert against that same static rather than a copy, so the two packages cannot silently drift. That held with no work when a third prefix joined the record — this layer destructures whatever the table returns.
+**The argv knowledge is not duplicated.** Commands owns the one table of the four managers' exec, dlx and script prefixes; this layer detects *which* manager owns the directory and asks commands what that manager's argv looks like. The tests assert against that same static rather than a copy, so the two packages cannot silently drift — this layer destructures whatever the table returns.
 
 **`None` is success, and the boundary is where the value is.** The contract reserves its typed error for **mechanism** failure, so:
 
@@ -132,7 +133,7 @@ Two synchronous functions in `src/WorkspacesSync.ts`, positional-path-first with
 
 **It is deliberately not re-exported from the index, and that is the whole point of it being a separate entry**: re-exporting would drag `node:*` into the main entry and therefore into every consumer — including the ones that supply their own ops precisely to avoid them. The platform binding is opt-in by import path, and the ops bind to the *running* platform, which is the correct default only for a consumer who means "Node, here."
 
-It is the repo's first subpath export, with one consequence worth recording: **an entry point re-exports, contrary to the [no-barrel rule](../effect-standards.md#module-layout-module-per-concept)** — api-extractor models each entry as its own surface, so types appearing in this entry's declarations must be re-exported here or the build reports them as forgotten. **The rule bans barrels, not entry points.**
+One consequence of a subpath export is worth recording: **an entry point re-exports, contrary to the [no-barrel rule](../effect-standards.md#module-layout-module-per-concept)** — api-extractor models each entry as its own surface, so types appearing in this entry's declarations must be re-exported here or the build reports them as forgotten. **The rule bans barrels, not entry points.** The general wiring is in [package-setup.md](../package-setup.md#a-second-published-entrypoint); [schema-org](schema-org.md#module-layout-and-the-two-entrypoints)'s `./validate` is the other instance.
 
 The mutation-proven edge worth keeping: **the dirent fast path against the four-operation fallback**, over a tree whose package directory is a **symlink** — the one shape that discriminates them — with a positive control asserting the symlinked package is found at all, so "the two agree" cannot be satisfied by both finding nothing. Plus a throwing fast path degrading to the documented skip rather than propagating.
 

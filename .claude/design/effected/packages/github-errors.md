@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - github.md
@@ -24,11 +24,11 @@ Resilience is a package-wide property rather than a property of any one transpor
 
 ## Four errors, and classification happens once
 
-The package declares one error for the REST surface, one for GraphQL, one for App authentication and one raised by the pure permission comparator — replacing eighteen near-identical classes with eighteen near-identical mapper closures. See `src/GitHubError.ts` and its siblings.
+The package declares one error for the REST surface, one for GraphQL, one for App authentication and one raised by the pure permission comparator. See `src/GitHubError.ts` and its siblings.
 
 **Classification happens in exactly one place**, the boundary mapper that turns an unknown octokit throwable into a classified error; nothing else in the package inspects a status code. That mirrors [`@effected/git`](git.md#errors-classification-happens-once), whose rule is that no consumer ever string-matches stderr — here, no consumer ever sniffs a status or a message.
 
-The load-bearing field is **`kind`**: not-found, already-exists, rejected, unauthorized, rate-limited, transport, decode. It is what replaces every string sniff, and the sizing is evidence-driven — a read census found consumers reading a reason string, a status, an operation name and a tag, and **zero** reads of the half-dozen fields a predecessor made mandatory. `operation` names the resource method or the raw route; `reason` is the human-readable field consumers interpolate; the rest are optional with ergonomic statics filling them from the value the mapper already has.
+The load-bearing field is **`kind`**: not-found, already-exists, rejected, unauthorized, rate-limited, transport, decode. It is what replaces every string sniff, and the sizing follows what consumers actually read — a reason string, a status, an operation name and a tag — so nothing beyond those is mandatory. `operation` names the resource method or the raw route; `reason` is the human-readable field consumers interpolate; the rest are optional with ergonomic statics filling them from the value the mapper already has.
 
 Four consequences are traceable:
 
@@ -41,19 +41,17 @@ The GraphQL error keeps a structured **errors list**, because it is the one stru
 
 ## One retry policy, driven by GitHub's own headers
 
-A predecessor shipped **four** retry policies — including one with no predicate at all, so it retried permission denials — and consumers added two more on top. It also shipped a rate-limit subsystem with **zero production consumers**: a bare ref as a service shape, resolved through an optional-service lookup on both sides, so forgetting to provide it degraded the whole feature **silently**.
+There is **one** retry policy and **no rate-limit subsystem**. Several policies — one of which inevitably lacks a predicate and retries permission denials — stack on each other unpredictably, and a rate-limit gate resolved through an optional-service lookup degrades the whole feature **silently** when nobody provides it.
 
-Designing from zero users: **delete the subsystem, keep one policy inside the client.**
-
-- **The policy is wired once, in the client layer**, so every resource inherits it and **no resource retries on its own**. A predecessor's per-operation retry was a third policy layered on the client's.
+- **The policy is wired once, in the client layer**, so every resource inherits it and **no resource retries on its own**; a per-operation retry would be a second policy layered on the client's.
 - **Only transport and rate-limited failures retry.** There is no path on which a permission denial is retried.
 - **A server-advised delay wins over the computed backoff**, unless it exceeds a ceiling — in which case the error is re-failed rather than slept through, because a long rate-limit reset must surface as a failure rather than a hang. Otherwise, full jitter over an exponential bound.
-- **The schedule is built with the v4 metadata-carrying step constructor**, whose step receives the failure being retried. That is the native construct for "the delay depends on the failure", and it is why a predecessor's hand-rolled recursive retry loop is unnecessary.
+- **The schedule is built with the v4 metadata-carrying step constructor**, whose step receives the failure being retried. That is the native construct for "the delay depends on the failure", so no hand-rolled recursive retry loop is needed.
 
 **Resilience imports no error class at all.** It declares a **structural** shape — retryable, plus an optional advised delay — so one policy serves both the REST and the GraphQL error and every policy decision is testable against a two-field literal. That is also why the error lives in its own module rather than inside the client: the policy needs the error's shape and the client needs the policy.
 
-**Rate-limit headers stay, as an observable value rather than a shared cell.** The client parses them off every response into a ref held **inside the layer's own closure**, surfaced as one effect-valued member on the client shape: mockable from a partial record, observable in tests, impossible to forget to provide and impossible to desynchronize from the client that writes it. A dead "observed at" field is dropped.
+**Rate-limit headers stay, as an observable value rather than a shared cell.** The client parses them off every response into a ref held **inside the layer's own closure**, surfaced as one effect-valued member on the client shape: mockable from a partial record, observable in tests, impossible to forget to provide and impossible to desynchronize from the client that writes it.
 
-**No proactive throttling.** The gate that would have provided it had zero users and duplicated what the reactive path handles correctly: GitHub answers an exhausted budget with a status plus reset headers, which classifies as rate-limited and gets the server-advised delay. A consumer that wants to pace itself has the snapshot and can build a gate; if a second one asks, it arrives additively.
+**No proactive throttling.** A gate would duplicate what the reactive path handles correctly: GitHub answers an exhausted budget with a status plus reset headers, which classifies as rate-limited and gets the server-advised delay. A consumer that wants to pace itself has the snapshot and can build a gate; if a second one asks, it arrives additively.
 
 **No dependency edge to [`@effected/commands`](commands.md)' retry vocabulary.** That module classifies a subprocess failure over a subprocess transport; this one classifies an HTTP failure over HTTP. Sharing would require a cross-package error contract to buy a shared word. What the two packages share is a **convention** — each owns "which of my failures are transient", exposes it and lets the caller compose the retry — and a convention belongs in [effect-standards](../effect-standards.md), not in a package edge.

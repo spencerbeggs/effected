@@ -32,7 +32,7 @@ It carries the full-parity ambition of its format siblings [jsonc](jsonc.md), [y
 
 This document covers the engine, the node model, the edit and stringify layers, navigation and hardening. Two subsystems have their own docs:
 
-- **[Frontmatter](markdown-frontmatter.md)** — the capture node, the three format codecs and the write seam, the string-level `FrontmatterSource` facade, and the `$schema` declaration grammar with its resolver seam.
+- **[Frontmatter](markdown-frontmatter.md)** — the capture node, the three format codecs and the write seam, the string-level `FrontmatterSource` facade and the `$schema` declaration grammar with its resolver seam.
 - **[The MDX vocabulary](markdown-mdx.md)** — the construction-and-serialization-only MDX node set, the unions it widens and the presence-keyed escaping invariant it turns on.
 
 ## Tier and dependencies
@@ -104,7 +104,7 @@ The edit model is therefore the house pattern — an offset/length/content edit 
 
 Apply-all adopts toml's overlap-rejection posture, and range filtering adopts toml's owning-node-intersection posture. Apply-all is harmonized across all four format packages; the **range-filter posture** is the one place they document different filters, and markdown follows toml's.
 
-**Canonical stringify serializes fidelity-first** with a recorded defaults table, and its escaping is an always-escape set (backslash, backtick, `*`, `[`, `]`, `<`, `~`, `|`) plus line-start and raw-source-autolink defenses, with the corpus-wide re-parse equivalence property as the authority. **Four characters escape only where CommonMark could bind them**, so `parse ∘ stringify` is the identity on ordinary prose — the first thing the downstream consumer tsdoctor asked for (dogfood round 1, 2026-09-02), whose page emitter had been hand-rolling an unescape shim over `snake_case`, `R&D` and `a > b`. `_` is raw between two Unicode alphanumerics (an intraword underscore can neither open nor close emphasis; a value boundary counts as not alphanumeric, so an edge `_` stays escaped whatever sibling follows). `&` is raw unless the rest of the text value is entity-shaped, with a value-final `&` escaped only when an inline sibling follows (the split `Text("&") + Text("amp;")` must not fuse). `>` escapes only at a line start, the one place it binds. A heading's `#` escapes only when it heads a run preceded by whitespace or the value start and followed by nothing but whitespace to the value end — the ATX closing-sequence shape — or when a following sibling exists, since that sibling may contribute only blank content. `*` stays in the always set on purpose: an intraword `*` *can* open emphasis. The MDX presence-keyed `{` escape is [unchanged](markdown-mdx.md). A side fix the narrowing exposed: setext heading content is now serialized as a line start (CommonMark example 102) — it had silently relied on `>` being always-escaped.
+**Canonical stringify serializes fidelity-first** with a recorded defaults table, and its escaping is an always-escape set (backslash, backtick, `*`, `[`, `]`, `<`, `~`, `|`) plus line-start and raw-source-autolink defenses, with the corpus-wide re-parse equivalence property as the authority. **Four characters escape only where CommonMark could bind them**, so `parse ∘ stringify` is the identity on ordinary prose such as `snake_case`, `R&D` and `a > b` — which a downstream page emitter would otherwise unescape by hand. `_` is raw between two Unicode alphanumerics (an intraword underscore can neither open nor close emphasis; a value boundary counts as not alphanumeric, so an edge `_` stays escaped whatever sibling follows). `&` is raw unless the rest of the text value is entity-shaped, with a value-final `&` escaped only when an inline sibling follows (the split `Text("&") + Text("amp;")` must not fuse). `>` escapes only at a line start, the one place it binds. A heading's `#` escapes only when it heads a run preceded by whitespace or the value start and followed by nothing but whitespace to the value end — the ATX closing-sequence shape — or when a following sibling exists, since that sibling may contribute only blank content. `*` stays in the always set on purpose: an intraword `*` *can* open emphasis. The MDX presence-keyed `{` escape is [separate](markdown-mdx.md). Setext heading content is serialized as a line start (CommonMark example 102), because its first character can bind there.
 
 **Entity-shaped means the engine's own `ENTITY` grammar in `src/internal/unescape.ts`, which the parser and the stringifier share**, so the two ends cannot disagree on what a character reference looks like. The entity map is deliberately not consulted: any name-shaped run escapes, because the parser decides validity later and the stringifier only needs to know where it might try.
 
@@ -112,7 +112,7 @@ One default is worth naming here because it surprised a real consumer: a **langu
 
 **`format` is conservative-by-skipping**: marker-normalization options only, with hazardous conversions skipped rather than attempted cleverly, and both zero-edits-on-canonical and format idempotence pinned.
 
-**`modify` is strict with no raw markdown**: replacements are node fragments or literal strings rendered through the canonical stringifier, so modified documents re-parse cleanly by construction. Its refusals — list items, table rows, frontmatter, the root, and multi-line replacements into prefixed containers — fail typed with a code naming which refusal applied.
+**`modify` is strict with no raw markdown**: replacements are node fragments or literal strings rendered through the canonical stringifier, so modified documents re-parse cleanly by construction. Its refusals — list items, table rows, frontmatter, the root and multi-line replacements into prefixed containers — fail typed with a code naming which refusal applied.
 
 ### codeBlockStyle: the one conversion knob
 
@@ -177,7 +177,7 @@ The [input-hardening standards](../effect-standards.md#input-hardening-standards
 
 Schema class construction dominates parse cost — stringify is orders of magnitude cheaper because it builds no Schema nodes, and the mdast projection outward is effectively free while the projection inward pays the full construction toll. That inward cost is **accepted**, because it is the checked admission boundary and checked admission is its purpose; hot-path consumers keep trees in package types or project outward.
 
-**What is not accepted is paying construction per ancestor.** v4's `make` deep re-constructs every element of an array field typed as a class but passes an array field typed as a **union** through by identity. The category type aliases for table, row and list children — previously documentation-only aliases of their single member — are therefore **real one-member unions**, so those children take the pass-through path. An identity pin is the discriminating test. **Do not "simplify" those unions back to the member class.**
+**What is not accepted is paying construction per ancestor.** v4's `make` deep re-constructs every element of an array field typed as a class but passes an array field typed as a **union** through by identity. The category type aliases for table, row and list children are therefore **real one-member unions** rather than aliases of their single member, so those children take the pass-through path. An identity pin is the discriminating test. **Do not "simplify" those unions back to the member class.**
 
 ## Observability
 
@@ -197,7 +197,7 @@ Unit tests in `__test__/`, conformance suites in `__test__/e2e/`. Five vendored 
 
 **The differential oracle is the `commonmark` npm package**, an exact-pinned devDependency imported only by a property test, following the smol-toml pattern. It is pinned to the CommonMark dialect, because the oracle package knows no GFM. It has surfaced a genuine upstream defect, handled by a narrow oracle-side correction plus a **tripwire test that fails when upstream fixes it** — the same technique used for the engine-lineage divergences masked symmetrically in the interop harness, and for the documented unrepresentable stringify cases.
 
-Property tests: parse never throws, node positions span valid offsets, splice idempotence, stringify∘parse re-parse equivalence, and frontmatter round-trip through all three real codecs.
+Property tests: parse never throws, node positions span valid offsets, splice idempotence, stringify∘parse re-parse equivalence and frontmatter round-trip through all three real codecs.
 
 ## Consumer seam
 

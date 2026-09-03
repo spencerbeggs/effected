@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-22
-updated: 2026-08-26
-last-synced: 2026-08-26
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - schema-org.md
@@ -16,6 +16,8 @@ related:
   - package-json.md
   - semver.md
   - markdown.md
+  - schema-org-conformance.md
+  - runtimes.md
 ---
 
 # @effected/spdx design
@@ -32,7 +34,7 @@ Owning the grammar rather than depending on `spdx-expression-parse` is what keep
 
 No cross-`@effected` runtime edges: package-json depends on spdx, never the reverse, and the graph runs from boundary toward pure as [the acyclic-graph rule](../effect-standards.md#cross-effected-dependencies) requires.
 
-Everything SPDX-adjacent — the upstream `spdx-license-ids` and `spdx-exceptions` datasets, the canonical `spdx-expression-parse` (kept as the [differential oracle](#testing) and as the algorithm reference), and the parser used by the regeneration tool — is a **devDependency only**. Never import any of them from `src/**`. The same holds for `lib/data/spdx-licenses.json`, the committed catalog behind the [metadata table](#catalog-metadata): it is a **build-time input to the generator and nothing else**, and it carries a [refresh obligation](#the-generator-has-two-sources-and-only-one-of-them-is-a-package).
+Everything SPDX-adjacent — the upstream `spdx-license-ids` and `spdx-exceptions` datasets, the canonical `spdx-expression-parse` (kept as the [differential oracle](#testing) and as the algorithm reference) and the parser used by the regeneration tool — is a **devDependency only**. Never import any of them from `src/**`. The same holds for `lib/data/spdx-licenses.json`, the committed catalog behind the [metadata table](#catalog-metadata): it is a **build-time input to the generator and nothing else**, and it carries a [refresh obligation](#the-generator-has-two-sources-and-only-one-of-them-is-a-package).
 
 ## Module layout
 
@@ -66,9 +68,9 @@ Four rulings hold this surface together, and each is the safe answer rather than
 - **Absence is `Option.none()`, not a fabricated value.** `referenceUrl` and `name` are `Option`, because a `LicenseRef-`/`DocumentRef-` reference names a license that lives in the consuming document rather than on spdx.org, and an uncataloged id names nothing at all. Templating a URL anyway would hand a caller a *confidently broken link*, which is worse than no link.
 - **The flags are plain `boolean` and default to `false`.** They assert something about a *known* license, so the absence of a catalog entry is never "approved". No `Option` here: an unknown license is not OSI-approved, and that is a complete answer rather than a missing one.
 - **`osiApproved` and `fsfLibre` are independent and neither may be derived from the other.** The FSF's list is much shorter than the OSI's and the two disagree in **both** directions — `0BSD` is OSI-approved and not FSF-libre, `Apache-1.0` is FSF-libre and not OSI-approved. A reader who assumes containment will be wrong on real licenses.
-- **`reference` is not vendored; it is templated, and the template is a checked invariant.** Every upstream entry's URL is exactly `https://spdx.org/licenses/<id>.html`, so shipping 721 of them would be 721 copies of a format string. The generator asserts the template against upstream for **every** id and fails loudly on any deviation, which is what converts an assumption into a checked one. Never relax that assertion to make a regeneration pass — a deviation means upstream changed the URL shape, and the answer is to vendor the field.
+- **`reference` is not vendored; it is templated, and the template is a checked invariant.** Every upstream entry's URL is exactly `https://spdx.org/licenses/<id>.html`, so shipping every one would be hundreds of copies of a format string. The generator asserts the template against upstream for **every** id and fails loudly on any deviation, which is what converts an assumption into a checked one. Never relax that assertion to make a regeneration pass — a deviation means upstream changed the URL shape, and the answer is to vendor the field.
 
-The table itself is `[id, name, flags]` **tuples**, 721 of them, matching the `licenseIds.ts` catalog exactly. Objects would repeat three keys 721 times for no information, at roughly 20 KB of shipped bytes — the same interning economics [`@effected/schema-org`](schema-org.md#what-ships-the-full-interned-table) reaches on a larger table.
+The table itself is `[id, name, flags]` **tuples**, one per id in the `licenseIds.ts` catalog. Objects would repeat three keys per entry for no information — the same interning economics [`@effected/schema-org`](schema-org-conformance.md#what-ships-the-full-table) reaches on a larger table.
 
 ### Reading licenses out of an expression
 
@@ -81,11 +83,9 @@ Two accessors on the `SpdxExpression` facade answer "which license(s) is this un
 
 `WITH` is handled by carrying the license and dropping the exception, in both accessors: the exception qualifies a license rather than naming a different one. The `+` "or later" marker is dropped for the same reason — `License` models identifiers, not operators.
 
-This pair is now the house precedent for the general rule, adopted downstream by [`@effected/schema-org`](schema-org.md#the-house-precedent-never-pick-a-representative): **where collapsing many to one would lose information, decline rather than choose.**
+This pair is the house precedent for the general rule, adopted downstream by [`@effected/schema-org`](schema-org.md#arity-one-shape-per-property-always-the-wire-shape): **where collapsing many to one would lose information, decline rather than choose.**
 
-**An accessor that declines to collapse does not stop a caller collapsing downstream, and the first consumer proved it.** They mapped `licensesOf(...)` to a bare `string[]` of ids, discarding the `License` entries — so the only [`referenceUrl`](#catalog-metadata) that survived was the primary's, and a dual-licensed (`AND`) package therefore emitted **no license at all**, since an `AND` has no primary. The kit's surface was correct at every step; the loss happened one level up, in the consumer's own intermediate type.
-
-Two things worth carrying from it. The **entries are the payload** — `licensesOf` returns `License` objects rather than ids precisely so per-entry metadata travels with them, and a caller narrowing to ids re-creates the problem the pair exists to prevent; the TSDoc should keep saying so. And note what the consumer nearly did instead: they had drafted an ask for per-entry `referenceUrl`, which already existed, and caught it only by reading the installed `.d.ts` rather than trusting their belief about the boundary. **Read the artifact, not your memory of it** — the same discipline the [oracle rule](#testing) applies to upstream data.
+**An accessor that declines to collapse does not stop a caller collapsing downstream.** A consumer that maps `licensesOf(...)` to a bare `string[]` of ids discards the `License` entries, so the only [`referenceUrl`](#catalog-metadata) that survives is the primary's — and a dual-licensed (`AND`) package then emits no license at all, since an `AND` has no primary. The **entries are the payload**: `licensesOf` returns `License` objects rather than ids precisely so per-entry metadata travels with them, and the TSDoc says so.
 
 **`SpdxExpression`** is a recursive tagged-union AST over the grammar, with each variant a separate node class and the recursion expressed via `Schema.suspend`. It provides a `FromString` codec, an Effect `parse`, a sync validity predicate and a canonical fully-parenthesized `toString` — one grammar as the single source of truth, so parse and encode round-trip.
 
@@ -112,19 +112,17 @@ The single typed error is `InvalidSpdxExpressionError`. Both malformed grammar a
 
 The license-id and exception sets are vendored as **real TypeScript** in hand-authored internal modules, split so a consumer touching only exceptions never pulls the license set — genuine tree-shaking, which a single `JSON.parse("…")` blob would defeat. Each module carries an attribution header naming the SPDX source and its upstream license.
 
-A **hand-run regeneration tool** in `scripts/` keeps them current: a devDep script run manually, never in CI and never in the test suite, on the same posture as [markdown's entities generator](markdown.md#the-entity-table-is-generated-data-not-a-dependency). It rewrites **only** each data literal's contents in place by byte span, leaving module headers, types and co-located hand-authored code untouched. It is idempotent — re-run and diff when the upstream data packages bump.
+A **hand-run regeneration tool**, `lib/scripts/generate-data.ts`, keeps them current: a devDep script run manually, never in CI and never in the test suite, on the same posture as [markdown's entities generator](markdown.md#the-entity-table-is-generated-data-not-a-dependency). It rewrites **only** each data literal's contents in place by byte span, leaving module headers, types and co-located hand-authored code untouched. It is idempotent — re-run and diff when the upstream data bumps. It lives under `lib/scripts/` because that is where this repo keeps package-local tooling that is not shipped source; [runtimes](runtimes.md#bundled-defaults-regeneration) and [schema-org](schema-org-conformance.md#generation) keep theirs there too.
 
 ### The generator has two sources, and only one of them is a package
 
-The identifier sets come from the `spdx-license-ids` / `spdx-exceptions` **devDependencies**. The [metadata table](#catalog-metadata) does not: `licenseMeta.ts` is generated from **`lib/data/spdx-licenses.json`**, the SPDX workgroup's own published catalog at release **v3.28.0**, committed into this package. It carries the titles and approval flags the npm packages do not.
+The identifier sets come from the `spdx-license-ids` / `spdx-exceptions` **devDependencies**. The [metadata table](#catalog-metadata) does not: `licenseMeta.ts` is generated from **`lib/data/spdx-licenses.json`**, the SPDX workgroup's own published catalog, committed into this package; the file records its own `licenseListVersion`. It carries the titles and approval flags the npm packages do not.
 
-It is a committed FILE rather than a vendored submodule, and that distinction cost a CI outage to learn. The upstream `spdx/license-list-data` repo is **1.86 GB**; the file read from it is **332 KB**. A sparse checkout makes that bearable locally, but sparse configuration lives in a submodule's own `.git/config` and does not travel — so every clone and every CI checkout paid the full history to reach a rounding error's worth of JSON, and validation went from ~6m45s to over 19 minutes. The rule that generalizes: **submodule a repo when a package needs to read the repo; commit the file when it needs one file.**
+It is a committed **file** rather than a vendored submodule, and that distinction cost a CI outage to learn. The upstream `spdx/license-list-data` repo is over a gigabyte and this is the single file read from it; sparse configuration lives in a submodule's own `.git/config` and does not travel, so every clone and every CI checkout paid the full history and validation time roughly tripled. The rule that generalizes: **submodule a repo when a package needs to read the repo; commit the file when it needs one file.**
 
-**That vendoring creates a re-pin obligation this package did not previously carry**, and it is recorded here because nothing else states it: under the silk `repos` skill's re-pin-on-dependency-bump rule, bumping `spdx-license-ids` now means **re-pinning the submodule tag as well**, and re-running the generator, and diffing — as one change. The two sources describe the same license list and must be advanced together; the version pinned in `.repos/config.json` and the version resolved for `spdx-license-ids` are two clocks that will silently diverge otherwise.
+**The two sources describe the same license list and must be advanced together.** Bumping `spdx-license-ids` means refreshing `lib/data/spdx-licenses.json` from the SPDX release that covers it, re-running the generator and diffing — as one change; otherwise the two are clocks that silently diverge. The safety net is real but is a net, not a substitute: the generator **asserts coverage** — every id in the catalog must resolve to a metadata entry and every entry's `reference` must match the templated URL — and fails loudly naming the offender rather than emitting a table with holes. A forgotten refresh therefore surfaces at the next regeneration, which is the run that would otherwise ship a `name` of `Option.none()` for every id added since. Nothing catches it *before* then, which is why the obligation is written down.
 
-The safety net is real but is a net, not a substitute. The generator **asserts coverage**: every id in the catalog must resolve to a metadata entry, and every entry's `reference` must match the templated URL, and it fails loudly naming the offender rather than emitting a table with holes. So a forgotten re-pin surfaces at the next regeneration — which is the run that would otherwise ship a `name` of `Option.none()` for every id added since the pin. Nothing catches it *before* then, which is why the obligation is written down.
-
-Everything under `.repos/` is **read-only** — silk's PreToolUse guards deny writes. The generator reads the submodule and writes only into `packages/spdx/src/internal/`. Reading it offline rather than fetching is what makes regeneration reproducible on any machine at any time.
+The generator reads the committed file, never the network, and writes only into `packages/spdx/src/internal/`. Reading it offline is what makes regeneration reproducible on any machine at any time.
 
 Following the [oracle rule](#testing), an upstream bump here is likewise **a catalog review, not a version bump**: diff the regenerated literals and read what moved.
 

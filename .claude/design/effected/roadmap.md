@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 85
 related:
   - consumers/reposets.md
@@ -62,7 +62,7 @@ The verified boundary is that **`Slice` is load-bearing for subscription, query 
 
 Three items remain from the format-package sweep, in execution order:
 
-1. **Frontmatter completion in `markdown`** — replace the `JSON.stringify` fallback in the round-trip property and lift `MarkdownFormat.modify`'s frontmatter refusal so frontmatter updates flow through the edit layer. (`Jsonc.stringify` and the `applyAll` overlap guards, the sweep's other two items, have landed.)
+1. **Frontmatter completion in `markdown`** — lift `MarkdownFormat.modify`'s frontmatter refusal so frontmatter updates flow through the edit layer.
 2. **Format range-filter posture** — the four format packages document three different postures; standardize on one.
 3. **Promote the parity contract** in [effect-standards.md](effect-standards.md) from shape-identical to behavior-identical, once the two items above make that assertable.
 

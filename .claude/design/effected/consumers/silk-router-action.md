@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-07-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 88
 related:
   - README.md
@@ -16,7 +16,7 @@ related:
 
 ## Overview
 
-`/Users/spencer/workspaces/savvy-web/silk-router-action` decides which release phase a workflow run is in — reading the event payload, finding the pull request associated with a commit, and counting pending changesets — then routes downstream jobs accordingly.
+`/Users/spencer/workspaces/savvy-web/silk-router-action` decides which release phase a workflow run is in — reading the event payload, finding the pull request associated with a commit and counting pending changesets — then routes downstream jobs accordingly.
 
 It is the smallest action consumer: `@effected/github` and `@effected/github-actions`, nothing else. That makes it the cleanest evidence of what the kit's floor costs a small action.
 

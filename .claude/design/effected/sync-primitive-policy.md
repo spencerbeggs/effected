@@ -3,9 +3,9 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-08-25
-last-synced: 2026-08-25
-completeness: 90
+updated: 2026-09-02
+last-synced: 2026-09-02
+completeness: 92
 related:
   - effect-standards.md
   - formatter-convention.md
@@ -24,7 +24,7 @@ related:
 
 ## Overview
 
-What shape a **pure** kit boundary exposes. It is one rule with a scope test and a naming rule, and it applies to every pure boundary in the kit — not only to the format packages where it was first noticed. It lives in its own document because designers outside those packages were not finding it inside one.
+What shape a **pure** kit boundary exposes. It is one rule with a scope test and a naming rule, and it applies to every pure boundary in the kit — not only to the format packages where it was first noticed, which is why it has its own document rather than a section of [formatter-convention.md](formatter-convention.md).
 
 **Pure computation exposes the sync form as the primitive; the `Effect` form is derived from it and adds only the tracing span.**
 

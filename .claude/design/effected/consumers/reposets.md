@@ -3,8 +3,8 @@ status: current
 module: effected
 category: feedback
 created: 2026-08-14
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 90
 related:
   - README.md
@@ -21,15 +21,15 @@ related:
 
 ## Overview
 
-`/Users/spencer/workspaces/spencerbeggs/reposets` publishes `reposets`, a declarative GitHub repository management CLI: a committable TOML config names repository settings, secrets, variables, rulesets, deployment environments, advanced-security toggles and CodeQL default setup, and one `sync` applies them across groups of repositories. The published package is `package/`, not the repo root.
+`spencerbeggs/reposets` publishes `reposets`, a declarative GitHub repository management CLI: a committable TOML config names repository settings, secrets, variables, rulesets, deployment environments, advanced-security toggles and CodeQL default setup, and one `sync` applies them across groups of repositories. The published package is `package/`, not the repo root.
 
 It is unlike every other entry in this register, and each difference is why its loop found what it found.
 
 - **It is a CLI, not a GitHub Action.** Every other consumer runs on a GitHub-provided runner with one platform, one log sink and a workflow to report into. This one runs on a person's terminal, which is what surfaced [`@effected/cli`](../packages/cli.md).
 - **It is the first consumer of the application control plane** — [`app`](../packages/app.md) and [`store`](../packages/store.md) had shipped and had never been driven from outside their own suites.
-- **It is the first loop that upstreamed code rather than only findings.** Two ports were written downstream against a design doc and landed here: the six repository resource services plus the sealed-box crypto into [`github`](../packages/github.md), and the whole of `@effected/cli`. Both were folded, corrected and gated on this side; neither arrived as a merge of consumer source.
+- **It is the first loop that upstreamed code rather than only findings.** Two ports were written downstream against a design doc and landed here: the repository resource services plus the sealed-box crypto into [`github`](../packages/github.md), and the whole of `@effected/cli`. Both were folded, corrected and gated on this side; neither arrived as a merge of consumer source.
 
-**The loop is closed.** Its findings landed, the wave it drove released, and the consumer now resolves through published `catalog:effected` pins rather than the local overrides it ran the loop on. Verified against the checkout on 2026-08-25. The loop's own mail was transitory and gitignored; what is durable is here and in the packages' own docs.
+**The loop is closed.** Its findings landed, the wave it drove released and the consumer resolves through published `catalog:effected` pins. Verified against the checkout on 2026-08-25; there is no local checkout at present, so everything below is as of that survey. What is durable from the loop is here and in the packages' own docs.
 
 ## What it exercises
 
@@ -43,13 +43,13 @@ It is unlike every other entry in this register, and each difference is why its 
 
 ## What this loop proves that the earlier ones did not
 
-**A consumer can report a genuinely missing capability.** The register's standing observation — every finding was a projection the kit already owned the pieces for — held across seven consumers and does not hold here. The resolver chain on `AppConfig.layer`, `Cache.through`, `Uint8ArrayFromUtf8`, `parseOptions`, six unrepresented route families and a workflow listing were all absent rather than mis-projected. The difference is not consumer quality; it is that the earlier consumers exercised surfaces the kit had already been shaped against, and this one arrived first at `app`, `store` and the terminal. **Expect the first consumer of any surface to find absence, and later ones to find projections.**
+**A consumer can report a genuinely missing capability.** The register's standing observation — every finding was a projection the kit already owned the pieces for — held across every earlier consumer and does not hold here. The resolver chain on `AppConfig.layer`, `Cache.through`, `Uint8ArrayFromUtf8`, `parseOptions`, several unrepresented route families and a workflow listing were all absent rather than mis-projected. The difference is not consumer quality; it is that the earlier consumers exercised surfaces the kit had already been shaped against, and this one arrived first at `app`, `store` and the terminal. **Expect the first consumer of any surface to find absence, and later ones to find projections.**
 
 **Absence and projection call for different responses.** A projection gets absorbed. An absence gets designed, and this loop's two largest ones were designed *before* being built — `cli.md` was written and reviewed by the consumer as a boundary decision, and the port followed it. That ordering is what kept the `Stdio` dead end to a paragraph.
 
 **A shared symptom across two call sites is as often a shared author habit as a shared dependency defect.** The consumer filed a blocking finding after `doctor` and `sync` both reported "no config found" for a present-but-invalid file, reasoning that two independent sites producing identical bad output implicated the loader. The premise was challenged rather than the fix accepted, and it was their own `orElseSucceed(() => [])` in both places. **Challenge the premise of a finding before implementing it**, particularly a finding whose evidence is "it happens in two places" — same author, same habit, twice.
 
-**Withdrawal is a normal move, and cheap when the reasoning is public.** Five items were retracted by one side or the other after being tested against a stated rule: a discovery defect, two core-API claims, a named-export condition on a CommonJS dependency and an `ownerType` scope exception. Each retraction left a rule behind — the `Repo`-scoped rule in [github.md](../packages/github.md#the-repo-coordinate) is one of them, stronger for having survived a challenge than it would have been unopposed.
+**Withdrawal is a normal move, and cheap when the reasoning is public.** Several items were retracted by one side or the other after being tested against a stated rule: a discovery defect, core-API claims, a named-export condition on a CommonJS dependency and an `ownerType` scope exception. Each retraction left a rule behind — the `Repo`-scoped rule in [github.md](../packages/github.md#the-repo-coordinate) is one of them, stronger for having survived a challenge than it would have been unopposed.
 
 ## Where the kit's edge sits
 
@@ -62,4 +62,4 @@ The kit stops at the typed API and the control plane. What stays in the consumer
 
 ## Open questions
 
-- **It still has not adopted `@effected/cli`**, the package it drove. The port landed here, has released, and the consumer advanced its pins past it without taking it up — so the one piece of adoption evidence `cli` most needs is the one this loop did not produce. Whether the consumer's own boundary collapses onto it cleanly is still unanswered.
+- **It still has not adopted `@effected/cli`**, the package it drove. The port landed here and has released, and as of the last survey the consumer had advanced its pins past it without taking it up — so the one piece of adoption evidence `cli` most needs is the one this loop did not produce. Whether the consumer's own boundary collapses onto it cleanly is still unanswered.

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-13
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -19,11 +19,11 @@ related:
 
 ## Overview
 
-`@effected/cli` is the **boundary layer** of a command-line program built on `effect/unstable/cli`: how output reaches a human, how a failure is reported, and how a schema issue is rendered into a sentence a user can act on.
+`@effected/cli` is the **boundary layer** of a command-line program built on `effect/unstable/cli`: how output reaches a human, how a failure is reported and how a schema issue is rendered into a sentence a user can act on.
 
 It is emphatically **not** a CLI framework. `effect/unstable/cli` owns argument parsing, flags, the command tree and the help system, and this package must never grow a second one — see [Non-goals](#non-goals), which is the most load-bearing section here.
 
-The distinguishing property of everything in scope: **a consumer only discovers the need by shipping bad output to a person.** None of it fails a type-check, a test, or a review of the code in isolation. That is what makes it a package rather than a snippet — the default behaviour is wrong in a way the author cannot see from the call site.
+The distinguishing property of everything in scope: **a consumer only discovers the need by shipping bad output to a person.** None of it fails a type-check, a test or a review of the code in isolation. That is what makes it a package rather than a snippet — the default behaviour is wrong in a way the author cannot see from the call site.
 
 ## Motivation: three defaults that are wrong at a terminal
 
@@ -94,7 +94,7 @@ The exit code and the duplicate-report suppression both ride on the re-failed er
 
 ### The renderers
 
-`SchemaIssueRenderer` wraps `SchemaIssue.makeFormatterStandardSchemaV1` rather than reimplementing it. Its job is discoverability, **deduplication**, and one override.
+`SchemaIssueRenderer` wraps `SchemaIssue.makeFormatterStandardSchemaV1` rather than reimplementing it. Its job is discoverability, **deduplication** and one override.
 
 Deduplication is not cosmetic: a three-member union prints the same unknown-key line three times, once per member, which buries the lines that say which shapes *were* allowed under repetitions of the one saying what was not. The override: core's `UnexpectedKey` phrasing is `"Expected no excess property"`, which describes **the schema's rule** rather than **the user's mistake**. `unknown key "rulesetz"` is what a person needs, and it is one string away.
 

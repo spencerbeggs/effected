@@ -23,6 +23,7 @@ The foundational design docs live in `.claude/design/effected/` (config: `.claud
 - Formatter convention → `@./.claude/design/effected/formatter-convention.md` — Load when: designing a formatting or parsing entry point, or reasoning about a formatter's fidelity guarantee.
 - Sync primitive policy → `@./.claude/design/effected/sync-primitive-policy.md` — Load when: designing a pure boundary's surface shape, or deciding whether to expose a sync `Result` primitive alongside an `Effect` form.
 - Plugin → `@./.claude/design/effected/plugin.md` — Load when: working in `plugins/` on the "effected" Claude Code plugin or its experimental Copilot port.
+- Plugin construct index → `@./.claude/design/effected/plugin-construct-index.md` — Load when: adding or annotating an exported construct, or touching `generate-constructs.mts` / `construct-annotations.json`.
 - GitHub Action canon → `@./.claude/design/effected/github-action-canon.md` — Load when: building or reviewing a GitHub Action repository on the kit, or editing the Actions skill suite that teaches it.
 - Scratchpad → `@./.claude/design/effected/scratchpad.md` — Load when: changing the scratchpad workspace's committed shell or its ghost-workspace exclusions.
 
@@ -39,7 +40,7 @@ Detail lifted out of this file. Load on demand:
 
 ### Kit composition
 
-The kit is **31 publishable packages**: 30 libraries plus the `pnpm-plugin-effect` companion. All but `schema-org` — built 2026-08-26, not yet released — have published. New packages follow the migration playbook: design doc first, then port.
+The kit is **31 publishable packages**: 30 libraries plus the `pnpm-plugin-effect` companion, and all 31 have published (`schema-org`, the newest, on 2026-08-26). New packages follow the migration playbook: design doc first, then port.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object**: it would drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `@./.claude/design/effected/packages/config-file.md` before touching it.
 

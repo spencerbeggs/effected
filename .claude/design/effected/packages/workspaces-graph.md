@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - workspaces.md
@@ -34,7 +34,7 @@ Both transient graphs materialize through one helper that adds nodes in sorted-n
 
 ## The cycle payload names the cycle, not the stall
 
-`CyclicDependencyError.cycle` is **the sorted union of every strongly connected component with more than one member**, from core's `Graph.stronglyConnectedComponents`. It was Kahn's stalled set, which is a different thing: the stall holds every node that never cleared, *including packages merely downstream of a cycle*, so the payload named blameless packages and a consumer reading it as "break one of these edges" was pointed at edges that break nothing. A non-empty stall still signals *that* a cycle exists — it is just not the answer to *which*. Both failure paths, `levels` and `sortSubset`, carry the same payload, and the error's schema field is unchanged. Self-edges are dropped at index time, so a one-member component is never cyclic here.
+`CyclicDependencyError.cycle` is **the sorted union of every strongly connected component with more than one member**, from core's `Graph.stronglyConnectedComponents` — never Kahn's stalled set, which is a different thing: the stall holds every node that never cleared, *including packages merely downstream of a cycle*, so a payload built from it names blameless packages and points a consumer reading it as "break one of these edges" at edges that break nothing. A non-empty stall still signals *that* a cycle exists — it is just not the answer to *which*. Both failure paths, `levels` and `sortSubset`, carry the same payload, and the error's schema field is unchanged. Self-edges are dropped at index time, so a one-member component is never cyclic here.
 
 The discrimination is mutation-pinned on both failure paths: a downstream dependent must be excluded, and two independent cycles must yield the union of both. That is the one edge separating the SCC answer from Kahn's stalled set, which agree on every graph where nothing hangs off the cycle.
 

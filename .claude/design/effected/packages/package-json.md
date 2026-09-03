@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-26
-last-synced: 2026-08-26
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../consumers/tsdoctor.md
@@ -82,7 +82,7 @@ The rich `Schema.Class`, and the single best DX pattern in the repo:
 
 **A branded `SpdxLicense` is therefore not necessarily parseable as SPDX**, and that gap is a trap the package now closes with a mechanism rather than with prose. `licenseExpressionOf(license: SpdxLicense) => Option<SpdxExpression>` is the accessor to reach for whenever a branded value has to become an actual expression — a license URL, a badge, structured data, a policy check. It yields `none` for a spelling that is not an expression.
 
-**Its implementation deliberately contains no screen for npm's two special cases**, and that absence is load-bearing: the SPDX grammar already declines `UNLICENSED` and `SEE LICENSE IN <file>`, so *discarding the parse failure is the screen*. An earlier draft branched on the two spellings by hand; removing those branches changed no test, which is what proved them dead. The reason to keep it that way is the day npm admits a **third** special case — the grammar answers "not an expression" for it too, with no change here, where a hand-maintained list would silently produce a wrong answer. This is knowledge the two packages jointly own and neither consumer should have had to rediscover; keeping it as a function rather than a paragraph is what makes that true.
+**Its implementation deliberately contains no screen for npm's two special cases**, and that absence is load-bearing: the SPDX grammar already declines `UNLICENSED` and `SEE LICENSE IN <file>`, so *discarding the parse failure is the screen*. The reason to keep it that way is the day npm admits a **third** special case — the grammar answers "not an expression" for it too, with no change here, where a hand-maintained list would silently produce a wrong answer. This is knowledge the two packages jointly own and neither consumer should have had to rediscover; keeping it as a function rather than a paragraph is what makes that true.
 
 **`PackageManager`** parses corepack's `<name>@<version>[+<integrity>]` triple. Both strict halves are **shared by identity** with the packages that own them rather than re-derived: the version field IS [semver](semver.md)'s `PinnableVersionString`, and integrity is [npm](npm.md)'s `CorepackIntegrityHash`, held in a genuine `Schema.Option` because absence is branched on. Sharing the version schema is a deliberate strictening — padded versions, leading zeroes and empty prerelease identifiers all fail typed now, matching corepack's own validity check minus its trim — and because the check sits on the *field*, `make` refuses a malformed version rather than producing a manifest value that re-parses differently.
 
@@ -116,18 +116,16 @@ Those getters return `Option`, because `repository` is caller data and a value w
 
 `Person`, `Repository`, `Bugs` and `Funding` each remember the exact wire value the instance decoded from, in a `WeakMap`, and replay it on encode for byte-level fidelity.
 
-**The replay must be guarded on the value still matching its provenance, and the guard is load-bearing rather than defensive.** `Schema.Class` instances are not frozen at runtime, so an instance mutated in place keeps a provenance entry that no longer describes it — and an unguarded replay writes the *original* value back, silently discarding the edit. A surviving mutant is what surfaced this: the guard was written, the test for it was not.
+**The replay must be guarded on the value still matching its provenance, and the guard is load-bearing rather than defensive.** `Schema.Class` instances are not frozen at runtime, so an instance mutated in place keeps a provenance entry that no longer describes it — and an unguarded replay writes the *original* value back, silently discarding the edit. Every class guards **every** replay branch — shorthand string and object alike — over `url`, the named fields and `rest`. Two lessons carry it, and the second is the transferable one:
 
-**The bug the rule predicted was then found in this package, in the object branch.** `Person` guarded both of its branches; `Repository` and `Bugs` guarded only the **shorthand string** branch and replayed a remembered **object** wire unconditionally. So an instance decoded from the object form and edited afterwards re-encoded as the stale original, and the edit vanished — silently, on the exact fidelity path the class exists to serve. Both now carry `Person`-style faithfulness guards over `url`, the named fields and `rest`. Two lessons, and the second is the transferable one:
-
-1. **A guard on one branch is not a guard.** The shorthand branch is the one a reader thinks about, because shape fidelity makes it interesting; the object branch is the boring one and is where the bug lived.
-2. **Every replay branch needs its own mutate-in-place test.** As the rule below already says, a test that rebuilds the value cannot reach the replay path at all — so a suite can look thorough while never executing the code that was wrong.
+1. **A guard on one branch is not a guard.** The shorthand branch is the one a reader thinks about, because shape fidelity makes it interesting; the object branch is the boring one and is where an unguarded replay hides.
+2. **Every replay branch needs its own mutate-in-place test.** A test that rebuilds the value cannot reach the replay path at all — so a suite can look thorough while never executing the code that is wrong.
 
 #### Provenance keys must be leaf instances, never rebuilt containers
 
 **A `decodeTo` target of `Schema.Array(...)` or `Schema.Struct(...)` does NOT preserve the object identity the transform returned.** The container is rebuilt on the way out of the transform, so a `WeakMap`/`WeakSet` keyed on it is **empty by the time `encode` runs** — no error, no warning, just provenance that is silently never found and a fidelity guarantee that quietly degrades to the canonical form.
 
-Every provenance model in the kit depends on this and no doc stated it, so: **key provenance on the leaf instance the transform constructed, never on the container it was placed into.** `Funding` is where it was found and is the worked example — the field's arity provenance (was this written bare, or as an array?) rides the single entry that *was* the field, not the decoded array, and the replay is then guarded on that entry still being alone. It was diagnosed the only way it can be: the arity round-trip test failed under the array-keyed version.
+Every provenance model in the kit depends on this, so: **key provenance on the leaf instance the transform constructed, never on the container it was placed into.** `Funding` is the worked example — the field's arity provenance (was this written bare, or as an array?) rides the single entry that *was* the field, not the decoded array, and the replay is then guarded on that entry still being alone. The arity round-trip test is what catches an array-keyed version.
 
 Two traps come with it, both recorded in the package CLAUDE.md and worth knowing before touching either class. The guard must treat `rest` as disqualifying for the shorthand branch, because a shorthand has no syntax for extra keys — the named fields still match, so without an explicit clause the added keys vanish on write. And a test that rebuilds with `make({ ...person, x })` **cannot catch any of this**, because it produces a new instance with no provenance and never reaches the replay path; the instance must be mutated in place.
 
@@ -151,14 +149,10 @@ The arity replay is **guarded on the entry still being alone**: pushing a second
 
 The modeled field set is scoped to **every manifest field a named consumer's mapping reads**, drawn first from [`@effected/sbom`](sbom.md)'s CycloneDX 1.6 plus NTIA-minimum-elements metadata-source mapping rather than from a general sweep of npm's documentation. Each field is present because something consumes it: name and version (which the `purl` also derives from), description, license, author, contributors, maintainers, keywords, repository, bugs, homepage and — since a second mapping target appeared — `funding`.
 
-**`funding` was evaluated, deliberately NOT added, and has since been added — the condition was met.** The original ruling stands as reasoning and is preserved rather than deleted, because the reasoning is the valuable part: npm documents the field, but CycloneDX 1.6 has no funding external-reference type — verified by enumerating the published type set, not from memory — and a field with no target in the mapping would be exactly the arbitrary growth this scope rule exists to prevent. The exclusion carried its own release condition: *it earns its place the day a consumer names a target for it.*
-
-[tsdoctor named one](../consumers/tsdoctor.md): schema.org's `funding` property, emitted into a documented package's JSON-LD. So the field is now modeled ([`Funding`](#funding), below) under the rule as written, not by relaxing it. Two things are worth carrying away, and they are why this reads as a rule working rather than a rule bending:
+**`funding` is the worked example of the rule.** CycloneDX 1.6 has no funding external-reference type, so under the first mapping the field had no target and was excluded, with its release condition recorded: *it earns its place the day a consumer names a target for it.* [tsdoctor named one](../consumers/tsdoctor.md) — schema.org's `funding` property, emitted into a documented package's JSON-LD — so the field is modeled ([`Funding`](#funding), above) under the rule as written, not by relaxing it. Two things are worth carrying away:
 
 - **The scope rule is not "CycloneDX 1.6 or nothing".** It is *something consumes it*, and the CycloneDX mapping was simply the only consumer that existed when the field set was first drawn. A second mapping target is a legitimate way to satisfy it.
-- **A recorded exclusion with a stated condition is what made this cheap.** The question "should we add `funding`" was already answered, with the answer's expiry condition attached, so the work was checking whether the condition had fired rather than relitigating the field. **Write exclusions this way.**
-
-**Known stale claim, flagged not fixed:** `__test__/ComplianceFields.test.ts` carries the pre-flip rationale in its header comment, asserting that `funding` is deliberately absent. That file is a test rather than documentation, so it is outside this doc's remit — but the claim is now false and the header needs the same flip.
+- **A recorded exclusion with a stated condition is what makes adding a field cheap.** The question is already answered with its expiry condition attached, so the work is checking whether the condition has fired rather than relitigating the field. **Write exclusions this way.**
 
 ## The tolerance ladder
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-28
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -68,7 +68,7 @@ Module-per-concept per the [module layout standard](../effect-standards.md#modul
 
 ## Annotation carrying: a parallel walk, not pointer mapping
 
-Two constraints probed against the pinned beta fix the design space.
+Two constraints probed against the pinned Effect prerelease fix the design space.
 
 First, **core's Draft-07 lowering drops every keyword outside its fixed copy-list.** Annotation-admitted keys survive at 2020-12 and vanish after lowering, so the carrier mechanism must act *after* the lowering; it cannot ride the generation options alone.
 

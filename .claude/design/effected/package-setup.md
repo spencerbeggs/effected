@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-07
-updated: 2026-08-26
-last-synced: 2026-08-26
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - catalog-sync.md
@@ -65,7 +65,7 @@ Mirror [`packages/yaml/package.json`](../../../packages/yaml/package.json) as th
 
 ## A second published entrypoint
 
-Most packages ship a single `.` entrypoint and the manifest shape above is all there is to it. Two do not — [`@effected/workspaces`](../../../packages/workspaces)' `./node-sync` and [`@effected/schema-org`](packages/schema-org.md#module-layout-and-the-two-entrypoints)'s `./validate` — and nothing recorded how a second one is wired, so this section does.
+Most packages ship a single `.` entrypoint and the manifest shape above is all there is to it. Two do not — [`@effected/workspaces`](../../../packages/workspaces)' `./node-sync` and [`@effected/schema-org`](packages/schema-org.md#module-layout-and-the-two-entrypoints)'s `./validate` — and this section is how a second one is wired.
 
 ### What a second entrypoint costs and what it buys
 

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-25
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 90
 related:
   - markdown.md
@@ -20,7 +20,7 @@ related:
 
 ## Overview
 
-Frontmatter is the one subsystem of [`@effected/markdown`](markdown.md) that reaches across packages: the engine captures the block as a raw fidelity-preserving node, and three free-standing codec modules — each on an optional peer, [yaml](yaml.md), [toml](toml.md) or [jsonc](jsonc.md) — decode and encode its body. Alongside them sit the write seam, the string-level `FrontmatterSource` facade, and the `$schema` declaration grammar with its resolver seam.
+Frontmatter is the one subsystem of [`@effected/markdown`](markdown.md) that reaches across packages: the engine captures the block as a raw fidelity-preserving node, and three free-standing codec modules — each on an optional peer, [yaml](yaml.md), [toml](toml.md) or [jsonc](jsonc.md) — decode and encode its body. Alongside them sit the write seam, the string-level `FrontmatterSource` facade and the `$schema` declaration grammar with its resolver seam.
 
 ## The capture node
 

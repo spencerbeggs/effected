@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-12
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - jsonl.md
@@ -103,6 +103,6 @@ Stated plainly, because the opposite is easy to assume and false. **Only the cur
 - It **buffers matching envelopes before emitting**, so the stream it returns is fed from a materialized batch rather than produced incrementally.
 - Its only bound is therefore the **cursor**: a consumer resuming from a persisted offset pays for the remainder, and a **cursor-less query over a large journal pays for the whole file**.
 
-The consequence, without softening: **"no operation ever holds the file in memory" is not a property this package has.** The token-economy contract holds for the surfaces it was measured on — current state, the hook path, and any read carrying a cursor — and a cursor-less historical read is the exception rather than a rounding error in the claim.
+The consequence, without softening: **"no operation ever holds the file in memory" is not a property this package has.** The token-economy contract holds for the surfaces it was measured on — current state, the hook path and any read carrying a cursor — and a cursor-less historical read is the exception rather than a rounding error in the claim.
 
-**A paged historical read is the fix and is tracked follow-up work, not shipped.** Its shape is known: emit per window rather than per call, and carry an **unterminated tail** across the window boundary so a line straddling two windows is decoded exactly once. It is written down here so the gap is a scheduled correction rather than a rediscovery.
+**A paged historical read is the known fix, and it is not built.** Its shape: emit per window rather than per call, and carry an **unterminated tail** across the window boundary so a line straddling two windows is decoded exactly once. It is written down here so the gap is a decision rather than a rediscovery.

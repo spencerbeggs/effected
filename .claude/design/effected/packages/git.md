@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-14
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-02
+last-synced: 2026-09-02
 completeness: 95
 related:
   - ../effect-standards.md
@@ -24,7 +24,7 @@ Scope is closed by its consumers, not by git's porcelain. There is no ambition t
 
 ## Why it owns git interpretation
 
-Interpreting git — the exit-code and stderr taxonomy, the absent-vs-error distinction, tree-entry parsing — is a concern that should exist **once**, typed, in a package named for it. The consumers would otherwise interpret git output and exit codes themselves: workspaces' snapshot reader needs "file at ref, or none", and systems' tooling hand-rolls `git` through `execFileSync`/platform `Command` across its cli, mcp and silk-effects packages. Those responsibilities live here instead, behind a small typed surface. `@effected/workspaces`' `ChangeDetector` and `WorkspaceSnapshots` service stand on this package.
+Interpreting git — the exit-code and stderr taxonomy, the absent-vs-error distinction, tree-entry parsing — is a concern that should exist **once**, typed, in a package named for it. The consumers would otherwise interpret git output and exit codes themselves: workspaces' snapshot reader needs "file at ref, or none", and systems' CLI, MCP and silk-effects packages each spawn `git` from many call sites. Those responsibilities live here instead, behind a small typed surface. `@effected/workspaces`' `ChangeDetector` and `WorkspaceSnapshots` service stand on this package.
 
 ## Tier and dependencies
 
@@ -36,7 +36,7 @@ See `src/GitCommand.ts` and `src/Git.ts` for the full surface; the index re-expo
 
 ### `GitCommand` — pure, inspectable invocations
 
-One git-flavored constructor per operation, producing **core `ChildProcess.StandardCommand` values** (wrapped in `GitInvocation`, see the redaction policy), covering both tiers. They know the `git` executable, each operation's argument conventions, and the environment git needs pinned (`LC_ALL=C` via the command's `env` + `extendEnv: true`, so stderr classification is locale-stable without replacing the inherited environment). Every constructor returns a cwd-less value: a test can assert the exact `command`/`args`/`options` an operation runs without spawning, and `Git` applies the working directory per call via `ChildProcess.setCwd`.
+One git-flavored constructor per operation, producing **core `ChildProcess.StandardCommand` values** (wrapped in `GitInvocation`, see the redaction policy), covering both tiers. They know the `git` executable, each operation's argument conventions and the environment git needs pinned (`LC_ALL=C` via the command's `env` + `extendEnv: true`, so stderr classification is locale-stable without replacing the inherited environment). Every constructor returns a cwd-less value: a test can assert the exact `command`/`args`/`options` an operation runs without spawning, and `Git` applies the working directory per call via `ChildProcess.setCwd`.
 
 Three invariants ride on the argv:
 
@@ -55,7 +55,7 @@ Four seams beyond those are worth stating, because each one's shape was a decisi
 - **Working-tree primitives are public.** `unstagedChanges`, `stagedChanges` and `untrackedFiles` are service methods in their own right (systems' branch analyzer needs the untracked overlay alone); `workingChanges` composes them as the deduplicated union, and its options are optional.
 - **`nameStatus`** is the semantically-typed diff: each `NameStatusEntry` carries a typed status vocabulary rather than name-only paths, renames/copies carry `oldPath`, and it takes both a `base...head` two-ref form and a single-arg working-tree-vs-ref form.
 - **The absence family.** Four introspection probes degrade "not there" to `Option.none` rather than an error, extending `show`'s invariant: `defaultBranch` (unset remote HEAD; the `<remote>/` prefix is stripped from the answer), `currentBranch` (detached HEAD — git's literal `"HEAD"` answer maps to none, because a fake branch name would be worse than an honest absence), `configGet` (unset key) and `remoteUrl` (missing remote).
-- **Commit and status models.** `commitInfo` parses into `CommitInfo` (sha, `%G?` signature-status literals, and the raw `%B` message — deliberately untrimmed, because this package does not decide what "the message" means for a caller that cares about trailing whitespace). `status` parses `git status --porcelain -z` into `StatusEntry` values.
+- **Commit and status models.** `commitInfo` parses into `CommitInfo` (sha, `%G?` signature-status literals and the raw `%B` message — deliberately untrimmed, because this package does not decide what "the message" means for a caller that cares about trailing whitespace). `status` parses `git status --porcelain -z` into `StatusEntry` values.
 
 The listing reads are each backed by one parsed model, and four of them carry a fact worth knowing before reading the parser: `lsRemote` is the one **network** read and preserves the full advertised refname including `^{}` peel entries; `lsFiles` is the index-side sibling of `lsTree` and the only read that sees a staged-but-uncommitted `160000` gitlink; a `StashEntry`'s array position **is** its current stash index; and `configList`/`configGetAll` split at the first newline so a multi-line value survives. `tagList`, `revList` and `checkIgnore` need no model, because a bare string is the whole answer.
 
@@ -65,7 +65,7 @@ One trap is load-bearing enough to record: **`NameStatusEntry` and `StatusEntry`
 
 ### `Git` — the service, mutating tier
 
-The mutating tier covers checkout, the fetch family, the working-tree restore trio (`reset`, `clean`, `restore`), branches, tags, stashes, remotes, worktrees, `commit`/`push`/`pull`, config writes, staging, and the submodule and sparse-checkout operations — see `src/Git.ts`, where every one of them opens its TSDoc with `"Mutating:"`. `submoduleForeach` is marked mutating because the shell command it runs can mutate anything, and `submoduleStatus` is that group's one read. `fetch`, `submoduleUpdate` and `submoduleAdd` are the ref-fetching trio whose unknown-ref failures surface typed (see the classification below); `sparseCheckoutSet` spells `--cone`/`--no-cone` explicitly in both branches rather than defaulting to git's config.
+The mutating tier covers checkout, the fetch family, the working-tree restore trio (`reset`, `clean`, `restore`), branches, tags, stashes, remotes, worktrees, `commit`/`push`/`pull`, config writes, staging and the submodule and sparse-checkout operations — see `src/Git.ts`, where every one of them opens its TSDoc with `"Mutating:"`. `submoduleForeach` is marked mutating because the shell command it runs can mutate anything, and `submoduleStatus` is that group's one read. `fetch`, `submoduleUpdate` and `submoduleAdd` are the ref-fetching trio whose unknown-ref failures surface typed (see the classification below); `sparseCheckoutSet` spells `--cone`/`--no-cone` explicitly in both branches rather than defaulting to git's config.
 
 **`fetchAny` is that typed classification cashed in.** The tag-then-branch fallback is a method rather than a consumer composition, because every consumer of a "fetch this ref, I don't know which kind it is" operation would otherwise rebuild the same one — and rebuilding it on stderr strings is exactly what the typed errors exist to prevent. It composes `fetch(tag: true)` with `Effect.catchTag(["UnknownRefError", "GitCommandError"], …)`, whose handler routes on the caught error's structure — retrying as a plain `fetch` except when the `GitCommandError`'s `kind` is `"refused"`, which it re-fails unchanged:
 
@@ -134,7 +134,7 @@ It is the wrong answer to "what does THIS checkout declare", and that mismatch w
 
 A **pure git-config parser/serializer lives inside this package**, rather than as an INI codec in `config-file` or as shell-out-only access — `.gitmodules` is a reconcilable authority downstream, and git-config is not INI. Two public modules and one engine, following the format-package discipline at module (not package) granularity:
 
-- **`GitConfig`** is text-first and lossless: the document holds its source text plus a structural index, `stringify` returns the text (byte-for-byte identity on unmodified documents), and every edit — `set`/`append`/`unset`/`unsetAll`/`addSection`/`removeSection`/`renameSection` — compiles to a minimal text splice and re-parses, so comments, ordering and whitespace outside the edited span survive. Semantics are git's: case-insensitive section/variable names, case-sensitive quoted subsections, the deprecated `[a.b]` dotted form (subsection compared case-insensitively), multi-valued keys, the bare-`key` boolean shorthand, quoting/escape/continuation rules, and `include`/`includeIf` surfaced but never resolved. Malformed *input* fails typed (`GitConfigParseError`, diagnostics array); a hand-built `GitConfig.make` over unparseable text is bad *wiring* and dies as a defect at first use. Edits that can be refused fail typed as `GitConfigEditError` (`missingSection`/`missingKey`/`invalidSectionName`/`invalidSubsection`/`invalidKey`/`invalidValue`). `parse` derives from `parseResult` per the kit's Result-parity policy. The engine (`internal/config.ts`) is a single iterative line scanner — no recursion surface, so no depth cap.
+- **`GitConfig`** is text-first and lossless: the document holds its source text plus a structural index, `stringify` returns the text (byte-for-byte identity on unmodified documents), and every edit — `set`/`append`/`unset`/`unsetAll`/`addSection`/`removeSection`/`renameSection` — compiles to a minimal text splice and re-parses, so comments, ordering and whitespace outside the edited span survive. Semantics are git's: case-insensitive section/variable names, case-sensitive quoted subsections, the deprecated `[a.b]` dotted form (subsection compared case-insensitively), multi-valued keys, the bare-`key` boolean shorthand, quoting/escape/continuation rules and `include`/`includeIf` surfaced but never resolved. Malformed *input* fails typed (`GitConfigParseError`, diagnostics array); a hand-built `GitConfig.make` over unparseable text is bad *wiring* and dies as a defect at first use. Edits that can be refused fail typed as `GitConfigEditError` (`missingSection`/`missingKey`/`invalidSectionName`/`invalidSubsection`/`invalidKey`/`invalidValue`). `parse` derives from `parseResult` per the kit's Result-parity policy. The engine (`internal/config.ts`) is a single iterative line scanner — no recursion surface, so no depth cap.
 - **`Gitmodules`** is the typed view: a `GitmodulesEntry` per submodule section (see `src/Gitmodules.ts`), decoded with git's boolean vocabulary and last-wins duplicate-section merging; decode failures are typed and name the entry and field. Entry-level mutations (`setUrl`/`setPath`/`setBranch`/`setShallow`/`add`/`remove`/`rename`) deliberately take and return a `GitConfig` — they compile into the surgical editor so git's own formatting survives — while `stringify`/`FromString` render a canonical document for consumers with no source formatting to preserve.
 
 ## The redaction policy — documented policy, not convention
@@ -148,7 +148,7 @@ A **pure git-config parser/serializer lives inside this package**, rather than a
 Six source modules, per the [module-per-concept standard](../effect-standards.md#module-layout-module-per-concept):
 
 - `GitCommand.ts` — the pure invocation constructors, both tiers, returning `GitInvocation` values carrying the redaction mask.
-- `Git.ts` — the `Git` service, its live layer and its test double, the error taxonomy, the `classify`/`runClassified` pair, and the parsed-result models with their output parsers. `submoduleStatus`'s parser is line-based because git offers no `-z` for `submodule status` — a recorded git-imposed limitation, unlike `lsRemote`'s line split, which is safe by refname grammar.
+- `Git.ts` — the `Git` service, its live layer and its test double, the error taxonomy, the `classify`/`runClassified` pair and the parsed-result models with their output parsers. `submoduleStatus`'s parser is line-based because git offers no `-z` for `submodule status` — a recorded git-imposed limitation, unlike `lsRemote`'s line split, which is safe by refname grammar.
 - `GitConfig.ts` — the lossless git-config document model and surgical editor (above).
 - `Gitmodules.ts` — the typed `.gitmodules` view (above).
 - `internal/run.ts` — the collected-run and `available` helpers over `ChildProcessSpawner`, not exported (a helper earns export only when a second package asks for it).
@@ -164,9 +164,9 @@ Named spans on each `Git` method, annotated with stable identifiers (`cwd`, `ref
 
 `@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`.
 
-- **Unit: `Git` over a mocked `ChildProcessSpawner`** pins the classification boundary — the highest-value tests in the package (the full matrix across every `ClassifyKind`, the absence-family degrades, the option-injection and natural-number guards rejecting pre-spawn, the `NameStatusEntry`/`CommitInfo`/`StatusEntry` parsers with their opposed rename token orders, redaction surviving through `classify`, and unrecognized failures falling through to `GitCommandError` with `exitCode`/`stderr` intact).
+- **Unit: `Git` over a mocked `ChildProcessSpawner`** pins the classification boundary — the highest-value tests in the package (the full matrix across every `ClassifyKind`, the absence-family degrades, the option-injection and natural-number guards rejecting pre-spawn, the `NameStatusEntry`/`CommitInfo`/`StatusEntry` parsers with their opposed rename token orders, redaction surviving through `classify` and unrecognized failures falling through to `GitCommandError` with `exitCode`/`stderr` intact).
 - **Unit: `GitCommand` constructors** — exact argv and env assertions plus the redaction mask (and argv identity where there is no sensitive positional), no spawning.
-- **Unit: the pure modules** — `GitConfig`'s conformance corpus (count-guarded; each case asserts lookups **and** byte-for-byte round-trip), its malformed-input family proving typed failure never a defect, its surgical-edit family, and `Gitmodules`' decode/mutation suites.
+- **Unit: the pure modules** — `GitConfig`'s conformance corpus (count-guarded; each case asserts lookups **and** byte-for-byte round-trip), its malformed-input family proving typed failure never a defect, its surgical-edit family and `Gitmodules`' decode/mutation suites.
 - **Unit: the test double** — that an unstubbed member dies named, and that no slot is `undefined`.
 - **Integration: fixture repositories** driven through `@effect/platform-node`'s real `ChildProcessSpawner` layer, with the mutating tier isolated in its own temp-dir fixtures since it mutates.
 
@@ -182,4 +182,4 @@ Three testing decisions are load-bearing:
 
 - **`@effected/workspaces`** — `ChangeDetector` runs on `Git` (the committed range via `changedFiles(relative: true)`, `includeUncommitted` via `workingChanges(relative: true)`); the `WorkspaceSnapshots` service reads refs through `show`/`lsTree` ([workspaces.md](workspaces.md)). A non-repository surfaces as this package's typed `NotARepositoryError`. Its tests consume `Git.layerTest` rather than a hand-enumerated fake.
 - **savvy-web/systems** — the DepsRegen engine reads ranges through `mergeBase` and `lsTree`; its CLI, MCP and silk-effects packages consume the introspection tier in place of hand-rolled `execFileSync` helpers; and its repos domain, managing vendored read-only submodules, is the mutating tier's consumer. `lsRemote`'s `nearMatches` and `lsFiles`' staged-gitlink visibility exist for it specifically.
-- **silk-release-action** — the restore trio for pre-retry cleanup, `branchCreate`/`push`/`commit` for the release branch, the stash family, and porcelain rendering for its job summaries. That release loop is why the mutating tier covers what it covers.
+- **silk-release-action** — the restore trio for pre-retry cleanup, `branchCreate`/`push`/`commit` for the release branch, the stash family and porcelain rendering for its job summaries. That release loop is why the mutating tier covers what it covers.
