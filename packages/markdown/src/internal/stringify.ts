@@ -26,10 +26,22 @@
 //   frontmatter     `---` yaml, `+++` toml, `---json` json; closed by `---`
 //                   (`+++` for toml)
 //
-// Escaping strategy: a conservative always-escape set for inline text
-// (backslash, backtick, `*`, `_`, `[`, `]`, `<`, `>`, `&`, `~`, `|`) plus
-// line-start escapes (`#`, `>`, `+`, `-`, `=`, and ordered-list-marker digit
-// runs) applied at the start of the block and after every emitted newline.
+// Escaping strategy: an always-escape set for inline text (backslash,
+// backtick, `*`, `[`, `]`, `<`, `~`, `|`) plus line-start escapes (`#`, `>`,
+// `+`, `-`, `=`, and ordered-list-marker digit runs) applied at the start of
+// the block and after every emitted newline. Three characters escape only
+// where they could actually bind, so `parse ∘ stringify` is the identity on
+// ordinary prose: `_` is raw when both neighbours in the same text value are
+// Unicode alphanumerics (an intraword `_` can neither open nor close
+// emphasis; a value boundary counts as not alphanumeric, so an edge `_` stays
+// escaped whatever the sibling is); `&` is raw unless the rest of the value
+// is entity-shaped (the engine's own ENTITY grammar, any name-shaped run —
+// the entity map is not consulted), with a value-final `&` escaped only when
+// a sibling follows; `>` is escaped only at a line start, the one place it
+// binds. In a heading, `#` is escaped only at the head of a `#` run that a
+// space or the value start precedes and nothing but whitespace follows to the
+// value end — the closing-sequence shape — with a following sibling treated
+// as content that may still be blank, so the escape stays.
 // Autolink defense under gfm: a `.` right after a boundary-preceded `www` and
 // a `:` right after a scheme word (http/https/ftp/mailto/xmpp) are escaped so
 // raw-source literal scanners cannot fire; escapes decode away, so the text
@@ -64,9 +76,11 @@ import type {
 	PhrasingContent,
 	Root,
 	Table,
+	Text,
 } from "../MarkdownNode.js";
 import { GuardExceeded } from "./carriers.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
+import { ENTITY } from "./unescape.js";
 
 /** How inline content is being assembled. */
 interface InlineContext {
@@ -83,7 +97,12 @@ const HEADING_CONTEXT: InlineContext = { singleLine: true, inTable: false, inHea
 const CELL_CONTEXT: InlineContext = { singleLine: true, inTable: true, inHeading: false };
 
 /** Characters escaped wherever they appear in inline text. */
-const ALWAYS_ESCAPE = new Set(["\\", "`", "*", "_", "[", "]", "<", ">", "&", "~", "|"]);
+const ALWAYS_ESCAPE = new Set(["\\", "`", "*", "[", "]", "<", "~", "|"]);
+
+/** A character reference at the head of the string: the engine's own grammar. */
+const reEntityAhead = new RegExp(`^${ENTITY}`, "i");
+
+const reAlphanumeric = /[\p{L}\p{N}]/u;
 
 /** Line-start characters that could open a block construct. */
 const LINE_START_ESCAPE = new Set(["#", ">", "+", "-", "=", "~", "`"]);
@@ -139,15 +158,46 @@ const isSchemeColon = (value: string, index: number): boolean => {
 	return SCHEME_WORDS.has(value.slice(start, index).toLowerCase());
 };
 
+/** Whether `value[index]` is a Unicode letter or number (`undefined` is not). */
+const isAlphanumericAt = (value: string, index: number): boolean => {
+	const char = value[index];
+	return char !== undefined && reAlphanumeric.test(char);
+};
+
+/**
+ * Whether the `#` at `value[index]` heads a run that would read as an ATX
+ * closing sequence: preceded by whitespace or the value start, and followed
+ * by nothing but whitespace to the end of the contiguous text (this value
+ * plus `followingText`). A non-text sibling after that may contribute only
+ * blank content, so it keeps the escape (conservative).
+ */
+const isClosingHashRun = (value: string, index: number, followingText: string, nonTextFollows: boolean): boolean => {
+	const before = value[index - 1];
+	if (before !== undefined && before !== " " && before !== "\t") return false;
+	const rest = value.slice(index) + followingText;
+	let end = 0;
+	while (rest[end] === "#") end += 1;
+	return nonTextFollows || /^[ \t\n]*$/.test(rest.slice(end));
+};
+
+/** A run that a later sibling could still complete into a character reference. */
+const reEntityPrefix = /^&[#a-z0-9]*$/i;
+
 /**
  * Escape one text value into `out`, tracking line starts. Returns whether the
- * emission ended at a line start.
+ * emission ended at a line start. `followingText` is the concatenated value
+ * of the contiguous text siblings after this one (the parser never splits a
+ * text run, but a synthesized tree may), and `nonTextFollows` says whether a
+ * non-text inline comes after those; together they decide the value-end
+ * cases (`&`, and `#` in a heading) against what will actually be emitted.
  */
 const escapeText = (
 	value: string,
 	context: InlineContext,
 	atLineStart: boolean,
 	mdx: boolean,
+	followingText: string,
+	nonTextFollows: boolean,
 ): { text: string; atLineStart: boolean } => {
 	let out = "";
 	let lineStart = atLineStart;
@@ -217,7 +267,24 @@ const escapeText = (
 			out += "\\{";
 			continue;
 		}
-		if (context.inHeading && char === "#") {
+		// The intraword-underscore rule: between two alphanumerics an `_`
+		// can neither open nor close emphasis, so it stays raw.
+		if (char === "_" && !(isAlphanumericAt(value, index - 1) && isAlphanumericAt(value, index + 1))) {
+			out += "\\_";
+			continue;
+		}
+		// `&` binds only as a character reference, tested against the
+		// contiguous text that will actually be emitted (Text("&a") +
+		// Text("mp;") must not fuse). A run a non-text sibling could still
+		// complete (`&`, `&am`, `&#12`) is escaped, since that sibling's
+		// bytes are unknowable here.
+		if (char === "&") {
+			const ahead = value.slice(index) + followingText;
+			const entityShaped = reEntityAhead.test(ahead) || (nonTextFollows && reEntityPrefix.test(ahead));
+			out += entityShaped ? "\\&" : "&";
+			continue;
+		}
+		if (context.inHeading && char === "#" && isClosingHashRun(value, index, followingText, nonTextFollows)) {
 			out += "\\#";
 			continue;
 		}
@@ -363,7 +430,13 @@ const serializeInlines = (
 		};
 		switch (child.type) {
 			case "text": {
-				const escaped = escapeText(child.value, context, atLineStart, state.mdx);
+				let followingText = "";
+				let next = index + 1;
+				while (next < children.length && children[next]?.type === "text") {
+					followingText += (children[next] as Text).value;
+					next += 1;
+				}
+				const escaped = escapeText(child.value, context, atLineStart, state.mdx, followingText, next < children.length);
 				out += escaped.text;
 				atLineStart = escaped.atLineStart;
 				break;
@@ -686,8 +759,11 @@ const setextUnderline = (heading: Heading, content: string): string => {
 };
 
 const serializeHeading = (heading: Heading, state: StringifyState): string => {
-	const content = serializeInlines(heading.children, HEADING_CONTEXT, state, false);
-	if (heading.headingStyle === "setext" && heading.depth <= 2 && content !== "") {
+	// Setext content IS a line start (nothing precedes it on its line), so
+	// the line-start escapes apply; ATX content follows the `# ` prefix.
+	const setext = heading.headingStyle === "setext" && heading.depth <= 2;
+	const content = serializeInlines(heading.children, HEADING_CONTEXT, state, setext);
+	if (setext && content !== "") {
 		return `${content}\n${setextUnderline(heading, content)}`;
 	}
 	const hashes = "#".repeat(heading.depth);

@@ -701,6 +701,122 @@ describe("Markdown.stringify", () => {
 		});
 	});
 
+	describe("inline text escaping is minimal (parse ∘ stringify identity)", () => {
+		// A downstream consumer asserts `parse(stringify(tree))` reproduces the
+		// text it put in — byte for byte where the canonical form allows it.
+		// Every case below pins the emitted bytes AND re-parses them, asserting
+		// the single text node comes back with the original value.
+		const heading = (depth: Heading["depth"], ...children: Heading["children"][number][]): Heading =>
+			Heading.make({ depth, children, position: span() });
+
+		/** The value of the sole text child of the first block, after re-parsing `emitted`. */
+		const reparsedText = (emitted: string, expectType: string): string => {
+			const reparsed = Result.getOrThrow(Markdown.parseResult(emitted));
+			const block = reparsed.children[0];
+			assert.strictEqual(block?.type, expectType, `emitted: ${JSON.stringify(emitted)} became ${block?.type}`);
+			if (block?.type !== "paragraph" && block?.type !== "heading") assert.fail("unreachable");
+			assert.deepStrictEqual(
+				block.children.map((child) => child.type),
+				["text"],
+				`emitted: ${JSON.stringify(emitted)} split into ${JSON.stringify(block.children.map((c) => c.type))}`,
+			);
+			const only = block.children[0];
+			return only?.type === "text" ? only.value : "";
+		};
+
+		const paragraphCase = (value: string, expected: string): void => {
+			const emitted = out(rootOf(paragraph(text(value))));
+			assert.strictEqual(emitted, expected);
+			assert.strictEqual(reparsedText(emitted, "paragraph"), value);
+		};
+
+		const headingCase = (depth: Heading["depth"], value: string, expected: string): void => {
+			const emitted = out(rootOf(heading(depth, text(value))));
+			assert.strictEqual(emitted, expected);
+			assert.strictEqual(reparsedText(emitted, "heading"), value);
+		};
+
+		/** parse → stringify → the same string. */
+		const stringIdentity = (source: string): void => {
+			const parsed = Result.getOrThrow(Markdown.parseResult(source));
+			assert.strictEqual(out(parsed), source);
+		};
+
+		describe("`_` escapes only where it could open or close emphasis", () => {
+			it("intraword underscores stay raw in a heading", () =>
+				headingCase(1, "DEFAULT_PIPELINE_OPTIONS", "# DEFAULT_PIPELINE_OPTIONS\n"));
+			it("intraword underscores stay raw in a paragraph", () => paragraphCase("snake_case_name", "snake_case_name\n"));
+			it("boundary and punctuation-adjacent underscores stay escaped", () =>
+				paragraphCase("__init__", "\\_\\_init\\_\\_\n"));
+			it("space-flanked underscores stay escaped", () => paragraphCase("a _b_ c", "a \\_b\\_ c\n"));
+			it("a leading and a trailing underscore stay escaped", () => paragraphCase("_a_", "\\_a\\_\n"));
+			it("`*` stays escaped even intraword", () => paragraphCase("a*b*c", "a\\*b\\*c\n"));
+			it("parse ∘ stringify is the identity on `# A_B`", () => stringIdentity("# A_B\n"));
+		});
+
+		describe("`&` escapes only when the following text is entity-shaped", () => {
+			it("a spaced ampersand stays raw", () => paragraphCase("Getters & Setters", "Getters & Setters\n"));
+			it("an intraword ampersand stays raw", () => paragraphCase("Q&A", "Q&A\n"));
+			it("a named reference shape is escaped", () => paragraphCase("&amp;", "\\&amp;\n"));
+			it("a decimal reference shape is escaped", () => paragraphCase("&#123;", "\\&#123;\n"));
+			it("a hexadecimal reference shape is escaped", () => paragraphCase("&#x1F600;", "\\&#x1F600;\n"));
+			it("an unknown but name-shaped run is still escaped", () => paragraphCase("&zzzz;", "\\&zzzz;\n"));
+			it("a one-letter name is not entity-shaped", () => paragraphCase("AT&T;", "AT&T;\n"));
+			it("a value-final ampersand with no sibling stays raw", () => paragraphCase("a &", "a &\n"));
+			it("an entity split across text siblings is detected", () => {
+				// Text("&") + Text("amp;") and Text("&a") + Text("mp;") must not fuse.
+				for (const [head, tail] of [
+					["a &", "amp;"],
+					["a &a", "mp;"],
+					["a &#12", "3;"],
+				] as const) {
+					const emitted = out(rootOf(paragraph(text(head), text(tail))));
+					assert.strictEqual(emitted, `a \\&${(head + tail).slice(3)}\n`);
+					assert.strictEqual(reparsedText(emitted, "paragraph"), head + tail);
+				}
+			});
+			it("a value-final ampersand before plain text siblings stays raw", () => {
+				const emitted = out(rootOf(paragraph(text("a &"), text(" b"))));
+				assert.strictEqual(emitted, "a & b\n");
+				assert.strictEqual(reparsedText(emitted, "paragraph"), "a & b");
+			});
+			it("an entity-prefix run before a non-text sibling is conservatively escaped", () => {
+				const emitted = out(
+					rootOf(paragraph(text("a &am"), Strong.make({ children: [text("p;")], position: span() }))),
+				);
+				assert.strictEqual(emitted, "a \\&am**p;**\n");
+			});
+			it("parse ∘ stringify is the identity on `Getters & Setters`", () => stringIdentity("Getters & Setters\n"));
+		});
+
+		describe("`>` escapes only at a line start", () => {
+			it("a mid-line `>` stays raw", () => paragraphCase("a > b", "a > b\n"));
+			it("`<` stays escaped", () => paragraphCase("<T>", "\\<T>\n"));
+			it("a line-start `>` stays escaped", () => paragraphCase("> not a quote", "\\> not a quote\n"));
+			it("a `>` after a soft break stays escaped", () => paragraphCase("a\n> b", "a\n\\> b\n"));
+		});
+
+		describe("`#` in a heading escapes only a closing sequence", () => {
+			it("a VitePress custom anchor `{#id}` serializes raw on a tree with no MDX nodes", () =>
+				headingCase(2, "Setters {#setters}", "## Setters {#setters}\n"));
+			it("an issue-number `#` stays raw", () => headingCase(2, "Issue #12", "## Issue #12\n"));
+			it("a trailing `#` run is escaped at its first character", () => {
+				headingCase(2, "Trailing #", "## Trailing \\#\n");
+				headingCase(2, "Trailing ##", "## Trailing \\##\n");
+			});
+			it("a `#` that is the whole heading text is escaped", () => headingCase(2, "#", "## \\#\n"));
+			it("a trailing `#` before a non-text sibling is conservatively escaped", () => {
+				const emitted = out(rootOf(heading(2, text("a #"), Strong.make({ children: [text("b")], position: span() }))));
+				assert.strictEqual(emitted, "## a \\#**b**\n");
+			});
+			it("a `#` run is judged against the contiguous text siblings", () => {
+				assert.strictEqual(out(rootOf(heading(2, text("a #"), text("b")))), "## a #b\n");
+				assert.ok(out(rootOf(heading(2, text("a #"), text(" ")))).startsWith("## a \\#"));
+			});
+			it("a `#` outside a heading is untouched mid-line", () => paragraphCase("Issue #12 #", "Issue #12 #\n"));
+		});
+	});
+
 	describe("guard and facade posture", () => {
 		it("depth past the cap fails typed, never a RangeError", () => {
 			let tree: Root["children"][number] = paragraph(text("x"));
