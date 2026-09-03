@@ -211,7 +211,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/github-actions": {
-							range: "^0.10.1",
+							range: "^0.10.2",
 							peer: "^0.10.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -247,8 +247,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/markdown": {
-							range: "^0.7.0",
-							peer: "^0.7.0",
+							range: "^0.8.0",
+							peer: "^0.8.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
