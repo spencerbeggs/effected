@@ -1,13 +1,25 @@
 # @effected/pnpm-plugin-effect
 
+## 0.6.18
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/runtimes` ^0.4.5 -> ^0.4.6 (peer ^0.4.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.6.17
 
 ### Maintenance
 
 #### Updates 2 catalog:effected versions
 
-- `@effected/github-actions` ^0.10.1 -\> ^0.10.2 (peer ^0.10.0)
-- `@effected/markdown` ^0.7.0 -\> ^0.8.0 (peer ^0.8.0)
+- `@effected/github-actions` ^0.10.1 -> ^0.10.2 (peer ^0.10.0)
+- `@effected/markdown` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
 
 ### Thanks
 
@@ -19,9 +31,9 @@ Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spence
 
 #### Updates 3 catalog:effected versions
 
-- `@effected/app` ^0.13.1 -\> ^0.13.2 (peer ^0.13.0)
-- `@effected/store` ^0.5.0 -\> ^0.6.0 (peer ^0.6.0)
-- `@effected/tsconfig-json` ^0.6.1 -\> ^0.7.0 (peer ^0.7.0)
+- `@effected/app` ^0.13.1 -> ^0.13.2 (peer ^0.13.0)
+- `@effected/store` ^0.5.0 -> ^0.6.0 (peer ^0.6.0)
+- `@effected/tsconfig-json` ^0.6.1 -> ^0.7.0 (peer ^0.7.0)
 
 ### Thanks
 
@@ -33,7 +45,7 @@ Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spence
 
 #### Updates 1 catalog:effected version
 
-- `@effected/runtimes` ^0.4.4 -\> ^0.4.5 (peer ^0.4.0)
+- `@effected/runtimes` ^0.4.4 -> ^0.4.5 (peer ^0.4.0)
 
 ### Thanks
 
@@ -45,7 +57,7 @@ Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spence
 
 #### Updates 1 catalog:effected version
 
-- `@effected/jsonc` ^0.8.0 -\> ^0.8.1 (peer ^0.8.0)
+- `@effected/jsonc` ^0.8.0 -> ^0.8.1 (peer ^0.8.0)
 
 ### Thanks
 
@@ -57,7 +69,7 @@ Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spence
 
 #### Updates 1 catalog:effected version
 
-- `@effected/runtimes` ^0.4.3 -\> ^0.4.4 (peer ^0.4.0)
+- `@effected/runtimes` ^0.4.3 -> ^0.4.4 (peer ^0.4.0)
 
 ### Thanks
 
@@ -108,10 +120,10 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 #### Updates 4 catalog:effected versions
 
-- `@effected/app` ^0.13.0 -\> ^0.13.1 (peer ^0.13.0)
-- `@effected/package-json` ^0.12.0 -\> ^0.13.0 (peer ^0.13.0)
-- `@effected/schema-org` ^0.0.0 -\> ^0.1.0 (peer ^0.1.0)
-- `@effected/spdx` ^0.4.0 -\> ^0.5.0 (peer ^0.5.0) [#539][#539]
+- `@effected/app` ^0.13.0 -> ^0.13.1 (peer ^0.13.0)
+- `@effected/package-json` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/schema-org` ^0.0.0 -> ^0.1.0 (peer ^0.1.0)
+- `@effected/spdx` ^0.4.0 -> ^0.5.0 (peer ^0.5.0) [#539][#539]
 
 * `catalog:check` and `catalog:sync` now verify catalog **membership**, not only
   the versions of packages the catalog already names.
