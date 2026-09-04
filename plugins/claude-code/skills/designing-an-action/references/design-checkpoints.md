@@ -16,13 +16,17 @@ Decide each step's failure posture when its contract is written, not while wirin
 
 Record the tier per step alongside its contract. When the tier says fail-the-job, fail the effect itself — never report success through a manual "mark failed" call and then return normally, which tells the runner's exit-code channel one thing while the log says another.
 
+## The output baseline is emitted first
+
+Emit every declared output at its all-disabled value **before any work**, then write the full set again on every exit path with what that path knows. Do not emit the baseline from an error handler: a handler that fires after a step opened a pull request blanks the output that named it. "Every output on every exit path" is satisfied by the up-front write.
+
 ## The logging contract is test-enforced, not aspirational
 
 A run's log is a decision record, and it earns that status only if it says so consistently: a run-context opening block; every skipped step logging its own skip and the reason, never silence; warnings reserved for genuine acceptance signals rather than routine status; a closing result block. Assert on the captured log stream in a test — a skip that silently stops logging is a defect a type system cannot catch, and only an assertion on the actual transcript does.
 
 ## Layer minimalism is proven by a compile failure, not a runtime check
 
-Add to a program's layer only what the runtime doesn't already provide. Prove there is no over-provision with a typed test double: a program typed against the runtime's own service union plus only the extra services it actually needs should fail to *compile* the moment an unused requirement is added — not merely fail a runtime assertion later. A compile-time proof can't regress silently; a runtime check can.
+Add to a program's layer only what the runtime doesn't already provide, and prove it with two type-level assertions: the app layer's requirements minus the runtime's services is `never`, and the *program's* requirements minus the same is `never`. The second exists because a service resolved inside a step method never appears in the layer's input channel; the first alone has passed while production died on every consumer. A compile-time proof can't regress silently; a runtime check can. `structuring-an-action`'s tests reference carries the worked file.
 
 ## Bundle truth is verified, not assumed
 
@@ -36,7 +40,7 @@ Every declared package dependency must be imported by the action's own source, o
 
 ## Every error class has a test that constructs it
 
-Audit every error channel in a step's contract for whether it can actually fire. A channel that exists only to satisfy a type signature — never reachable because the code path it guards can't produce it — is worse than no channel: it forces every caller to handle a case that doesn't exist, and it makes the type a documented lie. The mirror form is just as real: a step failure reported through a bare, untagged error where a typed error belongs is the same defect approached from the other side. When you port a member from a reference implementation, either demonstrate the failure path with a test or delete the reason from the signature.
+Audit every error channel in a step's contract for whether it can actually fire. A channel that exists only to satisfy a type signature — never reachable because the code path it guards can't produce it — is worse than no channel: it forces every caller to handle a case that doesn't exist, and it makes the type a documented lie. The mirror form is just as real: a step failure reported through a bare, untagged error where a typed error belongs is the same defect approached from the other side. When you port a member from a reference implementation, either demonstrate the failure path with a test or delete the reason from the signature. Choose the class shape by a test, not habit: one class with a closed `reason` union when every reason carries the same fields; one class per failure behind a union alias when the fields differ or a caller recovers from one arm. `structuring-an-action` and `designing-an-action`'s walking-skeleton reference agree on this; do not reintroduce a single mandatory shape.
 
 ## Doc-refresh is part of the definition of done
 

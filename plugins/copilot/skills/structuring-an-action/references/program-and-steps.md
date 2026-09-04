@@ -8,6 +8,11 @@ The main-phase program holds exactly one job: read inputs, run steps in order, f
 // program.ts
 export const program: Effect.Effect<void, InputError | /* … */, ActionLogger | ActionOutputs | /* … */> =
  Effect.gen(function* () {
+  // The all-disabled baseline goes out FIRST. Every declared output now
+  // exists for a consuming workflow, whatever happens next, and nothing
+  // later can blank a value that describes work that actually happened.
+  yield* emitOutputs(initialOutputs);
+
   const inputs = yield* readInputs;
 
   // Run-context block: what this run was asked to do, before any work.
@@ -18,14 +23,17 @@ export const program: Effect.Effect<void, InputError | /* … */, ActionLogger |
 
   // Closing result block: the last thing the log says.
   for (const line of resultLines(outputs)) yield* Effect.logInfo(line);
- }).pipe(
-  // Outputs are emitted on EVERY abort path — a failed run still
-  // publishes the all-disabled baseline so a consuming workflow can
-  // always read every declared output. The original failure re-raises
-  // untouched; only the emission side effect is made infallible.
-  Effect.onError(() => emitOutputs(initialOutputs).pipe(Effect.ignore)),
- );
+ });
 ```
+
+Do **not** emit the baseline from an `Effect.onError` handler. That form
+looks equivalent and is not: a step that opened a pull request and then a
+later step that failed would have the handler overwrite `pr-number` with the
+baseline's empty value — a false statement about work that happened, not a
+conservative default. Emitting up front satisfies "every output on every
+exit path" without a handler that can lie. Each exit path that knows more
+than the baseline — a partial success, a no-changes early return — writes
+the full set again with what it knows.
 
 Failure still fails the effect — the job's verdict comes from the error channel the runtime renders, never from a manual "mark failed" call followed by a plain return. See `designing-an-action`'s checkpoints reference for the full failure-posture discipline this pattern depends on.
 
@@ -59,6 +67,8 @@ export const myStep = (inputs: Inputs): Effect.Effect<MyStepResult, MyStepError,
 - *Fail-the-job* — let the tagged error propagate, uncaught, out of the step.
 - *Degrade-to-warning* — catch the step's own error inside the step (or immediately at its call site), log it, and return an honest result reflecting what didn't happen. The step's exported signature is then `never` in its error channel, truthfully — it degrades internally rather than failing.
 - *Double-netted* — the `post.ts` shape; see [entries-and-layers.md](entries-and-layers.md).
+
+Write the posture into the module's own doc comment, beside the error channel, in those words: `Failure posture: degrade-to-warning`. Annotate a `never` that means "degrades internally" explicitly on the exported signature rather than letting inference supply it, so a dependency upgrade that widens a member's error channel becomes a compile error at that line instead of a job that starts failing. A step may also declare an error it does not raise today when the module says why — keeping a contract open for a genuinely unexpected case without making current tolerance a lie — which is different from a class nothing constructs.
 
 See `designing-an-action`'s checkpoints reference for why this has to be a design-time decision, not a wiring-time discovery.
 

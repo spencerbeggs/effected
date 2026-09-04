@@ -126,6 +126,15 @@ Absence means unwired; a recorded error means *this route fails, and here is why
   This is the catch-side mirror of `structuring-an-action`'s declaration
   rule (a tagged error only when the step can actually fail) — audit both
   directions.
+- A hand-rolled `FileSystem.layerNoop({ … })` over a `Map` is a stub that
+  encodes only what its author remembered; the filesystem double for
+  action code is `@effected/memfs`, with faults injected on the real
+  volume.
+- A layers test that asserts a runtime condition can regress silently;
+  the discriminating form is a **compile-time** assertion that both the
+  app layer's and the *program's* requirements minus the runtime's
+  `ActionServices` are `never`. A service resolved inside a step method
+  is the case the layer-side check alone misses.
 
 ## Migrating a suite: doubles first, runner second
 

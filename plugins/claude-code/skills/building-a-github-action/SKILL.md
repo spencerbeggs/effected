@@ -20,11 +20,13 @@ This table routes a capability to the package and skill that own it; it does not
 
 | I need to… | Reach for | Skill |
 | --- | --- | --- |
+| turn a fresh copy of the template into my action | the interview: identity, phases, access, inputs, outputs, capabilities, reporting, self-dogfood → a plan file | `bootstrapping-an-action` |
 | decide where a piece of code belongs in the repo | the canonical tree: entries, `program.ts`, `steps/`, `services/`, `shims/`, `schema/`, `state.ts`, `format.ts` | `structuring-an-action` |
 | write `main.ts` / `pre.ts` / `post.ts`, wire layers | `Action.run`, `ActionRuntime.layer`, `ActionServices` | `actions-runtime` |
 | read an input, validate it, apply a default | `ActionInput` + Effect `Config` | `actions-inputs-outputs` |
 | set an output, export a variable, add to PATH | `ActionOutputs` | `actions-inputs-outputs` |
-| emit a machine-readable output contract | `ActionOutputs.setJson` + a `Schema` codec | `actions-inputs-outputs` |
+| emit a machine-readable output contract | `ActionOutputs.setJson` + the same `Schema` codec | `actions-inputs-outputs` |
+| publish and drift-test that contract's JSON Schema | `@effected/schemastore`: `SchemaTarget`, `SchemaPipeline.run` / `.check` | `actions-inputs-outputs` |
 | make the run log readable | `ActionLogger` (`group`, `withBuffer`, `notice`, `annotated`) | `actions-reporting` |
 | write the job summary | `ActionOutputs.summary` | `actions-reporting` |
 | read a published package's contents before installing it | `PackageTarball.extract` (scoped) + `resolveEntryPoint` | `release-and-publish` |
@@ -98,7 +100,7 @@ This table routes a capability to the package and skill that own it; it does not
 ## What the kit deliberately does not ship
 
 - No `@actions/core`, `@actions/cache`, `@actions/artifact`, or any `@actions/*` package — the protocols are implemented directly against their own APIs.
-- No `MainLive`/`PreLive`/`PostLive` or any hand-rolled `XLive` const — use `ActionRuntime.layer` and each service's own `static readonly layer`.
+- No `MainLive`/`PreLive`/`PostLive` exports — those are an action's own naming convention for its per-entry layers, built from `ActionRuntime.layer` plus each service's `static readonly layer`; the kit ships no such consts.
 - No standalone inputs service or a distinct input-error type — inputs are `Config`-based, and input failures are `ConfigError`.
 - No rate-limiter subsystem or proactive throttling — one `RetryPolicy` lives inside the client, and `client.rateLimit` exposes the headers for a caller that wants to pace itself.
 - No per-resource error classes — one `GitHubError` carries a `kind` discriminant.
@@ -133,6 +135,8 @@ These exist, and each one has been mistaken for a gap at least once. A capabilit
 | `release-and-publish` | `NpmRegistry`, `PackagePublish`, tags, versioning, release gates |
 | `supply-chain-attestation` | SBOM, NTIA, in-toto/SLSA, OIDC, Sigstore, `Attestation` |
 | `testing-actions` | the doubles convention, the octokit harness, the domain's mutants |
+| `designing-an-action` | the build sequence: recon, frozen parity contract, API dossier, walking skeleton, TDD fill |
+| `bootstrapping-an-action` | the user-invoked interview that turns the template into a planned action and hands off to `designing-an-action` |
 | `structuring-an-action` | the canonical repo tree, structural standards, where a piece of code belongs |
 
 For the general Effect v4 rules these all sit on — schema design, service and layer form, core idioms, observability, testing — load `effect-v4-schema`, `effect-v4-services-layers`, `effect-v4-idioms`, `effect-v4-observability` and `effect-v4-testing`. This suite carries only the GitHub-specific instances.

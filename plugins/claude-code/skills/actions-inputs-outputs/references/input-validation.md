@@ -129,9 +129,11 @@ decode step, not scattered across the steps that consume the values later:
 a caller reading `steps/lint.ts` should never have to also read
 `steps/format.ts` to know whether their two inputs can legally combine.
 
-Plan a **three-way sync test** between `action.yml`'s declared inputs, the
-`INPUT_NAMES` tuple, and the decoded shape's keys — one assertion that
-walks all three and fails if any pair disagrees. This catches the drift a
-line-by-line code review misses: an input added to `action.yml` but never
-wired into `readInputs`, or a tuple entry with no matching `action.yml`
-declaration.
+Plan a **three-legged sync test** between `action.yml`'s declared inputs, the
+`INPUT_NAMES` tuple, and **what `readInputs` actually asks for**, recorded
+through a `Proxy` over the config environment. The first two legs are
+declarations that drift together — someone updates both and neither matches
+the code — so the recorded leg is the one that finds an input declared but
+never read, or read but never declared. `structuring-an-action`'s tests
+reference carries the executable form and the spread hazard that makes it
+pass while testing nothing.

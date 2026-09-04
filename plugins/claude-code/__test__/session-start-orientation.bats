@@ -55,8 +55,8 @@ _run_hook() {
 		found=$((found + 1))
 	done
 	# Guard against a silently-empty glob reading as a pass.
-	[ "$found" -ge 27 ] || {
-		echo "expected at least 27 skills on disk, found $found" >&2
+	[ "$found" -ge 30 ] || {
+		echo "expected at least 30 skills on disk, found $found" >&2
 		return 1
 	}
 }

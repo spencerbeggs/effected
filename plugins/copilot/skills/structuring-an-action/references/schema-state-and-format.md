@@ -44,7 +44,7 @@ export const emitOutputs = (model: OutputsModel): Effect.Effect<void, ActionOutp
  });
 ```
 
-One emitter, called from exactly two places in the whole program: the success path with the folded model, and the failure path with `initialOutputs`. See [program-and-steps.md](program-and-steps.md) for the fold this baseline anchors.
+One emitter, called from exactly two places in the whole program: the up-front baseline write with `initialOutputs`, and every later exit path with what that path knows. See [program-and-steps.md](program-and-steps.md) for the fold this baseline anchors. When one of those outputs is a structured document for a downstream consumer, the schema it encodes through is also what generates its committed JSON Schema — `actions-inputs-outputs`' output-contracts reference owns that recipe.
 
 ## `state.ts` — cross-phase state that survives the round trip
 
