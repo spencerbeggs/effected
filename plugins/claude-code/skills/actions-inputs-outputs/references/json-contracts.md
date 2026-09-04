@@ -23,10 +23,13 @@ SchemaStore-shaped document assembly, catalog modes, and fileMatch
 hygiene lint that a hand-written document would have to reinvent and keep
 in sync by hand.
 
-Commit the generated schema, validate it with ajv, and drift-test it the
-same way an output contract is drift-tested (see
-`references/output-contracts.md`) — one schema, one generator, one
-committed artifact, checked for byte-for-byte agreement on every run.
+Commit the generated schema and drift-test it the same way an output
+contract is (see `references/output-contracts.md`, "The drift test"): one
+schema, one generator, one committed artifact, the generator's exported
+`targets` walked by `SchemaPipeline.check`, compared by parsed content
+rather than bytes so the formatter that owns the file cannot make the test
+lie. An input schema is unversioned and lives at the repository root as
+`<action>.input.schema.json`.
 
 ## Why this belongs at design time, not as a later add-on
 

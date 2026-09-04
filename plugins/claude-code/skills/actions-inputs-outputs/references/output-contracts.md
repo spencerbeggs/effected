@@ -141,95 +141,203 @@ not a runtime failure discovered by a downstream consumer.
 
 ### Generating the committed JSON Schema
 
-`Schema.toJsonSchemaDocument(schema, options?)` returns a JSON Schema
-document at draft 2020-12:
+The committed document is produced by `@effected/schemastore`, never by
+hand-assembling `Schema.toJsonSchemaDocument`'s output. The package owns the
+whole generate → lint → validate → gate → write loop: core's draft 2020-12
+generation lowered to Draft-07 (the dialect SchemaStore and every editor
+integration read), the `#/definitions` → `#/$defs` `$ref` rewrite that
+lowering makes necessary, the structural lint, a real ajv strict-mode gate,
+and a content-comparing write through a deterministic serializer. An action
+repository writes the *target manifest* and the log wording, nothing else.
 
 ```ts
-export function toJsonSchemaDocument(
-  schema: Constraint,
-  options?: ToJsonSchemaOptions,
-): JsonSchema.Document<"draft-2020-12">;
+// lib/scripts/generate-schema.ts
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { SchemaFile, SchemaPipeline, SchemaTarget, SchemaValidator } from "@effected/schemastore";
+import { Effect, Layer } from "effect";
+import { SCAN_RESULT_SCHEMA_URL, ScanResult } from "../../src/schema/scan-result.js";
+
+const REPO_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+
+// Exported so the drift test checks exactly the wiring the generator writes.
+export const targets: ReadonlyArray<SchemaTarget> = [
+  SchemaTarget.make({
+    schema: ScanResult, // the SAME value setJson encodes through
+    $id: SCAN_RESULT_SCHEMA_URL,
+    path: resolve(REPO_ROOT, "docs/schema/scan-result.schema.json"),
+  }),
+];
+
+export const AppLayer = Layer.mergeAll(SchemaFile.layer, SchemaValidator.layer).pipe(
+  Layer.provide(NodeServices.layer),
+);
+
+const generate = Effect.gen(function* () {
+  for (const result of yield* SchemaPipeline.run(targets)) {
+    for (const finding of result.findings) {
+      yield* Effect.logInfo(`${result.$id}: ${finding.label} at "${finding.path}" — ${finding.message}`);
+    }
+    yield* Effect.log(
+      result.outcome === "written" ? `Written (${result.change}): ${result.path}` : `Unchanged: ${result.path}`,
+    );
+  }
+});
+
+const invokedDirectly =
+  process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+
+if (invokedDirectly) {
+  await Effect.runPromise(generate.pipe(Effect.provide(AppLayer)));
+}
 ```
 
-`Document<D>` is `{ dialect: D; schema: JsonSchema; definitions: Definitions }`
-— `schema` is the root schema *without* its `$defs`; nested definitions
-live separately in `definitions` and are referenced via
-`#/$defs/<name>`.
+Three things in that script are load-bearing:
 
-Neither `$schema` nor a contract version number is part of that returned
-shape — both are yours to add when you assemble the committed artifact:
+- **The `$id` is exported next to the schema**, in `src/schema/scan-result.ts`,
+  and the emitted payload carries it as `$schema`, so a consumer reading the
+  output can fetch the document that validates it.
+- **`targets` and `AppLayer` are exported** so the drift test provides the
+  same layer and walks the same targets. A drift test that rebuilds either
+  one can pass while the generator emits something else.
+- **The script lives in `lib/scripts/`**, the cache-invalidating location, and
+  guards its run behind an `invokedDirectly` check so a test can import
+  `targets` without generating. Wire it as `"schema:generate": "tsx lib/scripts/generate-schema.ts"`.
+
+The gate is policy, not mechanism: the default blocks `warning` findings
+(`UnresolvedRef`, `UnknownKeyword`, `DepthExceeded`, and every engine
+finding) and lets `advisory` through. Replace the predicate when you disagree,
+never the loop:
 
 ```ts
-import { Schema } from "effect";
-import { ScanResult } from "./ScanResult.js";
-
-const doc = Schema.toJsonSchemaDocument(ScanResult);
-
-const artifact = {
-  $schema: "https://json-schema.org/draft/2020-12/schema",
-  schemaVersion: "1.0.0", // your own contract version, bumped on a breaking shape change
-  ...doc.schema,
-  ...(Object.keys(doc.definitions).length > 0 ? { $defs: doc.definitions } : {}),
-};
-
-// Write `artifact` as committed, formatted JSON — this is what consumers pin against.
+SchemaPipeline.run(targets, { blocking: (finding) => finding.source === "validator" });
 ```
 
-`schemaVersion` is a contract you own, not an Effect or JSON Schema
-convention — pick one field name and use it consistently across every
-output contract the action publishes, so a consumer can dispatch on it
-without inspecting the schema shape.
+Findings come back as values and the package never logs, so the wording of
+your build output stays yours. A blocking finding fails with `SchemaGateError`
+carrying every finding that blocked, and nothing after it is written.
+
+### Versioning the contract
+
+A structured output that payloads reference by `$schema` is a **versioned**
+document: its URL has to keep resolving after the shape moves on. Give the
+target a `name` and a `version` — `name` becomes required the moment
+`version` is present, enforced by an overload pair — and let
+`SchemaVersioning.fileName` spell the file:
+
+```ts
+import { SchemaVersioning } from "@effected/schemastore";
+import { Result } from "effect";
+
+const CATALOG_NAME = "scan-action";
+const SCHEMA_BASE_URL = "https://raw.githubusercontent.com/your-org/scan-action/main/schemas";
+const SCHEMA_SEMVER = SchemaVersioning.parseResult("1.0.0").pipe(
+  Result.getOrThrowWith((e) => new Error(`invalid schema version: ${e.message}`)),
+);
+
+SchemaTarget.make({
+  schema: ScanResult,
+  // The $id carries the same version as the path: SchemaTarget publishes
+  // it unchanged, so a versioned file needs a versioned identity.
+  $id: SchemaVersioning.schemaUrl(SCHEMA_BASE_URL, CATALOG_NAME, SCHEMA_SEMVER),
+  name: CATALOG_NAME,
+  version: SCHEMA_SEMVER,
+  path: resolve(REPO_ROOT, "schemas", SCHEMA_SEMVER, SchemaVersioning.fileName(CATALOG_NAME, SCHEMA_SEMVER)),
+});
+```
+
+Version labels are full three-component SemVer, ordered numerically
+(`1.10.0` above `1.9.0`); a bare-major label is rejected because it cannot
+round-trip out of a file name unambiguously. The directory carries the same
+label as the file so a version's artifacts stay together while the file name
+remains the one SchemaStore resolves.
+
+**Gate before writing.** Run the check first and refuse to overwrite a
+published version whose contract changed:
+
+```ts
+const preflight = yield* SchemaPipeline.check(targets);
+const broken = preflight.filter((r) => r.change === "contract");
+if (broken.length > 0) {
+  for (const r of broken) yield* Effect.logError(`Contract change in a published schema: ${r.path}`);
+  return yield* Effect.fail(
+    new Error(`Bump SCHEMA_SEMVER and the $id together, then re-run; nothing was written.`),
+  );
+}
+const results = yield* SchemaPipeline.run(targets);
+```
+
+`check` is total over the targets and never stops at a blocked gate, so a
+repository with two broken documents learns about both in one run. Failing
+*after* the write would report the problem accurately and still have caused
+it. `DocumentDiff` classifies `default`, `examples`, `readOnly` and
+`writeOnly` as contract changes — consumers act on them — so a change there
+costs a bump rather than shipping a silent break. `"created"` is not a
+contract change: a version's first write has no predecessor.
+
+An unversioned document at a fixed path — an input schema, or a
+documentation-facing output nobody pins — skips the version and name and
+replaces its predecessor in place. `change: "annotations"` is then a free
+signal that nothing a consumer acts on moved. `change: "contract"` on such a
+target still deserves a deliberate look — the pipeline reports it but does
+not refuse the in-place write — and the moment a consumer starts pinning the
+document, move it onto the versioned path above instead of replacing it.
 
 ### Annotations for LLM and workflow consumers
 
-`ToJsonSchemaOptions.includeAnnotationKey` filters which schema annotations
-survive into the emitted document:
+Field-level prose that a human or an LLM reads to understand a value goes in
+`description`, annotated at the **definition site** of the schema (a
+usage-site annotation on a hoisted schema carries nothing through lowering).
+That is the machine-readable hint surface today: the Draft-07 lowering drops
+every keyword outside its fixed copy-list and the declared keyword families
+(the vscode five, `x-taplo`, `x-tombi-`, `x-intellij-`), so a custom `x-`
+key on an output contract is silently dropped rather than published. Do not
+invent one; put the hint in the description.
 
-```ts
-const doc = Schema.toJsonSchemaDocument(ScanResult, {
-  includeAnnotationKey: (key) => key === "description" || key.startsWith("x-"),
-});
-```
-
-Use `description` for the field-level prose a human or an LLM reads to
-understand what a value means. Reserve an `x-`-prefixed custom annotation
-key for a machine-only hint that would clutter the human-facing
-description — e.g. `x-enum-severity-order` on a literal-union field, if a
-consumer needs to know the literals are ordered rather than just
-enumerated. Generation is best-effort: some Effect schema semantics have no
-exact JSON Schema equivalent, so treat the emitted document as an external
-contract artifact to review, not a value to trust blindly.
+Generation is best-effort: some Effect schema semantics have no exact JSON
+Schema equivalent, so review the emitted document as an external contract
+artifact rather than trusting it blindly.
 
 ### The drift test
 
-Commit the generated JSON Schema file next to the action's source, and add
-a test that regenerates it in memory and asserts byte-for-byte agreement
-with the committed file:
+Import the generator's own `targets` and `AppLayer` and run the same walk
+with no writes. Assert **both** halves: a document the gate would never
+write also reports no pending write, so `wouldWrite: false` alone proves
+nothing.
 
 ```ts
 import { assert, describe, it } from "@effect/vitest";
-import { Schema } from "effect";
-import { readFileSync } from "node:fs";
-import { ScanResult } from "../src/ScanResult.js";
+import { DocumentDiff, SchemaPipeline } from "@effected/schemastore";
+import { Effect } from "effect";
+import { AppLayer, targets } from "../../lib/scripts/generate-schema.js";
 
-describe("ScanResult output contract", () => {
-  it("matches the committed JSON Schema", () => {
-    const generated = Schema.toJsonSchemaDocument(ScanResult, {
-      includeAnnotationKey: (key) => key === "description",
-    });
-    const committed: unknown = JSON.parse(readFileSync(new URL("../schemas/scan-result.schema.json", import.meta.url), "utf8"));
-    assert.deepStrictEqual({ ...generated.schema, $defs: generated.definitions }, committed);
+describe("generated JSON Schema", () => {
+  it("has a target for every document the action publishes", () => {
+    // `check([])` trivially reports no drift; guard the degenerate case.
+    assert.isAbove(targets.length, 0);
   });
+
+  it.effect("matches its Effect Schema source and would pass the gate", () =>
+    Effect.gen(function* () {
+      for (const result of yield* SchemaPipeline.check(targets)) {
+        assert.isFalse(result.blocked, `${result.path} would fail the gate: ${result.findings.map((f) => f.label).join(", ")}`);
+        assert.isTrue(DocumentDiff.isClean(result.change), `${result.path} is out of date (${result.change}); run schema:generate and commit`);
+      }
+    }).pipe(Effect.provide(AppLayer)),
+  );
 });
 ```
 
-A failing drift test means one of two things happened, and the fix
-differs: the schema changed on purpose (regenerate and commit the new
-file, bump `schemaVersion` if the change is breaking), or the schema
-changed by accident (a field renamed in a refactor without updating the
-contract — revert the schema change instead). The test cannot tell these
-apart; a human reviewing the diff can.
+The comparison is by **parsed content, not bytes**. A formatter that owns
+the committed JSON can reflow it freely; a text comparison would report
+drift forever in such a repository, and `outcome` / `wouldWrite` — never
+`change` — are the authoritative answers to whether a file was or would be
+touched.
 
-Never hand-edit the committed schema file. If it disagrees with what the
-generator produces, the generator — or the schema's annotations — is the
-thing to change.
+A failing drift test means one of two things, and the fix differs: the
+schema changed on purpose (regenerate and commit; bump the version if the
+change was a contract change), or the schema changed by accident (a field
+renamed in a refactor — revert it). The test cannot tell these apart; a
+human reviewing the diff can. Never hand-edit the committed schema file.

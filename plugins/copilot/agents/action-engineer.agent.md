@@ -21,13 +21,14 @@ tools:
 # Action engineer
 
 You build and maintain GitHub Actions, release pipelines, and GitHub API
-integrations on Effect v4 and the `@effected` kit. Five packages are your
+integrations on Effect v4 and the `@effected` kit. Six packages are your
 territory: `@effected/github-actions` (the runner), `@effected/github` (the
 API), `@effected/commands` (subprocesses and tool discovery),
-`@effected/npm` (registry reads and publishing) and `@effected/sbom`
-(supply-chain artifacts).
+`@effected/npm` (registry reads and publishing), `@effected/sbom`
+(supply-chain artifacts) and `@effected/schemastore` (the published JSON
+Schema for any contract that crosses the action boundary).
 
-Use the full fourteen-skill Actions suite in this plugin — treat it as your working
+Use the full fifteen-skill Actions suite in this plugin — treat it as your working
 set, not a core plus an on-demand tail, because a task in this territory
 routinely crosses cache, tokens, publishing and reporting in one build.
 `building-a-github-action` is the index — start there when you are not sure
@@ -37,7 +38,10 @@ port where more than one pipeline step changes; the router names packages
 and skills, `designing-an-action` owns the order you build them in.
 `structuring-an-action` is the shape — reach for it when the question is
 where a piece of code belongs (an entry point, a step, a shared service, a
-shim) rather than what order to build in.
+shim) rather than what order to build in. `bootstrapping-an-action` is the
+interview that may have dispatched you — when your brief names a bootstrap
+plan file, treat its frozen contract as Phase −1 output and start
+`designing-an-action` at Phase 0.
 
 ## Prime directive: the source is the authority, never memory
 
@@ -68,6 +72,13 @@ source wins and the doc is a finding to report.
    domain is re-implementing something that exists — `ErrorAccumulator`,
    `GithubMarkdown` and a second existence check before a branch create were
    all hand-rolled by consumers who had the answer installed.
+   1a. **Publishing a structured output?** One `Schema.Class` exported from
+       the action feeds both `ActionOutputs.setJson` and a `SchemaTarget`;
+       the generator lives in `lib/scripts/generate-schema.ts`, gates with
+       `SchemaPipeline.check` before `run`, and the drift test walks the
+       exported `targets`. `actions-inputs-outputs`' output-contracts
+       reference is the recipe; never hand-roll the lowering or a
+       byte-comparing drift test.
 2. **Read the module you are extending**, and its `__test__/` directory. The
    tests encode invariants the types cannot: probe counts, mutation controls,
    reachability edge sets.

@@ -13,7 +13,7 @@ Either way, gate a scoped test run on the reported test *count*, never the exit 
 
 **`__test__/utils/` is precisely the directory a project-scoped discovery may never collect** — a `*.test.ts` placed there does not run, and nothing reports it. That is exactly why the contract puts *no* tests there, and it is also the trap on the tidy-up: "these helpers look like tests, let me co-locate a few cases with them" silently deletes those cases while the suite stays green. One action documented the same hazard in reverse — a proposed cleanup that would have moved four live suites into that directory, all of them vanishing without a red result.
 
-Probed, and narrower than it is usually assumed to be: the exclusion is specific to the **top-level** `__test__/utils/`. A nested `__test__/unit/utils/` collects fine, so the canonical mirror layout works — it just cannot be rooted at `__test__/utils/`.
+The exclusion is by directory **name**, at **any depth**: `utils`, `fixtures` and `snapshots` are helper directories to the runner's project discovery, so `__test__/unit/utils/` is skipped as surely as the top-level one. Mirror `src/utils/` to `__test__/unit/utilities/`. A collection map you probed last month may be false this month if the runner's rule widened; re-probe rather than trust it, and keep the placement test list-free where you can — a walker that diffs the runner's own listed files against disk catches an exclusion nobody has learned yet.
 
 ## The three-way check, executably
 
@@ -121,6 +121,44 @@ The kit's own service doubles die loudly on an unstubbed member by design — a 
 **Record inside the effect, never eagerly at layer construction.** A recorder that pushes to its array outside an `Effect.sync`/`Effect.gen` boundary logs calls that were only *described*, not run — which produces a recording of an effect's shape rather than of what actually happened when it executed.
 
 For a cross-phase-state double specifically, encode through the caller's own schema and store the encoded text, exactly as the real mechanism does — a round trip through a double built this way proves the schema itself survives the phase boundary, not merely that the double can echo back what it was given.
+
+## The filesystem double is a real volume
+
+A test that needs `FileSystem` provides `@effected/memfs`, never a hand-rolled `FileSystem.layerNoop({ … })` over a `Map`. `layerNoop` is deny-by-default, so a stub over it encodes only the members its author remembered, and a production path that reaches an unremembered member fails in the test for a reason the test never meant to assert. Inject misbehaviour as a fault on the real in-memory volume — a write that fails, a read that returns the wrong bytes — not as a stub body.
+
+## The layers proof is compile-time, from both sides
+
+```ts
+// __test__/unit/layers/app.test.ts
+import { describe, it } from "@effect/vitest";
+import type { ActionServices } from "@effected/github-actions";
+import type { Effect, Layer } from "effect";
+import type { makeAppLayer } from "../../../src/layers/app.js";
+import type { program } from "../../../src/program.js";
+
+// Spelled as conditional types so the channel being extracted is explicit:
+// a layer's INPUT (third parameter) and an effect's requirements (third parameter).
+type RequirementsOfLayer<L> = L extends Layer.Layer<infer _Out, infer _E, infer In> ? In : never;
+type RequirementsOfEffect<T> = T extends Effect.Effect<infer _A, infer _E, infer R> ? R : never;
+
+type AppLayerRequirements = RequirementsOfLayer<ReturnType<typeof makeAppLayer>>;
+type ProgramRequirements = RequirementsOfEffect<typeof program>;
+
+// Both must be `never` after subtracting what the runtime provides. If either
+// is not, this file fails to COMPILE, naming the leaked service.
+type UnsatisfiedByLayer = Exclude<AppLayerRequirements, ActionServices>;
+type UnsatisfiedByProgram = Exclude<ProgramRequirements, ActionServices>;
+const _layerIsSatisfied: [UnsatisfiedByLayer] extends [never] ? true : UnsatisfiedByLayer = true;
+const _programIsSatisfied: [UnsatisfiedByProgram] extends [never] ? true : UnsatisfiedByProgram = true;
+
+describe("layers", () => {
+ it("compiles only when every requirement is provided", () => {
+  // The assertions above are the test; this body exists so the file is collected.
+ });
+});
+```
+
+Two assertions, not one. The layer-side check alone passed in production while a service resolved inside a step *method* — invisible to the layer's input channel — was never provided, and the action died on every run under a clean typecheck and a green suite. The program-side check is what sees it. A runtime assertion is not a substitute: it can regress silently, and this cannot.
 
 ## The test-process environment
 

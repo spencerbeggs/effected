@@ -3,7 +3,7 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-09-02
+updated: 2026-09-04
 last-synced: 2026-09-02
 completeness: 92
 related:
@@ -85,8 +85,9 @@ Three entry points divide cleanly, and each names the other two rather than abso
 - `building-a-github-action` — the router: which package owns a **capability**, plus a timeless list of what the kit deliberately does not ship.
 - `designing-an-action` — the **order** a build happens in: recon → frozen spec → API dossier → contracts-first walking skeleton → TDD fill. Not for a single feature added to an existing action.
 - `structuring-an-action` — the **shape** the build produces: an annotated repository tree, structural standards and structural footguns, naming the `github-action-template` repository as the living instance.
+- `bootstrapping-an-action` — **user-invoked only**: the eight-question interview that turns a fresh copy of `github-action-template` into a plan file and hands off to `action-engineer` running `designing-an-action` from Phase 0. It lives in the plugin rather than the template so the template's `CLAUDE.md` can point at it and every fork gets the current version; its description triggers only on explicit bootstrap phrases so it never fires on ordinary action work. Edits nothing itself.
 
-Behind them sit the per-capability skills: `actions-runtime`, `actions-inputs-outputs`, `actions-state-and-secrets`, `actions-cache-and-artifacts`, `actions-reporting`, `github-api`, `github-app-tokens`, `running-commands-and-tools`, `release-and-publish`, `supply-chain-attestation` and `testing-actions`.
+Behind those four sit the per-capability skills: `actions-runtime`, `actions-inputs-outputs`, `actions-state-and-secrets`, `actions-cache-and-artifacts`, `actions-reporting`, `github-api`, `github-app-tokens`, `running-commands-and-tools`, `release-and-publish`, `supply-chain-attestation` and `testing-actions`.
 
 ### How a skill is shaped
 
@@ -106,7 +107,7 @@ Four subagents live under `plugins/claude-code/agents/`, each arriving with the 
 
 - `effect-developer` — writes new idiomatic v4 code. Step 1 on any non-trivial feature is `effect-v4-planning`, emitting the design summary for buy-in before implementation. Delegate feature implementation here.
 - `effect-reviewer` — reviews v4 code for idiom, error-channel and API-surface correctness, and writes or strengthens `@effect/vitest` tests. Delegate review and test authoring here.
-- `action-engineer` — builds, extends, debugs and reviews GitHub Actions, release/publish pipelines and GitHub API programs. It preloads the **whole** actions suite rather than a core plus an on-demand tail, because a task in this territory routinely crosses cache, tokens, publishing and reporting in one build, and the lean-index shape is what makes carrying it all affordable. Its notes make choosing between **two loops** step 0: a new action, a wholesale rebuild or a port touching more than one pipeline step is `designing-an-action`'s loop; extending or reviewing an action that already has that shape works within the existing contracts. Picking the wrong loop is how a walking skeleton gets skipped and business logic gets written against an unverified API. It also carries the [upstream-migration protocol](github-action-canon.md#b8--blessed-shims-live-in-srcshims). Delegate action work here.
+- `action-engineer` — builds, extends, debugs and reviews GitHub Actions, release/publish pipelines and GitHub API programs. It preloads the **whole** actions suite, including `bootstrapping-an-action`, so the interview can dispatch it with the plan in hand, rather than a core plus an on-demand tail, because a task in this territory routinely crosses cache, tokens, publishing and reporting in one build, and the lean-index shape is what makes carrying it all affordable. Its notes make choosing between **two loops** step 0: a new action, a wholesale rebuild or a port touching more than one pipeline step is `designing-an-action`'s loop; extending or reviewing an action that already has that shape works within the existing contracts. Picking the wrong loop is how a walking skeleton gets skipped and business logic gets written against an unverified API. It also carries the [upstream-migration protocol](github-action-canon.md#b8--blessed-shims-live-in-srcshims). Delegate action work here.
 - `effect-migrator` — migrates **any** Effect v3 codebase to v4, not only kit consumers. Two paths: a library port runs engine-first behind a characterization gate, and an in-place application migration runs dependency swap → silent-behavior audit → blocking removals resolved as recorded design decisions → compiler-driven mechanical tail. It detects the host repo's conventions instead of assuming this repo's. Delegate migration work here.
 
 ## What the bats suite pins
