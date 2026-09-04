@@ -35,6 +35,14 @@ exit path" without a handler that can lie. Each exit path that knows more
 than the baseline — a partial success, a no-changes early return — writes
 the full set again with what it knows.
 
+An *unexpected* failure between steps is the remaining gap: the final
+`emitOutputs(outputs)` never runs, and a consumer reads the baseline for
+work that did happen. Close it at the step, not with a handler — a step whose
+result a consumer must see even if a later step fails (a created pull
+request, a published tag) emits its own output the moment it lands, through
+the same `ActionOutputs.set`. Later writes only ever add to what an earlier
+write said; nothing re-publishes the baseline over it.
+
 Failure still fails the effect — the job's verdict comes from the error channel the runtime renders, never from a manual "mark failed" call followed by a plain return. See `designing-an-action`'s checkpoints reference for the full failure-posture discipline this pattern depends on.
 
 The logging shape above — a run-context block, a closing result block, and (inside each step) a line for anything skipped — is a contract worth testing directly: assert on the captured log stream rather than trusting that the shape survives a refactor. `actions-reporting`'s logging-contract reference owns this in full.
@@ -82,7 +90,7 @@ export const initialOutputs: OutputsModel = {
 };
 ```
 
-The pipeline folds each step's contribution over this baseline, so a step that didn't run — skipped by an input, short-circuited by a rehearsal guard — reports its default rather than being silently absent from the output set. The failure path in `program.ts` emits exactly this baseline, which is what makes "every output emitted on every exit path" true rather than aspirational.
+The pipeline folds each step's contribution over this baseline, so a step that didn't run — skipped by an input, short-circuited by a rehearsal guard — reports its default rather than being silently absent from the output set. The up-front write of exactly this baseline is what makes "every output emitted on every exit path" true rather than aspirational; every later write — an explicit exit path, or a step publishing its own result as it lands — only adds state the baseline did not know.
 
 ## Deriving a step's requirement channel
 

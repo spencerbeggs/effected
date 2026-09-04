@@ -42,7 +42,7 @@ Ask the eight questions in [references/questions.md](references/questions.md) in
 
 ## Recon obligations
 
-After question 6, before writing the plan, do three things and record each in the plan:
+After question 7 — reporting can add `@effected/github` even when question 3 chose no GitHub access, so the package list is not final until then — and before writing the plan, do three things and record each in the plan:
 
 - **Check every derived package against the installed tree.** For each package the answers imply, read `node_modules/<package>/package.json` and record its version, or record it as absent. The plan's dependency table carries an "Installed" column; a memorised capability-to-package mapping is not evidence.
 - **Open a known-unknowns row for every enabling surface you could not confirm.** A capability whose kit construct you have not seen in the installed package's export map is a claim to verify, not a fact; name the construct, the package and where the engineer will check it.
@@ -50,7 +50,7 @@ After question 6, before writing the plan, do three things and record each in th
 
 ## The artifact
 
-Write one plan file to the repository's configured plans directory (read `.claude/settings.json` → `plansDirectory`; default `.claude/plans/`), named `<YYYY-MM-DD>-bootstrap-<action-name>.md`, in the shape of [references/plan-template.md](references/plan-template.md). It carries the frozen I/O contract as counts plus `INPUT_NAMES` / `OUTPUT_NAMES` tuples, the phase decision, the derived dependency list with the honesty rule applied, the rename list with file paths, a known-unknowns ledger, and the ordered build steps. Present the plan in chat and **stop**. Do not begin implementation in the same turn.
+Write one plan file to the plans directory your host configures for this repository — Claude Code reads `plansDirectory` from `.claude/settings.json` and defaults to `.claude/plans/`; Copilot uses the plans location its own settings name and defaults to `.copilot/plans/` — named `<YYYY-MM-DD>-bootstrap-<slug>.md`, where `<slug>` is the action name lowered to `a-z`, `0-9` and hyphens with everything else dropped, so a name carrying a path separator or `..` can never place the file outside that directory. Write it in the shape of [references/plan-template.md](references/plan-template.md). It carries the frozen I/O contract as counts plus `INPUT_NAMES` / `OUTPUT_NAMES` tuples, the phase decision, the derived dependency list with the honesty rule applied, the rename list with file paths, a known-unknowns ledger, and the ordered build steps. Present the plan in chat and **stop**. Do not begin implementation in the same turn.
 
 ## The handoff
 

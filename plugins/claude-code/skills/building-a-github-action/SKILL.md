@@ -10,7 +10,7 @@ The routing map for the five `@effected` packages an action-shaped program uses:
 
 **The design boundary that matters most**: `@effected/github` talks to the GitHub API; `@effected/github-actions` talks to the runner it executes inside. Nothing in `github-actions` reads `process.env.GITHUB_REPOSITORY` on `github`'s behalf, and nothing in `github` imports a workflow command. The two meet at exactly two seams, both living in `github-actions`: the token bridge (`GitHubToken`) and the `Logger` that maps `Effect.log*` onto workflow commands (`ActionLogger.logger`).
 
-For a capability outside these five packages — globs, semver, lockfiles, JSONC/YAML/TOML, XDG paths, git introspection, managed file sections — consult `effected-packages` before hand-writing it.
+A sixth package sits beside them at build time rather than runtime: `@effected/schemastore` publishes and drift-tests the JSON Schema for any contract that crosses the action boundary, and belongs in `devDependencies`. For a capability outside these six — globs, semver, lockfiles, JSONC/YAML/TOML, XDG paths, git introspection, managed file sections — consult `effected-packages` before hand-writing it.
 
 ## Designing or structuring a new action? Start elsewhere first
 

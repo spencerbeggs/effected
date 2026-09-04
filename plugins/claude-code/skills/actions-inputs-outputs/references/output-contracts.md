@@ -232,13 +232,16 @@ import { SchemaVersioning } from "@effected/schemastore";
 import { Result } from "effect";
 
 const CATALOG_NAME = "scan-action";
+const SCHEMA_BASE_URL = "https://raw.githubusercontent.com/your-org/scan-action/main/schemas";
 const SCHEMA_SEMVER = SchemaVersioning.parseResult("1.0.0").pipe(
   Result.getOrThrowWith((e) => new Error(`invalid schema version: ${e.message}`)),
 );
 
 SchemaTarget.make({
   schema: ScanResult,
-  $id: SCAN_RESULT_SCHEMA_URL,
+  // The $id carries the same version as the path: SchemaTarget publishes
+  // it unchanged, so a versioned file needs a versioned identity.
+  $id: SchemaVersioning.schemaUrl(SCHEMA_BASE_URL, CATALOG_NAME, SCHEMA_SEMVER),
   name: CATALOG_NAME,
   version: SCHEMA_SEMVER,
   path: resolve(REPO_ROOT, "schemas", SCHEMA_SEMVER, SchemaVersioning.fileName(CATALOG_NAME, SCHEMA_SEMVER)),
@@ -276,8 +279,11 @@ contract change: a version's first write has no predecessor.
 
 An unversioned document at a fixed path — an input schema, or a
 documentation-facing output nobody pins — skips the version and name and
-replaces its predecessor in place; `change: "annotations"` is then the only
-signal you need, and it is free.
+replaces its predecessor in place. `change: "annotations"` is then a free
+signal that nothing a consumer acts on moved. `change: "contract"` on such a
+target still deserves a deliberate look — the pipeline reports it but does
+not refuse the in-place write — and the moment a consumer starts pinning the
+document, move it onto the versioned path above instead of replacing it.
 
 ### Annotations for LLM and workflow consumers
 

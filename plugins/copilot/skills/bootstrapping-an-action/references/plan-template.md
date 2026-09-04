@@ -1,6 +1,6 @@
 # Plan file shape
 
-Write to `<plansDirectory>/<YYYY-MM-DD>-bootstrap-<action-name>.md`. Every section is required; a section with nothing to say states that explicitly.
+Write to `<plansDirectory>/<YYYY-MM-DD>-bootstrap-<slug>.md`, where `<slug>` is the action name reduced to lowercase letters, digits and hyphens — never the raw name, which could carry a path separator. Every section is required; a section with nothing to say states that explicitly.
 
 ```markdown
 ---
@@ -18,7 +18,12 @@ kit: "@effected/github-actions@<installed version>"
 - Inputs: <count>. `INPUT_NAMES = [...] as const`. Defaults (mirror action.yml): ...
 - Outputs: <count>. `OUTPUT_NAMES = [...] as const`. Baseline values: ...
 - Cross-field rules: ...
-- JSON contracts crossing the boundary: none | input <name> | output <name> (versioned <semver>)
+- JSON contracts crossing the boundary: none, or one row per contract below. Inputs may repeat (one action can carry several JSON inputs); the structured output is singular.
+
+| Direction | Name | Schema (exported class) | Published at | Version |
+| --- | --- | --- | --- | --- |
+| input | ... | ... | `<action>.input.schema.json` | unversioned |
+| output | result | ... | `schemas/<semver>/<name>-<semver>.json` | <semver> |
 
 ## Phases
 - main | main+post | pre+main+post, and why.
