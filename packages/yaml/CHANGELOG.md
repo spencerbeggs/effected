@@ -1,5 +1,73 @@
 # @effected/yaml
 
+## 0.13.0
+
+### Breaking Changes
+
+#### `@effected/schemastore` no longer ships `AnnotationCarriers`
+
+- `AnnotationCarriers` and `CarrierDepthExceededError` are removed, and the module is deleted.
+
+- Effect `4.0.0-rc.112` ("Make JSON Schema dialect conversions preserve custom keywords") changed the Draft-07 lowering to carry unknown and custom keywords through as opaque values, in place — including across the tuple coordinate moves (`prefixItems[i]` to `items[i]`, and a trailing `items` to `additionalItems`). The post-lowering re-graft those symbols performed is therefore redundant, and **emitted documents are unchanged**.
+
+- If you imported either symbol, delete the call: annotate a schema node and the key now reaches the document on its own.
+
+#### `StoreDocument` and `SchemaPipeline` error channels are wider
+
+- `StoreDocument.fromSchema`, `StoreDocument.fromSchemaResult`, and `SchemaPipeline.run` / `check` / `runOne` / `checkOne` can now fail with `UndeclaredAnnotationKeyError`. Callers matching exhaustively on the error channel need one new branch.
+
+### Features
+
+#### `@effected/schemastore` refuses undeclared annotation keys instead of dropping them
+
+- `StoreDocument.fromSchema` now fails with the new `@public` `UndeclaredAnnotationKeyError` — carrying the document's `$id` and every offending key — when a caller-supplied `includeAnnotationKey` admits a key outside the declared keyword families (the vscode set, `x-taplo`, `x-tombi-*`, `x-intellij-*`, `x-ai-*`).
+
+- Previously such keys were admitted into the Draft 2020-12 document and silently discarded by the Draft-07 lowering, so the package's compatibility guarantee was really a side effect of a dependency's behavior. Since rc.112 no longer discards them, that guarantee is now enforced by the package itself — and enforced loudly, because a caller who asks for a key and silently does not get it has no way to notice.
+
+- Declared families are still admitted unconditionally, regardless of the caller's predicate.
+
+```ts
+// Fails: UndeclaredAnnotationKeyError, keys: ["x-custom"]
+yield* StoreDocument.fromSchema(schema, {
+  $id: "https://example.com/schemas/tool.json",
+  jsonSchema: { includeAnnotationKey: (key) => key === "x-custom" },
+});
+```
+
+#### The whole kit tracks Effect `4.0.0-rc.112`
+
+- Every package's `effect` peer moves to the new pin. The kit uses exact prerelease pins rather than a caret, so a consumer must move with it.
+
+### Bug Fixes
+
+- `@effected/schemastore`: the `#/definitions` to `#/$defs` `$ref` rewrite no longer descends into declared-family annotation values. A `$ref`-shaped string inside an `x-taplo` or `x-ai-*` payload is opaque advice addressed to a language server, and was being rewritten in transit.
+- A known limitation, still open upstream as [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084): a `Schema.Class`'s class-level annotations — `title` and `description` as well as the declared families — never reach the emitted document, because core generates the definition from the class's encoded AST. A hoisted `Schema.Struct` keeps its annotations. Annotate a `Schema.Struct` root instead.
+
+### Documentation
+
+#### The Claude Code and Copilot plugins are Effect v4 only
+
+- The v3-to-v4 migration material is retired: the `effect-migrator` agent and the `effect-v4-construct-map` skill are removed, along with the migration framing that ran through the remaining skills. The facts underneath it are kept, restated as statements of what v4 is rather than what changed.
+
+- The SessionStart briefing now states plainly that an agent's recall of Effect is out of date by construction, and routes it to the specialist agents or the skills rather than to a guess. It also reports whether the repo vendors Effect source at `.repos/effect` and whether that pin matches the kit's — a stale vendored tree is worse than none, because it answers confidently and wrongly.
+
+- Several skill claims were re-measured against rc.112 and corrected, including one whose stated mitigation pointed at the wrong signal: for a zero-collection vitest run it is the `Tests: 0/0 passed` line that lies, while the exit code is honest. [#623][#623]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effect/tsgo | devDependency | updated | 0.36.5 | 0.41.0 |
+| @effect/vitest | devDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+| effect | devDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+| effect | peerDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#623]: https://github.com/spencerbeggs/effected/pull/623
+
 ## 0.12.0
 
 ### Features
@@ -149,9 +217,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-- ### Comment fidelity (\#127)
+- ### Comment fidelity (#127)
   `YamlFormat.formatToString` and `modify` now round-trip leading, trailing and own-line comments, plus the blank lines around them, byte-faithfully — raw post-`#` text, alignment and no-space comment styles are all preserved. Own-line comments attach forward to the following node; a comment left dangling at the end of a scope escapes to the enclosing one. This is controlled by the existing `preserveComments` option: `true` (the default) gives full round-trip fidelity, `false` strips every comment. Canonical output (`forceDefaultStyles`) stays comment-free as before. Six deliberate divergences from the reference `yaml` package are recorded at the head of `src/internal/composer/comments.ts`.
-  ### Lint system (\#129)
+  ### Lint system (#129)
   A new yamllint-class lint engine, plus a public token stream it's built on:
   ```ts
   import { YamlLint, YamlLintConfig, YamlTokens } from "@effected/yaml";
@@ -188,7 +256,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   `YamlFormat.format`/`formatToString` now format every document of a `---`-separated stream, re-emitting each document's own framing (`---`, `...`, comment blocks) in order — previously a multi-document stream silently truncated to its first document on write-back, a data-loss bug on write. Two shapes still return the input byte-identical because they cannot be re-emitted faithfully: a stream with any fatally-invalid document, and directive-carrying input (see Bug Fixes below). `modify`/`modifyToString` stay single-document and now fail typed with a new `MultiDocumentStream` diagnostic — a `YamlPath` names no particular document of a stream.
 
   A comment between a `---` marker and the first content node hoists above the marker on the first format pass — the existing single-document behavior, inherited by the stream path. Blank lines, meaning, and the fixed point from the second pass on are all preserved; the output is not byte-identical to the input for that specific shape.
-  ### Block-scalar header comments (\#341)
+  ### Block-scalar header comments (#341)
   A trailing comment on a block-scalar header (`key: | # c`, `key: > # c`, `- | # c`, `- > # c`, every chomp/indicator spelling, and the explicit-key branch) now captures and re-emits byte-faithfully, closing the last recorded comment-fidelity divergence from #127. Explicit chomp (`|+`) and indentation (`|2`) indicators are preserved on the fidelity path too, carried by a new optional `blockIndent` field on `YamlScalar` (additive); when a pair comment and a scalar header comment coexist, the pair comment keeps the key line and the header spills to its own indented line so both survive.
 
 ### Bug Fixes

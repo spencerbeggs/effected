@@ -1,16 +1,85 @@
 # @effected/walker
 
+## 0.6.0
+
+### Breaking Changes
+
+#### `@effected/schemastore` no longer ships `AnnotationCarriers`
+
+- `AnnotationCarriers` and `CarrierDepthExceededError` are removed, and the module is deleted.
+
+- Effect `4.0.0-rc.112` ("Make JSON Schema dialect conversions preserve custom keywords") changed the Draft-07 lowering to carry unknown and custom keywords through as opaque values, in place — including across the tuple coordinate moves (`prefixItems[i]` to `items[i]`, and a trailing `items` to `additionalItems`). The post-lowering re-graft those symbols performed is therefore redundant, and **emitted documents are unchanged**.
+
+- If you imported either symbol, delete the call: annotate a schema node and the key now reaches the document on its own.
+
+#### `StoreDocument` and `SchemaPipeline` error channels are wider
+
+- `StoreDocument.fromSchema`, `StoreDocument.fromSchemaResult`, and `SchemaPipeline.run` / `check` / `runOne` / `checkOne` can now fail with `UndeclaredAnnotationKeyError`. Callers matching exhaustively on the error channel need one new branch.
+
+### Features
+
+#### `@effected/schemastore` refuses undeclared annotation keys instead of dropping them
+
+- `StoreDocument.fromSchema` now fails with the new `@public` `UndeclaredAnnotationKeyError` — carrying the document's `$id` and every offending key — when a caller-supplied `includeAnnotationKey` admits a key outside the declared keyword families (the vscode set, `x-taplo`, `x-tombi-*`, `x-intellij-*`, `x-ai-*`).
+
+- Previously such keys were admitted into the Draft 2020-12 document and silently discarded by the Draft-07 lowering, so the package's compatibility guarantee was really a side effect of a dependency's behavior. Since rc.112 no longer discards them, that guarantee is now enforced by the package itself — and enforced loudly, because a caller who asks for a key and silently does not get it has no way to notice.
+
+- Declared families are still admitted unconditionally, regardless of the caller's predicate.
+
+```ts
+// Fails: UndeclaredAnnotationKeyError, keys: ["x-custom"]
+yield* StoreDocument.fromSchema(schema, {
+  $id: "https://example.com/schemas/tool.json",
+  jsonSchema: { includeAnnotationKey: (key) => key === "x-custom" },
+});
+```
+
+#### The whole kit tracks Effect `4.0.0-rc.112`
+
+- Every package's `effect` peer moves to the new pin. The kit uses exact prerelease pins rather than a caret, so a consumer must move with it.
+
+### Bug Fixes
+
+- `@effected/schemastore`: the `#/definitions` to `#/$defs` `$ref` rewrite no longer descends into declared-family annotation values. A `$ref`-shaped string inside an `x-taplo` or `x-ai-*` payload is opaque advice addressed to a language server, and was being rewritten in transit.
+- A known limitation, still open upstream as [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084): a `Schema.Class`'s class-level annotations — `title` and `description` as well as the declared families — never reach the emitted document, because core generates the definition from the class's encoded AST. A hoisted `Schema.Struct` keeps its annotations. Annotate a `Schema.Struct` root instead.
+
+### Documentation
+
+#### The Claude Code and Copilot plugins are Effect v4 only
+
+- The v3-to-v4 migration material is retired: the `effect-migrator` agent and the `effect-v4-construct-map` skill are removed, along with the migration framing that ran through the remaining skills. The facts underneath it are kept, restated as statements of what v4 is rather than what changed.
+
+- The SessionStart briefing now states plainly that an agent's recall of Effect is out of date by construction, and routes it to the specialist agents or the skills rather than to a guess. It also reports whether the repo vendors Effect source at `.repos/effect` and whether that pin matches the kit's — a stale vendored tree is worse than none, because it answers confidently and wrongly.
+
+- Several skill claims were re-measured against rc.112 and corrected, including one whose stated mitigation pointed at the wrong signal: for a zero-collection vitest run it is the `Tests: 0/0 passed` line that lies, while the exit code is honest. [#623][#623]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.4.0 | 0.5.0 |
+| @effect/tsgo | devDependency | updated | 0.36.5 | 0.41.0 |
+| @effect/vitest | devDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+| effect | devDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+| effect | peerDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#623]: https://github.com/spencerbeggs/effected/pull/623
+
 ## 0.5.0
 
 ### Dependencies
 
-| Dependency     | Type       | Action  | From  | To    |
-| -------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/glob | dependency | updated | 0.3.0 | 0.4.0 |
 
-* | Dependency | Type           | Action  | From           | To           |                                                                       |
-  | :--------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | :-- | :-- | :-- | :-- | :-- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -20,17 +89,14 @@
 
 ### Refactoring
 
-* Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required. [#322][#322]
+- Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required. [#322][#322]
 
 ### Dependencies
 
-| Dependency     | Type       | Action  | From  | To    |
-| -------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/glob | dependency | updated | 0.2.2 | 0.3.0 |
-
-* | Dependency | Type           | Action  | From           | To             |
-  | :--------- | :------------- | :------ | :------------- | :------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
+| effect | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
 
 ### Patch Changes
 
@@ -42,13 +108,13 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency     | Type       | Action  | From  | To    |
-| -------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/glob | dependency | updated | 0.2.1 | 0.2.2 |
 
 ### Maintenance
 
-* Switching internal dependency versioning from `~` to `^` ranges.
+- Switching internal dependency versioning from `~` to `^` ranges.
 
 ### Patch Changes
 
@@ -58,10 +124,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Refactoring
 
-* `Walker` is now a static class with a private constructor rather than an
-  `as const` namespace object. Call syntax is unchanged (`Walker.ascend(...)`);
-  each member's TSDoc now ships in the built `.d.ts`, where an `as const`
-  object's inferred member types previously dropped it. [#180][#180]
+- `Walker` is now a static class with a private constructor rather than an&#10;`as const` namespace object. Call syntax is unchanged (`Walker.ascend(...)`);
+  each member's TSDoc now ships in the built `.d.ts`, where an `as const`&#10;object's inferred member types previously dropped it. [#180][#180]
 
 ### Patch Changes
 
@@ -73,13 +137,13 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency     | Type       | Action  | From  | To    |
-| -------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/glob | dependency | updated | 0.2.0 | 0.2.1 |
 
-* | Dependency | Type           | Action  | From          | To             |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -89,8 +153,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Bug Fixes
 
-* ### Internal @effected edges float patches instead of pinning exact versions
-
+- ### Internal @effected edges float patches instead of pinning exact versions
   The kit's internal `@effected/*` dependency edges were declared as `workspace:*`, which the publish transform projects to an exact version pin. That coupled every kit release — a single sibling patch forced a coordinated re-release of every dependent, just to move the pin — and two paths pinning adjacent exact versions could not dedupe in a consumer's tree.
 
   Every internal `@effected/*` edge, both peer and regular dependency, is now declared `workspace:~`, which projects to a patch-floating `~0.x.y` range. A sibling patch flows into existing releases without a re-release, while a minor bump — the kit's breaking channel on the `0.x` line — still requires the intended coordinated release because `~` holds the minor. Floating the regular-dependency edges as well lets a consumer's paths dedupe onto one sibling copy, which matters where an integrated package surfaces a sibling's types across its API. The `effect` peer, the catalog specifiers, and the `devDependencies` mirrors are unchanged. [#134][#134]
@@ -105,8 +168,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### `compileAndExpand`: compile a glob pattern and expand it against the filesystem, in one call
-
+- ### `compileAndExpand`: compile a glob pattern and expand it against the filesystem, in one call
   ```ts
   import { compileAndExpand } from "@effected/walker";
   import { GlobPatternOptions } from "@effected/glob";
@@ -116,25 +178,20 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	glob: GlobPatternOptions.make({ dot: true }),
   });
   ```
-
   New `compileAndExpand(pattern, options)` returns `Effect<ReadonlyArray<string>, GlobExpansionError, FileSystem | Path>`, matching FILE paths relative to `options.cwd`. No package previously owned the "compile a pattern and expand it against the filesystem" seam, so a downstream consumer had written four differently-shaped variants of this recipe and ended up with two divergent `dot` semantics inside one package.
 
   The new `GlobExpansionError` is the single typed failure for the whole recipe: its `cause` is a discriminated union of `GlobPatternError | DescendError`, with a derived `stage` getter (`"compile" | "descend"`) for callers that only need the phase. `CompileAndExpandOptions` extends `DescendOptions` with one addition — `glob`, the options the pattern compiles under — and that field is **deliberately required**, so every call site states its own matching dialect instead of one site silently defaulting and drifting from another.
 
 ### Bug Fixes
 
-* ### `Walker.ascend` normalizes `stopAt` before comparing, so an unnormalized ceiling no longer fails open
-
+- ### `Walker.ascend` normalizes `stopAt` before comparing, so an unnormalized ceiling no longer fails open
   `stopAt` matched the ceiling by raw string equality, so a ceiling that named a real ancestor in any form other than its exact resolved spelling matched nothing and the ascent ran silently past it to the filesystem root — the unbounded walk the option exists to prevent. There was no error and no warning; from the call site the bounded walk simply looked like it worked.
 
   `ascend` now compares each directory's `Path.resolve` form against the resolved ceiling. A trailing separator (`/repo/`), a `.` or `..` segment (`/repo/packages/..`) and a duplicated separator all stop where they name. Normalization is idempotent, so callers already resolving at the call site — `@effected/workspaces`' `WorkspaceRoot.find` does — are unaffected.
 
   Two points of the contract are unchanged and now pinned by tests: `stopAt` is still **inclusive**, and normalization governs the **comparison only** — the returned chain is still the lexical one derived from `start`, unrewritten, so `ascend` through a symlinked start still follows the path it was given.
-
   ### A relative `stopAt` is now rejected instead of resolved against the working directory
-
   `Walker.ascend` requires an **absolute** `stopAt` and rejects a relative one. Pass an absolute path:
-
   ```ts
   // Before: silently resolved against process.cwd()
   yield* Walker.ascend(start, { stopAt: "packages" });
@@ -142,7 +199,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   // Now: resolve at the call site, where the intended base is known
   yield* Walker.ascend(start, { stopAt: path.resolve("packages") });
   ```
-
   A cwd-relative ceiling has no fixed meaning: the same `stopAt` bounds the walk at a different directory in a lint-staged hook, in a CLI invoked from a package directory, and under a test runner — and the caller cannot see which one they got. That is the same fail-open failure the raw string comparison above produced, reached through a different door, so `ascend` refuses it rather than guessing. Rejecting costs one `path.resolve` at the site that knows the answer; resolving silently costs a wrong walk that cannot be detected. `ascend` consequently reads `process.cwd()` nowhere.
 
   The rejection is a **defect** (`Effect.die`), not a typed failure, so `ascend`'s error channel stays `never` and no call site needs to change its own signature. That follows the guard for an invalid `maxDepth` directly above it: a statically-wrong caller-supplied option is bad wiring, not a recoverable condition. It also has to be a defect to work at all — a typed failure would be absorbed by `@effected/config-file`'s resolver contract, which catches every failure into `Option.none()`, and would resurface as a clean-looking "no config file found". `Effect.catch` does not catch defects, so only a defect survives that absorption; a test reconstructs the absorbing caller and pins it.
@@ -151,8 +207,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency     | Type       | Action  | From  | To    |
-| -------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/glob | dependency | updated | 0.1.2 | 0.2.0 |
 
 ### Patch Changes
@@ -165,13 +221,13 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency     | Type       | Action  | From  | To    |
-| -------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/glob | dependency | updated | 0.1.1 | 0.1.2 |
 
-* | Dependency | Type           | Action  | From          | To            |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -181,18 +237,16 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency     | Type       | Action  | From  | To    |
-| -------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/glob | dependency | updated | 0.1.0 | 0.1.1 |
 
 ## 0.2.0
 
 ### Features
 
-* ### Downward glob expansion — `descend`
-
+- ### Downward glob expansion — `descend`
   `@effected/walker` gains a second traversal primitive alongside the upward `Walker`: `descend(pattern, options)` expands a compiled `@effected/glob` `GlobPattern` under `options.cwd` and returns the matching file paths (POSIX-separated, relative to `cwd`, sorted).
-
   ```ts
   import { descend } from "@effected/walker";
   import { GlobPattern } from "@effected/glob";
@@ -203,7 +257,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	return yield* descend(pattern, { cwd: "/repo" });
   });
   ```
-
   `DescendOptions` accepts `maxDepth` (default `256`), `prune` (directory names never descended into; defaults to `["node_modules", ".git"]`), and `onUnreadable` (`"fail"` by default, or `"skip"` to absorb an unreadable directory instead of failing).
 
   The walker is semantics-free — dotfile handling, case folding and every other matching option live on the compiled pattern, not on `descend` itself. Only files match; a symlinked directory is never descended into. An unreadable directory mid-walk or a walk past `maxDepth` fails typed as the new `DescendError`, distinct from the upward walker's per-candidate absorption: a swallowed subtree in a downward enumeration would silently understate membership, so the default is to fail rather than degrade.
@@ -212,9 +265,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-* | Dependency     | Type           | Action | From | To    |                                                                     |
-  | -------------- | -------------- | ------ | ---- | ----- | ------------------------------------------------------------------- |
-  | @effected/glob | peerDependency | added  | —    | 0.1.0 | [#91][#91] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | @effected/glob | peerDependency | added | — | 0.1.0 | [#91][#91] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -226,12 +279,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* Upward path traversal as Effect primitives. Ascend the directory chain from a starting path to the filesystem root, find the nearest existing file among per-directory candidates, or find the nearest directory a marker predicate accepts. Every probe absorbs its own failure, so a single unreadable ancestor cannot hide a valid `.git` or `pnpm-workspace.yaml` above it — every public error channel is `never`. `FileSystem` and `Path` arrive from `effect` core through `R`, so no platform package is pulled in, not even in tests.
-
+- Upward path traversal as Effect primitives. Ascend the directory chain from a starting path to the filesystem root, find the nearest existing file among per-directory candidates, or find the nearest directory a marker predicate accepts. Every probe absorbs its own failure, so a single unreadable ancestor cannot hide a valid `.git` or `pnpm-workspace.yaml` above it — every public error channel is `never`. `FileSystem` and `Path` arrive from `effect` core through `R`, so no platform package is pulled in, not even in tests.
   ### Ascend and find
-
   Ascend from a directory, then look for a file in each rung of the chain. `findUpward` scans directory-major, so a nearer `config/.apprc` always beats a distant ancestor's.
-
   ```ts
   import { Walker } from "@effected/walker";
   import { NodeFileSystem, NodePath } from "@effect/platform-node";
@@ -250,11 +300,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   );
   // the nearest ".apprc" at or above the cwd, or null when none is found or readable
   ```
-
   ### Find a root by marker
-
   `findRoot` is the same loop over the directories themselves, with a marker predicate instead of a filename. The predicate can be expensive — the scan short-circuits at the first match and never probes the rest.
-
   ```ts
   import { Walker } from "@effected/walker";
   import { Effect, FileSystem, Path } from "effect";
@@ -267,7 +314,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   });
   // Effect<Option<string>, never, FileSystem | Path>
   ```
-
   `Walker.ascend` accepts `stopAt` to halt the ascent inclusively and `maxDepth` (default 256) to cap it; `Walker.firstMatch` exposes the underlying absorbing, short-circuiting scan directly. [#81][#81]
 
 ### Minor Changes

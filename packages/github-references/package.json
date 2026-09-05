@@ -1,6 +1,6 @@
 {
 	"name": "@effected/github-references",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
 	"description": "GitHub's issue-reference grammar as pure functions: inline-in-prose harvesting, bare-line parsing and the closing-list dialect.",
 	"keywords": ["github", "issue", "reference", "closing-keyword", "grammar", "parser", "effect", "effected"],
