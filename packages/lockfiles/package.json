@@ -37,7 +37,7 @@
 		"@effected/npm": "workspace:*",
 		"@effected/semver": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@savvy-web/bundler": "^2.2.0",
+		"@savvy-web/bundler": "^2.2.1",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
