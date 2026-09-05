@@ -1,17 +1,87 @@
 # @effected/xdg
 
+## 0.4.0
+
+### Breaking Changes
+
+#### `@effected/schemastore` no longer ships `AnnotationCarriers`
+
+- `AnnotationCarriers` and `CarrierDepthExceededError` are removed, and the module is deleted.
+
+- Effect `4.0.0-rc.112` ("Make JSON Schema dialect conversions preserve custom keywords") changed the Draft-07 lowering to carry unknown and custom keywords through as opaque values, in place — including across the tuple coordinate moves (`prefixItems[i]` to `items[i]`, and a trailing `items` to `additionalItems`). The post-lowering re-graft those symbols performed is therefore redundant, and **emitted documents are unchanged**.
+
+- If you imported either symbol, delete the call: annotate a schema node and the key now reaches the document on its own.
+
+#### `StoreDocument` and `SchemaPipeline` error channels are wider
+
+- `StoreDocument.fromSchema`, `StoreDocument.fromSchemaResult`, and `SchemaPipeline.run` / `check` / `runOne` / `checkOne` can now fail with `UndeclaredAnnotationKeyError`. Callers matching exhaustively on the error channel need one new branch.
+
+### Features
+
+#### `@effected/schemastore` refuses undeclared annotation keys instead of dropping them
+
+- `StoreDocument.fromSchema` now fails with the new `@public` `UndeclaredAnnotationKeyError` — carrying the document's `$id` and every offending key — when a caller-supplied `includeAnnotationKey` admits a key outside the declared keyword families (the vscode set, `x-taplo`, `x-tombi-*`, `x-intellij-*`, `x-ai-*`).
+
+- Previously such keys were admitted into the Draft 2020-12 document and silently discarded by the Draft-07 lowering, so the package's compatibility guarantee was really a side effect of a dependency's behavior. Since rc.112 no longer discards them, that guarantee is now enforced by the package itself — and enforced loudly, because a caller who asks for a key and silently does not get it has no way to notice.
+
+- Declared families are still admitted unconditionally, regardless of the caller's predicate.
+
+```ts
+// Fails: UndeclaredAnnotationKeyError, keys: ["x-custom"]
+yield* StoreDocument.fromSchema(schema, {
+  $id: "https://example.com/schemas/tool.json",
+  jsonSchema: { includeAnnotationKey: (key) => key === "x-custom" },
+});
+```
+
+#### The whole kit tracks Effect `4.0.0-rc.112`
+
+- Every package's `effect` peer moves to the new pin. The kit uses exact prerelease pins rather than a caret, so a consumer must move with it.
+
+### Bug Fixes
+
+- `@effected/schemastore`: the `#/definitions` to `#/$defs` `$ref` rewrite no longer descends into declared-family annotation values. A `$ref`-shaped string inside an `x-taplo` or `x-ai-*` payload is opaque advice addressed to a language server, and was being rewritten in transit.
+- A known limitation, still open upstream as [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084): a `Schema.Class`'s class-level annotations — `title` and `description` as well as the declared families — never reach the emitted document, because core generates the definition from the class's encoded AST. A hoisted `Schema.Struct` keeps its annotations. Annotate a `Schema.Struct` root instead.
+
+### Documentation
+
+#### The Claude Code and Copilot plugins are Effect v4 only
+
+- The v3-to-v4 migration material is retired: the `effect-migrator` agent and the `effect-v4-construct-map` skill are removed, along with the migration framing that ran through the remaining skills. The facts underneath it are kept, restated as statements of what v4 is rather than what changed.
+
+- The SessionStart briefing now states plainly that an agent's recall of Effect is out of date by construction, and routes it to the specialist agents or the skills rather than to a guess. It also reports whether the repo vendors Effect source at `.repos/effect` and whether that pin matches the kit's — a stale vendored tree is worse than none, because it answers confidently and wrongly.
+
+- Several skill claims were re-measured against rc.112 and corrected, including one whose stated mitigation pointed at the wrong signal: for a zero-collection vitest run it is the `Tests: 0/0 passed` line that lies, while the exit code is honest. [#623][#623]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.5.2 | 0.6.0 |
+| @effected/walker | dependency | updated | 0.5.0 | 0.6.0 |
+| @effect/tsgo | devDependency | updated | 0.36.5 | 0.41.0 |
+| @effect/vitest | devDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+| effect | devDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+| effect | peerDependency | updated | 4.0.0-rc.109 | 4.0.0-rc.112 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#623]: https://github.com/spencerbeggs/effected/pull/623
+
 ## 0.3.0
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.4.2 | 0.5.0 |
-| @effected/walker      | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/walker | dependency | updated | 0.4.0 | 0.5.0 |
 
-* | Dependency | Type           | Action  | From           | To           |                                                                       |
-  | :--------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | :-- | :-- | :-- | :-- | :-- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -21,26 +91,23 @@
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.3.1 | 0.4.0 |
 
 ## 0.2.0
 
 ### Refactoring
 
-* Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required. [#322][#322]
+- Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required. [#322][#322]
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.2.1 | 0.3.0 |
-| @effected/walker      | dependency | updated | 0.3.4 | 0.4.0 |
-
-* | Dependency | Type           | Action  | From           | To             |
-  | :--------- | :------------- | :------ | :------------- | :------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
+| @effected/walker | dependency | updated | 0.3.4 | 0.4.0 |
+| effect | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
 
 ### Patch Changes
 
@@ -52,14 +119,14 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.2.0 | 0.2.1 |
-| @effected/walker      | dependency | updated | 0.3.3 | 0.3.4 |
+| @effected/walker | dependency | updated | 0.3.3 | 0.3.4 |
 
 ### Maintenance
 
-* Switching internal dependency versioning from `~` to `^` ranges.
+- Switching internal dependency versioning from `~` to `^` ranges.
 
 ### Patch Changes
 
@@ -69,17 +136,15 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Refactoring
 
-* `XdgConfig` is now a static class with a private constructor rather than an
-  `as const` namespace object. Call syntax is unchanged (`XdgConfig.resolver(...)`);
-  each member's TSDoc now ships in the built `.d.ts`, where an `as const`
-  object's inferred member types previously dropped it. [#180][#180]
+- `XdgConfig` is now a static class with a private constructor rather than an&#10;`as const` namespace object. Call syntax is unchanged (`XdgConfig.resolver(...)`);
+  each member's TSDoc now ships in the built `.d.ts`, where an `as const`&#10;object's inferred member types previously dropped it. [#180][#180]
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.9 | 0.2.0 |
-| @effected/walker      | dependency | updated | 0.3.2 | 0.3.3 |
+| @effected/walker | dependency | updated | 0.3.2 | 0.3.3 |
 
 ### Patch Changes
 
@@ -91,14 +156,14 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.7 | 0.1.8 |
-| @effected/walker      | dependency | updated | 0.3.1 | 0.3.2 |
+| @effected/walker | dependency | updated | 0.3.1 | 0.3.2 |
 
-* | Dependency | Type           | Action  | From          | To             |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -108,18 +173,17 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Bug Fixes
 
-* ### Internal @effected edges float patches instead of pinning exact versions
-
+- ### Internal @effected edges float patches instead of pinning exact versions
   The kit's internal `@effected/*` dependency edges were declared as `workspace:*`, which the publish transform projects to an exact version pin. That coupled every kit release — a single sibling patch forced a coordinated re-release of every dependent, just to move the pin — and two paths pinning adjacent exact versions could not dedupe in a consumer's tree.
 
   Every internal `@effected/*` edge, both peer and regular dependency, is now declared `workspace:~`, which projects to a patch-floating `~0.x.y` range. A sibling patch flows into existing releases without a re-release, while a minor bump — the kit's breaking channel on the `0.x` line — still requires the intended coordinated release because `~` holds the minor. Floating the regular-dependency edges as well lets a consumer's paths dedupe onto one sibling copy, which matters where an integrated package surfaces a sibling's types across its API. The `effect` peer, the catalog specifiers, and the `devDependencies` mirrors are unchanged. [#134][#134]
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.6 | 0.1.7 |
-| @effected/walker      | dependency | updated | 0.3.0 | 0.3.1 |
+| @effected/walker | dependency | updated | 0.3.0 | 0.3.1 |
 
 ### Patch Changes
 
@@ -131,31 +195,31 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.5 | 0.1.6 |
 
 ## 0.1.5
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.4 | 0.1.5 |
-| @effected/walker      | dependency | updated | 0.2.2 | 0.3.0 |
+| @effected/walker | dependency | updated | 0.2.2 | 0.3.0 |
 
 ## 0.1.4
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.3 | 0.1.4 |
-| @effected/walker      | dependency | updated | 0.2.1 | 0.2.2 |
+| @effected/walker | dependency | updated | 0.2.1 | 0.2.2 |
 
-* | Dependency | Type           | Action  | From          | To            |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -165,38 +229,35 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.2 | 0.1.3 |
 
 ## 0.1.2
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.1 | 0.1.2 |
-| @effected/walker      | dependency | updated | 0.2.0 | 0.2.1 |
+| @effected/walker | dependency | updated | 0.2.0 | 0.2.1 |
 
 ## 0.1.1
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.1.0 | 0.1.1 |
-| @effected/walker      | dependency | updated | 0.1.0 | 0.2.0 |
+| @effected/walker | dependency | updated | 0.1.0 | 0.2.0 |
 
 ## 0.1.0
 
 ### Features
 
-* XDG Base Directory resolution for Effect. `Xdg` reads the environment — `$HOME`, the four `*_HOME` variables, `$XDG_RUNTIME_DIR`, and the `$XDG_CONFIG_DIRS` / `$XDG_DATA_DIRS` search paths — once, at layer construction, so a resolved path is a `string`, not an `Effect`. `AppDirs` turns that into the config, data, cache, state and runtime directories for one application namespace, with on-demand creation. `NativeDirs` supplies the macOS and Windows conventions, and `XdgConfig` plugs the whole thing into `@effected/config-file` as a resolver chain and a save target.
-
+- XDG Base Directory resolution for Effect. `Xdg` reads the environment — `$HOME`, the four `*_HOME` variables, `$XDG_RUNTIME_DIR`, and the `$XDG_CONFIG_DIRS` / `$XDG_DATA_DIRS` search paths — once, at layer construction, so a resolved path is a `string`, not an `Effect`. `AppDirs` turns that into the config, data, cache, state and runtime directories for one application namespace, with on-demand creation. `NativeDirs` supplies the macOS and Windows conventions, and `XdgConfig` plugs the whole thing into `@effected/config-file` as a resolver chain and a save target.
   ### App directories for a namespace
-
   Build `AppDirs` for your namespace, provide it the `Xdg` environment and the platform layers, and read the paths. Each of `config`, `data`, `cache` and `state` resolves through a five-rung precedence (explicit override → namespaced XDG var → native dir → `$HOME/<fallbackDir>` → `$HOME/.<namespace>`), first match wins.
-
   ```ts
   import { AppDirs, Xdg } from "@effected/xdg";
   import { NodeFileSystem, NodePath } from "@effect/platform-node";
@@ -216,13 +277,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
   Effect.runPromise(program.pipe(Effect.provide(AppDirsLive)));
   ```
-
   `AppDirs.layer` is a layer-returning function — bind its result to a const and provide that.
-
   ### Config-file bridge
-
   `XdgConfig` drops straight into `@effected/config-file`: `resolver` searches the app's whole config search path, `nativeResolver` probes the OS-native directory, and `savePath` names the default write target — the latter with a `never` error channel that fits the `defaultPath` slot without an `orDie`.
-
   ```ts
   import { ConfigFile, JsonCodec, MergeStrategy } from "@effected/config-file";
   import { XdgConfig } from "@effected/xdg";
@@ -246,15 +303,14 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
     defaultPath: XdgConfig.savePath("config.json"),
   });
   ```
-
   `NativeDirs.resolve` is pure — platform, namespace, environment and `Path` all arrive as parameters — and `CurrentPlatform` is a `Context.Reference`, so the whole darwin/win32 matrix is testable with no filesystem. Failures are the two tagged errors `XdgEnvError` (`$HOME` unset) and `AppDirsError` (a directory could not be created). [#81][#81]
 
 ### Dependencies
 
-| Dependency            | Type       | Action  | From  | To    |
-| --------------------- | ---------- | ------- | ----- | ----- |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
 | @effected/config-file | dependency | updated | 0.0.0 | 0.1.0 |
-| @effected/walker      | dependency | updated | 0.0.0 | 0.1.0 |
+| @effected/walker | dependency | updated | 0.0.0 | 0.1.0 |
 
 ### Patch Changes
 

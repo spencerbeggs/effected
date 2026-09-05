@@ -1,6 +1,6 @@
 {
 	"name": "@effected/schema-org",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
 	"description": "schema.org vocabulary as Effect Schema classes, with a script-safe JSON-LD serializer",
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/schema-org#readme",
