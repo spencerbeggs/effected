@@ -69,9 +69,12 @@ export {
 	type WriteResult,
 } from "./SchemaFile.js";
 export {
+	type ContractChangePolicy,
+	ContractChangeTarget,
 	type PipelineCheckResult,
 	PipelineFinding,
 	type PipelineResult,
+	SchemaContractChangeError,
 	SchemaGateError,
 	SchemaPipeline,
 	type SchemaPipelineOptions,

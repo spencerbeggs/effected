@@ -21,9 +21,11 @@ parent.
   shape, omitting `$defs` when empty (a deliberate divergence from the
   extraction source). `serializeResult` routes through `CanonicalJson`. Fails
   typed with `SchemaConversionError` (`$id` + `cause: Schema.Defect()`).
-- `KeywordFamilies` — the owner of the declared non-standard keyword families
-  (the vscode five by exact name; the `x-taplo`, `x-tombi-`, `x-intellij-`
-  prefixes) and of `isDeclared`.
+- `KeywordFamilies` — the owner of the declared non-standard keyword families,
+  in two groups: upstream language-server families (the vscode five by exact
+  name; the `x-taplo`, `x-tombi-`, `x-intellij-` prefixes) and the house
+  machine-annotation namespace `x-ai-` (WITH the dash). `isDeclared` is the
+  one predicate over both groups.
 - `AnnotationCarriers` — the post-lowering re-graft: `carryResult` (the `Result`
   primitive) / `carry` (the span form) copy declared-family keys from a 2020-12
   node onto its lowered Draft-07 counterpart via a parallel walk mirroring
@@ -79,28 +81,51 @@ parent.
   narrowed write channel — its encode is total, ours is not); filesystem
   failures are `SchemaFileWriteError`.
 - `SchemaPipeline` — `run(targets, options?)` generates, lints, validates, gates
-  and writes each target; `check(targets, options?)` is the same walk with no
-  writes. `runOne`/`checkOne` take a single target so a one-target caller need
-  not prove element zero exists. Both gates' findings normalize into
-  `PipelineFinding` (`source`/`severity`/`check`/`path`/`message`; engine
-  findings are always `"warning"`) so one predicate judges both; `blocking`
-  defaults to `severity === "warning"`. `PipelineFinding.label` is the rendered
-  name (`check ?? source`). `run` fails `SchemaGateError` (`$id` + blocking
-  findings); `check` does not fail on findings at all. Built because three
-  consumers had re-implemented this loop and would have diverged on error shape
-  and gating.
+  and writes each target, now **two-phase and all-or-nothing**: phase 1
+  generates/gates/classifies every target with no writes, phase 2 writes only
+  if every target cleared phase 1. `check(targets, options?)` is the same walk
+  with no writes, total over the targets. `runOne`/`checkOne` take a single
+  target so a one-target caller need not prove element zero exists. Both
+  gates' findings normalize into `PipelineFinding`
+  (`source`/`severity`/`check`/`path`/`message`; engine findings are always
+  `"warning"`) so one predicate judges both; `blocking` defaults to
+  `severity === "warning"`. `PipelineFinding.label` is the rendered name
+  (`check ?? source`). `run` fails `SchemaGateError` (`$id` + blocking
+  findings) or, for a guarded published target whose contract changed,
+  `SchemaContractChangeError`; `check` does not fail on findings or the
+  contract policy at all. New exports:
+  - `ContractChangePolicy` — `"block-versioned"` (default) | `"allow"`; see the
+    parent's contract-policy rule.
+  - `ContractChangeTarget` — one blocked target: `$id`, `path`, `version`,
+    `nextVersion` (`SchemaVersioning.next(version, "contract")`).
+  - `SchemaContractChangeError` — `{ targets: ContractChangeTarget[] }`, raised
+    before any write, total over the blocked targets.
+  - `PipelineCheckResult.contractBlocked` — side by side with `blocked`:
+    `blocked` answers "would findings block a run under `blocking`",
+    `contractBlocked` answers "would the contract policy refuse this write
+    under `contractChanges`".
+  Built because three consumers had re-implemented this loop and would have
+  diverged on error shape and gating.
 - `SchemaTarget` — an interface + statics-only merged class (NOT a
   `Schema.Class`: it carries a live `Schema.Constraint`).
   `{schema, $id, path, name?, version?}`. `name` is optional so a file-only
   target need not duplicate its path's basename, and versioned naming is
-  `name-<version>.json`.
+  `name-<version>.json`. `version`'s second meaning: a **pinned** label (no
+  prerelease) declares that consumers pin this document's URL, so
+  `SchemaPipeline.run` refuses to rewrite it in place under a `"contract"`
+  change — only coherent when `version` participates in `path`.
 - `SchemaVersioning` — `SchemaVersion` (a branded string) with
   `parseResult`/`parse` and `InvalidSchemaVersionError`; `Order`/`latest` are
   plain SemVer precedence (`1.10.0` > `1.9.0`; the label round-trips verbatim);
   `fileName`/`schemaUrl`/`catalogUrls` derive both catalog modes (`versions: []`
   is a contradiction and throws — pass `undefined` for unversioned). Because no
   SemVer label is array-index-like, the `versions` map's ascending insertion
-  order survives serialization.
+  order survives serialization. `isPinned(version)` answers "no prerelease" —
+  the one predicate shared by `SchemaPipeline`'s contract guard and `next`.
+  `next(current, change)` is the version label a `WriteChange` classification
+  calls for: identity for `"none"`/`"annotations"`/`"created"` and for a
+  non-pinned `current`; otherwise MINOR on the 0.x line, MAJOR above it. Pure,
+  total, never mints a prerelease from a stable input.
 - `CatalogEntry` — the `Schema.Class` of a catalog.json entry (`versions` is
   `optionalKey`); `assemble` composes `SchemaVersioning.catalogUrls`;
   `lint`/`lintFileMatch` are the fileMatch hygiene checks (`CatalogLintFinding`:

@@ -74,11 +74,13 @@ source wins and the doc is a finding to report.
    all hand-rolled by consumers who had the answer installed.
    1a. **Publishing a structured output?** One `Schema.Class` exported from
        the action feeds both `ActionOutputs.setJson` and a `SchemaTarget`;
-       the generator lives in `lib/scripts/generate-schema.ts`, gates with
-       `SchemaPipeline.check` before `run`, and the drift test walks the
-       exported `targets`. `actions-inputs-outputs`' output-contracts
-       reference is the recipe; never hand-roll the lowering or a
-       byte-comparing drift test.
+       the generator lives in `lib/scripts/generate-schema.ts`, and the
+       drift test walks the exported `targets` through `SchemaPipeline.check`.
+       `run` gates itself — a pinned versioned target whose contract changed
+       fails `SchemaContractChangeError` before anything is written, so the
+       script needs no hand-rolled preflight. `actions-inputs-outputs`'
+       output-contracts reference is the recipe; never hand-roll the
+       lowering or a byte-comparing drift test.
 2. **Read the module you are extending**, and its `__test__/` directory. The
    tests encode invariants the types cannot: probe counts, mutation controls,
    reachability edge sets.

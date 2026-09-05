@@ -5,7 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `AnnotationCarriers` | Class | Re-grafts the declared non-standard keyword families (`KeywordFamilies`) from a Draft 2020-12 schema node onto its lowered Draft-07 counterpart. | re-graft non-standard keywords after draft-07 lowering, preserve x-taplo vscode tombi intellij annotations |
+| `AnnotationCarriers` | Class | Re-grafts the declared non-standard keyword families (`KeywordFamilies`) from a Draft 2020-12 schema node onto its lowered Draft-07 counterpart. | re-graft non-standard keywords after draft-07 lowering, preserve x-taplo vscode tombi intellij x-ai machine annotations |
 | `CanonicalJson` | Class | Deterministic, canonical JSON text: the package's owned serializer, so a consumer never shells out to an external formatter to produce a stable committed schema file. | deterministic canonical json text, stable diff-friendly serialization for committed schema files |
 | `CanonicalJsonError` | TypeAlias | Union of the failures `CanonicalJson.serialize` can raise. | |
 | `CanonicalJsonOptions` | Interface | Options for `CanonicalJson.serialize`. | |
@@ -14,18 +14,21 @@
 | `CatalogLintFinding` | Class | A fileMatch hygiene finding: a value in a lint report, not an error — SchemaStore reviewers reject entries over these, so surfacing them locally is the point, but a warned entry is still a valid entry. | catalog fileMatch hygiene warning, generic pattern or complex glob rejection |
 | `CatalogUrls` | Interface | The `url`/`versions` half of a catalog entry, as assembled by `SchemaVersioning.catalogUrls`. | |
 | `CheckResult` | Interface | The result of `SchemaFileShape.check`: the same two answers `WriteResult` carries, for a call that touched nothing. | |
+| `ContractChangePolicy` | TypeAlias | How `SchemaPipeline.run` treats a target whose document would change its validation contract. | |
+| `ContractChangeTarget` | Class | One published document whose validation contract would change. | one published schema target whose contract changed, pair its pinned version with the next bumped label |
 | `DRAFT_07_META_SCHEMA` | Variable | The Draft-07 meta-schema URL SchemaStore documents declare as `$schema`. | draft-07 meta-schema url constant for $schema |
 | `DocumentDiff` | Class | Classifies the difference between two emitted schema documents by meaning: identical, documentation-only, or a change to the validation contract. | diff two schema documents, classify annotation-only vs contract change, decide new version |
 | `DocumentLint` | Class | Owned structural checks over an assembled `StoreDocument` — the always-available half of the validation story (a real-engine gate like ajv strict mode stays at the consumer's edge): | structural lint over an assembled schema document, unresolved $ref check, unknown keyword check |
 | `DocumentLintFinding` | Class | A structural lint finding over an assembled document: a value in a report, never an error channel — a document with findings is still a document, and the consumer decides what a finding gates. | lint finding value for a schema document structural check |
 | `InvalidSchemaVersionError` | Class | Indicates that a string is not a valid SchemaStore version label. | handle a version label that is not full major.minor.patch semver |
 | `JsonDepthExceededError` | Class | Indicates that the serialization input nests deeper than the package's hardening cap (256 levels), which also intercepts cyclic values before they can recurse forever. | handle json value nesting past the hardening cap during canonical serialize |
-| `KeywordFamilies` | Class | The declared non-standard keyword families as one predicate: the vscode-json-languageservice set by exact name, plus the `x-taplo`, `x-tombi-` and `x-intellij-` prefixes. | recognize non-standard vscode taplo tombi intellij json schema keyword families |
+| `KeywordFamilies` | Class | The declared non-standard keyword families as one predicate: the vscode-json-languageservice set by exact name, plus the `x-taplo`, `x-tombi-`, `x-intellij-` and `x-ai-` prefixes. | recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint |
 | `NonJsonValueError` | Class | Indicates that a value reachable from the serialization input is not a JSON value: `undefined`, a function, a symbol, a `bigint`, a non-finite number, or an object that is neither an array nor a plain object. | handle a non-json value (undefined, bigint, function, NaN) during canonical serialize |
 | `PipelineCheckResult` | Interface | What `SchemaPipeline.check` found for one target — the same report without the write. | |
 | `PipelineFinding` | Class | One problem found while emitting a target, from either gate, normalized so a single policy predicate can judge both. | normalized lint or validator finding surfaced by the schema pipeline |
 | `PipelineResult` | Interface | What the pipeline did with one target. | |
 | `SchemaChange` | TypeAlias | What differs between two schema documents: | |
+| `SchemaContractChangeError` | Class | Indicates that at least one published target's contract changed under the active `ContractChangePolicy`. Raised BEFORE any target is written and total over the targets, so two broken documents surface in one run. | handle a pipeline run refusing to rewrite a pinned published schema in place, block-versioned contract change |
 | `SchemaConversionError` | Class | Indicates that an Effect Schema could not be converted into a SchemaStore document — core's JSON Schema generation rejected the schema, or the generated document nested past the hardening cap. | handle failure converting an effect schema into a schemastore document |
 | `SchemaFile` | Class | Reads and writes emitted schema documents over core `FileSystem` / `Path` — the package's one IO surface. The layer requires those services; provide `@effect/platform-node`'s `NodeFileSystem` / `NodePath` (or a bun equivalent) at the application boundary. | read and write emitted schema documents to disk, drift check for ci |
 | `SchemaFileNotFoundError` | Class | Indicates that no schema file exists at the expected path. Carries its own tag for `catchTag` routing. | handle a missing schema file on read |

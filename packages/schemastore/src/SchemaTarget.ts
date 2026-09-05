@@ -29,7 +29,20 @@ export interface SchemaTarget {
 	readonly name?: string;
 	/** The destination path the document is written to (`SchemaFile`). */
 	readonly path: string;
-	/** The version label, for versioned catalog mode. Omit for unversioned. */
+	/**
+	 * The version label, for versioned catalog mode. Omit for unversioned.
+	 *
+	 * It carries a second meaning the catalog does not: presence of a
+	 * **pinned** label (one with no prerelease) declares that consumers pin
+	 * this document's URL, so `SchemaPipeline.run` refuses to rewrite it in
+	 * place when its validation contract changes — bump `version`, `$id` and
+	 * `path` together instead, or pass `contractChanges: "allow"`. That is
+	 * only coherent when the version participates in `path`
+	 * (`schemas/<version>/<name>-<version>.json`): a versioned target at a
+	 * fixed path compares the same file forever, and bumping `version` does
+	 * not move it. A prerelease label declares its own instability and is
+	 * rewritten in place.
+	 */
 	readonly version?: SchemaVersion;
 }
 

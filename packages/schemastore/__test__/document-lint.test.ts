@@ -98,6 +98,7 @@ describe("DocumentLint", () => {
 					"x-tombi-toml-version": "1.0.0",
 					"x-tombi-table-keys-order": "ascending",
 					"x-intellij-language-injection": "SQL",
+					"x-ai-hint": "h",
 				}),
 			);
 			assert.deepStrictEqual(findings, []);

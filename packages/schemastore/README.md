@@ -106,9 +106,13 @@ console.log(Effect.runSync(program));
 
 The declared families are always admitted — `KeywordFamilies` is the one registry, consumed by both the carriers and the lint, so the two cannot drift on what counts as declared. A caller-supplied `includeAnnotationKey` predicate is consulted in addition, but know the boundary: keys it admits outside the declared families reach the Draft 2020-12 document and are still dropped by the lowering.
 
+`KeywordFamilies` splits into two groups. The upstream families above are mirrored from SchemaStore's own CONTRIBUTING guide — vocabularies the language servers already read. The `x-ai-` prefix (with the trailing dash — bare `x-ai` and a look-alike like `x-aida-foo` are not declared) is different: a house machine-annotation namespace this package owns rather than mirrors, meant for a machine reader rather than an editor. It is a namespace, not a fixed vocabulary — any key under the prefix is declared, and the one recommended (non-binding) key is `x-ai-hint`, a string instruction to a machine reader about the annotated value. A key under the prefix must be one ajv can register: after `x-ai-` only `[A-Za-z0-9_$:-]` (ajv holds a keyword name to `/^[a-z_$][a-z0-9_$:-]*$/i`), so a dot, a space, a slash, an `@`, a `+` or a non-ASCII character makes the engine gate reject the whole document as a finding. A declared-family value must itself be JSON, and must not contain an `$id` — or a repeated `$anchor` — at any depth, not merely as its own top-level key: ajv's reference collection walks unknown keywords looking for them, and a colliding one fails the compile. An empty-string `$id` resolves to the root id and collides too. No upstream tool sanctions `x-ai-` today, so it is intended for self-hosted publication rather than submission to schemastore.org without that repo's own validation-config entry. Because `x-ai-*` advises a reader rather than asserting anything, `DocumentDiff` classifies it as an annotation: adopting the family on an already-published versioned document rewrites that file in place, the same as any other prose change.
+
 ## Catalog entries and versioning
 
 `CatalogEntry` is the `catalog.json` entry as a `Schema.Class`, so decoding an existing entry and encoding one for submission are the same artifact. `SchemaVersion` is a **full three-component SemVer** label — `major.minor.patch` with an optional prerelease, enforced by `@effected/semver` — so ordering is plain SemVer precedence (`1.10.0` above `1.9.0`) and the label round-trips verbatim. Build metadata is rejected (`1.0.0+build.5` does not parse): SemVer precedence ignores it, so two labels differing only in build would compare equal and both claim to be the latest. Surrounding whitespace is rejected for the same round-tripping reason. The file-name convention is SchemaStore's own `<name>-<version>.json`; the label grammar is the one deliberate divergence, since the store's corpus uses partial labels like `1.2` that no SemVer parser accepts and that cannot be split back out of a file name unambiguously.
+
+`SchemaVersioning.isPinned(version)` answers whether a label names a published document rather than a prerelease — SemVer §9 makes a prerelease's own instability explicit, so a contract change inside one breaks nobody's pin. It is the one predicate the pipeline's contract gate and `SchemaVersioning.next` both read, so the two can never disagree about the same label. `next(current, change)` is the version a `WriteChange` classification calls for: identity for anything but a `"contract"` change on a pinned label, otherwise a MINOR bump on the 0.x line (0.x treats MINOR as the breaking axis) or MAJOR above it — always strictly greater, never a minted prerelease.
 
 `CatalogEntry.assemble` derives both catalog modes from the same inputs. Pass `versions` for the versioned mode — the `versions` map carries every label and `url` points at the latest version's file — or omit it for the unversioned single-file mode. An empty `versions` array is a contradiction and throws; pass `undefined` instead.
 
@@ -270,9 +274,32 @@ SchemaPipeline.run(targets, { blocking: (finding) => finding.source === "validat
 
 Worth knowing which gate actually stops you here. A target carries a `Schema`, so pipeline documents come from `fromSchema`, and the Draft-07 lowering drops undeclared keywords before the lint ever sees them: `UnknownKeyword` is effectively unreachable through this entry point and **the engine gate is what blocks in practice**. The lint's warning checks earn their keep on depth and on documents the pipeline did not build, such as a hand-assembled `StoreDocument.draft07` or one read back off disk.
 
-Findings come back as values and are never logged, so the wording of your build output stays yours. A blocking finding fails with `SchemaGateError` carrying every finding that blocked, and the run stops there — a gated document is never written, and neither are the targets after it.
+Findings come back as values and are never logged, so the wording of your build output stays yours. A blocking finding fails with `SchemaGateError` carrying every finding that blocked. `run` is **two-phase and all-or-nothing across targets**: every target is generated, gated, and — for a target the contract policy guards — classified against its predecessor before any file is touched, and only then are the held documents written, in order. A gate or contract failure on the third target therefore leaves the first two unwritten too, not merely the third; nothing is written unless every target passes both gates.
 
-`SchemaPipeline.check(targets)` is the same walk with no writes, answering `wouldWrite`, `change` and `blocked` per target. Where `run` enforces, `check` reports: it is total over the targets and never stops at a failing gate, so a repo with several broken documents learns about all of them in one run rather than one per run. A blocked target is still never mistaken for clean drift, because `blocked` says so.
+### The contract gate
+
+A schema with a pinned `version` — `SchemaVersioning.isPinned`'s name for a label with no prerelease — is a published document: consumers pin its URL. `SchemaPipeline.run` will not silently rewrite one in place when the new document's validation contract has moved out from under it: by default (`contractChanges: "block-versioned"`), a `"contract"` change on such a target fails the whole run with `SchemaContractChangeError` before anything is written, carrying every affected target's `$id`, `path`, `version` and the `nextVersion` it should publish under instead (`SchemaVersioning.next`). A target with no `version`, or with a prerelease label, declares its own instability and is rewritten in place as before.
+
+```ts
+import { SchemaContractChangeError, SchemaPipeline } from "@effected/schemastore";
+import { Effect } from "effect";
+
+declare const targets: Parameters<typeof SchemaPipeline.run>[0];
+
+const program = SchemaPipeline.run(targets).pipe(
+  Effect.catchTag("SchemaContractChangeError", (error: SchemaContractChangeError) =>
+    Effect.succeed(
+      error.targets.map((target) => `${target.$id}: ${target.version} -> ${target.nextVersion}`),
+    ),
+  ),
+);
+```
+
+Pass `contractChanges: "allow"` to classify and report only, never refuse — the same behavior the pipeline had before this gate existed. That is also the sanctioned repair path for a published file whose on-disk text no longer parses: `SchemaFile` classifies unparseable text as `"contract"` so a corrupted generated file stays regenerable, and the default policy would otherwise refuse that exact repair.
+
+The contract gate is only coherent when `version` participates in a target's `path` (`schemas/<version>/<name>-<version>.json`) — a target at a fixed path compares the same file forever, so bumping `version` alone does not move where the next write lands.
+
+`SchemaPipeline.check(targets)` is the same walk with no writes, answering `wouldWrite`, `change`, `blocked` and `contractBlocked` per target. Where `run` enforces, `check` reports: it is total over the targets and never stops at a failing gate or a blocked contract, so a repo with several broken documents learns about all of them in one run rather than one per run. `blocked` and `contractBlocked` answer different questions side by side — the first, whether findings would block under `blocking`; the second, whether the contract policy would refuse the write under `contractChanges` — so a drift job can print the right remedy instead of telling a refused target to "just regenerate."
 
 `runOne` and `checkOne` take a single target and answer its one result directly, so a one-target caller need not prove element zero exists.
 
@@ -289,13 +316,13 @@ The classification is key-order insensitive and keyword-position aware, like the
 ## Features
 
 - `StoreDocument` — the assembly pipeline: `fromSchema` / `fromSchemaResult`, the `draft07` constructor for hand-built documents, the flat `toJson()` publication shape, `serializeResult()`, the `DRAFT_07_META_SCHEMA` constant and `SchemaConversionError`.
-- `AnnotationCarriers` / `KeywordFamilies` — the post-lowering re-graft and the one registry of declared keyword families, consumed by both the carriers and the lint so they cannot disagree.
-- `SchemaVersioning` / `SchemaVersion` — full-SemVer version labels with `parseResult` / `parse`, the `Order` instance and `latest`, plus `fileName`, `schemaUrl` and `catalogUrls` deriving both catalog modes.
+- `AnnotationCarriers` / `KeywordFamilies` — the post-lowering re-graft and the one registry of declared keyword families (upstream language-server families plus the house `x-ai-` machine-annotation namespace), consumed by both the carriers and the lint so they cannot disagree.
+- `SchemaVersioning` / `SchemaVersion` — full-SemVer version labels with `parseResult` / `parse`, the `Order` instance and `latest`, `isPinned` and `next` for the contract-change version bump, plus `fileName`, `schemaUrl` and `catalogUrls` deriving both catalog modes.
 - `CatalogEntry` — the `catalog.json` entry as a `Schema.Class`, `assemble` and the `fileMatch` hygiene lint (`CatalogLintFinding`).
 - `DocumentLint` — the total structural lint returning `DocumentLintFinding` values, never an error.
 - `SchemaValidator` — real-engine validation, closed by default over ajv: provide `SchemaValidator.layer` and it works. `ValidationFinding`, `SchemaValidatorError`, `noop` to switch validation off and the `makeTest` / `layerTest` doubles.
 - `DocumentDiff` — `classify` puts two documents in `"none"` / `"annotations"` / `"contract"`, the signal for whether a change needs a new schema version, plus `isClean` for the clean case.
-- `SchemaPipeline` — the emit loop over a target manifest: `run` and `check`, the single-target `runOne` and `checkOne`, `PipelineFinding`, `SchemaGateError` and an overridable gating predicate.
+- `SchemaPipeline` — the emit loop over a target manifest, two-phase and all-or-nothing across targets: `run` and `check`, the single-target `runOne` and `checkOne`, `PipelineFinding`, `SchemaGateError` and an overridable gating predicate, plus the contract gate (`ContractChangePolicy`, `ContractChangeTarget`, `SchemaContractChangeError`, `PipelineCheckResult.contractBlocked`) that refuses to rewrite a published document's validation contract in place.
 - `SchemaFile` — write-if-changed IO over core `FileSystem` / `Path`, comparing by content and answering what changed as a value; `check` is the non-writing drift half, answering `wouldWrite` alongside `change`.
 - `SchemaTarget` — the target manifest vocabulary: schema, `$id`, destination path, an optional name and an optional version that requires one.
 - `CanonicalJson` — the deterministic serializer with typed failures (`NonJsonValueError`, `JsonDepthExceededError`).

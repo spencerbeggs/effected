@@ -136,7 +136,7 @@ const lintSchema = (node: unknown, path: string, depth: number, context: LintCon
 					check: "UnknownKeyword",
 					severity: "warning",
 					path: keyPath,
-					message: `"${key}" is not a Draft-07 keyword or a declared non-standard family (x-taplo*, x-tombi-*, x-intellij-*, vscode); ajv strict mode rejects it`,
+					message: `"${key}" is not a Draft-07 keyword or a declared non-standard family (x-taplo*, x-tombi-*, x-intellij-*, x-ai-*, vscode); ajv strict mode rejects it`,
 				}),
 			);
 			continue;
@@ -215,7 +215,7 @@ const lintSchema = (node: unknown, path: string, depth: number, context: LintCon
  *   `#/definitions/...` pointer, is a warning).
  * - `UnknownKeyword` — no keyword outside Draft-07 plus the declared
  *   non-standard families ({@link KeywordFamilies}: `x-taplo*`, `x-tombi-*`,
- *   `x-intellij-*` and the vscode set), which ajv strict mode would reject.
+ *   `x-intellij-*`, `x-ai-*` and the vscode set), which ajv strict mode would reject.
  * - `DescriptionWithoutUrl` — advisory: SchemaStore's description
  *   convention ends the root description with a docs URL line.
  *

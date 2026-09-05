@@ -21,6 +21,7 @@ import { SchemaFile } from "./SchemaFile.js";
 import type { SchemaTarget } from "./SchemaTarget.js";
 import type { SchemaValidatorError, SchemaValidatorOptions } from "./SchemaValidator.js";
 import { SchemaValidator } from "./SchemaValidator.js";
+import { SchemaVersion, SchemaVersioning } from "./SchemaVersioning.js";
 import type { SchemaConversionError } from "./StoreDocument.js";
 import { StoreDocument } from "./StoreDocument.js";
 
@@ -77,6 +78,74 @@ export class SchemaGateError extends Schema.TaggedError<SchemaGateError>()("Sche
 }
 
 /**
+ * How {@link SchemaPipeline.run} treats a target whose document would change
+ * its validation contract.
+ *
+ * - `"block-versioned"` (the default) — a target carrying a PINNED `version`
+ *   ({@link SchemaVersioning.isPinned}) is a published, URL-pinned document:
+ *   a `"contract"` change fails with {@link SchemaContractChangeError} BEFORE
+ *   any write. A target with no `version`, or with a prerelease label, is a
+ *   document that replaces its predecessor in place and is rewritten as
+ *   before.
+ * - `"allow"` — classify and report only, never refuse: the pre-guard
+ *   behaviour. Also the sanctioned REPAIR path for a published file whose
+ *   text no longer parses — `SchemaFile` classifies unparseable text as
+ *   `"contract"` so it stays regenerable, and under the default that
+ *   classification is refused.
+ *
+ * The policy reads `change`, which is content-classified under either
+ * `write.compare` mode, so `"bytes"` neither strengthens nor weakens it.
+ *
+ * The policy is only coherent when the version participates in `path`
+ * (`schemas/<version>/<name>-<version>.json`): a versioned target at a fixed
+ * path compares the same file forever, and bumping `version` does not move
+ * it.
+ *
+ * @public
+ */
+export type ContractChangePolicy = "block-versioned" | "allow";
+
+/**
+ * One published document whose validation contract would change.
+ *
+ * @public
+ */
+export class ContractChangeTarget extends Schema.Class<ContractChangeTarget>("ContractChangeTarget")({
+	/** The target's `$id`. */
+	$id: Schema.String,
+	/** The path the document would have been written to. */
+	path: Schema.String,
+	/** The target's pinned label. */
+	version: SchemaVersion,
+	/** The label to publish under instead — {@link SchemaVersioning.next} of `version`. */
+	nextVersion: SchemaVersion,
+}) {}
+
+/**
+ * Indicates that at least one published target's contract changed under the
+ * active {@link ContractChangePolicy}. Raised BEFORE any target is written
+ * and total over the targets, so two broken documents surface in one run.
+ *
+ * @public
+ */
+export class SchemaContractChangeError extends Schema.TaggedError<SchemaContractChangeError>()(
+	"SchemaContractChangeError",
+	{
+		/** Every published target whose contract would change, in target order. */
+		targets: Schema.Array(ContractChangeTarget),
+	},
+) {
+	override get message(): string {
+		return (
+			`${this.targets.length} published schema document(s) would change their validation contract; ` +
+			`nothing was written. Bump each target's version, $id and path together — ` +
+			`${this.targets.map((target) => `${target.$id}: ${target.version} → ${target.nextVersion}`).join(", ")} — ` +
+			`or pass contractChanges: "allow" to rewrite in place.`
+		);
+	}
+}
+
+/**
  * What the pipeline did with one target.
  *
  * @public
@@ -117,6 +186,17 @@ export interface PipelineCheckResult {
 	 * never mistaken for clean drift.
 	 */
 	readonly blocked: boolean;
+	/**
+	 * Whether the {@link ContractChangePolicy} would refuse this write.
+	 *
+	 * Read it side by side with {@link PipelineCheckResult.blocked}: `blocked`
+	 * answers "would findings block a run under `blocking`", while
+	 * `contractBlocked` answers "would the contract policy refuse this write
+	 * under `contractChanges`". A drift test that reads `contractBlocked` can
+	 * print the right remedy — "regenerate" is wrong advice for a target the
+	 * generator will refuse; the fix is a version bump.
+	 */
+	readonly contractBlocked: boolean;
 	/** What differs between the on-disk content and the new document. */
 	readonly change: WriteChange;
 	/** Every finding, blocking or not. */
@@ -152,6 +232,14 @@ export interface SchemaPipelineOptions {
 	 * which a schema can genuinely exceed.
 	 */
 	readonly blocking?: (finding: PipelineFinding) => boolean;
+	/**
+	 * How {@link SchemaPipeline.run} treats a target whose document would
+	 * change its validation contract. Defaults to `"block-versioned"`: a
+	 * target carrying a pinned `version` is refused rather than rewritten in
+	 * place. Pass `"allow"` to classify and report only — including to repair
+	 * a published file whose on-disk text no longer parses.
+	 */
+	readonly contractChanges?: ContractChangePolicy;
 	/** Passed through to `SchemaValidator.validate`. */
 	readonly validator?: SchemaValidatorOptions;
 	/** Passed through to `SchemaFile.write` / `SchemaFile.check`. */
@@ -159,6 +247,17 @@ export interface SchemaPipelineOptions {
 }
 
 const defaultBlocking = (finding: PipelineFinding): boolean => finding.severity === "warning";
+
+// ONE pair of predicates, on the `SchemaFile.compare` precedent: `run`'s
+// guard and `check`'s reported field are answered from the same test, so the
+// two can never disagree about the same target.
+const contractGuardApplies = (target: SchemaTarget, options?: SchemaPipelineOptions): boolean =>
+	(options?.contractChanges ?? "block-versioned") === "block-versioned" &&
+	target.version !== undefined &&
+	SchemaVersioning.isPinned(target.version);
+
+const contractBlocks = (target: SchemaTarget, change: WriteChange, options?: SchemaPipelineOptions): boolean =>
+	contractGuardApplies(target, options) && change === "contract";
 
 // Collect both gates' findings for one target, normalized.
 const gather = (
@@ -240,11 +339,43 @@ export class SchemaPipeline {
 
 	/**
 	 * Run every target: build its document, gather both gates' findings,
-	 * fail with a {@link SchemaGateError} if any block, and write otherwise.
+	 * fail with a {@link SchemaGateError} if any block, refuse a published
+	 * target whose contract changed, and write otherwise.
 	 *
-	 * Targets are processed in order and the run stops at the first gate
-	 * failure — a document that fails its gate is not written, and neither
-	 * are the targets after it.
+	 * **The run writes nothing unless every target passes both gates.** It
+	 * is two-phase: every target is generated, gated and (for a target the
+	 * {@link ContractChangePolicy} guards) compared against its predecessor
+	 * before any file is touched, and only then are the held documents
+	 * written in target order. A gate failure on the third target therefore
+	 * leaves the first two unwritten.
+	 *
+	 * Phase 2 itself is sequential and **not transactional**: a filesystem or
+	 * serialization failure part-way through it leaves the targets already
+	 * written in place, with no rollback. The guarantee is "no writes unless
+	 * every gate passes", not "every write or none".
+	 *
+	 * The gates run in a fixed precedence: {@link SchemaGateError} is
+	 * fail-fast on the first blocked target, because a document the engine
+	 * rejects would never be written under any contract policy, so its
+	 * classification is noise. {@link SchemaContractChangeError} is total
+	 * over the remaining targets, so two published documents whose contracts
+	 * moved surface in one run.
+	 *
+	 * @example
+	 * ```ts
+	 * import { SchemaContractChangeError, SchemaPipeline } from "@effected/schemastore";
+	 * import { Effect } from "effect";
+	 *
+	 * declare const targets: Parameters<typeof SchemaPipeline.run>[0];
+	 *
+	 * const program = SchemaPipeline.run(targets).pipe(
+	 *   Effect.catchTag("SchemaContractChangeError", (error: SchemaContractChangeError) =>
+	 *     Effect.succeed(
+	 *       error.targets.map((target) => `${target.$id}: ${target.version} -> ${target.nextVersion}`),
+	 *     ),
+	 *   ),
+	 * );
+	 * ```
 	 */
 	static run(
 		targets: ReadonlyArray<SchemaTarget>,
@@ -252,6 +383,7 @@ export class SchemaPipeline {
 	): Effect.Effect<
 		ReadonlyArray<PipelineResult>,
 		| SchemaGateError
+		| SchemaContractChangeError
 		| SchemaConversionError
 		| SchemaValidatorError
 		| CanonicalJsonError
@@ -261,11 +393,53 @@ export class SchemaPipeline {
 	> {
 		return Effect.gen(function* () {
 			const files = yield* SchemaFile;
-			const results: Array<PipelineResult> = [];
+			const held: Array<{
+				readonly target: SchemaTarget;
+				readonly document: StoreDocument;
+				readonly findings: ReadonlyArray<PipelineFinding>;
+			}> = [];
+			const blocked: Array<ContractChangeTarget> = [];
+
+			// Phase 1 — generate, gate and classify. Nothing is written here.
 			for (const target of targets) {
 				const document = yield* StoreDocument.fromSchema(target.schema, { $id: target.$id });
 				const findings = yield* gather(document, options);
 				yield* gate(target, findings, options);
+				const version = target.version;
+				if (version !== undefined && contractGuardApplies(target, options)) {
+					// The guarded target is read twice — once here, once by the
+					// `write` in phase 2. Accepted deliberately: deduplicating it
+					// would mean widening `SchemaFileShape` with a compare-then-
+					// write member, and the read is only paid by targets that
+					// declare themselves published. The two phases are a snapshot;
+					// a concurrent writer between them is not defended against — and
+					// neither is one target in the SAME manifest sharing another's
+					// `path`, which phase 1 classifies against the on-disk file both
+					// will write. That is a caller error, and it reads as a
+					// post-write classification: the second target compares against
+					// what the first one just wrote, so two different documents at
+					// one path report `change` `"contract"`.
+					const { change } = yield* files.check(target.path, document, options?.write);
+					if (contractBlocks(target, change, options)) {
+						blocked.push(
+							ContractChangeTarget.make({
+								$id: target.$id,
+								path: target.path,
+								version,
+								nextVersion: SchemaVersioning.next(version, "contract"),
+							}),
+						);
+					}
+				}
+				held.push({ target, document, findings });
+			}
+			if (blocked.length > 0) {
+				return yield* Effect.fail(SchemaContractChangeError.make({ targets: blocked }));
+			}
+
+			// Phase 2 — write the held documents, in target order.
+			const results: Array<PipelineResult> = [];
+			for (const { target, document, findings } of held) {
 				const { outcome, change } = yield* files.write(target.path, document, options?.write);
 				results.push({ $id: target.$id, path: target.path, outcome, change, findings });
 			}
@@ -307,6 +481,7 @@ export class SchemaPipeline {
 					path: target.path,
 					wouldWrite,
 					blocked: blockingFindings(findings, options).length > 0,
+					contractBlocked: contractBlocks(target, change, options),
 					change,
 					findings,
 				});
@@ -326,6 +501,7 @@ export class SchemaPipeline {
 	): Effect.Effect<
 		PipelineResult,
 		| SchemaGateError
+		| SchemaContractChangeError
 		| SchemaConversionError
 		| SchemaValidatorError
 		| CanonicalJsonError

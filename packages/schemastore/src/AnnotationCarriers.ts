@@ -80,6 +80,11 @@ const graft = (source: unknown, target: unknown, path: string, depth: number): u
 	const out: Record<string, unknown> = { ...target };
 	for (const [key, value] of Object.entries(source)) {
 		if (KeywordFamilies.isDeclared(key)) {
+			// The grafted value is copied by REFERENCE, not cloned: it is the
+			// SAME object the caller handed to `.annotate()`, which lives on the
+			// schema AST. Mutating a carried `x-ai-*` value in place therefore
+			// corrupts every later emission from that schema, not merely this
+			// document — treat the emitted document as read-only.
 			out[key] = value;
 			continue;
 		}

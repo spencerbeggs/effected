@@ -17,7 +17,7 @@ describe("KeywordFamilies", () => {
 		assert.isFalse(KeywordFamilies.isDeclared("AllowTrailingCommas"));
 	});
 
-	it("declares the taplo, tombi and IntelliJ prefixes", () => {
+	it("declares the taplo, tombi, IntelliJ and x-ai- prefixes", () => {
 		for (const key of [
 			"x-taplo",
 			"x-taplo-info",
@@ -30,13 +30,25 @@ describe("KeywordFamilies", () => {
 			"x-intellij-language-injection",
 			"x-intellij-html-description",
 			"x-intellij-enum-metadata",
+			"x-ai-hint",
+			"x-ai-",
 		]) {
 			assert.isTrue(KeywordFamilies.isDeclared(key), key);
 		}
 	});
 
 	it("does not declare Draft-07 keywords, bare prefixed lookalikes or arbitrary keys", () => {
-		for (const key of ["type", "properties", "$ref", "x-tombi", "x-intellij", "x-custom", "unevaluatedProperties"]) {
+		for (const key of [
+			"type",
+			"properties",
+			"$ref",
+			"x-tombi",
+			"x-intellij",
+			"x-custom",
+			"unevaluatedProperties",
+			"x-ai",
+			"x-aida-foo",
+		]) {
 			assert.isFalse(KeywordFamilies.isDeclared(key), key);
 		}
 	});
