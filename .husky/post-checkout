@@ -32,3 +32,73 @@ if ! { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }; then
   unset toolchain_root toolchain_pm toolchain_pin toolchain_have
 fi
 # --- END SAVVY-TOOLCHAIN MANAGED SECTION ---
+
+# --- BEGIN SAVVY-INSTALL MANAGED SECTION ---
+if ! { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ] || [ -n "$SAVVY_SKIP_INSTALL" ]; } && [ "$3" = "1" ]; then
+  install_root=$(git rev-parse --show-toplevel 2>/dev/null) || true
+  install_from="$1"
+  install_to="$2"
+  install_pm=""
+  if [ -n "$install_root" ] && [ -f "$install_root/package.json" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      install_pm=$(jq -r '.packageManager // empty' "$install_root/package.json" 2>/dev/null | cut -d'@' -f1)
+    fi
+    if [ -z "$install_pm" ]; then
+      if   [ -f "$install_root/pnpm-lock.yaml" ]; then install_pm="pnpm"
+      elif [ -f "$install_root/yarn.lock" ];      then install_pm="yarn"
+      elif [ -f "$install_root/bun.lock" ] || [ -f "$install_root/bun.lockb" ]; then install_pm="bun"
+      else install_pm="npm"; fi
+    fi
+  fi
+  # packageManager comes from the checked-out revision, so it names an executable
+  # the tree controls. 'command -v' proves a binary exists, not that it is a
+  # package manager, so the name is checked against the supported four first.
+  case "$install_pm" in
+    npm|pnpm|yarn|bun) ;;
+    *) install_pm="" ;;
+  esac
+  # Nothing to bring up to date unless a manifest or lockfile actually moved.
+  # A missing node_modules skips the diff outright: there is no tree to be stale.
+  install_stale=""
+  if [ -n "$install_pm" ]; then
+    if [ ! -d "$install_root/node_modules" ]; then
+      install_stale=1
+    elif [ -n "$install_from" ] && [ -n "$install_to" ]; then
+      install_stale=$(git diff --name-only "$install_from" "$install_to" -- 'package.json' '*/package.json' 'pnpm-lock.yaml' 'pnpm-workspace.yaml' 'package-lock.json' 'npm-shrinkwrap.json' 'yarn.lock' 'bun.lock' 'bun.lockb' 2>/dev/null | head -n 1) || true
+    fi
+  fi
+  if [ -n "$install_stale" ] && command -v "$install_pm" >/dev/null 2>&1; then
+    # Whether lifecycle scripts run is a LOCAL decision, read from .git/config,
+    # which no checkout can rewrite. Default off. 'savvy init' turns it on for a
+    # workspace that publishes through built link directories, where the links
+    # point at directories a prepare script has to produce.
+    install_scripts=$(git -C "$install_root" config --bool --get savvy.installLifecycleScripts 2>/dev/null) || true
+    if [ "$install_scripts" = "true" ]; then
+      install_flag=""
+    else
+      # Berry dropped --ignore-scripts for the install mode; Classic never knew the
+      # mode. An unreadable major reads as Berry, the likelier of the two today.
+      install_flag="--ignore-scripts"
+      if [ "$install_pm" = "yarn" ]; then
+        case "$(yarn --version 2>/dev/null | cut -d. -f1)" in
+          1) ;;
+          *) install_flag="--mode=skip-build" ;;
+        esac
+      fi
+    fi
+    # ':+' so a full install announces itself as "pnpm install", not "pnpm install ".
+    printf '↻ dependencies changed, running %s install%s\n' "$install_pm" "${install_flag:+ $install_flag}" >&2
+    # Unquoted on purpose: empty must expand to NO argument rather than an empty
+    # one. Safe because every value is a static flag literal from this generator.
+    if ( cd "$install_root" && "$install_pm" install $install_flag ) >&2; then
+      if [ -n "$install_flag" ]; then
+        printf '  Lifecycle scripts were skipped. Run a full install if you need build outputs.\n' >&2
+      fi
+    else
+      printf '⚠ %s install failed; run it yourself to see why.\n' "$install_pm" >&2
+      printf '  Set SAVVY_SKIP_INSTALL=1 to stop this hook from trying.\n' >&2
+    fi
+  fi
+  unset install_root install_from install_to install_pm install_stale install_scripts install_flag
+fi
+# --- END SAVVY-INSTALL MANAGED SECTION ---
