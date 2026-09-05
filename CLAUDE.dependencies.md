@@ -48,7 +48,9 @@ The failure mode is the reason this is worth measuring rather than assuming: an 
 
 ## One `effect` — and the bridge every advance needs
 
-**Advancing the `effect` pin requires a temporary `overrides` block, every time.** This is a recurring, expected step in the upgrade — not an incident, and not a sign something went wrong. Two of these have been needed so far (beta.107→rc.109, removed in `bd9beffe`; rc.109→rc.112), and the third will be needed for whatever comes next.
+**Advancing the `effect` pin requires a temporary `overrides` block, every time.** This is a recurring, expected step in the upgrade — not an incident, and not a sign something went wrong. Two have been needed so far and **both have been retired**: beta.107→rc.109 in `bd9beffe`, and rc.109→rc.112 once the toolchain republished. **No bridge stands today**, and the next advance will need one again.
+
+The retirement is cheap and unambiguous when the condition is actually met: removing the rc.112 block changed three lines of `pnpm-lock.yaml` and nothing else — the three override entries themselves. A larger diff means the graph had not converged and something still wanted the old pin; read it before assuming the removal was safe.
 
 The standing rule still holds, and the exception is narrow: **a second `effect` in the lockfile is a defect, and the fix is at its entry point — the pin, the catalog, or upstream.** The bridge exists only because for a window after each advance the entry point is *outside this repo* and cannot be fixed here at all.
 

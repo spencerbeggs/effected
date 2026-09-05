@@ -74,9 +74,6 @@ catalogs:
 
 overrides:
   '@microsoft/api-extractor>typescript': ^6.0.3
-  '@effect/platform-node@4.0.0-rc.109': 4.0.0-rc.112
-  '@effect/sql-sqlite-node@4.0.0-rc.109': 4.0.0-rc.112
-  effect@4.0.0-rc.109: 4.0.0-rc.112
 
 pnpmfileChecksum: sha256-Uq0YcneBVtAsdQCl/vmrga2Xoi/dq40WfaUG1HTIYIw=
 
