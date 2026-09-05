@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.0.0-rc.109",
+			"ref": "effect@4.0.0-rc.112",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -21,7 +21,15 @@
 					"vitest-reference": "packages/vitest/src"
 				},
 				"startHere": "packages/effect/src settles what v4 actually exports (evidence-ladder rung 2); migration/*.md settles v3→v4 renames (rung 1). Before trusting an answer, check the pin matches the installed effect version — node_modules wins on disagreement."
-			}
+			},
+			"notes": [
+				{
+					"id": "n-e776",
+					"date": "2026-09-05",
+					"ref": "effect@4.0.0-rc.112",
+					"note": "rc.112 (PR #7420) made JSON Schema dialect conversion PRESERVE custom keywords: the Draft-07 lowering carries unknown/custom keys through as opaque values, in place, including across prefixItems[i]->items[i] and trailing items->additionalItems. RESOLVED in @effected/schemastore this pin: AnnotationCarriers deleted as redundant (six preservation cases now pinned in __test__/annotation-carrying.test.ts, asserting on raw toDocumentDraft07 output), and the declared-family gate is now the package's own typed failure (UndeclaredAnnotationKeyError) instead of a side effect of core's drop. STILL OPEN: a Schema.Class's class-level annotations never reach the document (core emits from the encoded AST); a hoisted Schema.Struct keeps its own - Effect-TS/effect#8084, effected#606."
+				}
+			]
 		},
 		"commonmark-js": {
 			"url": "https://github.com/commonmark/commonmark.js.git",

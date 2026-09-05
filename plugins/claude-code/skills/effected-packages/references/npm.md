@@ -72,7 +72,7 @@ Effect.runPromise(Effect.provide(program, Default));
 
 ## Testing machinery
 
-For the contracts half: the `.noop` layers and `Default`, which are exactly what tests usually want. For the registry/publish half: `NpmRegistry.makeTest`/`.layerTest` and `PackagePublish.makeTest`/`.layerTest` (unstubbed members die naming themselves), plus `NpmRegistry.layerSeeded(seed)` — a working fake; `layerSeeded({ registries: {} })` is the "everything absent" registry a v3 `NpmRegistryTest.empty()` caller wants.
+For the contracts half: the `.noop` layers and `Default`, which are exactly what tests usually want. For the registry/publish half: `NpmRegistry.makeTest`/`.layerTest` and `PackagePublish.makeTest`/`.layerTest` (unstubbed members die naming themselves), plus `NpmRegistry.layerSeeded(seed)` — a working fake; `layerSeeded({ registries: {} })` is the "everything absent" registry.
 
 ## Gotchas
 

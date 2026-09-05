@@ -1,6 +1,6 @@
 ---
 name: effect-v4-testing
-description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail — including the discriminating input that is wrong in exactly one way, per-clause and per-path mutation, and the positive control that must expect a non-zero answer before any "nothing found" is believed. Covers the sharp edges (no it.scoped, it.prop throws on a Schema, vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `0 tests passed` run that exits 0, TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
+description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail — including the discriminating input that is wrong in exactly one way, per-clause and per-path mutation, and the positive control that must expect a non-zero answer before any "nothing found" is believed. Covers the sharp edges (no it.scoped, it.prop throws on a Schema, vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `Tests: 0/0 passed` summary line that lies while the exit code is honest (a positional filter is a substring match against each path as rendered from the cwd, while --project resolves against the config root and works from anywhere), TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
 ---
 
 # Effect v4 testing with `@effect/vitest`
@@ -22,14 +22,14 @@ conversion has its own traps →
 **Install it by exact version, matching your `effect` pin** — never bare, never
 `@beta`, never `@rc`. The v4 line is published only under prerelease versions
 mirroring `effect`'s own numbering, and **the line moved from `beta` to `rc`**;
-no dist-tag resolves to your pin (dist-tags checked 2026-08-23):
+no dist-tag resolves to your pin (dist-tags re-checked 2026-09-05):
 
 | Specifier | Resolves to | Peers on |
 | --- | --- | --- |
 | bare / `@latest` | `0.30.0` | `effect@^3.22.0`, `vitest@^3.2.0` — **the v3 line** |
 | `@beta` | `4.0.0-beta.107` — **frozen**, not floating | that beta. The v4 line moved to `rc`, so `@beta` is now a *stale* pin that silently mismatches an `rc` `effect` |
-| `@rc` | the newest rc, whatever that is (`4.0.0-rc.111` today) | that same rc — it **floats off your pin** the moment upstream publishes |
-| `@4.0.0-rc.109` | `4.0.0-rc.109` | `effect@^4.0.0-rc.109`, `vitest@>=4.1.0 <5` ✅ |
+| `@rc` | the newest rc, whatever that is (`4.0.0-rc.112` today) | that same rc — it **floats off your pin** the moment upstream publishes |
+| `@4.0.0-rc.112` | `4.0.0-rc.112` | `effect@^4.0.0-rc.112`, `vitest@>=4.1.0 <5` ✅ |
 
 The exact-pin row is not a recommendation of *this* rc — it is the shape:
 pin the same prerelease number your `effect` catalog pins. The `@beta` row is
@@ -43,7 +43,7 @@ a message naming neither `@effect/vitest` nor a version —
 which reads as a broken install. Confirm with `npm view @effect/vitest
 dist-tags` before believing any resolution. **Inside this monorepo** the
 dependency comes from `catalog:effect`, which already pins the matching rc
-(`@effect/vitest: 4.0.0-rc.109` in `pnpm-workspace.yaml`).
+(`@effect/vitest: 4.0.0-rc.112` in `pnpm-workspace.yaml`).
 
 **`vi.mock` is the one import that must NOT come from `@effect/vitest`.** Vitest
 hoists it above all imports, so a `vi` bound through the re-export is not yet
@@ -82,7 +82,8 @@ describe("Jsonc", () => {
   `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:356`). Its type is
   `Tester<R | Scope.Scope>`, so scoped effects (`Effect.acquireRelease`, scoped
   layers) run **directly** under `it.effect`.
-- **There is no `it.scoped`** (still true at rc.109; the v3→v4 migration guide
+- **There is no `it.scoped`** (re-verified at rc.112: zero `scoped` matches in
+  `packages/vitest/src/index.ts`; the v3→v4 migration guide
   spells the replacement out — `it.scoped(...)` becomes `it.effect(...)`,
   `it.scopedLive(...)` becomes `it.live(...)`). The Tester surface is
   `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop` — **`it.effect.skipIf`
@@ -96,6 +97,29 @@ describe("Jsonc", () => {
   [references/false-greens.md](./references/false-greens.md)).
 - **Never** `it("...", () => Effect.runPromise(program))`. Plain `it()` is fine
   only for genuinely non-Effect pure code (`Jsonc.stripComments`, `Yaml.equals`).
+- **The rule is UNCONDITIONAL. "But the layer is fully synchronous" is not a
+  carve-out.** The tempting shape is a `describe` block with a local
+  `const validate = (doc) => Effect.runSync(Effect.provide(program, Svc.layer))`
+  helper, justified because the service's implementation happens to be
+  synchronous (a `Layer.succeed` over a sync engine such as ajv). It shipped in
+  `packages/schemastore/__test__/schema-validator.test.ts`, alongside four
+  sibling blocks in the same file that use `layer(...)` + `it.effect`
+  correctly. Synchrony is a property of **today's implementation**, never of
+  the **contract**: the member's type is `Effect<A, E>`, which permits async,
+  and nothing in the type system tells you when that changes. Probed at
+  `effect@4.0.0-rc.112`, the two costs:
+  - Swap one member for an async implementation and every test in the block
+    dies at *runtime* with `AsyncFiberError: An asynchronous Effect was
+    executed with Effect.runSync` — no type error, no warning, and the blast
+    radius is the whole `describe`.
+  - A typed failure escapes `runSync` as a **throw** (in v4 the error instance
+    itself, `_tag` intact — not a wrapper), so it lands in Vitest's generic
+    exception path instead of `Effect.flip` / `Effect.result`, and the test
+    asserts on a stack trace instead of the error channel.
+
+  The correct shape costs one line: `layer(Svc.layer)("the shipped engine",
+  (it) => { it.effect(…, () => Effect.gen(…)) })` — and it gets you
+  `TestClock`/`TestConsole` and layer memoization for free.
 - **Never** `it("...", () => Effect.gen(...))` either — the inverse mistake, and
   the worse one. Returning an Effect without running it hands Vitest a
   non-promise it does nothing with: the test reports **green having evaluated
@@ -160,7 +184,7 @@ if (Exit.isFailure(exit)) {
 
 **A narrowing `if` with no `else` asserts nothing on the other path.** A bare
 `if (Exit.isFailure(exit)) { …assert… }` passes silently on success — found six
-separate times in one migration. It is its own anti-pattern, not an
+separate times in one package's suite. It is its own anti-pattern, not an
 Exit-specific one.
 
 Its second half — **genuine defects must NOT be swallowed into the typed
@@ -294,12 +318,35 @@ layer(FileSystem.layerNoop({ exists: (p) => Effect.succeed(p === "/a/.rc") }))(
   "stubbed filesystem", (it) => { /* fs.exists consults the stub */ });
 ```
 
-**`layerNoop` fails every member you did not override with a typed `NotFound`**
-(`makeNoop` at `FileSystem.ts:825`; the `readFile` / `readFileString` members at
-`:873` / `:876`), which a package reading `NotFound` as domain-level "absent"
-treats as a legitimate answer — so the stub silently supplies **empty fixtures**
-the moment the code switches which read method it calls. Override every read the
-code could reach, and assert fixture *contents* somewhere. Same tier:
+**`layerNoop`'s unstubbed members answer in THREE different ways, and each way
+is a different bug.** Two half-truths circulate about this and both are wrong:
+"every unstubbed member fails typed `NotFound`" and "every unstubbed member
+dies". `makeNoop` (`FileSystem.ts:825`) splits them (probed at
+`effect@4.0.0-rc.112`):
+
+| members | unstubbed behavior | the trap |
+| --- | --- | --- |
+| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `NotFound` failure (`FileSystem.ts:764`) | a package reading `NotFound` as domain-level "absent" treats it as a legitimate answer, so the stub silently supplies **empty fixtures** |
+| `exists` → `false`, `remove` → `Effect.void` | **silent success** (`:844`, `:885`) | not a failure at all — a delete that never happened reports done |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` | `Effect.die("not implemented")` (`:850`–`:866`) | a **defect**: `Effect.catch` and every typed handler are blind to it |
+
+The consequence the third row buys you: production code that defensively
+absorbs a filesystem failure —
+`fs.makeDirectory(d).pipe(Effect.catch(() => Effect.void))` — **cannot** absorb
+it, so the first pipeline step that creates a directory kills every unrelated
+test in the suite at once, and 20 simultaneous failures read as "I broke the
+layer wiring", not "one new step calls `makeDirectory`". Reading the *first*
+row's members and generalising is how that gets mis-diagnosed: `readDirectory`
+is absorbable, `makeDirectory` is not.
+
+**None of this is a reason to stub `layerNoop` better — it is the argument for
+`@effected/memfs`.** This repo's standing rule (root `CLAUDE.md`): a test
+needing `FileSystem` provides `@effected/memfs`, never a hand-rolled
+`layerNoop` double, because `layerNoop` is deny-by-default and a stub encodes
+only what its author remembered. `MemoryFileSystem` implements all three rows
+honestly — a directory really is created, a removal really removes — so
+misbehaviour is injected as a **fault handler**, not as a stub body. Keep
+`layerNoop` for the one-trivially-stubbed-member case only. Same tier:
 **`readFileString` strips a leading BOM** (`FileSystem.ts:701` decodes
 `impl.readFile` through `TextDecoder` at `:704`, default `ignoreBOM: false`)
 → [references/false-greens.md](./references/false-greens.md).
@@ -327,7 +374,7 @@ calls.push(p); … } })` records a read that was only *described*. Worked probe 
 
 For "behaves like the real service except this one method fails on demand",
 `layerNoop` is the wrong tool (it stubs everything) and there is still no
-`FileSystem.layerWith` / `Layer.mapService` at rc.109. The house recipe is
+`FileSystem.layerWith` / `Layer.mapService` at rc.112 (re-verified: no `export const mapService` in `Layer.ts`). The house recipe is
 `Layer.effect` + spread the base + `Layer.provide(base)` — with
 `Layer.updateService` (`Layer.ts:2063`) as the shorter form when the subject is
 itself a layer, and `Layer.mock` (`Layer.ts:2304`) for partial stubs that die
@@ -349,15 +396,25 @@ it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
 );
 ```
 
+- **Derivation composes through `Schema.Union` of `Schema.Class` members, and
+  the generated values are REAL class instances.** `Schema.Array(Schema.Union([
+  StyleVote, StyleFloor]))` — two `Schema.Class`es — needs no manual wiring, in
+  both the array and named-record forms, and the instances satisfy `instanceof`,
+  so code under test that branches on `x instanceof StyleVote` takes the real
+  branch. That is exactly the shape a monoid-law or tagged-union property test
+  wants; the trap it replaces is assuming a Union needs a hand-rolled
+  `FastCheck.oneof` and either building one or skipping the property test.
+  In-repo reference: `packages/yaml/__test__/inference.test.ts` (the
+  `StyleEvidence` monoid-law suite). Probed at `effect@4.0.0-rc.112`.
 - **Schema conversion is `it.effect.prop`-only.** The top-level `it.prop`
   (non-Effect body) accepts a `Schema` in its *type* but **throws
   `Schemas are not supported yet`** at runtime, in both the array and record
   forms (`packages/vitest/src/internal/internal.ts:181,197` — still thrown at
-  rc.109). Hand-built arbitraries go to `it.prop` instead, importing
+  rc.112). Hand-built arbitraries go to `it.prop` instead, importing
   `FastCheck` from `effect/testing`:
   `it.prop("addition commutes", [FastCheck.integer(), FastCheck.integer()], ([a, b]) => a + b === b + a)`.
 - **The named-record form of `it.effect.prop` is FIXED** (since beta.101, still
-  so at rc.109) — `internal.ts:153` converts a Schema value inside the record
+  so at rc.112) — `internal.ts:153` converts a Schema value inside the record
   reducer, so both `[Schema]` and `{ n: Schema }` work. The array-form-only
   workaround for beta.94 is retired.
 - **`isPattern` regexes must be lookahead-free.** `Schema.toArbitrary` derives
@@ -502,8 +559,8 @@ asserts against a growing buffer →
 
 ## A test that cannot fail is worse than no test — mutate the edges
 
-A green suite proves nothing about the properties no test can observe. Over one
-migration (`@effected/walker`), **eight** distinct mutants each survived a fully
+A green suite proves nothing about the properties no test can observe. In one
+package (`@effected/walker`), **eight** distinct mutants each survived a fully
 green suite; a later session turned up three more tests that were green,
 plausible, and **structurally incapable of failing**.
 
@@ -525,6 +582,32 @@ that it is empty.
   because a depth is never reached. So mutate **per clause and per path**:
   **two code paths implementing one rule are two things to pin, not one**, and
   a test covering *a* path through a rule does not pin the rule.
+- **`as const satisfies ReadonlyArray<Union>` is the type-level member of this
+  family: it enforces NOTHING about exhaustiveness.** It reads like a
+  compile-time coverage check, and the comment above it usually claims one —
+  "a new union member is noticed here". `satisfies` only asserts the listed
+  literals are *assignable to* the union; it never asserts the list *covers*
+  it. Type-checked at TypeScript 7 in this repo: with
+  `type WriteChange = "none" | "annotations" | "created" | "deleted"`, the line
+  `["none", "annotations", "created"] as const satisfies ReadonlyArray<WriteChange>`
+  compiles **clean**, while the control `["none", "bogus"] as const satisfies …`
+  errors — so the construct is live, it just answers a different question than
+  the comment claims. Add `deleted` to the union and nothing goes red. The two
+  spellings that do fire (both errored on the same file, same run):
+
+  ```ts
+  // 1. residue must be empty
+  type Exhaustive = Exclude<WriteChange, (typeof covered)[number]> extends never ? true : never;
+  const _check: Exhaustive = true;      // TS2322: 'true' is not assignable to 'never'
+
+  // 2. a total record over the union
+  const table = { none: 0, annotations: 0, created: 0 } satisfies Record<WriteChange, number>;
+  //    TS2741: Property 'deleted' is missing …
+  ```
+
+  Same test as any other rule in this list: *what input would make this fire
+  alone?* For the `satisfies` array, no input exists — a compile-time guard
+  that cannot fail is decoration exactly as a test that cannot fail is.
 - **One assertion, one rule.** A single assertion covering two rules goes red
   for either and proves neither — split it.
 - **A passing test is evidence about the path it takes, not about the rule it
@@ -573,10 +656,14 @@ it is load-bearing → **[references/structural-checks.md](./references/structur
 
 ## Other false greens, in one place
 
-`0 tests passed` is a FAILED run that exits 0 (three producers — one bad file
-zeroing a whole package, and the `cd <pkg> && tsc && vitest --project` chain
-that poisons only its vitest half while the typecheck half genuinely passes);
-`TestConsole.logLines` accumulation; the eager `layerNoop` recorder;
+`Tests: 0/0 passed` is a FAILED run whose **summary line** says passed (three
+producers — a module-level throw, one bad file zeroing a whole package, and a
+positional filter whose substring is absent from the paths as rendered from the
+cwd; plus
+the separate `ERR_LOAD_URL` a repo suffers while its config declares a
+cwd-relative `globalSetup` path, which is a config defect to fix rather than a
+cwd rule to obey); `TestConsole.logLines` accumulation; the eager `layerNoop`
+recorder;
 `PubSub.takeAll` hanging on an empty subscription; timing gates lying by ~18×
 under coverage; a green suite that fails the vitest **process** because a test
 left `process.exitCode` set; a big green count for a surface the suite never
@@ -584,10 +671,37 @@ calls; a helper used on **both sides** of every comparison, which agrees with
 itself however broken it is. Each with its probe →
 **[references/false-greens.md](./references/false-greens.md)**.
 
-**Zero collected tests is never a pass. Read the Tests line, not the exit
-code — and read `unhandledErrors` with it:** a `ChildProcess` with no `error`
-listener re-throws asynchronously *after* the failure was correctly reported,
-and 15 green tests carried a live defect that only that field showed.
+**Zero collected tests is never a pass — and READ BOTH the Tests line and the
+exit code, because they lie in complementary situations.** Measured 2026-09-05
+on `vitest@4.1.11`: every zero-collection run exits **1** while printing
+`Tests: 0/0 passed`, so there the *Tests line* is the liar; a passing subset run
+under `--coverage` (or on CI) exits **1** with a genuinely green Tests line, so
+there the *exit code* is. Treat disagreement between them as the alarm. The
+older rule "read the Tests line, not the exit code" dates from when global
+coverage thresholds were enforced on every run; scoping them to CI restored the
+exit code's meaning, and the rule outlived its condition. Read
+`unhandledErrors` alongside both: a `ChildProcess` with no `error` listener
+re-throws asynchronously *after* the failure was correctly reported, and 15
+green tests carried a live defect that only that field showed.
+
+**A `0/0 passed` summary means "wrong filter", never "no tests".** Measured
+in this repo from inside `packages/<pkg>`: a bare `vitest run` runs the WHOLE
+suite (exit 0), `vitest run --project @effected/<pkg>` runs that project
+(exit 0), and only a **positional** filter collects nothing (exit 1). A positional arg
+is not a path: it is a **substring matched against each test file's path as
+rendered from the cwd**. `packages/<pkg>` therefore matches from the root and
+matches nothing from inside that package, while `__test__` matches every
+project from anywhere, and a partial word like `ckfiles` matches from the root
+— none of which path resolution would predict. So prefer `--project <name>`,
+which works from any directory; filter positionally only from the repo root. Never `--passWithNoTests` — it is the one flag
+that really does turn a zero-collection run green.
+
+An `ERR_LOAD_URL` naming a `vitest.setup.ts` inside a package directory is the
+same fault in an older guise: the root config's `globalSetup` used to be a
+cwd-relative path (effected#455, since fixed to resolve against the config
+file). If you meet it in a repo that has not taken that fix, the setup file it
+names is not one you were meant to create — creating it forks the setup
+permanently.
 
 **The stale-upstream-dist red herring** (a red that lies rather than a green):
 in a kit monorepo, a downstream package's tests resolve workspace siblings
@@ -659,3 +773,20 @@ stale-dist signature.
 > those as **unverified at rc.109** — plausible and previously measured, not
 > re-stamped. Re-probe before relying on one in a way a wrong answer would make
 > expensive.
+>
+> **rc.112 spot-check (2026-09-05).** Four claims re-settled at
+> `effect@4.0.0-rc.112`, each at the rung that settles it, and one of them was
+> a correction rather than a confirmation:
+>
+> - `FileSystem.makeNoop`'s three-way member split — **rung 3**, and it
+>   replaced a false blanket in both directions (see the `layerNoop` table).
+> - `it.effect.prop` deriving real class instances through a
+>   `Schema.Union` of `Schema.Class` members — **rung 3**.
+> - no `it.scoped`, no `FileSystem.layerWith`, no `Layer.mapService`;
+>   `Layer.updateService`/`mock` still at `Layer.ts:2063`/`:2304` — **rung 2**.
+> - the `@effect/vitest` dist-tags and the catalog pin — re-read from npm and
+>   `pnpm-workspace.yaml`.
+>
+> Everything else in this file still carries its older stamp. A version note
+> that says "re-verified" without saying *which claims* is the trap: it reads
+> as a blanket re-stamp of the whole document.

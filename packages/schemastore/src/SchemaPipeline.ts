@@ -22,7 +22,7 @@ import type { SchemaTarget } from "./SchemaTarget.js";
 import type { SchemaValidatorError, SchemaValidatorOptions } from "./SchemaValidator.js";
 import { SchemaValidator } from "./SchemaValidator.js";
 import { SchemaVersion, SchemaVersioning } from "./SchemaVersioning.js";
-import type { SchemaConversionError } from "./StoreDocument.js";
+import type { SchemaConversionError, UndeclaredAnnotationKeyError } from "./StoreDocument.js";
 import { StoreDocument } from "./StoreDocument.js";
 
 /**
@@ -222,11 +222,12 @@ export interface SchemaPipelineOptions {
 	 *
 	 * **Which findings can actually reach you here.** A `SchemaTarget`
 	 * carries a `Schema`, so the pipeline's documents come from
-	 * `StoreDocument.fromSchema` — and the Draft-07 lowering drops every
-	 * keyword outside its copy-list, so an undeclared keyword never
-	 * survives to be linted. Through this entry point `UnknownKeyword` is
-	 * therefore effectively unreachable, and **the engine gate is what
-	 * blocks in practice**. The lint's warning checks earn their keep on
+	 * `StoreDocument.fromSchema` — which never admits an undeclared
+	 * keyword: the pipeline supplies no `includeAnnotationKey`, and one
+	 * that admitted anything outside the declared families would fail the
+	 * build. An undeclared keyword therefore never exists to be linted.
+	 * Through this entry point `UnknownKeyword` is effectively unreachable,
+	 * and **the engine gate is what blocks in practice**. The lint's warning checks earn their keep on
 	 * documents this pipeline did not build — a hand-assembled
 	 * `StoreDocument.draft07`, or one read back off disk — and on depth,
 	 * which a schema can genuinely exceed.
@@ -385,6 +386,7 @@ export class SchemaPipeline {
 		| SchemaGateError
 		| SchemaContractChangeError
 		| SchemaConversionError
+		| UndeclaredAnnotationKeyError
 		| SchemaValidatorError
 		| CanonicalJsonError
 		| SchemaFileReadError
@@ -466,7 +468,11 @@ export class SchemaPipeline {
 		options?: SchemaPipelineOptions,
 	): Effect.Effect<
 		ReadonlyArray<PipelineCheckResult>,
-		SchemaConversionError | SchemaValidatorError | CanonicalJsonError | SchemaFileReadError,
+		| SchemaConversionError
+		| UndeclaredAnnotationKeyError
+		| SchemaValidatorError
+		| CanonicalJsonError
+		| SchemaFileReadError,
 		SchemaFile | SchemaValidator
 	> {
 		return Effect.gen(function* () {
@@ -503,6 +509,7 @@ export class SchemaPipeline {
 		| SchemaGateError
 		| SchemaContractChangeError
 		| SchemaConversionError
+		| UndeclaredAnnotationKeyError
 		| SchemaValidatorError
 		| CanonicalJsonError
 		| SchemaFileReadError
@@ -521,7 +528,11 @@ export class SchemaPipeline {
 		options?: SchemaPipelineOptions,
 	): Effect.Effect<
 		PipelineCheckResult,
-		SchemaConversionError | SchemaValidatorError | CanonicalJsonError | SchemaFileReadError,
+		| SchemaConversionError
+		| UndeclaredAnnotationKeyError
+		| SchemaValidatorError
+		| CanonicalJsonError
+		| SchemaFileReadError,
 		SchemaFile | SchemaValidator
 	> {
 		return SchemaPipeline.check([target], options).pipe(Effect.map((results) => results[0] as PipelineCheckResult));

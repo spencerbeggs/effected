@@ -20,8 +20,9 @@ stamp names an older beta, that claim was **not** re-run at rc.109 and the
 stamp is the honest one. v4 betas move fast, so probe anything not shown here
 before writing it
 (`node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)"`).
-For a v3→v4 name lookup, see `effect-v4-construct-map`; for the canonical
-upstream detail on any construct, see the vendored `references/` in this skill.
+When a name doesn't resolve, climb the `effect-v4-source-lookup` ladder; for the
+canonical upstream detail on any construct, see the vendored `references/` in
+this skill.
 
 ## Class vs Struct: the first decision
 
@@ -72,7 +73,7 @@ general rule — write `make` unless you are in engine/hot-path code. Either way
 never pass an explicit `undefined` for a `Schema.optionalKey` field (a *present*
 `undefined` is not an *absent* key and throws); use conditional spreads:
 `new Node({ offset, ...(anchor !== undefined ? { anchor } : {}) })`. See
-`effect-v4-construct-map` for the full construction/validation semantics.
+`effect-v4-idioms` for the call-not-value family this shares a shape with.
 
 **Instances are NOT `Pipeable` in v4** (first boundary port). The factory's
 instance type is `S["Type"] & Inherited` — the decoded record plus any brand,
@@ -173,7 +174,7 @@ two controls described above. Supersedes both the beta.97 and beta.101 tables.*
 const Query = Schema.Struct({ search: Schema.optionalKey(Schema.String) });
 ```
 
-Decoding defaults (the v3 `optionalWith({ default })` replacement):
+Decoding defaults:
 
 ```ts
 Schema.String.pipe(Schema.withDecodingDefaultType(Effect.succeed("")));      // { default }
@@ -203,19 +204,19 @@ Three distinct tools — pick by intent:
   `isFinite`, `isMinLength`, `isMaxLength`, `isLengthBetween`, `isPattern`,
   `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized` — all sixteen re-verified
   present at rc.109. (`positive`/`negative`/`nonNegative`/`nonPositive` were
-  **removed** and are still `undefined` — compose `isGreaterThan(0)` etc. The v3
+  **removed** and are still `undefined` — compose `isGreaterThan(0)` etc.
   `Schema.filter` is likewise `undefined`.)
   Match the bounds to what your parser enforces (safe integers), or a
   `make`-constructed value can print a string the parser then rejects.
 
-- **Type-narrowing** → `Schema.refine(refinement)` (v3 `filter(refinement)`):
+- **Type-narrowing** → `Schema.refine(refinement)`:
 
   ```ts
   const someString = Schema.Option(Schema.String).pipe(Schema.refine(Option.isSome));
   ```
 
-- **Inline predicates** → `Schema.check(Schema.makeFilter(pred))` (v3
-  `filter(predicate)`; `Schema.ts:6584`). `makeFilter`'s return shape is rich —
+- **Inline predicates** → `Schema.check(Schema.makeFilter(pred))`
+  (`Schema.ts:6584`). `makeFilter`'s return shape is rich —
   this is the tool for cross-field validation:
 
   | return | meaning |
@@ -259,7 +260,7 @@ Three distinct tools — pick by intent:
 
 ## Unions & literals — prefer tagged
 
-Array forms in v4 (v3 was variadic); single literal stays single-arg:
+Array forms; a single literal stays single-arg:
 
 ```ts
 Schema.Union([Schema.String, Schema.Number]);
@@ -301,11 +302,10 @@ const BooleanFromString = Schema.Literals(["on", "off"]).pipe(
 Fallible transform — **both spellings are still valid at rc.109**
 (`SchemaTransformation.transformOrFail` at `SchemaTransformation.ts:286`,
 `SchemaGetter.transformOrFail` at `SchemaGetter.ts:561`, and `SchemaGetter.String`);
-know both so
-migration-doc code and our-port code both read cleanly:
+know both, because both spellings occur in the wild:
 
 ```ts
-// (a) our ports' spelling — SchemaTransformation.transformOrFail passed positionally
+// (a) the kit's spelling — SchemaTransformation.transformOrFail passed positionally
 Schema.String.pipe(
  Schema.decodeTo(
   Target,
@@ -316,7 +316,7 @@ Schema.String.pipe(
  ),
 );
 
-// (b) the official migration doc's spelling — { decode: SchemaGetter.transformOrFail(...), encode: … }
+// (b) the upstream docs' spelling — { decode: SchemaGetter.transformOrFail(...), encode: … }
 const NumberFromString = Schema.String.pipe(
  Schema.decodeTo(Schema.Number, {
   decode: SchemaGetter.transformOrFail((s) => {
@@ -396,7 +396,7 @@ In Effect/application flows use `Schema.decodeUnknownEffect(S)` /
 `Schema.encodeUnknownEffect(S)` — they surface failures through the typed error
 channel. Reserve `Schema.decodeUnknownSync(S)` (throws) for a genuine sync
 boundary; `decodeUnknownExit` returns an `Exit`. The `*Effect`/`*Exit` naming
-replaces v3's `*`/`*Either`.
+is the whole family; there is no `*Either` variant.
 
 ## Don't duplicate schemas — derive
 
@@ -459,7 +459,7 @@ From any schema (the class included):
 
 - `Schema.toArbitrary(S)` — fast-check generators, honoring `.check(...)` bounds.
 - `Schema.toEquivalence(S)` — structural equivalence.
-- `Schema.toFormatter(S)` — pretty formatter (v3 `pretty`).
+- `Schema.toFormatter(S)` — pretty formatter.
 - `Schema.toStandardSchemaV1(S)` — Standard Schema v1.
 - `Schema.toJsonSchemaDocument(S)` — JSON Schema. **Not `toJsonSchema`** — that
   export does not exist (`typeof === "undefined"`); reaching for it is a silent
@@ -467,8 +467,8 @@ From any schema (the class included):
 
 ## Custom equality: override BOTH symbols
 
-v4 `Equal.equals` is **deep-structural by default** — v3's `Schema.Data` is
-removed because you no longer need it for ordinary structural equality. Override
+v4 `Equal.equals` is **deep-structural by default**, so there is no
+`Schema.Data` and you need nothing extra for ordinary structural equality. Override
 the symbols **only** when equality must *ignore* some fields (our SemVer case:
 two versions equal when they differ only in build metadata). And when you do,
 override both, because `Equal.equals` fast-paths on hash inequality — overriding

@@ -8,7 +8,7 @@ Child context file for `.repos/`: the read-only vendored Effect v4 tree and its 
 
 ## What it is
 
-A git submodule of Effect-TS/effect, pinned to the tag matching the `effect` catalog (`effect@4.0.0-rc.109`) and managed by silk's repos tooling. Vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
+A git submodule of Effect-TS/effect, pinned to the tag matching the `effect` catalog (`effect@4.0.0-rc.112`) and managed by silk's repos tooling. Vendored as **read-only Effect v4 source for agents** — the authority on what v4 actually exports.
 
 It has tracked the main Effect-TS/effect monorepo since 2026-07-19, when the old effect-smol repo was archived and v4 development moved back there; the local path was `.repos/effect-smol` until 2026-07-24 and is now `.repos/effect`, matching what a consuming repo would vendor. Declared in `.gitmodules`; described by the manifest `.repos/config.json` (url / ref / purpose / sparse / orientation / notes).
 

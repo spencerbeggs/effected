@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Pre-push hook. Savvy owns any MANAGED SECTION it adds here; custom checks go
+# above, below, or between those markers, as in .husky/pre-commit.
+
+ROOT=$(git rev-parse --show-toplevel)
+
+in_ci() { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }
+
+# The generated construct index is committed, so it can be pushed stale — which
+# has bitten this repo more than once. The gate reads the pushed range from
+# stdin and exits immediately unless that range touches something able to
+# invalidate the index, so the common push pays nothing.
+#
+# Not on pre-commit by design: verifying the tables needs the api-extractor doc
+# models, which are gitignored build output, so a cold check costs a build.
+# `git push --no-verify` still bypasses it, as with every husky hook.
+in_ci || bash "$ROOT/plugins/claude-code/scripts/check-construct-index.sh" || exit 1

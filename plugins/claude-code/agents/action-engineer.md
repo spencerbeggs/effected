@@ -182,9 +182,8 @@ source wins and the doc is a finding to report.
 - **Product scope and repo restructuring.** You implement against a decided
   design; you do not decide what the action should do.
 - **General Effect v4 feature work.** A new schema, service or CLI with no
-  GitHub in it belongs to `effect-developer`; a v3→v4 port belongs to
-  `effect-migrator`; a pure review or test-writing pass belongs to
-  `effect-reviewer`.
+  GitHub in it belongs to `effect-developer`; a pure review or test-writing
+  pass belongs to `effect-reviewer`.
 - **Writing to `.repos/**`.** It is read-only vendored source. Read it freely;
   mutate it never.
 - **Committing.** Report what you changed and let the caller commit, unless

@@ -6,6 +6,7 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `CompilerOptions` | Variable + Namespace | Type-only companion namespace for `(CompilerOptions:variable)`, exposing its decoded and encoded shapes. | tsconfig compilerOptions schema, target module lib jsx strict flags, forward-tolerant passthrough |
+| `CompilerOptionsFromProgrammatic` | Variable | A codec between the **programmatic** `compilerOptions` shape TypeScript's own API uses and this package's decoded `(CompilerOptions:namespace).Type`. | accept ts.CompilerOptions or numeric enums, decode and validate into tsconfig strings |
 | `EnumFamily` | TypeAlias | The nine `compilerOptions` / `watchOptions` enum families this codec knows, per R1.6. | |
 | `FallbackPolling` | Variable | `watchOptions.fallbackPolling`. | watchOptions.fallbackPolling enum, polling strategy when native watching is unavailable |
 | `FindNearestOptions` | Interface | Options for `TsconfigDiscovery.findNearest`. | |
@@ -20,6 +21,7 @@
 | `PortableTsconfigOptions` | Interface | Options for `(PortableTsconfig:class).make`. | |
 | `ProgrammaticCompilerOptions` | Interface | The shape `TsEnumCodec.encodeCompilerOptions` returns: the numeric-enum-encoded `compilerOptions` a virtual-TS environment and the TypeScript compiler API consume programmatically. | |
 | `ProgrammaticCompilerOptionsValue` | TypeAlias | A single value a programmatic `compilerOptions` entry can hold — a structural transcription of TypeScript's own `CompilerOptionsValue`, transcribed (not imported) to honor this package's zero-`typescript` rule. | |
+| `ProgrammaticRecord` | Interface | The untyped record this codec accepts on its encoded side. Exported because it names the codec's encoded type in the public signature; the values stay `unknown` rather than `ProgrammaticCompilerOptionsValue` because decode validates them and must be able to receive anything, including the unmappable numeric it exists to reject. | |
 | `Reference` | Variable + Namespace | Type-only companion namespace for `(Reference:variable)`. | tsconfig references entry, project reference path |
 | `ResolvedTsconfig` | Class + Interface | The pure extends-merge engine: parse-time path absolutization (`(ResolvedTsconfig:class).absolutize`), the per-field merge fold (`(ResolvedTsconfig:class).merge`), and the `${configDir}` final phase (`(ResolvedTsconfig:class).substituteConfigDir`). | merge a tsconfig extends chain, absolutize compiler option paths, configDir substitution |
 | `SyncFileSystem` | Interface | The synchronous file operations `TsconfigLoaderSync` needs, supplied by the consumer. Node's built-ins satisfy it directly: | |

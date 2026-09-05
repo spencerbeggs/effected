@@ -12,11 +12,11 @@ Shared dependency versions come from pnpm catalogs: `catalog:effect` and `catalo
 
 The same plugin also publishes the kit's own `catalog:effected` / `catalog:effected:peers` pair, for consumers only: internal edges stay `workspace:*`, those two are **not** exported into the yaml, and CI keeps them current — mechanics → `@./.claude/design/effected/catalog-sync.md`.
 
-Under the `lock` strategy every consumer resolves the one pinned prerelease (currently `4.0.0-rc.109`; Effect's release line renamed beta → rc at rc.108), so `catalog:effect:peers` holds the same exact pin, not a caret floor. The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCase `effectPeers` alias are **removed** — retired on the rc.109 advance; do not reintroduce them.
+Under the `lock` strategy every consumer resolves the one pinned prerelease (currently `4.0.0-rc.112`; Effect's release line renamed beta → rc at rc.108), so `catalog:effect:peers` holds the same exact pin, not a caret floor. The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCase `effectPeers` alias are **removed** — retired on the rc.109 advance; do not reintroduce them.
 
 ## The exact `effect` peer is silently satisfiable in a consumer's tree
 
-Every published `@effected/*` package advertises the exact catalog pin (`"effect": "4.0.0-rc.109"`) — **exact, no caret** — because `catalog:effect:peers` is locked to the pin. That is deliberate and kit-wide (it is not a per-package choice, so do not "fix" one package's peer to a range).
+Every published `@effected/*` package advertises the exact catalog pin (`"effect": "4.0.0-rc.112"`) — **exact, no caret** — because `catalog:effect:peers` is locked to the pin. That is deliberate and kit-wide (it is not a per-package choice, so do not "fix" one package's peer to a range).
 
 **The consumer-side hazard it creates, which nothing in the kit warns about:** under `autoInstallPeers: true` — pnpm's common default — an exact peer that *cannot* be satisfied is **glued anyway, without a resolution error**. A repo still on `effect@3.x`, or on an older prerelease, installs an `@effected/*` package cleanly and the mismatch surfaces later, from a different module, as a runtime failure:
 
@@ -46,11 +46,59 @@ Two consequences worth keeping:
 
 The failure mode is the reason this is worth measuring rather than assuming: an undetected named import **type-checks, bundles and builds cleanly**, then throws on first execution.
 
-## One `effect`, no bridge
+## One `effect` — and the bridge every advance needs
 
-**`pnpm-workspace.yaml` carries no `overrides` block, and must not grow one.** The lockfile resolves exactly one `effect` (`4.0.0-rc.109`), because the `@savvy-web` toolchain now pins the same rc.109 as the kit. An earlier temporary bridge rewrote three beta.107 toolchain specs onto rc.109 to stop two `effect` copies landing in one Schema decode pipeline (`text.charCodeAt is not a function`); it was removed once the toolchain republished, and reintroducing it would mask the very drift it was written to survive.
+**Advancing the `effect` pin requires a temporary `overrides` block, every time.** This is a recurring, expected step in the upgrade — not an incident, and not a sign something went wrong. Two of these have been needed so far (beta.107→rc.109, removed in `bd9beffe`; rc.109→rc.112), and the third will be needed for whatever comes next.
 
-**A second `effect` in the lockfile is a defect, not a case for an override.** Fix it where it enters — the pin, the catalog, or upstream.
+The standing rule still holds, and the exception is narrow: **a second `effect` in the lockfile is a defect, and the fix is at its entry point — the pin, the catalog, or upstream.** The bridge exists only because for a window after each advance the entry point is *outside this repo* and cannot be fixed here at all.
+
+### Why it recurs
+
+It is structural, so it will keep happening as long as the kit publishes on a `lock`-strategy pin:
+
+- Every published `@effected/*` package advertises the **exact** pin as its `effect` peer, so the moment the catalog moves, the entire previously-published closure is stranded on the old one. At rc.112 that was 31 packages — 22 `@effected/*`, `@savvy-web/silk-effects` and 7 `@tsdoctor/*`.
+- The `@savvy-web` build toolchain (`silk`, `bundler`, `tsdown-plugins`, `mcp`) pins `effect` as a **regular `dependency`**, not a peer. `peerDependencyRules.allowedVersions` widens peers only, so **it cannot touch those** — an important dead end to know before trying it, because it looks like the obvious answer.
+
+The kit therefore cannot reach a single `effect` on its own: the toolchain that builds it must republish first, and it cannot republish against a pin the kit has not shipped yet. The override breaks that circle for the duration.
+
+### The procedure, on each advance
+
+1. Advance the catalogs (the user runs `pnpm:up` then `pnpm:export` — agents must not).
+2. Re-pin the vendored source in the **same commit**: `savvy repos pin effect effect@<new>`.
+3. Find what still resolves at the old pin: `awk '/^packages:/,/^snapshots:/' pnpm-lock.yaml | grep -oE "^  '?[@a-z0-9/._-]+@<old>'?:" | sort -u`. Both advances so far produced exactly three entries — `effect`, `@effect/platform-node`, `@effect/sql-sqlite-node`.
+4. Write one override per entry, old-exact to new:
+
+   ```yaml
+   overrides:
+     '@effect/platform-node@4.0.0-rc.109': 4.0.0-rc.112
+     '@effect/sql-sqlite-node@4.0.0-rc.109': 4.0.0-rc.112
+     effect@4.0.0-rc.109: 4.0.0-rc.112
+   ```
+
+5. Install, then confirm the packages-section count is zero (below) and check the lockfile diff for stripped platform binaries.
+6. Note the removal condition in the PR. The bridge is temporary by intent, and the intent has to survive the merge.
+
+### Removing it
+
+The bridge comes out once `@savvy-web` (silk, bundler, tsdown-plugins, mcp) and `@tsdoctor/*` republish against the current pin. Verify with the **packages-section-scoped** count, which must reach zero **with the block removed**:
+
+```bash
+awk '/^packages:/,/^snapshots:/' pnpm-lock.yaml | grep -c '4\.0\.0-rc\.<old>'
+```
+
+**The scoping is the whole point — do not simplify it to a bare `grep`.** While the bridge is up, `grep -c "effect@4.0.0-rc.109" pnpm-lock.yaml` returns `1`, and that hit is **not** a second copy: it is the override's own redirect line, `effect@4.0.0-rc.109: 4.0.0-rc.112`. One resolved version, spelled twice. The naive count therefore reports the bridge as the very drift the bridge removed. Read the lockfile's `packages:` section, where a resolution actually lives — "read the lockfile, not the store" is not enough advice on its own.
+
+Leaving the bridge up past the removal condition is the real hazard: it then masks a genuine second copy, which is exactly the drift it was written to survive.
+
+### The failure it prevents
+
+Not an Effect API break, and it does not read like a version problem. Two `effect` copies land in one Schema decode pipeline and produce:
+
+```text
+TypeError: text.charCodeAt is not a function
+```
+
+The mixing route is the peer hazard documented above: `@savvy-web/tsdown-plugins` takes `@effected/jsonc` as a **peer**, so this workspace hands it a jsonc built against the new `effect` while the tool's own `effect` still resolves to the old one — an rc.109 `SchemaParser` driving an rc.112 `Getter`. **The tell is a stack naming two different `effect@…` paths.** Read that before reading the `TypeError` as a parser bug.
 
 ## The expected `pnpm peers check` occupant
 

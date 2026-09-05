@@ -14,10 +14,11 @@ parent.
   defaulted one because it declares the document's dialect.
   `fromSchemaResult`/`fromSchema` run core's 2020-12 generation, the Draft-07
   lowering, the `#/definitions` → `#/$defs` `$ref` rewrite (only `$ref` string
-  values are rewritten; prose survives) and the `AnnotationCarriers` re-graft —
-  the declared families are **always admitted** into `includeAnnotationKey`, and
-  a caller predicate is consulted in addition, though its non-declared
-  admissions still drop at the lowering. `toJson()` emits the flat publication
+  values are rewritten; prose survives, and a declared-family value is passed
+  through verbatim rather than descended into) — the declared families are
+  **always admitted** into `includeAnnotationKey`, and a caller predicate that
+  admits anything else fails the build with `UndeclaredAnnotationKeyError`
+  (`$id` + the sorted, deduplicated `keys`). `toJson()` emits the flat publication
   shape, omitting `$defs` when empty (a deliberate divergence from the
   extraction source). `serializeResult` routes through `CanonicalJson`. Fails
   typed with `SchemaConversionError` (`$id` + `cause: Schema.Defect()`).
@@ -26,13 +27,6 @@ parent.
   name; the `x-taplo`, `x-tombi-`, `x-intellij-` prefixes) and the house
   machine-annotation namespace `x-ai-` (WITH the dash). `isDeclared` is the
   one predicate over both groups.
-- `AnnotationCarriers` — the post-lowering re-graft: `carryResult` (the `Result`
-  primitive) / `carry` (the span form) copy declared-family keys from a 2020-12
-  node onto its lowered Draft-07 counterpart via a parallel walk mirroring
-  core's `toSchemaDraft07` descent, including the coordinate move (2020-12
-  `prefixItems[i]` → Draft-07 `items[i]`; trailing `items` →
-  `additionalItems`). The depth cap fails typed as
-  `CarrierDepthExceededError`.
 - `CanonicalJson` — the owned deterministic serializer (it replaced the
   extraction source's biome shell-out): insertion-order keys, tab indent by
   default (`indent` option), LF, single trailing newline. Fails typed

@@ -1,5 +1,4 @@
 import { Effect, JsonSchema, Result, Schema } from "effect";
-import { AnnotationCarriers } from "./AnnotationCarriers.js";
 import type { CanonicalJsonError, CanonicalJsonOptions } from "./CanonicalJson.js";
 import { CanonicalJson } from "./CanonicalJson.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
@@ -38,6 +37,39 @@ export class SchemaConversionError extends Schema.TaggedError<SchemaConversionEr
 }
 
 /**
+ * Indicates that a caller-supplied `includeAnnotationKey` admitted an
+ * annotation key outside the declared keyword families
+ * ({@link KeywordFamilies}).
+ *
+ * Raised by {@link StoreDocument.fromSchema}. This package emits
+ * SchemaStore-compatible documents only, so the declared families are the
+ * whole permitted non-standard surface. A key outside them is refused
+ * loudly rather than emitted — which would ship a document SchemaStore's
+ * own gate rejects — or silently omitted, which would hide the mistake in
+ * the caller's predicate.
+ *
+ * The predicate itself cannot be introspected, so the offending keys are
+ * the ones it actually admitted while the document was being generated: a
+ * key the source schema never annotates cannot appear here.
+ *
+ * @public
+ */
+export class UndeclaredAnnotationKeyError extends Schema.TaggedError<UndeclaredAnnotationKeyError>()(
+	"UndeclaredAnnotationKeyError",
+	{
+		/** The `$id` of the document that was being built. */
+		$id: Schema.String,
+		/** The offending keys, deduplicated and sorted. */
+		keys: Schema.Array(Schema.String),
+	},
+) {
+	override get message(): string {
+		const keys = this.keys.map((key) => `"${key}"`).join(", ");
+		return `Document "${this.$id}" admits annotation keys outside the declared families: ${keys}`;
+	}
+}
+
+/**
  * Options for {@link StoreDocument.fromSchema}.
  *
  * @public
@@ -51,14 +83,17 @@ export interface StoreDocumentOptions {
 	 * `includeAnnotationKey`).
 	 *
 	 * The declared non-standard keyword families ({@link KeywordFamilies})
-	 * are **always admitted** and carried into the built document — annotate
-	 * a schema node (`Schema.String.annotate({ "x-taplo": ... })`) and the
-	 * key survives the Draft-07 lowering via the post-lowering re-graft
-	 * ({@link AnnotationCarriers}). A supplied `includeAnnotationKey` is
-	 * consulted *in addition* for other keys; know the boundary: keys it
-	 * admits outside the declared families reach the Draft 2020-12 document
-	 * but are **dropped by the Draft-07 lowering** (its keyword walk copies
-	 * a fixed subset) — verified against the installed beta.
+	 * are **always admitted**, regardless of what a supplied
+	 * `includeAnnotationKey` answers — annotate a schema node
+	 * (`Schema.String.annotate({ "x-taplo": ... })`) and the key appears in
+	 * the built document, in place, on the node it was attached to.
+	 *
+	 * A supplied `includeAnnotationKey` is consulted only for other keys,
+	 * and **admitting one fails the build** with
+	 * {@link UndeclaredAnnotationKeyError}. The families are the entire
+	 * non-standard surface this package will emit, so the predicate has no
+	 * admitting role left; it survives only because the rest of
+	 * `ToJsonSchemaOptions` passes through, and is best left unset.
 	 */
 	readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 }
@@ -74,20 +109,15 @@ class RewriteDepthExceeded {
 	readonly _tag = "RewriteDepthExceeded";
 }
 
-// Applies the carrier re-graft to one lowered node, folding a (practically
-// unreachable for bounded core output) depth failure into the enclosing
-// try/catch as the SchemaConversionError cause.
-const carry = (source: unknown, target: unknown): Record<string, unknown> => {
-	const result = AnnotationCarriers.carryResult(source, target);
-	if (Result.isFailure(result)) {
-		throw result.failure;
-	}
-	return result.success as Record<string, unknown>;
-};
-
 // Recursively rewrites `#/definitions/...` `$ref` string values back to
 // `#/$defs/...`. Only `$ref` values are touched: keys, non-string `$ref`s
 // and prose containing "#/definitions" pass through untouched.
+//
+// A declared-family value is passed through VERBATIM — the walk does not
+// descend into it. Those values are opaque payloads addressed to a language
+// server, not schema positions: a `$ref`-shaped string inside one means
+// whatever that tool says it means, and rewriting it would corrupt it. It
+// also keeps a deep payload from spending the walk's depth budget.
 const restoreDefsRefs = (node: unknown, depth: number): unknown => {
 	if (depth >= MAX_NESTING_DEPTH) {
 		throw new RewriteDepthExceeded();
@@ -105,6 +135,15 @@ const restoreDefsRefs = (node: unknown, depth: number): unknown => {
 		// runs, but this walk must stay safe on its own terms.)
 		const out: Record<string, unknown> = Object.create(null);
 		for (const [key, value] of Object.entries(node)) {
+			if (KeywordFamilies.isDeclared(key)) {
+				// Copied by REFERENCE, not cloned: this is the SAME object the
+				// caller handed to `.annotate()`, which lives on the schema AST.
+				// Mutating a carried `x-ai-*` value in place therefore corrupts
+				// every later emission from that schema, not merely this
+				// document — treat the emitted document as read-only.
+				out[key] = value;
+				continue;
+			}
 			out[key] =
 				key === "$ref" && typeof value === "string"
 					? value.replace(DEFINITIONS_REF_PREFIX, "#/$defs")
@@ -125,9 +164,17 @@ const restoreDefsRefs = (node: unknown, depth: number): unknown => {
  * `JsonSchema.toDocumentDraft07` lowering, the `#/definitions` →
  * `#/$defs` `$ref` rewrite the lowering makes necessary — so every `$ref`
  * in a built document already resolves against the `$defs` pool — and the
- * {@link AnnotationCarriers} re-graft, so annotated non-standard keyword
- * families ({@link KeywordFamilies}) survive into the built document. The
- * package owns assembly and publication shape, not a JSON Schema engine.
+ * gate that holds the document's non-standard surface to the declared
+ * keyword families ({@link KeywordFamilies}). The package owns assembly and
+ * publication shape, not a JSON Schema engine.
+ *
+ * Annotated declared-family keys survive into the built document because
+ * core's Draft-07 lowering copies unknown and custom keywords through as
+ * opaque values, in place, including across the tuple coordinate move
+ * (2020-12 `prefixItems[i]` → Draft-07 `items[i]`, trailing `items` →
+ * `additionalItems`). This package therefore does no re-grafting of its
+ * own; it only declines to rewrite `$ref`-shaped strings *inside* those
+ * opaque payloads.
  *
  * @public
  */
@@ -184,24 +231,37 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 	static fromSchemaResult(
 		source: Schema.Constraint,
 		options: StoreDocumentOptions,
-	): Result.Result<StoreDocument, SchemaConversionError> {
+	): Result.Result<StoreDocument, SchemaConversionError | UndeclaredAnnotationKeyError> {
 		try {
 			const userIncludes = options.jsonSchema?.includeAnnotationKey;
+			// A predicate cannot be introspected, so the gate is enforced by
+			// wrapping it: every key it admits outside the declared families is
+			// recorded and then refused. Recorded keys are NOT admitted into the
+			// generated document — the build fails, so admitting them could only
+			// let core's own lowering throw first and bury the real cause.
+			const undeclared = new Set<string>();
 			const document = Schema.toJsonSchemaDocument(source, {
 				...options.jsonSchema,
-				// The declared families are always admitted so annotations can
-				// be carried; the user's predicate is consulted in addition.
-				includeAnnotationKey: (key) => KeywordFamilies.isDeclared(key) || userIncludes?.(key) === true,
+				includeAnnotationKey: (key) => {
+					if (KeywordFamilies.isDeclared(key)) {
+						return true;
+					}
+					if (userIncludes?.(key) === true) {
+						undeclared.add(key);
+					}
+					return false;
+				},
 			});
+			if (undeclared.size > 0) {
+				return Result.fail(UndeclaredAnnotationKeyError.make({ $id: options.$id, keys: [...undeclared].sort() }));
+			}
 			const lowered = JsonSchema.toDocumentDraft07(document);
-			// Carriers re-graft AFTER the `$ref` rewrite, so carrier payloads
-			// pass through verbatim rather than being walked by the rewrite.
-			const root = carry(document.schema, restoreDefsRefs(lowered.schema, 0));
+			const root = restoreDefsRefs(lowered.schema, 0) as Record<string, unknown>;
 			// Null-prototype for the same `__proto__` hardening as the rewrite
 			// walk: a definition named `__proto__` must land as an own key.
 			const defs: Record<string, unknown> = Object.create(null);
 			for (const [name, definition] of Object.entries(lowered.definitions)) {
-				defs[name] = carry(document.definitions[name], restoreDefsRefs(definition, 1));
+				defs[name] = restoreDefsRefs(definition, 1);
 			}
 			return Result.succeed(StoreDocument.make({ $schema: DRAFT_07_META_SCHEMA, $id: options.$id, root, defs }));
 		} catch (cause) {
@@ -215,7 +275,10 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 	 * primitive — synchronous callers can use that variant directly.
 	 */
 	static readonly fromSchema = Effect.fn("StoreDocument.fromSchema")(
-		(source: Schema.Constraint, options: StoreDocumentOptions): Effect.Effect<StoreDocument, SchemaConversionError> =>
+		(
+			source: Schema.Constraint,
+			options: StoreDocumentOptions,
+		): Effect.Effect<StoreDocument, SchemaConversionError | UndeclaredAnnotationKeyError> =>
 			Effect.fromResult(StoreDocument.fromSchemaResult(source, options)),
 	);
 

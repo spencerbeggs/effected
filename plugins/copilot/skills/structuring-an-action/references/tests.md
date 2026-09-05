@@ -13,7 +13,27 @@ Either way, gate a scoped test run on the reported test *count*, never the exit 
 
 **`__test__/utils/` is precisely the directory a project-scoped discovery may never collect** — a `*.test.ts` placed there does not run, and nothing reports it. That is exactly why the contract puts *no* tests there, and it is also the trap on the tidy-up: "these helpers look like tests, let me co-locate a few cases with them" silently deletes those cases while the suite stays green. One action documented the same hazard in reverse — a proposed cleanup that would have moved four live suites into that directory, all of them vanishing without a red result.
 
-The exclusion is by directory **name**, at **any depth**: `utils`, `fixtures` and `snapshots` are helper directories to the runner's project discovery, so `__test__/unit/utils/` is skipped as surely as the top-level one. Mirror `src/utils/` to `__test__/unit/utilities/`. A collection map you probed last month may be false this month if the runner's rule widened; re-probe rather than trust it, and keep the placement test list-free where you can — a walker that diffs the runner's own listed files against disk catches an exclusion nobody has learned yet.
+**The exclusion is a DIRECT CHILD of `__test__` only** — `utils`, `fixtures` and `snapshots` immediately under `__test__/`. A nested one is **collected**. Measured against `@vitest-agent/plugin@2.5.5` with `vitest list --filesOnly`, planting a probe test in each location (a probe in a plainly-collected directory was included as a control, and it was collected):
+
+| probe path | collected? |
+| --- | --- |
+| `__test__/fixtures/…/probe.test.ts` | no |
+| `__test__/utils/…/probe.test.ts` | no |
+| `__test__/integration/fixtures/…/probe.test.ts` | **yes** |
+| `__test__/integration/utils/…/probe.test.ts` | **yes** |
+
+The mechanism is one missing glob segment. The plugin builds its exclude list in `utils/discover-strategy.js:123`, and two entries sit adjacent in that same array with different shapes:
+
+```js
+// non-discoverable dirs — "**" BEFORE the name ⇒ any depth
+join(path, root, "**", d, "**")   // __test__/**/node_modules/**
+// helper dirs — no "**" before the name ⇒ direct child only
+join(path, TEST_DIR, d, "**")     // __test__/utils/**
+```
+
+**The trap this replaces: the rule is widely documented as applying at *any depth*, and it is not.** That over-broad reading fails in the mirror-image direction from the one the rider exists to prevent — a consumer moves a fixture or helper directory under a nested reserved name believing the exclusion is now structural, when those files are collected and will run. Both directions are silent.
+
+Keep mirroring `src/utils/` to `__test__/unit/utilities/` anyway: it costs nothing and stays correct whichever way the runner's rule moves. Better still, **enforce any-depth locally in your own placement test** — that is deliberately *stricter* than the runner, so it can only ever over-exclude, which is the fail-safe direction. A collection map you probed last month may be false this month; re-probe rather than trust it, and keep the placement test list-free where you can — a walker that diffs the runner's own listed files against disk catches an exclusion nobody has learned yet.
 
 ## The three-way check, executably
 

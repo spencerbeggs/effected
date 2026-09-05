@@ -39,7 +39,7 @@ _tools_block() {
 }
 
 @test "every agent declares a non-empty skills block" {
-	for agent in effect-developer effect-migrator effect-reviewer action-engineer; do
+	for agent in effect-developer effect-reviewer action-engineer; do
 		run _skills_block "$AGENTS/$agent.md"
 		[ "$status" -eq 0 ]
 		[ -n "$output" ] || {
@@ -49,8 +49,8 @@ _tools_block() {
 	done
 }
 
-@test "effect-v4-cli is registered under skills, in all three agents" {
-	for agent in effect-developer effect-migrator effect-reviewer; do
+@test "effect-v4-cli is registered under skills, in both Effect agents" {
+	for agent in effect-developer effect-reviewer; do
 		_skills_block "$AGENTS/$agent.md" | grep -qx -- "effect-v4-cli" || {
 			echo "agent $agent does not list effect-v4-cli under skills:" >&2
 			return 1
@@ -89,7 +89,7 @@ _tools_block() {
 @test "no skill name leaks into an agent's tools block" {
 	# A skill in tools: is the exact bug this file exists to catch — it would
 	# still satisfy any test that merely greps the file for the skill name.
-	for agent in effect-developer effect-migrator effect-reviewer action-engineer; do
+	for agent in effect-developer effect-reviewer action-engineer; do
 		for skill in "$PLUGIN_ROOT"/skills/*/; do
 			name="$(basename "$skill")"
 			if _tools_block "$AGENTS/$agent.md" | grep -qx -- "$name"; then
@@ -101,7 +101,7 @@ _tools_block() {
 }
 
 @test "every skill an agent names actually exists on disk" {
-	for agent in effect-developer effect-migrator effect-reviewer action-engineer; do
+	for agent in effect-developer effect-reviewer action-engineer; do
 		while IFS= read -r name; do
 			[ -f "$PLUGIN_ROOT/skills/$name/SKILL.md" ] || {
 				echo "agent $agent names skill '$name', which has no SKILL.md" >&2
@@ -109,4 +109,16 @@ _tools_block() {
 			}
 		done < <(_skills_block "$AGENTS/$agent.md")
 	done
+}
+
+@test "the agent roster is exactly the three specialists" {
+	# The v3 migration framing is retired: effect-migrator was deleted along
+	# with the construct-map skill. A re-added migrator agent, or a silently
+	# dropped specialist, must fail here rather than reaching the marketplace.
+	local found
+	found="$(cd "$AGENTS" && ls -1 *.md | sed 's/\.md$//' | sort | tr '\n' ' ')"
+	[ "$found" = "action-engineer effect-developer effect-reviewer " ] || {
+		echo "agent roster is '$found', expected the three specialists" >&2
+		return 1
+	}
 }

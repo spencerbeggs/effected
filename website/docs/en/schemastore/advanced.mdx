@@ -11,7 +11,7 @@ Picture the job this package was built for. A repo publishes two or three JSON S
 
 None of that is one function call in the naive shape. It is a loop with two gates, a policy about which findings stop the build, a comparison that has to survive the repo's own formatter, and a change classification that has to be right in a specific asymmetric way. Three consumers had each re-implemented that loop and would have diverged on error shape and gating, which is why [`SchemaPipeline`](/schemastore/api/class/schemapipeline) is a shipped surface rather than a snippet in a README.
 
-This guide covers the four capabilities a real build leans on — the pipeline and its gating policy, drift checking, annotation carrying at the edges, and versioning by classified change — plus the failure modes and testing patterns. It assumes the generate-lint-write basics from the [getting-started guide](/schemastore/getting-started).
+This guide covers the four capabilities a real build leans on — the pipeline and its gating policy, drift checking, annotations at the edges, and versioning by classified change — plus the failure modes and testing patterns. It assumes the generate-lint-write basics from the [getting-started guide](/schemastore/getting-started).
 
 ## How it composes with Effect
 
@@ -79,7 +79,7 @@ const program = SchemaPipeline.run(targets, {
 
 A blocking finding fails with [`SchemaGateError`](/schemastore/api/class/schemagateerror), carrying the `$id` and every finding that blocked, and the run stops there — a gated document is never written, and neither are the targets after it.
 
-Worth knowing which gate actually stops you. A target carries a `Schema`, so pipeline documents come from `fromSchema`, and the Draft-07 lowering drops undeclared keywords before the lint ever sees them: `UnknownKeyword` is effectively unreachable through this entry point, and **the engine gate is what blocks in practice**. The lint's warning checks earn their keep on depth and on documents the pipeline did not build — a hand-assembled `StoreDocument.draft07`, or one read back off disk.
+Worth knowing which gate actually stops you. A target carries a `Schema`, so pipeline documents come from `fromSchema`, which refuses an undeclared keyword outright — the run fails with [`UndeclaredAnnotationKeyError`](/schemastore/api/class/undeclaredannotationkeyerror) before there is a document to lint. `UnknownKeyword` is therefore unreachable through this entry point, and **the engine gate is what blocks in practice**. The lint's warning checks earn their keep on depth and on documents the pipeline did not build — a hand-assembled `StoreDocument.draft07`, or one read back off disk.
 
 ## Check for drift without writing
 
@@ -152,15 +152,19 @@ console.log(Object.keys(urls.versions ?? {}));
 
 Labels order by real SemVer precedence — `1.10.0` above `1.9.0`, `2.0.0-beta.1` below `2.0.0` — because the grammar is enforced through [`@effected/semver`](/semver)'s parse rather than a parallel regex. The file-name convention around the label stays SchemaStore's own `<name>-<version>.json`; the label grammar is the one deliberate divergence, since the store's corpus uses partial labels like `1.2` that no SemVer parser accepts and that cannot be split back out of a file name unambiguously. Omit `versions` entirely for the unversioned single-file mode — an empty array is a contradiction and throws rather than guessing which mode you meant.
 
-## Carrying annotations at the edges
+## Annotations at the edges
 
-The re-graft that keeps `markdownDescription` and `x-taplo` alive through the lowering is a **parallel walk**, not pointer arithmetic: it mirrors core's Draft-07 descent node for node, including the one coordinate move (2020-12 `prefixItems[i]` becomes Draft-07 `items[i]`, and a trailing `items` becomes `additionalItems`). There is no pointer mapping anywhere in the package, and consumers never have to know the lowered layout — owning that knowledge is the reason the package exists.
+`markdownDescription`, `x-taplo` and the rest reach the emitted document without any post-processing from this package: core's Draft-07 lowering carries a keyword it does not recognize through as an opaque value, in place, including across the one coordinate move it makes (2020-12 `prefixItems[i]` becomes Draft-07 `items[i]`, and a trailing `items` becomes `additionalItems`). If you learned that the lowering drops such keywords and that something had to graft them back on afterwards, unlearn it — the emitted documents are the same, but nothing in this package walks them to put the keywords back.
 
-Two boundaries follow from the mechanism, and both surprise people:
+What the package still owns is the boundary of what may be emitted, and four parts of it surprise people:
 
-**Carriers widen, they never narrow.** The declared families are always admitted. A caller-supplied `includeAnnotationKey` predicate is consulted *in addition*, but it cannot suppress a declared family — and keys it admits outside the declared families reach the 2020-12 document only to be dropped by the lowering. If you need a keyword to survive, it has to be a declared family, and [`KeywordFamilies`](/schemastore/api/class/keywordfamilies) is the single registry that decides. Both the carriers and the lint consume its one predicate, so lint and emission cannot drift on what counts as legitimate — and `SchemaValidator.layer` registers the same set with ajv before compiling, so the engine cannot reject what the lint deliberately allows.
+**The declared families are always in, and nothing else is.** They are admitted whatever a caller-supplied `includeAnnotationKey` answers — that predicate cannot suppress one. A key it admits *outside* the families fails the build with `UndeclaredAnnotationKeyError`, which names every offending key. Nothing drops such a key any more, so emitting it would ship a document SchemaStore's own gate rejects, and omitting it silently would hide the mistake in the predicate. [`KeywordFamilies`](/schemastore/api/class/keywordfamilies) is the single registry that decides; the gate and the lint consume its one predicate, so they cannot drift on what counts as legitimate — and `SchemaValidator.layer` registers the same set with ajv before compiling, so the engine cannot reject what the lint deliberately allows.
+
+**A declared-family value is opaque, all the way down.** The `#/definitions` → `#/$defs` `$ref` rewrite does not descend into one. A `$ref`-shaped string inside an `x-taplo` or `x-ai-*` payload survives verbatim, because that payload is addressed to a language server rather than being a schema position — rewriting it would corrupt whatever the tool means by it.
 
 **Annotate at the definition site.** An annotation on a hoisted (identifier'd) schema applied at its *usage* site reaches neither the `$ref` node nor the `$defs` pool entry, even at 2020-12. It silently carries nothing. That is core behavior the package documents rather than papers over, and it is the single most common reason a keyword "disappears".
+
+**A `Schema.Class`'s own annotations never reach the document.** Title, description and declared families alike are lost, because core hoists the class into a definition built from its *encoded* AST and the class-level annotations do not travel there. Field-level annotations inside the class are unaffected; for the root, generate from a `Schema.Struct` built from the same field list. Tracked upstream as [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084) and in [effected#606](https://github.com/spencerbeggs/effected/issues/606).
 
 ## Canonical JSON
 
@@ -184,7 +188,7 @@ Effect.runPromise(program).then(console.log);
 
 ## Edge cases and failure modes
 
-**A depth cap guards four recursive surfaces.** Nesting beyond the cap degrades to a `DepthExceeded` finding in the lint — which stays total and never throws — and fails typed elsewhere ([`CarrierDepthExceededError`](/schemastore/api/class/carrierdepthexceedederror), `JsonDepthExceededError`). `DocumentDiff`'s leaf comparison uses a looser stack guard on purpose: one shared budget made a deep-but-identical document compare as *different*, which is the worst possible answer.
+**A depth cap guards three recursive surfaces.** Nesting beyond the cap degrades to a `DepthExceeded` finding in the lint — which stays total and never throws — and fails typed elsewhere: [`JsonDepthExceededError`](/schemastore/api/class/jsondepthexceedederror) from the serializer, and a [`SchemaConversionError`](/schemastore/api/class/schemaconversionerror) when the `$ref` rewrite inside `fromSchema` hits it. `DocumentDiff`'s leaf comparison uses a looser stack guard on purpose: one shared budget made a deep-but-identical document compare as *different*, which is the worst possible answer.
 
 **Findings are never errors, and errors are never findings.** A validator's error channel is for the mechanism failing — [`SchemaValidatorError`](/schemastore/api/class/schemavalidatorerror) — never for a document it successfully judged. ajv raises a strict-mode rejection by *throwing*; the layer converts that into a root-pathed [`ValidationFinding`](/schemastore/api/class/validationfinding), while meta-schema failures keep ajv's structured `instancePath` and `keyword`. Each call gets a fresh engine instance, so shared `$id`s never collide across targets.
 

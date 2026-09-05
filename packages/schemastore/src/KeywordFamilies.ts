@@ -56,8 +56,9 @@
  *
  * Both consumers of the registry route through {@link KeywordFamilies.isDeclared}:
  * `DocumentLint`'s `UnknownKeyword` check (a declared key is not flagged) and
- * `AnnotationCarriers` (only declared keys are re-grafted after the Draft-07
- * lowering). One predicate, so the lint and the carriers cannot drift.
+ * `StoreDocument.fromSchema`'s gate (a key outside the families fails the
+ * build rather than being emitted). One predicate, so the lint and the gate
+ * cannot drift.
  */
 
 // The vscode-json-languageservice extension set (exact names).

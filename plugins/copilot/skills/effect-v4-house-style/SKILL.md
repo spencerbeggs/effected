@@ -95,7 +95,7 @@ these before inventing a local convention.
 ## Typed error taxonomy
 
 - **Never a free-form `reason: string` field.** The token appears in TSDoc
-  `@remarks` only as the v3 anti-pattern being fixed. A `reason` field typed
+  `@remarks` only as the anti-pattern being named. A `reason` field typed
   as a `Schema.Literals` union (glob, lockfiles, tsconfig-json do this) is
   fine — the rule bans free-form strings, not the field name; new code should
   still prefer the `<Concept><Stage>ErrorCode` naming below. Structured
@@ -156,8 +156,8 @@ section.
   suppression idiom that keeps API Extractor at zero warnings is owned by
   `effect-api-extractor-bases` — a package with no class factories carries
   no suppression at all.
-- **`@remarks` record WHY, not what** — including naming the v3 anti-pattern
-  the shape replaces ("v3 flattened it to `reason: String(e)`") and the
+- **`@remarks` record WHY, not what** — including naming the anti-pattern the
+  shape rules out ("a flattened `reason: String(e)` loses the cause") and the
   looks-right-but-isn't traps. Signature restatement is noise.
 - **`@example` blocks are runnable and minimal**: pure APIs end with
   `console.log` and a `// =>` comment showing the literal output; boundary

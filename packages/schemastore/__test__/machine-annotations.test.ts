@@ -6,19 +6,19 @@ const $id = "https://example.com/x-ai.schema.json";
 
 // End-to-end through StoreDocument.fromSchema + the real ajv-backed
 // SchemaValidator.layer + DocumentLint — no SchemaPipeline. Proves the
-// x-ai- family survives the Draft-07 lowering + re-graft exactly like any
-// other declared family, and that the whole document still passes both
-// gates once it is adopted.
+// x-ai- family reaches the emitted document exactly like any other
+// declared family, and that the whole document still passes both gates
+// once it is adopted.
 describe("the x-ai- machine-annotation family, end to end", () => {
 	// Field-level annotation at the DEFINITION site. Root-level "x-ai" (no
 	// dash) is the negative control: it is not a declared family (bare
 	// "x-ai" fails KeywordFamilies.isDeclared per the exact-prefix rule), so
-	// it must not survive the lowering + re-graft either.
+	// fromSchema never admits it and it must not reach the document at all.
 	const Annotated = Schema.Struct({
 		name: Schema.String.annotate({ "x-ai-hint": "the display name" }),
 	}).annotate({ "x-ai": true });
 
-	it.effect("a field's x-ai-hint survives the lowering + re-graft", () =>
+	it.effect("a field's x-ai-hint reaches the emitted document", () =>
 		Effect.gen(function* () {
 			const document = yield* StoreDocument.fromSchema(Annotated, { $id });
 			const properties = document.root.properties as Record<string, Record<string, unknown>>;

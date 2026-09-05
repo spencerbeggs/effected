@@ -5,11 +5,9 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `AnnotationCarriers` | Class | Re-grafts the declared non-standard keyword families (`KeywordFamilies`) from a Draft 2020-12 schema node onto its lowered Draft-07 counterpart. | re-graft non-standard keywords after draft-07 lowering, preserve x-taplo vscode tombi intellij x-ai machine annotations |
 | `CanonicalJson` | Class | Deterministic, canonical JSON text: the package's owned serializer, so a consumer never shells out to an external formatter to produce a stable committed schema file. | deterministic canonical json text, stable diff-friendly serialization for committed schema files |
 | `CanonicalJsonError` | TypeAlias | Union of the failures `CanonicalJson.serialize` can raise. | |
 | `CanonicalJsonOptions` | Interface | Options for `CanonicalJson.serialize`. | |
-| `CarrierDepthExceededError` | Class | Indicates that the carrier re-graft walk nested past the package's hardening cap (256 levels), which also intercepts cyclic inputs before they can recurse forever. | handle annotation re-graft nesting past hardening cap, cyclic schema guard |
 | `CatalogEntry` | Class | A SchemaStore `catalog.json` entry: the class is the schema, so decoding an existing entry and encoding one for submission are the same artifact. `versions` is present only for versioned catalogs (`SchemaVersioning.catalogUrls` assembles both modes). | build a schemastore catalog.json entry, assemble unversioned or versioned schema urls |
 | `CatalogLintFinding` | Class | A fileMatch hygiene finding: a value in a lint report, not an error — SchemaStore reviewers reject entries over these, so surfacing them locally is the point, but a warned entry is still a valid entry. | catalog fileMatch hygiene warning, generic pattern or complex glob rejection |
 | `CatalogUrls` | Interface | The `url`/`versions` half of a catalog entry, as assembled by `SchemaVersioning.catalogUrls`. | |
@@ -48,6 +46,7 @@
 | `SchemaWriteOptions` | Interface | Options for `SchemaFileShape.write` and `SchemaFileShape.check`: the `CanonicalJsonOptions` the document serializes under, plus how `write` decides whether to touch the file. | |
 | `StoreDocument` | Class | A SchemaStore-shaped Draft-07 JSON Schema document assembled from an Effect Schema source: `$schema` (the Draft-07 meta-schema) + `$id` + the root schema + the `$defs` pool. | assemble a schemastore-shaped draft-07 document from an effect schema, publish a json schema |
 | `StoreDocumentOptions` | Interface | Options for `StoreDocument.fromSchema`. | |
+| `UndeclaredAnnotationKeyError` | Class | Indicates that a caller-supplied `includeAnnotationKey` admitted an annotation key outside the declared keyword families (`KeywordFamilies`). | refuse an annotation key outside the declared language-server families, fail a schemastore document build naming every offending key, gate includeAnnotationKey |
 | `ValidationFinding` | Class | One problem a validation engine found with a document: a value in a report, never an error channel — the consumer decides what a finding gates. | one ajv validation problem in a document, a value never an error |
 | `WriteChange` | TypeAlias | How the document being written relates to what was already on disk: `SchemaChange` plus `"created"` for a file that did not exist, so there was nothing to compare against. | |
 | `WriteOutcome` | TypeAlias | What `SchemaFileShape.write` did to the filesystem: `"written"` when it wrote, `"unchanged"` when it left the file alone — reported as a value so the caller decides what to surface, never a log. | |

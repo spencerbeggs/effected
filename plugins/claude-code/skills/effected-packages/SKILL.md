@@ -7,7 +7,7 @@ description: The @effected package index — what each of the kit's 31 packages 
 
 `@effected/*` is an Effect v4-first app kit: 31 packages (30 libraries plus
 the `pnpm-plugin-effect` companion) designed against the
-v4 line (never lift-and-shifted from v3), released together, with every
+v4 line, released together, with every
 `effect` dependency pinned to one exact beta via pnpm catalogs. Before
 designing lockfile/config/glob/semver/path/state/workspace/git capability by
 hand, check this table — the kit probably ships it, schema-first and with a
@@ -48,7 +48,7 @@ against its services, or test code that uses it.
 | `@effected/commands` | `Run` combinators over core `ChildProcess.Command` (collect/text/lines/json/`jsonLine`/detach, typed failure, redaction, transient retry) + `ToolDiscovery` + the `LocalExec` contract `workspaces` implements | running any subprocess, framing a JSON protocol payload out of a noisy child's stdout, or asking whether a CLI tool is installed and which copy to use | boundary | [commands.md](./references/commands.md) |
 | `@effected/templates` | managed sections: delimited BEGIN/END blocks inside user-editable files, with reconcile/sync/check and a parameterized marker + comment style | writing generated content into a file a human also edits | boundary | [templates.md](./references/templates.md) |
 | `@effected/schema-org` | schema.org vocabulary as Schema classes (`SoftwareSourceCode`, `TechArticle`, `APIReference`, `Person`, `Organization`, `CreativeWork`), a `JsonLdDocument` assembler with `@id` cross-references, a script-embeddable escaped serializer, and offline conformance validation against the vendored v30.0 vocabulary behind a separate `./validate` entrypoint | emitting schema.org JSON-LD for a page, or gating structured data in CI without calling a live validator | pure | [schema-org.md](./references/schema-org.md) |
-| `@effected/schemastore` | Effect Schemas published as SchemaStore-shaped Draft-07 JSON Schema documents: `SchemaPipeline` (the generate → lint → validate → gate → write loop), `StoreDocument` assembly (owning the `#/$defs` restore), versioned/unversioned catalog modes, fileMatch hygiene lint, `DocumentLint`, language-server annotation carriers, `SchemaValidator` shipping closed over ajv, `DocumentDiff` change classification, content-comparing `SchemaFile` IO | emitting editor-consumable JSON Schema from Effect Schemas, or publishing a catalog to SchemaStore | integrated | [references/schemastore.md](references/schemastore.md) |
+| `@effected/schemastore` | Effect Schemas published as SchemaStore-shaped Draft-07 JSON Schema documents: `SchemaPipeline` (the generate → lint → validate → gate → write loop), `StoreDocument` assembly (owning the `#/$defs` restore), versioned/unversioned catalog modes, fileMatch hygiene lint, `DocumentLint`, the declared-family annotation gate, `SchemaValidator` shipping closed over ajv, `DocumentDiff` change classification, content-comparing `SchemaFile` IO | emitting editor-consumable JSON Schema from Effect Schemas, or publishing a catalog to SchemaStore | integrated | [references/schemastore.md](references/schemastore.md) |
 | `@effected/store` | migrated SQLite `Store` + TTL `Cache` with tags/eviction/events | durable local state or an on-disk cache | integrated | [store.md](./references/store.md) |
 | `@effected/workspaces` | monorepo discovery, dependency graph, PM detection, catalogs (with three `ConfigDependencyHooks` replay layers — noop / in-process / subprocess), change detection, snapshots, versioning/tag strategies, `PeerCheck` unsatisfied-peer detection over a parsed lockfile; implements `npm`'s resolvers and `commands`' `LocalExec` | any monorepo/workspace introspection, or asking whether a workspace's peer graph is satisfied (npm/pnpm/bun — not yarn) | integrated | [workspaces.md](./references/workspaces.md) |
 | `@effected/github` | typed GitHub REST + GraphQL over octokit's core request surface, App auth, resources (branches/tags/commits/releases/PRs/checks), pagination, one error taxonomy — **plus the configuration-WRITE half**: `GitHubRepository` settings (`repositoryPatch` builds a cast-free partial patch, dropping `undefined` fields), `Ruleset`, repo/environment secrets and variables (it owns the sealed-box crypto), `DeploymentEnvironment`, `CodeScanning`, `Attestation` | any GitHub API call — the route literal types params AND response, no casts — **and configuring a repository**: settings, rulesets, secrets, variables, environments | integrated | [github.md](./references/github.md) |
@@ -216,11 +216,6 @@ Three standing directives for a downstream repo rebuilding against this kit:
 - If a package feels like it is missing a service, a construct reads awkwardly,
   or you re-implement something twice, surface it to the user as an
   improvement suggestion for the kit — the ecosystem is actively dogfooding.
-- **Adopting the kit from the v3-era predecessors** (`xdg-effect`,
-  `config-file-effect`, `workspaces-effect`)? That's a rename **plus** real API
-  breaks, not net-new wiring — the Effect v3→v4 map doesn't cover old kit → new
-  kit. See [predecessor-bridge.md](./references/predecessor-bridge.md) for the
-  per-package before/after tables.
 
 ## Related skills
 

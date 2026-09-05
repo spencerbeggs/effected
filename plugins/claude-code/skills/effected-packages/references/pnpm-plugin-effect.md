@@ -57,4 +57,4 @@ One suite, `__test__/allowed-versions.test.ts`, covering the allowed-versions ge
 
 - pnpm-only: config dependencies and catalogs have no npm/yarn equivalent.
 - It publishes on the same `0.1.0` release gate as every library in the kit — a real public package, not repo infrastructure. (Its source manifest says `"private": true` like every package here; the bundler's `publishConfig` transform produces the publishable manifest.)
-- Under v4 the catalogs are a convenience rather than a necessity (v3's peer-floor computation was the hard part) — optional, but shipped and supported.
+- The catalogs are a convenience rather than a necessity — optional, but shipped and supported.

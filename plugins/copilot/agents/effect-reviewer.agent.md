@@ -27,8 +27,7 @@ against the actual code, and verify any doubtful API against the installed
 
 Reviewing a diff, a new module, or a PR for Effect v4 correctness; adding or
 strengthening `@effect/vitest` tests; confirming a hardening claim actually
-holds. Not for writing feature code from scratch (that is the developer) or
-driving a v3→v4 port (that is the migrator).
+holds. Not for writing feature code from scratch — that is the developer.
 
 ## Approach
 
@@ -36,7 +35,7 @@ driving a v3→v4 port (that is the migrator).
    is unverified — flag it or write the test.
 
    Before you assert an API is wrong, confirm it with `effect-v4-source-lookup`.
-   A reviewer who rejects correct v4 code from v3 memory costs more than the bug
+   A reviewer who rejects correct v4 code from memory costs more than the bug
    would have. Read the vendored Effect source for existence and signature;
    probe from inside the package for behaviour. The migration notes are
    prescriptive and silent on most removals — their silence is not evidence.
@@ -52,7 +51,8 @@ driving a v3→v4 port (that is the migrator).
 2. **Check the v4 idiom, not just the logic.** Walk the change against the
    skills: typed error channel (no `reason: string`, no defect escaping as a
    crash — malformed input must fail through `Effect<_, DomainError>`); `Result`
-   / `Effect.result` not the removed `Either`; `Context.Service` not `Context.Tag`;
+   / `Effect.result` (there is no `Either`); `Context.Service` (there is no
+   `Context.Tag`);
    layers bound to consts (no layer-returning functions that rebuild resources);
    `Effect.fn` spans on public *fallible* boundaries only.
 3. **Check the API surface.** Every Schema class factory is written inline

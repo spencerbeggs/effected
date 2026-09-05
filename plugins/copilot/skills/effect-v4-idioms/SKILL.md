@@ -5,8 +5,8 @@ description: >-
   and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on
   FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers,
   runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the
-  idiomatic v4 spelling; for pure v3→v4 renames consult effect-v4-construct-map. Every identifier
-  and source citation re-verified against effect@4.0.0-rc.109.
+  idiomatic v4 spelling. Every identifier and source citation re-verified against
+  effect@4.0.0-rc.109.
 ---
 
 # Effect v4 core idioms
@@ -14,10 +14,8 @@ description: >-
 The idiomatic way to write core v4 code — generators, errors, resources, fibers,
 runtime, equality. For *which module* to reach for in the first place (what is
 `Sink`, `RcMap`, `Latch`…), consult `effect-v4-module-index` — this skill owns
-patterns, not the map. This is the *how to write it well* companion to
-`effect-v4-construct-map` (which owns the flat v3→v4 rename tables and the
-`Context.Service` / `Schema.TaggedError` migration rows — cross-reference it
-rather than duplicate). Every identifier below was verified to exist against
+patterns, not the map. For confirming that a name exists before you rely on it,
+see `effect-v4-source-lookup`. Every identifier below was verified to exist against
 `effect@4.0.0-rc.109`, and every `file:line` citation re-checked against the
 vendored tree at that tag; when you reach past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
@@ -83,17 +81,16 @@ the effect); and a **`throw` from the body becomes a `Die` defect**, not a
 typed failure — the plain form gives you no typed error channel for free, so a
 body that can throw belongs in `Effect.try`, or the throw escapes as a defect.
 
-## `Effect.async` is `Effect.callback`
+## Wrapping a callback API — `Effect.callback`
 
-Wrapping a callback API is **`Effect.callback`**. `Effect.async` is `undefined`
-in v4 — the rename is not guessable from the v3 name, and reaching for the v3
-spelling fails at the call site with a "not a function" that points nowhere near
-the cause. See `effect-v4-construct-map`.
+Wrapping a callback API is **`Effect.callback`**. There is no `Effect.async` —
+the name resolves to `undefined`, so reaching for it fails at the call site with
+a "not a function" that points nowhere near the cause.
 
 ## Error handling — `catch*` recovery
 
-The recovery family lost its `All` and gained `Filter`/`Reason` variants. The
-idiomatic recoveries:
+The recovery family is spelled `catch*`, with `Filter` and `Reason` variants.
+The idiomatic recoveries:
 
 - **`Effect.catchTag(tag, handler)` / `Effect.catchTags({ Tag: handler })`** —
   targeted typed recovery, both unchanged. Default choice for domain errors.
@@ -101,8 +98,8 @@ idiomatic recoveries:
   `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
   which obviates `catchTags` boilerplate when several tags route to the same
   recovery (verified at rc.109, `Effect.ts:2695` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
-- **`Effect.catch(handler)`** — recover from any typed failure (the v3
-  `catchAll`). **`Effect.catchCause(handler)`** for full-cause infra handling,
+- **`Effect.catch(handler)`** — recover from any typed failure; there is no
+  `catchAll`. **`Effect.catchCause(handler)`** for full-cause infra handling,
   **`Effect.catchDefect(handler)`** for defects.
 - **`Effect.match({ onFailure, onSuccess })`** — totalize an effect to a plain
   value when you want no failure channel left.
@@ -165,7 +162,12 @@ rc.109. The `reason` field is where the detail lives: a `PlatformError` wraps
 a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
 carrying a normalized `SystemErrorTag`), `PlatformError.ts:36,109,157`.
 
-**New in v4** — recover a nested `reason` without stripping the parent error
+**Construct one through the module's factories, never `new`.**
+`new FileSystem.SystemError(...)` fails with "is not a constructor" — the
+constructors are `PlatformError.systemError({...})` and
+`PlatformError.badArgument({...})`.
+
+Recover a nested `reason` without stripping the parent error
 from the channel (e.g. an `AiError` whose `reason` is a `RateLimitError`):
 
 ```ts
@@ -182,8 +184,8 @@ variant of `catch` that runs synchronous recovery immediately.
 
 ## Yieldable — not everything is an Effect
 
-v4 dropped the v3 "many types ARE Effects" model, and what replaced it is
-narrower than the migration notes say. **The notes are the trap here.**
+Not every type is yieldable in v4, and the surface is narrower than the
+vendored notes claim. **The notes are the trap here.**
 `migration/yieldable.md` documents a `Yieldable` trait whose contract is
 `asEffect(): Effect<A, E, R>`, lists `Option` and `Result` as implementors, and
 states "the runtime calls `.asEffect()` internally when yielding". **None of
@@ -233,12 +235,11 @@ To read a `Result` **outside** an Effect, narrow with `Result.isSuccess` /
 ```ts
 const r = Fmt.parseResult(text)
 if (Result.isSuccess(r)) use(r.success)   // NOT r.value — undefined, silently
-else report(r.failure)                    // NOT r.left / r.right (v3 Either)
+else report(r.failure)                    // NOT r.left / r.right — there is no Either
 ```
 
 The `Success` variant carries `.success` and the `Failure` variant `.failure`
-(`Result.ts:161,99`); there is no `.value`, and the v3 `Either` `.right` /
-`.left` names are gone. A read through `.value` compiles against `unknown` in
+(`Result.ts:161,99`); there is no `.value`, and no `.right` / `.left`. A read through `.value` compiles against `unknown` in
 a loose context and returns `undefined` at runtime with no error — the exact
 silent miss that cost a round-4 consumer a debugging cycle.
 
@@ -281,8 +282,7 @@ probed on beta.94 and re-verified at beta.107:
 
 ## Yieldable errors — schema-backed error classes
 
-Define errors as `Schema.TaggedError` (see `effect-v4-construct-map` for
-the full migration row). Naming trap: beta.102–105 renamed
+Define errors as `Schema.TaggedError`. Naming trap: beta.102–105 renamed
 `Schema.TaggedErrorClass` back to `Schema.TaggedError` (same curried call
 shape); code written against earlier v4 betas fails with "TaggedErrorClass is
 not a function". The payoff at the call site: an instance is yieldable —
@@ -339,8 +339,7 @@ if (Cause.hasInterrupts(cause)) { /* was interrupted */ }
 - Merge causes with `Cause.combine` — the sequential/parallel distinction is
   gone (it concatenates reasons).
 
-The full guard/extractor rename table lives in `effect-v4-construct-map`; the
-idiom to internalize is *iterate `reasons`, switch on `_tag`*.
+The idiom to internalize is *iterate `reasons`, switch on `_tag`*.
 
 ### Probing `catchCause` — the obvious experiment lies
 
@@ -414,16 +413,15 @@ into the taxonomy, not exposed as a parameter.
 
 The official LLMS guidance, adopted as a house rule: **never** write your own
 type-guard helpers — the `Predicate` module ships them. A hand-rolled guard is
-both a duplication and a subtle-drift risk (v3 ports carry several; retire
-them on contact).
+both a duplication and a subtle-drift risk; retire any you find on contact.
 
-Beware the v3 names: **`Predicate.isRecord` and `Predicate.isPlainObject` do
+Two names that read as real but are not: **`Predicate.isRecord` and `Predicate.isPlainObject` do
 NOT exist on rc.109** (probed; the vendored `Predicate.ts` has neither). The
 guards that DO ship: `isString`, `isNumber`, `isBoolean`, `isObject`,
 `isReadonlyObject`, `isObjectOrArray`, `isObjectKeyword`, `hasProperty`,
 `isTagged`, `isIterable`, `isNullish`/`isNotNullish`, `isTupleOf`, and
 friends — for a record check, pick the object refinement whose semantics you
-verified in the module, not a remembered v3 name.
+verified in the module, not a remembered name.
 
 ## Scope and resource management
 
@@ -446,15 +444,15 @@ Effect.scoped(
 
 `Effect.addFinalizer` registers ad-hoc cleanup on the current scope. To satisfy
 an effect's `Scope` requirement without closing the scope, use **`Scope.provide`**
-(the renamed `Scope.extend`) — both `Scope.provide(effect, scope)` and
+— both `Scope.provide(effect, scope)` and
 `effect.pipe(Scope.provide(scope))` work.
 
 ## Forking and fibers
 
-The fork verbs are renamed and now take an options object:
+The fork verbs take an options object:
 
-- `Effect.forkChild` — child of the current fiber (the old `Effect.fork`).
-- `Effect.forkDetach` — detached from the parent lifecycle (old `forkDaemon`).
+- `Effect.forkChild` — child of the current fiber; there is no bare `Effect.fork`.
+- `Effect.forkDetach` — detached from the parent lifecycle; there is no `forkDaemon`.
 - `Effect.forkScoped` — tied to the current `Scope`.
 - `Effect.forkIn` — forked into a specific `Scope`.
 
@@ -473,7 +471,7 @@ keep-alive timer. `runMain` (from the platform packages) is still the
 recommendation for SIGINT/SIGTERM handling, exit codes, and unhandled-error
 reporting, but it is no longer what keeps the event loop from draining.
 
-## FiberRef is gone — use `Context.Reference`
+## Fiber-local state — `Context.Reference`
 
 `FiberRef` and `FiberRefs` are removed (zero occurrences in core at rc.109,
 and `effect/FiberRef` does not resolve as a module).
@@ -503,17 +501,24 @@ Built-in fiber refs moved to the `References` module — read them the same way:
 **There is no `References.CurrentConcurrency`** — the module's own header prose
 says the references "cover concurrency, scheduling, logging, tracing"
 (`References.ts:4`), but no concurrency reference is exported at rc.109, and
-a `yield*` against the remembered v3 name gets `undefined`. Concurrency is an
+a `yield*` against the remembered name gets `undefined`. Concurrency is an
 *option* in v4 (`{ concurrency }` on `Effect.all` and friends), not an ambient
 reference. The twelve that do exist: `CurrentLogAnnotations`, `CurrentLogLevel`,
 `CurrentLogSpans`, `CurrentStackFrame`, `MinimumLogLevel`, `TracerEnabled`,
 `TracerSpanAnnotations`, `TracerSpanLinks`, `TracerTimingEnabled`,
 `UnhandledLogLevel`, `CurrentLoggers`, `LogToStderr`.
 
+**Overriding the config provider is ordinary service provision.** There is no
+`Effect.withConfigProvider`; `ConfigProvider.ConfigProvider` is itself a
+`Context.Reference` (`ConfigProvider.ts:341`), so swap it with
+`Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`. Reach
+for a combinator name instead and you get `undefined is not a function` at the
+call site — which reads like a bad import, not a missing API.
+
 ## Runtime and entrypoints
 
-The `Runtime<R>` type (v3's bundle of `Context` + flags + `FiberRefs`) is gone —
-use `Context<R>`. The run functions live on `Effect`:
+There is no `Runtime<R>` type carrying services and flags — the ambient service
+set is just `Context<R>`. The run functions live on `Effect`:
 
 - Capture the ambient services with `Effect.context<R>()`, then run a program
   against them with `Effect.runForkWith(services)(program)`.
@@ -540,13 +545,36 @@ value:
 
 ```ts
 Equal.equals({ a: 1 }, { a: 1 })   // true
-Equal.equals(NaN, NaN)             // true  (was false in v3)
+Equal.equals(NaN, NaN)             // true  (NaN equals itself)
 ```
 
 To force identity comparison, opt out per object: `Equal.byReference(obj)`
 (non-mutating Proxy) or `Equal.byReferenceUnsafe(obj)` (marks the object itself,
-faster, permanent). Derive an `Equivalence` with `Equal.asEquivalence()` (the
-renamed `equivalence()`).
+faster, permanent). Derive an `Equivalence` with `Equal.asEquivalence()`.
+
+## Some names that look like values are calls
+
+A nasty family: the name **does** exist and is spelled exactly like the value you
+want, but it is a **factory with an optional (or no) argument** — so the uncalled
+reference is a perfectly good expression and the mistake surfaces far away, as a
+construction throw or a service that was never provided. Verified at rc.109:
+
+| Write | Not | Source |
+| --- | --- | --- |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:10769` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:10669` — same shape, same optional-`options` trap, one page away in the same module. |
+| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:436` — a *function* returning a Layer, unlike almost every other `layer` in core. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:4956` — takes ONE array argument. |
+
+**The discriminator is the optional argument.** `Schema.Cause(e, d)`
+(`Schema.ts:10493`) and `Schema.Exit(...)` (`:10831`) are factories too, but their
+arguments are required, so forgetting to call them is an immediate type error.
+Only the zero-or-optional-arg factories type-check uncalled.
+
+**And do not over-correct: `layer` is usually a value.** `TestConsole.layer` is a
+plain `Layer.Layer<TestConsole>` (`testing/TestConsole.ts:294`), so
+`TestConsole.layer()` is an error. The pair sits in the same directory and reads
+identically. Check the declaration; do not pattern-match on the name.
 
 ## Verify, don't remember
 
@@ -561,4 +589,4 @@ console.log(typeof Effect.TheApiYouWant)
 ```
 
 If it prints `undefined`, the name moved — check `node_modules/effect/dist/` for
-the `.d.ts`, or the `effect-v4-construct-map` rename tables, before writing.
+the `.d.ts`, or climb the `effect-v4-source-lookup` ladder, before writing.

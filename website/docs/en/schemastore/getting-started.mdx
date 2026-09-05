@@ -23,7 +23,7 @@ Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency; `ajv` and [
 
 Here is the concrete goal. Your tool reads `mytool.config.json`, you already describe that file with an Effect Schema, and you want a published `mytool.json` schema that editors pick up — regenerated on every build, gated so a broken document never ships. We will build it one step at a time.
 
-Start with the document itself. [`StoreDocument.fromSchema`](/schemastore/api/class/storedocument) runs core's 2020-12 generation, the Draft-07 lowering, the `$ref` rewrite back to the `$defs` pool and the annotation re-graft, then hands you a `StoreDocument`. `serializeResult()` turns it into canonical text — a `Result`, because serialization can fail on a value JSON cannot represent, which `Effect.fromResult` lifts onto the error channel:
+Start with the document itself. [`StoreDocument.fromSchema`](/schemastore/api/class/storedocument) runs core's 2020-12 generation, the Draft-07 lowering, the `$ref` rewrite back to the `$defs` pool and the declared-family gate, then hands you a `StoreDocument`. `serializeResult()` turns it into canonical text — a `Result`, because serialization can fail on a value JSON cannot represent, which `Effect.fromResult` lifts onto the error channel:
 
 ```ts with-api
 import { StoreDocument } from "@effected/schemastore";
@@ -35,7 +35,7 @@ const Config = Schema.Struct({
 });
 
 const program = Effect.gen(function* () {
-  // 1. Generate, lower, rewrite refs and re-graft annotations — one call.
+  // 1. Generate, lower, rewrite refs and gate the annotations — one call.
   const document = yield* StoreDocument.fromSchema(Config, {
     $id: "https://example.com/schemas/mytool.json",
   });
@@ -111,7 +111,7 @@ Each snippet below is a complete program built only from the package's real expo
 
 ### Carry an editor annotation into the emitted keyword
 
-Effect Schema annotations take arbitrary string keys, and the declared language-server families are always admitted and re-grafted after the lowering. Annotate **at the definition site** — a usage-site annotation on a hoisted schema carries nothing:
+Effect Schema annotations take arbitrary string keys, and the declared language-server families are always admitted — core's Draft-07 lowering carries them through as opaque values, in place, so the key you annotate is the keyword that ships. Annotate **at the definition site** — a usage-site annotation on a hoisted schema carries nothing:
 
 ```ts with-api
 import { StoreDocument } from "@effected/schemastore";
