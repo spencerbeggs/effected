@@ -58,6 +58,26 @@ describe("DocumentDiff", () => {
 			assert.strictEqual(DocumentDiff.classify(a, b), "annotations");
 		});
 
+		it("answers annotations for an x-ai-hint-only change, and contract when required also changes", () => {
+			const a = {
+				type: "object",
+				properties: { name: { type: "string", "x-ai-hint": "the display name" } },
+				required: ["name"],
+			};
+			const annotationOnly = {
+				type: "object",
+				properties: { name: { type: "string", "x-ai-hint": "a different hint" } },
+				required: ["name"],
+			};
+			const contractToo = {
+				type: "object",
+				properties: { name: { type: "string", "x-ai-hint": "a different hint" } },
+				required: [],
+			};
+			assert.strictEqual(DocumentDiff.classify(a, annotationOnly), "annotations");
+			assert.strictEqual(DocumentDiff.classify(a, contractToo), "contract");
+		});
+
 		it("answers annotations when an annotation keyword is added or removed outright", () => {
 			const withDescription = { type: "string", description: "A" };
 			assert.strictEqual(DocumentDiff.classify({ type: "string" }, withDescription), "annotations");
@@ -165,6 +185,7 @@ describe("DocumentDiff", () => {
 				"markdownDescription",
 				"x-taplo",
 				"x-tombi-toml-version",
+				"x-ai-hint",
 			]) {
 				assert.isTrue(DocumentDiff.isAnnotationKeyword(key), key);
 			}

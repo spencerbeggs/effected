@@ -1,5 +1,8 @@
 import { SemVer } from "@effected/semver";
 import { Effect, Option, Order, Result, Schema } from "effect";
+// Type-only: erased at emit, so `SchemaVersioning` keeps its zero runtime edges
+// and stays pure. The classification vocabulary belongs to `SchemaFile`.
+import type { WriteChange } from "./SchemaFile.js";
 
 // Version labels are STRICT SemVer: all three components always present,
 // optional prerelease, with `@effected/semver` doing the enforcing rather
@@ -84,6 +87,22 @@ const orderingKey = (label: SchemaVersion): SemVer => {
 		throw new Error(`SchemaVersion ordering invariant violated for label "${label}"`);
 	}
 	return result.success;
+};
+
+// `SemVer.make` bounds every component at `Number.MAX_SAFE_INTEGER`, so a bump
+// past the ceiling fails its schema with a bare "Schema validation failed" that
+// names neither the label nor the limit. Re-throw the module's own invariant
+// instead, so the label that ran out of room is visible in the message.
+const bumpBreaking = (current: SchemaVersion, parsed: SemVer): SemVer => {
+	try {
+		// On the 0.x line MINOR is the breaking axis; above it, MAJOR is.
+		return parsed.major === 0 ? parsed.bump.minor() : parsed.bump.major();
+	} catch (cause) {
+		throw new Error(
+			`SchemaVersion bump invariant violated: "${current}" cannot be bumped past Number.MAX_SAFE_INTEGER (${Number.MAX_SAFE_INTEGER})`,
+			{ cause },
+		);
+	}
 };
 
 const assertSimpleName = (name: string): void => {
@@ -171,6 +190,64 @@ export class SchemaVersioning {
 		return versions.length === 0
 			? Option.none()
 			: Option.some(versions.reduce((max, v) => (SchemaVersioning.Order(v, max) > 0 ? v : max)));
+	}
+
+	/**
+	 * Whether a label names a pinned, published document — i.e. it is NOT a
+	 * prerelease. SemVer §9 makes a prerelease's own instability explicit, so
+	 * a contract change inside one is not a break for anyone.
+	 *
+	 * ONE predicate consumed by two policies so they cannot drift:
+	 * `SchemaPipeline`'s `"block-versioned"` guard (a pinned versioned target
+	 * refuses an in-place contract change) and {@link SchemaVersioning.next}
+	 * (a non-pinned label is not bumped). If the two used different tests, a
+	 * caller could be refused a write AND told to keep the same label — a
+	 * deadlock.
+	 */
+	static isPinned(version: SchemaVersion): boolean {
+		return orderingKey(version).prerelease.length === 0;
+	}
+
+	/**
+	 * The version label a change classification calls for. Pure and
+	 * synchronous; total over validated labels — a non-label input is a wiring
+	 * bug and dies as a defect, the same as {@link SchemaVersioning.Order}.
+	 *
+	 * - `change !== "contract"` (`"none"`, `"annotations"`, `"created"`) →
+	 *   `current`. A created file has no predecessor to break; an annotation
+	 *   change is transparently replaceable (`DocumentDiff`).
+	 * - `current` is not pinned (a prerelease) → `current`. A prerelease
+	 *   declares its own instability; the pipeline's `"block-versioned"`
+	 *   policy uses the same {@link SchemaVersioning.isPinned}, so the gate
+	 *   and the bump agree.
+	 * - `major === 0` → MINOR bump (`0.4.0` → `0.5.0`): on the 0.x line MINOR
+	 *   is the breaking axis.
+	 * - otherwise → MAJOR bump (`5.0.0` → `6.0.0`).
+	 *
+	 * The bump's job is to be strictly greater and conspicuous, NOT to encode
+	 * SemVer compatibility: `DocumentDiff` cannot tell an added optional
+	 * property from a removed required one, so every contract change reads as
+	 * breaking. Each label is its own file and URL, so an over-bump costs a
+	 * file; an under-bump would overwrite a pinned document. `next` never
+	 * introduces a prerelease from a stable input.
+	 *
+	 * A component that would be bumped past `Number.MAX_SAFE_INTEGER` cannot be
+	 * represented, and throws this module's explicit invariant `Error` naming
+	 * the label and the ceiling rather than `SemVer.make`'s bare schema failure.
+	 */
+	static next(current: SchemaVersion, change: WriteChange): SchemaVersion {
+		if (change !== "contract" || !SchemaVersioning.isPinned(current)) {
+			return current;
+		}
+		const bumped = bumpBreaking(current, orderingKey(current));
+		const label = bumped.toString();
+		const reparsed = SchemaVersioning.parseResult(label);
+		if (Result.isFailure(reparsed)) {
+			// Unreachable: a bump of a validated label resets prerelease and
+			// build, so the result is a bare three-component SemVer.
+			throw new Error(`SchemaVersion bump invariant violated: "${current}" bumped to "${label}"`);
+		}
+		return reparsed.success;
 	}
 
 	/**

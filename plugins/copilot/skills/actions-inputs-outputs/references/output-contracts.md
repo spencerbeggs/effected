@@ -204,7 +204,14 @@ Three things in that script are load-bearing:
   one can pass while the generator emits something else.
 - **The script lives in `lib/scripts/`**, the cache-invalidating location, and
   guards its run behind an `invokedDirectly` check so a test can import
-  `targets` without generating. Wire it as `"schema:generate": "tsx lib/scripts/generate-schema.ts"`.
+  `targets` without generating. Wire it as `"schema:generate": "tsx lib/scripts/generate-schema.ts"`,
+  and the drift test below as `"schema:check": "vitest run __test__/unit/generate-schema.test.ts"` —
+  the test file lives under `__test__/unit/` per canon B1.
+- **The run is all-or-nothing.** `SchemaPipeline.run` is two-phase: every
+  target is generated and gated before any file is touched, so a failure on
+  the last target leaves the first ones unwritten. A pinned versioned target
+  whose contract would change refuses the whole run itself (see "Versioning
+  the contract" below) — the script does not need its own preflight for that.
 
 The gate is policy, not mechanism: the default blocks `warning` findings
 (`UnresolvedRef`, `UnknownKeyword`, `DepthExceeded`, and every engine
@@ -254,28 +261,40 @@ round-trip out of a file name unambiguously. The directory carries the same
 label as the file so a version's artifacts stay together while the file name
 remains the one SchemaStore resolves.
 
-**Gate before writing.** Run the check first and refuse to overwrite a
-published version whose contract changed:
+**The pipeline refuses the write itself — do not hand-roll a preflight.**
+Under the default `contractChanges: "block-versioned"`, a target carrying a
+PINNED `version` (`SchemaVersioning.isPinned`: no prerelease) whose
+document classifies as a `"contract"` change fails the whole run with
+`SchemaContractChangeError` *before any target is written* — not just that
+target, every target in the same call. The error's `message` and its
+`targets` array already name what to do: each `ContractChangeTarget` carries
+`$id`, `path`, the pinned `version`, and `nextVersion` —
+`SchemaVersioning.next(version, "contract")`, the label to bump to.
 
 ```ts
-const preflight = yield* SchemaPipeline.check(targets);
-const broken = preflight.filter((r) => r.change === "contract");
-if (broken.length > 0) {
-  for (const r of broken) yield* Effect.logError(`Contract change in a published schema: ${r.path}`);
-  return yield* Effect.fail(
-    new Error(`Bump SCHEMA_SEMVER and the $id together, then re-run; nothing was written.`),
-  );
-}
-const results = yield* SchemaPipeline.run(targets);
+import { SchemaContractChangeError, SchemaPipeline } from "@effected/schemastore";
+import { Effect } from "effect";
+
+const generate = SchemaPipeline.run(targets).pipe(
+  Effect.catchTag("SchemaContractChangeError", (error: SchemaContractChangeError) =>
+    Effect.logError(error.message).pipe(Effect.zipRight(Effect.fail(error))),
+  ),
+);
 ```
 
-`check` is total over the targets and never stops at a blocked gate, so a
-repository with two broken documents learns about both in one run. Failing
-*after* the write would report the problem accurately and still have caused
-it. `DocumentDiff` classifies `default`, `examples`, `readOnly` and
-`writeOnly` as contract changes — consumers act on them — so a change there
-costs a bump rather than shipping a silent break. `"created"` is not a
-contract change: a version's first write has no predecessor.
+`DocumentDiff` classifies `default`, `examples`, `readOnly` and `writeOnly`
+as contract changes — consumers act on them — so a change there costs a
+bump rather than shipping a silent break. `"created"` is not a contract
+change: a version's first write has no predecessor. An **unversioned**
+target, or one whose `version` is a prerelease label, is not guarded at all:
+it is rewritten in place, same as before.
+
+`contractChanges: "allow"` is the escape hatch — classify and report only,
+never refuse. It is also the sanctioned **repair path** for a published file
+whose on-disk text no longer parses (`SchemaFile` classifies unparseable
+text as `"contract"` so it stays regenerable, and the default refuses
+exactly that classification): pass `"allow"` once to let the corrupted file
+be rewritten, then drop back to the default.
 
 An unversioned document at a fixed path — an input schema, or a
 documentation-facing output nobody pins — skips the version and name and
@@ -290,11 +309,29 @@ document, move it onto the versioned path above instead of replacing it.
 Field-level prose that a human or an LLM reads to understand a value goes in
 `description`, annotated at the **definition site** of the schema (a
 usage-site annotation on a hoisted schema carries nothing through lowering).
-That is the machine-readable hint surface today: the Draft-07 lowering drops
-every keyword outside its fixed copy-list and the declared keyword families
-(the vscode five, `x-taplo`, `x-tombi-`, `x-intellij-`), so a custom `x-`
-key on an output contract is silently dropped rather than published. Do not
-invent one; put the hint in the description.
+The Draft-07 lowering drops every keyword outside its fixed copy-list and
+the declared keyword families (the vscode five, `x-taplo`, `x-tombi-`,
+`x-intellij-`, `x-ai-`), so an *undeclared* custom `x-` key on an output
+contract is silently dropped rather than published — but `x-ai-*` **is**
+declared: recommend `x-ai-hint` (a string) at the definition site for an
+instruction to a machine reader that doesn't belong in `description` itself.
+
+The key must be one ajv can register: after the prefix it may use only
+`[A-Za-z0-9_$:-]`, because ajv holds a keyword name to
+`/^[a-z_$][a-z0-9_$:-]*$/i`. A dot, a space, a slash, an `@`, a `+` or any
+non-ASCII character makes the engine gate reject the whole document as a
+finding, so `x-ai-model.name` is out and `x-ai-hint:v2` is fine.
+
+Its value must be JSON — `CanonicalJson` fails typed (`NonJsonValueError`) on
+anything else, same as every other emitted value — and must not contain an
+`$id`, or a repeated `$anchor`, at **any depth** rather than merely as its own
+top-level key: ajv's reference collection walks unknown keywords looking for
+them, so a colliding one buried anywhere inside an `x-ai-hint` payload fails
+the compile, and an empty-string `$id` resolves to the root id and collides
+too. `x-ai-*` is oriented at **self-hosted publication**: no upstream tool
+sanctions it, so a document carrying it that is submitted to schemastore.org
+needs the corresponding entry added to that repo's own validation config
+first.
 
 Generation is best-effort: some Effect schema semantics have no exact JSON
 Schema equivalent, so review the emitted document as an external contract
@@ -303,9 +340,11 @@ artifact rather than trusting it blindly.
 ### The drift test
 
 Import the generator's own `targets` and `AppLayer` and run the same walk
-with no writes. Assert **both** halves: a document the gate would never
-write also reports no pending write, so `wouldWrite: false` alone proves
-nothing.
+with no writes. Assert **all three** signals: a document the gate would
+never write also reports no pending write, so `wouldWrite: false` alone
+proves nothing, and a `contractBlocked` target needs a different remedy
+than a plain drift finding — "run `schema:generate`" is wrong advice for a
+target the generator itself will refuse.
 
 ```ts
 import { assert, describe, it } from "@effect/vitest";
@@ -323,6 +362,9 @@ describe("generated JSON Schema", () => {
     Effect.gen(function* () {
       for (const result of yield* SchemaPipeline.check(targets)) {
         assert.isFalse(result.blocked, `${result.path} would fail the gate: ${result.findings.map((f) => f.label).join(", ")}`);
+        if (result.contractBlocked) {
+          assert.fail(`${result.path} changed its contract and is pinned — bump its version, do not just re-run schema:generate`);
+        }
         assert.isTrue(DocumentDiff.isClean(result.change), `${result.path} is out of date (${result.change}); run schema:generate and commit`);
       }
     }).pipe(Effect.provide(AppLayer)),

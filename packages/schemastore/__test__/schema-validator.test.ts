@@ -102,6 +102,65 @@ describe("SchemaValidator", () => {
 			assert.deepStrictEqual(validate(document), []);
 			assert.deepStrictEqual(validate(document), []);
 		});
+
+		// The ajv `$id` hazard: an `x-ai-hint` payload that happens to carry an
+		// `$id` key is not a schema node, but ajv's reference collection walks
+		// UNKNOWN keywords looking for `$id` anyway. A colliding `$id` fails the
+		// compile — the effect still succeeds, and the collision surfaces as a
+		// blocking, root-pathed finding rather than an engine error.
+		it("reports a colliding $id nested inside an x-ai-hint payload as a finding, not an error", () => {
+			const rootId = "https://example.com/x.schema.json";
+			const findings = validate({
+				$schema: "http://json-schema.org/draft-07/schema#",
+				$id: rootId,
+				type: "object",
+				properties: {
+					name: { type: "string", "x-ai-hint": { $id: rootId } },
+				},
+			});
+			assert.strictEqual(findings.length, 1);
+			assert.strictEqual(findings[0]?.path, "");
+			assert.include(findings[0]?.message ?? "", "already exists");
+		});
+
+		// The other ajv-registration hazard, and the one that used to escape:
+		// ajv holds keyword names to `/^[a-z_$][a-z0-9_$:-]*$/i`, so a declared
+		// `x-ai-*` key carrying a dot, a space, an `@` or any other character
+		// outside that set makes `addKeyword` THROW. That throw is the engine
+		// rejecting the DOCUMENT, not the engine failing as a mechanism, so it
+		// belongs on the finding list beside every other strict-mode rejection
+		// — an error would abort `SchemaPipeline.check`'s totality.
+		it("reports a declared keyword ajv's name grammar rejects as a finding, not an error", () => {
+			const findings = validate({
+				$schema: "http://json-schema.org/draft-07/schema#",
+				$id: "https://example.com/x.schema.json",
+				type: "object",
+				properties: {
+					name: { type: "string", "x-ai-model.name": "gpt" },
+				},
+			});
+			assert.strictEqual(findings.length, 1);
+			assert.strictEqual(findings[0]?.path, "");
+			assert.include(findings[0]?.message ?? "", "invalid name");
+		});
+
+		// The control: a colon IS in ajv's keyword grammar, so a namespaced
+		// `x-ai-*` key is registered and the document passes clean. Without
+		// it the test above would also pass against an engine that rejected
+		// every `x-ai-*` key.
+		it("accepts a declared keyword whose name ajv's grammar allows", () => {
+			assert.deepStrictEqual(
+				validate({
+					$schema: "http://json-schema.org/draft-07/schema#",
+					$id: "https://example.com/y.schema.json",
+					type: "object",
+					properties: {
+						name: { type: "string", "x-ai-hint:v2": "a machine-readable hint" },
+					},
+				}),
+				[],
+			);
+		});
 	});
 
 	layer(SchemaValidator.noop)((it) => {

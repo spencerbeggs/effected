@@ -46,8 +46,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/github-action-canon.md",
-			"hash": "54d56493159638c6065f3c412d99c619dcb2b48a871cdacc6276479ff19704af",
-			"recordedAt": "2026-09-02"
+			"hash": "d2e61aa6f7be5e0a430150e9b2cd39ef45a7c493e9e2b37fb1023f6eb38162de",
+			"recordedAt": "2026-09-04"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -82,8 +82,8 @@
 		{
 			"source": "CLAUDE.md",
 			"target": ".claude/design/effected/plugin.md",
-			"hash": "200aebc2728d76092d24424dfc185cc787d093ab75826b8d2dc437442c739b93",
-			"recordedAt": "2026-09-02"
+			"hash": "047da6b368f2a7b4b26314e4ba0002ac5b319139fce2b7a0ba2d0350bc19b404",
+			"recordedAt": "2026-09-04"
 		},
 		{
 			"source": "CLAUDE.md",
@@ -418,20 +418,20 @@
 		{
 			"source": "packages/schemastore/CLAUDE.md",
 			"target": ".claude/design/effected/packages/schemastore.md",
-			"hash": "597fed45446c8d6a69854e387eeff6f415ecc307b3686d85c864b4a5ef19796b",
-			"recordedAt": "2026-08-25"
+			"hash": "faf42374a26b8ee15a15ad7bf7599b0567b29fb3e84737740e02349962fa1319",
+			"recordedAt": "2026-09-04"
 		},
 		{
 			"source": "packages/schemastore/CLAUDE.modules.md",
 			"target": ".claude/design/effected/packages/schemastore.md",
-			"hash": "597fed45446c8d6a69854e387eeff6f415ecc307b3686d85c864b4a5ef19796b",
-			"recordedAt": "2026-08-25"
+			"hash": "faf42374a26b8ee15a15ad7bf7599b0567b29fb3e84737740e02349962fa1319",
+			"recordedAt": "2026-09-04"
 		},
 		{
 			"source": "packages/schemastore/CLAUDE.verification.md",
 			"target": ".claude/design/effected/packages/schemastore.md",
-			"hash": "597fed45446c8d6a69854e387eeff6f415ecc307b3686d85c864b4a5ef19796b",
-			"recordedAt": "2026-08-25"
+			"hash": "faf42374a26b8ee15a15ad7bf7599b0567b29fb3e84737740e02349962fa1319",
+			"recordedAt": "2026-09-04"
 		},
 		{
 			"source": "packages/semver/CLAUDE.md",

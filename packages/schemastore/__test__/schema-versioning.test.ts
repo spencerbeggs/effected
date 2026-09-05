@@ -1,9 +1,18 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Result } from "effect";
-import type { SchemaVersion } from "../src/index.js";
+import type { SchemaVersion, WriteChange } from "../src/index.js";
 import { CanonicalJson, InvalidSchemaVersionError, SchemaVersioning } from "../src/index.js";
 
 const version = (label: string): SchemaVersion => Result.getOrThrow(SchemaVersioning.parseResult(label));
+
+// Exhaustiveness that actually holds. `[...] as const satisfies
+// ReadonlyArray<WriteChange>` only checks the members PRESENT are in the
+// union — it says nothing about the ones missing, so a new `WriteChange`
+// member would have slipped past it silently. A `Record` keyed by the union
+// cannot: adding a member makes the object literal below a compile error for
+// the missing property.
+const changesOf = <K extends WriteChange>(members: Record<K, null>): ReadonlyArray<K> =>
+	Object.keys(members) as Array<K>;
 
 describe("SchemaVersioning", () => {
 	describe("parse", () => {
@@ -72,6 +81,107 @@ describe("SchemaVersioning", () => {
 				assert.strictEqual(error._tag, "InvalidSchemaVersionError");
 			}),
 		);
+	});
+
+	describe("isPinned", () => {
+		it("a stable label is pinned", () => {
+			assert.isTrue(SchemaVersioning.isPinned(version("1.2.3")));
+		});
+
+		// SemVer §9: a prerelease declares its own instability, so a contract
+		// change inside one breaks nobody's pin.
+		it("a prerelease label is not pinned", () => {
+			assert.isFalse(SchemaVersioning.isPinned(version("2.0.0-beta.1")));
+			assert.isFalse(SchemaVersioning.isPinned(version("2.0.0-0")));
+		});
+	});
+
+	describe("next", () => {
+		// Exhaustive over the non-contract WriteChange members: a new one added
+		// to the union fails to compile here rather than silently defaulting.
+		it("is the identity for every non-contract classification", () => {
+			const nonContract = changesOf<Exclude<WriteChange, "contract">>({
+				none: null,
+				annotations: null,
+				created: null,
+			});
+			for (const change of nonContract) {
+				assert.strictEqual(SchemaVersioning.next(version("1.2.3"), change), "1.2.3", change);
+			}
+		});
+
+		it("bumps MAJOR on a contract change above the 0.x line", () => {
+			assert.strictEqual(SchemaVersioning.next(version("5.0.0"), "contract"), "6.0.0");
+			assert.strictEqual(SchemaVersioning.next(version("1.2.3"), "contract"), "2.0.0");
+		});
+
+		// The 0.x arm: MINOR is the breaking axis below 1.0.0.
+		it("bumps MINOR on a contract change on the 0.x line", () => {
+			assert.strictEqual(SchemaVersioning.next(version("0.4.0"), "contract"), "0.5.0");
+			assert.strictEqual(SchemaVersioning.next(version("0.0.1"), "contract"), "0.1.0");
+		});
+
+		// A delegation straight to `bump.major()` would have answered "3.0.0"
+		// here — and the pipeline's "block-versioned" guard, which shares
+		// `isPinned`, never refuses a prerelease write in the first place, so
+		// bumping one would offer a label nobody was asked to move to.
+		it("leaves a prerelease label alone even on a contract change", () => {
+			assert.strictEqual(SchemaVersioning.next(version("2.0.0-beta.1"), "contract"), "2.0.0-beta.1");
+			assert.strictEqual(SchemaVersioning.next(version("2.0.0-0"), "contract"), "2.0.0-0");
+		});
+
+		it("is monotonic, and strictly greater exactly when it bumps", () => {
+			const labels = ["0.0.1", "0.4.0", "1.2.3", "5.0.0", "10.20.30", "2.0.0-beta.1", "1.0.0-0"].map(version);
+			const changes = changesOf<WriteChange>({
+				none: null,
+				annotations: null,
+				created: null,
+				contract: null,
+			});
+			let bumps = 0;
+			for (const label of labels) {
+				for (const change of changes) {
+					const next = SchemaVersioning.next(label, change);
+					const order = SchemaVersioning.Order(next, label);
+					assert.isAtLeast(order, 0, `${label} + ${change}`);
+					const shouldBump = change === "contract" && SchemaVersioning.isPinned(label);
+					assert.strictEqual(order > 0, shouldBump, `${label} + ${change}`);
+					if (shouldBump) {
+						bumps += 1;
+					}
+				}
+			}
+			// Not vacuous: five of the seven labels are pinned, one bump each.
+			assert.strictEqual(bumps, 5);
+		});
+
+		it("every returned label re-parses and embeds verbatim in a file name", () => {
+			for (const label of ["0.4.0", "1.2.3", "5.0.0", "2.0.0-beta.1"].map(version)) {
+				const next = SchemaVersioning.next(label, "contract");
+				assert.isTrue(Result.isSuccess(SchemaVersioning.parseResult(next)), next);
+				assert.strictEqual(SchemaVersioning.fileName("cfg", next), `cfg-${next}.json`);
+			}
+		});
+
+		it("never mints a prerelease from a pinned input", () => {
+			for (const label of ["0.0.1", "0.4.0", "1.2.3", "5.0.0", "10.20.30"].map(version)) {
+				assert.notInclude(SchemaVersioning.next(label, "contract"), "-");
+			}
+		});
+
+		// The bump cannot represent a component past MAX_SAFE_INTEGER; the
+		// module's own invariant error names the cap instead of a raw schema
+		// failure escaping from SemVer.make.
+		it("dies with the named invariant when a component cannot be bumped", () => {
+			assert.throws(
+				() => SchemaVersioning.next(version(`${Number.MAX_SAFE_INTEGER}.0.0`), "contract"),
+				/Number\.MAX_SAFE_INTEGER/,
+			);
+			assert.throws(
+				() => SchemaVersioning.next(version(`0.${Number.MAX_SAFE_INTEGER}.0`), "contract"),
+				/Number\.MAX_SAFE_INTEGER/,
+			);
+		});
 	});
 
 	describe("Order and latest", () => {

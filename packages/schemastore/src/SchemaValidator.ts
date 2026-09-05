@@ -94,6 +94,12 @@ const collectDeclaredKeywords = (node: unknown, into: Set<string>, depth: number
 		if (KeywordFamilies.isDeclared(key)) {
 			into.add(key);
 		}
+		// Deliberate: we descend into a declared key's OWN value too (e.g. an
+		// `x-ai-hint` payload), not just past it. Registering the OUTER keyword
+		// is already enough on its own — ajv does not strict-check inside a
+		// registered keyword's value — so a declared keyword found nested in a
+		// payload is harmless over-registration of a no-op ajv keyword, not
+		// load-bearing.
 		collectDeclaredKeywords(value, into, depth + 1);
 	}
 };
@@ -158,9 +164,12 @@ export class SchemaValidator extends Context.Service<SchemaValidator, SchemaVali
 	 * `validate` checks the document against the Draft-07 meta-schema and
 	 * then compiles it, reporting BOTH as {@link ValidationFinding} values:
 	 * meta-schema failures keep ajv's structured `instancePath` and
-	 * `keyword`, while a strict-mode rejection (which ajv raises by throwing
-	 * at compile time) becomes a root-pathed finding. The error channel
-	 * stays reserved for the engine failing as a mechanism.
+	 * `keyword`, while a rejection ajv raises by *throwing* becomes a
+	 * root-pathed finding — both a strict-mode compile failure and a
+	 * declared keyword whose NAME ajv's own grammar
+	 * (`/^[a-z_$][a-z0-9_$:-]*$/i`) refuses, such as an `x-ai-*` key
+	 * carrying a dot or a space. The error channel stays reserved for the
+	 * engine failing as a mechanism.
 	 *
 	 * `strict` defaults to `true` — SchemaStore's gate. Each call builds its
 	 * own ajv instance, so documents sharing an `$id` never collide.
@@ -172,17 +181,26 @@ export class SchemaValidator extends Context.Service<SchemaValidator, SchemaVali
 					const ajv = new Ajv({ strict: options?.strict ?? true, allErrors: true });
 					const declared = new Set<string>();
 					collectDeclaredKeywords(document, declared, 0);
-					for (const keyword of declared) {
-						ajv.addKeyword({ keyword });
-					}
-					if (!ajv.validateSchema(document)) {
-						return (ajv.errors ?? []).map(findingFromAjvError);
-					}
 					try {
+						// `addKeyword` sits inside the try, beside `compile`, on
+						// purpose: ajv holds a keyword NAME to
+						// `/^[a-z_$][a-z0-9_$:-]*$/i`, so a declared key carrying a
+						// dot, a space or an `@` makes it throw. That is the engine
+						// rejecting the DOCUMENT, not the engine failing as a
+						// mechanism — outside the try it escaped as a
+						// `SchemaValidatorError` and aborted the totality of
+						// `SchemaPipeline.check`.
+						for (const keyword of declared) {
+							ajv.addKeyword({ keyword });
+						}
+						if (!ajv.validateSchema(document)) {
+							return (ajv.errors ?? []).map(findingFromAjvError);
+						}
 						ajv.compile(document);
 					} catch (cause) {
-						// Strict mode reports by throwing; the message is all
-						// the structure ajv gives us on this path.
+						// Strict mode and the keyword-name check both report by
+						// throwing; the message is all the structure ajv gives us
+						// on this path.
 						return [
 							ValidationFinding.make({
 								path: "",

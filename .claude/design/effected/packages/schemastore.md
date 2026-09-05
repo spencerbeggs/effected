@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-28
-updated: 2026-09-02
-last-synced: 2026-09-02
+updated: 2026-09-04
+last-synced: 2026-09-04
 completeness: 95
 related:
   - ../effect-standards.md
@@ -47,7 +47,7 @@ The constraints the emitted artifacts must satisfy, which is why several decisio
 - **ajv strict mode is the gate.** Non-strict is a per-schema opt-out in the store's own validation config, so a package owning the SchemaStore shape has to have a story for real-engine validation.
 - **Versioned schemas are separate files** suffixed with the version, plus a version map in the catalog entry whose top-level URL points at the latest. Unversioned schemas are a single plain-named file.
 - **`fileMatch` patterns must avoid generic names** and use simple glob constructs, with alternations expanded into multiple simple patterns.
-- **Language servers consume non-standard keyword families** — the vscode set by exact name, plus the taplo, tombi and IntelliJ prefixes. These must be able to ride from Effect Schema annotations into emitted documents, and they interact with the ajv gate, because unknown keywords fail strict mode.
+- **Language servers consume non-standard keyword families** — the vscode set by exact name, plus the taplo, tombi and IntelliJ prefixes. These must be able to ride from Effect Schema annotations into emitted documents, and they interact with the ajv gate, because unknown keywords fail strict mode. **The declared registry is no longer entirely derived from the store.** It splits into two groups: the upstream language-server families above, mirrored from SchemaStore's own CONTRIBUTING, and a second group this package owns outright — the house `x-ai-` machine-annotation namespace, a family with no upstream sanction at all. No tool submits `x-ai-*` documents to schemastore.org today; the family is intended for self-hosted publication, and a document carrying it that is later submitted upstream needs a corresponding entry added to that repo's own validation config. The rejected alternative was threading the caller's own `includeAnnotationKey` predicate through `StoreDocument`, `AnnotationCarriers`, `DocumentLint` and `SchemaValidator` so each consumer decided admission for itself; that would have needed four new option surfaces (one per module in the call chain) and ended the one-owner invariant `KeywordFamilies` exists to hold — the four modules could then disagree about what counts as declared, exactly the drift `isDeclared` was built to prevent.
 
 ## Module surface
 
@@ -55,16 +55,16 @@ Module-per-concept per the [module layout standard](../effect-standards.md#modul
 
 - **`StoreDocument`** — the assembly. Owns the `#/definitions` → `#/$defs` `$ref` rewrite the Draft-07 lowering makes necessary (the lowering emits canonical `definitions` refs while the publication shape keeps its pool under `$defs`, a Draft-07-valid alias) and the publication shape itself. **The package owns assembly, not a JSON Schema engine.**
 - **`SchemaTarget`** — the target manifest vocabulary: schema, identity, destination path and optional name and version.
-- **`SchemaVersioning`** — both catalog modes and the version grammar.
+- **`SchemaVersioning`** — both catalog modes and the version grammar, plus `isPinned` (a label with no prerelease — the one predicate shared by the pipeline's contract guard and `next`) and `next` (the version label a change classification calls for; see [versioning](#versioning-schemastores-file-convention-semvers-label-grammar)).
 - **`CatalogEntry`** — the catalog entry shape plus the fileMatch hygiene lint.
 - **`DocumentLint`** — owned structural checks: `$ref` resolution against the `$defs` pool, unknown keywords outside the declared families, best-practice advisories, and a depth cap that degrades to a finding rather than throwing.
 - **`CanonicalJson`** — the owned deterministic serializer. It exists because the extraction source this package generalizes shelled out to a formatter binary for serialization, and **a library must own canonical JSON rather than shelling to a formatter**. It fails typed on values `JSON.stringify` would silently drop or rewrite.
-- **`KeywordFamilies`** — the one owner of the declared non-standard keyword registry. The carriers, the assembly, the lint and the validator all consume its single predicate, so they cannot drift on what counts as declared.
+- **`KeywordFamilies`** — the one owner of the declared non-standard keyword registry, in two groups: the upstream language-server families and the house `x-ai-` machine-annotation namespace. The carriers, the assembly, the lint and the validator all consume its single predicate, so they cannot drift on what counts as declared.
 - **`AnnotationCarriers`** — the post-lowering re-graft; see [annotation carrying](#annotation-carrying-a-parallel-walk-not-pointer-mapping).
 - **`SchemaValidator`** — real-engine validation; see [the validation gate](#the-validation-gate-ajv-ships-closed).
 - **`DocumentDiff`** — pure change classification; see [change classification](#change-classification-annotations-versus-contract).
 - **`SchemaFile`** — the one IO module; see [write-if-changed](#write-if-changed-compares-content-not-bytes).
-- **`SchemaPipeline`** — the emit verb; see [the pipeline](#the-pipeline-orchestration-as-a-shipped-surface).
+- **`SchemaPipeline`** — the emit verb, now carrying the contract policy (`ContractChangePolicy`, `SchemaContractChangeError`); see [the pipeline](#the-pipeline-orchestration-as-a-shipped-surface).
 
 ## Annotation carrying: a parallel walk, not pointer mapping
 
@@ -79,7 +79,8 @@ The alternative — consumers supplying explicit JSON pointers into the lowered 
 Two consumer-facing facts the design commits to:
 
 - **Annotate at the definition site.** Annotating a hoisted or identifier'd schema at its *usage* site reaches neither the `$ref` node nor the `$defs` pool entry, even at 2020-12 — the annotation silently carries nothing. This is core behavior, documented rather than fixable here.
-- **Carriers are default-on.** The declared families are always admitted; a caller's admission predicate adds keys but cannot suppress a declared family. The flag widens, never narrows.
+- **Carriers are default-on.** The declared families are always admitted; a caller's admission predicate adds keys but cannot suppress a declared family. The flag widens, never narrows. That now includes a house family alongside the upstream ones: `x-ai-` carries the same way, needing no separate opt-in, because it is declared through the same `KeywordFamilies.isDeclared` predicate the carrier already consults.
+- **The graft copies by reference, not by clone.** A declared key's value is grafted onto the lowered node as the same object identity as the 2020-12 source — cheap, and correct as long as the emitted document is treated as read-only from that point on. Mutating a carried value in place (an `x-ai-hint` payload, say) would mutate the source schema's own annotation too, since they alias the same object.
 
 ## Versioning: SchemaStore's file convention, SemVer's label grammar
 
@@ -97,6 +98,17 @@ Three consequences worth recording:
 - **Surrounding whitespace is rejected**, because the underlying parse trims and an untrimmed label would round-trip verbatim into a file name.
 - **Ordering is a plain parse** — the brand's filter and the ordering's parse are literally the same call, which retires a whole class of drift between what the grammar admits and what the comparator can read.
 - **No SemVer label is array-index-like**, so the version map's ascending insertion order survives serialization. A grammar admitting bare-major labels would not: JavaScript enumerates integer-like keys first regardless of insertion order.
+
+**`isPinned` is the one predicate the contract guard and the bump both read**, because they must never disagree: a label with no prerelease is "pinned" — a published, URL-pinned document — and both `SchemaPipeline`'s `"block-versioned"` policy and `SchemaVersioning.next` consume the exact same test. If the two used different definitions, a caller could be refused a write by the guard while `next` told it to keep the same label — a deadlock neither side could resolve. A prerelease is unpinned by SemVer's own §9: it declares its own instability, so a contract change inside one is not a break for anyone, and both the guard and the bump treat it as identity.
+
+**`next(current, change)` is pure and total, with four arms**, and each earns its place:
+
+- Any non-`"contract"` classification (`"none"`, `"annotations"`, `"created"`) is identity — nothing to break.
+- A non-pinned `current` (a prerelease) is identity — see above.
+- `major === 0` bumps MINOR: on the 0.x line, MINOR is the axis 0.x consumers already treat as breaking, so it is the loud, conspicuous direction.
+- Otherwise, MAJOR — also the loud, conspicuous direction, one axis further out.
+
+The bump's job is to be **strictly greater and conspicuous, not to encode SemVer compatibility**: `DocumentDiff` cannot distinguish an added optional property from a removed required one, so every contract change reads as breaking regardless of whether it actually is. Each version label is its own file and its own URL, so an over-bump costs an extra file; an under-bump would silently overwrite a document consumers had pinned. `next` never mints a prerelease from a stable input — a bump only ever moves a stable label to another stable label.
 
 ## The validation gate: ajv ships closed
 
@@ -129,6 +141,8 @@ If the writer parses both sides anyway, it can say *what kind* of change it foun
 
 The value is versioning. The decision "does this change need a new schema version" is exactly the question of whether a document valid against the old schema is still valid against the new one. **Rewording a description is transparently replaceable; moving an assertion keyword is not.** A generator that reports the difference gives its operator that signal for free, at the moment it matters.
 
+**The governing principle, stated once so every keyword's classification follows from it rather than from a memorized list**: a keyword is a CONTRACT change when it alters what a validator asserts or what data a generic tool writes into an instance; a keyword that alters only the advice given to a reader — human or machine — is an ANNOTATION. That is the test that puts `default`/`examples`/`readOnly`/`writeOnly` on the contract side despite Draft-07's own taxonomy calling them annotations (a generic tool acts on them), and puts `x-ai-*` on the annotation side despite it being a family this package itself declared (it advises a machine reader and asserts nothing). One consequence worth stating plainly: adopting `x-ai-*` on an already-published, versioned document — the first time a maintainer starts annotating it — rewrites that file in place rather than cutting a new version, because the change classifies as `"annotations"`. That is correct, not a gap: the annotation is transparently replaceable by definition.
+
 Two design calls, both deliberately conservative:
 
 - **`default`, `examples`, `readOnly` and `writeOnly` are not treated as documentation**, though the Draft-07 vocabulary's own taxonomy calls them annotations — form generators and clients act on them. The asymmetry is intentional: misreporting a contract change as annotations ships a silent breaking change, while the reverse costs only an unnecessary version bump. **When in doubt the documentation set stays small.**
@@ -152,10 +166,22 @@ Both gates' findings normalize into one finding type so a single predicate judge
 
 **Know which gate actually blocks here.** A target carries a `Schema`, so a pipeline document is always built through the generation path — and the Draft-07 lowering drops every keyword outside its copy-list, so an undeclared keyword never survives to be linted. The unknown-keyword check therefore **cannot fire through the pipeline at all**, and the **engine** is what stops a bad document. This is a reachability fact, not a policy error: the default gating predicate is unchanged and still correct. What it corrects is a *claim* — do not describe the pipeline's lint gate as the thing catching keyword mistakes on schema-derived documents. The lint's warning checks earn their keep on documents the pipeline did **not** build (a hand-assembled document, or one read back off disk) and on depth, which a schema can genuinely exceed.
 
-**Run enforces; check reports.** The writing entry point stops at the first gate failure, so a gated document is never written and neither are the targets behind it. The checking entry point is **total over the targets** and never fails on findings, carrying a blocked flag per target instead — reporting is its job, and a repo with three broken documents should learn all three in one run. A blocked target is still never mistaken for clean drift, because the flag says so explicitly. This is the one place the two deliberately differ in more than writing.
+**`run` is two-phase, and writes nothing unless every target passes.** Phase 1 touches no filesystem: it generates each target's document, runs the gate (fail-fast on `SchemaGateError` — a document the engine rejects would never be written under any contract policy, so classifying it further is noise), and, only for a target the contract policy guards, classifies it against its on-disk predecessor. Phase 2 writes the held documents, in target order, only once every target has cleared phase 1. The two phases are a snapshot, not a transaction: a concurrent writer between them is not defended against, and the guarded read in phase 1 costs a second parse of the same file phase 2 will read again — accepted, because only targets that declare themselves published pay it. `check` stays **total over the targets** and never fails on findings, carrying `blocked` and now `contractBlocked` per target instead — reporting is its job, and a repo with three broken documents should learn all three in one run.
+
+**`contractChanges` is the second, independent policy, keyed on `SchemaVersioning.isPinned(target.version)`.** The default, `"block-versioned"`, treats a pinned versioned target as a published, URL-pinned document: a `"contract"` classification against it fails with `SchemaContractChangeError` — collected across every guarded target before the error is raised, so two broken documents surface in one run, the same total-not-first-wins shape as the gate's own findings — rather than silently rewriting a document consumers pin by URL. An unversioned target, or one carrying a prerelease label, has no such consumer expectation and is rewritten in place exactly as before. `"allow"` is the escape hatch: classify and report only, the pre-guard behaviour — and it is also the **sanctioned repair path** for a corrupted published file. `SchemaFile` classifies unparseable on-disk text as `"contract"` so a hand-corrupted generated file stays regenerable rather than permanently stuck; under the default policy that exact classification is what gets refused, so the repair has to go through `"allow"` deliberately.
+
+**`"block"` — refusing every contract change regardless of pinning — was considered and deliberately not shipped as a policy value.** It is the over-broad policy: it is exactly the shape of the hand-rolled preflight that silk-release-action's `generate-schema.ts` wrote for itself, and that preflight wedged on the action's own **unversioned** input schema, which has no predecessor for consumers to pin and no business being refused a rewrite. A policy with no notion of pinning cannot distinguish the document that must never move from the document that is expected to move on every run.
+
+**The default derives from `SchemaTarget.version`, a fact about the target, rather than from a separate boolean the caller would have to keep in sync with it.** A boolean flag independent of `version` could disagree with reality — a target could carry a pinned label and still be told it is not guarded — where reading `version` directly cannot drift from what the target actually is.
+
+**The policy is only coherent when the version participates in `path`** — `schemas/<version>/<name>-<version>.json` is the shape that makes it so. A versioned target whose path does *not* embed the label compares the same file forever regardless of what `version` says, so bumping `version` alone would not move the write target and the guard would keep firing against a file the bump never touched.
 
 ## Resolved decisions
 
 - **Module naming.** The assembly module is `StoreDocument`. A `SchemaDocument` name was rejected because it reads like the banned general-JSON-Schema scope.
 - **The meta-schema constant keeps its trailing `#`**, matching the SchemaStore corpus convention and deliberately diverging from core's equivalent constant, which omits it. Documented on the constant itself.
 - **The store's own coverage tool is not reimplemented.** Its checks are candidate inspiration only.
+- **No `SchemaVersioning.plan`.** `catalogUrls` already sorts and dedupes the version set, so a separate planning surface would only restate what the existing catalog derivation already computes.
+- **No shipped `templates/` directory.** The bundler publishes emitted `src`, `LICENSE` and `README` only; the canonical schema-generator script a consumer repo copies lives in the `actions-inputs-outputs` skill reference and in the `github-action-template` repo, not as a package artifact.
+- **No `bin`.** The package is a library consumed by a generator script the caller owns, not a CLI.
+- **No `layerDefault`.** Every service-shaped module (`SchemaValidator`, `SchemaFile`) ships a real layer and a test layer; a third "default" layer would only be a name for one of the two that already exist.

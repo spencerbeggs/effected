@@ -55,6 +55,21 @@ one budget made a deep-but-identical document compare as different.
 
 Unit tests run over `FileSystem.layerNoop` + `Path.layer`; `SchemaFile`'s real
 IO is tested under `integration/*.int.test.ts` over `@effect/platform-node`.
+The contract-gate tests (`schema-pipeline.test.ts`) are the one exception:
+they need **pre-existing content** on disk to classify a real predecessor, so
+they run over `@effected/memfs`'s `MemoryFileSystem.layerWith` /
+`layerInspectableWith` seeded with the predecessor text, not a hand-rolled
+recording stub — a `layerNoop` double is deny-by-default and would have to
+fabricate the read path this suite exists to exercise.
+
+**The memfs `Volume` hazard the implementer hit:** `layerInspectableWith`
+RE-SEEDS on every build. Resolving `MemoryFileSystem.Volume` under a SECOND
+`Effect.provide` of the same layer value observes a FRESH volume holding the
+seed, not the one the program under test wrote to — so a "nothing was
+written" read-back passes vacuously, having never looked at the real volume.
+The fix: resolve `Volume` INSIDE the same program the layer is provided to,
+never via a second `Effect.provide`. Caught by the corrupted-file repair
+case, the one assertion in the suite a fresh volume cannot satisfy.
 
 Discriminating pins:
 
@@ -75,4 +90,15 @@ properties-map-as-schema, dropped trailing newline, url-at-oldest. Phase 2:
 wrong-pointer graft (`prefixItems`→`prefixItems`), graft-all-`x-` keys,
 always-write, layerTest-answers-instead-of-dying, and registry drift (dropping
 `x-tombi-` broke the keyword-families, document-lint AND annotation-carriers
-suites at once).
+suites at once). **Graft-all-`x-` now has a deliberate exception**: `x-ai-`
+must still be carried (it is declared), so the mutant is killed by a
+non-`x-ai-` non-declared key, not by `x-ai-` itself.
+
+Phase 3 (#556/#599), discriminating pins the implementers reported:
+
+- Contract guard never applies (i.e. `contractGuardApplies` hard-coded
+  `false`) → 8 failures.
+- `run` collapsed back to one pass (write-as-you-go instead of two-phase) → 9
+  failures.
+- `SchemaVersioning.isPinned` hard-coded `true` → 5 failures.
+- `SchemaVersioning.next` always bumps MAJOR (no 0.x arm) → 1 failure.
