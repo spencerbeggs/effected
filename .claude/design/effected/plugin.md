@@ -3,13 +3,12 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-06
-updated: 2026-09-04
+updated: 2026-09-05
 last-synced: 2026-09-02
 completeness: 92
 related:
   - architecture.md
   - effect-standards.md
-  - migration-playbook.md
   - releases.md
   - github-action-canon.md
   - plugin-construct-index.md
@@ -23,12 +22,14 @@ related:
 
 `plugins/` houses the repo's agent-tooling plugins for Effect v4 development. There are two, and they are not peers:
 
-- **`plugins/claude-code/`** — the "effected" Claude Code plugin: a catalog of skills, four specialist subagents and a SessionStart briefing hook, dogfooded during package work (see [migration-playbook.md](migration-playbook.md)). This is the mature artifact and **the source of truth** for all skill and agent content. During dogfooding it is loaded via `claude --plugin-dir plugins/claude-code` (the root `package.json` `claude` script).
+- **`plugins/claude-code/`** — the "effected" Claude Code plugin: a catalog of skills, three specialist subagents and a SessionStart briefing hook, dogfooded during package work. This is the mature artifact and **the source of truth** for all skill and agent content. During dogfooding it is loaded via `claude --plugin-dir plugins/claude-code` (the root `package.json` `claude` script).
 - **`plugins/copilot/`** — an **experimental** GitHub Copilot plugin: a port of the same skills, agents and session-start hook into Copilot's formats (`*.agent.md` agents, a root `plugin.json`, a `hooks.json` with a `sessionStart` entry). It exists because the team wants to try Copilot for effected development; it is a downstream port of the Claude Code plugin, not an independent product, and nothing here should be read as claiming parity.
 
 Both are [repo infrastructure, not `@effected` libraries](architecture.md). Everything below that is not explicitly scoped to Copilot describes the Claude Code plugin, because that is where the content lives.
 
-The plugin's ethos is **"verify against the installed prerelease, not v3 memory"**: every skill is authored from claims probed against the `effect` prerelease the catalog pins. Its corpus is the Effect team's migration notes, the [official skill guides](https://github.com/Effect-TS/skills) and the shipped kit itself. Lessons from kit work feed back in through the [`improve` skill](#the-improve-skill), which is the mechanism that closes the loop.
+The plugin's ethos is **"verify against the installed prerelease, not memory"**: every skill is authored from claims probed against the `effect` prerelease the catalog pins. Its corpus is the vendored Effect source and its shipped notes, the [official skill guides](https://github.com/Effect-TS/skills) and the shipped kit itself.
+
+**The plugin carries no v3→v4 migration material, and that is a decision rather than a gap.** The kit is v4-native, the migration era is over, and the `effect-migrator` agent and `effect-v4-construct-map` skill were retired along with it (issue #494). What survived the retirement are the *v4 facts* that a rename table happened to be the place they were written down — that there is no `Either`, no `Context.Tag`, no `@effect/cli` package — restated as positive statements of what v4 is, in the skill that owns the territory. Do not reintroduce a migration skill, a migration agent, or "X became Y" framing: an agent that reasons from the older API is the exact failure the SessionStart briefing exists to prevent, and giving it a lookup table invites the reasoning. Lessons from kit work feed back in through the [`improve` skill](#the-improve-skill), which is the mechanism that closes the loop.
 
 ### Layout
 
@@ -63,7 +64,7 @@ Skills live under `plugins/claude-code/skills/`, each a `SKILL.md` whose frontma
 **Routing** — consulted first, so nobody designs a capability core or the kit already ships:
 
 - `effect-v4-module-index` — the routing map for Effect v4 core: every core module in one table (what it is, when to reach for it, where it lives in the vendored source). Rows route; the other skills teach.
-- `effected-packages` — the sibling routing map for the kit: one table row per package (what it contains, when to reach for it, tier), plus per-package `references/` covering entrypoints, core services, testing machinery and gotchas, and the generated [construct index](plugin-construct-index.md) searchable by intent. Preloaded by all four agents. **The references are deliberately not one-to-one with the table**: the github-split packages route to the actions suite instead, because a skill that teaches a package beats a reference that describes it and carrying both is how the two drift.
+- `effected-packages` — the sibling routing map for the kit: one table row per package (what it contains, when to reach for it, tier), plus per-package `references/` covering entrypoints, core services, testing machinery and gotchas, and the generated [construct index](plugin-construct-index.md) searchable by intent. Preloaded by all three agents. **The references are deliberately not one-to-one with the table**: the github-split packages route to the actions suite instead, because a skill that teaches a package beats a reference that describes it and carrying both is how the two drift.
 
 **Process** — decides *what* to write:
 
@@ -71,10 +72,9 @@ Skills live under `plugins/claude-code/skills/`, each a `SKILL.md` whose frontma
 
 **Best-practice skills** — the idiomatic v4 way to write new code: `effect-v4-house-style` (the cross-cutting house style, distilled from a review panel over four representative kit packages), `effect-v4-schema`, `effect-v4-services-layers`, `effect-v4-idioms`, `effect-v4-cli`, `effect-v4-observability` and `effect-v4-testing`.
 
-**The migration reference:**
+**The evidence discipline:**
 
-- `effect-v4-construct-map` — the v3→v4 lookup, a lean index over per-domain tables, consulted before reaching for any v3 API name. Its migration checklist is the ordered, greppable sweep: dependency moves → silent behavior changes → blocking removals → mechanical renames → domain restructures.
-- `effect-v4-source-lookup` — what to do when the construct-map is silent or the question is behavioural: the evidence ladder and the probe preconditions. Loaded by all four agents. See [the recorded coupling](#recorded-coupling-the-vendored-path).
+- `effect-v4-source-lookup` — what to do when the skills are silent or the question is behavioural: the evidence ladder and the probe preconditions. Loaded by all three agents. See [the recorded coupling](#recorded-coupling-the-vendored-path).
 
 **API-surface and hardening discipline:** `effect-api-extractor-bases` (the inline-factory plus scoped `_base` suppression idiom — a repo standard, see [effect-standards.md](effect-standards.md#api-extractor--effect-class-factories)), `hardening-a-parser-port` and `building-a-format-package`.
 
@@ -103,19 +103,18 @@ The shape is a load-cost decision: a skill's body is paid on every trigger while
 
 ## Specialist agents
 
-Four subagents live under `plugins/claude-code/agents/`, each arriving with the relevant skills preloaded via its frontmatter `skills` list. All four preload `effected-packages` and `effect-v4-house-style`, verify at capability level — running the host repo's own gates, preferring structured session tools (vitest-agent MCP, Biome MCP) over hard-coded pnpm/turbo commands — and report `@effected` package improvement suggestions alongside skill rough edges.
+Three subagents live under `plugins/claude-code/agents/`, each arriving with the relevant skills preloaded via its frontmatter `skills` list. All three preload `effected-packages` and `effect-v4-house-style`, verify at capability level — running the host repo's own gates, preferring structured session tools (vitest-agent MCP, Biome MCP) over hard-coded pnpm/turbo commands — and report `@effected` package improvement suggestions alongside skill rough edges.
 
 - `effect-developer` — writes new idiomatic v4 code. Step 1 on any non-trivial feature is `effect-v4-planning`, emitting the design summary for buy-in before implementation. Delegate feature implementation here.
 - `effect-reviewer` — reviews v4 code for idiom, error-channel and API-surface correctness, and writes or strengthens `@effect/vitest` tests. Delegate review and test authoring here.
 - `action-engineer` — builds, extends, debugs and reviews GitHub Actions, release/publish pipelines and GitHub API programs. It preloads the **whole** actions suite, including `bootstrapping-an-action`, so the interview can dispatch it with the plan in hand, rather than a core plus an on-demand tail, because a task in this territory routinely crosses cache, tokens, publishing and reporting in one build, and the lean-index shape is what makes carrying it all affordable. Its notes make choosing between **two loops** step 0: a new action, a wholesale rebuild or a port touching more than one pipeline step is `designing-an-action`'s loop; extending or reviewing an action that already has that shape works within the existing contracts. Picking the wrong loop is how a walking skeleton gets skipped and business logic gets written against an unverified API. It also carries the [upstream-migration protocol](github-action-canon.md#b8--blessed-shims-live-in-srcshims). Delegate action work here.
-- `effect-migrator` — migrates **any** Effect v3 codebase to v4, not only kit consumers. Two paths: a library port runs engine-first behind a characterization gate, and an in-place application migration runs dependency swap → silent-behavior audit → blocking removals resolved as recorded design decisions → compiler-driven mechanical tail. It detects the host repo's conventions instead of assuming this repo's. Delegate migration work here.
 
 ## What the bats suite pins
 
 Three `.bats` files under `plugins/claude-code/__test__/` hold the plugin's structural claims, on one shared principle: **a claim about the plugin's own completeness is pinned by an executable check, never by prose that a later edit can quietly falsify.** They are also why this document states no skill count — the roster lives on disk and the tests read it from there.
 
 - `session-start-orientation.bats` — the skill roster in the briefing hook, derived from the directories on disk with a minimum-count guard, so a new skill cannot ship without its briefing bullet.
-- `agent-skill-registration.bats` — each agent's frontmatter `skills` list, including a membership test naming every Actions skill `action-engineer` must list. That pins the preload-the-whole-suite decision, so dropping one fails a test instead of silently reverting the call. It also catches a skill name leaking into an agent's `tools` block, which would satisfy any test that merely greps the file for the name.
+- `agent-skill-registration.bats` — each agent's frontmatter `skills` list, including a membership test naming every Actions skill `action-engineer` must list. That pins the preload-the-whole-suite decision, so dropping one fails a test instead of silently reverting the call. It also catches a skill name leaking into an agent's `tools` block, which would satisfy any test that merely greps the file for the name, and pins the roster at exactly the three specialists so a migrator agent cannot quietly return.
 - `construct-index.bats` — the executable pin on the [construct index](plugin-construct-index.md#enforcement): generator fixture tests, a drift test that regenerates the committed index into a temp dir and diffs, and the strict annotation gate.
 
 **What no check pins is prose about the kit rather than about the plugin.** The construct index pins that an exported identifier is *indexed and annotated*; no check can tell whether a sentence about it is still true. Package counts, tier labels and publication status sitting inside the `effected-packages` routing map are exactly that class, and a re-verification pass found them aged. Two things contain it, neither of them a test: the voice rule requiring a load-bearing count to be written as the grep that produces it, and re-verifying kit-surface claims as part of a release wave rather than on discovery.
@@ -161,7 +160,7 @@ Encoded as skill preconditions because each was learned by being burned:
 
 ### Recorded coupling: the vendored path
 
-The plugin is loaded only from this repo, so its agents and skills may assume the vendored tree exists — after `savvy repos sync`, since a submodule checkout starts empty in a fresh clone, CI runner or new worktree (see [architecture.md](architecture.md#vendored-source)). In a published consumer's tree that path is absent, and a skill that cannot find its evidence source must not fall back on v3 memory: silent fallback is the exact failure the plugin exists to prevent.
+The plugin is loaded only from this repo, so its agents and skills may assume the vendored tree exists — after `savvy repos sync`, since a submodule checkout starts empty in a fresh clone, CI runner or new worktree (see [architecture.md](architecture.md#vendored-source)). In a published consumer's tree that path is absent, and a skill that cannot find its evidence source must not fall back on memory: silent fallback is the exact failure the plugin exists to prevent.
 
 Two things contain it. The path is written `${CLAUDE_PROJECT_DIR}/.repos/effect`, using [skill string substitution](https://code.claude.com/docs/en/skills.md), because the probe protocol has agents `cd` into a package first and a relative path would not resolve from there. And `effect-v4-source-lookup` implements a resolution ladder — an explicit environment override, then the vendored tree, then the installed `node_modules/effect/src` **gated on a resolved v4 version** (it refuses a v3 resolution rather than reporting it) — stopping loudly only when every root is absent. Rung 1 deliberately has no fallback: the npm package does not ship the migration notes, and the skill says so instead of degrading silently.
 
@@ -169,7 +168,7 @@ What remains before promoting the plugin to end users is validation in a repo wi
 
 ## SessionStart briefing hook
 
-`plugins/claude-code/hooks/hooks.json` registers a `SessionStart` hook (no matcher, so it fires on resume and compact too) that runs `session-start/orientation.sh`. The script briefs the main agent on the skills and agents the plugin ships and tells it to delegate whole write/review/migrate Effect tasks to the matching agent rather than hand-rolling them inline. Its `dogfood_feedback` block carries two loops — plugin feedback (wrong or unhelpful skill/agent/hook guidance) and `@effected` package feedback (service gaps, fluency suggestions, candidate new constructs) — and filing an issue always requires the user's explicit agreement. It is built on silk's hook pattern: `lib/hook-output.sh` provides the `emit_context` / `emit_noop` helpers, and the hook fails open when `jq` is absent.
+`plugins/claude-code/hooks/hooks.json` registers a `SessionStart` hook (no matcher, so it fires on resume and compact too) that runs `session-start/orientation.sh`. The script briefs the main agent on the skills and agents the plugin ships and tells it to delegate whole write-or-review Effect tasks to the matching agent rather than hand-rolling them inline. Its `dogfood_feedback` block carries two loops — plugin feedback (wrong or unhelpful skill/agent/hook guidance) and `@effected` package feedback (service gaps, fluency suggestions, candidate new constructs) — and filing an issue always requires the user's explicit agreement. It is built on silk's hook pattern: `lib/hook-output.sh` provides the `emit_context` / `emit_noop` helpers, and the hook fails open when `jq` is absent.
 
 `plugins/copilot/hooks.json` registers the same briefing as a `sessionStart` command hook running `hooks/session-start/orientation.sh` under `COPILOT_PLUGIN_ROOT`. Copilot's hook format diverges from Claude Code's, so the port is a rewrite of the wiring rather than a copy — see [the development workflow](#development-workflow-claude-code-first-then-port).
 

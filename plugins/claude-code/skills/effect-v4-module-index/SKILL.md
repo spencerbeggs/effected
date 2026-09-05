@@ -88,7 +88,7 @@ phrasing and missed on its module name.
 | `Iterable` | lazy combinators over any `[Symbol.iterator]` value | transform/search/group iterables without materializing arrays |
 | `JsonPatch` | computes/applies deterministic RFC6902 add/remove/replace patches | diffing two JSON docs or replaying JSON changes |
 | `JsonPointer` | RFC6901 token escape/unescape helpers | escaping `~`/`/` in JSON Pointer path segments |
-| `JsonSchema` | normalize/convert JSON Schema & OpenAPI dialect documents | converting between Draft-07/2020-12/OpenAPI schemas, `$ref` resolution. **Generation lives in `Schema`**: `Schema.toJsonSchemaDocument` (2020-12; `includeAnnotationKey` admits custom keys) then `JsonSchema.toDocumentDraft07` to lower. **The lowering drops every keyword outside its fixed copy-list** — annotation-admitted keys survive at 2020-12 and vanish at draft-07 (re-graft after, never rely on options); the `$defs` pool maps key-for-key; the one coordinate move is `prefixItems[i]`→`items[i]`. Probe evidence: `@effected/schemastore`'s CLAUDE.md and design doc. |
+| `JsonSchema` | normalize/convert JSON Schema & OpenAPI dialect documents | converting between Draft-07/2020-12/OpenAPI schemas, `$ref` resolution. **Generation lives in `Schema`**: `Schema.toJsonSchemaDocument` (2020-12; `includeAnnotationKey` admits custom keys) then `JsonSchema.toDocumentDraft07` to lower. Since rc.112 **the lowering carries unknown and custom keywords through as opaque values**, in place — so an annotation admitted at 2020-12 reaches draft-07 unchanged, and there is nothing to re-graft (it dropped everything outside a fixed copy-list before rc.112; if you learned that, unlearn it — the failure is publishing a key you assumed could not escape). The `$defs` pool maps key-for-key, and annotations move with their node across the coordinate moves (`prefixItems[i]`→`items[i]`, trailing `items`→`additionalItems`). Filtering is the caller's job, upstream of the lowering. Probe evidence: `@effected/schemastore`'s `__test__/annotation-carrying.test.ts`, which asserts on raw core output. |
 | `Latch` | reusable open/closed fiber coordination primitive | gating fibers until an explicit open/release signal |
 | `Layer` | describes acquiring/wiring services with deps and errors | constructing and composing service dependencies |
 | `LayerMap` | keyed cache of scoped layer-built service contexts | per-tenant/per-region resource families built on demand |
@@ -97,7 +97,7 @@ phrasing and missed on its module name.
 | `LogLevel` | log-level types, ordering, threshold/enabled helpers | comparing or checking log severities |
 | `ManagedRuntime` | runs many effects against services built once from a Layer | bridging Effect to promise/callback/sync entry points |
 | `Match` | ordered pattern matcher (`Match.type`/`Match.value`) | pattern-matching on tags, shapes, predicates, literals |
-| `Metric` | counters/gauges/histograms/frequencies/summaries/timers, attached to effects via `Effect.track` | metering an operation — boundaries only; see `effect-v4-observability`. NB `Metric.tagged`/`taggedWithLabels` are v3 names and gone; attributes are `Metric.withAttributes` |
+| `Metric` | counters/gauges/histograms/frequencies/summaries/timers, attached to effects via `Effect.track` | metering an operation — boundaries only; see `effect-v4-observability`. NB there is no `Metric.tagged`/`taggedWithLabels`; attributes are `Metric.withAttributes` |
 | `MutableHashMap` | in-place map mixing native and Equal/Hash keys | fast mutable map needing structural-key lookup |
 | `MutableHashSet` | in-place unique set built on MutableHashMap | fast mutable set with structural-equality members |
 | `MutableList` | in-place ordered list; append/prepend, drain from front | buffering values and draining FIFO in place |
@@ -184,8 +184,13 @@ phrasing and missed on its module name.
 ## The unstable namespaces (`effect/unstable/<ns>`)
 
 Breaking changes allowed in minors; graduate to top level as they stabilize.
-Full consolidation background: `effect-v4-construct-map`'s consolidated-core
-section.
+These namespaces are where the consolidated core put functionality that ships as
+separate packages nowhere else: HTTP, RPC, cluster, SQL, CLI and the rest live
+here, and the only packages outside `effect` are platform-, provider- or
+technology-specific *implementations* (`@effect/platform-*`, `@effect/sql-*`,
+`@effect/ai-*`, `@effect/opentelemetry`, `@effect/vitest`). See
+`effect-v4-services-layers` for the require-in-`R`-never-own-a-backend rule that
+follows from it.
 
 | Namespace | What it is | When to reach for it |
 | --- | --- | --- |
@@ -212,9 +217,9 @@ section.
 
 - `Queue` is `Queue<A, E>` in v4 — it carries an error channel and can
   `fail`/`done`, not just hold values.
-- `Optic` moved INTO core (was `@effect/optic`) and is Schema-aware.
-- The `Tx*` family is v3's STM reorganized: `TxRef` + `Effect.tx` replace
-  `STM`/`TRef`/`TMap`/`TQueue` as per-collection core modules.
+- `Optic` is in core (there is no `@effect/optic` to install) and is Schema-aware.
+- Transactional state is the `Tx*` family: `TxRef` + `Effect.tx`, with a core
+  module per collection. There is no `STM`/`TRef`/`TMap`/`TQueue`.
 - Runtime knobs (concurrency, logging, tracing settings) live in `References`
   as `Context.Reference` keys; scheduling internals in `Scheduler`.
 - `UndefinedOr` exists for `A | undefined` ergonomics — not every optional
@@ -278,5 +283,4 @@ This index routes. For patterns: `effect-v4-idioms` (errors, resources,
 fibers), `effect-v4-schema` (everything Schema), `effect-v4-services-layers`
 (Context/Layer discipline), `effect-v4-testing` (the test idioms),
 `effect-v4-observability` (spans/logs/metrics), `effect-v4-cli` (unstable/cli),
-`effect-v4-construct-map` (v3→v4 renames + the consolidated core),
 `effect-v4-source-lookup` (how to verify any row here against the source).

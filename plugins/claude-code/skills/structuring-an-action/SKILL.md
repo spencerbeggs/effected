@@ -35,7 +35,7 @@ src/
 __test__/
   unit/                   # mirrors src/ module for module — src/utils/ mirrors to unit/utilities/, never unit/utils/
   integration/            # *.int.test.ts + fixtures/
-  utils/                  # doubles and recording adapters — helper code, NEVER tests: a directory named utils, fixtures or snapshots is skipped by discovery at ANY depth (references/tests.md)
+  utils/                  # doubles and recording adapters — helper code, NEVER tests: a utils, fixtures or snapshots dir is skipped by discovery ONLY as a direct child of __test__ (references/tests.md)
   CLAUDE.md               # test conventions + the collection contract
 vitest.config.ts          # strict thresholds; coverage scores a never-imported file at zero, never omits it
 vitest.setup.ts           # strips the runner's own env vars from the test process
@@ -64,7 +64,7 @@ CLAUDE.md                 # how to use this repo, plus the shim register
 
 ## Footguns
 
-- A test file placed in a directory named `utils`, `fixtures` or `snapshots` — at any depth — is silently skipped by project-scoped discovery and indistinguishable from a green suite; mirror `src/utils/` to `unit/utilities/`. See [references/tests.md](references/tests.md).
+- A test file placed in `__test__/utils/`, `__test__/fixtures/` or `__test__/snapshots/` is silently skipped by project-scoped discovery and indistinguishable from a green suite. The exclusion is a **direct child of `__test__` only** — a nested `__test__/unit/utils/` IS collected, so do not rely on the name alone to exclude anything deeper. Mirror `src/utils/` to `unit/utilities/` regardless. See [references/tests.md](references/tests.md).
 - A recorder composed into a provider by object spread is copied via `ownKeys` and silently discarded, so the assertion compares empty to empty and passes. Assert the recorder saw something before comparing. See [references/tests.md](references/tests.md).
 - A test process that imports a guarded entry point while the runner's own marker variable is still set executes the action as an import side effect, mid-suite. See [references/tests.md](references/tests.md).
 - An entry point that grows a populated default layer "just in case" invites providing services nothing in the program actually requires — start every entry layer-less and add only on genuine need. See [references/entries-and-layers.md](references/entries-and-layers.md).

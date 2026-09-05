@@ -636,9 +636,7 @@
 		"Vocabulary": "ask the vendored schema.org vocabulary directly about types, properties and inheritance"
 	},
 	"schemastore": {
-		"AnnotationCarriers": "re-graft non-standard keywords after draft-07 lowering, preserve x-taplo vscode tombi intellij x-ai machine annotations",
 		"CanonicalJson": "deterministic canonical json text, stable diff-friendly serialization for committed schema files",
-		"CarrierDepthExceededError": "handle annotation re-graft nesting past hardening cap, cyclic schema guard",
 		"CatalogEntry": "build a schemastore catalog.json entry, assemble unversioned or versioned schema urls",
 		"CatalogLintFinding": "catalog fileMatch hygiene warning, generic pattern or complex glob rejection",
 		"ContractChangeTarget": "one published schema target whose contract changed, pair its pinned version with the next bumped label",
@@ -665,7 +663,8 @@
 		"SchemaVersion": "branded schema version label, full three-component semver for catalog file naming",
 		"SchemaVersioning": "compute versioned or unversioned catalog urls, order schema version labels, derive schema file names",
 		"StoreDocument": "assemble a schemastore-shaped draft-07 document from an effect schema, publish a json schema",
-		"ValidationFinding": "one ajv validation problem in a document, a value never an error"
+		"ValidationFinding": "one ajv validation problem in a document, a value never an error",
+		"UndeclaredAnnotationKeyError": "refuse an annotation key outside the declared language-server families, fail a schemastore document build naming every offending key, gate includeAnnotationKey"
 	},
 	"semver": {
 		"Comparator": "check if a version satisfies an operator constraint, single comparator like >=1.2.3",

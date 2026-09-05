@@ -328,15 +328,6 @@ That last clause is the load-bearing one. The test that reproduces the bug *is* 
 design review for a fix this size: if you cannot name it, you do not understand the
 bug yet, and the fast path is not available to you.
 
-## Migration / port context
-
-When porting a v3 `*-effect` package to `@effected/*`, this skill **defers to the
-migration playbook and `effect-v4-construct-map`** for the port-specific
-concerns — migration order, the compliance gate, and v3→v4 name lookups. It
-contributes only the forward-design lenses the playbook does not walk
-pillar-by-pillar: the error-audience decision, the observability posture, and the
-testability design. Run the pillars over the *target* v4 shape, not the v3 source.
-
 ## Red flags — you skipped the recipe
 
 - You wrote `Schema.Struct` / `Context.Service` / `Layer.*` and no summary exists

@@ -11,19 +11,24 @@ the rules that follow from it live in the parent.
 - `Schema.toJsonSchemaDocument(schema: Constraint, options?)` →
   `JsonSchema.Document<"draft-2020-12">` and `JsonSchema.toDocumentDraft07`
   exist as used (vendored source, `effect@4.0.0-beta.101`).
-- The Draft-07 lowering rewrites `#/$defs` refs to `#/definitions` AND **drops
-  every keyword outside its fixed copy-list** — probed:
-  `includeAnnotationKey`-admitted keys (`x-taplo`, `markdownDescription`, …)
-  survive at 2020-12 and vanish after lowering. That is why the annotation
-  carriers re-graft *after* the lowering rather than riding
-  `ToJsonSchemaOptions` alone. `additionalProperties` and descriptions do
-  survive.
+- The Draft-07 lowering rewrites `#/$defs` refs to `#/definitions` and, **since
+  effect rc.112 (PR #7420, "Make JSON Schema dialect conversions preserve
+  custom keywords"), copies unknown and custom keywords through as opaque
+  values** — in place, on the node they were attached to, and across the tuple
+  coordinate move. Before rc.112 it dropped everything outside a fixed
+  copy-list, which is why the package carried a post-lowering re-graft
+  (`AnnotationCarriers`, deleted) *and* leaned on that drop as its enforcement
+  of the declared-family narrowing. Both are gone: the narrowing is now the
+  package's own gate (`UndeclaredAnnotationKeyError`).
+  `__test__/annotation-carrying.test.ts` pins the lowering's behavior directly,
+  per case, with no package code in the assertion path — re-read it before
+  believing any claim about what the lowering does.
 - Annotation keys land **exactly on the corresponding 2020-12 node** for every
   attachment site core generates (struct fields, struct roots, `$defs` pool
   entries, `prefixItems[i]`, `optionalKey`-wrapped fields, `allOf[i]` for
-  check-then-annotate) — probed at beta.101. That determinism is what makes the
-  parallel-walk re-graft sound. The exception: an annotation on a hoisted
-  schema's *usage* site reaches nothing.
+  check-then-annotate) — probed at beta.101, and re-probed at rc.112 for the
+  attachment sites `annotation-carrying.test.ts` pins. The exception: an
+  annotation on a hoisted schema's *usage* site reaches nothing.
 - Core's `Schema.Annotations.Annotations` carries an index signature
   (`readonly [x: string]: unknown`), so
   `Schema.String.annotate({ "x-taplo": {...} })` type-checks without module
@@ -38,14 +43,12 @@ the rules that follow from it live in the parent.
 ## Hardening
 
 `internal/limits.ts` holds the kit parity constant `MAX_NESTING_DEPTH = 256`.
-Four recursive surfaces are capped:
+Three recursive surfaces are capped:
 
 1. The `$ref` rewrite — fails typed via `SchemaConversionError`.
-2. The carrier re-graft — fails typed `CarrierDepthExceededError`, folded into
-   `SchemaConversionError.cause` inside `fromSchemaResult`.
-3. The lint walk — degrades to a `DepthExceeded` finding, so the lint stays
+2. The lint walk — degrades to a `DepthExceeded` finding, so the lint stays
    total.
-4. The canonical emitter — fails typed `JsonDepthExceededError`, which also
+3. The canonical emitter — fails typed `JsonDepthExceededError`, which also
    intercepts cycles.
 
 `DocumentDiff`'s leaf comparison deliberately uses a looser stack guard: sharing
@@ -87,12 +90,13 @@ Discriminating pins:
 
 Mutants run and killed — phase 1: rewrite-all-strings, lexical order,
 properties-map-as-schema, dropped trailing newline, url-at-oldest. Phase 2:
-wrong-pointer graft (`prefixItems`→`prefixItems`), graft-all-`x-` keys,
 always-write, layerTest-answers-instead-of-dying, and registry drift (dropping
-`x-tombi-` broke the keyword-families, document-lint AND annotation-carriers
-suites at once). **Graft-all-`x-` now has a deliberate exception**: `x-ai-`
-must still be carried (it is declared), so the mutant is killed by a
-non-`x-ai-` non-declared key, not by `x-ai-` itself.
+`x-tombi-` broke the keyword-families, document-lint AND annotation-carrying
+suites at once). Two phase-2 mutants died with `AnnotationCarriers` —
+wrong-pointer graft and graft-all-`x-` keys — and were replaced by the
+rc.112 pair: neutering the undeclared-key gate (`undeclared.size > 0`) and
+letting the `$ref` rewrite descend into declared-family values, which kill
+3 of `annotation-carrying.test.ts`'s 19 between them.
 
 Phase 3 (#556/#599), discriminating pins the implementers reported:
 

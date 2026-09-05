@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# SessionStart hook (no matcher — fires on all starts including resume/compact):
-# brief the main agent that the "effected" plugin ships Effect v4 skills and
-# four specialist subagents, and that it should delegate Effect work to them
-# where subagent dispatch is available — and load the same skills inline where
-# it is not.
+# sessionStart hook: brief the main agent that the "effected" plugin ships
+# Effect v4 skills and three specialist subagents, that its own Effect recall is
+# stale by construction, and where the vendored v4 source is (or should be).
 #
-# Contract: reads the sessionStart envelope on stdin (drained, unused), writes
-# an additionalContext briefing JSON object to stdout.
+# Contract: reads the sessionStart envelope on stdin and writes a single JSON
+# object to stdout. Copilot's shape is FLAT — `{ additionalContext }` — not
+# Claude Code's `{ hookSpecificOutput: { hookEventName, additionalContext } }`.
+# Do not "align" the two; they are different products' contracts.
+#
+# Copilot exposes NO project-root environment variable (COPILOT_HOME overrides
+# the user hooks directory and is not a project path), so the repo root is
+# derived from the envelope's `cwd` field and walked up to the nearest
+# `.gitmodules`/`.git`. That is why this hook reads stdin rather than draining
+# it.
+#
+# IMPORTANT: nothing here may write to stdout except the final jq call. A stray
+# echo yields two concatenated objects and the whole payload is rejected.
 
 # Fail open without jq.
 if ! command -v jq &>/dev/null; then
@@ -16,17 +25,78 @@ if ! command -v jq &>/dev/null; then
 	exit 0
 fi
 
-# Drain the envelope on stdin; we do not need any field from it.
-cat >/dev/null 2>&1 || true
+# Capture the envelope; `cwd` is the only field used.
+ENVELOPE="$(cat 2>/dev/null || true)"
+CWD="$(printf '%s' "$ENVELOPE" | jq -r '.cwd // empty' 2>/dev/null || true)"
+[ -n "$CWD" ] && [ -d "$CWD" ] || CWD="$PWD"
+
+# The kit's current Effect pin. ONE-LINE MAINTENANCE: bump on every catalog
+# advance, in the same commit that moves catalog:effect. Deliberately a constant
+# rather than read from the host repo's catalog — the point is to tell a LAGGING
+# repo what to move to.
+EFFECT_PIN="4.0.0-rc.112"
+
+# Walk up from cwd to the repo root (Copilot gives cwd, not the root).
+PROJECT_DIR="$CWD"
+while [ "$PROJECT_DIR" != "/" ]; do
+	if [ -e "$PROJECT_DIR/.gitmodules" ] || [ -e "$PROJECT_DIR/.git" ]; then
+		break
+	fi
+	PROJECT_DIR="$(dirname "$PROJECT_DIR")"
+done
+[ "$PROJECT_DIR" = "/" ] && PROJECT_DIR="$CWD"
+
+VENDOR_NOTE=""
+if [ ! -f "$PROJECT_DIR/.gitmodules" ]; then
+	VENDOR_NOTE="This repo has NO .gitmodules, so it vendors nothing — you have no
+authoritative v4 source to read and are one step from guessing. Before doing
+Effect work here, vendor the Effect source at .repos/effect, pinned to
+effect@${EFFECT_PIN}. Offer it to the user before starting; it is a one-time
+cost that pays for itself on the first API question."
+elif ! grep -q '\.repos/effect' "$PROJECT_DIR/.gitmodules" 2>/dev/null; then
+	VENDOR_NOTE="This repo has a .gitmodules but NO .repos/effect entry, so Effect v4
+source is not vendored here. Add it, pinned to effect@${EFFECT_PIN}."
+else
+	VENDORED_REF=""
+	if [ -f "$PROJECT_DIR/.repos/config.json" ]; then
+		VENDORED_REF="$(jq -r '.repos.effect.ref // ""' "$PROJECT_DIR/.repos/config.json" 2>/dev/null || echo "")"
+	fi
+	if [ "$VENDORED_REF" = "effect@${EFFECT_PIN}" ]; then
+		VENDOR_NOTE="Effect v4 source is vendored at .repos/effect and pinned to
+effect@${EFFECT_PIN}, which matches the kit's current pin. Read it freely; it is
+the authority on what v4 exports. It is READ-ONLY — never write under .repos/."
+	else
+		VENDOR_NOTE="Effect v4 source is vendored at .repos/effect, but its pin is
+\"${VENDORED_REF:-unknown}\" and the kit's current pin is effect@${EFFECT_PIN}.
+A stale vendored pin is worse than none: you will read a source tree that does
+not match the installed effect and reach confident wrong conclusions. You MUST
+re-pin before trusting anything you read there. If the installed effect and the
+vendored source ever disagree, node_modules wins."
+	fi
+fi
 
 CONTEXT=$(
-	cat <<'CONTEXT'
+	cat <<CONTEXT
 <effect_plugin>
-The "effected" plugin is loaded: Effect v4 development skills plus four
-specialist subagents, distilled from the @effected package migrations and the
-official Effect-TS v4 guides. Everything here is v4-first — when writing Effect,
-verify any API against the installed `effect` beta, never v3 memory (a runtime
-probe beats an hour of type-error archaeology).
+The "effected" plugin is loaded: Effect v4 development skills plus three
+specialist subagents, distilled from the @effected packages and the official
+Effect-TS v4 guides.
+
+This project is Effect **v4 only**. Effect v4 is a ground-up redesign and is
+still moving on the release-candidate line, so whatever you know about Effect
+from training is out of date by construction — modules moved into core, there is
+no Either, and @effect/cli and @effect/sql do not exist as packages. Do NOT write
+Effect from memory: delegate to a specialist below, or load the skill, and verify
+any API against the installed \`effect\` release (a runtime probe beats an hour of
+type-error archaeology).
+
+This plugin carries no migration material, by design — that era is over and the
+kit is v4-native. Nothing here, and nothing you write, should carry the older
+API's framing.
+
+<vendored_source>
+${VENDOR_NOTE}
+</vendored_source>
 
 <skills>
 Available via the Skill tool (several also auto-load on trigger):
@@ -53,18 +123,14 @@ Available via the Skill tool (several also auto-load on trigger):
   top of Effect's canonical guide split into loadable references/.
 - effect-v4-services-layers — Context.Service class form, Layer composition, and
   the memoization discipline (build-once-by-reference; the layer-function trap).
-- effect-v4-idioms — core Effect: typed errors, Result (Either is gone),
-  generators, scope/resources, forking, structural equality.
-- effect-v4-cli — @effect/cli is DEAD on the v4 line; the CLI framework is
-  effect/unstable/cli in core. Command.Environment, tier impact, exit codes.
+- effect-v4-idioms — core Effect: typed errors, Result, generators,
+  scope/resources, forking, structural equality.
+- effect-v4-cli — the CLI framework is effect/unstable/cli in core. Command.Environment, tier impact, exit codes.
 - effect-v4-observability — spans/logging/metrics; OTel composed at the edge,
   libraries telemetry-agnostic, named spans on public fallible boundaries only.
 - effect-v4-testing — @effect/vitest, it.effect, test layers, property tests,
   and the false greens (a "0 tests passed" run that exits 0, TestClock at the
   epoch, an accumulating TestConsole).
-- effect-v4-construct-map — the comprehensive v3→v4 migration reference, plus
-  the ordered migration checklist (references/migration-checklist.md): deps,
-  silent behavior changes, blocking removals, then the mechanical renames.
 - building-a-format-package — the shared architecture of every @effected
   format package (jsonc/yaml/toml/markdown): the module-per-concept surface,
   the own-the-engine policy, the cross-package parity contract, and the
@@ -130,16 +196,13 @@ the agents are the delivery mechanism. The specialists:
 - effect-reviewer — REVIEWING v4 code for idiom, error-channel, and API-surface
   correctness, and writing or strengthening @effect/vitest tests. Delegate
   review and test authoring here.
-- effect-migrator — MIGRATING any Effect v3 codebase to v4: library ports
-  behind a characterization gate, or in-place application upgrades driven by
-  the migration checklist. Delegate migration work here.
 - action-engineer — building, extending or debugging a GITHUB ACTION, a
   release/publish pipeline, or any program talking to the GitHub API. Carries
   the Actions suite above. Delegate whole action- and release-engineering
   tasks here.
 </agents>
 
-When a task is substantially "write / review / migrate Effect code" or "build
+When a task is substantially "write or review Effect code" or "build
 an action / call the GitHub API," dispatch the matching agent rather than
 doing it inline — when dispatch is permitted;
 otherwise load the same skills and do it inline. Either way what matters is the
@@ -152,7 +215,7 @@ feedback loops, both proactive:
 
 Plugin: if a skill, an agent, or this SessionStart hook gives wrong,
 unhelpful, or confusing guidance, fires at the wrong moment, recommends a v4
-API that does not match the installed `effect` beta, or shows any rough edge
+API that does not match the installed \`effect\` beta, or shows any rough edge
 worth improving, note it as you go.
 
 Packages: if an @effected package has a gap in its services, an API that
@@ -164,7 +227,7 @@ When you dispatch one of the Effect agents, ask it to flag both kinds of
 findings and report them back to you. At the end of the session, surface what
 you noticed and ask the user — for example: "I hit X with the effected
 plugin. Want me to open an issue?" Open an issue ONLY if the user explicitly
-agrees (`gh issue create --repo spencerbeggs/effected --title "..." --body "..."`);
+agrees (\`gh issue create --repo spencerbeggs/effected --title "..." --body "..."\`);
 never file one on your own judgement, and never treat this reminder as
 standing permission to file.
 </dogfood_feedback>

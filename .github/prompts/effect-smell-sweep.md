@@ -21,9 +21,9 @@ Before reading source, load:
 - **`effect-v4-module-index`** — what core actually contains. Most hand-rolling happens because the author did not know the module existed; you will make the same mistake if you survey from memory.
 - **`effected-packages`** — what the kit ships. Reach for this before flagging anything as "should be shared": the shared thing may already exist under a name you did not think of.
 - **`effect-v4-idioms`** — the misuse half of this sweep.
-- **`effect-v4-construct-map`** — when the slice contains anything v3-era; it settles what a v3 name became.
+- **`effect-v4-source-lookup`** — the evidence ladder for settling whether an API exists and what it does, before you propose it.
 
-**Do not survey from v3 memory.** A large fraction of false findings on this job come from asserting that a v4 API exists, or behaves a certain way, on the strength of v3 recall. Verify every API you intend to reach for against the installed `effect` package before you propose it:
+**Do not survey from memory.** A large fraction of false findings on this job come from asserting that a v4 API exists, or behaves a certain way, on the strength of recall of an older Effect. Verify every API you intend to reach for against the installed `effect` package before you propose it:
 
 ```bash
 E=$(dirname "$(node -e 'console.log(require.resolve("effect/package.json",{paths:["."]}))')")
@@ -46,7 +46,7 @@ Core already owns it:
 - **Hand-rolled type guards** — `typeof x === "string"`, hand-written record and array checks, where `Predicate` ships them.
 - **Hand-rolled concurrency control** — a manual batching loop or a hand-built semaphore, where a `concurrency` option or core's semaphore does it.
 - **Hand-rolled caching or memoization** — a module-level `Map` keyed by argument, where `Effect.cachedFunction` exists. Note what `Effect.cached` actually memoizes before you claim equivalence: it caches the `Exit`, which means failures and interrupts are cached too. That difference is usually the reason the hand-rolled version exists.
-- **Hand-rolled option/either plumbing** — nullable juggling where `Option` fits, an ad-hoc `{ ok, value, error }` record where `Result` fits. `Either` is gone in v4; a repo still spelling it that way is a migration finding, not a smell finding.
+- **Hand-rolled option/either plumbing** — nullable juggling where `Option` fits, an ad-hoc `{ ok, value, error }` record where `Result` fits. There is no `Either` type in v4 — a repo still spelling it that way is not compiling against v4 at all, which is a different report.
 - **Hand-rolled equality, hashing or deep comparison** — v4 is structurally equal by default. A `JSON.stringify` comparison is almost always this.
 - **Hand-rolled duration, config or secret handling** — millisecond arithmetic where `Duration` reads better, `process.env` reads where `Config` belongs, a secret held as a bare string where a redacted carrier belongs.
 - **Direct `node:` imports** — in a v4 codebase these are a smell in their own right; platform capability lives in core, and a service in `R` is the way to reach it. A genuine escape hatch is fine and should say so in a comment.
@@ -62,7 +62,7 @@ The kit already owns it — check `effected-packages` before flagging *or* befor
 - **`catchAll` that widens the error to `unknown` or flattens a typed union into a string.** Errors should stay typed and structured; foreign failures ride in a `cause` field rather than being stringified.
 - **`try`/`catch` around a `yield*`**, or a thrown error inside an `Effect.gen` used as control flow. The failure channel is the mechanism.
 - **`runPromise` / `runSync` inside library code.** Running belongs at the entry point. A library that runs its own effects cannot be composed.
-- **A raw `Promise` escaping into the middle of an Effect program**, or an effect built with a v3-era async constructor spelling.
+- **A raw `Promise` escaping into the middle of an Effect program**, or an effect built with an async-constructor spelling that does not exist (`Effect.callback` is the one that does).
 - **A service defined as a plain object or a bare interface** instead of the `Context.Service` class form, so it cannot be provided or faulted in tests.
 - **An error channel typed as `Error` or `unknown`** rather than a domain union.
 - **Observability applied everywhere or nowhere** — a span on every internal helper is noise; a public fallible boundary with none is a gap.
@@ -72,7 +72,6 @@ Load `effect-v4-observability` or `effect-v4-services-layers` if a finding turns
 ## Phase 3 — delegate the survey
 
 - **`effect-reviewer`** — the primary agent. Give it the named modules and both categories above, and require `file:line` plus the quoted line for every finding, and the installed-source citation for every proposed replacement API.
-- **`effect-migrator`** — dispatch when the smells cluster around v3-era shapes. A codebase that hand-rolls `Either` plumbing and hand-rolls retry usually has one cause, not two.
 - **`action-engineer`** — dispatch for anything in an action, a release pipeline, or a program talking to the GitHub API. It knows what the kit already ships there, which is exactly where re-implementation is most common.
 - **`effect-developer`** — dispatch to implement, after Phase 4.
 
@@ -80,7 +79,7 @@ Tell each agent explicitly: **a proposed replacement API must be cited from inst
 
 ## Phase 4 — assess before you touch anything
 
-**Assume the code is fine until the evidence says otherwise.** The failure mode of this job is a confident list of ten smells, of which two are real, four are deliberate policy documented in a file you did not read, and four are v3 memory.
+**Assume the code is fine until the evidence says otherwise.** The failure mode of this job is a confident list of ten smells, of which two are real, four are deliberate policy documented in a file you did not read, and four are misremembered API.
 
 Put every finding through this:
 

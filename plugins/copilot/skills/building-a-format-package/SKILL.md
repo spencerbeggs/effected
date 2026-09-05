@@ -322,7 +322,7 @@ subset:
 ## Design doc first
 
 No scaffolding before the package's design doc exists at
-`.claude/design/effected/packages/<name>.md` (migration-playbook step 2). The
+`.claude/design/effected/packages/<name>.md`. The
 doc states tier, engine origin, module layout, hardening surfaces, corpus
 plan and parity notes against these standards — the sibling docs (toml.md is
 the tightest) are the template.

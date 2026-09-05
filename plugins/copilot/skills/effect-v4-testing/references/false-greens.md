@@ -48,44 +48,142 @@ re-notice in review.
 
 ## `0 tests passed` is a FAILED run, not an empty one
 
-A module-level throw — most commonly the `Context.Service` TDZ (see
-`effect-v4-services-layers`) — is swallowed by the agent reporter, which prints
-`0 tests passed` and **exits 0**. It typechecks clean, so nothing else warns
-you. **Zero collected tests is never a pass.** Read the Tests line, not the exit
-code; import the file directly and look at the throw before believing anything
-else the suite says.
+**`Tests: 0/0 passed` is the lie; the exit code is the honest half — the exact
+reverse of what this file used to say.** Every zero-collection route exits **1**
+while printing a summary line that says *passed*. The old text claimed they exit
+0 and told you to read the Tests line instead, which pointed readers at the only
+signal that still lies.
 
-**One broken file zeroes the whole package.** A single test file with a
-load-time error — even a scratch/debug file — silently zeroes the entire package
-run: `Tests: 0/0 passed`, exit 0, hundreds of sibling tests gone. The
-`--reporter=json` output is equally empty (`numTotalTests: 0`, zero suites), so
-the reporter offers no cause. The tell is a package you KNOW has a nonzero suite
-reporting `0/0`; the remedy is bisecting for the file that fails to load
-(observed 2026-07-18: a 400-test package zeroed by one bad scratch file). Never
-leave scratch `*.test.ts` files in a test tree — probe with `npx tsx` against a
-probe file INSIDE the package tree (see `effect-v4-source-lookup` for why `/tmp`
-cannot resolve `effect`).
+Measured 2026-09-05, `vitest@4.1.11` + the `@vitest-agent/plugin` reporter:
 
-**The other producer: a project filter run from the wrong directory.** `vitest
-run --project @effected/walker` invoked from **inside** the package directory
-matches no project — the filter resolves **root-relative** — and prints
-`Tests: 0/0 passed (0ms)`, exit 0, looking exactly like a clean run. Run
-project-filtered vitest from the repo root, always. You land here when the
-`vitest-agent` MCP `run_tests` tool drops mid-session and you fall back to a raw
-`vitest` invocation; an MCP dropout is the cue to be *more* careful about cwd.
+| run | Tests line | exit | which half lies |
+| --- | --- | --- | --- |
+| `--project <name>`, from **anywhere** | `143/143 passed` | 0 | neither |
+| the same, plus `--coverage` (or on CI) | `143/143 passed` | **1** | the **exit code** — global thresholds measure the whole repo, so any subset run fails them by construction |
+| a **path** filter with cwd not the repo root | `0/0 passed` | 1 | the **Tests line** |
+| any filter matching nothing | `0/0 passed` | 1 | the **Tests line** |
+| a module-level throw in a collected file | `0/0 passed` | 1 | the **Tests line** |
+| one test file with a load-time error | `✗ test suite failed to load` | 1 | neither — the reporter names the file |
 
-**The tell is the compound command**, because `cd` is what makes it look
-reasonable:
+**So read BOTH, and treat disagreement as the alarm.** Neither signal is
+trustworthy alone, and they fail in *complementary* situations: the exit code
+lies on a passing subset run under coverage, the Tests line lies on every
+zero-collection run. "Read the Tests line, not the exit code" was written when
+global thresholds were enforced on every run, so the exit code carried no
+information at all; scoping thresholds to CI and explicit `--coverage` gave it
+its meaning back. The rule outlived the condition that justified it — and an
+agent still following it reads `0/0 passed`, ignores the `1`, and reports green.
 
-```bash
-cd packages/github-actions && pnpm exec tsc --noEmit && pnpm exec vitest run --project @effected/github-actions
+### cwd: which invocations actually depend on it
+
+Vitest **walks up from cwd to find the config** and anchors its root there, so
+far less is cwd-sensitive than folklore claims. Measured from inside
+`packages/lockfiles`:
+
+| invocation | result |
+| --- | --- |
+| `vitest run` | the **whole repo** suite — `12298/12298`, exit 0. Correct, just not what you meant. |
+| `vitest run --project @effected/lockfiles` | `143/143`, exit 0 |
+| `vitest run --project @effected/walker` | `75/75`, exit 0 — a **different** package's project, from this one's directory |
+| `vitest run packages/lockfiles` | `0/0 passed`, exit 1 |
+
+**`--project <name>` is the invocation to reach for: it resolves against the
+config root and works from any directory.** The third row is the one that
+settles it — a project filter naming a package you are *not* standing in still
+runs, so this is genuine config-root anchoring, not a coincidence of matching
+the cwd.
+
+**Only a positional filter is cwd-sensitive — and not as a path.** A positional
+arg is matched as a **substring of each test file's path as rendered from the
+cwd**, which is a different mechanism from path resolution and predicts
+different results:
+
+| positional filter | cwd | result |
+| --- | --- | --- |
+| `packages/lockfiles` | `packages/lockfiles` | `0/0` — that substring appears in no path rendered from here |
+| `__test__` | `packages/lockfiles` | the **whole repo**, `12298/12298`, exit 0 — that substring appears in every project's paths |
+| `ckfiles` | repo root | `143/143`, exit 0 — a partial word, neither a path nor a whole path segment |
+| `lockfiles` | `packages/lockfiles` | `0/0`, exit 1 — the same string that matches from the root |
+
+Each row kills a different plausible explanation, which is why all four are
+here:
+
+- If positional args were resolved as cwd-relative **paths**, `__test__` would
+  have selected this package's own tests. It selected all of them.
+- If they were matched per path **segment** or as a prefix, `ckfiles` would
+  match nothing. It selected lockfiles' 143 — so the match is a plain substring.
+- The last two rows are the same needle against the same tree, differing only in
+  cwd, and they disagree — which is what pins the match to the path **as
+  rendered from the cwd**: `packages/lockfiles/__test__/…` from the root,
+  bare `__test__/…` from inside.
+
+So "cwd-relative" gets the right advice for the wrong reason. Reach for
+`--project <name>`, and give a positional filter a substring that is actually
+present in the paths you want — which from the repo root is what
+`packages/<pkg>` is.
+
+> **This section has now been wrong twice, in two different ways. Recognise
+> both — the second is the subtler and the more tempting.**
+>
+> 1. **Generalising across untested cases.** "A path filter needs the repo root"
+>    was extrapolated into "vitest must run from the repo root" — true of the one
+>    form that had been measured, false of `--project`, which nobody ran.
+> 2. **Substituting a better theory for a measurement.** The correction to that
+>    replaced "root-relative" with "cwd-relative". Better reasoning, genuinely
+>    closer, still never run — and it predicts the wrong answer for `__test__`.
+>
+> A caveat is not evidence, and **neither is a more plausible mechanism**. When a
+> fix or a config change moves the ground a measurement was taken on, re-run it;
+> and when you correct a mechanism, the correction needs its own discriminating
+> input — one the old explanation and the new one answer *differently*. Rewriting
+> an unmeasured word as a better-reasoned word leaves you exactly as unmeasured
+> as before, while feeling like progress.
+
+### A relative `globalSetup` path is a CONFIG defect, not a cwd rule
+
+If a repo's config declares `globalSetup: ["vitest.setup.ts"]` — a bare relative
+path — vitest resolves it against **cwd**, so running from `packages/<pkg>` looks
+for `packages/<pkg>/vitest.setup.ts` and dies before collecting anything:
+
+```text
+Error: Failed to load url /…/packages/schemastore/vitest.setup.ts
+  (resolved id: /…/packages/schemastore/vitest.setup.ts). Does the file exist?
+Serialized Error: { code: 'ERR_LOAD_URL' }
 ```
 
-That line poisons only its **last** clause. The typecheck is genuinely
-package-relative and genuinely passes; the vitest half matches no project and
-reports `0/0`, exit 0 — so the whole chain exits 0 and reads as "types clean,
-tests green". Whenever you catch yourself writing `cd <pkg> && … && vitest`,
-split it: typecheck from the package, run tests from the root.
+The error misleads twice: it reads as a missing file you were meant to create,
+and the tempting "fix" is to create a per-package setup file, which forks the
+setup permanently. **The real fix is in the config**, one line:
+
+```ts
+globalSetup: [fileURLToPath(new URL("vitest.setup.ts", import.meta.url))]
+```
+
+This repo shipped that fix (effected#455), so the `ERR_LOAD_URL` symptom is
+**history here** and a bare run from inside a package now succeeds. Expect it in
+any repo that has not — the tell is an `ERR_LOAD_URL` naming a setup file inside
+a *package* directory. Fix the config; do not add a cwd rule to work around it.
+
+**Zero collected tests is never a pass**, whatever either signal says. The
+remaining producers:
+
+- **A module-level throw** — most commonly the `Context.Service` TDZ (see
+  `effect-v4-services-layers`). Typechecks clean, so nothing else warns you.
+  Import the file directly and look at the throw before believing anything else
+  the suite says.
+- **One broken file zeroes the whole package.** A single test file with a
+  load-time error — even a scratch/debug file — takes hundreds of sibling tests
+  with it (observed 2026-07-18: a 400-test package zeroed by one bad scratch
+  file). The reporter has since improved: it now prints
+  `✗ test suite failed to load` and names the module, so this producer no longer
+  hides. Still never leave scratch `*.test.ts` files in a test tree — probe with
+  `npx tsx` against a probe file INSIDE the package tree (see
+  `effect-v4-source-lookup` for why `/tmp` cannot resolve `effect`).
+
+**Do not "fix" a `0/0` by reaching for `--passWithNoTests`.** It is the one flag
+that genuinely does turn these runs green: measured, a zero-match run exits 1 by
+default and **0** with the flag. It exists for a repo where an empty match is
+legitimately expected; here it converts the last honest signal into a false one.
 
 ## `TestConsole.logLines` accumulates for the whole test
 
@@ -126,22 +224,46 @@ eager recorder log `/never-executed` for a read that never happened; the
 `Effect.suspend`** — otherwise a test asserting "the file was read" passes
 against a code path that was only *described*, never run.
 
-## `layerNoop` answers every unimplemented member with a typed `NotFound`
+## `layerNoop` answers unimplemented members THREE different ways
 
-`FileSystem.layerNoop(partial)` wraps `makeNoop`, and every member you do not
-override fails with `notFound(<method>, path)` — a **typed `PlatformError`**,
-not a defect (`FileSystem.ts:764` for the `notFound` constructor, `:825` for
-`makeNoop`, `:873` / `:876` for the `readFile` / `readFileString` members;
-`layerNoop` at `:954` is `Layer.succeed(FileSystem)(makeNoop(fileSystem))`).
-Line numbers re-checked at rc.109 — unchanged since beta.107.
+**Not one way — and the two blanket statements that circulate are both wrong**:
+"every unstubbed member fails typed `NotFound`" (what this section used to say)
+and "every unstubbed member dies" (the opposite over-correction). Probed at
+`effect@4.0.0-rc.112`; `layerNoop` at `FileSystem.ts:954` is
+`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:825`)
+splits its members:
 
-That is a false green for any package whose domain treats `NotFound` as
-"absent": a stub with `readFileString` overridden, code that later switches to
-`readFile` + decode, and the fixture goes **silently empty** — the test still
-passes because "no such file" is a legitimate answer in the domain. The
-mitigation is to override every read method the code could plausibly reach, and
-to make at least one test assert the *contents* the fixture is supposed to
-supply, not merely that the call succeeded.
+| members | behavior | absorbable by `Effect.catch`? |
+| --- | --- | --- |
+| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` (`:764`) | **yes** |
+| `exists` → `false` (`:844`), `remove` → `Effect.void` (`:885`) | silent success | n/a — never fails |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:850`–`:866`) | `Effect.die("not implemented")` — a **defect** | **no** |
+
+Three distinct false greens, one per row:
+
+1. **Row one** is a false green for any package whose domain treats `NotFound`
+   as "absent": a stub with `readFileString` overridden, code that later
+   switches to `readFile` + decode, and the fixture goes **silently empty** —
+   the test still passes because "no such file" is a legitimate answer in the
+   domain.
+2. **Row two** is worse, because nothing fails at all: a `remove` that never
+   removed reports success, and a test asserting "the file is gone" agrees.
+3. **Row three** is not a false green but a false *red* with a huge blast
+   radius, and it is the row people mis-attribute. Production code that
+   defensively absorbs a filesystem failure —
+   `fs.makeDirectory(d).pipe(Effect.catch(() => Effect.void))` — **cannot**
+   absorb a defect, so the first pipeline step that creates a directory kills
+   every unrelated test in the suite at once. Twenty simultaneous failures read
+   as "I broke the layer wiring", not "one new step calls `makeDirectory`".
+   Note the discriminator: `readDirectory` is absorbable, `makeDirectory` is
+   not — reading the first row and generalising is how this gets misdiagnosed.
+
+**The mitigation is not a better `layerNoop` stub.** Per the repo's standing
+rule, a test needing `FileSystem` provides `@effected/memfs`:
+`MemoryFileSystem` implements all three rows honestly, so misbehaviour is
+injected as a **fault handler** rather than encoded in a stub body that records
+only what its author remembered. Keep `layerNoop` for the
+one-trivially-stubbed-member case.
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`

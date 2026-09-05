@@ -1,8 +1,8 @@
 ---
 name: effect-v4-cli
 description: >-
-  Use when building or porting a command-line tool on Effect v4 — @effect/cli is DEAD on the v4
-  line (its latest peers on effect ^3.21.x), and the CLI framework now lives in core as
+  Use when building a command-line tool on Effect v4 — there is no v4 @effect/cli package (its
+  releases still peer on effect ^3.x), and the CLI framework lives in core as
   effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as
   effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI
   package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a
@@ -16,21 +16,21 @@ description: >-
 `peerDependencies: { effect: "^3.22.1", "@effect/platform": "^0.97.1",
 "@effect/printer": "^0.51.0", "@effect/printer-ansi": "^0.51.0" }`, and its
 only dist-tags are `latest` and `snapshot` — **no `beta` tag, so there is no v4
-line**. It keeps shipping releases on the v3 line, so "it was updated recently"
-is not evidence of v4 support; check the `effect` peer range, which is the
-thing that has never crossed to `^4`. Installing it drags a v3 `effect` and the
-`@effect/platform` / `@effect/printer` peer chain into a v4 package.
+line**. It keeps shipping releases, so "it was updated recently" is not evidence
+of v4 support; check the `effect` peer range, which has never crossed to `^4`.
+Installing it drags an `effect@3` and the `@effect/platform` / `@effect/printer`
+peer chain into a v4 package.
 
-The CLI framework moved **into core**:
+The CLI framework lives **in core**:
 
-| you want | v4 |
+| you might reach for | what actually exists |
 | --- | --- |
 | `@effect/cli` | **`effect/unstable/cli`** |
 | `@effect/platform` `HttpClient` | **`effect/unstable/http`** |
 
 `effect/unstable/cli` exports twelve modules: `Argument`, `CliConfig`,
 `CliError`, `CliOutput`, `Command`, `Completions`, `Flag`, `GlobalFlag`,
-`HelpDoc`, `Param`, `Primitive`, `Prompt`. Note the v3→v4 vocabulary shift: an
+`HelpDoc`, `Param`, `Primitive`, `Prompt`. Note the vocabulary: an
 option is a **`Flag`**, not an `Option` (the name `Option` belongs to the data
 type).
 
@@ -70,7 +70,7 @@ the CLI into its own package so the library keeps its `effect`-only peer closure
 ## Two different `Command`s — spawning lives in `effect/unstable/process`
 
 `effect/unstable/cli`'s `Command` is the **CLI command declaration**. It is not
-the v3 process-spawning `Command`, and the shared name is the whole trap.
+the process-spawning `Command`, and the shared name is the whole trap.
 
 Spawning is **in core**, at `effect/unstable/process`, which exports exactly two
 modules (`unstable/process/index.ts`):
@@ -198,8 +198,9 @@ Two false-green traps bite CLIs specifically. Both are covered in
 
 ## Related skills
 
-- **`effect-v4-construct-map`** — the v3→v4 lookup tables (`references/platform.md`
-  for `@effect/platform-node` and `PlatformError`).
+- **`effect-v4-module-index`** — which core module owns a capability, including
+  `effect/unstable/process` and the `NodeServices.layer` boundary.
+- **`effect-v4-idioms`** — `PlatformError`, typed errors and core patterns.
 - **`effect-v4-services-layers`** — providing `Command.Environment` once at the
   boundary, and the memoization discipline.
 - **`effect-v4-testing`** — `TestClock`, `TestConsole`, and proving a suite can fail.

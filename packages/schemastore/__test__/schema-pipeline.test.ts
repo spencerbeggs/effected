@@ -247,10 +247,13 @@ describe("SchemaPipeline", () => {
 		);
 	});
 
-	// Reported by the first pipeline adopter and confirmed by probe: the
-	// Draft-07 lowering drops every keyword outside its copy-list, so a
-	// document built from a Schema cannot carry an undeclared one by the
-	// time DocumentLint sees it. UnknownKeyword is therefore unreachable
+	// Reported by the first pipeline adopter and confirmed by probe: a
+	// document built from a Schema cannot carry an undeclared keyword,
+	// because fromSchema never admits one — the pipeline supplies no
+	// includeAnnotationKey, and one that admitted anything undeclared
+	// would fail the build. (Before effect rc.112 the same held for a
+	// different reason: the Draft-07 lowering dropped it. It no longer
+	// does.) UnknownKeyword is therefore unreachable
 	// through the pipeline's only entry point, and the docs say so rather
 	// than implying the lint gate is what stops a bad document here.
 	describe("what the lint gate can actually see", () => {

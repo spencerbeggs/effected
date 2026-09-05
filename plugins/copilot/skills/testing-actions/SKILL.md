@@ -69,8 +69,15 @@ Absence means unwired; a recorded error means *this route fails, and here is why
   test touches nothing else.** Reimplementing several members to exercise
   one is exactly what the canonical single-member-stub shape avoids.
 - **Judge a non-dying default by "would a real implementation legitimately
-  answer this?", not "is it convenient."** A handful of services are
-  recorded exceptions for exactly this reason — see
+  answer this?", not "is it convenient."** Two KINDS of member are exceptions
+  by default, so do not re-derive them per service: **infallible bookkeeping
+  members** (a `refresh` that drops a memo — a double holds no memo, so
+  `Effect.void` is the truthful answer, not a fabricated one) and **pure
+  derivations off a supplied primary stub** (a member that is a total function
+  of the override you were handed runs the live derivation over it, so the two
+  cannot disagree — and still dies when the primary is *not* supplied). A
+  handful of services are recorded exceptions on top of those — the kinds, the
+  derivability boundary, and the per-service table are in
   [`references/doubles-catalog.md`](references/doubles-catalog.md).
 - **Never stub `GitHubClient` in `@effected/github`'s own tests.** Replace
   octokit's `fetch` option instead, so route interpolation, retry,

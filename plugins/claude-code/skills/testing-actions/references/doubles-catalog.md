@@ -50,7 +50,44 @@ rest to die loudly if the test's assumptions are wrong.
 ## "Dies loudly" is not universal
 
 The admissibility test is "would a real implementation legitimately answer
-this?", not "is it convenient." Recorded exceptions, each with its own
+this?", not "is it convenient."
+
+**Two KINDS of member are exceptions by default — do not re-derive them per
+service.** These are rules about the member's nature, not a per-service list,
+so a member author inherits them:
+
+1. **Infallible bookkeeping members default to an honest no-op, not death.**
+   A `refresh()`-shaped member whose live contract is "drop the memoized
+   assembly" is genuinely a no-op on a double: a double holds no memo — its
+   stubs answer fresh on every call — so `Effect.void` is the *truthful*
+   implementation, and dying would fabricate a failure the real contract
+   cannot produce. Live spellings: `WorkspaceDiscovery.makeTest`'s `refresh`
+   and `refreshIn`, `WorkspaceCatalogs.makeTest`'s `refresh`,
+   `LockfileReader.makeTest`'s `refresh` (all in `@effected/workspaces`).
+2. **A pure derivation off a supplied primary stub defaults to the real
+   derivation, not death.** When the double is handed the primary read, any
+   member that is a *total function of it* answers by running the live
+   derivation over that value, so the two cannot disagree by construction.
+   `WorkspaceCatalogs.makeTest`'s `resolveSpecifier` runs the supplied
+   `CatalogSet`'s own `resolveSpecifier` when a `set` override is present —
+   and **dies when it is not**, because with no primary there is nothing to
+   derive from. `WorkspaceDiscovery.makeTest` derives `importerMap`,
+   `getPackage`, `resolveFile`/`resolveFiles` off `listPackages` the same way.
+
+   The boundary is *derivability*, not convenience: `releaseAgeGate` and
+   `importerVersions` sit beside `resolveSpecifier` and always die, because
+   neither is recoverable from a `CatalogSet` (the gate comes from release-age
+   keys and hook contributions, the importer index from lockfile importer
+   blocks). Ask "is this member a function of the stub I was given?" — if the
+   answer needs data the override does not carry, it dies.
+
+The trap this replaces: the blanket line reads as absolute ("every unstubbed
+member dies naming itself"), and the exceptions were only discoverable by
+reading *another service's* doc comment, so an author adding a `refresh` to a
+third service nearly wired die-on-unstubbed against the house convention
+(spencerbeggs/effected#453). The blanket is the default, not the whole rule.
+
+Beyond the two kinds, recorded per-service exceptions, each with its own
 reason:
 
 | Service | Default | Why |

@@ -5,7 +5,7 @@ description: Use when you need to confirm an Effect v4 API before relying on it 
 
 # Looking up the truth about Effect v4
 
-Never port, review, or write against a v4 API you have not confirmed. v3 memory is confidently wrong, and so is the v3 source that the workspace root happily resolves.
+Never write, review, or rely on a v4 API you have not confirmed. Memory is confidently wrong, and so is any `effect@3` a workspace root happens to resolve.
 
 This skill tells you where to look and how far to go. (If the question is
 merely "which module does X" — start at `effect-v4-module-index`, then verify
@@ -60,7 +60,7 @@ and no error. The rule:
 > and the only home of rung 1.** When they disagree, `node_modules` wins — it is what
 > your code links against; the vendored tree is what someone pinned last.
 
-Two agents were saved by this during the store migration. Check the drift in one line
+Two agents were saved by this during the store work. Check the drift in one line
 before you trust the tree — the versions match, or they do not (the snippet uses the
 `$SRC` shell variable that the resolution block *below* defines — set it first):
 
@@ -102,11 +102,21 @@ resolved v3 source at the repo root and reported it in passing. Print a version 
 reader skims past it. Refuse, and the trap cannot spring.
 
 **Do not read that history as "the root gives you v3" today.** In *this* repo the
-lockfile now carries exactly one `effect` — `4.0.0-rc.109` — and the workspace root
+lockfile carries exactly one `effect` — `4.0.0-rc.112` — and the workspace root
 resolves **nothing**: a bare `effect` import there dies with `ERR_MODULE_NOT_FOUND`
-(checked 2026-08-23). Which failure you get depends on what a given repo has
+(re-checked 2026-09-05). Which failure you get depends on what a given repo has
 installed, so the gate must key on the *resolved version*, never on a remembered
 answer for a particular directory.
+
+**Read the LOCKFILE, and read it carefully — neither the pnpm store nor a raw
+grep count is the check.** `ls node_modules/.pnpm | grep '^effect@'` lists store
+directories, which outlive the lockfile: during a catalog advance the previous
+release's directory lingers there, orphaned. And a grep of the lockfile itself
+can show a second version that is not a second copy — while a toolchain
+`overrides` bridge is up, `pnpm-lock.yaml` carries a redirect line
+(`effect@4.0.0-rc.109: 4.0.0-rc.112`) whose *only* hit is the mapping. One
+resolved version, two spellings. What voids a probe is the version it
+**resolves**, printed from inside itself.
 
 **Rung 1 has no fallback.** The npm package ships no `migration/`, no `ai-docs/`, no
 `LLMS.md` — they are not in its `files` array. That degrades honestly rather than
@@ -306,13 +316,39 @@ placement and delete-by-absolute-path rules below — which exist to keep
 probes safe in repos WITHOUT a scratchpad — do not apply there. Every OTHER
 precondition (print the resolved version, run the control first, exercise a
 non-first member) applies unchanged in either venue. No `scratchpad/`
-workspace in the repo? The protocol below is the venue. Bare `@effected/<pkg>`
-imports resolve to each package's `dist/dev` build — after editing a
-package's `src/`, run `pnpm build --filter @effected/<pkg>` before trusting a
-tsx probe.
+workspace in the repo? The protocol below is the venue.
+
+**"Scratchpad first" is NOT "scratchpad always" — the subject decides.** Read
+what the probe is *about* before picking:
+
+| the probe's subject | venue |
+| --- | --- |
+| `effect` itself, or a **published/built** kit package | the scratchpad. Bare `@effected/<pkg>` imports resolve to that package's `dist/dev` build (verified: `scratchpad/node_modules/@effected/yaml` → `packages/yaml/dist/dev/pkg`), which is the honest artifact-shaped answer. |
+| the package's **OWN uncommitted `src/`** | **the package root**, per precondition 3 — a probe file at `packages/<pkg>/probe.ts` importing `./src/…` relatively. |
+
+The second row is the one agents get wrong, and the failure is silent: the
+scratchpad resolves `dist/dev`, so a probe there measures the **last build**,
+not your edit, and reports the old behavior with total confidence — the exact
+"resolves to recollection" failure the ladder exists to prevent. You can force
+the scratchpad to see the edit with `pnpm build --filter @effected/<pkg>`
+first, and that is the right move when you also want to know the *built
+artifact* behaves that way; it is the wrong move when you are iterating,
+because every edit costs a build and a forgotten one is undetectable.
+
+Two riders on the package-root form, both learned by leaving mess behind:
+
+- **A `__probe__/` (or any) subdirectory is wrong twice.** It is
+  precondition 3's silent false-pass — the tsconfig `include` is
+  `${configDir}/*.ts` and does not match subdirectories, so the file leaves the
+  compilation program and its control never fires — and a directory is easier
+  to forget than a file. Three `__probe__/` files were left in
+  `packages/schemastore/` during one review this way.
+- **Delete by absolute path, and `git status --porcelain packages/<pkg>` before
+  you report.** The scratchpad's disposability does not transfer: the package
+  root is committed ground.
 
 1. **Run from inside the package, never the repo root.** A workspace root that has a v3 installed resolves it and will describe the v3 surface with total confidence; a root that has none — this repo today — fails with `ERR_MODULE_NOT_FOUND` instead. Both are the same rule: only `packages/<pkg>/` is guaranteed to resolve the pinned v4.
-2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once (it is `4.0.0-rc.109` in this repo today), so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
+2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once (it is `4.0.0-rc.112` in this repo today), so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
 3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
@@ -348,7 +384,7 @@ A type-level control that works, verified against `effect@4.0.0-beta.94`:
 
 ```ts
 import { Effect } from "effect";
-const control = Effect.catchAll; // v3 name; must fail
+const control = Effect.catchAll; // a name that does not exist; must fail
 // probe.ts(3,24): error TS2339: Property 'catchAll' does not exist on type 'typeof Effect'
 ```
 
@@ -359,7 +395,7 @@ has no `await`.
 
 ```ts
 import pkg from "effect/package.json" with { type: "json" };
-console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.109 today
+console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.112 today
 ```
 
 ## Portability
@@ -376,10 +412,10 @@ by its weakest.
 
 **Never trade the loud failure for a quiet fallback.** Each step above resolves to a
 *version-exact source tree* or it does not resolve. There is no step that resolves to
-recollection. Silent degradation into v3 memory is the precise failure this plugin
+recollection. Silent degradation into memory is the precise failure this plugin
 exists to prevent, and it is indistinguishable from success.
 
-This is the **only file in `plugin/` that names the path** — the agents reference this
+This is the **only file in the plugin that names the path** — the agents reference this
 skill, never the directory. Keep it that way:
 
 ```bash

@@ -145,18 +145,19 @@ const loadUser = Effect.fn("loadUser")(
 )
 ```
 
-**v3 → v4 metric deltas** (each absence verified absent in the rc.109 source):
+**Names that are easy to reach for and do not exist** (each absence verified
+absent in the rc.109 source):
 
-- `Metric.tagged` / `Metric.taggedWithLabels` are **gone**. Use
+- There is no `Metric.tagged` / `Metric.taggedWithLabels`. Use
   `Metric.withAttributes({ ... })`; ambient attributes ride on
   `Metric.CurrentMetricAttributes` (`Metric.ts:1608`) — a **`Context.Reference`**,
-  not a fiber ref. `FiberRef` no longer exists in v4 at all, so read and scope it
-  the way `effect-v4-idioms` describes for any reference: `yield*` it to read,
-  `Effect.provideService` to scope a value.
+  and there is no `FiberRef`, so read and scope it the way `effect-v4-idioms`
+  describes for any reference: `yield*` it to read, `Effect.provideService` to
+  scope a value.
 - Histogram boundaries: `Metric.linearBoundaries`, `Metric.exponentialBoundaries`,
-  `Metric.boundariesFromIterable` (v3's `MetricBoundaries.*` names are not on the
-  `Metric` surface). `Metric.timer` exists; v3 `timerWithBoundaries` does not.
-- `Effect.track` is the v4 way to bolt a metric onto an effect / `Effect.fn`.
+  `Metric.boundariesFromIterable` — there is no `MetricBoundaries.*` module on the
+  `Metric` surface. `Metric.timer` exists; `timerWithBoundaries` does not.
+- `Effect.track` bolts a metric onto an effect / `Effect.fn`.
 
 Guide rule: metrics belong on **boundaries** — endpoint/queue/job handlers,
 repository ops, external-API calls, retries — never on every internal helper. For
@@ -208,4 +209,4 @@ console.log(typeof Metric.withAttributes, typeof Metric.tagged);
 "   # → function undefined
 ```
 
-One runtime probe beats an hour of guessing whether a v3 name survived.
+One runtime probe beats an hour of guessing whether a name exists.

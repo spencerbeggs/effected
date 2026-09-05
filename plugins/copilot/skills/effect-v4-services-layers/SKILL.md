@@ -5,7 +5,7 @@ description: >-
   params first, then the id), Layer construction (succeed/effect, scoped is gone), composition
   (mergeAll vs provide vs provideMerge), providing once at the boundary, and the memoization
   discipline that keeps a db pool or HTTP client from being built twice. Consult before reaching
-  for any v3 name; see effect-v4-construct-map for the v3→v4 lookup.
+  for any service or layer name you have not verified.
 ---
 
 # Services & Layers (Effect v4)
@@ -21,9 +21,9 @@ Treat those as unverified at rc.109.
 A service is a typed key into the runtime's context; a layer is the recipe that
 builds it. Get three things right — the one service form, provide-once
 composition, and memoization by
-reference — and the wiring stays honest and cheap. For the v3→v4 name
-lookup (what a construct *was* called), see `effect-v4-construct-map`; for
-what any core module *is* and when to reach for it, `effect-v4-module-index`.
+reference — and the wiring stays honest and cheap. For what any core module
+*is* and when to reach for it, see `effect-v4-module-index`; to settle whether a
+name exists at all, `effect-v4-source-lookup`.
 
 ## One service form: `Context.Service`
 
@@ -39,11 +39,11 @@ class Database extends Context.Service<Database, {
 }>()("Database") {}
 ```
 
-Argument order differs from v3: **type params first** via
-`Context.Service<Self, Shape>()`, **then** the id string via `("Database")`.
-(v3 was `Context.Tag("Database")<Self, Shape>()` — the id moved to the end.)
+Argument order is **type params first** via `Context.Service<Self, Shape>()`,
+**then** the id string via `("Database")` — the id comes last, and there is no
+`Context.Tag`.
 
-**What did NOT change: tags are still Effects.** A service key remains a
+**Tags are Effects.** A service key is a
 first-class Effect — `Context.Key<Identifier, Shape> extends
 Effect<Shape, never, Identifier>` (`Context.ts:64` at rc.109 — line 63 is the
 closing comment delimiter, not the declaration) — so
@@ -74,12 +74,55 @@ class UserRepo extends Context.Service<UserRepo>()("UserRepo", {
 }
 ```
 
-Two traps carried over from v3's `Effect.Service`:
+Two traps:
 
 - `make` stores the constructor effect but does **NOT** auto-generate a
   layer — there is no `.Default`. Build the layer yourself (above).
 - There is **no `dependencies` option**. A service's needs are wired with
   `Layer.provide`, not declared on the service.
+
+## Typing a value that implements a service's interface
+
+When a **factory returns an implementation** — a second `Layer` satisfying an
+existing contract, a test double, a per-directory resolver — you need a name for
+the service's *shape*, not for the service key. Two spellings resolve to the
+same type, and one of them is the documented helper:
+
+```ts
+// Preferred: the named helper in the Service namespace.
+function makeWorkspaceResolver(
+ rootDir: string,
+): Context.Service.Shape<typeof RegistryResolver> {
+ return { resolve: (name) => Effect.succeed(`${rootDir}/${name}`) };
+}
+
+// Equivalent: indexed access through the key's witness property.
+function makeOther(dir: string): (typeof RegistryResolver)["Service"] { ... }
+```
+
+`Context.Service.Shape<T>` is `T extends Key<infer _I, infer S> ? S : never`
+(`Context.ts:410`), and it sits in a namespace whose own doc example is titled
+"Extracting service types" — core states this as the way to name a service's
+shape, so **prefer it**. The indexed form works for the same reason it reads
+well: `Context.Key<Identifier, Shape>` carries `readonly Service: Shape` as a
+real property (`Context.ts:66`), so `(typeof Tag)["Service"]` is an ordinary
+lookup rather than a trick. The sibling `Context.Service.Identifier<T>` extracts
+the `R`-channel identifier the same way.
+
+**The trap this replaces: the class instance type is not the shape.** Reaching
+for the obvious annotation — the class's own name — does not compile:
+
+```ts
+// WRONG. RegistryResolver (the instance type) is not { resolve: ... }.
+function makeWorkspaceResolver(dir: string): RegistryResolver { ... }
+// error TS2353: Object literal may only specify known properties,
+// and 'resolve' does not exist in type 'RegistryResolver'.
+```
+
+A class-form key's instance type is `ServiceClass.Shape<Identifier, Shape>`
+(`Context.ts:144`), a three-member wrapper — the `ServiceTypeId` brand, `key`,
+and a `Service` member holding the real shape. The interface you want is nested
+one level inside it, which is exactly what both spellings above unwrap.
 
 ## Access a service: prefer `yield*`
 
@@ -93,8 +136,8 @@ const program = Effect.gen(function* () {
 });
 ```
 
-`use` / `useSync` are static accessors (they replace v3's removed proxy
-accessors), but reach for them sparingly — they hide *which* dependency you
+`use` / `useSync` are static accessors — the only ones; there is no generated
+proxy accessor per method. Reach for them sparingly — they hide *which* dependency you
 pulled at the call site, making it easy to leak a service dep into a return
 value:
 
@@ -105,12 +148,11 @@ Config.useSync((c) => c.url);               // pure callback ⇒ Effect<string, 
 
 `use` takes an effectful callback and returns `Effect<A, E, R | Self>`;
 `useSync` takes a **pure** callback and returns `Effect<A, never, Self>` (it just
-lets the accessor body be synchronous — both still return an `Effect`). The v3
-proxy accessors weren't merely renamed; they were removed because the mapped-type
-proxy **erased generics** — a `get<T>(key): Effect<T>` collapsed to
-`Effect<unknown>` and overloads were lost. `use`/`useSync` preserve the real
-method signatures, which is the other reason to prefer them (or `yield*`) over
-reaching for a v3-style accessor.
+lets the accessor body be synchronous — both still return an `Effect`). There is
+no mapped-type proxy that mints an accessor per method: such a proxy **erases
+generics** — a `get<T>(key): Effect<T>` collapses to `Effect<unknown>` and
+overloads are lost — which is why `use`/`useSync`, or plain `yield*`, are the
+whole accessor story and preserve the real method signatures.
 
 For a config knob / feature flag with a default (not a full API), use
 `Context.Reference<T>(id, { defaultValue: () => ... })` instead of a
@@ -126,7 +168,7 @@ failures, `RIn` dependencies required to build.
 - **`Layer.effect(Service)(effect)`** — effectful construction that may
   depend on other services **and/or own a scoped resource** (db pool,
   socket, worker). Its return type is `Layer<I, E, Exclude<R, Scope>>`: it
-  strips `Scope` from `R`. That is exactly why **`Layer.scoped` is gone** —
+  strips `Scope` from `R`. That is exactly why there is **no `Layer.scoped`** —
   `Layer.effect` over an `Effect.acquireRelease` effect *is* the scoped
   constructor:
 
@@ -218,8 +260,8 @@ because the service had already captured the ambient instance. Nothing in the
 types distinguishes the two — only a test that provides a *different* instance
 and asserts the difference does. (Caught that way in the github work.)
 
-Name the primary layer **`layer`** (e.g. `Database.layer`), never v3's
-`Default` / `Live`. Use suffixes for variants (`layerTest`). The one exception
+Name the primary layer **`layer`** (e.g. `Database.layer`), never `Default` or
+`Live`. Use suffixes for variants (`layerTest`). The one exception
 is the `index.ts` composite convenience export that merges two concept modules'
 primary layers — `Default` is the idiomatic name there (see **Cycle-avoidance**
 below); it is not a service's own primary layer, so it does not violate this
@@ -360,7 +402,7 @@ it twice:
 
 ```ts
 const main = program.pipe(Effect.provide(DbSubsystem), Effect.provide(DbSubsystem));
-// The Database pool is built ONCE. (v3 built it twice — one memo scope per provide.)
+// The Database pool is built ONCE — one shared MemoMap, not one per provide.
 ```
 
 Identity is **by reference**, and that is the footgun. A function that
@@ -405,7 +447,11 @@ resolving separately), a layer built from one copy does not satisfy a
 requirement expressed by the other — and it surfaces as **"service not
 provided" in a graph that visibly provides it**, never as a version error,
 sending the reader hunting a signature change that never happened (observed
-2026-08-14). Mechanism, diagnosis and mitigation →
+2026-08-14). Two checks answer different halves of it: `pnpm why
+@effected/<pkg>` says what *resolves*, and grepping a bundle for the
+**fully-qualified tag id** (`@effected/<pkg>/<Service>`, one hit per copy —
+never the bare class name, which also matches methods, logs and re-exports)
+says what got *inlined*. Mechanism, diagnosis and mitigation →
 [references/edge-cases.md](./references/edge-cases.md).
 
 Discipline — **bind layers to named constants**:
@@ -418,7 +464,7 @@ Discipline — **bind layers to named constants**:
   call the factory locally inside subsystem wiring — it breaks sharing and
   hides the dep.
 
-Auto-memoization is a safety net for the v3 multi-provide footgun, not a
+Auto-memoization is a safety net for the multi-provide footgun, not a
 license to skip composition. Compose explicitly, provide once.
 
 **Opt out** when you deliberately want a fresh build (test isolation,

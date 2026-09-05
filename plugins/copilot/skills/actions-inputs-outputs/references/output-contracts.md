@@ -311,13 +311,21 @@ document, move it onto the versioned path above instead of replacing it.
 
 Field-level prose that a human or an LLM reads to understand a value goes in
 `description`, annotated at the **definition site** of the schema (a
-usage-site annotation on a hoisted schema carries nothing through lowering).
-The Draft-07 lowering drops every keyword outside its fixed copy-list and
-the declared keyword families (the vscode five, `x-taplo`, `x-tombi-`,
-`x-intellij-`, `x-ai-`), so an *undeclared* custom `x-` key on an output
-contract is silently dropped rather than published — but `x-ai-*` **is**
-declared: recommend `x-ai-hint` (a string) at the definition site for an
-instruction to a machine reader that doesn't belong in `description` itself.
+usage-site annotation on a hoisted schema reaches nothing, even before
+lowering).
+Since effect rc.112 the Draft-07 lowering **carries unknown and custom
+keywords through as opaque values**, so an *undeclared* custom `x-` key on
+an output contract **is published** — do not rely on the lowering filtering
+it out. (It dropped every keyword outside a fixed copy-list before rc.112;
+if you learned the old behavior, unlearn it — the failure mode is shipping a
+key you assumed could not escape.) Whether an undeclared key can reach the
+document at all is decided upstream of the lowering, by whatever admits it:
+`@effected/schemastore`'s `StoreDocument.fromSchema` refuses one outright
+with `UndeclaredAnnotationKeyError` rather than emitting it. Prefer the
+declared families (the vscode five, `x-taplo`, `x-tombi-`, `x-intellij-`,
+`x-ai-`) — `x-ai-*` **is** declared: recommend `x-ai-hint` (a string) at the
+definition site for an instruction to a machine reader that doesn't belong
+in `description` itself.
 
 The key must be one ajv can register: after the prefix it may use only
 `[A-Za-z0-9_$:-]`, because ajv holds a keyword name to

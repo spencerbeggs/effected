@@ -1,6 +1,6 @@
 ---
 name: effect-v4-schema
-description: Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom Equal/Hash, and derived tooling (toArbitrary, toJsonSchemaDocument). Also covers primitives, records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error formatting. Identifier existence and every source citation re-verified against effect@4.0.0-rc.109; for v3→v4 renames see effect-v4-construct-map.
+description: Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom Equal/Hash, and derived tooling (toArbitrary, toJsonSchemaDocument). Also covers primitives, records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error formatting. Identifier existence and every source citation re-verified against effect@4.0.0-rc.109.
 ---
 
 # Effect v4 Schema
@@ -10,7 +10,7 @@ modules is consumer-facing vs machinery, see `effect-v4-module-index`.) It
 carries three layers:
 
 1. **The house rules** — the [Do this, not this](#do-this-not-this) table below,
-   our opinionated defaults distilled from the `@effected` migrations.
+   our opinionated defaults distilled from the `@effected` packages.
 2. **[references/house-style.md](./references/house-style.md)** — the worked
    examples and the reasoning behind each rule (the traps that only surface at
    test/property-test time).
@@ -43,14 +43,14 @@ are still `undefined` at rc.109; the rename did not get reverted.
 | conditional-spread an absent optional field | pass an explicit `undefined` for a `Schema.optionalKey` — a *present* `undefined` throws |
 | cross-field validation on a class: pass a **checked Struct** to the factory — `Schema.Class<X>("X")(Schema.Struct(fields).check(...))`; `check` returns `this["Rebuild"]` (`Schema.ts:187`), so a checked `Struct<Fields>` is still a `Struct<Fields>` the factory accepts, and the check sees the whole record (worked precedent: `CacheKey`'s restore-depths bound against its own segment count) | per-field checks that need a sibling's value (a field check sees only its field), or validating cross-field invariants in a `parse` wrapper the direct `make` path never runs |
 | `Schema.optionalKey` for object fields — it yields `field?: T`, the exact-optional contract these `exactOptionalPropertyTypes` repos want ([why](#schemaoptional-is-not-exact-optional)) | `Schema.optional` unless the *value* itself must carry `undefined` — it is documented as "Equivalent to `optionalKey(UndefinedOr(S))`" (`Schema.ts:2476`), so it yields `field?: T \| undefined` and **admits `{ field: undefined }`** |
-| `.check(is*)` to constrain, `refine` to narrow, `check(makeFilter(...))` for cross-field | the removed `positive`/`negative` or the v3 `filter`/`greaterThan` names |
+| `.check(is*)` to constrain, `refine` to narrow, `check(makeFilter(...))` for cross-field | `positive`/`negative`, or the `filter`/`greaterThan` spellings — none of them exist |
 | tagged unions of `TaggedClass` members (`_tag` branching) | untagged unions for domain variants |
-| `Schema.Literals(["a", "b", "c"])` for any multi-literal union (reason fields, enums) | the v3 variadic `Schema.Literal("a", "b", "c")` — v4 `Literal` takes ONE argument; tsgo rejects the variadic call (TS2554), but the **runtime silently keeps only the first literal**, so a suite run before typecheck green-lights a schema that rejects every other member (re-probed rc.109 against a passing `Schema.Literals(["a","b","c"])` control: `Schema.Literal("a","b","c")` accepts `"a"`, rejects `"b"` and `"c"`) |
+| `Schema.Literals(["a", "b", "c"])` for any multi-literal union (reason fields, enums) | the variadic `Schema.Literal("a", "b", "c")` — v4 `Literal` takes ONE argument; tsgo rejects the variadic call (TS2554), but the **runtime silently keeps only the first literal**, so a suite run before typecheck green-lights a schema that rejects every other member (re-probed rc.109 against a passing `Schema.Literals(["a","b","c"])` control: `Schema.Literal("a","b","c")` accepts `"a"`, rejects `"b"` and `"c"`) |
 | `Source.pipe(decodeTo(Target, SchemaTransformation.transform({...})))` | a top-level `Schema.transform` / `transformOrFail` — **not callable** — both are `undefined` on the `Schema` namespace, re-verified rc.109 |
 | pin `transformOrFail`'s type params explicitly when a union codec's members carry instance methods — `SchemaTransformation.transformOrFail<(typeof Classified)["Encoded"], string>({...})` | relying on inference after adding an instance method to a `Schema.TaggedClass` union member — `transformOrFail` unifies one `T` from decode-out and encode-in, and `decodeTo` pins both to the union's **Encoded** side, which no longer satisfies the method-bearing instance type; the existing codec breaks at the declaration site (hit on beta.98 adding a method to a `DependencySpecifier.FromString` member) |
 | return an **`Effect`** from both `transformOrFail` callbacks, failing with `SchemaIssue.InvalidValue({ message }, value)` ([contract](#transformorfails-callback-contract)) | return a `Result` (or a bare value) from a `transformOrFail` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:286`); a `Result` is not an Effect and will not bridge itself |
 | a `FromString` `Schema.Codec<Self, string>` static (string = the encoded form of the same schema) | a second parser divorced from the schema |
-| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:10769` is a *function*; `Schema.ErrorInstance` at `:10669` is the same trap — beta.102–105 renamed it from `Schema.Error`, which is now the error-**class factory** at `:14427`, not an instance schema — full list of the call-not-value family in **`effect-v4-construct-map`**) |
+| `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:10769` is a *function*; `Schema.ErrorInstance` at `:10669` is the same trap — beta.102–105 renamed it from `Schema.Error`, which is now the error-**class factory** at `:14427`, not an instance schema — full list of the call-not-value family in **`effect-v4-idioms`**) |
 | `Schema.decodeUnknownEffect` / `encodeUnknownEffect` in Effect flows | `*Sync` outside a genuine sync boundary |
 | `Schema.DurationFromMillis` / `Schema.DateTimeUtcFromString` (composed with `Schema.fromJsonString` for byte stores) when the value must **serialize** | `Schema.Duration` / `Schema.DateTimeUtc` in a persisted or wire schema — both are `declare` schemas with **no JSON encoding** (`Schema.ts:12016,13415`), so they round-trip in memory and fail at the serialization boundary; the ts-vfs cache metadata hit exactly this |
 | annotate recursive `Schema.suspend` refs `Schema.Codec<T>` (services default `never`) | `Schema.Schema<T>` as the suspend annotation — it compiles at the declaration but leaves `DecodingServices` `unknown`, so every decode entrypoint rejects the schema (`unknown is not assignable to never`, probed beta.94); a schema nobody decodes directly hides the trap until a consumer tries |
@@ -98,7 +98,7 @@ than reasoning about. Measured against beta.107:
 | --- | --- |
 | `Schema.Struct({ a })` | **rejected** — the strict path |
 | `Schema.StructWithRest(Struct({ a }), [Record(String, Unknown)])` | **accepted**, and `b` is *preserved* |
-| `Schema.Struct({ a }, { rest: Never })` | accepted, `b` dropped — v4's `Struct` takes only `fields`, so the v3 `rest` option is an ignored extra argument |
+| `Schema.Struct({ a }, { rest: Never })` | accepted, `b` dropped — v4's `Struct` takes only `fields`, so a `rest` option is an ignored extra argument |
 | `Schema.StructWithRest(Struct({ a }), [Record(String, Never)])` | rejected — but so is the valid `{ a: "x" }`, because the index signature covers `a` too |
 
 `SchemaAST.ts` runs the excess pass only when the struct has no index signature,
@@ -534,8 +534,8 @@ node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typ
 ```
 
 If it prints `undefined`, the name moved or has not landed in rc.109 yet — check
-`node_modules/effect/dist/Schema.d.ts` or the `effect-v4-construct-map` rename
-tables. The "Do this, not this" rules above already fold in the rc.109 gotchas
+`node_modules/effect/dist/Schema.d.ts`, or climb the `effect-v4-source-lookup`
+ladder. The "Do this, not this" rules above already fold in the rc.109 gotchas
 the upstream prose does not flag.
 
 The skew is real and it cuts both ways: the vendored `09-classes-and-opaque-types`
@@ -568,10 +568,11 @@ source + the beta-skew warning).
 
 ## Related skills
 
-- **`effect-v4-construct-map`** — the flat v3→v4 rename tables. Reach for it when a
-  v3 Schema name doesn't resolve in rc.109, and for the **call-not-value** list
-  (`Schema.Defect()`, `Schema.Error()`, `TestClock.layer()`) — names that exist,
-  type-check uncalled, and fail somewhere else.
+- **`effect-v4-idioms`** — core Effect patterns, and the **call-not-value** list
+  (`Schema.Defect()`, `Schema.ErrorInstance()`, `TestClock.layer()`) — names that
+  exist, type-check uncalled, and fail somewhere else.
+- **`effect-v4-source-lookup`** — when a Schema name doesn't resolve at rc.109:
+  the evidence ladder that settles existence, signature and semantics.
 - **`effect-api-extractor-bases`** — the anonymous-base / `ae-forgotten-export`
   discipline for `Schema.Class` and `Context.Service`.
 - **`effect-v4-services-layers`** — the sibling for `Context.Service` and Layers.

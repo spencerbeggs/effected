@@ -6,8 +6,8 @@
  * lowered with `JsonSchema.toDocumentDraft07`. This package owns what core
  * does not: the SchemaStore publication shape (`$schema` + `$id` + root +
  * `$defs`, with the `#/definitions` → `#/$defs` ref rewrite the lowering
- * makes necessary), the annotation carriers that re-graft the non-standard
- * language-server keyword families the lowering drops, the catalog-entry
+ * makes necessary), the gate that holds a document's non-standard surface
+ * to the declared language-server keyword families, the catalog-entry
  * vocabulary with both versioning modes, the structural and hygiene lints,
  * canonical JSON text, content-comparing write-if-changed file IO
  * (`SchemaFile`), change classification for the versioning decision
@@ -44,7 +44,6 @@
  * @packageDocumentation
  */
 
-export { AnnotationCarriers, CarrierDepthExceededError } from "./AnnotationCarriers.js";
 export {
 	CanonicalJson,
 	type CanonicalJsonError,
@@ -98,4 +97,5 @@ export {
 	SchemaConversionError,
 	StoreDocument,
 	type StoreDocumentOptions,
+	UndeclaredAnnotationKeyError,
 } from "./StoreDocument.js";

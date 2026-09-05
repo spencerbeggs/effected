@@ -72,7 +72,6 @@ Logic at the wrong layer: business rules inside a transport shim, formatting ins
 
 - **`effect-reviewer`** — the primary agent. Give it the named modules and the four categories, and require for each finding: `file:line`, the quoted code, which category it falls in, and an estimate of the blast radius in files.
 - **`action-engineer`** — dispatch for action, release-pipeline or GitHub-API code, on the placement question specifically: is this logic in the right kind of module.
-- **`effect-migrator`** — dispatch when the complexity looks like migration residue rather than design; a v3-shaped abstraction that v4 makes unnecessary is its specialty.
 - **`effect-developer`** — dispatch to implement, after Phase 4.
 
 Tell each agent that **"this could be cleaner" is not a finding.** A finding names what a future change would cost today and what it would cost after.

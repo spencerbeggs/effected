@@ -24,7 +24,7 @@ Choose the slice by looking for the code most likely to have drifted, not the co
 
 - The newest modules, and the oldest. Recent additions were written fastest; the oldest predate conventions that arrived later.
 - Modules touched by many recent commits — churn is where local conventions get invented.
-- Anything that looks ported rather than written: v3-era shapes, a `Live` suffix, a file whose name does not match the concept it exports.
+- Anything that looks copied rather than written: a `Live` suffix, a file whose name does not match the concept it exports.
 
 Name the slice explicitly before proceeding. If you cannot justify why these modules and not others, you are picking at random and the findings will be at random too.
 
@@ -33,7 +33,6 @@ Name the slice explicitly before proceeding. If you cannot justify why these mod
 Do not do the whole sweep yourself. Dispatch the plugin's specialists and consolidate what they return.
 
 - **`effect-reviewer`** — the primary agent for this sweep. Give it the named modules and ask for house-style departures with `file:line` for each, classified as *rule violated* / *local convention diverging from the surrounding code* / *stylistic preference with no rule behind it*. That third bucket exists so you can throw it away; say so when you dispatch.
-- **`effect-migrator`** — dispatch when the slice shows v3-era shapes. Naming drift and layout drift are usually migration residue rather than carelessness, and this agent recognizes the pattern.
 - **`action-engineer`** — dispatch for any action repo, on the structural questions specifically: does each file live where the canonical shape puts it, is the entry point thin, are services shared rather than duplicated per step.
 - **`effect-developer`** — dispatch to implement the changes you select, once Phase 4 has settled what they are.
 

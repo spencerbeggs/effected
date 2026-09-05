@@ -47,8 +47,8 @@ Citing a doc passage for a semantic claim is how these skills acquired their err
 
 A probe that cannot fail is worse than no probe. Each precondition below was learned by being burned.
 
-1. **Run from inside the package, never the repo root.** The rule is unchanged; its stated mechanism was wrong and is corrected here. This document long claimed the root "resolves `effect@3.21.4` and will describe the v3 surface with total confidence." **That is false in this repo** — verified 2026-08-23: `grep -c "effect@3\." pnpm-lock.yaml` is `0`, `ls node_modules/.pnpm | grep '^effect@'` yields exactly `effect@4.0.0-rc.109`, and a root-relative resolve fails outright with `ERR_MODULE_NOT_FOUND`. The root resolves **nothing**, not the wrong thing. The v3-shadowing hazard is real *where a v3 is installed*, so keep the rule — but **gate on the resolved version, never on the directory**, because a remembered answer for a directory is exactly the recollection this ladder exists to replace. The pnpm fix in [pnpm/pnpm#12847](https://github.com/pnpm/pnpm/pull/12847) addresses lockfile poisoning; it does not change which `effect` a root-relative `require` resolves.
-2. **Print the resolved version inside every probe, and compare it against `catalog:effect` in `pnpm-workspace.yaml`** — not against a hardcoded prefix. A rule reading "if it does not say `4.0.0-beta.<n>`, the probe is void" is self-defeating the moment the line moves to `rc`: a correct probe printing `4.0.0-rc.109` gets rejected by the check meant to protect it. What voids a probe is a `3.x` resolution, or a resolution that disagrees with the catalog pin.
+1. **Run from inside the package, never the repo root.** The rule is unchanged; its stated mechanism was wrong and is corrected here. This document long claimed the root "resolves `effect@3.21.4` and will describe the v3 surface with total confidence." **That is false in this repo** — verified 2026-09-05 on the rc.112 advance: `grep -c "effect@3\." pnpm-lock.yaml` is `0`, and a root-relative resolve fails outright with `ERR_MODULE_NOT_FOUND`. Note that `ls node_modules/.pnpm | grep '^effect@'` is **not** the check — it lists store directories, which outlive the lockfile: during a catalog advance the previous release's directory lingers there, orphaned, and a stale copy can also be genuinely live while a toolchain bridge is up (see `CLAUDE.dependencies.md`). Read the lockfile's **`packages:` section**, not the store — and not the whole lockfile either: while a toolchain bridge is up, a bare `grep -c "effect@<old>" pnpm-lock.yaml` matches the override's own redirect line (`effect@<old>: <new>`), which is one resolved version spelled twice, not a second copy. Scope it: `awk '/^packages:/,/^snapshots:/' pnpm-lock.yaml | grep -c '<old>'`. The root resolves **nothing**, not the wrong thing. The v3-shadowing hazard is real *where a v3 is installed*, so keep the rule — but **gate on the resolved version, never on the directory**, because a remembered answer for a directory is exactly the recollection this ladder exists to replace. The pnpm fix in [pnpm/pnpm#12847](https://github.com/pnpm/pnpm/pull/12847) addresses lockfile poisoning; it does not change which `effect` a root-relative `require` resolves.
+2. **Print the resolved version inside every probe, and compare it against `catalog:effect` in `pnpm-workspace.yaml`** — not against a hardcoded prefix. A rule reading "if it does not say `4.0.0-beta.<n>`, the probe is void" is self-defeating the moment the line moves to `rc`: a correct probe printing `4.0.0-rc.112` gets rejected by the check meant to protect it. What voids a probe is a `3.x` resolution, or a resolution that disagrees with the catalog pin.
 3. **Probe files live at the package root.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories. A probe in a subdirectory silently leaves the compilation program, and its control error never fires — it false-passes.
 4. **Run the control first.** Write a line you *know* must fail to compile or must throw. Watch it fail. Only then write the real assertion. If the control passes, the harness is broken, not the claim.
 5. **Delete by absolute path** when done.
@@ -95,6 +95,21 @@ Run against open skill tickets.
 4. Close the ticket citing the evidence. Rung 2 cites a file and line under `.repos/effect`. Rung 3 pastes the probe and its output, including the resolved version line.
 5. Reload plugins so the edit takes effect in-session.
 
+## Sweeping after a dependency bump: grep the causal claims, not the symbols
+
+Established 2026-09-05 on the rc.112 advance, at a cost of six missed edits across one package.
+
+When an upstream behavior changes, the dangerous stale text is **not** the text that names a deleted symbol. A symbol grep finds that, and it reads as obviously wrong once found. The dangerous shape is a sentence of the form **"X, because Y"** where `Y` is a *dependency's* behavior and `X` is still true.
+
+Effect rc.112 made the Draft-07 lowering preserve custom keywords instead of dropping them. `@effected/schemastore` carried the sentence "an undeclared keyword never survives to be linted, **because** the lowering drops every keyword outside its copy-list." After rc.112 the conclusion still holds — the package now refuses undeclared keys at admission — but the stated reason is dead. **Those lines survive review precisely because a reader checks the claim, finds it true, and moves on.** One of them was `@public` TSDoc that would have shipped in a published `.d.ts`.
+
+So on any dependency bump, sweep twice:
+
+1. The **symbols** — deleted exports, renamed modules. Mechanical, easy.
+2. The **causal claims** — every "because", "so", "therefore" whose justification is upstream behavior rather than ours. Grep the *mechanism's* vocabulary, not the API's: for this bump that meant `re-graft|regraft|lowering drops|drops every keyword`, none of which name a symbol.
+
+The tell that you are in this failure mode: you found one such line **by reading**, fixed it, and did not widen your sweep pattern to the class of defect you had just discovered. Turn every mechanism-bug you find by hand into a grep before moving on.
+
 ## Red flags
 
 Stop if you catch yourself doing any of these. Each has happened.
@@ -102,7 +117,11 @@ Stop if you catch yourself doing any of these. Each has happened.
 - **Editing a skill to match a doc passage** when the claim is about runtime behaviour. That is the original error, repeated.
 - **"Fixing" something already correct.** During the `config-file` cycle two agents nearly re-exported a deliberately-deleted internal symbol onto the public API because they trusted a stale reference over the current tree. Read the current code before you believe a ticket.
 - **Widening a suppression to make a gate green.** The `_base` suppression in each `savvy.build.ts` is narrow and four packages depend on it staying narrow.
-- **Spreading `.repos/effect` across the plugin.** While the plugin is dogfooded from this repo alone, its agents and skills *may* assume the vendored tree — but exactly one file names the path: `${CLAUDE_PROJECT_DIR}/plugins/claude-code/skills/effect-v4-source-lookup/SKILL.md`. Everything else consults that skill. If you find a second hardcoded reference, collapse it. See [pre-publish debt](#pre-publish-debt).
+- **Spreading `.repos/effect` across the plugin.** While the plugin is dogfooded from this repo alone, its agents and skills *may* assume the vendored tree — but only **two** files may name the path, for two different reasons, and everything else consults the skill:
+  - `plugins/claude-code/skills/effect-v4-source-lookup/SKILL.md` — resolves the ladder, so it owns the path for *reading*.
+  - `plugins/claude-code/hooks/session-start/orientation.sh` — reports the vendored-source posture and tells a repo that has no vendored tree where to put one, so it owns the path for *bootstrapping*. A hook that could not name the destination could not do its job.
+
+  Any **third** hardcoded reference is the drift this red flag is about; collapse it into one of those two. See [pre-publish debt](#pre-publish-debt).
 - **Trusting a green build you did not run correctly.** `node savvy.build.ts --target prod` run directly skips `build:dev`, produces no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. Build with `pnpm build --filter <pkg>` from the repo root.
 - **Pointing a *writing* tool at the vendored tree.** `${CLAUDE_PROJECT_DIR}/.repos/effect` is read-only reference. On 2026-07-09, running `markdownlint-cli2` against it — merely to *check* whether it was excluded — silently rewrote 19 files, among them `migration/services.md` and `migration/forking.md`, because the repo's markdownlint config sets `"fix": true`. A corrupted rung-1 source is undetectable by reading it. If you must confirm the tree is untouched, `savvy repos status` (or the `repos_inspect` MCP tool) reports per-repo dirtiness. The fs and Bash guards now deny writes into `.repos/**` outright, but the status check remains the way to *verify*.
 
@@ -121,11 +140,16 @@ The plugin is currently loaded only from this repo (`claude --plugin-dir plugin`
 
 Two invariants remain this skill's to keep:
 
-1. Keep the path in one file. Re-verify each agent (`${CLAUDE_PROJECT_DIR}/plugins/claude-code/agents/*.md`) names the ladder but not the directory:
+1. Keep the path in the two files that own it — the source-lookup skill (reading) and the session-start hook (bootstrapping). Every **agent** (`${CLAUDE_PROJECT_DIR}/plugins/claude-code/agents/*.md`) must name the ladder and never the directory, and no skill but `effect-v4-source-lookup` may name it:
 
    ```bash
-   test "$(grep -rl '\.repos/effect' plugins/claude-code/ | wc -l)" -eq 1
+   # Agents never name the path.
+   test -z "$(grep -rl '\.repos/effect' plugins/claude-code/agents/ 2>/dev/null)"
+   # Exactly one skill names it.
+   test "$(grep -rl '\.repos/effect' plugins/claude-code/skills/ | wc -l)" -eq 1
    ```
+
+   The hook's own bats suite (`__test__/session-start-orientation.bats`) exercises the path, so it appears there too; that is the test of the owner, not a third owner.
 
 2. **Never trade the loud failure for a quiet fallback.** Every step of the ladder resolves to a version-exact source tree or does not resolve; no step resolves to recollection. Silent degradation to v3 memory is the precise failure the plugin exists to prevent, and it is indistinguishable from success.
 

@@ -106,7 +106,7 @@ Biome, commitlint, lint-staged and markdownlint take their presets from `@savvy-
 
 Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effect`. Catalog detail and the expected peer-warning class → `@./CLAUDE.dependencies.md`.
 
-**`catalog:effect` uses the `lock` strategy: exact prerelease pins (`4.0.0-rc.109`), never a caret.** A caret on a prerelease floats across the release line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports.
+**`catalog:effect` uses the `lock` strategy: exact prerelease pins (`4.0.0-rc.112`), never a caret.** A caret on a prerelease floats across the release line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports.
 
 **Always check the lockfile diff after an install** — a plain `pnpm install` can strip turbo/biome/tsgo platform binaries from it.
 

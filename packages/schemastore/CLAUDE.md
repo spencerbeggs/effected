@@ -66,12 +66,29 @@ validation gate, not a construction surface.
   `$id` resolves to the root id and collides too; a collision fails the
   compile. No upstream sanctions `x-ai-`; it is intended for
   self-hosted publication, not schemastore.org submission without that repo's
-  own config entry. `DocumentLint.UnknownKeyword` and `AnnotationCarriers`
-  both consume `isDeclared`, so lint and carriers cannot drift. Never fork
-  the list.
-- **Carriers re-graft *after* the Draft-07 lowering**, which drops every keyword
-  outside its fixed copy-list. The parallel walk must mirror core's descent
-  exactly, including the coordinate move `prefixItems[i]` → `items[i]`.
+  own config entry. `DocumentLint.UnknownKeyword` and
+  `StoreDocument.fromSchema`'s gate both consume `isDeclared`, so lint and
+  gate cannot drift. Never fork the list.
+- **The declared families are the WHOLE non-standard surface, and the gate is
+  ours — it fails, it does not drop.** A caller-supplied
+  `includeAnnotationKey` that admits a key outside the families fails
+  `fromSchema` with `UndeclaredAnnotationKeyError` naming the keys; declared
+  families are always admitted regardless of what that predicate answers. The
+  package once *relied* on core's Draft-07 lowering to drop undeclared keys;
+  **effect rc.112 (PR #7420) made the lowering preserve custom keywords**, so
+  that reliance silently stopped enforcing anything. Never re-document a core
+  behavior as this package's guarantee.
+- **There is no post-lowering re-graft.** Since rc.112 the lowering copies
+  unknown and custom keywords through as opaque values, in place, including
+  across the tuple coordinate move (`prefixItems[i]` → `items[i]`, trailing
+  `items` → `additionalItems`) — proven per case in
+  `__test__/annotation-carrying.test.ts`, which asserts on the raw
+  `JsonSchema.toDocumentDraft07` output with no package code involved.
+  `AnnotationCarriers` was deleted as dead weight. The one thing the package
+  still owes a declared-family value is that the `#/definitions` → `#/$defs`
+  `$ref` rewrite **does not descend into it**: those payloads are opaque
+  advice to a language server, and a `$ref`-shaped string inside one must
+  survive verbatim.
 - **`DocumentDiff`'s governing principle: a keyword is a CONTRACT change when
   it alters what a validator asserts or what data a generic tool writes into
   an instance; one that alters only advice to a reader — human or machine —
@@ -141,9 +158,13 @@ validation gate, not a construction surface.
   precedence over the contract guard: a document the engine rejects is never
   written under any contract policy, so its classification is noise.
 - **Know which gate actually blocks in the pipeline**: targets carry a `Schema`,
-  so the lowering drops undeclared keywords before `DocumentLint` runs —
-  `UnknownKeyword` is unreachable that way and the **engine** gate is what stops
-  a bad document.
+  so pipeline documents come from `fromSchema`, which never admits an
+  undeclared keyword in the first place (the pipeline passes no
+  `includeAnnotationKey`, and one that admitted anything undeclared would fail
+  the build). `UnknownKeyword` is therefore unreachable that way and the
+  **engine** gate is what stops a bad document. Until rc.112 the same
+  conclusion held for a different reason — the lowering dropped undeclared
+  keywords — so do not restate the mechanism from memory.
 - **A validator's error channel is for the mechanism failing**, never for
   findings (the `CatalogResolver` convention). `SchemaValidator.layer` registers
   the declared families before compiling, so ajv cannot reject what
