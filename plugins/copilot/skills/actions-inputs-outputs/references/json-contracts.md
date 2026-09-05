@@ -31,8 +31,9 @@ rather than bytes so the formatter that owns the file cannot make the test
 lie. An input schema is unversioned and lives at the repository root as
 `<action>.input.schema.json` — being unversioned, it is never a candidate
 for `SchemaPipeline.run`'s contract-change guard (that only ever refuses a
-target with a PINNED `version`), so a contract change there always
-regenerates and writes in place, same as before.
+target with a PINNED `version`), so a contract change there is eligible for
+in-place replacement once the document passes the lint and engine gates —
+a blocking finding still fails the run with `SchemaGateError`, same as before.
 
 ## Why this belongs at design time, not as a later add-on
 

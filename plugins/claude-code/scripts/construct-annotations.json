@@ -636,7 +636,7 @@
 		"Vocabulary": "ask the vendored schema.org vocabulary directly about types, properties and inheritance"
 	},
 	"schemastore": {
-		"AnnotationCarriers": "re-graft non-standard keywords after draft-07 lowering, preserve x-taplo vscode tombi intellij annotations",
+		"AnnotationCarriers": "re-graft non-standard keywords after draft-07 lowering, preserve x-taplo vscode tombi intellij x-ai machine annotations",
 		"CanonicalJson": "deterministic canonical json text, stable diff-friendly serialization for committed schema files",
 		"CarrierDepthExceededError": "handle annotation re-graft nesting past hardening cap, cyclic schema guard",
 		"CatalogEntry": "build a schemastore catalog.json entry, assemble unversioned or versioned schema urls",
@@ -648,7 +648,7 @@
 		"DocumentLintFinding": "lint finding value for a schema document structural check",
 		"InvalidSchemaVersionError": "handle a version label that is not full major.minor.patch semver",
 		"JsonDepthExceededError": "handle json value nesting past the hardening cap during canonical serialize",
-		"KeywordFamilies": "recognize non-standard vscode taplo tombi intellij json schema keyword families",
+		"KeywordFamilies": "recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint",
 		"NonJsonValueError": "handle a non-json value (undefined, bigint, function, NaN) during canonical serialize",
 		"PipelineFinding": "normalized lint or validator finding surfaced by the schema pipeline",
 		"SchemaContractChangeError": "handle a pipeline run refusing to rewrite a pinned published schema in place, block-versioned contract change",

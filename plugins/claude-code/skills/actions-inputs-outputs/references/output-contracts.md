@@ -212,6 +212,9 @@ Three things in that script are load-bearing:
   the last target leaves the first ones unwritten. A pinned versioned target
   whose contract would change refuses the whole run itself (see "Versioning
   the contract" below) — the script does not need its own preflight for that.
+  The guarantee is a preflight, not a transaction: phase 2 writes the held
+  documents one at a time with no rollback, so a filesystem failure on a
+  later write leaves the earlier targets already on disk.
 
 The gate is policy, not mechanism: the default blocks `warning` findings
 (`UnresolvedRef`, `UnknownKeyword`, `DepthExceeded`, and every engine
@@ -366,6 +369,9 @@ describe("generated JSON Schema", () => {
           assert.fail(`${result.path} changed its contract and is pinned — bump its version, do not just re-run schema:generate`);
         }
         assert.isTrue(DocumentDiff.isClean(result.change), `${result.path} is out of date (${result.change}); run schema:generate and commit`);
+        // `change` is content-classified; under `write.compare: "bytes"` a
+        // `"none"` change can still be a pending write, so ask directly.
+        assert.isFalse(result.wouldWrite, `${result.path} would be rewritten; run schema:generate and commit`);
       }
     }).pipe(Effect.provide(AppLayer)),
   );

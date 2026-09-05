@@ -5,7 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `AnnotationCarriers` | Class | Re-grafts the declared non-standard keyword families (`KeywordFamilies`) from a Draft 2020-12 schema node onto its lowered Draft-07 counterpart. | re-graft non-standard keywords after draft-07 lowering, preserve x-taplo vscode tombi intellij annotations |
+| `AnnotationCarriers` | Class | Re-grafts the declared non-standard keyword families (`KeywordFamilies`) from a Draft 2020-12 schema node onto its lowered Draft-07 counterpart. | re-graft non-standard keywords after draft-07 lowering, preserve x-taplo vscode tombi intellij x-ai machine annotations |
 | `CanonicalJson` | Class | Deterministic, canonical JSON text: the package's owned serializer, so a consumer never shells out to an external formatter to produce a stable committed schema file. | deterministic canonical json text, stable diff-friendly serialization for committed schema files |
 | `CanonicalJsonError` | TypeAlias | Union of the failures `CanonicalJson.serialize` can raise. | |
 | `CanonicalJsonOptions` | Interface | Options for `CanonicalJson.serialize`. | |
@@ -22,7 +22,7 @@
 | `DocumentLintFinding` | Class | A structural lint finding over an assembled document: a value in a report, never an error channel — a document with findings is still a document, and the consumer decides what a finding gates. | lint finding value for a schema document structural check |
 | `InvalidSchemaVersionError` | Class | Indicates that a string is not a valid SchemaStore version label. | handle a version label that is not full major.minor.patch semver |
 | `JsonDepthExceededError` | Class | Indicates that the serialization input nests deeper than the package's hardening cap (256 levels), which also intercepts cyclic values before they can recurse forever. | handle json value nesting past the hardening cap during canonical serialize |
-| `KeywordFamilies` | Class | The declared non-standard keyword families as one predicate: the vscode-json-languageservice set by exact name, plus the `x-taplo`, `x-tombi-`, `x-intellij-` and `x-ai-` prefixes. | recognize non-standard vscode taplo tombi intellij json schema keyword families |
+| `KeywordFamilies` | Class | The declared non-standard keyword families as one predicate: the vscode-json-languageservice set by exact name, plus the `x-taplo`, `x-tombi-`, `x-intellij-` and `x-ai-` prefixes. | recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint |
 | `NonJsonValueError` | Class | Indicates that a value reachable from the serialization input is not a JSON value: `undefined`, a function, a symbol, a `bigint`, a non-finite number, or an object that is neither an array nor a plain object. | handle a non-json value (undefined, bigint, function, NaN) during canonical serialize |
 | `PipelineCheckResult` | Interface | What `SchemaPipeline.check` found for one target — the same report without the write. | |
 | `PipelineFinding` | Class | One problem found while emitting a target, from either gate, normalized so a single policy predicate can judge both. | normalized lint or validator finding surfaced by the schema pipeline |
