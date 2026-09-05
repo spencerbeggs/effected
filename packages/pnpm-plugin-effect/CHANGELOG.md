@@ -1,5 +1,19 @@
 # @effected/pnpm-plugin-effect
 
+## 0.6.19
+
+### Maintenance
+
+#### Updates 3 catalog:effected versions
+
+- `@effected/markdown` ^0.8.0 -> ^0.8.1 (peer ^0.8.0)
+- `@effected/semver` ^0.5.0 -> ^0.5.1 (peer ^0.5.0)
+- `@effected/workspaces` ^0.18.3 -> ^0.19.0 (peer ^0.19.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.6.18
 
 ### Maintenance
