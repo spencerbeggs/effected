@@ -23,6 +23,7 @@ import { Effect, Exit, Schema } from "effect";
 import { MAX_ENUMERATION_DEPTH } from "./internal/limits.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./internal/traverse.js";
+import type { WorkspaceDiscoveryError } from "./WorkspaceDiscovery.js";
 import { PublishConfig, WorkspacePackage } from "./WorkspacePackage.js";
 
 /**
@@ -154,6 +155,96 @@ export interface WorkspacesSyncOptions {
 	/** The synchronous path implementation (Node: the `node:path` module itself). */
 	readonly path: SyncPath;
 }
+
+/**
+ * Why {@link getWorkspacePackagesSync} left a manifest out of its result — the
+ * `WorkspaceDiscoveryError.kind` values a single manifest read can produce.
+ *
+ * @remarks
+ * The same vocabulary the Effect surface fails with, deliberately: a member the
+ * async `listPackages()` rejects as `missingName` is the member the sync facade
+ * reports as `missingName`. `invalidYaml` is excluded because it describes the
+ * `pnpm-workspace.yaml` read, not a manifest. There is no `missingVersion` —
+ * a version-less manifest is a member on both surfaces.
+ *
+ * The vocabulary is shared; the CHECKS are shared only as far as this list.
+ * Both surfaces perform the same five: the file read (`read`), `JSON.parse`
+ * (`invalidJson`), the parsed value being a non-null non-array object
+ * (`invalidShape`), a non-empty string `name` (`missingName`), and a `version`
+ * that is either absent or a non-empty string (`invalidShape`). Beyond them
+ * they diverge, and one divergence is deliberate: a malformed `publishConfig`
+ * FAILS the async surface, because it reaches the decode, while the sync facade
+ * drops the field and keeps the member. A consumer that must reject such a
+ * manifest has to use the Effect surface.
+ *
+ * @public
+ */
+export type WorkspaceDiscoverySkipKind = Exclude<WorkspaceDiscoveryError["kind"], "invalidYaml">;
+
+/**
+ * One manifest {@link getWorkspacePackagesSync} skipped, reported through
+ * {@link GetWorkspacePackagesSyncOptions.onSkip}.
+ *
+ * @remarks
+ * The sync facade is total, so it cannot fail the way `WorkspaceDiscovery`
+ * does — but a skipped member must still be observable. Before this record
+ * existed the skip was silent, and a hand-written fixture with one unusable
+ * manifest enumerated as a plausible empty array indistinguishable from "no
+ * workspaces configured" (issue #605). The fields mirror
+ * `WorkspaceDiscoveryError`: `root`, `path`, `kind`, and on `cause` either the
+ * caught throwable (`read` / `invalidJson`) or an `Error` carrying the same
+ * sentence the Effect surface fails with (`invalidShape`). Only `missingName`
+ * has `cause: undefined` — the field is simply absent, and nothing threw.
+ *
+ * @public
+ */
+export interface WorkspaceDiscoverySkip {
+	/** The workspace root the enumeration ran against. */
+	readonly root: string;
+	/** Absolute path to the `package.json` that was skipped. */
+	readonly path: string;
+	/** Why it was skipped. */
+	readonly kind: WorkspaceDiscoverySkipKind;
+	/**
+	 * The thrown value for `read` and `invalidJson`, an `Error` whose message
+	 * matches the Effect surface's for `invalidShape`, and `undefined` for
+	 * `missingName` alone.
+	 */
+	readonly cause: unknown;
+}
+
+/** A manifest read that either yields the parsed record or names why it cannot. */
+type ManifestRead =
+	| { readonly raw: Record<string, unknown> }
+	| { readonly kind: "read" | "invalidJson" | "invalidShape"; readonly cause: unknown };
+
+/**
+ * Read one `package.json` into a plain record, or say why not. Never throws.
+ *
+ * The three failures are kept apart — a throwing consumer `readFile`, a JSON
+ * syntax error, and valid JSON that is not an object — because the skip report
+ * carries the distinction; the two other callers of {@link readJson} do not
+ * need it and keep the collapsed form.
+ */
+const readManifest = (fileSystem: SyncFileSystem, file: string): ManifestRead => {
+	let text: string;
+	try {
+		text = fileSystem.readFile(file);
+	} catch (cause) {
+		return { kind: "read", cause };
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch (cause) {
+		return { kind: "invalidJson", cause };
+	}
+	// `JSON.parse` returns `null` / a number / a string for VALID input; only a
+	// non-null, non-array object is a manifest.
+	return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+		? { raw: parsed as Record<string, unknown> }
+		: { kind: "invalidShape", cause: new Error("package.json is not a JSON object") };
+};
 
 /**
  * Read and JSON-parse a file into a plain object, or `undefined`. Never throws.
@@ -319,21 +410,50 @@ const readPatternsSync = (options: WorkspacesSyncOptions, root: string): Readonl
 	return manifestPatternsOf(readJson(fileSystem, path.join(root, "package.json")) ?? {});
 };
 
-/** Build a `WorkspacePackage` from a directory, or `null` if its manifest is unusable. */
+/**
+ * Build a `WorkspacePackage` from a directory, or a {@link WorkspaceDiscoverySkip}
+ * saying why its manifest is unusable — never `null`, so a skip cannot go
+ * unreported.
+ */
 const readPackageSync = (
 	options: WorkspacesSyncOptions,
 	root: string,
 	directory: string,
 	relativePath: string,
-): WorkspacePackage | null => {
+): WorkspacePackage | WorkspaceDiscoverySkip => {
 	const packageJsonPath = options.path.join(directory, "package.json");
-	const raw = readJson(options.fileSystem, packageJsonPath);
-	if (raw === undefined) return null;
+	const read = readManifest(options.fileSystem, packageJsonPath);
+	if (!("raw" in read)) return { root, path: packageJsonPath, kind: read.kind, cause: read.cause };
+	const raw = read.raw;
 
 	const name = raw.name;
+	if (typeof name !== "string" || name.length === 0) {
+		return { root, path: packageJsonPath, kind: "missingName", cause: undefined };
+	}
+	// Absent stays absent — pnpm accepts a version-less private package, and the
+	// Effect enumerator carries the same shape. Optional means ABSENT, though,
+	// not "any present value counts": a present non-string is the manifest's
+	// shape being wrong, and so is `""`, which pnpm never wrote and which would
+	// resolve `workspace:^` to a bare `"^"`. The Effect surface fails both as
+	// `invalidShape` with these exact sentences; here they are the same kind and
+	// the same sentence, reported rather than raised.
 	const version = raw.version;
-	if (typeof name !== "string" || name.length === 0) return null;
-	if (typeof version !== "string" || version.length === 0) return null;
+	if (version !== undefined && typeof version !== "string") {
+		return {
+			root,
+			path: packageJsonPath,
+			kind: "invalidShape",
+			cause: new Error(`version must be a string, got ${typeof version}`),
+		};
+	}
+	if (version === "") {
+		return {
+			root,
+			path: packageJsonPath,
+			kind: "invalidShape",
+			cause: new Error("version must be a non-empty string"),
+		};
+	}
 
 	const stringRecord = (value: unknown): Record<string, string> | undefined =>
 		value !== null &&
@@ -351,7 +471,7 @@ const readPackageSync = (
 
 	return WorkspacePackage.make({
 		name,
-		version,
+		...(version !== undefined ? { version } : {}),
 		path: directory,
 		packageJsonPath,
 		relativePath,
@@ -384,6 +504,21 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
 	 * @defaultValue 32
 	 */
 	readonly maxDepth?: number;
+	/**
+	 * Called once for every manifest the enumeration found and could not use,
+	 * with the file and the reason — so a skipped member is observable even
+	 * though this function is total and has no error channel to raise it on.
+	 *
+	 * @remarks
+	 * Omit it and skips are simply not reported, which is the pre-existing
+	 * behaviour; nothing is logged in its place. The callback is invoked
+	 * synchronously, before the result is returned, in enumeration order —
+	 * members first, then the root, which is read last even though it is
+	 * returned first. Its
+	 * result is discarded, and a throw from it propagates: the facade is total
+	 * over *data*, not over caller mistakes, exactly as a bad `maxDepth` is.
+	 */
+	readonly onSkip?: ((skip: WorkspaceDiscoverySkip) => void) | undefined;
 }
 
 /**
@@ -408,6 +543,13 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
  * and a Vitest config has nowhere to put a failure. Totality covers *data*, not
  * caller mistakes: a `maxDepth` that is not a positive integer throws, matching
  * the enumerator's defect.
+ *
+ * **A skip is never silent.** Every manifest left out is reported through
+ * `onSkip` with its path and the same `kind` the Effect surface would have
+ * failed with (a `WorkspaceDiscoverySkip`), so "no packages" and "packages
+ * rejected" stay distinguishable. A manifest with no `version` is NOT skipped:
+ * pnpm accepts a version-less private package, so it is a member with
+ * `version` absent — on both surfaces.
  *
  * @param root - The workspace root, from {@link findWorkspaceRootSync}.
  * @param options - The consumer-supplied operations and traversal bounds; see
@@ -513,12 +655,17 @@ export const getWorkspacePackagesSync = (
 	}
 
 	const members: Array<WorkspacePackage> = [];
+	const admit = (read: WorkspacePackage | WorkspaceDiscoverySkip): void => {
+		if (read instanceof WorkspacePackage) members.push(read);
+		else options.onSkip?.(read);
+	};
 	for (const [relativePath, absolute] of [...included.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
 		if (relativePath === "." || absolute === root) continue;
-		const pkg = readPackageSync(options, root, absolute, relativePath);
-		if (pkg !== null) members.push(pkg);
+		admit(readPackageSync(options, root, absolute, relativePath));
 	}
 
 	const rootPackage = readPackageSync(options, root, root, ".");
-	return rootPackage === null ? members : [rootPackage, ...members];
+	if (rootPackage instanceof WorkspacePackage) return [rootPackage, ...members];
+	options.onSkip?.(rootPackage);
+	return members;
 };

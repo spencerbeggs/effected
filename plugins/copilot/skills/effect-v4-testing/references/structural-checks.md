@@ -94,7 +94,7 @@ it. Give the stripper a test, and make the fixture discriminate:
   line survives.
 
 ```ts
-// The stripper's own test (packages/github-actions/__test__/Secret.test.ts:234-235)
+// The stripper's own test (packages/github-actions/__test__/Secret.test.ts:244-245)
 assert.notInclude(stripComments("/** mentions Redacted.value in TSDoc */\nconst a = 1;"), "Redacted.value");
 assert.include(stripComments("// a note\nconst t = Redacted.value(s);"), "Redacted.value");
 

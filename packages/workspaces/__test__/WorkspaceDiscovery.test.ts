@@ -339,19 +339,119 @@ describe("WorkspaceDiscovery — a member without a name", () => {
 	});
 });
 
+// ── a manifest without a version: discovered, as pnpm accepts it ────────────
+
 const versionless: Tree = {
-	"/repo/package.json": rootManifest(["packages/*"]),
-	"/repo/packages/bad/package.json": JSON.stringify({ name: "@x/bad" }),
+	// The ordinary private-monorepo root: a name and `workspaces`, no `version`.
+	"/repo/package.json": JSON.stringify({ name: "root", private: true, workspaces: ["packages/*"] }),
+	"/repo/packages/bare/package.json": JSON.stringify({ name: "@x/bare", private: true }),
+	"/repo/packages/versioned/package.json": manifest("@x/versioned"),
 };
 
-describe("WorkspaceDiscovery — a member without a version", () => {
+describe("WorkspaceDiscovery — a manifest without a version is discovered (#472, #591, #605)", () => {
 	layer(discoveryOver(versionless))((it) => {
-		it.effect("fails with the missingVersion discriminant", () =>
+		it.effect("a version-less ROOT manifest is discovered, root first, with `version` absent", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const packages = yield* discovery.listPackages();
+				assert.deepStrictEqual(
+					packages.map((pkg) => pkg.name),
+					["root", "@x/bare", "@x/versioned"],
+				);
+				const root = packages[0];
+				assert.isTrue(root.isRootWorkspace);
+				// Absent, not a placeholder: no `"0.0.0"`, no `""`, and no present
+				// `undefined` key either (exact-optional semantics).
+				assert.isFalse(Object.hasOwn(root, "version"));
+				assert.strictEqual(root.version, undefined);
+			}),
+		);
+
+		it.effect("a version-less MEMBER is discovered with `version` absent, alongside its versioned sibling", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const bare = yield* discovery.getPackage("@x/bare");
+				assert.isFalse(Object.hasOwn(bare, "version"));
+				const versioned = yield* discovery.getPackage("@x/versioned");
+				assert.strictEqual(versioned.version, "1.0.0");
+			}),
+		);
+
+		it.effect("versionOf fails typed for a member that declares no version — none would mean non-member", () =>
+			Effect.gen(function* () {
+				const resolver = yield* WorkspaceResolver;
+				// Positive control first: the versioned sibling still resolves.
+				assert.deepStrictEqual(yield* resolver.versionOf("@x/versioned"), Option.some("1.0.0"));
+				// A non-member is still `none`, per the contract.
+				assert.deepStrictEqual(yield* resolver.versionOf("react"), Option.none());
+				// The version-less member is a MEMBER with nothing to resolve to, which
+				// the contract reserves for the typed channel rather than `none`.
+				const error = yield* Effect.flip(resolver.versionOf("@x/bare"));
+				assert.strictEqual(error._tag, "DependencyResolutionError");
+				assert.strictEqual(error.specifier, "workspace:@x/bare");
+			}).pipe(Effect.provide(WorkspaceDiscovery.workspaceResolver)),
+		);
+	});
+});
+
+// ── a version that is PRESENT but EMPTY: never a legitimate pnpm shape ─────
+
+const emptyVersion: Tree = {
+	"/repo/package.json": rootManifest(["packages/*"]),
+	"/repo/packages/empty/package.json": JSON.stringify({ name: "@x/empty", version: "" }),
+	"/repo/packages/versioned/package.json": manifest("@x/versioned"),
+};
+
+describe("WorkspaceDiscovery — a version that is PRESENT but EMPTY", () => {
+	// Optional `version` must not be read as "any present value is a version".
+	// `""` is not one: it resolves `workspace:^` to a bare `"^"` and makes
+	// `versionOf` answer `some("")`, which reads downstream as a real version.
+	// Absence is the tolerated shape; a present empty string is the manifest's
+	// shape being wrong, exactly like a present non-string.
+	layer(discoveryOver(emptyVersion))((it) => {
+		it.effect("fails with the invalidShape discriminant, naming the file", () =>
 			Effect.gen(function* () {
 				const discovery = yield* WorkspaceDiscovery;
 				const error = yield* Effect.flip(discovery.listPackages());
 				assert.instanceOf(error, WorkspaceDiscoveryError);
-				assert.strictEqual(error.kind, "missingVersion");
+				assert.strictEqual(error.kind, "invalidShape");
+				assert.strictEqual(error.path, "/repo/packages/empty/package.json");
+				// The same sentence the sync facade attaches to its skip, so the two
+				// surfaces describe one condition one way.
+				assert.strictEqual((error.cause as Error).message, "version must be a non-empty string");
+			}),
+		);
+
+		it.effect('versionOf never answers some("") for it', () =>
+			Effect.gen(function* () {
+				const resolver = yield* WorkspaceResolver;
+				// The listing fails, so resolution fails through the mechanism channel
+				// rather than handing back an empty string dressed as a version.
+				const error = yield* Effect.flip(resolver.versionOf("@x/empty"));
+				assert.strictEqual(error._tag, "DependencyResolutionError");
+				assert.strictEqual(error.specifier, "workspace:@x/empty");
+			}).pipe(Effect.provide(WorkspaceDiscovery.workspaceResolver)),
+		);
+	});
+});
+
+const badVersion: Tree = {
+	"/repo/package.json": rootManifest(["packages/*"]),
+	"/repo/packages/bad/package.json": JSON.stringify({ name: "@x/bad", version: 42 }),
+};
+
+describe("WorkspaceDiscovery — a version that is PRESENT but not a string", () => {
+	// The one version failure that remains after `version` became optional: the
+	// key is there and the value is not a string, so the manifest's SHAPE is
+	// wrong. Absence is fine; a lie about the field is not.
+	layer(discoveryOver(badVersion))((it) => {
+		it.effect("fails with the invalidShape discriminant, naming the file", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const error = yield* Effect.flip(discovery.listPackages());
+				assert.instanceOf(error, WorkspaceDiscoveryError);
+				assert.strictEqual(error.kind, "invalidShape");
+				assert.strictEqual(error.path, "/repo/packages/bad/package.json");
 			}),
 		);
 	});

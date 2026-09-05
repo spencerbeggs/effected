@@ -204,17 +204,26 @@ const escapeText = (
 	for (let index = 0; index < value.length; index += 1) {
 		const char = value[index] as string;
 		if (char === "\n") {
-			// A lone interior newline is a soft break and survives as one. A
-			// newline adjacent to another, or at the value's boundary, has no
-			// raw spelling (it would open a blank line or vanish into block
-			// structure) — the numeric reference decodes back to the same
-			// text. Single-line contexts have no newline spelling at all.
+			// A soft break survives as a plain newline, INCLUDING at a Text
+			// value's boundary (index 0 or the last index) — that is exactly
+			// where a line wraps beside a non-text inline (inlineCode, strong,
+			// emphasis, link), and the neighbouring inline keeps the paragraph
+			// continuous, so a literal `\n` there cannot open a block. Two
+			// cases still have no raw spelling and keep the numeric reference:
+			// a newline adjacent to another newline WITHIN this value (a
+			// literal blank line, which would end the paragraph on re-parse),
+			// and a newline that lands at an already-fresh physical line
+			// (`lineStart` true — block start, or immediately after a hard
+			// break) — emitting it there would open a second, BLANK line,
+			// which is the same "blank line ends the block" hazard as the
+			// adjacent case, just arriving from the previous sibling instead
+			// of from this value. Single-line contexts have no newline
+			// spelling at all.
 			const adjacent = value[index - 1] === "\n" || value[index + 1] === "\n";
-			const atBoundary = index === 0 || index === value.length - 1;
 			if (context.singleLine) {
 				out += " ";
 				lineStart = false;
-			} else if (adjacent || atBoundary) {
+			} else if (adjacent || lineStart) {
 				out += "&#10;";
 				lineStart = false;
 			} else {

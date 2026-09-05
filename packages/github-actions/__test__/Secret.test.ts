@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Redacted } from "effect";
 import { ActionOutputs, Secret } from "../src/index.js";
@@ -181,7 +182,7 @@ describe("Secret", () => {
 	});
 
 	describe("the declassification invariant", () => {
-		const srcRoot = new URL("../src/", import.meta.url).pathname;
+		const srcRoot = fileURLToPath(new URL("../src/", import.meta.url));
 
 		/**
 		 * Strip comments before scanning.
@@ -192,8 +193,17 @@ describe("Secret", () => {
 		 * happened — `OidcTokenIssuer` documents the invariant it obeys and failed
 		 * this test for saying so. It is the same phantom-edge problem the bundle
 		 * reachability walkers hit with `@example` imports, and it has the same fix.
+		 *
+		 * LINE comments must be stripped FIRST, and the order is load-bearing, not
+		 * stylistic: prose containing a `/*`-bearing token — a glob like `src/*`, or
+		 * a scope like `@octokit/*` — opens a block comment as far as a regex is
+		 * concerned. Stripping blocks first therefore deletes everything from that
+		 * word to the end of the NEXT doc comment, real code included. Blocks
+		 * cannot nest, so once the fake openers are gone a real `/*` inside a real
+		 * block comment is harmless.
 		 */
-		const stripComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+		const stripComments = (source: string): string =>
+			source.replace(/(^|\n)\s*\/\/.*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, "");
 
 		const unwrappingModules = (): ReadonlyArray<string> => {
 			const found: Array<string> = [];
@@ -233,6 +243,16 @@ describe("Secret", () => {
 			// own discriminating test rather than being trusted.
 			assert.notInclude(stripComments("/** mentions Redacted.value in TSDoc */\nconst a = 1;"), "Redacted.value");
 			assert.include(stripComments("// a note\nconst t = Redacted.value(s);"), "Redacted.value");
+		});
+
+		it("stripping order survives a `/*`-bearing token inside a LINE comment", () => {
+			// A blocks-first stripper reads a line comment mentioning a glob like
+			// `src/*` as a block-comment opener. It then eats everything up to the
+			// NEXT `*/` — real code included — before the line-comment pass ever
+			// runs. Lines must be stripped first so a fake opener like this never
+			// gets the chance to swallow the `Redacted.value` call that follows it.
+			const fixture = "// note: see src/* for glob patterns\nconst v = Redacted.value(s);\n/** trailing doc */\n";
+			assert.include(stripComments(fixture), "Redacted.value");
 		});
 	});
 });

@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-10
-updated: 2026-09-02
-last-synced: 2026-09-02
+updated: 2026-09-04
+last-synced: 2026-09-04
 completeness: 95
 related:
   - ../effect-standards.md
@@ -73,7 +73,7 @@ Two modules touch Node built-ins, and **both are opt-in rather than on the main 
 
 [@effected/npm](npm.md) defines two shape-only service contracts that [@effected/package-json](package-json.md) needs but cannot implement, and ships only no-op layers. **This package implements them**, because catalog resolution needs the workspace config plus the lockfile, and workspace-version resolution needs the discovered package list, both of which live here. The implementations are exported as layers over this package's own services, plus a merged convenience layer.
 
-Provide either alongside a manifest resolve and a package.json's `catalog:` / `workspace:` specifiers resolve for real instead of answering `None`. **The contracts' convention holds exactly**: an *unmatched* name is `None`, and the error channel is reserved for a failure of the resolution *mechanism*.
+Provide either alongside a manifest resolve and a package.json's `catalog:` / `workspace:` specifiers resolve for real instead of answering `None`. **The contracts' convention holds exactly**: an *unmatched* name is `None`, and the error channel is reserved for a failure of the resolution *mechanism*. **A version-less member is neither** — `WorkspaceResolver.versionOf` [fails typed](workspaces-discovery.md#workspacepackage) for a matched member that declares no `version` in its manifest, because `None` is reserved for a non-member and answering it for a version-less one would read downstream as "not a workspace package" for something the workspace plainly contains.
 
 **The assembly error is npm's, and it passes through typed.** `CatalogAssemblyError` lives in npm beside the contract that names it, so an unreadable or malformed catalog source passes through as that typed error rather than being folded into a resolution error's defect cause, which used to force consumers to `_tag`-sniff `unknown`. Only the remaining mechanism failure — an unfindable workspace root — is wrapped. This package imports the error back from npm and deliberately does **not** re-export it.
 
@@ -120,6 +120,8 @@ Module-per-concept; see `src/` for the full list. The placements that are decisi
 Two synchronous functions in `src/WorkspacesSync.ts`, positional-path-first with the ops bag second, and **the cwd is required** — the sync module reads no ambient cwd. Vitest's config-time project discovery cannot await, and the gate consumer calls exactly these two.
 
 **It keeps no third pattern semantic**: it compiles through the same glob set and enumerates through a synchronous mirror of [the same worklist](workspaces-discovery.md#one-traversal-two-entry-points), so a globstar means the same thing in both worlds.
+
+**A skipped manifest is never silent.** `getWorkspacePackagesSync` is total — it has no error channel to fail a bad manifest through — so a member it cannot use is instead reported through the optional `onSkip` callback as a `WorkspaceDiscoverySkip`, naming the path and the same `kind` vocabulary [`WorkspaceDiscoveryError`](workspaces-discovery.md#workspacepackage) would have failed with. Before this existed, a fixture with one unusable manifest enumerated as a plausible empty array, indistinguishable from "no workspaces configured" — the failure mode issue #605 named. A caller that omits `onSkip` gets the old behavior back exactly: the skip is dropped, nothing is logged in its place.
 
 **The platform comes from the caller.** The design rule, which binds every sync escape hatch in the kit: **the kit never imports `node:*` and never assumes POSIX — a sync surface takes the platform from its caller.** The options bag carries minimal structural filesystem and path interfaces that Node's built-ins satisfy verbatim. **Windows correctness is therefore the consumer passing a win32-appropriate path implementation**, not anything in this module — the same convention as [tsconfig-json](tsconfig-json.md#tsconfigloadersync--the-sync-facade)'s sync facade. Throwing consumer ops degrade to the documented skip semantics; nothing propagates.
 

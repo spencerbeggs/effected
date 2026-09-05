@@ -129,8 +129,24 @@ export class WorkspaceManifestError extends Schema.TaggedError<WorkspaceManifest
 export class WorkspacePackage extends Schema.Class<WorkspacePackage>("WorkspacePackage")({
 	/** The package name. */
 	name: Schema.NonEmptyString,
-	/** The raw `version` string — deliberately not semver-validated. */
-	version: Schema.String,
+	/**
+	 * The raw `version` string — deliberately not semver-validated — or absent
+	 * when the manifest declares none.
+	 *
+	 * @remarks
+	 * pnpm accepts a version-less private package, and a private monorepo root
+	 * without a `version` is the ordinary shape, so discovery carries the field
+	 * exactly as the manifest has it: a non-empty string when present, verbatim
+	 * and un-validated, absent when the key is absent — never a `"0.0.0"`
+	 * placeholder and never a present `undefined` key. **Only ABSENCE is
+	 * tolerated**: a `version` that is present but not a string, or present and
+	 * `""`, fails discovery as `invalidShape` on both surfaces. `""` in
+	 * particular is not a pnpm shape and would resolve `workspace:^` to a bare
+	 * `"^"`.
+	 * Anything that needs a concrete version (`WorkspaceResolver.versionOf`,
+	 * a release tag) answers the absence itself rather than inventing one.
+	 */
+	version: Schema.optionalKey(Schema.String),
 	/** Absolute path to the package directory. */
 	path: Schema.NonEmptyString,
 	/** Absolute path to the package's `package.json`. */

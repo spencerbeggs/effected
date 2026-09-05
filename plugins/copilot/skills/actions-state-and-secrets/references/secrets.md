@@ -91,7 +91,10 @@ it("only Secret.ts unwraps a Redacted", () => {
 line-comments-then-blocks:**
 
 ```ts
-const stripComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+// LINE comments first: a `/*`-bearing token in prose (a glob like `src/*`)
+// would otherwise open a fake block comment that swallows real code.
+const stripComments = (source: string): string =>
+  source.replace(/(^|\n)\s*\/\/.*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, "");
 ```
 
 A raw text scan reads a doc comment as code — a module whose comment

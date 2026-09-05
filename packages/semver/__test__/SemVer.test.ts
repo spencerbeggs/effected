@@ -175,6 +175,71 @@ describe("SemVer", () => {
 		it("release strips prerelease and build", () => {
 			assert.strictEqual(SemVer.of(1, 2, 3, ["rc", 1], ["meta"]).bump.release().toString(), "1.2.3");
 		});
+
+		it("major/minor/patch bump a prerelease version's numeric core directly — diverges from node-semver", () => {
+			// node-semver: inc("2.0.0-beta.1", "major") === "2.0.0" (drops the prerelease
+			// without incrementing, since the release target is already ahead of it).
+			// This package always increments the requested component, prerelease or not.
+			assert.strictEqual(SemVer.of(2, 0, 0, ["beta", 1]).bump.major().toString(), "3.0.0");
+			assert.strictEqual(SemVer.of(1, 2, 3, ["beta", 1]).bump.minor().toString(), "1.3.0");
+			assert.strictEqual(SemVer.of(1, 2, 3, ["beta", 1]).bump.patch().toString(), "1.2.4");
+		});
+	});
+
+	describe("bump overflow", () => {
+		const MAX = Number.MAX_SAFE_INTEGER;
+
+		it("major throws an invariant error naming the component and the cap", () => {
+			assert.throws(
+				() => SemVer.of(MAX, 0, 0).bump.major(),
+				new RegExp(`SemVerBump invariant violated: bumping "major".*${MAX}`),
+			);
+		});
+
+		it("minor throws an invariant error naming the component and the cap", () => {
+			assert.throws(
+				() => SemVer.of(0, MAX, 0).bump.minor(),
+				new RegExp(`SemVerBump invariant violated: bumping "minor".*${MAX}`),
+			);
+		});
+
+		it("patch throws an invariant error naming the component and the cap", () => {
+			assert.throws(
+				() => SemVer.of(0, 0, MAX).bump.patch(),
+				new RegExp(`SemVerBump invariant violated: bumping "patch".*${MAX}`),
+			);
+		});
+
+		it("prerelease's trailing numeric identifier throws an invariant error naming the component and the cap", () => {
+			assert.throws(
+				() => SemVer.of(1, 0, 0, ["alpha", MAX]).bump.prerelease(),
+				new RegExp(`SemVerBump invariant violated: bumping "prerelease".*${MAX}`),
+			);
+		});
+
+		it("starting a prerelease from a stable version at the patch cap throws naming patch", () => {
+			assert.throws(
+				() => SemVer.of(1, 0, MAX).bump.prerelease(),
+				new RegExp(`SemVerBump invariant violated: bumping "patch".*${MAX}`),
+			);
+		});
+
+		it("carries the underlying schema failure as the error's cause", () => {
+			try {
+				SemVer.of(MAX, 0, 0).bump.major();
+				assert.fail("expected bump.major() to throw");
+			} catch (e) {
+				assert.instanceOf(e, Error);
+				assert.isDefined((e as Error).cause);
+			}
+		});
+
+		it("one below the cap bumps normally (control)", () => {
+			assert.strictEqual(SemVer.of(MAX - 1, 0, 0).bump.major().major, MAX);
+			assert.strictEqual(SemVer.of(0, MAX - 1, 0).bump.minor().minor, MAX);
+			assert.strictEqual(SemVer.of(0, 0, MAX - 1).bump.patch().patch, MAX);
+			assert.strictEqual([...SemVer.of(1, 0, 0, ["alpha", MAX - 1]).bump.prerelease().prerelease][1], MAX);
+		});
 	});
 
 	describe("truncate", () => {

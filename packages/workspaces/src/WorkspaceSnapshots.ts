@@ -425,7 +425,10 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 				const snapshotPackages = packages.map((pkg) =>
 					PackageStateSnapshot.make({
 						name: pkg.name,
-						version: pkg.version,
+						// A version-less member records `""`, exactly as `snapshotOf` does
+						// for the same manifest at a ref: both sides of a diff must answer
+						// the same way, or the missing field would read as a change.
+						version: pkg.version ?? "",
 						relativePath: pkg.relativePath,
 						dependencies: pkg.dependencies,
 						devDependencies: pkg.devDependencies,
