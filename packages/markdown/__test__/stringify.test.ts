@@ -815,6 +815,70 @@ describe("Markdown.stringify", () => {
 			});
 			it("a `#` outside a heading is untouched mid-line", () => paragraphCase("Issue #12 #", "Issue #12 #\n"));
 		});
+
+		// Issue #585: a soft break sitting at the boundary of a Text node (index
+		// 0 or the last index) is entity-encoded even though the neighbouring
+		// non-text inline keeps the paragraph continuous — a plain newline
+		// cannot open a block there. The `adjacent` case (a literal blank line
+		// inside a text value) is the one boundary-adjacent shape that DOES
+		// need the entity, and stays covered by the negative control below.
+		describe("a soft break at a Text boundary stays a plain newline (#585)", () => {
+			it("before inlineCode", () => {
+				const tree = rootOf(paragraph(text("a\n"), InlineCode.make({ value: "b", position: span() })));
+				assert.strictEqual(out(tree), "a\n`b`\n");
+			});
+			it("after inlineCode", () => {
+				const tree = rootOf(paragraph(InlineCode.make({ value: "a", position: span() }), text("\nb")));
+				assert.strictEqual(out(tree), "`a`\nb\n");
+			});
+			it("before strong", () => {
+				const tree = rootOf(paragraph(text("a\n"), Strong.make({ children: [text("b")], position: span() })));
+				assert.strictEqual(out(tree), "a\n**b**\n");
+			});
+			it("after strong", () => {
+				const tree = rootOf(paragraph(Strong.make({ children: [text("a")], position: span() }), text("\nb")));
+				assert.strictEqual(out(tree), "**a**\nb\n");
+			});
+			it("before emphasis", () => {
+				const tree = rootOf(paragraph(text("a\n"), Emphasis.make({ children: [text("b")], position: span() })));
+				assert.strictEqual(out(tree), "a\n*b*\n");
+			});
+			it("after emphasis", () => {
+				const tree = rootOf(paragraph(Emphasis.make({ children: [text("a")], position: span() }), text("\nb")));
+				assert.strictEqual(out(tree), "*a*\nb\n");
+			});
+			it("before a link", () => {
+				const tree = rootOf(paragraph(text("a\n"), Link.make({ url: "/u", children: [text("b")], position: span() })));
+				assert.strictEqual(out(tree), "a\n[b](/u)\n");
+			});
+			it("after a link", () => {
+				const tree = rootOf(paragraph(Link.make({ url: "/u", children: [text("a")], position: span() }), text("\nb")));
+				assert.strictEqual(out(tree), "[a](/u)\nb\n");
+			});
+
+			it("the issue's first repro string round-trips byte for byte", () =>
+				stringIdentity("a typed vocabulary, `ApiItem` → `Page`\nbuilders, and more\n"));
+			it("the issue's second repro string round-trips byte for byte", () =>
+				stringIdentity("swapped per API while\n`generateApiDocs` ran\n"));
+
+			it("negative control: a blank line inside a text value still encodes", () => {
+				// Two consecutive newlines cannot occur in a parsed Text value (a
+				// real blank line ends the paragraph), but a hand-built tree can
+				// carry one — and it must stay entity-encoded, or a literal blank
+				// line would end the paragraph early on re-parse.
+				const tree = rootOf(paragraph(text("a\n\nb")));
+				assert.strictEqual(out(tree), "a&#10;&#10;b\n");
+			});
+
+			it("a boundary newline that WOULD open a blank line after a hard break stays encoded", () => {
+				// A hard break already lands the next position at a fresh physical
+				// line; a soft break's leading newline right after it would open a
+				// second, blank line — checked via the line-start state, not the
+				// boundary position alone.
+				const tree = rootOf(paragraph(text("a"), Break.make({ position: span() }), text("\nb")));
+				assert.strictEqual(out(tree), "a\\\n&#10;b\n");
+			});
+		});
 	});
 
 	describe("guard and facade posture", () => {

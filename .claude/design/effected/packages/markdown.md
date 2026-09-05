@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-18
-updated: 2026-09-02
-last-synced: 2026-09-02
+updated: 2026-09-04
+last-synced: 2026-09-04
 completeness: 92
 related:
   - ../effect-standards.md
@@ -107,6 +107,8 @@ Apply-all adopts toml's overlap-rejection posture, and range filtering adopts to
 **Canonical stringify serializes fidelity-first** with a recorded defaults table, and its escaping is an always-escape set (backslash, backtick, `*`, `[`, `]`, `<`, `~`, `|`) plus line-start and raw-source-autolink defenses, with the corpus-wide re-parse equivalence property as the authority. **Four characters escape only where CommonMark could bind them**, so `parse ∘ stringify` is the identity on ordinary prose such as `snake_case`, `R&D` and `a > b` — which a downstream page emitter would otherwise unescape by hand. `_` is raw between two Unicode alphanumerics (an intraword underscore can neither open nor close emphasis; a value boundary counts as not alphanumeric, so an edge `_` stays escaped whatever sibling follows). `&` is raw unless the rest of the text value is entity-shaped, with a value-final `&` escaped only when an inline sibling follows (the split `Text("&") + Text("amp;")` must not fuse). `>` escapes only at a line start, the one place it binds. A heading's `#` escapes only when it heads a run preceded by whitespace or the value start and followed by nothing but whitespace to the value end — the ATX closing-sequence shape — or when a following sibling exists, since that sibling may contribute only blank content. `*` stays in the always set on purpose: an intraword `*` *can* open emphasis. The MDX presence-keyed `{` escape is [separate](markdown-mdx.md). Setext heading content is serialized as a line start (CommonMark example 102), because its first character can bind there.
 
 **Entity-shaped means the engine's own `ENTITY` grammar in `src/internal/unescape.ts`, which the parser and the stringifier share**, so the two ends cannot disagree on what a character reference looks like. The entity map is deliberately not consulted: any name-shaped run escapes, because the parser decides validity later and the stringifier only needs to know where it might try.
+
+A soft break at a `Text` value's boundary emits a plain newline, including at index 0 or the last index — a line wrapping beside a non-text inline sibling (`inlineCode`, `strong`, `emphasis`, a link) keeps the paragraph continuous, so a literal `\n` there cannot open a block. The `&#10;` numeric reference stays reserved for the two cases that still have no raw spelling: a newline adjacent to another newline within the same value (a literal blank line), and a newline landing at an already-fresh physical line — block start, or immediately after a hard break — where a literal `\n` would open a second, blank line (#585).
 
 One default is worth naming here because it surprised a real consumer: a **language-less code node with no explicit fence char stringifies as an indented block.** That is correct and canonical; the TSDoc names it outright rather than leaving it to be discovered.
 

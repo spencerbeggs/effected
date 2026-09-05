@@ -24,10 +24,11 @@ import nodePath, { dirname, join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, Layer } from "effect";
-import type { SyncFileSystem, WorkspacesSyncOptions } from "../src/index.js";
+import { Effect, FileSystem, Layer, Path } from "effect";
+import type { SyncFileSystem, WorkspacePackage, WorkspacesSyncOptions } from "../src/index.js";
 import {
 	WorkspaceDiscovery,
+	WorkspaceDiscoveryError,
 	WorkspacePatternError,
 	WorkspaceRoot,
 	findWorkspaceRootSync,
@@ -493,6 +494,250 @@ describe("SyncFileSystem over a memfs volume", () => {
 			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
 			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
 			assert.strictEqual(findWorkspaceRootSync("/repo/packages/b", { fileSystem, path: nodePath.posix }), "/repo");
+		}),
+	);
+});
+
+// ── version-less manifests are members; every other skip is REPORTED (#605) ──
+
+describe("getWorkspacePackagesSync — version-less manifests and skip reporting", () => {
+	const seed = {
+		// The ordinary private-monorepo root: a name, no `version`.
+		"/repo/package.json": `{ "name": "root", "private": true }`,
+		"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+		"/repo/packages/bare/package.json": `{ "name": "@x/bare", "private": true }`,
+		"/repo/packages/versioned/package.json": `{ "name": "@x/versioned", "version": "1.0.0" }`,
+		// The manifests that ARE unusable, one per skip kind the read can produce.
+		"/repo/packages/nameless/package.json": `{ "version": "1.0.0" }`,
+		"/repo/packages/broken/package.json": `{ not json`,
+		"/repo/packages/scalar/package.json": `42`,
+		"/repo/packages/bad-version/package.json": `{ "name": "@x/bad-version", "version": 42 }`,
+	};
+
+	it.effect("a version-less root AND member are returned, root first, with `version` absent", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+			const packages = getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix });
+			assert.deepStrictEqual(
+				packages.map((pkg) => pkg.name),
+				["root", "@x/bare", "@x/versioned"],
+			);
+			assert.isTrue(packages[0].isRootWorkspace);
+			// Absent — never a placeholder, never a present `undefined` key.
+			assert.isFalse(Object.hasOwn(packages[0], "version"));
+			assert.isFalse(Object.hasOwn(packages[1], "version"));
+			assert.strictEqual(packages[2].version, "1.0.0");
+		}),
+	);
+
+	it.effect("every skipped manifest is reported with its path and kind through `onSkip`", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+			const skipped: Array<{ readonly path: string; readonly kind: string; readonly root: string }> = [];
+			getWorkspacePackagesSync("/repo", {
+				fileSystem,
+				path: nodePath.posix,
+				onSkip: (skip) => skipped.push({ path: skip.path, kind: skip.kind, root: skip.root }),
+			});
+			// One report per unusable manifest, no report for a usable one — and
+			// the version-less members above are NOT among them.
+			assert.deepStrictEqual(
+				skipped.slice().sort((a, b) => a.path.localeCompare(b.path)),
+				[
+					{ root: "/repo", path: "/repo/packages/bad-version/package.json", kind: "invalidShape" },
+					{ root: "/repo", path: "/repo/packages/broken/package.json", kind: "invalidJson" },
+					{ root: "/repo", path: "/repo/packages/nameless/package.json", kind: "missingName" },
+					{ root: "/repo", path: "/repo/packages/scalar/package.json", kind: "invalidShape" },
+				],
+			);
+		}),
+	);
+
+	it.effect("a throwing `readFile` is reported as a `read` skip carrying the thrown cause", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const base = MemoryFileSystem.syncFileSystem(volume);
+			const boom = new Error("EACCES");
+			const fileSystem: SyncFileSystem = {
+				...base,
+				readFile: (p) => {
+					if (p === "/repo/packages/versioned/package.json") throw boom;
+					return base.readFile(p);
+				},
+			};
+			const skipped: Array<{ readonly path: string; readonly kind: string; readonly cause: unknown }> = [];
+			const names = getWorkspacePackagesSync("/repo", {
+				fileSystem,
+				path: nodePath.posix,
+				onSkip: (skip) => skipped.push({ path: skip.path, kind: skip.kind, cause: skip.cause }),
+			}).map((pkg) => pkg.name);
+			// The unreadable member is gone from the result AND accounted for.
+			assert.notInclude(names, "@x/versioned");
+			const read = skipped.find((skip) => skip.path === "/repo/packages/versioned/package.json");
+			assert.deepStrictEqual(read, { path: "/repo/packages/versioned/package.json", kind: "read", cause: boom });
+		}),
+	);
+
+	it.effect("a skipped ROOT manifest is reported too, not silently dropped", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				...seed,
+				"/repo/package.json": "null",
+			});
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+			const skipped: Array<string> = [];
+			const names = getWorkspacePackagesSync("/repo", {
+				fileSystem,
+				path: nodePath.posix,
+				onSkip: (skip) => skipped.push(`${skip.kind}:${skip.path}`),
+			}).map((pkg) => pkg.name);
+			assert.notInclude(names, "root");
+			assert.include(skipped, "invalidShape:/repo/package.json");
+		}),
+	);
+
+	it.effect("a version that is PRESENT but EMPTY is skipped as invalidShape, never admitted", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				...seed,
+				"/repo/packages/empty/package.json": `{ "name": "@x/empty", "version": "" }`,
+			});
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+			const skipped: Array<{ readonly path: string; readonly kind: string }> = [];
+			const names = getWorkspacePackagesSync("/repo", {
+				fileSystem,
+				path: nodePath.posix,
+				onSkip: (skip) => skipped.push({ path: skip.path, kind: skip.kind }),
+			}).map((pkg) => pkg.name);
+			// `""` was never a legitimate pnpm shape: admitted, it resolves
+			// `workspace:^` to a bare `"^"`. Absence is tolerated; an empty string
+			// is the manifest's shape being wrong, as on the Effect surface.
+			assert.notInclude(names, "@x/empty");
+			// Positive control: the version-less member IS still admitted.
+			assert.include(names, "@x/bare");
+			assert.deepStrictEqual(
+				skipped.filter((skip) => skip.path === "/repo/packages/empty/package.json"),
+				[{ path: "/repo/packages/empty/package.json", kind: "invalidShape" }],
+			);
+		}),
+	);
+
+	it.effect("every skip carries the cause the Effect surface fails with; only missingName has none", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				...seed,
+				"/repo/packages/empty/package.json": `{ "name": "@x/empty", "version": "" }`,
+			});
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+			const causes = new Map<string, unknown>();
+			getWorkspacePackagesSync("/repo", {
+				fileSystem,
+				path: nodePath.posix,
+				onSkip: (skip) => causes.set(skip.path, skip.cause),
+			});
+			const messageAt = (path: string): unknown => {
+				const cause = causes.get(path);
+				return cause instanceof Error ? cause.message : cause;
+			};
+			// The same sentences `WorkspaceDiscovery` attaches, so a consumer reading
+			// a skip and a consumer reading a failure read one vocabulary.
+			assert.strictEqual(messageAt("/repo/packages/bad-version/package.json"), "version must be a string, got number");
+			assert.strictEqual(messageAt("/repo/packages/empty/package.json"), "version must be a non-empty string");
+			assert.strictEqual(messageAt("/repo/packages/scalar/package.json"), "package.json is not a JSON object");
+			// `missingName` is the one kind with nothing to attach — the field is
+			// simply absent, and there is no originating throwable.
+			assert.strictEqual(causes.get("/repo/packages/nameless/package.json"), undefined);
+			// Discriminating control: `invalidJson` carries the thrown SyntaxError.
+			assert.instanceOf(causes.get("/repo/packages/broken/package.json"), SyntaxError);
+		}),
+	);
+
+	it.effect("without `onSkip` the call stays total and returns the same members", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
+			const names = getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix }).map((pkg) => pkg.name);
+			assert.deepStrictEqual(names, ["root", "@x/bare", "@x/versioned"]);
+		}),
+	);
+});
+
+// ── the two surfaces agree about a version-less tree (#605) ────────────────
+
+describe("the sync hatch and the Effect enumerator agree about `version`", () => {
+	// One seed, read both ways: the Effect enumerator over the volume's own
+	// `FileSystem`, the sync facade over `syncFileSystem` of the same volume.
+	// Anything the two disagree about here is a real divergence, not a fixture
+	// difference — which is what a separate real-directory fixture could not
+	// prove.
+	const paritySeed = {
+		"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+		// A version-less root, the ordinary private-monorepo shape.
+		"/repo/package.json": `{ "name": "root", "private": true }`,
+		"/repo/packages/bare/package.json": `{ "name": "@x/bare", "private": true }`,
+		"/repo/packages/versioned/package.json": `{ "name": "@x/versioned", "version": "1.0.0" }`,
+	};
+
+	/** `(name, hasOwn version, version)` — the tuple both surfaces must agree on. */
+	const tuplesOf = (packages: ReadonlyArray<WorkspacePackage>) =>
+		packages.map((pkg) => [pkg.name, Object.hasOwn(pkg, "version"), pkg.version] as const);
+
+	it.effect("identical (name, hasOwn version, version) tuples, and one skip vocabulary", () =>
+		Effect.gen(function* () {
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith(paritySeed);
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			const platform = Layer.mergeAll(Layer.succeed(FileSystem.FileSystem, fileSystem), Path.layer);
+			const roots = WorkspaceRoot.layer.pipe(Layer.provide(platform));
+			const discovery = WorkspaceDiscovery.layer({ cwd: "/repo" }).pipe(Layer.provide(roots), Layer.provide(platform));
+
+			const asyncPackages = yield* Effect.gen(function* () {
+				const service = yield* WorkspaceDiscovery;
+				return yield* service.listPackages();
+			}).pipe(Effect.provide(Layer.mergeAll(discovery, roots).pipe(Layer.provideMerge(platform))));
+			const syncPackages = getWorkspacePackagesSync("/repo", { fileSystem: sync, path: nodePath.posix });
+
+			// The positive control: both actually found the tree. Comparing two
+			// empty arrays would pass under any implementation.
+			assert.deepStrictEqual(
+				asyncPackages.map((pkg) => pkg.name),
+				["root", "@x/bare", "@x/versioned"],
+			);
+			assert.deepStrictEqual(tuplesOf(syncPackages), tuplesOf(asyncPackages));
+
+			// And the skip vocabulary: a nameless member fails the Effect surface
+			// with the kind the sync facade reports it under.
+			const { fileSystem: namelessFs, volume: namelessVolume } = yield* MemoryFileSystem.makeInspectableWith({
+				...paritySeed,
+				"/repo/packages/nameless/package.json": `{ "version": "1.0.0" }`,
+			});
+			const namelessPlatform = Layer.mergeAll(Layer.succeed(FileSystem.FileSystem, namelessFs), Path.layer);
+			const namelessRoots = WorkspaceRoot.layer.pipe(Layer.provide(namelessPlatform));
+			const failure = yield* Effect.flip(
+				Effect.gen(function* () {
+					const service = yield* WorkspaceDiscovery;
+					return yield* service.listPackages();
+				}).pipe(
+					Effect.provide(
+						Layer.mergeAll(
+							WorkspaceDiscovery.layer({ cwd: "/repo" }).pipe(
+								Layer.provide(namelessRoots),
+								Layer.provide(namelessPlatform),
+							),
+							namelessRoots,
+						).pipe(Layer.provideMerge(namelessPlatform)),
+					),
+				),
+			);
+			const skipped: Array<{ readonly path: string; readonly kind: string }> = [];
+			getWorkspacePackagesSync("/repo", {
+				fileSystem: MemoryFileSystem.syncFileSystem(namelessVolume),
+				path: nodePath.posix,
+				onSkip: (skip) => skipped.push({ path: skip.path, kind: skip.kind }),
+			});
+			assert.instanceOf(failure, WorkspaceDiscoveryError);
+			assert.deepStrictEqual(skipped, [{ path: failure.path, kind: failure.kind }]);
 		}),
 	);
 });

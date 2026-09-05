@@ -65,10 +65,12 @@
 | `WorkspaceCatalogsOptions` | Interface | Options for the `WorkspaceCatalogs` layer. | |
 | `WorkspaceCatalogsShape` | Interface | The `WorkspaceCatalogs` service shape. | |
 | `WorkspaceDiscovery` | Class | Discovers the packages of a workspace. | enumerate workspace packages, find a package by name, resolve a file path — implements `WorkspaceResolver` from `@effected/npm` |
-| `WorkspaceDiscoveryError` | Class | Raised when a workspace member's `package.json` cannot be read, parsed, or used — it is missing, malformed, or lacks a `name` or `version`. | handle a workspace member's package.json that cannot be read or parsed |
+| `WorkspaceDiscoveryError` | Class | Raised when a workspace member's `package.json` cannot be read, parsed, or used — it is missing, malformed, or lacks a `name`. | handle a workspace member's package.json that cannot be read or parsed |
 | `WorkspaceDiscoveryFailure` | TypeAlias | The error channel of the discovery methods that do not look a package up by name — everything except `getPackage`. | |
 | `WorkspaceDiscoveryOptions` | Interface | Options for the `WorkspaceDiscovery` layer. | |
 | `WorkspaceDiscoveryShape` | Interface | The `WorkspaceDiscovery` service shape. | |
+| `WorkspaceDiscoverySkip` | Interface | One manifest `getWorkspacePackagesSync` skipped, reported through `GetWorkspacePackagesSyncOptions.onSkip`. | |
+| `WorkspaceDiscoverySkipKind` | TypeAlias | Why `getWorkspacePackagesSync` left a manifest out of its result — the `WorkspaceDiscoveryError.kind` values a single manifest read can produce. | |
 | `WorkspaceInfo` | Class | Top-level facts about a workspace: where it is, what manages it, and the patterns that define its membership. | top-level workspace facts, root directory and packages: patterns |
 | `WorkspaceLookupFailure` | TypeAlias | Every failure `WorkspaceDiscovery.getPackage` can surface: the discovery failures plus a name that matches no member. | |
 | `WorkspaceManifestError` | Class | Raised when a workspace member's `package.json` cannot be read or decoded into the strict `@effected/package-json` `Package` model. | handle a package.json that cannot be read or decoded into the strict manifest model |

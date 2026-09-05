@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-08-25
-updated: 2026-08-25
-last-synced: 2026-09-02
+updated: 2026-09-04
+last-synced: 2026-09-04
 completeness: 95
 related:
   - workspaces.md
@@ -54,6 +54,14 @@ A `Schema.Class` carrying a located workspace member. It keeps a **tolerant** ma
 **The as-read manifest record is captured at discovery**, so a consumer needing a field outside the typed slice reads it without a second file read or a strict decode that can fail on odd manifests. Values are unvalidated beyond being a record. Two decisions around it are deliberate: **the re-reading manifest method stays**, because its point-in-time refresh semantics depend on re-reading, which a captured record cannot provide; and **the snapshot type is not widened to carry it**, because [the snapshot](workspaces-snapshots.md) remains the narrow store-and-diff value and bloating every stored snapshot with full manifests would tax the store for a field diffing never reads.
 
 Dependency-pattern matching takes a compiled pattern or a string. Passing a compiled pattern is total and free; **an uncompilable string literal is a defect**, because a glob written into a call site is developer wiring rather than untrusted input. Compile once and reuse in a loop.
+
+**`version` is optional, carried as the manifest has it** (#472, #591, #605). A private monorepo root without a `version` field is the ordinary pnpm shape, and pnpm itself accepts a version-less private member anywhere in the tree — so the former `missingVersion` kind was failing the normal case, and `WorkspaceDiscoveryError.kind` no longer has that member: only `read`, `invalidJson`, `invalidShape`, `invalidYaml` and `missingName` remain. Absence stays absence (no `"0.0.0"` placeholder, no present-but-`undefined` key), a string rides through verbatim, and a `version` that is present but not a string — or present but empty — is `invalidShape`: the manifest's shape being wrong, not a missing field. An empty `""` was never a legitimate pnpm shape and, admitted, would reach a `workspace:` resolution as a bare `^`. A root-only exemption was rejected: a `Schema.Class` cannot narrow the field to optional for one member and required for the rest, so the public type would have gone optional either way, leaving the runtime needlessly strict for no type-safety gain. A general async tolerant/skipped mode was rejected too — once version-less manifests are admitted, the only typed failures `WorkspaceDiscoveryError` still raises are genuinely malformed manifests, and this doc's own posture elsewhere is that an undiscovered package with no diagnostic is the worst kind of wrong, which argues for surfacing those failures rather than swallowing them.
+
+[`WorkspaceResolver.versionOf`](workspaces.md#implementing-effectednpms-resolver-contracts) answers the two questions discovery keeps apart: `None` for a name that is not a workspace member at all, and a typed `DependencyResolutionError` for a member that **is** one but declares no `version` — because npm's `workspace:` contract reserves `Option.none()` for "not a member", and answering it for a version-less member would read downstream as exactly that.
+
+[`getWorkspacePackagesSync`](workspaces.md#workspacessync--the-escape-hatch), the sync facade, has no error channel — its totality now pairs with an `onSkip` diagnostic (`WorkspaceDiscoverySkip`; its `kind`, `WorkspaceDiscoverySkipKind`, is the `WorkspaceDiscoveryError` vocabulary minus `invalidYaml`, which describes the `pnpm-workspace.yaml` read rather than a manifest) so a skip is never silent — the failure mode issue #605 named, where a fixture manifest of `{ "name": "demo" }` enumerated as a plausible empty array.
+
+**Open follow-up:** [`PackageStateSnapshot.version`](workspaces-snapshots.md) is still a required string, and the worktree bridge writes `""` for a version-less member only because `snapshotOf` already answers `""` for the same manifest at a ref — a diff's two sides have to agree, or the missing field would read as a change. That means `WorkspaceStateSnapshot.versions` / `resolve` can still hand back `Option.some("")` for a `workspace:` resolution against a version-less member, which is exactly the kind of fabricated version this change elsewhere refuses to invent. Widening the snapshot to carry an absent version is future work, not done here.
 
 ## Root finding and discovery
 

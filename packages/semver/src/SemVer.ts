@@ -578,9 +578,34 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 }
 
 /**
- * Grouped bump operations returned by the {@link SemVer.bump} accessor.
- * Every operation returns a new {@link SemVer}; build metadata never
- * survives a bump.
+ * Raised in place of `SemVer.make`'s raw schema failure when a bump would
+ * increment a component past `Number.MAX_SAFE_INTEGER`. This is a wiring/
+ * arithmetic invariant, not malformed input — `SemVerBump` only ever
+ * increments components already validated on the receiver — so it stays a
+ * thrown defect rather than a typed `Effect` failure, matching every other
+ * `SemVer`/`SemVerBump` method's synchronous, non-`Effect` signature. The
+ * original `SemVer.make` schema failure rides as `cause`.
+ */
+function overflow(component: "major" | "minor" | "patch" | "prerelease", cause: unknown): never {
+	throw new Error(
+		`SemVerBump invariant violated: bumping "${component}" would exceed Number.MAX_SAFE_INTEGER (${Number.MAX_SAFE_INTEGER})`,
+		{ cause },
+	);
+}
+
+/**
+ * Grouped bump operations returned by the {@link SemVer.bump} accessor
+ * (`v.bump.minor()`) — `bump` is an instance **getter**, not a static, so it
+ * is always reached through a `SemVer` instance. Every operation returns a
+ * new {@link SemVer}; build metadata never survives a bump.
+ *
+ * `major`/`minor`/`patch` always increment the requested component, whether
+ * or not the receiver is a prerelease — this deliberately diverges from
+ * node-semver, where `inc("2.0.0-beta.1", "major")` answers `"2.0.0"` (the
+ * release target of an in-progress prerelease, not a further increment).
+ * `@effected/schemastore`'s `SchemaVersioning.next` depends on this
+ * package's answer of `"3.0.0"` instead; do not "fix" it to match
+ * node-semver without checking that dependent first.
  *
  * @public
  */
@@ -589,23 +614,35 @@ export class SemVerBump {
 
 	/** Bump major (resets minor, patch, prerelease, build). */
 	major(): SemVer {
-		return SemVer.make({ major: this.v.major + 1, minor: 0, patch: 0, prerelease: [], build: [] });
+		try {
+			return SemVer.make({ major: this.v.major + 1, minor: 0, patch: 0, prerelease: [], build: [] });
+		} catch (cause) {
+			overflow("major", cause);
+		}
 	}
 
 	/** Bump minor (resets patch, prerelease, build). */
 	minor(): SemVer {
-		return SemVer.make({ major: this.v.major, minor: this.v.minor + 1, patch: 0, prerelease: [], build: [] });
+		try {
+			return SemVer.make({ major: this.v.major, minor: this.v.minor + 1, patch: 0, prerelease: [], build: [] });
+		} catch (cause) {
+			overflow("minor", cause);
+		}
 	}
 
 	/** Bump patch (resets prerelease, build). */
 	patch(): SemVer {
-		return SemVer.make({
-			major: this.v.major,
-			minor: this.v.minor,
-			patch: this.v.patch + 1,
-			prerelease: [],
-			build: [],
-		});
+		try {
+			return SemVer.make({
+				major: this.v.major,
+				minor: this.v.minor,
+				patch: this.v.patch + 1,
+				prerelease: [],
+				build: [],
+			});
+		} catch (cause) {
+			overflow("patch", cause);
+		}
 	}
 
 	/**
@@ -622,13 +659,17 @@ export class SemVerBump {
 		const pre = this.v.prerelease;
 
 		if (pre.length === 0) {
-			return SemVer.make({
-				major,
-				minor,
-				patch: patch + 1,
-				prerelease: id !== undefined ? [id, 0] : [0],
-				build: [],
-			});
+			try {
+				return SemVer.make({
+					major,
+					minor,
+					patch: patch + 1,
+					prerelease: id !== undefined ? [id, 0] : [0],
+					build: [],
+				});
+			} catch (cause) {
+				overflow("patch", cause);
+			}
 		}
 
 		if (id !== undefined) {
@@ -642,7 +683,11 @@ export class SemVerBump {
 		if (typeof last === "number") {
 			const next: Array<string | number> = [...pre];
 			next[next.length - 1] = last + 1;
-			return SemVer.make({ major, minor, patch, prerelease: next, build: [] });
+			try {
+				return SemVer.make({ major, minor, patch, prerelease: next, build: [] });
+			} catch (cause) {
+				overflow("prerelease", cause);
+			}
 		}
 
 		return SemVer.make({ major, minor, patch, prerelease: [...pre, 0], build: [] });

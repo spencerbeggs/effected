@@ -20,11 +20,19 @@ import { WorkspaceRoot } from "./WorkspaceRoot.js";
 
 /**
  * Raised when a workspace member's `package.json` cannot be read, parsed, or
- * used — it is missing, malformed, or lacks a `name` or `version`.
+ * used — it is missing, malformed, or lacks a `name`.
  *
  * @remarks
  * `kind` is the discriminant a caller branches on; `cause` preserves the
  * originating failure rather than flattening it into a sentence.
+ *
+ * A manifest with no `version` is NOT a failure: pnpm accepts a version-less
+ * private package and a private monorepo root without one is the ordinary
+ * shape, so the member is discovered with `WorkspacePackage.version` absent.
+ * The former `missingVersion` kind is retired. Only ABSENCE is tolerated: a
+ * `version` that is present but not a string — or present and `""`, which pnpm
+ * never wrote and which would resolve `workspace:^` to a bare `"^"` — is the
+ * manifest's shape being wrong and reports `invalidShape`.
  *
  * @public
  */
@@ -34,7 +42,7 @@ export class WorkspaceDiscoveryError extends Schema.TaggedError<WorkspaceDiscove
 	/** The file that failed. */
 	path: Schema.String,
 	/** What went wrong with it. */
-	kind: Schema.Literals(["read", "invalidJson", "invalidShape", "invalidYaml", "missingName", "missingVersion"]),
+	kind: Schema.Literals(["read", "invalidJson", "invalidShape", "invalidYaml", "missingName"]),
 	/** The originating failure, if there was one. */
 	cause: Schema.Defect(),
 }) {
@@ -321,25 +329,44 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 							}),
 						);
 					}
+					// `version` is optional, and optional means ABSENT — not "any present
+					// value counts". A present non-string is the manifest's shape being
+					// wrong, and so is `""`: pnpm never wrote that shape, and admitting
+					// it resolves `workspace:^` to a bare `"^"` and makes `versionOf`
+					// answer `some("")`, which every consumer downstream reads as a real
+					// version. Both are `invalidShape`, with the sentence the sync facade
+					// attaches to the same skip.
 					const version = raw.version;
-					if (typeof version !== "string" || version.length === 0) {
+					if (version !== undefined && typeof version !== "string") {
 						return yield* Effect.fail(
 							new WorkspaceDiscoveryError({
 								root,
 								path: packageJsonPath,
-								kind: "missingVersion",
-								cause: undefined,
+								kind: "invalidShape",
+								cause: new Error(`version must be a string, got ${typeof version}`),
 							}),
 						);
 					}
-
+					if (version === "") {
+						return yield* Effect.fail(
+							new WorkspaceDiscoveryError({
+								root,
+								path: packageJsonPath,
+								kind: "invalidShape",
+								cause: new Error("version must be a non-empty string"),
+							}),
+						);
+					}
 					// The tolerant projection: decoded through the schema, so a malformed
-					// dependency map fails typed rather than corrupting the model — but
-					// never through package-json's strict semver `Package`, which would
-					// fail discovery for the whole repo over one odd version string.
+					// field fails typed rather than corrupting the model — but never
+					// through package-json's strict semver `Package`, which would fail
+					// discovery for the whole repo over one odd version string. `version`
+					// rides through as the manifest has it: absent stays absent (pnpm
+					// accepts a version-less private package; a private root without one
+					// is the ordinary shape), a non-empty string verbatim.
 					return yield* Schema.decodeUnknownEffect(WorkspacePackage)({
 						name,
-						version,
+						...(version !== undefined ? { version } : {}),
 						path: directory,
 						packageJsonPath,
 						relativePath,
@@ -786,6 +813,12 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 	 * channel is reserved for a failure of the resolution *mechanism* (an
 	 * unfindable root, an unreadable manifest), never an ordinary miss.
 	 *
+	 * A member that declares **no `version`** is neither: it is a known member
+	 * with nothing for `workspace:` to resolve to. Answering `none` would read
+	 * as "not a member" downstream, so it fails typed instead, naming the
+	 * specifier — the same channel a consumer already handles for an
+	 * unresolvable workspace.
+	 *
 	 * @example
 	 * ```ts
 	 * import { Package } from "@effected/package-json";
@@ -802,12 +835,15 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 		WorkspaceResolver,
 		Effect.gen(function* () {
 			const discovery = yield* WorkspaceDiscovery;
-			const versionIndexes = new WeakMap<ReadonlyArray<WorkspacePackage>, ReadonlyMap<string, string>>();
-			const versionsByName = (all: ReadonlyArray<WorkspacePackage>): ReadonlyMap<string, string> => {
+			// Name → version, where a version-less member is present with `undefined`:
+			// membership and version are two different questions here, and `has` is
+			// what tells them apart.
+			const versionIndexes = new WeakMap<ReadonlyArray<WorkspacePackage>, ReadonlyMap<string, string | undefined>>();
+			const versionsByName = (all: ReadonlyArray<WorkspacePackage>): ReadonlyMap<string, string | undefined> => {
 				const cached = versionIndexes.get(all);
 				if (cached !== undefined) return cached;
 				// First-write-wins, matching the `all.find` this index replaced.
-				const index = new Map<string, string>();
+				const index = new Map<string, string | undefined>();
 				for (const pkg of all) {
 					if (!index.has(pkg.name)) index.set(pkg.name, pkg.version);
 				}
@@ -815,11 +851,25 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				return index;
 			};
 			return {
-				versionOf: (packageName: string) =>
-					discovery.listPackages().pipe(
-						Effect.map((all) => Option.fromUndefinedOr(versionsByName(all).get(packageName))),
-						Effect.mapError((cause) => new DependencyResolutionError({ specifier: `workspace:${packageName}`, cause })),
-					),
+				versionOf: (packageName: string) => {
+					const specifier = `workspace:${packageName}`;
+					return discovery.listPackages().pipe(
+						Effect.mapError((cause) => new DependencyResolutionError({ specifier, cause })),
+						Effect.flatMap((all) => {
+							const index = versionsByName(all);
+							if (!index.has(packageName)) return Effect.succeed(Option.none<string>());
+							const version = index.get(packageName);
+							return version === undefined
+								? Effect.fail(
+										new DependencyResolutionError({
+											specifier,
+											cause: new Error(`Workspace member "${packageName}" declares no version`),
+										}),
+									)
+								: Effect.succeed(Option.some(version));
+						}),
+					);
+				},
 			};
 		}),
 	);

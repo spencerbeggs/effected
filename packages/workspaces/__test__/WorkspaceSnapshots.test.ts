@@ -288,6 +288,43 @@ describe("WorkspaceStateSnapshot.resolve", () => {
 	);
 });
 
+// A snapshot whose captured versions include the `""` sentinel a version-less
+// member records — the shape `snapshotOf` and the worktree snapshot both write.
+const bareVersionSnapshot = WorkspaceStateSnapshot.make({
+	packages: [
+		PackageStateSnapshot.make({ name: "@x/bare", version: "", relativePath: "packages/bare" }),
+		PackageStateSnapshot.make({ name: "@x/alpha", version: "1.2.3", relativePath: "packages/alpha" }),
+	],
+	catalogs: CatalogSet.make({ entries: {} }),
+});
+
+describe('WorkspaceStateSnapshot.resolve — the `""` version sentinel', () => {
+	it.effect('a version-less member resolves to none, never some("")', () =>
+		Effect.sync(() => {
+			// `""` is how a version-less member is RECORDED, not a version it has.
+			// Answering `some("")` would rewrite `workspace:^` as a bare `"^"`.
+			assert.isTrue(Option.isNone(bareVersionSnapshot.resolve("@x/bare", "workspace:^")));
+			// The positive control: a member that HAS a version still resolves, so
+			// this cannot pass by resolving nothing at all.
+			assert.deepStrictEqual(bareVersionSnapshot.resolve("@x/alpha", "workspace:^"), Option.some("1.2.3"));
+		}),
+	);
+
+	it.effect("the snapshot's WorkspaceResolver fails typed for a version-less member, like discovery's", () =>
+		Effect.gen(function* () {
+			const workspace = yield* WorkspaceResolver;
+			// A known member with nothing to resolve: the contract reserves `none`
+			// for a NON-member, so this is the typed-failure outcome.
+			const error = yield* Effect.flip(workspace.versionOf("@x/bare"));
+			assert.strictEqual(error._tag, "DependencyResolutionError");
+			assert.strictEqual(error.specifier, "workspace:@x/bare");
+			// Positive and negative controls on the same layer.
+			assert.deepStrictEqual(yield* workspace.versionOf("@x/alpha"), Option.some("1.2.3"));
+			assert.isTrue(Option.isNone(yield* workspace.versionOf("nope")));
+		}).pipe(Effect.provide(bareVersionSnapshot.workspaceResolver)),
+	);
+});
+
 describe("WorkspaceStateSnapshot — snapshot-scoped resolver layers", () => {
 	it.effect("CatalogResolver and WorkspaceResolver resolve against the snapshot", () =>
 		Effect.gen(function* () {

@@ -128,6 +128,8 @@ export {
 	type SyncDirectoryEntry,
 	type SyncFileSystem,
 	type SyncPath,
+	type WorkspaceDiscoverySkip,
+	type WorkspaceDiscoverySkipKind,
 	type WorkspacesSyncOptions,
 	findWorkspaceRootSync,
 	getWorkspacePackagesSync,
