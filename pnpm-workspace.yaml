@@ -130,10 +130,6 @@ configDependencies:
 loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/tsgo-*"
-overrides:
-  "@effect/platform-node@4.0.0-rc.109": 4.0.0-rc.112
-  "@effect/sql-sqlite-node@4.0.0-rc.109": 4.0.0-rc.112
-  effect@4.0.0-rc.109: 4.0.0-rc.112
 peerDependencyRules:
   allowedVersions:
     "@effect/ai-anthropic@4.0.0-rc.112>effect": 4.0.0-rc.112
