@@ -1,12 +1,28 @@
 # @effected/semver
 
+## 0.5.1
+
+### Bug Fixes
+
+- `SemVer.bump.major()` / `minor()` / `patch()` / `prerelease()` now throw an invariant error naming the component and `Number.MAX_SAFE_INTEGER` when a bump cannot be represented, instead of a raw schema-validation defect.
+
+### Documentation
+
+- `SemVerBump` documents that `bump` is an instance getter and that a MAJOR, MINOR or PATCH bump over a prerelease increments past it (`2.0.0-beta.1` → `3.0.0`), diverging deliberately from node-semver. [#614][#614]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#614]: https://github.com/spencerbeggs/effected/pull/614
+
 ## 0.5.0
 
 ### Dependencies
 
-* | Dependency | Type           | Action  | From           | To           |                                                                       |
-  | :--------- | :------------- | :------ | :------------- | :----------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | :-- | :-- | :-- | :-- | :-- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.107 | 4.0.0-rc.109 | [#389][#389] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Minor Changes
 
@@ -16,18 +32,18 @@
 
 ### Bug Fixes
 
-* Construction/decode failures now throw a generic `"Schema validation failed"` message with the structured `SchemaIssue.Issue` available on `error.cause` — format it with `SchemaIssue.makeFormatterDefault()` for a human-readable report. [#322][#322]
+- Construction/decode failures now throw a generic `"Schema validation failed"` message with the structured `SchemaIssue.Issue` available on `error.cause` — format it with `SchemaIssue.makeFormatterDefault()` for a human-readable report. [#322][#322]
 
 ### Refactoring
 
-* Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required.
-* Updated `SemVer`, `Range`, and `Comparator`'s internal `SchemaIssue.InvalidValue` construction to the new `(annotations, input)` argument order (the `Option`-wrapped first argument is gone).
+- Migrated error classes to Effect's renamed `Schema.TaggedError` (was `Schema.TaggedErrorClass`); the call shape is unchanged and no consumer action is required.
+- Updated `SemVer`, `Range`, and `Comparator`'s internal `SchemaIssue.InvalidValue` construction to the new `(annotations, input)` argument order (the `Option`-wrapped first argument is gone).
 
 ### Dependencies
 
-* | Dependency | Type           | Action  | From           | To             |
-  | :--------- | :------------- | :------ | :------------- | :------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| effect | peerDependency | updated | 4.0.0-beta.101 | 4.0.0-beta.107 |
 
 ### Minor Changes
 
@@ -39,8 +55,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Documentation
 
-* The dual matching statics on `Range` — `satisfies`, `filter`, `maxSatisfying`, `minSatisfying` — now state their data-first argument order explicitly: the subject comes first, the range second. "Dual API" alone did not say which order the data-first form takes, and the order is not recoverable from the call site when the two parameters are distinct classes.
-* `Range.satisfies` additionally documents the failure a flipped call produces. TypeScript rejects it outright, so it only reaches callers without type checking — including untyped runtime probes — where it dispatches data-first and dies with `TypeError: range.test is not a function`, a message naming the parameter that received the version and so reading as a defect inside the package rather than a caller error. [#268][#268]
+- The dual matching statics on `Range` — `satisfies`, `filter`, `maxSatisfying`, `minSatisfying` — now state their data-first argument order explicitly: the subject comes first, the range second. "Dual API" alone did not say which order the data-first form takes, and the order is not recoverable from the call site when the two parameters are distinct classes.
+- `Range.satisfies` additionally documents the failure a flipped call produces. TypeScript rejects it outright, so it only reaches callers without type checking — including untyped runtime probes — where it dispatches data-first and dies with `TypeError: range.test is not a function`, a message naming the parameter that received the version and so reading as a defect inside the package rather than a caller error. [#268][#268]
 
 ### Patch Changes
 
@@ -52,7 +68,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Maintenance
 
-* Switching internal dependency versioning from `~` to `^` ranges.
+- Switching internal dependency versioning from `~` to `^` ranges.
 
 ### Patch Changes
 
@@ -62,19 +78,15 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### Exact-version string schemas
-
+- ### Exact-version string schemas
   Two new `Schema.String`-typed refinements for consumer structs whose field must stay a plain string while still refusing anything that is not exactly one version:
-
-  * `SemVer.ExactVersionString` — a valid SemVer 2.0.0 version, exactly as given (build metadata allowed).
-  * `SemVer.PinnableVersionString` — the same, but rejects build metadata too: the notion a `<name>@<version>[+<integrity>]` pin grammar needs, since the first `+` after the version always begins the integrity component.
+  - `SemVer.ExactVersionString` — a valid SemVer 2.0.0 version, exactly as given (build metadata allowed).
+  - `SemVer.PinnableVersionString` — the same, but rejects build metadata too: the notion a `<name>@<version>[+<integrity>]` pin grammar needs, since the first `+` after the version always begins the integrity component.
 
   Both stay typed as `string`; decode through `SemVer.FromString` instead when the parsed components are wanted.
-
   ### Validity predicates
-
-  * `SemVer.isValid(input)` — `true` when `input` is a valid version string with **no** surrounding whitespace. `SemVer.parse`/`parseResult` continue to trim, matching node-semver's constructor; this predicate answers the stricter question "is this string, byte for byte, a version?"
-  * `SemVer.isPinnable(input)` — `true` when `input` is valid by `isValid` **and** carries no build metadata.
+  - `SemVer.isValid(input)` — `true` when `input` is a valid version string with **no** surrounding whitespace. `SemVer.parse`/`parseResult` continue to trim, matching node-semver's constructor; this predicate answers the stricter question "is this string, byte for byte, a version?"
+  - `SemVer.isPinnable(input)` — `true` when `input` is valid by `isValid` **and** carries no build metadata.
 
   ````ts
   import { SemVer } from "@effected/semver";
@@ -88,9 +100,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-* | Dependency | Type           | Action  | From          | To             |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | -------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.99 | 4.0.0-beta.101 | [#162][#162] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -100,10 +112,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* ### `parseResult` on `SemVer`, `Range` and `Comparator`, plus `Range.intersectResult`
-
+- ### `parseResult` on `SemVer`, `Range` and `Comparator`, plus `Range.intersectResult`
   The three `parse` statics ran a synchronous recursive-descent grammar behind an `Effect`, so the wrapper carried nothing but a tracing span and the error channel. A synchronous caller — a lint-staged handler, a non-Effect version checker — had to build a runtime to parse a version string. Each now has a sync twin returning `Result` directly:
-
   ```ts
   import { Range, SemVer } from "@effected/semver";
   import { Result } from "effect";
@@ -115,7 +125,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	console.log(Range.satisfies(version.success, range.success)); // => true
   }
   ```
-
   `Comparator.parseResult` completes the set, returning `Result<Comparator, InvalidComparatorError>`.
 
   `Range.intersect` gets the same treatment as `Range.intersectResult`, a dual static returning `Result<Range, UnsatisfiableConstraintError>`. It is the only other surface in the package with this shape — a pure, total cross-product over comparator sets whose one failure mode, an empty intersection, is already a typed error. A version-solving loop calling it thousands of times per resolution is exactly the caller that should not be paying for a span, and leaving it as the one pure fallible boundary still reachable only through `Effect` would have made the package's own surface inconsistent on the axis this change exists to settle.
@@ -136,9 +145,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Dependencies
 
-* | Dependency | Type           | Action  | From          | To            |                                                                       |
-  | ---------- | -------------- | ------- | ------------- | ------------- | --------------------------------------------------------------------- |
-  | effect     | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
+- | Dependency | Type | Action | From | To |  |
+  | --- | --- | --- | --- | --- | --- |
+  | effect | peerDependency | updated | 4.0.0-beta.98 | 4.0.0-beta.99 | [#122][#122] Thanks [@spencerbeggs](https://github.com/spencerbeggs)! |
 
 ### Patch Changes
 
@@ -148,12 +157,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-* Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas. `SemVer`, `Comparator` and `Range` are `Schema.Class`es — a version is a validated value with methods on it, not a string you re-parse at every call site — and each carries a `FromString` codec you can embed in your own schemas. Parsing is strict (no `v` prefix, no leading zeros, no partial consumption) and every failure is a tagged error carrying the offending string and the position where the grammar gave up. Zero runtime dependencies, no IO.
-
+- Strict SemVer 2.0.0 versions, ranges and comparators as Effect schemas. `SemVer`, `Comparator` and `Range` are `Schema.Class`es — a version is a validated value with methods on it, not a string you re-parse at every call site — and each carries a `FromString` codec you can embed in your own schemas. Parsing is strict (no `v` prefix, no leading zeros, no partial consumption) and every failure is a tagged error carrying the offending string and the position where the grammar gave up. Zero runtime dependencies, no IO.
   ### Versions
-
   Parse, bump, compare and truncate. Instance methods are canonical; cross-cutting operations are dual statics on the owning class.
-
   ```ts
   import { Range, SemVer } from "@effected/semver";
   import { Effect } from "effect";
@@ -168,13 +174,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   console.log(Effect.runSync(program));
   // => ["1.3.0", true, false]
   ```
-
   Equality follows the spec, not the string: `Equal.equals` ignores build metadata and includes prerelease identifiers, and `SemVer` overrides `[Hash.symbol]` to agree. Collection operations are statics — `sort`, `max`, `min`, `groupBy`, `latestByMajor`, `latestByMinor`.
-
   ### Ranges and comparators
-
   A `Range` is a union of comparator sets parsed from the node-semver dialect (hyphen ranges, X-ranges, tilde, caret, `||`). The algebra is `union`, `intersect`, `isSubset`, `equivalent` and `simplify`; intersecting disjoint ranges fails with `UnsatisfiableConstraintError` rather than quietly returning a range that matches nothing.
-
   ```ts
   import { Range, SemVer } from "@effected/semver";
   import { Effect } from "effect";
@@ -190,11 +192,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   console.log(Effect.runSync(program));
   // => [true, ["1.2.0", "1.6.0"]]
   ```
-
   ### Diffing and the version cache
-
   `VersionDiff.between(a, b)` classifies a change and carries the signed component deltas. `VersionCache` is a `Context.Service` over a sorted, deduplicated version set with range resolution and neighbor navigation, provided by `VersionCache.layer`.
-
   ```ts
   import { SemVer, VersionCache } from "@effected/semver";
   import { Effect } from "effect";
@@ -210,7 +209,6 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   console.log(Effect.runSync(program));
   // => ["2.0.0", "1.4.2"]
   ```
-
   Seven tagged errors — `InvalidVersionError`, `InvalidComparatorError`, `InvalidRangeError`, `UnsatisfiableConstraintError`, `EmptyCacheError`, `VersionNotFoundError`, `UnsatisfiedRangeError` — each carry the structured payload a caller needs to report what actually went wrong. [#81][#81]
 
 ### Minor Changes

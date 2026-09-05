@@ -1,5 +1,26 @@
 # @effected/claude-code-plugin
 
+## 0.16.0
+
+### Features
+
+- The actions-inputs-outputs skill drops the hand-rolled check-then-run contract preflight: `SchemaPipeline.run` refuses a pinned versioned target's contract change itself, and the drift test reads `contractBlocked` to print the right remedy.
+- The LLM-annotation guidance is reversed: `x-ai-hint` is a declared family carried into emitted schemas, replacing the description-only advice.
+- The schemastore package reference and construct index cover `contractChanges`, `SchemaContractChangeError`, `ContractChangeTarget`, `SchemaVersioning.isPinned` and `SchemaVersioning.next`. [#607][#607]
+
+### Documentation
+
+- The workspaces reference no longer teaches the sync facade as the workaround for a version-less root; `WorkspacePackage.version` is optional and `getWorkspacePackagesSync` reports skips through `onSkip`.
+- The secrets reference's comment stripper example uses the safe lines-then-blocks order, matching the structural-checks rule it cites. [#614][#614]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#607]: https://github.com/spencerbeggs/effected/pull/607
+
+[#614]: https://github.com/spencerbeggs/effected/pull/614
+
 ## 0.15.0
 
 ### Features
