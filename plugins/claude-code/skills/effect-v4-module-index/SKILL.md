@@ -200,7 +200,7 @@ follows from it.
 | `devtools` | client/server wiring an Effect runtime to the devtools tracer | connecting a program to Effect devtools |
 | `encoding` | channel codecs: `Msgpack`, `Ndjson`, `Sse` | framing streams as NDJSON/MsgPack/server-sent events |
 | `eventlog` | typed, replicated (optionally encrypted) event journal with SQL backends | event-sourced state that syncs/replicates |
-| `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers |
+| `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below |
 | `httpapi` | schema-first declarative HTTP APIs with OpenAPI/Swagger output | defining a typed HTTP API contract shared by server and client |
 | `observability` | OTLP + Prometheus exporters for traces/metrics/logs | exporting telemetry without the `@effect/opentelemetry` SDK |
 | `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter` | durable KV, request-level durable caching, rate limiting |
@@ -284,3 +284,28 @@ fibers), `effect-v4-schema` (everything Schema), `effect-v4-services-layers`
 (Context/Layer discipline), `effect-v4-testing` (the test idioms),
 `effect-v4-observability` (spans/logs/metrics), `effect-v4-cli` (unstable/cli),
 `effect-v4-source-lookup` (how to verify any row here against the source).
+
+### `HttpClientError`: the `reason` tags are not the type names
+
+A client failure is one `HttpClientError` whose top-level `_tag` is always
+`"HttpClientError"`, so branch on `error.reason._tag`. The values are the trap.
+The reason type is declared in two layers, and **both layer names are
+themselves unions, so neither ever appears as a `_tag`** (verified against
+`unstable/http/HttpClientError.ts:277,285,293` at rc.112):
+
+```ts
+export type RequestError = TransportError | EncodeError | InvalidUrlError
+export type ResponseError = StatusCodeError | DecodeError | EmptyBodyError
+export type HttpClientErrorReason = RequestError | ResponseError
+```
+
+So `error.reason._tag` is exactly one of **six** values: `"TransportError"`,
+`"EncodeError"`, `"InvalidUrlError"`, `"StatusCodeError"`, `"DecodeError"`,
+`"EmptyBodyError"`. A retry policy written `error.reason._tag === "ResponseError"`
+(or `=== "RequestError"`) **never matches**, so it silently retries nothing —
+a live-looking branch that is dead code, and green tests will not catch it.
+
+What makes the wrong guess feel confirmed: `ResponseError` *is* a real tagged
+class elsewhere, at `unstable/http/HttpServerError.ts:197`. Same name, different
+module, and it is a server error rather than a client one. Timeouts are separate
+again — `Cause.isTimeoutError`, not a `reason`.

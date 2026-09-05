@@ -46,36 +46,59 @@ Two consequences worth keeping:
 
 The failure mode is the reason this is worth measuring rather than assuming: an undetected named import **type-checks, bundles and builds cleanly**, then throws on first execution.
 
-## One `effect` — and the bridge that is currently up
+## One `effect` — and the bridge every advance needs
 
-The standing rule is that **`pnpm-workspace.yaml` carries no `overrides` block**, and that **a second `effect` in the lockfile is a defect, not a case for an override** — fix it where it enters: the pin, the catalog, or upstream.
+**Advancing the `effect` pin requires a temporary `overrides` block, every time.** This is a recurring, expected step in the upgrade — not an incident, and not a sign something went wrong. Two of these have been needed so far (beta.107→rc.109, removed in `bd9beffe`; rc.109→rc.112), and the third will be needed for whatever comes next.
 
-**A temporary bridge is up right now, sanctioned for the rc.112 advance.** It is the second one this repo has needed, and both were the same shape:
+The standing rule still holds, and the exception is narrow: **a second `effect` in the lockfile is a defect, and the fix is at its entry point — the pin, the catalog, or upstream.** The bridge exists only because for a window after each advance the entry point is *outside this repo* and cannot be fixed here at all.
 
-```yaml
-overrides:
-  '@effect/platform-node@4.0.0-rc.109': 4.0.0-rc.112
-  '@effect/sql-sqlite-node@4.0.0-rc.109': 4.0.0-rc.112
-  effect@4.0.0-rc.109: 4.0.0-rc.112
-```
+### Why it recurs
 
-**Why it is unavoidable, and why `allowedVersions` cannot replace it.** Advancing the pin strands the entire *previously published* closure on the old exact pin. At rc.112 that was 31 packages: the 22 published `@effected/*`, `@savvy-web/silk-effects` and 7 `@tsdoctor/*` all declare `effect: 4.0.0-rc.109` as an **exact peer** (the `lock` strategy) — and, decisively, `@savvy-web/silk`, `bundler`, `tsdown-plugins` and `mcp` carry it as a **regular `dependency`**. `peerDependencyRules.allowedVersions` widens peers only, so it cannot touch those four. Nothing local except an override collapses them.
+It is structural, so it will keep happening as long as the kit publishes on a `lock`-strategy pin:
 
-**The failure it prevents is not an Effect API break, and does not read like a version problem.** Two `effect` copies land in one Schema decode pipeline and produce:
+- Every published `@effected/*` package advertises the **exact** pin as its `effect` peer, so the moment the catalog moves, the entire previously-published closure is stranded on the old one. At rc.112 that was 31 packages — 22 `@effected/*`, `@savvy-web/silk-effects` and 7 `@tsdoctor/*`.
+- The `@savvy-web` build toolchain (`silk`, `bundler`, `tsdown-plugins`, `mcp`) pins `effect` as a **regular `dependency`**, not a peer. `peerDependencyRules.allowedVersions` widens peers only, so **it cannot touch those** — an important dead end to know before trying it, because it looks like the obvious answer.
 
-```text
-TypeError: text.charCodeAt is not a function
-```
+The kit therefore cannot reach a single `effect` on its own: the toolchain that builds it must republish first, and it cannot republish against a pin the kit has not shipped yet. The override breaks that circle for the duration.
 
-The mixing route is worth knowing, because it is the same peer hazard documented above: `@savvy-web/tsdown-plugins` takes `@effected/jsonc` as a **peer**, so this workspace hands it a jsonc built against the new `effect` while the tool's own `effect` still resolves to the old one — an rc.109 `SchemaParser` driving an rc.112 `Getter`. The tell is a stack that names two different `effect@…` paths; read that before reading the `TypeError` as a parser bug.
+### The procedure, on each advance
 
-**Removal condition.** The bridge comes out once `@savvy-web` (silk, bundler, tsdown-plugins, mcp) and `@tsdoctor/*` republish against the current pin — exactly how the beta.107→rc.109 bridge was retired in `bd9beffe`. Verify with the **packages-section-scoped** count, which must reach zero **with the block removed**:
+1. Advance the catalogs (the user runs `pnpm:up` then `pnpm:export` — agents must not).
+2. Re-pin the vendored source in the **same commit**: `savvy repos pin effect effect@<new>`.
+3. Find what still resolves at the old pin: `awk '/^packages:/,/^snapshots:/' pnpm-lock.yaml | grep -oE "^  '?[@a-z0-9/._-]+@<old>'?:" | sort -u`. Both advances so far produced exactly three entries — `effect`, `@effect/platform-node`, `@effect/sql-sqlite-node`.
+4. Write one override per entry, old-exact to new:
+
+   ```yaml
+   overrides:
+     '@effect/platform-node@4.0.0-rc.109': 4.0.0-rc.112
+     '@effect/sql-sqlite-node@4.0.0-rc.109': 4.0.0-rc.112
+     effect@4.0.0-rc.109: 4.0.0-rc.112
+   ```
+
+5. Install, then confirm the packages-section count is zero (below) and check the lockfile diff for stripped platform binaries.
+6. Note the removal condition in the PR. The bridge is temporary by intent, and the intent has to survive the merge.
+
+### Removing it
+
+The bridge comes out once `@savvy-web` (silk, bundler, tsdown-plugins, mcp) and `@tsdoctor/*` republish against the current pin. Verify with the **packages-section-scoped** count, which must reach zero **with the block removed**:
 
 ```bash
 awk '/^packages:/,/^snapshots:/' pnpm-lock.yaml | grep -c '4\.0\.0-rc\.<old>'
 ```
 
-**The scoping is the whole point — do not simplify it to a bare `grep`.** While the bridge is up, `grep -c "effect@4.0.0-rc.109" pnpm-lock.yaml` returns `1`, and that hit is **not** a second copy: it is the override's own redirect line, `effect@4.0.0-rc.109: 4.0.0-rc.112`. One resolved version, spelled twice. So the naive count reports the bridge as the very drift the bridge removed, and "read the lockfile rather than the store" is not by itself enough advice — read the lockfile's **`packages:` section**, where a resolution actually lives. Leaving the bridge up past the removal condition masks the drift it was written to survive.
+**The scoping is the whole point — do not simplify it to a bare `grep`.** While the bridge is up, `grep -c "effect@4.0.0-rc.109" pnpm-lock.yaml` returns `1`, and that hit is **not** a second copy: it is the override's own redirect line, `effect@4.0.0-rc.109: 4.0.0-rc.112`. One resolved version, spelled twice. The naive count therefore reports the bridge as the very drift the bridge removed. Read the lockfile's `packages:` section, where a resolution actually lives — "read the lockfile, not the store" is not enough advice on its own.
+
+Leaving the bridge up past the removal condition is the real hazard: it then masks a genuine second copy, which is exactly the drift it was written to survive.
+
+### The failure it prevents
+
+Not an Effect API break, and it does not read like a version problem. Two `effect` copies land in one Schema decode pipeline and produce:
+
+```text
+TypeError: text.charCodeAt is not a function
+```
+
+The mixing route is the peer hazard documented above: `@savvy-web/tsdown-plugins` takes `@effected/jsonc` as a **peer**, so this workspace hands it a jsonc built against the new `effect` while the tool's own `effect` still resolves to the old one — an rc.109 `SchemaParser` driving an rc.112 `Getter`. **The tell is a stack naming two different `effect@…` paths.** Read that before reading the `TypeError` as a parser bug.
 
 ## The expected `pnpm peers check` occupant
 
