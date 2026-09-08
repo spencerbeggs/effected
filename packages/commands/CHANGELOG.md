@@ -1,5 +1,17 @@
 # @effected/commands
 
+## 0.6.1
+
+### Documentation
+
+- Documents `Run.collect` as the kit's one spawn-and-collect implementation: the public, maintained, bounded-memory alternative to hand-rolling a triple-collect (stdout, stderr, exit code) for a subprocess. `@effected/git`'s README now points consumers here for a git command `Git` itself does not expose, rather than at `@effected/git`'s own private `internal/run.ts`, which stays a deliberately parallel, unexported implementation (#628). [#654][#654]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#654]: https://github.com/spencerbeggs/effected/pull/654
+
 ## 0.6.0
 
 ### Breaking Changes

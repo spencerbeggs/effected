@@ -7,14 +7,18 @@
 // does; nothing imports `YamlFormat.ts` back.
 //
 // Neither `format` nor `modify` catch the internal stringifier's
-// `StringifyFailure` (the circular-reference guard): both build their output
-// AST from either already-parsed nodes or `jsValueToNode`'s scalar-only
-// synthesis, so a cycle can never occur here — if `StringifyFailure` were
-// ever thrown it would indicate an internal invariant violation, not a
-// user-facing error, and is left to surface as an uncaught defect.
+// `StringifyFailure` (the circular-reference guard) or `StringifyDepthExceeded`:
+// `format` builds its output AST from already-parsed nodes, and `modify`'s
+// `jsValueToNode` runs BOTH guards itself while lowering the caller's value —
+// failing typed with a `CircularReference` / `NestingDepthExceeded` diagnostic
+// before a node ever reaches the stringifier. So neither internal throw can
+// occur here; were one ever thrown it would indicate an internal invariant
+// violation, not a user-facing error, and is left to surface as an uncaught
+// defect.
 
 import { Effect, Schema } from "effect";
 import { EMPTY_DOCUMENT, composeAllDocuments, composeFirstDocumentCounted } from "./internal/composer/document.js";
+import { MAX_NESTING_DEPTH } from "./internal/composer/state.js";
 import type { RawDiagnostic } from "./internal/diagnostics.js";
 import { isFatalCode } from "./internal/diagnostics.js";
 import { computeEdits } from "./internal/diff.js";
@@ -117,7 +121,13 @@ export class YamlModificationError extends Schema.TaggedError<YamlModificationEr
  * `modify` catches this and materializes {@link YamlModificationError}.
  */
 class ModifyFailure extends Error {
-	readonly code: "EmptyDocument" | "PathNotFound" | "InvalidIndex" | "NotNavigable";
+	readonly code:
+		| "EmptyDocument"
+		| "PathNotFound"
+		| "InvalidIndex"
+		| "NotNavigable"
+		| "CircularReference"
+		| "NestingDepthExceeded";
 	readonly offset: number;
 	readonly length: number;
 	constructor(code: ModifyFailure["code"], message: string, offset: number, length: number) {
@@ -319,14 +329,75 @@ function formatStream(
 
 // ── modify: pure AST navigation ─────────────────────────────────────────────
 
-/** Convert a plain JS scalar value into a synthetic `YamlScalar` (offset/length are irrelevant — immediately re-stringified). */
-function jsValueToNode(value: unknown): YamlNode {
+/**
+ * Lower a plain JavaScript value into synthetic AST nodes (offset/length are
+ * irrelevant — the result is immediately re-stringified).
+ *
+ * Recursive by design: an array becomes a block {@link YamlSeq} and any other
+ * non-null object a block {@link YamlMap} over its own enumerable string keys,
+ * matching what `Yaml.stringify` does with the same value on the value path.
+ * Before this was recursive, a mapping or sequence value fell through to the
+ * node stringifier's `String(value)` fallback and landed in the document as
+ * the literal text `[object Object]` — a silent corruption that only surfaced
+ * on the next read (#642).
+ *
+ * The two conditions with no finite rendering fail typed rather than hanging
+ * or overflowing the stack: a cycle raises `CircularReference` and a graph
+ * deeper than `MAX_NESTING_DEPTH` raises `NestingDepthExceeded`. `seen` holds
+ * the ancestors of the value being lowered, so a value repeated across
+ * siblings (a shared, acyclic sub-object) is lowered twice rather than
+ * rejected.
+ */
+function jsValueToNode(value: unknown, seen: Set<object>, depth: number): YamlNode {
+	if (depth > MAX_NESTING_DEPTH) {
+		throw new ModifyFailure(
+			"NestingDepthExceeded",
+			`Replacement value nests deeper than the maximum of ${MAX_NESTING_DEPTH}`,
+			0,
+			0,
+		);
+	}
+	if (typeof value === "object" && value !== null) {
+		if (seen.has(value)) {
+			throw new ModifyFailure("CircularReference", "Replacement value contains a circular reference", 0, 0);
+		}
+		seen.add(value);
+		try {
+			if (Array.isArray(value)) {
+				return YamlSeq.make({
+					items: value.map((item) => jsValueToNode(item, seen, depth + 1)),
+					style: "block",
+					offset: 0,
+					length: 0,
+				});
+			}
+			const record = value as Record<string, unknown>;
+			return YamlMap.make({
+				items: Object.keys(record).map((key) =>
+					YamlPair.make({
+						key: YamlScalar.make({ value: key, style: "plain", offset: 0, length: 0 }),
+						value: jsValueToNode(record[key], seen, depth + 1),
+					}),
+				),
+				style: "block",
+				offset: 0,
+				length: 0,
+			});
+		} finally {
+			seen.delete(value);
+		}
+	}
 	return YamlScalar.make({ value, style: "plain", offset: 0, length: 0 });
+}
+
+/** Entry point for {@link jsValueToNode}: one `seen` set per lowering. */
+function lowerValue(value: unknown): YamlNode {
+	return jsValueToNode(value, new Set<object>(), 0);
 }
 
 function modifyDocument(doc: RawYamlDocument, path: YamlPath, value: unknown): YamlNode | null {
 	if (path.length === 0) {
-		return value === undefined ? null : jsValueToNode(value);
+		return value === undefined ? null : lowerValue(value);
 	}
 	if (doc.contents === null) {
 		throw new ModifyFailure("EmptyDocument", "Cannot navigate path in empty document", 0, 0);
@@ -349,7 +420,7 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 				return rebuildMap(node, newItems);
 			}
 
-			const newValueNode = jsValueToNode(value);
+			const newValueNode = lowerValue(value);
 			if (pairIndex >= 0) {
 				const newItems = [...node.items];
 				const oldPair = newItems[pairIndex] as YamlPair;
@@ -396,9 +467,9 @@ function modifyNode(node: YamlNode, path: YamlPath, depth: number, value: unknow
 			if (value === undefined) {
 				if (idx < newItems.length) newItems.splice(idx, 1);
 			} else if (idx < newItems.length) {
-				newItems[idx] = jsValueToNode(value);
+				newItems[idx] = lowerValue(value);
 			} else {
-				newItems.push(jsValueToNode(value)); // Appends after the last element.
+				newItems.push(lowerValue(value)); // Appends after the last element.
 			}
 			return rebuildSeq(node, newItems);
 		}
@@ -570,11 +641,26 @@ export class YamlFormat {
 	/**
 	 * Compute the edits that insert, replace, or remove a value at `path`.
 	 * Passing `value === undefined` removes the target key/element; a missing
-	 * insertion target appends after the last pair/element. Only
-	 * scalar-compatible values are supported (matching v3 — arbitrary object
-	 * graphs are not recursively lowered into AST nodes). Fails with
+	 * insertion target appends after the last pair/element. Fails with
 	 * {@link YamlModificationError} on a fatal parse error or a structural
 	 * navigation mismatch.
+	 *
+	 * **`value` may be a whole object graph.** An array is written as a block
+	 * sequence and any other non-null object as a block mapping over its own
+	 * enumerable string keys, recursively — the same lowering
+	 * {@link Yaml.stringify} applies to the same value, so `modify` and
+	 * `stringify` agree on what a given JavaScript value means. (Before
+	 * 0.14.0 only scalars were lowered and a mapping or sequence value was
+	 * coerced through `String(value)`, writing the literal text
+	 * `[object Object]` into the document — see #642.) Only the surrounding
+	 * document is preserved byte-for-byte; the replacement subtree is
+	 * synthesized, so it carries no comments and takes the stringifier's
+	 * styles.
+	 *
+	 * Two replacement values have no finite rendering and fail typed rather
+	 * than hanging or overflowing the stack: one containing a circular
+	 * reference (`CircularReference`) and one nesting deeper than 256 levels
+	 * (`NestingDepthExceeded`).
 	 *
 	 * **Single-document contract.** A `path` carries no document index, so on
 	 * a multi-document stream there is no rule for which document it names —

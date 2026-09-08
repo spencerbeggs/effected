@@ -8,6 +8,15 @@ import { Schema } from "effect";
  * The underlying failure is preserved structurally in `cause` — it is never
  * stringified. Route on the `"ConfigCodecError"` tag with `Effect.catchTag`.
  *
+ * `path` names the offending file when the error came through `ConfigFile`,
+ * which is what makes a failure during multi-candidate discovery reportable.
+ *
+ * `message` deliberately does NOT name the path — read `path` when you need it.
+ * A wrapper that renders its own message almost always names the file too, so
+ * a message carrying the path would compose into a rendering that prints the
+ * same file twice. The doubling is the default outcome, not an unlucky one:
+ * the field is the API, and the message is a bare summary.
+ *
  * @public
  */
 export class ConfigCodecError extends Schema.TaggedError<ConfigCodecError>()("ConfigCodecError", {
@@ -17,6 +26,17 @@ export class ConfigCodecError extends Schema.TaggedError<ConfigCodecError>()("Co
 	operation: Schema.Literals(["parse", "stringify"]),
 	/** The underlying failure, preserved structurally. */
 	cause: Schema.Defect(),
+	/**
+	 * The file the content came from, when a caller knew it.
+	 *
+	 * @remarks
+	 * A codec sees a string, never a path, so it cannot fill this in itself.
+	 * `ConfigFile`'s read/write pipeline does: every site that feeds a codec a
+	 * path it resolved re-raises the error with `path` attached, so a discovery
+	 * pass over several candidates still names the file that failed. Absent
+	 * only when a codec was driven directly, outside that pipeline.
+	 */
+	path: Schema.optionalKey(Schema.String),
 }) {
 	override get message(): string {
 		return `${this.codec} ${this.operation} failed`;

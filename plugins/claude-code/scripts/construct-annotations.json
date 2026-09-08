@@ -71,6 +71,7 @@
 	"git": {
 		"BranchEntry": "one local or remote-tracking branch, name sha and whether it is checked out",
 		"CommitInfo": "one commit's sha, GPG signature verdict, and raw message from git log",
+		"CommitLogEntry": "one commit from git log with sha, author identity, both dates as DateTime.Utc, and touched paths",
 		"ConfigListEntry": "one git config key/value pair from git config --list",
 		"DirtyWorktreeError": "merge-shaped op refused because local changes would be overwritten, commit or stash first",
 		"Git": "run git commands with redacted argv, read a file at a ref",

@@ -93,9 +93,47 @@ Twenty-six service methods: eighteen that read repository state and eight that m
 - Probes: `Git.refExists` (`true`/`false`, including `false` for refs that do not resolve at all), `Git.mergeBase` and `Git.revParse` (resolved SHAs), `Git.repoRoot`, and the `Option`-answering `Git.defaultBranch` (unset remote HEAD → `Option.none`, remote prefix stripped), `Git.currentBranch` (detached HEAD → `Option.none`), `Git.configGet` and `Git.remoteUrl`.
 - Configuration reads: `Git.configGet`, `Git.configGetAll` and `Git.configList` take an optional `scope` (`"local" | "global" | "system" | "worktree"`, the `GitConfigScope` type). **Omitted still means the MERGED read** — the value git itself would use, which includes whatever the machine's `~/.gitconfig` sets — so pass `{ scope: "local" }` to ask what this checkout alone declares. `configList` accepts `file` or `scope`, never both: git takes one source.
 - Commits: `Git.commitInfo(cwd, ref?)` — a typed `CommitInfo` with the sha, the `%G?` signature verdict and the raw, untrimmed message.
+- History: `Git.log(cwd, { paths?, follow?, limit?, firstParentDiffMerges? })` — the commit walk as typed `CommitLogEntry` values, each carrying the sha, both dates decoded to `DateTime.Utc`, the author identity and the paths that commit touched. Scope it with a pathspec, walk a single path across renames with `follow: true`, and give merge commits a path listing with `firstParentDiffMerges`. An unborn `HEAD` and a pathspec no commit touched are both the empty listing, never a failure.
 - Mutating tier, each method marked as such: `Git.checkout` (with a detach option), `Git.fetch` (remote, ref, depth, tag), `Git.fetchAny` (tries the tag form first, falls back to the plain form on `UnknownRefError` or `GitCommandError`), `Git.submoduleUpdate`, `Git.submoduleAdd`, `Git.sparseCheckoutSet` (explicit cone flag), `Git.configSet` (the write is repository-local, always: a bare `git config` writes the checkout's own `.git/config`, and no global or system scope is offered — a write has no defensible "effective value" default the way a read does) and `Git.add`. Nothing here serializes concurrent access — the caller owns that, per working tree.
 - `GitCommand.*` — all 24 invocations as pure, inspectable `Command` values.
 - Errors: `GitCommandError`, `NotARepositoryError`, `UnknownRefError` — classification happens once, inside the service. A ref the remote does not have surfaces as `UnknownRefError` too, the typed signal a tag-then-branch fetch fallback branches on with `Effect.orElse`.
+
+## Need a git command this package does not have?
+
+`Git`'s scope is closed by its consumers, not by git's porcelain, so it will
+always be missing something. When you hit that, **do not copy this package's
+private `src/internal/run.ts`** — reach for
+[`@effected/commands`](../commands)' `Run.collect`, which is the public,
+maintained, bounded version of the same "spawn one command and collect
+stdout/stderr/exit-code concurrently under one scope" discipline:
+
+```ts
+import { Run } from "@effected/commands";
+import { ChildProcess } from "effect/unstable/process";
+
+const shortlog = ChildProcess.make("git", ["shortlog", "-sn", "HEAD"], {
+  // The same two pins Git makes on every invocation: LC_ALL=C keeps stderr
+  // classifiable, extendEnv keeps PATH.
+  env: { LC_ALL: "C" },
+  extendEnv: true,
+}).pipe((command) => ChildProcess.setCwd(command, cwd));
+
+const output = yield* Run.collect(shortlog);
+// output.stdout / output.stderr / output.exitCode — a non-zero exit is DATA
+// here, not an error, which is what lets you classify stderr the way Git does.
+```
+
+`Run.collect` gets you three things the hand-rolled copy will not: the
+`{ concurrency: "unbounded" }` triple-collect that keeps a full OS pipe buffer
+from deadlocking the run, a 16 MiB per-stream capture ceiling instead of
+unbounded memory, and redaction of declared secrets out of both the captured
+output and any error it raises. `@effected/commands` is a boundary package with
+`effect` as its only peer, so taking that edge costs a consumer nothing beyond
+the `ChildProcessSpawner` layer it is already providing to `Git`.
+
+`Git` itself deliberately does **not** take that edge — see
+`@effected/git`'s design doc for why — so the two implementations are parallel
+by design. The one to build new code on is `Run.collect`.
 
 ## License
 

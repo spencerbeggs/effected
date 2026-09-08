@@ -11,6 +11,7 @@
 export {
 	BranchEntry,
 	CommitInfo,
+	CommitLogEntry,
 	ConfigListEntry,
 	DirtyWorktreeError,
 	Git,

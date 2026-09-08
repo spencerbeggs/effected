@@ -290,6 +290,38 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.commitInfo("v1.0.0"), ["log", "-1", "--format=%H%x00%G?%x00%B", "v1.0.0"]);
 	});
 
+	it("log builds the -z record format with --name-only and no pathspec by default", () => {
+		assertGitCommand(GitCommand.log(), ["log", "-z", "--format=%x1e%H%x00%aI%x00%cI%x00%an%x00%ae", "--name-only"]);
+	});
+
+	it("log puts every flag before the `--` pathspec separator", () => {
+		// Order is load-bearing: git reads everything after `--` as a path, so a
+		// flag emitted late would be spawned as a filename.
+		assertGitCommand(GitCommand.log(["src/Git.ts"], true, 5, true), [
+			"log",
+			"-z",
+			"--format=%x1e%H%x00%aI%x00%cI%x00%an%x00%ae",
+			"--name-only",
+			"--follow",
+			"--diff-merges=first-parent",
+			"--max-count=5",
+			"--",
+			"src/Git.ts",
+		]);
+	});
+
+	it("log emits --max-count=0 for limit 0 rather than dropping it", () => {
+		// `0` is falsy: a truthiness test here would silently ask for the WHOLE
+		// history when the caller asked for none of it.
+		assertGitCommand(GitCommand.log([], false, 0), [
+			"log",
+			"-z",
+			"--format=%x1e%H%x00%aI%x00%cI%x00%an%x00%ae",
+			"--name-only",
+			"--max-count=0",
+		]);
+	});
+
 	it("configGet builds `git config --get <key>`", () => {
 		assertGitCommand(GitCommand.configGet("user.signingkey"), ["config", "--get", "user.signingkey"]);
 	});

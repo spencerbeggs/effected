@@ -64,6 +64,13 @@ export const YAML_STRINGIFY_ERROR_CODES = ["CircularReference"] as const;
  * not re-emit `%YAML`/`%TAG` directive lines, and re-emitting a document
  * without its `%TAG` orphans every shorthand tag that depends on it — the
  * output would be unparseable — so modify fails typed rather than corrupting.
+ *
+ * `CircularReference` and `NestingDepthExceeded` are the two limits on the
+ * replacement value itself: `modify` lowers a plain JavaScript value into
+ * AST nodes, and an object graph that points back at itself or nests deeper
+ * than `MAX_NESTING_DEPTH` has no finite YAML rendering. Both names are
+ * deliberately the ones the stringify and compose stages already use for the
+ * same conditions, so `YamlErrorCode` gains no member.
  */
 export const YAML_MODIFY_ERROR_CODES = [
 	"EmptyDocument",
@@ -72,6 +79,8 @@ export const YAML_MODIFY_ERROR_CODES = [
 	"NotNavigable",
 	"MultiDocumentStream",
 	"DirectiveCarryingDocument",
+	"CircularReference",
+	"NestingDepthExceeded",
 ] as const;
 
 /** The lexer-stage error-code union. */

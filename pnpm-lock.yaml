@@ -99,6 +99,9 @@ importers:
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@effected/store':
         specifier: workspace:*
         version: link:../store/dist/dev/pkg
@@ -174,6 +177,9 @@ importers:
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@effected/toml':
         specifier: workspace:*
         version: link:../toml/dist/dev/pkg

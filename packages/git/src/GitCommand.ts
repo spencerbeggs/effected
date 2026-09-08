@@ -252,6 +252,34 @@ const repoRoot = (): GitInvocation => git(["rev-parse", "--show-toplevel"]);
 const commitInfo = (ref = "HEAD"): GitInvocation => git(["log", "-1", "--format=%H%x00%G?%x00%B", ref]);
 
 /**
+ * The `git log` record format: a `\x1e` record opener followed by the five
+ * NUL-joined header fields the log listing decodes.
+ *
+ * `--name-only` output carries no other unambiguous record boundary — a
+ * commit's path lines and the next commit's header are both just bytes — so
+ * the separator is emitted by the format itself rather than inferred.
+ */
+const LOG_FORMAT = "--format=%x1e%H%x00%aI%x00%cI%x00%an%x00%ae";
+
+// Implementation of GitCommand.log; the public contract lives on the static.
+const log = (
+	paths: ReadonlyArray<string> = [],
+	follow = false,
+	limit?: number,
+	firstParentDiffMerges = false,
+): GitInvocation =>
+	git([
+		"log",
+		"-z",
+		LOG_FORMAT,
+		"--name-only",
+		...(follow ? ["--follow"] : []),
+		...(firstParentDiffMerges ? ["--diff-merges=first-parent"] : []),
+		...(limit !== undefined ? [`--max-count=${limit}`] : []),
+		...(paths.length > 0 ? ["--", ...paths] : []),
+	]);
+
+/**
  * Which configuration file a read is scoped to.
  *
  * @remarks
@@ -866,6 +894,33 @@ export class GitCommand {
 	 * two `\x00` bytes to extract all three values.
 	 */
 	static readonly commitInfo = commitInfo;
+
+	/**
+	 * `git log -z --format=%x1e%H%x00%aI%x00%cI%x00%an%x00%ae --name-only` —
+	 * a commit listing carrying each commit's sha, both ISO dates, its author
+	 * identity and the paths it touched. Four optional flags follow, in this
+	 * order: `--follow`, `--diff-merges=first-parent`, `--max-count=N`, then
+	 * the `--` separator and the pathspec.
+	 *
+	 * @remarks
+	 * `-z` is unconditional and does two things at once: it terminates the
+	 * `--format` output with a NUL instead of a newline, and it makes
+	 * `--name-only` emit paths RAW — no C-style quoting — so a path containing
+	 * a space, a quote or a newline comes back verbatim and `core.quotePath`
+	 * never enters the picture.
+	 *
+	 * `%x1e` opens every record because `--name-only` output has no other
+	 * unambiguous record boundary. Each record is then
+	 * `<sha>\0<authoredAt>\0<committedAt>\0<authorName>\0<authorEmail>\0`
+	 * followed, when the commit touched anything, by `\n` and one
+	 * NUL-terminated path per changed file.
+	 *
+	 * `--follow` requires exactly one path — git's own restriction, enforced
+	 * pre-spawn by `Git.log`. Without `--diff-merges=first-parent` a merge
+	 * commit contributes a record with NO path lines, which is git's default
+	 * and not an anomaly.
+	 */
+	static readonly log = log;
 
 	/**
 	 * `git config --get <key>` — the value of the given git config key, or empty

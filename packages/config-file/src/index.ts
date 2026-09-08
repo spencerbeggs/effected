@@ -25,6 +25,7 @@ export type { ConfigFileMigration, ConfigMigrationOptions } from "./ConfigMigrat
 export { ConfigMigration, ConfigMigrationError, VersionAccess } from "./ConfigMigration.js";
 export type { LayerConfigProviderOptions } from "./ConfigProvider.js";
 export { asConfigProvider, layerConfigProvider } from "./ConfigProvider.js";
+export type { ConfigMatch, UpwardWalkOptions } from "./ConfigResolver.js";
 export { ConfigResolver } from "./ConfigResolver.js";
 export { ConfigEncryptionError, EncryptedCodec, EncryptedCodecKey } from "./EncryptedCodec.js";
 export { JsonCodec } from "./JsonCodec.js";

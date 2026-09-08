@@ -44,6 +44,7 @@ backend, a platform layer, a `node:child_process` import, or a shell helper.
 
 ## The things that will bite you
 
+- **`Run.collect` is the kit's ONE spawn-and-collect implementation, and it is public on purpose.** A consumer that needs `@effected/git`-shaped discipline for a git command `Git` does not have — the exact case that produced issue #628 — composes `Run.collect` rather than re-deriving the triple-collect; `@effected/git`'s README carries the recipe, and `@effected/git`'s own private `internal/run.ts` is deliberately parallel (its design doc records **no `@effected` edges**), not a second sanctioned copy. Changing `collect`'s contract therefore breaks consumers you cannot see in this repo's dependency graph.
 - **`{ concurrency: "unbounded" }` in `collectRaw` is load-bearing.** Collecting
   stdout, stderr and the exit code sequentially **deadlocks** when either OS
   pipe buffer fills, and a mock spawner cannot reproduce it: **do not delete
