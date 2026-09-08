@@ -53,6 +53,10 @@ describe("ConfigCodecError.path", () => {
 			// The path travels in the FIELD, never in the rendered message: a wrapper
 			// that names the file too would otherwise print it twice.
 			assert.strictEqual(error.message, "json parse failed");
+			// Re-raising to attach `path` must carry the ORIGINAL cause through
+			// structurally. Asserting only `instanceOf ConfigCodecError` would still
+			// pass if the re-wrap stringified it.
+			assert.instanceOf((error as ConfigCodecError).cause, SyntaxError);
 		}).pipe(Effect.provide(discovery.pipe(Layer.provide(platform({ "/repo/pkg/app.json": "{ not json" }))))),
 	);
 
@@ -61,6 +65,7 @@ describe("ConfigCodecError.path", () => {
 			const error = yield* Effect.flip(ConfigFile.read("/repo/app.json", { schema: Doc, codec: JsonCodec }));
 			assert.instanceOf(error, ConfigCodecError);
 			assert.strictEqual((error as ConfigCodecError).path, "/repo/app.json");
+			assert.instanceOf((error as ConfigCodecError).cause, SyntaxError);
 		}).pipe(Effect.provide(platform({ "/repo/app.json": "{ not json" }))),
 	);
 
@@ -70,6 +75,8 @@ describe("ConfigCodecError.path", () => {
 			const error = yield* Effect.flip(config.write({ from: "ok" }, "/repo/written.json"));
 			assert.instanceOf(error, ConfigCodecError);
 			assert.strictEqual((error as ConfigCodecError).path, "/repo/written.json");
+			assert.instanceOf((error as ConfigCodecError).cause, Error);
+			assert.strictEqual(((error as ConfigCodecError).cause as Error).message, "nope");
 		}).pipe(Effect.provide(writing.pipe(Layer.provide(platform({}))))),
 	);
 

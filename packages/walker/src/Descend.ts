@@ -29,12 +29,34 @@ export interface DescendOptions {
 	 * typed — downward enumeration must not silently swallow a subtree, or the
 	 * answer is silently missing membership dressed as an empty one. `"skip"`
 	 * absorbs the failure and continues, discarding which directory it was.
-	 * `"record"` also absorbs and continues, but instead of discarding the
-	 * offending directory it collects it: `descend` then resolves to a
-	 * {@link DescendResult} rather than a bare match array, carrying every
-	 * unreadable directory's `cwd`-relative path alongside the matches.
+	 * To collect the offending directories instead of discarding them, pass
+	 * {@link DescendRecordOptions} — `"record"` is deliberately NOT a member
+	 * here, because this type is the options contract of the overload that
+	 * returns a bare match array.
 	 */
-	readonly onUnreadable?: "fail" | "skip" | "record";
+	readonly onUnreadable?: "fail" | "skip";
+}
+
+/**
+ * Options for `descend` under `onUnreadable: "record"`: every
+ * {@link DescendOptions} field, with `onUnreadable` fixed to `"record"`.
+ *
+ * @remarks
+ * A separate type rather than `DescendOptions & { onUnreadable: "record" }`,
+ * because the two options types are the discriminator between two different
+ * RETURN types. If `DescendOptions` itself admitted `"record"`, a value
+ * widened to `DescendOptions` — annotated as such, or passed through a
+ * function taking it — would select the array-returning overload at compile
+ * time while the implementation resolved a {@link DescendResult} at runtime,
+ * and every array method on that result would fail with no type error
+ * anywhere. Keeping `"record"` out of `DescendOptions` makes that
+ * unrepresentable.
+ *
+ * @public
+ */
+export interface DescendRecordOptions extends Omit<DescendOptions, "onUnreadable"> {
+	/** Collect every unreadable directory rather than failing or discarding it. */
+	readonly onUnreadable: "record";
 }
 
 /**
@@ -118,13 +140,23 @@ interface DescendFrame {
 	readonly depth: number;
 }
 
+/**
+ * The one options shape spanning all three modes. Not exported: the PUBLIC
+ * types are deliberately split so `"record"` cannot reach the array-returning
+ * overload, and this internal union is what the single implementation body
+ * needs in order to still branch on all three values.
+ */
+type DescendAnyOptions = Omit<DescendOptions, "onUnreadable"> & {
+	readonly onUnreadable?: "fail" | "skip" | "record";
+};
+
 /** Not exported — `descend`'s overloads below carry the public documentation. */
 const descendImpl: (
 	pattern: GlobPattern,
-	options: DescendOptions,
+	options: DescendAnyOptions,
 ) => Effect.Effect<ReadonlyArray<string> | DescendResult, DescendError, FileSystem.FileSystem | Path.Path> = Effect.fn(
 	"Walker.descend",
-)(function* (pattern: GlobPattern, options: DescendOptions) {
+)(function* (pattern: GlobPattern, options: DescendAnyOptions) {
 	const fs = yield* FileSystem.FileSystem;
 	const path = yield* Path.Path;
 
@@ -254,7 +286,7 @@ const descendImpl: (
  */
 export function descend(
 	pattern: GlobPattern,
-	options: DescendOptions & { readonly onUnreadable: "record" },
+	options: DescendRecordOptions,
 ): Effect.Effect<DescendResult, DescendError, FileSystem.FileSystem | Path.Path>;
 /**
  * Expand a compiled glob pattern against the filesystem, returning matching
@@ -297,7 +329,7 @@ export function descend(
 ): Effect.Effect<ReadonlyArray<string>, DescendError, FileSystem.FileSystem | Path.Path>;
 export function descend(
 	pattern: GlobPattern,
-	options: DescendOptions,
+	options: DescendOptions | DescendRecordOptions,
 ): Effect.Effect<ReadonlyArray<string> | DescendResult, DescendError, FileSystem.FileSystem | Path.Path> {
 	return descendImpl(pattern, options);
 }

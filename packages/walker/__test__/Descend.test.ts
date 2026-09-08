@@ -1,6 +1,7 @@
-import { assert, layer } from "@effect/vitest";
+import { assert, describe, it, layer } from "@effect/vitest";
 import { GlobPattern, GlobPatternOptions } from "@effected/glob";
 import { Cause, Effect } from "effect";
+import type { DescendOptions, DescendRecordOptions, DescendResult } from "../src/Descend.js";
 import { descend } from "../src/Descend.js";
 import { platform } from "./fixtures.js";
 
@@ -344,4 +345,39 @@ layer(platform(gitlinkTree))("descend, prune is directory-only", (it) => {
 			assert.notInclude(found, ".git/config");
 		}),
 	);
+});
+
+// The overloads are a type-level contract, and the thing that makes them safe
+// is what `DescendOptions` REFUSES: if it admitted `"record"`, a value widened
+// to it would pick the array-returning overload at compile time while the
+// implementation resolved a `DescendResult` at runtime, and every array method
+// on that result would fail with no type error anywhere. These assertions run
+// at typecheck, not at runtime — `types:check` is what enforces them.
+describe("descend — overload resolution", () => {
+	it("resolves each options shape to the right return type", () => {
+		type SuccessOf<T> = T extends Effect.Effect<infer A, unknown, unknown> ? A : never;
+		const pattern = GlobPattern.compile("**/*", GlobPatternOptions.make({})) as unknown as GlobPattern;
+
+		// An inline literal carrying "record" selects the DescendResult overload.
+		const inline = descend(pattern, { cwd: "/x", onUnreadable: "record" });
+		const _inline: SuccessOf<typeof inline> = { matches: [], unreadable: [] } satisfies DescendResult;
+
+		// So does a value annotated as DescendRecordOptions — the case a bare
+		// intersection got wrong, because widening erased the literal.
+		const recordOpts: DescendRecordOptions = { cwd: "/x", onUnreadable: "record" };
+		const viaRecord = descend(pattern, recordOpts);
+		const _viaRecord: SuccessOf<typeof viaRecord> = { matches: [], unreadable: [] } satisfies DescendResult;
+
+		// DescendOptions is the array contract and stays that way.
+		const plainOpts: DescendOptions = { cwd: "/x", onUnreadable: "skip" };
+		const viaPlain = descend(pattern, plainOpts);
+		const _viaPlain: SuccessOf<typeof viaPlain> = ["a.ts"];
+
+		// The guard itself: "record" is not a member of DescendOptions, so it
+		// cannot reach the array-returning overload by being widened first.
+		// @ts-expect-error "record" is deliberately absent from DescendOptions
+		const _refused: DescendOptions = { cwd: "/x", onUnreadable: "record" };
+
+		assert.isFunction(descend);
+	});
 });

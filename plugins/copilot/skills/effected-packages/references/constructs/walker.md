@@ -9,6 +9,7 @@
 | `CompileAndExpandOptions` | Interface | Options for `compileAndExpand`: every `DescendOptions` field, plus the glob options the pattern compiles under. | |
 | `DescendError` | Class | Typed failure raised by `descend`: a directory mid-walk was unreadable (under `onUnreadable: "fail"`), or the walk descended past `maxDepth`. Depth exhaustion is a typed failure, never a truncation — silent truncation silently changes match semantics. | handle unreadable directory during glob descent, depth cap exceeded, typed filesystem walk failure |
 | `DescendOptions` | Interface | Options for `descend`. | |
+| `DescendRecordOptions` | Interface | Options for `descend` under `onUnreadable: "record"`: every `DescendOptions` field, with `onUnreadable` fixed to `"record"`. | |
 | `DescendResult` | Interface | `descend`'s success value under `onUnreadable: "record"`: the matched FILE paths plus the `cwd`-relative path of every mid-walk directory whose `readDirectory` failed for a reason other than `NotFound` (a vanished directory stays a benign race in every mode and is never recorded). | |
 | `GlobExpansionError` | Class | Typed failure raised by `compileAndExpand`: the single error the compile+expand recipe fails with, so a caller catches one tag rather than folding two error channels by hand. | handle pattern-to-files expansion failure, compile or descend stage error, wraps GlobPatternError or DescendError |
 | `Walker` | Class | Upward path traversal primitives. | walk up parent directories, find nearest config file, ascend to filesystem root |

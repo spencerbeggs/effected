@@ -13,6 +13,12 @@
  * @packageDocumentation
  */
 
-export { DescendError, type DescendOptions, type DescendResult, descend } from "./Descend.js";
+export {
+	DescendError,
+	type DescendOptions,
+	type DescendRecordOptions,
+	type DescendResult,
+	descend,
+} from "./Descend.js";
 export { type CompileAndExpandOptions, GlobExpansionError, compileAndExpand } from "./Expand.js";
 export { type AscendOptions, Walker } from "./Walker.js";
