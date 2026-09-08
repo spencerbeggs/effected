@@ -37,7 +37,7 @@
 		"@savvy-web/bundler": "^2.3.1",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
-		"rolldown-pnpm-config": "^0.7.11",
+		"rolldown-pnpm-config": "^0.7.12",
 		"typescript": "catalog:build"
 	},
 	"engines": {
