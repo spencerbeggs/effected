@@ -556,6 +556,107 @@ describe("YamlFormat", () => {
 		);
 	});
 
+	// #642. `jsValueToNode` lowered scalars only, so a mapping or sequence value
+	// fell through the node stringifier's `String(value)` fallback and landed in
+	// the document as the literal text `[object Object]`.
+	describe("modify — a non-scalar value is lowered into nodes, never String()-coerced", () => {
+		it.effect("appends a mapping to a sequence of mappings", () =>
+			Effect.gen(function* () {
+				const text = "verified:\n  - by: human:spencer\n    at: 2026-09-01T00:00:00Z\nstatus: stable\n";
+				const out = yield* YamlFormat.modifyToString(
+					text,
+					["verified", 1],
+					{ by: "human:other", at: "2026-09-02T00:00:00Z" },
+					{ indentSequences: true },
+				);
+				assert.notInclude(out, "[object Object]");
+				assert.strictEqual(
+					out,
+					"verified:\n  - by: human:spencer\n    at: 2026-09-01T00:00:00Z\n  - by: human:other\n    at: 2026-09-02T00:00:00Z\nstatus: stable\n",
+				);
+				assert.deepStrictEqual(yield* Yaml.parse(out), {
+					verified: [
+						{ by: "human:spencer", at: "2026-09-01T00:00:00Z" },
+						{ by: "human:other", at: "2026-09-02T00:00:00Z" },
+					],
+					status: "stable",
+				});
+			}),
+		);
+
+		it.effect("the append is one surgical insertion that leaves surrounding comments alone", () =>
+			Effect.gen(function* () {
+				const text = "# header\nverified:\n  - by: a # note\n    at: b\n# tail\nstatus: stable\n";
+				const edits = yield* YamlFormat.modify(text, ["verified", 1], { by: "c", at: "d" }, { indentSequences: true });
+				assert.strictEqual(edits.length, 1);
+				assert.strictEqual(edits[0]?.length, 0);
+				assert.strictEqual(edits[0]?.content, "  - by: c\n    at: d\n");
+				assert.strictEqual(
+					apply(text, edits),
+					"# header\nverified:\n  - by: a # note\n    at: b\n  - by: c\n    at: d\n# tail\nstatus: stable\n",
+				);
+			}),
+		);
+
+		it.effect("writes a sequence value as a block sequence", () =>
+			Effect.gen(function* () {
+				const text = "a: 1\n";
+				const out = yield* YamlFormat.modifyToString(text, ["xs"], [1, "two", true]);
+				assert.notInclude(out, "[object Object]");
+				assert.strictEqual(out, "a: 1\nxs:\n- 1\n- two\n- true\n");
+				assert.deepStrictEqual(yield* Yaml.parse(out), { a: 1, xs: [1, "two", true] });
+			}),
+		);
+
+		it.effect("lowers a nested graph recursively, matching Yaml.stringify on the same value", () =>
+			Effect.gen(function* () {
+				const value = { a: { b: [1, { c: [2, 3] }] }, e: {}, xs: [] };
+				const out = yield* YamlFormat.modifyToString("root: keep\n", ["meta"], value);
+				assert.notInclude(out, "[object Object]");
+				assert.deepStrictEqual((yield* Yaml.parse(out)) as Record<string, unknown>, {
+					root: "keep",
+					meta: value,
+				});
+			}),
+		);
+
+		it.effect("replaces the whole document when the path is empty", () =>
+			Effect.gen(function* () {
+				const out = yield* YamlFormat.modifyToString("old: 1\n", [], { fresh: [1, 2] });
+				assert.notInclude(out, "[object Object]");
+				assert.deepStrictEqual(yield* Yaml.parse(out), { fresh: [1, 2] });
+			}),
+		);
+
+		it.effect("lowers a value shared across siblings twice rather than calling it a cycle", () =>
+			Effect.gen(function* () {
+				const shared = { s: 1 };
+				const out = yield* YamlFormat.modifyToString("a: 1\n", ["m"], { x: shared, y: shared });
+				assert.deepStrictEqual(yield* Yaml.parse(out), { a: 1, m: { x: { s: 1 }, y: { s: 1 } } });
+			}),
+		);
+
+		it.effect("fails typed on a circular replacement value rather than hanging", () =>
+			Effect.gen(function* () {
+				const cyclic: { a: number; self?: unknown } = { a: 1 };
+				cyclic.self = cyclic;
+				const error = yield* Effect.flip(YamlFormat.modify("a: 1\n", ["m"], cyclic));
+				assert.instanceOf(error, YamlModificationError);
+				assert.strictEqual(error.diagnostics[0]?.code, "CircularReference");
+			}),
+		);
+
+		it.effect("fails typed on a replacement value nested past the depth cap", () =>
+			Effect.gen(function* () {
+				let deep: unknown = "leaf";
+				for (let i = 0; i < 300; i++) deep = { n: deep };
+				const error = yield* Effect.flip(YamlFormat.modify("a: 1\n", ["m"], deep));
+				assert.instanceOf(error, YamlModificationError);
+				assert.strictEqual(error.diagnostics[0]?.code, "NestingDepthExceeded");
+			}),
+		);
+	});
+
 	describe("modify — delete via undefined", () => {
 		it.effect("removes a mapping key", () =>
 			Effect.gen(function* () {

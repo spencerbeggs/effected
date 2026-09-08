@@ -22,6 +22,7 @@
 | `ConfigFileTestOptions` | Interface | Options for `ConfigFile.testLayer`. | |
 | `ConfigFileWriteError` | Class | Indicates that a config file could not be written to the filesystem. | handle a config file that could not be written to disk |
 | `ConfigLoadError` | TypeAlias | The failure modes of the full discovery-and-load path. | |
+| `ConfigMatch` | Interface | How a resolver found a config file, not merely where. | |
 | `ConfigMigration` | Class | Versioned migration support for config codecs. | upgrade an old config file schema to the latest version on load |
 | `ConfigMigrationError` | Class | Indicates that a versioned config migration failed. | handle a versioned config migration step failing to read, apply or write |
 | `ConfigMigrationOptions` | Interface | Options for `ConfigMigration.make`. | |
@@ -42,6 +43,7 @@
 | `MergeStrategy` | Variable + Interface | Strategy for combining several `ConfigSource` entries into one value. | combine several discovered config sources into one value, first-match or deep merge |
 | `NonEmptySources` | TypeAlias | A source list guaranteed non-empty by the caller. | |
 | `TomlCodec` | Variable | A `ConfigCodec` backed by `@effected/toml`. | parse and stringify config as toml |
+| `UpwardWalkOptions` | TypeAlias | Options for `ConfigResolver.upwardWalk`. | |
 | `VersionAccess` | Variable + Interface | How the version number is read from and written to the parsed config. | read and write the version field used by config migrations |
 | `YamlCodec` | Variable | A `ConfigCodec` backed by `@effected/yaml`. | parse and stringify config as yaml |
 | `asConfigProvider` | Function | Expose a loaded, merged, schema-validated document as a v4 `ConfigProvider`, so it can be read through `Config.string("port")` and layered beneath other providers. | bridge a loaded config document into effect's Config accessors |

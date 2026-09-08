@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import type { ConfigMatch } from "./ConfigResolver.js";
 import { canMerge, deepMerge } from "./internal/deepMerge.js";
 
 /**
@@ -11,6 +12,18 @@ export interface ConfigSource<A> {
 	readonly path: string;
 	/** The name of the resolver that found it. */
 	readonly resolver: string;
+	/**
+	 * How the resolver found it — the anchor directory and the candidate that
+	 * matched.
+	 *
+	 * @remarks
+	 * Populated by `ConfigFile.discover` for every source it produces: a
+	 * resolver implementing `ConfigResolver.resolveMatch` reports its own
+	 * detail, and one that does not yields a bare `{ path }`. Optional on the
+	 * type so a hand-built `ConfigSource` — a merge-strategy test, a synthetic
+	 * source — stays valid without one.
+	 */
+	readonly match?: ConfigMatch;
 	/** The decoded, validated configuration value. */
 	readonly value: A;
 }
