@@ -334,5 +334,119 @@ describe("YamlDocument", () => {
 				assert.deepStrictEqual(again.toValue(), { key: "first line second line" });
 			}),
 		);
+
+		// #643. The block composers already DISOWN a terminal comment sitting at
+		// a column shallower than the collection's content — it escapes to the
+		// outer scope and leads the following key. The raw CST span disagreed,
+		// ending after the comment line, so a caller splicing at the end of the
+		// collection inserted after a comment the collection does not own.
+		it.effect("a shallower trailing comment ends the block-seq span rather than joining the last item", () =>
+			Effect.gen(function* () {
+				const text =
+					"verified:\n  - by: human:spencer\n    at: 2026-09-01T00:00:00Z\n# reviewed before release\nstatus: stable\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlMap)) {
+					return assert.fail("expected a mapping root");
+				}
+				const seq = root.items[0]?.value;
+				if (!(seq instanceof YamlSeq)) {
+					return assert.fail("expected a sequence value");
+				}
+				const commentStart = text.indexOf("# reviewed before release");
+				// The span ends where the last item's line ends — at the comment
+				// line's first character, never past it.
+				assert.strictEqual(seq.offset + seq.length, commentStart);
+				assert.strictEqual(
+					text.slice(seq.offset, seq.offset + seq.length),
+					"- by: human:spencer\n    at: 2026-09-01T00:00:00Z\n",
+				);
+				// The last item — the mapping the comment was swallowed into —
+				// ends there too.
+				const item = seq.items[0];
+				if (!(item instanceof YamlMap)) {
+					return assert.fail("expected a mapping item");
+				}
+				assert.strictEqual(item.offset + item.length, commentStart);
+				// Splicing a new item at the seq's end lands BEFORE the comment.
+				const spliced = `${text.slice(0, seq.offset + seq.length)}  - by: human:other\n${text.slice(
+					seq.offset + seq.length,
+				)}`;
+				assert.deepStrictEqual((yield* YamlDocument.parse(spliced)).toValue(), {
+					verified: [{ by: "human:spencer", at: "2026-09-01T00:00:00Z" }, { by: "human:other" }],
+					status: "stable",
+				});
+				// Attribution is unchanged: the comment still leads the next key.
+				const statusKey = root.items[1]?.key;
+				if (!(statusKey instanceof YamlScalar)) {
+					return assert.fail("expected a scalar key");
+				}
+				assert.strictEqual(statusKey.commentBefore, " reviewed before release");
+			}),
+		);
+
+		it.effect("a trailing comment at or beyond the collection's own column stays inside its span", () =>
+			Effect.gen(function* () {
+				// The mirror of the case above: `  # kept` sits at the sequence's
+				// own column, so the seq owns it and the span must still cover it
+				// — the trim keys on the comment model's partition, not on
+				// "ends in a comment line".
+				const text = "verified:\n  - by: a\n  # kept\nstatus: stable\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlMap)) {
+					return assert.fail("expected a mapping root");
+				}
+				const seq = root.items[0]?.value;
+				if (!(seq instanceof YamlSeq)) {
+					return assert.fail("expected a sequence value");
+				}
+				assert.strictEqual(seq.offset + seq.length, text.indexOf("status"));
+				// The nested mapping's content column IS deeper than the comment,
+				// so the item disowns it and its span stops at the comment line.
+				const item = seq.items[0];
+				if (!(item instanceof YamlMap)) {
+					return assert.fail("expected a mapping item");
+				}
+				assert.strictEqual(item.offset + item.length, text.indexOf("  # kept"));
+			}),
+		);
+
+		it.effect("a shallower trailing comment ends a nested block-map span too", () =>
+			Effect.gen(function* () {
+				const text = "outer:\n  inner: 1\n# tail\nstatus: stable\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlMap)) {
+					return assert.fail("expected a mapping root");
+				}
+				const inner = root.items[0]?.value;
+				if (!(inner instanceof YamlMap)) {
+					return assert.fail("expected a mapping value");
+				}
+				assert.strictEqual(inner.offset + inner.length, text.indexOf("# tail"));
+				// The ROOT map's own column is 0, so a column-0 comment is not
+				// shallower than its content and the root span is untouched.
+				assert.strictEqual(root.offset + root.length, text.length);
+			}),
+		);
+
+		it.effect("a blank line above a disowned comment run leaves the collection with it", () =>
+			Effect.gen(function* () {
+				const text = "verified:\n  - by: a\n\n# tail\nstatus: s\n";
+				const doc = yield* YamlDocument.parse(text);
+				const root = doc.contents;
+				if (!(root instanceof YamlMap)) {
+					return assert.fail("expected a mapping root");
+				}
+				const seq = root.items[0]?.value;
+				if (!(seq instanceof YamlSeq)) {
+					return assert.fail("expected a sequence value");
+				}
+				// End of `  - by: a\n` — the blank line separating the entry from
+				// the disowned comment goes with the comment, not the entry.
+				assert.strictEqual(seq.offset + seq.length, text.indexOf("by: a") + "by: a\n".length);
+			}),
+		);
 	});
 });

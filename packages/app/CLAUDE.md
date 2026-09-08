@@ -100,8 +100,21 @@ composition defect; do not reorder the two.
   case (reposets dogfood round 1, 2026-08-13). Two properties the tests pin: a
   caller resolver that finds nothing **falls through** to XDG — resolver error
   channels are `never` by contract, so a missing `--config` file is a miss and not
-  an error — and the **save path is unaffected**, still `XdgConfig.savePath`. An app
-  needing the XDG resolvers anywhere but last composes `ConfigFile.layer` directly.
+  an error — and the **save path is unaffected**, still `XdgConfig.savePath`.
+- **The chain is caller-controlled at both ends, and the whole chain is
+  removable** (okfit dogfood, 2026-09-07). `resolversAfter` appends behind every
+  built-in tier; `systemEtc` inserts `ConfigResolver.systemEtc` **behind** the XDG
+  pair, namespaced from the ambient `AppDirs` like everything else here; `xdg:
+  false` drops the XDG resolver **and the native probe with it** — the probe is
+  the tail of the XDG fallback chain, not a tier of its own, so `native` is
+  ignored while `xdg` is false. Assembly order is
+  `resolvers → xdg → native → systemEtc → resolversAfter`, and a chain wanting a
+  different position for the system tier leaves `systemEtc` absent and passes
+  `ConfigResolver.systemEtc` itself. **`defaultPath` is unaffected by `xdg:
+  false`**: dropping the discovery tier says nothing about where the app saves,
+  so `save` still writes `XdgConfig.savePath(filename)` — which is precisely why
+  a `--config` branch no longer has to drop to `ConfigFile.layer` and re-supply
+  it.
 - **`AppConfigOptions.parseOptions` is a pass-through to `ConfigFileOptions`**, not
   a new concept. It exists for `onExcessProperty: "error"`, which is what lets a
   config loader report a typo'd section or a field the schema deliberately

@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Layer, Option, PlatformError, Schema } from "effect";
+import { Context, DateTime, Duration, Effect, Layer, Option, PlatformError, Result, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import type { GitConfigScope, GitInvocation } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
@@ -237,9 +237,10 @@ type Classified =
  * the exit-1-is-false degrade, `"quiet"` enables the silent-exit-1-is-absent
  * degrade, `"noSuchRemote"` enables the no-such-remote degrade, `"push"`
  * enables the rejected-non-fast-forward row, `"merge"` enables the
- * dirty-worktree and merge-conflict rows, `"generic"` enables none of them.
+ * dirty-worktree and merge-conflict rows, `"log"` enables the unborn-HEAD
+ * degrade, `"generic"` enables none of them.
  */
-type ClassifyKind = "show" | "refExists" | "quiet" | "noSuchRemote" | "push" | "merge" | "generic";
+type ClassifyKind = "show" | "refExists" | "quiet" | "noSuchRemote" | "push" | "merge" | "log" | "generic";
 
 const NOT_A_REPOSITORY = "not a git repository";
 // Unanchored substring matching against LC_ALL=C-pinned phrases: a path or ref
@@ -271,6 +272,13 @@ const MERGE_CONFLICT_PATTERNS = ["CONFLICT (", "Automatic merge failed", "could 
 // files would be overwritten by merge`) arrives on stderr, before git touches
 // anything.
 const DIRTY_WORKTREE_PATTERN = "would be overwritten by";
+// An unborn HEAD: `git log` in a repository whose current branch carries no
+// commits exits 128 with `fatal: your current branch '<name>' does not have
+// any commits yet` (probed against git 2.54 under LC_ALL=C). A history that
+// does not exist yet is the EMPTY history, so this degrades rather than
+// failing — scoped to the `"log"` kind, because for every other member an
+// unborn HEAD is a genuine failure to report.
+const UNBORN_HEAD_PATTERN = "does not have any commits yet";
 
 const matchesAny = (stderr: string, patterns: ReadonlyArray<string>): boolean =>
 	patterns.some((pattern) => stderr.includes(pattern));
@@ -323,6 +331,9 @@ const classify = (
 		if (matchesAny(stdout, MERGE_CONFLICT_PATTERNS) || matchesAny(stderr, MERGE_CONFLICT_PATTERNS)) {
 			return { _tag: "mergeConflict" };
 		}
+	}
+	if (kind === "log" && stderr.includes(UNBORN_HEAD_PATTERN)) {
+		return { _tag: "absent" };
 	}
 	if (kind === "quiet" && exitCode === 1 && stderr === "") {
 		// --quiet probes (symbolic-ref) and config --get signal "unset" as a
@@ -452,6 +463,102 @@ export class CommitInfo extends Schema.Class<CommitInfo>("CommitInfo")({
 	/** The raw commit message (`%B`), untrimmed — includes git's trailing format newline. */
 	message: Schema.String,
 }) {}
+
+/**
+ * One commit of a `git log` listing, with the paths that commit touched.
+ *
+ * @remarks
+ * Both dates are decoded from git's strict-ISO `%aI` / `%cI` into
+ * `DateTime.Utc` — the instant, comparable and orderable across commits made
+ * in different timezones. **The committer's local UTC offset is not
+ * preserved**: git records it, `DateTime.Utc` does not carry it, and encoding
+ * a `CommitLogEntry` therefore renders both dates as `Z`-suffixed UTC rather
+ * than the offset git printed. Nothing in the kit needs the offset; a consumer
+ * that does wants a different member, not a wider entry.
+ *
+ * `paths` is the commit's `--name-only` listing, **repository-root-relative
+ * regardless of the `cwd` the log ran in**, and raw (`-z` disables git's
+ * C-style path quoting, so a path containing a space, a quote or a newline
+ * arrives verbatim). It is EMPTY for a commit that touched nothing under the
+ * requested pathspec — most commonly a merge commit, whose diff git omits by
+ * default (see `Git.log`'s `firstParentDiffMerges`).
+ *
+ * @public
+ */
+export class CommitLogEntry extends Schema.Class<CommitLogEntry>("CommitLogEntry")({
+	/** The commit's full object id (`%H`). */
+	sha: Schema.String,
+	/** When the change was authored (`%aI`), as a UTC instant. */
+	authoredAt: Schema.DateTimeUtcFromString,
+	/** When the commit object was written (`%cI`), as a UTC instant. */
+	committedAt: Schema.DateTimeUtcFromString,
+	/** The author's name (`%an`). */
+	authorName: Schema.String,
+	/** The author's email address (`%ae`). */
+	authorEmail: Schema.String,
+	/** The paths this commit touched, root-relative and raw; empty when it touched none. */
+	paths: Schema.Array(Schema.String),
+}) {}
+
+/** The `\x1e` byte every `git log` record opens with (`GitCommand.log`'s `%x1e`). */
+const LOG_RECORD_SEPARATOR = "\x1e";
+
+/**
+ * Parses `GitCommand.log`'s output. Unlike this package's other parsers this
+ * one can FAIL: the two dates have to decode, and a header that does not carry
+ * its five fields cannot be answered with a plausible-looking entry.
+ *
+ * The probed byte shape per record (git 2.54, `-z`) is
+ * `\x1e<sha>\0<%aI>\0<%cI>\0<%an>\0<%ae>\0` followed, only when the commit
+ * touched something, by `\n` and one NUL-terminated path each. Splitting a
+ * record on `\0` therefore yields the five header fields, then one token per
+ * path (the FIRST of which carries git's `\n` separator ahead of the path
+ * itself), then one empty token left by the final NUL. Empty output is the
+ * empty log — a pathspec no commit touched exits 0 with nothing on stdout.
+ */
+const parseLog = (output: string): Result.Result<ReadonlyArray<CommitLogEntry>, string> => {
+	if (output === "") return Result.succeed([]);
+	if (!output.startsWith(LOG_RECORD_SEPARATOR)) {
+		return Result.fail("log output did not open with a record separator");
+	}
+	const entries: Array<CommitLogEntry> = [];
+	for (const record of output.split(LOG_RECORD_SEPARATOR).slice(1)) {
+		const tokens = record.split("\0");
+		const [sha, authoredAtIso, committedAtIso, authorName, authorEmail] = tokens;
+		if (
+			sha === undefined ||
+			authoredAtIso === undefined ||
+			committedAtIso === undefined ||
+			authorName === undefined ||
+			authorEmail === undefined
+		) {
+			return Result.fail("a log record carried fewer fields than the format declares");
+		}
+		const authoredAt = DateTime.make(authoredAtIso);
+		const committedAt = DateTime.make(committedAtIso);
+		if (Option.isNone(authoredAt) || Option.isNone(committedAt)) {
+			return Result.fail(`a log record carried an undecodable date ("${authoredAtIso}", "${committedAtIso}")`);
+		}
+		const rest = tokens.slice(5);
+		// The record's final NUL leaves one empty trailing token; dropping it is
+		// what distinguishes "no paths" from "one empty path".
+		if (rest[rest.length - 1] === "") rest.pop();
+		entries.push(
+			CommitLogEntry.make({
+				sha,
+				authoredAt: authoredAt.value,
+				committedAt: committedAt.value,
+				authorName,
+				authorEmail,
+				// Only the first path token carries the `\n` git prints between the
+				// format output and the diff, and exactly one byte of it is git's:
+				// a path may itself legally begin with a newline.
+				paths: rest.map((path, index) => (index === 0 && path.startsWith("\n") ? path.slice(1) : path)),
+			}),
+		);
+	}
+	return Result.succeed(entries);
+};
 
 /** One two-letter porcelain v1 status axis code. */
 const porcelainCode = Schema.Literals([" ", "M", "T", "A", "D", "R", "C", "U", "?", "!"]);
@@ -1783,6 +1890,69 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		}
 	});
 
+	const log = Effect.fn("Git.log")(function* (
+		cwd: string,
+		options?: {
+			readonly paths?: ReadonlyArray<string>;
+			readonly follow?: boolean;
+			readonly limit?: number;
+			readonly firstParentDiffMerges?: boolean;
+		},
+	) {
+		const paths = options?.paths ?? [];
+		const follow = options?.follow ?? false;
+		// Path VALUES are stable identifiers, but a pathspec can be long and is
+		// caller-controlled; the count is what a trace needs to correlate.
+		yield* Effect.annotateCurrentSpan({ cwd, paths: paths.length, follow });
+		yield* rejectNonNaturalNumber(cwd, "a log limit", options?.limit);
+		const invocation = GitCommand.log(paths, follow, options?.limit, options?.firstParentDiffMerges ?? false);
+		if (follow && paths.length !== 1) {
+			// git's own restriction, refused pre-spawn: `--follow` walks ONE
+			// path's history, and git's own diagnostic for the violation is an
+			// unclassifiable usage error.
+			return yield* Effect.fail(
+				new GitCommandError({
+					kind: "refused",
+					args: invocation.redactedArgs,
+					cwd,
+					stderr: "",
+					detail: `refused --follow: git follows exactly one path, received ${paths.length}`,
+				}),
+			);
+		}
+		const classified = yield* runFor(invocation, cwd, "log");
+		switch (classified._tag) {
+			case "success": {
+				const parsed = parseLog(classified.output);
+				if (Result.isFailure(parsed)) {
+					return yield* Effect.fail(
+						new GitCommandError({
+							kind: "failed",
+							args: invocation.redactedArgs,
+							cwd,
+							stderr: "",
+							detail: `unparseable log output: ${parsed.failure}`,
+						}),
+					);
+				}
+				return parsed.success;
+			}
+			case "absent":
+			case "unknownRef":
+				// An unborn HEAD — however this git spells it — has no history,
+				// which is the empty log, never a failure. `Git.log` takes no ref,
+				// so there is no ref for an UnknownRefError to name and the error
+				// is absent from this member's union by construction.
+				return [] as ReadonlyArray<CommitLogEntry>;
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				return yield* Effect.die(`Git.log: unexpected classification "${classified._tag}"`);
+		}
+	});
+
 	const status = Effect.fn("Git.status")(function* (cwd: string) {
 		yield* Effect.annotateCurrentSpan({ cwd });
 		const classified = yield* runFor(GitCommand.status(), cwd, "generic");
@@ -2561,6 +2731,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
 		configGet,
 		remoteUrl,
 		commitInfo,
+		log,
 		status,
 		lsRemote,
 		remoteAdd,
@@ -3100,6 +3271,47 @@ export interface GitShape {
 		cwd: string,
 		ref?: string,
 	) => Effect.Effect<CommitInfo, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git log -z --format=... --name-only [flags] [-- pathspec]` — the commit
+	 * history reachable from `HEAD`, newest first, each entry carrying its sha,
+	 * both dates, its author identity and the paths it touched. The full argv,
+	 * flag by flag, is on `GitCommand.log`.
+	 *
+	 * @remarks
+	 * Scoped by `paths` (a git pathspec, relative to `cwd`) and, with
+	 * `follow: true`, walked ACROSS renames — git's `--follow`, which requires
+	 * exactly one path and is refused pre-spawn as a `"refused"`
+	 * `GitCommandError` otherwise. `limit` becomes `--max-count`, so
+	 * `limit: 0` is the empty listing rather than the whole history. A merge
+	 * commit contributes an entry with EMPTY `paths` unless
+	 * `firstParentDiffMerges` is set, which asks git for the first-parent diff
+	 * and so lists a merge that actually changed something (a conflict
+	 * resolution) while still hiding one TREESAME to its first parent.
+	 * **`follow: true` and merge commits do not combine**: `--follow`
+	 * linearizes the walk and drops merges outright (probed against git 2.54),
+	 * so a followed listing is not a superset of the unfollowed one — it trades
+	 * the merges away for the pre-rename history.
+	 *
+	 * An unborn `HEAD` and a pathspec no commit ever touched are both the
+	 * EMPTY listing, not a failure — which is why `UnknownRefError` is absent
+	 * from this member's error union while every other read carries it. This
+	 * is the one read whose result depends on the ORDER of history rather than
+	 * a single tree, and the one that decodes dates: see `CommitLogEntry` for
+	 * what the UTC decoding does and does not preserve.
+	 */
+	readonly log: (
+		cwd: string,
+		options?: {
+			/** A git pathspec scoping the walk; `--follow` requires exactly one entry. */
+			readonly paths?: ReadonlyArray<string>;
+			/** Follow the single path across renames (git's `--follow`). Default `false`. */
+			readonly follow?: boolean;
+			/** `--max-count`: at most this many commits. `0` is the empty listing. */
+			readonly limit?: number;
+			/** `--diff-merges=first-parent`: give merge commits a path listing. Default `false`. */
+			readonly firstParentDiffMerges?: boolean;
+		},
+	) => Effect.Effect<ReadonlyArray<CommitLogEntry>, GitCommandError | NotARepositoryError>;
 	/** `git status --porcelain -z` — the working tree's porcelain status listing. */
 	readonly status: (
 		cwd: string,
@@ -3611,6 +3823,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		configGet: notStubbed("configGet"),
 		remoteUrl: notStubbed("remoteUrl"),
 		commitInfo: notStubbed("commitInfo"),
+		log: notStubbed("log"),
 		status: notStubbed("status"),
 		lsRemote: notStubbed("lsRemote"),
 		remoteAdd: notStubbed("remoteAdd"),

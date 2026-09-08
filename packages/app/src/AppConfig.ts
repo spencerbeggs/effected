@@ -3,11 +3,10 @@ import type {
 	ConfigEvents,
 	ConfigEventsShape,
 	ConfigFileShape,
-	ConfigResolver,
 	ConfigValidationError,
 	MergeStrategy as MergeStrategyShape,
 } from "@effected/config-file";
-import { ConfigFile, MergeStrategy } from "@effected/config-file";
+import { ConfigFile, ConfigResolver, MergeStrategy } from "@effected/config-file";
 import type { Xdg } from "@effected/xdg";
 import { AppDirs, XdgConfig } from "@effected/xdg";
 import type { Context, FileSystem, Path, Schema, SchemaAST } from "effect";
@@ -116,8 +115,63 @@ export interface AppConfigOptions<A, I, RR = never> {
 	 * The native probe sits **after** the XDG resolver, so an existing
 	 * `~/.config/<app>` still beats the native directory; on Linux it resolves
 	 * to nothing and never touches the filesystem. Pass `false` to drop it.
+	 *
+	 * Ignored when `xdg` is `false`: the native probe is the tail of the XDG
+	 * fallback chain, not an independent tier.
 	 */
 	readonly native?: boolean;
+	/**
+	 * Probe the app's XDG config search path. Defaults to `true`.
+	 *
+	 * @remarks
+	 * Pass `false` to build the chain from `resolvers` (and `resolversAfter`,
+	 * and `systemEtc`) alone. The case it exists for is a CLI's
+	 * `--config <path>` branch, where a search-path fallback defeats the flag's
+	 * purpose: without it, a `--config` naming a file that fails to resolve
+	 * silently loads the user's XDG config instead.
+	 *
+	 * It drops **both** XDG resolvers — `XdgConfig.resolver` and, since it is
+	 * documented as sitting behind it, `XdgConfig.nativeResolver`. `native` has
+	 * no effect while `xdg` is `false`.
+	 *
+	 * `defaultPath` is unaffected: `save` still writes to
+	 * `XdgConfig.savePath(filename)`. Dropping the *discovery* tier is not a
+	 * statement about where this app saves its config.
+	 */
+	readonly xdg?: boolean;
+	/**
+	 * Append the system tier — `<dir>/<namespace>/<filename>`, `/etc` by
+	 * default — after the XDG chain. Defaults to absent (no system tier).
+	 *
+	 * @remarks
+	 * `true` uses `/etc`; an object overrides the system config root, which is
+	 * chiefly how a test points the tier at a writable directory. The app name
+	 * is the ambient `AppDirs` namespace, never a parameter — the same rule the
+	 * XDG resolvers follow, so the two cannot drift apart.
+	 *
+	 * It is appended **after** the XDG pair because a machine-wide default must
+	 * lose to a user's own config, which is the whole convention. A chain that
+	 * wants the system tier somewhere else passes
+	 * `ConfigResolver.systemEtc` through `resolvers` or `resolversAfter`
+	 * instead and leaves this absent.
+	 */
+	readonly systemEtc?: boolean | { readonly dir?: string };
+	/**
+	 * Resolvers composed **after** every built-in tier, in priority order —
+	 * the lowest-priority end of the chain.
+	 *
+	 * @remarks
+	 * The counterpart to `resolvers`, which prepends. Together the two make the
+	 * whole chain caller-controlled without giving up what this preset does for
+	 * free (the ambient namespace and `defaultPath`): the built-ins can be
+	 * surrounded, and with `xdg: false` they can be removed entirely, at which
+	 * point the chain is exactly `[...resolvers, ...resolversAfter]`.
+	 *
+	 * These come last, after the system tier, so a caller who needs a different
+	 * order around `systemEtc` leaves that option absent and passes
+	 * `ConfigResolver.systemEtc` here in the position it wants.
+	 */
+	readonly resolversAfter?: ReadonlyArray<ConfigResolver<RR>>;
 }
 
 // Implementation of AppConfig.layer; the public contract lives on the static.
@@ -133,14 +187,31 @@ const layer = <Self, A, I, RR = never>(
 			const appDirs = yield* AppDirs;
 			// TS infers the resolvers' `RR` from the FIRST array element and will
 			// not union in the rest, so the chain is annotated up front.
+			const xdg = options.xdg !== false;
+			const systemEtc = options.systemEtc ?? false;
+			const systemEtcDir = typeof systemEtc === "object" ? systemEtc.dir : undefined;
 			const resolvers: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path | RR>> = [
 				// Caller resolvers lead: a `--config` flag outranks the app's own
 				// search path, which is the whole point of passing one.
 				...(options.resolvers ?? []),
-				XdgConfig.resolver({ filename: options.filename }),
-				...(options.native === false
+				// The XDG pair is one tier: `native` is the tail of the XDG fallback
+				// chain, so `xdg: false` drops both rather than leaving an orphan.
+				...(xdg ? [XdgConfig.resolver({ filename: options.filename })] : []),
+				...(xdg && options.native !== false
+					? [XdgConfig.nativeResolver({ namespace: appDirs.namespace, filename: options.filename })]
+					: []),
+				// A machine-wide default loses to the user's own config, so the
+				// system tier sits behind the XDG pair.
+				...(systemEtc === false
 					? []
-					: [XdgConfig.nativeResolver({ namespace: appDirs.namespace, filename: options.filename })]),
+					: [
+							ConfigResolver.systemEtc({
+								app: appDirs.namespace,
+								filename: options.filename,
+								...(systemEtcDir !== undefined && { dir: systemEtcDir }),
+							}),
+						]),
+				...(options.resolversAfter ?? []),
 			];
 
 			return ConfigFile.layer(tag, {
@@ -184,14 +255,13 @@ export class AppConfig {
 	 * config-file's infallible `defaultPath` slot without an `orDie` because xdg
 	 * resolves at layer-construction time.
 	 *
-	 * `options.resolvers` prepends to that chain, which covers the case this
-	 * preset otherwise could not: a CLI whose `--config` flag must outrank the
-	 * app's XDG search path. What it deliberately does not cover is a chain that
-	 * needs the XDG resolvers somewhere other than last, or no XDG resolvers at
-	 * all — an app wanting that composes `ConfigFile.layer` from
-	 * `@effected/config-file` directly and orders the whole chain itself, which
-	 * costs it only the `defaultPath` and ambient-namespace wiring this preset
-	 * does for free.
+	 * The chain is caller-controlled at both ends: `options.resolvers` prepends,
+	 * `options.resolversAfter` appends, `options.systemEtc` adds the `/etc`
+	 * tier behind the XDG pair, and `options.xdg: false` removes the XDG pair
+	 * altogether — at which point the chain is exactly the caller's own, and
+	 * the preset is contributing the ambient namespace and `defaultPath` alone.
+	 * Dropping to `ConfigFile.layer` directly is no longer the price of an
+	 * unusual chain.
 	 *
 	 * **The namespace is never a parameter.** It is read from the ambient
 	 * `AppDirs` service at layer build time, so it is typed exactly once, in

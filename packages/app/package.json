@@ -35,6 +35,7 @@
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@effected/config-file": "workspace:*",
+		"@effected/memfs": "workspace:*",
 		"@effected/store": "workspace:*",
 		"@effected/xdg": "workspace:*",
 		"@savvy-web/bundler": "^2.3.1",

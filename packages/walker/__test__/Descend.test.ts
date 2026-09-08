@@ -223,6 +223,27 @@ layer(platform(unreadableTree, unreadableOptions))("descend, unreadable director
 			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj" }), ["src/a.ts"]);
 		}),
 	);
+
+	it.effect("records the unreadable subtree as data under onUnreadable: record, and still finds the rest", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("src/**/*.ts");
+			const result = yield* descend(pattern, { cwd: "/proj", onUnreadable: "record" });
+			assert.deepStrictEqual(result.matches, ["src/a.ts"]);
+			assert.deepStrictEqual(result.unreadable, ["src/locked"]);
+		}),
+	);
+
+	it.effect("onUnreadable: record does not change the default (fail) or skip behavior", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("src/**/*.ts");
+			const error = yield* Effect.flip(descend(pattern, { cwd: "/proj" }));
+			assert.strictEqual(error._tag, "DescendError");
+			assert.strictEqual(error.reason, "unreadableDirectory");
+
+			const skipped = yield* descend(pattern, { cwd: "/proj", onUnreadable: "skip" });
+			assert.deepStrictEqual(skipped, ["src/a.ts"]);
+		}),
+	);
 });
 
 // A directory that vanishes between its parent's listing and its own read.
@@ -234,6 +255,15 @@ layer(platform(vanishedTree, vanishedOptions))("descend, vanished directory", (i
 		Effect.gen(function* () {
 			const pattern = yield* GlobPattern.compile("src/**/*.ts");
 			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj" }), ["src/a.ts"]);
+		}),
+	);
+
+	it.effect("a vanished (NotFound) directory is never recorded as unreadable", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("src/**/*.ts");
+			const result = yield* descend(pattern, { cwd: "/proj", onUnreadable: "record" });
+			assert.deepStrictEqual(result.matches, ["src/a.ts"]);
+			assert.deepStrictEqual(result.unreadable, []);
 		}),
 	);
 });
