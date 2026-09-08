@@ -27,7 +27,8 @@ when changing the pipeline seams, the error set, or the codec boundaries.
   `src/TomlCodec.ts` — one free-standing codec each: `JsonCodec`, `JsoncCodec`,
   `YamlCodec`, `TomlCodec`
 - `src/ConfigResolver.ts` — `ConfigResolver` (+ `explicitPath`, `staticDir`,
-  `upwardWalk`, `workspaceRoot`, `gitRoot`, `systemEtc`)
+  `upwardWalk`, `workspaceRoot`, `gitRoot`, `systemEtc`), `ConfigMatch`,
+  `UpwardWalkOptions`
 - `src/MergeStrategy.ts` — `MergeStrategy` (`firstMatch`, `layeredMerge`),
   `ConfigSource`, `NonEmptySources`
 - `src/ConfigFile.ts` — `ConfigFile` (`Service`, `layer`, `testLayer`, `read`),
@@ -66,7 +67,19 @@ Three orthogonal seams, composed by `ConfigFile.layer`:
   wrap a codec and return one, so encryption + migrations + format compose.
 - **Resolver** — where the file is. `resolve`'s error channel is `never` **by
   contract**: `absorb` catches every filesystem failure into `Option.none()`, so
-  one unreadable tier never aborts the chain.
+  one unreadable tier never aborts the chain. `resolveMatch` is the same lookup
+  reporting a `ConfigMatch` — the anchor `dir` and the `subpath`/`filename`
+  candidate that matched — and every built-in **derives `resolve` from it**
+  through `fromMatch`, so the two cannot drift. It is optional on the interface
+  forever: a consumer's hand-rolled resolver omits it and `discover` degrades to
+  a bare `{ path }` on `ConfigSource.match`. It exists because a resolver `name`
+  cannot say which candidate won once one resolver probes several —
+  `upwardWalk`'s `filenames` list is exactly that — which is what forced okfit to
+  string-match the discovered path's tail to find its project root.
+- **`upwardWalk` probes directory-major**: every `subpaths × filenames` candidate
+  at one ancestor before ascending. Separate `upwardWalk` entries cannot express
+  it — `discover` exhausts one resolver to the filesystem root before starting
+  the next, so a parent's first candidate would beat a child's second.
 - **Strategy** — many sources → one value. Cannot fail; the empty case raises
   `ConfigFileNotFoundError` before a strategy is consulted.
 
@@ -81,6 +94,13 @@ merely for the keys it covers — measured, since the shape suggests the reverse
 A deliberate pass-through section therefore survives `"error"`, and structs
 without a rest stay strict independently. Default absent = core's
 behavior, so it is additive.
+
+**`ConfigCodecError.path` is attached by the pipeline, never by a codec** — a
+codec is handed a string and never sees a path. Every site in `ConfigFile` that
+feeds a codec a path it resolved (`loadFrom`'s parse, `encodeAndWrite`'s
+stringify, the one-shot `read`) re-raises through `withCodecPath`, so a
+discovery pass over several candidates still names the file that failed. An
+error that already carries a path is left alone.
 
 `ConfigFile.read(path, { schema, codec })` is the **one-shot** escape from all
 three seams: read + decode + validate one explicit path, no service, no layer,

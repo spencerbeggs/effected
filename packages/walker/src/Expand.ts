@@ -86,7 +86,7 @@ export class GlobExpansionError extends Schema.TaggedError<GlobExpansionError>()
  * matching FILE paths relative to `options.cwd`, POSIX separators, sorted.
  *
  * @remarks
- * The recipe form of {@link descend}. Everything `descend` documents about
+ * The recipe form of `descend`. Everything `descend` documents about
  * traversal holds unchanged — the literal fast-path, the negated-pattern walk
  * from `cwd`, files-only matching, symlink and prune handling, `maxDepth`,
  * `onUnreadable` — because this delegates to it. What this adds is the seam:

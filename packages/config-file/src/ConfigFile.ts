@@ -1,8 +1,10 @@
 import type { SchemaAST } from "effect";
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, PubSub, Schema, Semaphore } from "effect";
-import type { ConfigCodec, ConfigCodecError } from "./ConfigCodec.js";
+import type { ConfigCodec } from "./ConfigCodec.js";
+import { ConfigCodecError } from "./ConfigCodec.js";
 import type { ConfigEventPayload, ConfigEvents, ConfigEventsShape } from "./ConfigEvent.js";
 import { ConfigEvent } from "./ConfigEvent.js";
+import type { ConfigMatch } from "./ConfigResolver.js";
 import { ConfigResolver } from "./ConfigResolver.js";
 import type { ConfigSource, MergeStrategy, NonEmptySources } from "./MergeStrategy.js";
 
@@ -296,6 +298,28 @@ const Service =
 	<const Id extends string>(id: Id) =>
 		Context.Service<Self, ConfigFileShape<A>>()(id);
 
+/**
+ * Re-raise a codec failure with the file it came from attached.
+ *
+ * @remarks
+ * A codec is handed a string and never a path, so `ConfigCodecError.path` can
+ * only be filled in here, where the resolved target is in scope. An error that
+ * already carries a path is left alone — a decorator codec that knew better
+ * wins — and anything that is not a `ConfigCodecError` passes through
+ * untouched, which is why the cast is sound: the returned value is either the
+ * argument itself or a `ConfigCodecError`, and the only way a `ConfigCodecError`
+ * reaches here is if `E` admits one.
+ */
+const withCodecPath = <E>(error: E, target: string): E =>
+	error instanceof ConfigCodecError && error.path === undefined
+		? (new ConfigCodecError({
+				codec: error.codec,
+				operation: error.operation,
+				cause: error.cause,
+				path: target,
+			}) as E)
+		: error;
+
 const makeImpl = <A, I, RR>(
 	options: ConfigFileOptions<A, I, RR>,
 	fs: FileSystem.FileSystem,
@@ -358,9 +382,10 @@ const makeImpl = <A, I, RR>(
 			.readFileString(target)
 			.pipe(Effect.mapError((cause) => new ConfigFileReadError({ path: target, cause })));
 
-		const parsed = yield* options.codec
-			.parse(raw)
-			.pipe(Effect.tapError((error) => emit({ _tag: "ParseFailed", path: target, codec: options.codec.name, error })));
+		const parsed = yield* options.codec.parse(raw).pipe(
+			Effect.mapError((error) => withCodecPath(error, target)),
+			Effect.tapError((error) => emit({ _tag: "ParseFailed", path: target, codec: options.codec.name, error })),
+		);
 		yield* emit({ _tag: "Parsed", path: target, codec: options.codec.name });
 
 		// Schema decoding and the caller's `validate` are one validation step from a
@@ -378,12 +403,18 @@ const makeImpl = <A, I, RR>(
 		const sources: Array<ConfigSource<A>> = [];
 		for (const resolver of options.resolvers) {
 			// `resolve` cannot fail — the absorption contract — so no error handling here.
-			const found = yield* Effect.provide(resolver.resolve, resolverEnv);
+			// `resolveMatch` is the same lookup carrying its own detail; a resolver
+			// that omits it is complete, and its match degrades to a bare path.
+			const found: Option.Option<ConfigMatch> =
+				resolver.resolveMatch === undefined
+					? Option.map(yield* Effect.provide(resolver.resolve, resolverEnv), (path) => ({ path }))
+					: yield* Effect.provide(resolver.resolveMatch, resolverEnv);
 			if (Option.isSome(found)) {
-				const target = found.value;
+				const match = found.value;
+				const target = match.path;
 				// Emitted before the read, so a corrupt file is still reported as found.
 				yield* emit({ _tag: "Discovered", path: target, resolver: resolver.name });
-				sources.push({ path: target, resolver: resolver.name, value: yield* loadFrom(target) });
+				sources.push({ path: target, resolver: resolver.name, match, value: yield* loadFrom(target) });
 			}
 		}
 		return sources;
@@ -444,9 +475,10 @@ const makeImpl = <A, I, RR>(
 					Effect.fail(new ConfigValidationError({ path: Option.some(target), issue: error.issue })),
 				),
 			);
-			const serialized = yield* options.codec
-				.stringify(encoded)
-				.pipe(Effect.tapError((error) => emit({ _tag: "StringifyFailed", codec: options.codec.name, error })));
+			const serialized = yield* options.codec.stringify(encoded).pipe(
+				Effect.mapError((error) => withCodecPath(error, target)),
+				Effect.tapError((error) => emit({ _tag: "StringifyFailed", codec: options.codec.name, error })),
+			);
 			yield* fs
 				.writeFileString(target, serialized)
 				.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
@@ -661,7 +693,7 @@ const read = <A, I>(
 			.readFileString(path)
 			.pipe(Effect.mapError((cause) => new ConfigFileReadError({ path, cause })));
 
-		const parsed = yield* options.codec.parse(raw);
+		const parsed = yield* options.codec.parse(raw).pipe(Effect.mapError((error) => withCodecPath(error, path)));
 
 		return yield* Schema.decodeUnknownEffect(options.schema)(parsed, options.parseOptions).pipe(
 			// The same boundary normalization the service performs: never leak a
