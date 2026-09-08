@@ -5,7 +5,7 @@ import { ChildProcess } from "effect/unstable/process";
 import type { GitInvocation } from "../src/GitCommand.js";
 import { GitCommand } from "../src/GitCommand.js";
 
-const expectedEnv = { LC_ALL: "C" };
+const expectedEnv = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" };
 
 /**
  * Asserts the argv/env/extendEnv/no-cwd shape shared by every `GitCommand`

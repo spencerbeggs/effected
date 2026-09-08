@@ -63,7 +63,12 @@ const redactUrlUserinfo = (value: string): string =>
  * @remarks
  * `LC_ALL=C` is pinned on every invocation because git's stderr
  * classification (used by `Git`'s error taxonomy) depends on a stable,
- * untranslated locale. `extendEnv: true` is required alongside it: the
+ * untranslated locale. `GIT_TERMINAL_PROMPT=0` is pinned alongside it: a
+ * network-touching command (`lsRemote`, `fetch`, `push`, `pull`,
+ * `submoduleAdd`) against a credential-requiring remote must fail fast with
+ * git's auth error rather than block on an interactive terminal prompt until
+ * the `GIT_TIMEOUT` ceiling fires — a library spawning git never reads stdin
+ * from a human. `extendEnv: true` is required alongside it: the
  * default value of `extendEnv` is owned by the platform backend that
  * implements `ChildProcessSpawner`, not by core, so a command that needs
  * `PATH` and the rest of the parent environment must request the merge
@@ -81,7 +86,7 @@ const git = (args: ReadonlyArray<GitArg>, stdin?: string): GitInvocation => {
 	);
 	return {
 		command: ChildProcess.make("git", raw, {
-			env: { LC_ALL: "C" },
+			env: { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
 			extendEnv: true,
 			// stdin is baked into the pure command value (check-ignore's --stdin
 			// form): a single UTF-8 chunk, closed when done. Constructors without
