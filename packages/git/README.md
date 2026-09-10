@@ -25,6 +25,8 @@ Shelling out to git looks easy until you have to interpret the answers. git spea
 
 This package reads git's exit codes and stderr in exactly one classification step and hands you typed answers instead: a path absent at a valid ref is `Option.none` from `show` (a fact about the ref, not an error), a ref that does not resolve is `false` from `refExists` and a typed `UnknownRefError` elsewhere, a directory outside any work tree is `NotARepositoryError`, and everything else is a `GitCommandError` carrying the exit code and stderr intact. Spawn-level platform failures and the 30-second per-run ceiling are absorbed into that same taxonomy — no `PlatformError` and no timeout defect ever leaks from a `Git` method. Every command pins `LC_ALL=C`, so the classification is stable across locales, and `GIT_TERMINAL_PROMPT=0`, so a credential-requiring remote fails fast instead of blocking on an interactive prompt, and tree listings use NUL-terminated output, so a path containing a space — or a newline — survives parsing.
 
+Both pins are unconditional and there is no opt-out through the service: `extendEnv: true` merges the parent environment, but a pinned key wins over it, so `GIT_TERMINAL_PROMPT=1` in your environment does not re-enable prompting. A caller that genuinely wants git to prompt must take the `GitCommand` value and override the key with `ChildProcess.setEnv` before running it. Note also that this gags git's own prompt only — `ssh`'s key-passphrase and host-key prompts read the terminal directly and are not covered.
+
 `GitCommand` is exported alongside the service: 24 pure constructors producing Effect core `Command` values you can inspect, log, or test against without spawning anything.
 
 ## Install
@@ -112,9 +114,10 @@ import { Run } from "@effected/commands";
 import { ChildProcess } from "effect/unstable/process";
 
 const shortlog = ChildProcess.make("git", ["shortlog", "-sn", "HEAD"], {
-  // The same two pins Git makes on every invocation: LC_ALL=C keeps stderr
-  // classifiable, extendEnv keeps PATH.
-  env: { LC_ALL: "C" },
+  // The same three pins Git makes on every invocation: LC_ALL=C keeps stderr
+  // classifiable, GIT_TERMINAL_PROMPT=0 keeps a credential-requiring remote
+  // from blocking on a prompt, extendEnv keeps PATH.
+  env: { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
   extendEnv: true,
 }).pipe((command) => ChildProcess.setCwd(command, cwd));
 
