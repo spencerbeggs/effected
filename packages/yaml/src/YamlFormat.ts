@@ -24,7 +24,13 @@ import { isFatalCode } from "./internal/diagnostics.js";
 import { computeEdits } from "./internal/diff.js";
 import type { RawYamlDocument } from "./internal/raw-document.js";
 import { requoteScalarText } from "./internal/requote.js";
-import { stringifyDocument, stripNodeComments } from "./internal/stringifier.js";
+import {
+	renderDoubleQuoted,
+	renderSingleQuoted,
+	stringifyDocument,
+	stringifyValue,
+	stripNodeComments,
+} from "./internal/stringifier.js";
 import { YamlStringifyOptions } from "./Yaml.js";
 import { YamlDiagnostic } from "./YamlDiagnostic.js";
 import type { YamlPath, YamlSegment } from "./YamlEdit.js";
@@ -526,6 +532,149 @@ function rebuildSeq(node: YamlSeq, items: ReadonlyArray<YamlNode>): YamlSeq {
 	});
 }
 
+// ── modify: region-confined scalar replacement (#659) ───────────────────────
+
+/**
+ * Whether a value carries characters single-quoted style cannot express (it
+ * escapes only `'`): C0 controls — newline, carriage return, tab among them —
+ * plus DEL and the C1 range, the same conservative set the requote helper
+ * uses. A value carrying any of these keeps the whole-document pipeline
+ * rather than switching quote style. Char-code based, mirroring the
+ * stringifier's own control-character checks.
+ */
+function isSingleQuoteUnsafe(s: string): boolean {
+	for (let i = 0; i < s.length; i++) {
+		const code = s.charCodeAt(i);
+		if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return true;
+	}
+	return false;
+}
+
+/**
+ * Read-only navigation twin of `modifyNode`: returns the EXISTING node at
+ * `path`, or `undefined` whenever the path does not resolve to one (missing
+ * key/index, non-navigable node, empty path, null value mid-path).
+ * `undefined` sends `modify` down its normal pipeline, which owns the
+ * insert/append/remove semantics and the typed navigation errors — this
+ * helper never throws and never guesses.
+ */
+function findExistingTarget(contents: YamlNode | null, path: YamlPath): YamlNode | null | undefined {
+	if (contents === null || path.length === 0) return undefined;
+	let current: YamlNode = contents;
+	for (let depth = 0; depth < path.length; depth++) {
+		const segment = path[depth] as YamlSegment;
+		const isLast = depth === path.length - 1;
+		if (current instanceof YamlMap) {
+			const pair = current.items.find((p) => p.key instanceof YamlScalar && p.key.value === segment);
+			if (pair === undefined) return undefined;
+			if (isLast) return pair.value;
+			if (pair.value === null) return undefined;
+			current = pair.value;
+		} else if (current instanceof YamlSeq) {
+			const idx = typeof segment === "number" ? segment : Number(segment);
+			if (Number.isNaN(idx) || idx < 0 || idx >= current.items.length) return undefined;
+			const child = current.items[idx] as YamlNode;
+			if (isLast) return child;
+			current = child;
+		} else {
+			return undefined;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Render the replacement text for a region-confined splice, or `undefined`
+ * to fall back. A string keeps the target's quote style when that style can
+ * express it (single-quoted escapes only `'`, so newlines/tabs/controls bail
+ * out; double-quoted expresses everything); a non-string into a quoted
+ * target renders through `stringifyValue` — quoting it would change the
+ * resolved type — as does any plain target, so the stringifier's own
+ * plain-safety rules decide whether the text needs quotes. A rendering that
+ * spans lines (folding, block styles) bails out: the fast path never
+ * introduces a line break inside the spliced region.
+ */
+function renderRegionalScalarText(
+	target: YamlScalar,
+	value: string | number | boolean,
+	options?: YamlStringifyOptions,
+): string | undefined {
+	let rendered: string;
+	if (typeof value === "string" && target.style === "single-quoted") {
+		if (isSingleQuoteUnsafe(value)) return undefined;
+		rendered = renderSingleQuoted(value);
+	} else if (typeof value === "string" && target.style === "double-quoted") {
+		rendered = renderDoubleQuoted(value);
+	} else {
+		// finalNewline: false — the splice renders a scalar, never a document.
+		rendered = stringifyValue(value, { ...toStringifyInput(options), finalNewline: false });
+	}
+	if (/[\n\r]/.test(rendered)) return undefined;
+	return rendered;
+}
+
+/**
+ * Prove the rendered text means exactly what the caller asked: re-compose a
+ * one-pair probe document and compare the resolved scalar with `Object.is`.
+ * Any parse error, structural surprise, or value drift (a plain rendering
+ * that re-resolves as a bool/timestamp instead of the caller's string, say)
+ * bails out to the whole-document pipeline.
+ */
+function regionalRenderPreservesValue(rendered: string, value: string | number | boolean): boolean {
+	const { document: probeDoc } = composeFirstDocumentCounted(`k: ${rendered}\n`, {});
+	if (probeDoc.errors.some((e) => isFatalCode(e.code))) return false;
+	const contents = probeDoc.contents;
+	if (!(contents instanceof YamlMap)) return false;
+	const pair = contents.items.find((p) => p.key instanceof YamlScalar && p.key.value === "k");
+	const node = pair?.value;
+	if (!(node instanceof YamlScalar)) return false;
+	return Object.is(node.value, value);
+}
+
+/**
+ * Attempt the region-confined scalar splice for `modify` (#659): replace
+ * only the target scalar's byte range, re-emitting its original quote
+ * character and leaving line endings (and every other byte) elsewhere
+ * untouched. Returns the single edit, an empty array for a no-op
+ * replacement, or `undefined` when any precondition fails — the caller then
+ * runs the existing compose → replace → re-stringify → diff pipeline
+ * unchanged.
+ */
+function tryRegionalScalarEdit(
+	text: string,
+	doc: RawYamlDocument,
+	path: YamlPath,
+	value: unknown,
+	options?: YamlStringifyOptions,
+): ReadonlyArray<{ offset: number; length: number; content: string }> | undefined {
+	// `undefined` (removal), null, and object graphs keep the full pipeline:
+	// null renders as an empty scalar there (`a:` — the stringifier's own
+	// convention), and splicing an empty replacement would leave a trailing
+	// space instead.
+	if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+		return undefined;
+	}
+	// An explicit style request steers the stringifier — do not second-guess it.
+	if (options?.defaultScalarStyle !== undefined || options?.forceDefaultStyles) return undefined;
+	const target = findExistingTarget(doc.contents, path);
+	if (!(target instanceof YamlScalar)) return undefined;
+	// A synthesised empty span (`key:` with no value) is an insertion site,
+	// not a replaceable range.
+	if (target.length <= 0) return undefined;
+	if (target.tag !== undefined || target.anchor !== undefined) return undefined;
+	if (target.style !== "plain" && target.style !== "single-quoted" && target.style !== "double-quoted") {
+		return undefined;
+	}
+	if (target.sourceMultiline === true) return undefined;
+	const span = text.slice(target.offset, target.offset + target.length);
+	if (/[\n\r]/.test(span)) return undefined;
+	const rendered = renderRegionalScalarText(target, value, options);
+	if (rendered === undefined) return undefined;
+	if (rendered === span) return []; // no-op replace: the span already says exactly this
+	if (!regionalRenderPreservesValue(rendered, value)) return undefined;
+	return [{ offset: target.offset, length: target.length, content: rendered }];
+}
+
 // ── Facade ──────────────────────────────────────────────────────────────────
 
 /**
@@ -652,10 +801,27 @@ export class YamlFormat {
 	 * `stringify` agree on what a given JavaScript value means. (Before
 	 * 0.14.0 only scalars were lowered and a mapping or sequence value was
 	 * coerced through `String(value)`, writing the literal text
-	 * `[object Object]` into the document — see #642.) Only the surrounding
-	 * document is preserved byte-for-byte; the replacement subtree is
-	 * synthesized, so it carries no comments and takes the stringifier's
-	 * styles.
+	 * `[object Object]` into the document — see #642.) For a synthesized
+	 * subtree (an object/array value) only the surrounding document is
+	 * preserved byte-for-byte; the subtree carries no comments and takes the
+	 * stringifier's styles.
+	 *
+	 * **Scalar replacement is region-confined and quote-preserving (#659).**
+	 * When the path resolves to an existing single-line `plain`,
+	 * `single-quoted`, or `double-quoted` scalar with no tag or anchor, and
+	 * the replacement is a string, number, or boolean, `modify` splices
+	 * ONLY the target scalar's source span and emits a single edit: a string
+	 * into a quoted scalar keeps the original quote character, a non-string
+	 * renders plain (quoting it would change the resolved type), and every
+	 * byte outside the span — line endings included, so a CRLF document keeps
+	 * its CRLFs and a same-line trailing comment survives — is untouched. The
+	 * splice is taken only when the rendered text re-parses to exactly the
+	 * caller's value and renders as a single line; a no-op replacement yields
+	 * no edits. Anything else — removals (`value === undefined`), nulls,
+	 * insertions, object/array values, block or multi-line scalars, tagged or anchored
+	 * targets, an explicit `defaultScalarStyle`/`forceDefaultStyles` request —
+	 * falls back to re-serialising the whole document, which normalises line
+	 * endings to LF and renders the replacement in the stringifier's styles.
 	 *
 	 * Two replacement values have no finite rendering and fail typed rather
 	 * than hanging or overflowing the stack: one containing a circular
@@ -730,6 +896,16 @@ export class YamlFormat {
 					),
 				],
 			});
+		}
+
+		// Region-confined scalar replacement (#659): when the target is an
+		// existing single-line untagged scalar and the value is scalar-shaped,
+		// splice just its span — quote style preserved, CRLFs and every other
+		// byte outside the span untouched. Any precondition miss falls through
+		// to the whole-document pipeline below, unchanged.
+		const regional = tryRegionalScalarEdit(text, doc, path, value, options);
+		if (regional !== undefined) {
+			return regional.map((e) => YamlEdit.make(e)) as ReadonlyArray<YamlEdit>;
 		}
 
 		let newContents: YamlNode | null;
