@@ -27,7 +27,7 @@ This package reads git's exit codes and stderr in exactly one classification ste
 
 There is no opt-out through the service, and the pins win: `extendEnv: true` merges the parent environment, but a pinned key beats it, so `GIT_TERMINAL_PROMPT=1` in your environment does not re-enable prompting. A caller who genuinely wants git to prompt runs a `GitCommand` value themselves — those are pure and carry no environment at all, so they inherit yours untouched.
 
-The ssh pin is the one that adapts to you rather than overriding you. Before a member that reaches a remote spawns, the service resolves the ssh command git would have used on its own — your `GIT_SSH_COMMAND`, else your `core.sshCommand`, else plain `ssh` — and appends `-o BatchMode=yes` to *that*, so a custom identity file, jump host or port survives. It leaves the command strictly alone in two cases: when the program is not OpenSSH (`plink` has no `-o KEY=VALUE` form, so appending would break it rather than degrade it), and when you already set `BatchMode` yourself — OpenSSH honors the first value given for a repeated option, so your choice stands either way.
+The ssh pin is the one that adapts to you rather than overriding you. Before a member that reaches a remote spawns, the service resolves the ssh command git would have used on its own — your `GIT_SSH_COMMAND`, else your `core.sshCommand`, else plain `ssh` — and appends `-o BatchMode=yes` to *that*, so a custom identity file, jump host or port survives. It leaves your setup strictly alone in four cases: when `GIT_SSH` is what decides (it names a program and takes no arguments, so there is nothing to append to and pinning anything would displace it); when the program is not OpenSSH (`plink` has no `-o KEY=VALUE` form, so appending would break it rather than degrade it); when `ssh.variant` or `GIT_SSH_VARIANT` tells git the command is not OpenSSH regardless of its name; and when you already set `BatchMode` yourself — OpenSSH honors the first value given for a repeated option, so your choice stands either way. In every one of those, the other pins still apply; only the ssh-level one is skipped.
 
 `GitCommand` is exported alongside the service: 24 pure constructors producing Effect core `Command` values you can inspect, log, or test against without spawning anything.
 
@@ -122,17 +122,18 @@ const shortlog = ChildProcess.make("git", ["shortlog", "-sn", "HEAD"], {
   // hard stop that also suppresses core.askPass and SSH_ASKPASS). extendEnv
   // keeps PATH.
   //
-  // GIT_SSH_COMMAND is shown at its default. If your command touches a
-  // remote, resolve the ssh command git would have used — GIT_SSH_COMMAND,
-  // else core.sshCommand, else plain ssh — and append BatchMode to THAT: a
-  // bare `ssh` here silently overrides a configured core.sshCommand, because
-  // the environment variable wins over it in git's own precedence order.
+  // No GIT_SSH_COMMAND here, deliberately: `shortlog` is local. If YOUR
+  // command reaches a remote and you want the same non-interactive
+  // guarantee, resolve what git would have used first — GIT_SSH_COMMAND,
+  // else core.sshCommand, else GIT_SSH, else plain ssh — and append
+  // `-o BatchMode=yes` to that. Pinning a bare `ssh` instead silently
+  // displaces a configured core.sshCommand or GIT_SSH, because the
+  // environment variable outranks both in git's own precedence order.
   env: {
     LC_ALL: "C",
     GIT_TERMINAL_PROMPT: "0",
     GIT_ASKPASS: "",
     SSH_ASKPASS_REQUIRE: "never",
-    GIT_SSH_COMMAND: "ssh -o BatchMode=yes",
   },
   extendEnv: true,
 }).pipe((command) => ChildProcess.setCwd(command, cwd));

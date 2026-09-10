@@ -56,7 +56,22 @@ const BATCH_MODE = "-o BatchMode=yes";
  * program's basename is `ssh`, mirroring git's own basename-driven variant
  * detection.
  */
-const OPENSSH_PROGRAM = /(?:^|\/)ssh(?:\.exe)?$/i;
+const OPENSSH_PROGRAM = /(?:^|[\\/])ssh(?:\.exe)?$/i;
+
+/**
+ * `ssh.variant` / `GIT_SSH_VARIANT` values under which git treats the command
+ * as OpenSSH. `auto` means "infer from the basename", which is the inference
+ * {@link OPENSSH_PROGRAM} mirrors.
+ *
+ * @remarks
+ * This exists because the basename inference is OVERRIDABLE, and the override
+ * silently changes the argument grammar. Verified against git 2.55: a program
+ * literally named `ssh` with `ssh.variant=plink` set is invoked with plink's
+ * `-P` rather than OpenSSH's `-p`, and without `-o SendEnv=...`. Appending
+ * `-o BatchMode=yes` to that would break an invocation that worked before, so
+ * a variant naming anything else declines the pin.
+ */
+const OPENSSH_VARIANTS = new Set(["", "auto", "ssh"]);
 
 /**
  * Whether an ssh command line already decides `BatchMode` for itself.
@@ -135,15 +150,23 @@ const withBatchMode = (command: string): Option.Option<string> => {
  * worth pinning.
  *
  * @remarks
- * `resolved` is the ssh command git WOULD have used if this package pinned
- * nothing — the caller's `GIT_SSH_COMMAND`, else their `core.sshCommand`,
- * else plain `ssh`. Resolving it first is what makes the pin additive rather
- * than destructive: because a pinned environment key wins over the merged
- * parent environment AND over `core.sshCommand`/`GIT_SSH` in git's own
- * precedence order, pinning a bare `ssh` would silently discard a configured
- * identity file and turn "prompts for a passphrase" into "cannot reach the
- * remote at all" — a worse failure than the one being fixed, and the one this
- * design set out to avoid.
+ * `resolved` is the ssh COMMAND git would have used if this package pinned
+ * nothing. Resolving it first is what makes the pin additive rather than
+ * destructive: a pinned environment key wins over the merged parent
+ * environment AND over `core.sshCommand` and `GIT_SSH` in git's own
+ * precedence order, so pinning a bare `ssh` would silently discard a
+ * configured identity file and turn "prompts for a passphrase" into "cannot
+ * reach the remote at all" — a worse failure than the one being fixed, and
+ * the one this design set out to avoid.
+ *
+ * `GIT_SSH` never reaches here, deliberately. It is the third rung of that
+ * precedence order (`GIT_SSH_COMMAND` > `core.sshCommand` > `GIT_SSH` > plain
+ * `ssh`, verified against git 2.55), but it names a PROGRAM and supports no
+ * arguments — appending to it would have git invoke a program of that literal
+ * name. So when `GIT_SSH` is the deciding rung, {@link Git.layer}'s resolution
+ * declines to pin at all rather than displace it, exactly as it declines for
+ * plink. `GIT_TERMINAL_PROMPT` and `GIT_ASKPASS` still apply to those callers;
+ * only the ssh-level pin is skipped.
  */
 const sshEnv = (resolved: string): Record<string, string> =>
 	Option.match(withBatchMode(resolved), {
@@ -1277,37 +1300,81 @@ const rejectNonNaturalNumber = (
 				}),
 			);
 
+/**
+ * The ssh-related environment, read once at layer construction. None of these
+ * can change under a running service, so none is re-read per call — unlike
+ * their git-config counterparts, which are repository-local.
+ */
+interface SshFromEnv {
+	/** `GIT_SSH_COMMAND` — a full command line; the first rung. */
+	readonly command: Option.Option<string>;
+	/** `GIT_SSH` — a program name with no argument support; the third rung. */
+	readonly program: Option.Option<string>;
+	/** `GIT_SSH_VARIANT` — overrides git's basename inference of the grammar. */
+	readonly variant: Option.Option<string>;
+}
+
 /** Builds the `Git.Service` shape over an already-resolved `ChildProcessSpawner`. */
-const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], sshFromEnv: Option.Option<string>) => {
+const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: SshFromEnv) => {
 	const runFor = (invocation: GitInvocation, cwd: string, kind: ClassifyKind) =>
 		runClassified(invocation, cwd, kind, BASE_ENV).pipe(
 			Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 		);
 
+	/** One `git config --get <key>` at `cwd`; unset and failure both read as `""`. */
+	const readConfig = (cwd: string, key: string) =>
+		Effect.map(runFor(GitCommand.configGet(key), cwd, "quiet"), (classified) =>
+			classified._tag === "success" ? classified.output.trim() : "",
+		);
+
 	/**
-	 * Resolves the ssh command git would use in `cwd`, in git's own precedence
-	 * order: `GIT_SSH_COMMAND` from the environment (read once at layer
-	 * construction), else `core.sshCommand` from the merged config AT THIS
-	 * `cwd`, else plain `ssh`.
+	 * Resolves the spawn environment for a member that reaches a remote,
+	 * following git's OWN precedence order rather than a simplification of it:
+	 * `GIT_SSH_COMMAND` > `core.sshCommand` > `GIT_SSH` > plain `ssh` (each
+	 * rung verified against git 2.55).
 	 *
-	 * The config read is why this is per-call rather than per-service:
-	 * `core.sshCommand` can be repository-local, and a `Git` instance serves
-	 * every `cwd` a caller hands it. It is one extra local `git config` spawn
-	 * on a member that is about to touch the network anyway, and it is skipped
-	 * entirely when the environment variable already decides the answer.
+	 * The config reads are why this is per-call rather than per-service:
+	 * `core.sshCommand` and `ssh.variant` are both repository-local, while one
+	 * `Git` instance serves every `cwd` a caller hands it. Each is skipped when
+	 * its environment counterpart already decides the answer, and the two run
+	 * concurrently, so the common case costs one round trip on a member about
+	 * to touch the network anyway.
 	 *
-	 * It deliberately runs through `runFor` (BASE_ENV, no ssh pin): a local
-	 * config read needs no ssh, and routing it through the network path would
+	 * They deliberately run through `runFor` (BASE_ENV, no ssh pin): a local
+	 * config read needs no ssh, and routing them through the network path would
 	 * recurse.
 	 */
 	const resolveSshEnv = (cwd: string) =>
 		Effect.gen(function* () {
-			if (Option.isSome(sshFromEnv)) {
-				return sshEnv(sshFromEnv.value);
+			const [fromConfig, variantFromConfig] = yield* Effect.all(
+				[
+					Option.isSome(ssh.command) ? Effect.succeed("") : readConfig(cwd, "core.sshCommand"),
+					Option.isSome(ssh.variant) ? Effect.succeed("") : readConfig(cwd, "ssh.variant"),
+				],
+				{ concurrency: "unbounded" },
+			);
+
+			// The variant decides the argument GRAMMAR, so it is checked first: a
+			// non-OpenSSH variant means `-o BatchMode=yes` is not a thing git's ssh
+			// invocation understands, whatever the command happens to be named.
+			const variant = Option.getOrElse(ssh.variant, () => variantFromConfig)
+				.trim()
+				.toLowerCase();
+			if (!OPENSSH_VARIANTS.has(variant)) {
+				return { ...BASE_ENV };
 			}
-			const classified = yield* runFor(GitCommand.configGet("core.sshCommand"), cwd, "quiet");
-			const configured = classified._tag === "success" ? classified.output.trim() : "";
-			return sshEnv(configured === "" ? "ssh" : configured);
+
+			const command = Option.getOrElse(ssh.command, () => fromConfig).trim();
+			if (command !== "") {
+				return sshEnv(command);
+			}
+			// No COMMAND anywhere, so GIT_SSH is the deciding rung if it is set. It
+			// names a program and takes no arguments, so pinning anything here would
+			// displace it rather than extend it — decline instead.
+			if (Option.isSome(ssh.program)) {
+				return { ...BASE_ENV };
+			}
+			return sshEnv("ssh");
 		});
 
 	/**
@@ -3956,12 +4023,19 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 			// A source-level ConfigError degrades to "absent" rather than escaping:
 			// the layer's error channel is `never` by contract, and an unreadable
 			// provider is answered with the pin that cannot hang.
-			const configured = yield* Config.string("GIT_SSH_COMMAND").pipe(
-				Config.option,
-				Effect.catch(() => Effect.succeed(Option.none<string>())),
+			const read = (name: string) =>
+				Config.string(name).pipe(
+					Config.option,
+					Effect.catch(() => Effect.succeed(Option.none<string>())),
+					// A blank value is treated as absent — an exported-but-empty
+					// variable is not a configuration worth preserving.
+					Effect.map(Option.filter((value) => value.trim() !== "")),
+				);
+			const [command, program, variant] = yield* Effect.all(
+				[read("GIT_SSH_COMMAND"), read("GIT_SSH"), read("GIT_SSH_VARIANT")],
+				{ concurrency: "unbounded" },
 			);
-			const sshCommand = Option.filter(configured, (value) => value.trim() !== "");
-			return make(spawner, sshCommand);
+			return make(spawner, { command, program, variant });
 		}),
 	);
 
