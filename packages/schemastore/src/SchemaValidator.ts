@@ -5,16 +5,14 @@ import { Context, Effect, Layer, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { KeywordFamilies } from "./KeywordFamilies.js";
 
-// ajv-formats ships CommonJS, and the two interop worlds disagree on what a
-// default import binds to: Node's ESM loader hands over the whole
-// `module.exports` namespace (the callable plugin sits on `.default`), while
-// bundlers and vitest honour the `__esModule` marker and hand over the
-// callable directly. Resolve both once, at the seam, instead of at the call.
-type AddFormats = (ajv: Ajv, opts?: { keywords?: boolean }) => Ajv;
-const addFormats: AddFormats = (() => {
-	const imported = ajvFormats as unknown as AddFormats | { default: AddFormats };
-	return typeof imported === "function" ? imported : imported.default;
-})();
+// `ajv-formats` does `module.exports = exports = formatsPlugin` but declares
+// `export default` in its `.d.ts`, so TypeScript models the default import as
+// the module namespace and calling it directly is a TS2349. Its `.default`
+// points back at the plugin itself, which is the callable under BOTH Node's
+// ESM interop (where the binding is `module.exports`) and an
+// `__esModule`-honouring bundler (where it is `exports.default`) — so this one
+// hop lands on the plugin in either world, with its real types and no cast.
+const addFormats = ajvFormats.default;
 
 /**
  * Indicates that the validation engine behind the {@link SchemaValidator}
@@ -155,7 +153,10 @@ const notStubbed = (method: string) => () =>
  * `ipv6`, `regex`, `uuid`, `json-pointer`, `relative-json-pointer`, …), so a
  * published document can say "this string is an ISO-8601 instant" with a
  * `format` instead of falling back to a `pattern` plus a runtime filter;
- * an UNKNOWN format string remains a strict-mode rejection.
+ * an UNKNOWN format string remains a strict-mode rejection. The plugin's
+ * `formatMaximum` / `formatMinimum` limit keywords are deliberately NOT
+ * registered — `DocumentLint` answers those as unknown keywords, and the
+ * two verdicts must not drift.
  *
  * @example
  * ```ts
@@ -200,16 +201,16 @@ export class SchemaValidator extends Context.Service<SchemaValidator, SchemaVali
 			Effect.try({
 				try: () => {
 					const ajv = new Ajv({ strict: options?.strict ?? true, allErrors: true });
-					// Without the standard format vocabulary, strict mode rejects any
-					// document using `format` (`date-time`, `uri`, `email`, …) as an
-					// unknown format, so a consumer cannot express "this string is an
-					// ISO-8601 instant" in the published schema — only a `pattern`
-					// fallback. An unknown format string still fails strict mode.
-					// `keywords: false` matters: the plugin default also registers
-					// `formatMaximum` / `formatMinimum` (and the exclusive
-					// variants), which DocumentLint reports as unknown keywords the
-					// engine would then compile clean — drifting the two verdicts
-					// apart. Only the format vocabulary belongs behind this gate.
+					// Without the standard format vocabulary, strict mode rejects
+					// every document using `format` as an unknown format, so a
+					// consumer cannot say "this string is an ISO-8601 instant" —
+					// only a `pattern` fallback. An unknown format string still
+					// fails strict mode. `keywords: false` is load-bearing: the
+					// plugin's default ALSO registers `formatMaximum` /
+					// `formatMinimum` and their exclusive variants, which
+					// `DocumentLint` answers as unknown keywords — registering them
+					// would drift the two verdicts apart. Only the format
+					// vocabulary belongs behind this gate.
 					addFormats(ajv, { keywords: false });
 					const declared = new Set<string>();
 					collectDeclaredKeywords(document, declared, 0);

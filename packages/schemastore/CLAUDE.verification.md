@@ -40,6 +40,23 @@ the rules that follow from it live in the parent.
   where core's `JsonSchema.META_SCHEMA_URI_DRAFT_07` omits it — documented on
   the constant.
 
+`ajv`/`ajv-formats` probes (`ajv@8.20.0`, `ajv-formats@3.0.1`, plain Node ESM
+against the BUILT `dist/prod` artifact, not only vitest):
+
+- Without the plugin, `format: "date-time"` under `strict: true` throws
+  `unknown format "date-time" ignored in schema at path "#"` — the #657 report.
+- `ajv-formats`' default export points back at the plugin
+  (`addFormats.default === addFormats`), because the package does
+  `module.exports = exports = formatsPlugin` AND `exports.default = formatsPlugin`.
+  So `ajvFormats.default` is the callable under Node's ESM interop and under an
+  `__esModule`-honouring bundler alike; no runtime interop branch is needed.
+  Calling the default import directly is nonetheless a `TS2349` — the shipped
+  `.d.ts` declares `export default` in a CJS-mode file, so TypeScript types the
+  default import as the namespace.
+- Registering formats does NOT move `ajv.validateSchema` (meta-schema) verdicts:
+  a non-URI-reference `$id` and an invalid `pattern` behave identically before
+  and after.
+
 ## Hardening
 
 `internal/limits.ts` holds the kit parity constant `MAX_NESTING_DEPTH = 256`.
@@ -87,6 +104,12 @@ Discriminating pins:
 - Non-declared keys are not carried even when the caller admits them.
 - `"unchanged"` means the filesystem was not touched — a write-recording stub
   plus a pinned-mtime integration test.
+- Format registration is pinned on both sides: the standard vocabulary
+  (`date-time`, `uri`, `email`, `uuid`) compiles clean under strict mode, an
+  unknown format string still answers ONE root-pathed finding naming it, and
+  each of `formatMaximum` / `formatMinimum` / their exclusive variants is
+  still rejected — that last case is what a future `addFormats(ajv)` (no
+  `keywords: false`) would silently turn green.
 
 Mutants run and killed — phase 1: rewrite-all-strings, lexical order,
 properties-map-as-schema, dropped trailing newline, url-at-oldest. Phase 2:
