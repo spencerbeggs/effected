@@ -1,5 +1,13 @@
 # @effected/workspaces
 
+## 0.20.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/git | dependency | updated | 0.12.0 | 0.13.0 |
+
 ## 0.20.1
 
 ### Dependencies
@@ -660,16 +668,20 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Bug Fixes
 
 - `WorkspaceSnapshots`' internal cache key now separates the workspace root and
-  ref with a `\0` escape instead of a literal NUL byte. The literal byte made&#10;`file` classify the source as binary, so `grep`/`ripgrep` silently skipped it.
+  ref with a `\0` escape instead of a literal NUL byte. The literal byte made
+  `file` classify the source as binary, so `grep`/`ripgrep` silently skipped it.
 
 ### Documentation
 
 - Corrects two defects in the changelog published with `0.9.0`:
-  - **The `PublishabilityDetector` requirement claim was wrong.** `Workspaces.layer`,&#10;`layerWithGit` and `layerWithConfigDependencies` neither provide nor require a&#10;`PublishabilityDetector` — nothing inside any of them asks a publishability
+  - **The `PublishabilityDetector` requirement claim was wrong.** `Workspaces.layer`,
+    `layerWithGit` and `layerWithConfigDependencies` neither provide nor require a
+    `PublishabilityDetector` — nothing inside any of them asks a publishability
     question, so their `R` stays `FileSystem | Path`. The requirement surfaces in
     the `R` of the consuming *operation* that asks (`VersioningStrategy.detect`,
     for example), which can be well past the layer-wiring site.
-  - **The recommended wiring was backwards.** The published note suggested&#10;`Workspaces.layer().pipe(Layer.provide(PublishabilityDetector.layerNpm))`.
+  - **The recommended wiring was backwards.** The published note suggested
+    `Workspaces.layer().pipe(Layer.provide(PublishabilityDetector.layerNpm))`.
     Since the composite doesn't require a detector, `Layer.provide` discards it —
     it never reaches the program's `R`. Wire it with `Layer.mergeAll` instead:
 
@@ -680,7 +692,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   // Correct
   const layer = Layer.mergeAll(Workspaces.layer(), PublishabilityDetector.layerNpm);
   ```
-  Also: `Workspaces.layer`'s internal `localExecLayer` now passes `scriptPrefix`&#10;through when building an `ExecContext`, keeping pace with `@effected/commands`'
+  Also: `Workspaces.layer`'s internal `localExecLayer` now passes `scriptPrefix`
+  through when building an `ExecContext`, keeping pace with `@effected/commands`'
   new script-runner prefixes. [#191][#191]
 
 ### Dependencies
@@ -703,7 +716,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Breaking Changes
 
 - ### `PublishabilityDetector` no longer has an ambient default
-  The bare `PublishabilityDetector.layer` is **removed**. `Workspaces.layer`,&#10;`layerWithGit` and `layerWithConfigDependencies` now all **require**&#10;`PublishabilityDetector` in `R` instead of silently supplying npm semantics —
+  The bare `PublishabilityDetector.layer` is **removed**. `Workspaces.layer`,
+  `layerWithGit` and `layerWithConfigDependencies` now all **require**
+  `PublishabilityDetector` in `R` instead of silently supplying npm semantics —
   the old default made `Layer.mergeAll(myDetector, Workspaces.layer())` resolve
   to the default rather than the override, because `mergeAll` is last-wins, with
   no type error to catch it.
@@ -717,16 +732,21 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ```
   `PublishabilityDetector.layerNpm` replaces the old `.layer` (standard npm
   semantics); `PublishabilityDetector.layerNone` is a workspace where nothing
-  publishes. Each is also exposed as a plain value — `PublishabilityDetector.npm`&#10;/ `.none` — for composing a policy that defers to one of them.
+  publishes. Each is also exposed as a plain value — `PublishabilityDetector.npm`
+  / `.none` — for composing a policy that defers to one of them.
   ### `ReleaseTag`'s default version prefix is now `""`
-  `ReleaseTag.single` / `ReleaseTag.scoped` default `versionPrefix` to `""`&#10;(strict SemVer) uniformly, rather than defaulting unscoped package names to a&#10;`"v"` prefix. A consumer relying on the old `v`-prefixed tags for an unscoped
+  `ReleaseTag.single` / `ReleaseTag.scoped` default `versionPrefix` to `""`
+  (strict SemVer) uniformly, rather than defaulting unscoped package names to a
+  `"v"` prefix. A consumer relying on the old `v`-prefixed tags for an unscoped
   package must now pass `versionPrefix: "v"` explicitly.
 
 ### Features
 
 - ### `ReleaseTag` and `TrackingTag`
-  `ReleaseTag.single` / `.scoped` format a release's git tag name.&#10;`TrackingTag.forVersion` derives the floating-alias tags a version should
-  carry (`v1`, `v1.2`) and never floats onto a prerelease; `TrackingTag.classifyTag`&#10;tells a version tag from an alias tag by segment count.
+  `ReleaseTag.single` / `.scoped` format a release's git tag name.
+  `TrackingTag.forVersion` derives the floating-alias tags a version should
+  carry (`v1`, `v1.2`) and never floats onto a prerelease; `TrackingTag.classifyTag`
+  tells a version tag from an alias tag by segment count.
   ### `VersioningStrategy`
   `VersioningStrategy.classify` / `.detect` / `.tagsFor` — classify a package's
   versioning shape and compute the tags a release should push.
@@ -734,7 +754,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   Detection now runs three tiers: workspace markers, then a standalone tier
   (lockfile presence with no workspace config), then a declaration tier
   (`packageManager` / `devEngines.packageManager` with no lockfile at all — a
-  fresh clone before its first install). `PackageManagerDetector.makeTest` /&#10;`layerTest` are the sanctioned test doubles; an unstubbed `detect` dies rather
+  fresh clone before its first install). `PackageManagerDetector.makeTest` /
+  `layerTest` are the sanctioned test doubles; an unstubbed `detect` dies rather
   than guessing.
   ### `localExecLayer` implements `@effected/commands`' `LocalExec`
   `Workspaces.localExecLayer` teaches `@effected/commands`' `ToolDiscovery` how
@@ -884,7 +905,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ```
   One hook replay now yields both the catalogs and the release-age keys
   (`minimumReleaseAge` / `minimumReleaseAgeExclude`) the hooks leave on the
-  config, so the config-dependency code — which executes arbitrary&#10;`pnpmfile.cjs` logic — still runs exactly once. When two hooks both set a
+  config, so the config-dependency code — which executes arbitrary
+  `pnpmfile.cjs` logic — still runs exactly once. When two hooks both set a
   release-age key, the later hook wins. `ConfigDependencyHooks.layerNoop` now
   returns `{ catalogs: seed, releaseAge: {} }` instead of the bare seed. A
   caller that awaited `inject` directly and read the catalogs off the resolved
@@ -893,7 +915,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Features
 
 - ### `WorkspaceCatalogs.releaseAgeGate()`
-  Assembles the workspace's effective pnpm release-age gate from inline&#10;`pnpm-workspace.yaml` keys and the replayed config-dependency hooks,
+  Assembles the workspace's effective pnpm release-age gate from inline
+  `pnpm-workspace.yaml` keys and the replayed config-dependency hooks,
   strictest-wins via `ReleaseAgeGate.combine`, in the same single memoized
   assembly pass as `set()`:
   ```ts
@@ -905,9 +928,12 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	// gate.ageMinutes, gate.exclude
   });
   ```
-  A present-but-malformed inline `minimumReleaseAge` or&#10;`minimumReleaseAgeExclude` now fails typed as `CatalogAssemblyError`&#10;(`source: "manifest"`) instead of being silently ignored — a silently-dropped
+  A present-but-malformed inline `minimumReleaseAge` or
+  `minimumReleaseAgeExclude` now fails typed as `CatalogAssemblyError`
+  (`source: "manifest"`) instead of being silently ignored — a silently-dropped
   gate is exactly the "install refuses a version the resolver already picked"
-  bug this vocabulary exists to prevent. A workspace with no&#10;`pnpm-workspace.yaml` (a bun/npm workspace) has no release-age keys, so the
+  bug this vocabulary exists to prevent. A workspace with no
+  `pnpm-workspace.yaml` (a bun/npm workspace) has no release-age keys, so the
   gate is the inert zero gate. `HookInjection` is exported from the package. [#139][#139]
 
 ### Dependencies
@@ -1037,7 +1063,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   // After
   const root = findWorkspaceRootSync(process.cwd(), nodeSyncOps);
   ```
-  `cwd` is now required — the function no longer reads `process.cwd()`&#10;ambiently when it is omitted — and the `FindWorkspaceRootSyncOptions` type
+  `cwd` is now required — the function no longer reads `process.cwd()`
+  ambiently when it is omitted — and the `FindWorkspaceRootSyncOptions` type
   has been removed; pass `WorkspacesSyncOptions` directly. This is a
   pre-`0.1.0` change; nothing built on the old signature has been published.
 
@@ -1048,7 +1075,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   defaulted so a test stubs only what it exercises. Defaults model an empty
   workspace; `getPackage`, `importerMap`, and `resolveFile`/`resolveFiles` are
   all derived from the effective `listPackages` (the override when one is
-  supplied), so stubbing just `listPackages` yields a consistent double.&#10;`getPackage` fails with the service's own typed `PackageNotFoundError` on a
+  supplied), so stubbing just `listPackages` yields a consistent double.
+  `getPackage` fails with the service's own typed `PackageNotFoundError` on a
   miss, exactly as the live implementation does; an unstubbed `info()` call
   dies with an explanatory defect rather than fabricating a root path.
   ```ts

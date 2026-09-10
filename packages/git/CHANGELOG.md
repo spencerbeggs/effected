@@ -1,5 +1,31 @@
 # @effected/git
 
+## 0.13.0
+
+### Bug Fixes
+
+- Every `GitCommand` invocation now pins `GIT_TERMINAL_PROMPT=0` alongside the existing `LC_ALL=C`.
+
+- A network-touching member — `lsRemote`, `fetch`, `push`, `pull`, `submoduleAdd` — run against a remote that requires credentials could previously block on git's interactive terminal prompt until the 30s `GIT_TIMEOUT` ceiling fired, and on a runner with no tty the behaviour was backend-dependent rather than deterministic. Such a command now fails fast with git's own auth error, classified as `GitCommandError` with the exit code and stderr intact.
+
+- Two consequences worth knowing before upgrading:
+
+- The pin is **unconditional**. `extendEnv: true` merges the parent environment, but a pinned key wins over it, so `GIT_TERMINAL_PROMPT=1` in `process.env` no longer re-enables prompting, and there is no opt-out through the `Git` service. A caller that genuinely wants git to prompt must take the `GitCommand` value and override the key with `ChildProcess.setEnv` before running it.
+
+- The pure `GitCommand` values changed shape: `command.options.env` is now `{ LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" }`. Code asserting on that object needs updating.
+
+- This gags git's own prompt only — `ssh`'s key-passphrase and host-key prompts read the terminal directly and are not covered.
+
+### Documentation
+
+- The pinned-env invariant is restated consistently across `README.md`, `CLAUDE.md` and `CLAUDE.surface.md`, including the `Run.collect` example that consumers copy. [#655][#655]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) for their contributions!
+
+[#655]: https://github.com/spencerbeggs/effected/pull/655
+
 ## 0.12.0
 
 ### Features
@@ -178,8 +204,11 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 - Every `GitCommand` constructor now returns a `GitInvocation` — the spawnable
   command plus `redactedArgs`, the same argv with sensitive positionals
-  masked (a `configSet` value is masked wholesale; a URL's embedded&#10;`userinfo@` is stripped) — instead of a bare command value. `GitCommandError`&#10;now carries `redactedArgs` in `args`, and renders them in `message`, so raw
-  argv never reaches an error value. This only affects direct consumers of&#10;`GitCommand`'s constructors; the `Git` service surface is unaffected.
+  masked (a `configSet` value is masked wholesale; a URL's embedded
+  `userinfo@` is stripped) — instead of a bare command value. `GitCommandError`
+  now carries `redactedArgs` in `args`, and renders them in `message`, so raw
+  argv never reaches an error value. This only affects direct consumers of
+  `GitCommand`'s constructors; the `Git` service surface is unaffected.
   ````ts
   import { GitCommand } from "@effected/git";
 
@@ -204,20 +233,34 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   });
   ```
   Added `Gitmodules`, a typed read view over `.gitmodules` (`GitmodulesEntry`,
-  a `FromString` codec), with mutation helpers (`setUrl`, `setPath`,&#10;`setBranch`, `setShallow`, `add`, `remove`, `rename`) that compile to
+  a `FromString` codec), with mutation helpers (`setUrl`, `setPath`,
+  `setBranch`, `setShallow`, `add`, `remove`, `rename`) that compile to
   surgical `GitConfig` edits rather than hand-rolled text editing.
 
-  Added a submodule tier to `Git`: `submoduleStatus`, `submoduleInit`,&#10;`submoduleDeinit`, `submoduleSync`, `submoduleSetUrl`, `submoduleSetBranch`,&#10;`submoduleAbsorbgitdirs`, `submoduleForeach`.
+  Added a submodule tier to `Git`: `submoduleStatus`, `submoduleInit`,
+  `submoduleDeinit`, `submoduleSync`, `submoduleSetUrl`, `submoduleSetBranch`,
+  `submoduleAbsorbgitdirs`, `submoduleForeach`.
 
-  Added worktree-state, branch and shallow-repo members: `reset`, `clean`,&#10;`restore` (a fail-loud posture — no silent partial application), `branchCreate`&#10;(now also drives `checkout -B` / `branch -f` via a `force` option),&#10;`branchDelete`, `isShallow`, `fetchUnshallow`. `StatusEntry` gained&#10;`toLine`/the static `format` helper for rendering porcelain-shaped status
+  Added worktree-state, branch and shallow-repo members: `reset`, `clean`,
+  `restore` (a fail-loud posture — no silent partial application), `branchCreate`
+  (now also drives `checkout -B` / `branch -f` via a `force` option),
+  `branchDelete`, `isShallow`, `fetchUnshallow`. `StatusEntry` gained
+  `toLine`/the static `format` helper for rendering porcelain-shaped status
   output back out, with a `StatusRenderOptions` controlling the new-path
   default.
 
-  Added a second tier of members: `lsRemote` with `LsRemoteEntry`&#10;(`shortName`/`nearMatches` for suggesting the closest ref on a typo), the
-  remote tier (`remoteAdd`, `remoteRemove`, `remoteSetUrl`), the stash tier,&#10;`branchList`, `tagCreate`, `tagDelete`, `tagList`, `forEachRef`, `revList`,&#10;`commit`, `push`, `pull`, `configList`, `configGetAll`, `configUnset`,&#10;`rm`, `mv`, `checkIgnore`, the worktree tier (`worktreeAdd`, `worktreeList`,&#10;`worktreeRemove`), and `lsFiles`. `Git` grew from 26 to 69 members.
+  Added a second tier of members: `lsRemote` with `LsRemoteEntry`
+  (`shortName`/`nearMatches` for suggesting the closest ref on a typo), the
+  remote tier (`remoteAdd`, `remoteRemove`, `remoteSetUrl`), the stash tier,
+  `branchList`, `tagCreate`, `tagDelete`, `tagList`, `forEachRef`, `revList`,
+  `commit`, `push`, `pull`, `configList`, `configGetAll`, `configUnset`,
+  `rm`, `mv`, `checkIgnore`, the worktree tier (`worktreeAdd`, `worktreeList`,
+  `worktreeRemove`), and `lsFiles`. `Git` grew from 26 to 69 members.
 
   Three new typed errors, added only alongside the new members that can raise
-  them — no existing member's error union changed: `NonFastForwardError` from&#10;`push`, and `MergeConflictError` / `DirtyWorktreeError` from `pull`,&#10;`stashPop` and `stashApply`.
+  them — no existing member's error union changed: `NonFastForwardError` from
+  `push`, and `MergeConflictError` / `DirtyWorktreeError` from `pull`,
+  `stashPop` and `stashApply`.
 
 ## 0.5.2
 
@@ -233,8 +276,10 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Refactoring
 
-- `GitCommand` is now a static class with a private constructor rather than an&#10;`as const` namespace object. Call syntax is unchanged (`GitCommand.show(...)`);
-  each member's TSDoc now ships in the built `.d.ts`, where an `as const`&#10;object's inferred member types previously dropped it. [#180][#180]
+- `GitCommand` is now a static class with a private constructor rather than an
+  `as const` namespace object. Call syntax is unchanged (`GitCommand.show(...)`);
+  each member's TSDoc now ships in the built `.d.ts`, where an `as const`
+  object's inferred member types previously dropped it. [#180][#180]
 
 ### Patch Changes
 

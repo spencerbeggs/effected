@@ -1,5 +1,15 @@
 # @effected/claude-code-plugin
 
+## 0.17.1
+
+### Bug Fixes
+
+- Corrects the SessionStart hook root token and uses uses the documented `${PLUGIN_ROOT}` token so Copilot resolves the hook script path.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.17.0
 
 ### Breaking Changes
