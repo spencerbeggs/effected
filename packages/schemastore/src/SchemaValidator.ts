@@ -1,8 +1,19 @@
 import type { ErrorObject } from "ajv";
 import { Ajv } from "ajv";
+import ajvFormats from "ajv-formats";
 import { Context, Effect, Layer, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { KeywordFamilies } from "./KeywordFamilies.js";
+
+// ajv-formats ships CommonJS, and the two interop worlds disagree on what a
+// default import binds to: Node's ESM loader hands over the whole
+// `module.exports` namespace (the callable plugin sits on `.default`), while
+// bundlers and vitest honour the `__esModule` marker and hand over the
+// callable directly. Resolve both once, at the seam, instead of at the call.
+const addFormats: (ajv: Ajv) => Ajv = (() => {
+	const imported = ajvFormats as unknown as ((ajv: Ajv) => Ajv) | { default: (ajv: Ajv) => Ajv };
+	return typeof imported === "function" ? imported : imported.default;
+})();
 
 /**
  * Indicates that the validation engine behind the {@link SchemaValidator}
@@ -137,7 +148,13 @@ const notStubbed = (method: string) => () =>
  * The shipped layer registers every declared {@link KeywordFamilies} keyword
  * present in the document before compiling, so ajv strict mode does not
  * reject the language-server families `DocumentLint` deliberately allows —
- * one predicate governs both verdicts.
+ * one predicate governs both verdicts. It also registers the standard
+ * ajv-formats vocabulary (`date-time`, `date`, `time`, `duration`, `uri`,
+ * `uri-reference`, `uri-template`, `url`, `email`, `hostname`, `ipv4`,
+ * `ipv6`, `regex`, `uuid`, `json-pointer`, `relative-json-pointer`, …), so a
+ * published document can say "this string is an ISO-8601 instant" with a
+ * `format` instead of falling back to a `pattern` plus a runtime filter;
+ * an UNKNOWN format string remains a strict-mode rejection.
  *
  * @example
  * ```ts
@@ -172,13 +189,22 @@ export class SchemaValidator extends Context.Service<SchemaValidator, SchemaVali
 	 * engine failing as a mechanism.
 	 *
 	 * `strict` defaults to `true` — SchemaStore's gate. Each call builds its
-	 * own ajv instance, so documents sharing an `$id` never collide.
+	 * own ajv instance, so documents sharing an `$id` never collide. The
+	 * standard ajv-formats vocabulary is registered on every instance, so
+	 * `format: "date-time"` (and the rest of the standard set) compiles under
+	 * strict mode instead of being rejected as an unknown format.
 	 */
 	static readonly layer: Layer.Layer<SchemaValidator> = Layer.succeed(SchemaValidator, {
 		validate: (document, options) =>
 			Effect.try({
 				try: () => {
 					const ajv = new Ajv({ strict: options?.strict ?? true, allErrors: true });
+					// Without the standard format vocabulary, strict mode rejects any
+					// document using `format` (`date-time`, `uri`, `email`, …) as an
+					// unknown format, so a consumer cannot express "this string is an
+					// ISO-8601 instant" in the published schema — only a `pattern`
+					// fallback. An unknown format string still fails strict mode.
+					addFormats(ajv);
 					const declared = new Set<string>();
 					collectDeclaredKeywords(document, declared, 0);
 					try {
