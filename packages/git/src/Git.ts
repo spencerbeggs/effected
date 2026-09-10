@@ -3483,9 +3483,9 @@ export interface GitShape {
 	/**
 	 * Mutating: `git commit [--all] [--allow-empty] [--amend] [--author=<author>] -m <message>`
 	 * — records a commit. The message rides argv; committer identity comes
-	 * from the caller's ENVIRONMENT (this package sets only `LC_ALL`), and
-	 * `options.author` is the explicit `--author=` override. "Nothing to
-	 * commit" fails loudly as {@link GitCommandError}.
+	 * from the caller's ENVIRONMENT (this package pins only `LC_ALL` and
+	 * `GIT_TERMINAL_PROMPT`), and `options.author` is the explicit `--author=`
+	 * override. "Nothing to commit" fails loudly as {@link GitCommandError}.
 	 */
 	readonly commit: (
 		cwd: string,

@@ -43,12 +43,13 @@ const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" } as const;
 // `git config protocol.file.allow always` on the superproject does NOT reach
 // `git submodule add`'s internal clone subprocess — only a command-line `-c`,
 // the environment, or global config do. `GitCommand`'s hardcoded per-call env
-// (`{ LC_ALL: "C" }`, `extendEnv: true`) merges with `process.env`, so setting
-// it here on the running test process reaches every spawn in this file,
-// including the real `Git` service's own submoduleAdd/fetch/sparseCheckoutSet
-// calls. The fixtures below also set the repo-local config, matching the
-// documented mutating-tier contract, but it is this environment variable that
-// actually authorizes the file-protocol clone/fetch on this git version.
+// (`{ LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" }`, `extendEnv: true`) merges with
+// `process.env`, so setting it here on the running test process reaches every
+// spawn in this file, including the real `Git` service's own
+// submoduleAdd/fetch/sparseCheckoutSet calls. The fixtures below also set the
+// repo-local config, matching the documented mutating-tier contract, but it is
+// this environment variable that actually authorizes the file-protocol
+// clone/fetch on this git version.
 process.env.GIT_ALLOW_PROTOCOL = "file";
 
 /**
