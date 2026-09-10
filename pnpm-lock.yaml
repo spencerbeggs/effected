@@ -86,8 +86,8 @@ importers:
         specifier: ^3.15.2
         version: 3.15.2(@changesets/cli@3.0.2)(@commitlint/cli@21.2.2(@types/node@26.5.0)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.2)(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@types/bun@1.4.2)(@types/node@26.5.0)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(@vitest/expect@5.0.0)(husky@9.1.7)(lint-staged@17.5.0)(markdownlint-cli2-formatter-codequality@0.0.7(markdownlint-cli2@0.23.2(supports-color@9.4.0)))(markdownlint-cli2@0.23.2(supports-color@9.4.0))(redis@6.2.1)(supports-color@9.4.0)(tsx@4.23.13)(turbo@2.10.12)(typescript@7.0.2)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)(yaml@2.9.0))(vitest@5.0.0)
       '@vitest-agent/plugin':
-        specifier: ^3.0.1
-        version: 3.0.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@types/react@19.2.18)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@5.0.0)
+        specifier: ^3.0.2
+        version: 3.0.2(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@types/react@19.2.18)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@5.0.0)
 
   packages/app:
     devDependencies:
@@ -1115,8 +1115,8 @@ importers:
         specifier: catalog:docs
         version: 19.2.8(react@19.2.8)
       rspress-plugin-api-extractor:
-        specifier: ^0.16.3
-        version: 0.16.3(@effected/config-file@0.7.0(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@rspress/core@2.0.21(@rspack/core@2.2.3(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.5.0)(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(supports-color@9.4.0)
+        specifier: ^0.16.4
+        version: 0.16.4(@effected/config-file@0.7.0(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@rspress/core@2.0.21(@rspack/core@2.2.3(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.5.0)(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(supports-color@9.4.0)
       rspress-plugin-mermaid:
         specifier: catalog:docs
         version: 1.0.1(@rspress/core@2.0.21(@rspack/core@2.2.3(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(supports-color@9.4.0)
@@ -2716,16 +2716,16 @@ packages:
     peerDependencies:
       effect: 4.0.0-rc.112
 
-  '@tsdoctor/model@0.6.4':
-    resolution: {integrity: sha512-ECcH0EbREAjWqut2Ogaa9qny7tAA408QK19Ebn/Dx430VVHstAsQV8vitPp5RZqpijTQMh4vGgVLFnIVNuEczw==}
+  '@tsdoctor/model@0.6.5':
+    resolution: {integrity: sha512-Wd5SYtQl9gDJ3d+hQk9SfJ/gc467N0IQPfr0V05hZ0D++PSJdBnU+pOxHyNvHMz5tk0qNWG+u/81Zkkb4SRpIw==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@effected/markdown': ^0.9.1
       '@effected/yaml': ^0.14.0
       effect: 4.0.0-rc.112
 
-  '@tsdoctor/pages@0.1.5':
-    resolution: {integrity: sha512-erD4jJbti2ze6nRPEBCssvogHQfv9Vv0X6ioIej+qpFQzlyrNIWeDsR6rLKdewUmmfsASDBIfpEjB5ZCCjAP2Q==}
+  '@tsdoctor/pages@0.1.6':
+    resolution: {integrity: sha512-xQKRQBuXWBfYMnvUxLF5gZdZCvjDXLXx6wU6vxR/2qW6Vg7APyhu67/O1BQOe95Xk7MSZF9UAtFdajMlvmZEgQ==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@effected/markdown': ^0.9.1
@@ -3037,28 +3037,28 @@ packages:
     peerDependencies:
       react: '>=18.3.1'
 
-  '@vitest-agent/cli@2.2.17':
-    resolution: {integrity: sha512-A0j6zeH69xTomeV6mEMeVhjyPlT8/p3b+qeAcuqyyMC0vkIpY/fI5YIJQuEQ69nmWu3knNBtWFe2emg9gQsMhw==}
+  '@vitest-agent/cli@2.2.18':
+    resolution: {integrity: sha512-ZlMrODjffVWzCUVsLNveHuNCnuWbKughY0OXgNWApGGbSSxkUloox+fR45RAOZFpJDD3PQ3jn6B41P/r2mZqHw==}
     engines: {node: '>=24.11.0'}
     hasBin: true
 
-  '@vitest-agent/mcp@3.0.1':
-    resolution: {integrity: sha512-zJOO9OuTUKCC8l7cARUJDKTISc6PX/YTgb4RPtLDLsagqd4j/OIdTeY1F/ebNTD2ePFqnvYFr1P4XwKPxsMkMw==}
+  '@vitest-agent/mcp@3.0.2':
+    resolution: {integrity: sha512-s/zNqurzuK9Ltfcf/9mPBsDBEqz1nH8Gm5FssIn6YImkru+0vsWAI5n9eg9PDDgvLUs1G4fb309xIl+oIQYLew==}
     engines: {node: '>=24.11.0'}
     hasBin: true
     peerDependencies:
       vitest: ^5.0.0
 
-  '@vitest-agent/plugin@3.0.1':
-    resolution: {integrity: sha512-Jd4gs5pRZXmKs4Y7UygKrvPdPJZ3gSWK2uZcTAegaicREUFddVRaAYRU2GUOzv+y6Bt4q/ELMoDjH0mOFHZuSA==}
+  '@vitest-agent/plugin@3.0.2':
+    resolution: {integrity: sha512-Z2JpY27J/fYTEzUCvQR0jXy+tmF2TR4AQGr7Nk1ezI1YOHa43Tm8BhGrZLwU/M5WeNpt/ovbEnWuiNUQGncvgw==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@vitest/coverage-istanbul': ^5.0.0
       '@vitest/coverage-v8': ^5.0.0
       vitest: ^5.0.0
 
-  '@vitest-agent/reporter@3.0.1':
-    resolution: {integrity: sha512-vTJbh1y9obvxPdA9GjXICjPkRKI+w0xmf9jwKVG06/R+6eqKEvzONzgDOh2AI3Z2tBiuR+Pn0ZslLbboe9eaUw==}
+  '@vitest-agent/reporter@3.0.2':
+    resolution: {integrity: sha512-THFxwwC2EV3ZiFC4BuODXdfxV4VRRwqg0tyw+Lix04fpC3ZxM0FEyQEp1JgLV56Rtvt7blwcFbC9jCzExa1okw==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@vitest/coverage-istanbul': ^5.0.0
@@ -3070,40 +3070,40 @@ packages:
       '@vitest/coverage-v8':
         optional: true
 
-  '@vitest-agent/sdk@3.1.0':
-    resolution: {integrity: sha512-tnC9P7awidBt2Sm0gYmRdnPKz31nrZeeDW00huo9m9RxLoq2CUEVoO7SFUlIh7IvVzJDtGZVpbHm0r9HiuzlYQ==}
+  '@vitest-agent/sdk@3.1.1':
+    resolution: {integrity: sha512-pSOkLc9eQXnwBDSlFsKLhbn6yU3oHaUVIuwnM5SON6lo2fBjK8ZB7WmIhahXlKLmYkTfgqV9go8bDMtEnIhY4Q==}
     engines: {node: '>=24.11.0'}
 
-  '@vitest-agent/sidecar-darwin-arm64@2.1.17':
-    resolution: {integrity: sha512-Lhar3iJu7QBDwh2n1P+LqAKkXGBY7+DsShSdzu1SPiHzdraTzZ4BUGLjM5gQHwbvAbRXF3hph9a1Qvo4z6qOvg==}
+  '@vitest-agent/sidecar-darwin-arm64@2.1.18':
+    resolution: {integrity: sha512-pxh84gAtqiPSNTVXNLhJ2XlJNVkZnn3dcq7GGfigpXhmZgxMu6RpHxS222KmiNtl+r6iWKg+R9TbkktmoyLWMQ==}
     engines: {node: '>=24.11.0'}
     cpu: [arm64]
     os: [darwin]
 
-  '@vitest-agent/sidecar-linux-arm64@2.1.17':
-    resolution: {integrity: sha512-twJB+AFvc0awjUzM2hA6AUQ461T/yeaIBFUGT7T3H8cnu52rCj4ePNM6+tc+8jC0KXrzmVrh61DrSDORqoqkxQ==}
+  '@vitest-agent/sidecar-linux-arm64@2.1.18':
+    resolution: {integrity: sha512-HetNfZRDYEz71Jd+ZHienowpgTEoUA872RMTA0Y+LJkc1PLYVX0dO2HFfgk85/DR2SgN37aBdRSTtkAtCs4Aiw==}
     engines: {node: '>=24.11.0'}
     cpu: [arm64]
     os: [linux]
 
-  '@vitest-agent/sidecar-linux-x64@2.1.17':
-    resolution: {integrity: sha512-MN3mS2+FMpA8yoNHbzzT18+jMvOQfAGLrUSeQKDLk2kC28QfMY/CEY272xuowO0YUrVLJXE62mcONSoAMphMgw==}
+  '@vitest-agent/sidecar-linux-x64@2.1.18':
+    resolution: {integrity: sha512-me9KLAgIMqHT0/NW5aB9t9UsrvJHCNIooh36h9qhIaC27CsHnCQdXm2h/lfPqW+j3gJf86chBg7Nadw7pdTEhQ==}
     engines: {node: '>=24.11.0'}
     cpu: [x64]
     os: [linux]
 
-  '@vitest-agent/sidecar-win32-x64@2.1.17':
-    resolution: {integrity: sha512-7iimYQSx0onJaEZDhy3iUclJthtUjEJjQ3kb8lMj9d7dq7ilFmgqWHLtg21ZzwVZxyC8rptWVFWou9bqV9zTvw==}
+  '@vitest-agent/sidecar-win32-x64@2.1.18':
+    resolution: {integrity: sha512-+WD4GOf4cdKbHz0IeMjh+DtAlRd+B8xPH4WV/mIEcP5xKC5Pa4cy950vnY+hUp21yZ3EzJPlg+/dDCwSC8Wamw==}
     engines: {node: '>=24.11.0'}
     cpu: [x64]
     os: [win32]
 
-  '@vitest-agent/sidecar@2.1.17':
-    resolution: {integrity: sha512-oHjZdbT/XMKQ5ngvKdeyob3c1DVQ82J2VPpXqFDp0S/lSQjiRRjPYNwhghs5Ryr8tt6odMOSsB9O09wiCH0mDQ==}
+  '@vitest-agent/sidecar@2.1.18':
+    resolution: {integrity: sha512-B1ci4vQI/NXqSKaxyIftVEGMyvx5/mEh/3KKrq6AgPJEnIdMyylIVGXiGhJ8Za5Y9MSg/xE6bCBMZOSAMnUzqA==}
     engines: {node: '>=24.11.0'}
 
-  '@vitest-agent/ui@2.4.1':
-    resolution: {integrity: sha512-eE11A9zUiXQ8N/XodfQdpi/tX3S2sALd7E6q8zac05Bi10yiOXGGSdTILafbk19hDj+exH9H5YXIgVWgfEpnmA==}
+  '@vitest-agent/ui@2.4.2':
+    resolution: {integrity: sha512-HG6RSUg8+/hYOWuyWbjUF+iwCe0QmzGfwqFxIKI2FHI5vvFLHIc8ArL2dB8NxriQceox612j+BHAZQ918jQPHA==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       ink: ^7.1.0
@@ -5374,8 +5374,8 @@ packages:
     resolution: {integrity: sha512-nLTrUKm2UyiL7rlhapu/Zl45FwNgkZGaCpZbIHajDYgwlJCOzLSk+cIPAnsEqV955GjILJnKbdQC1nVPz+gAYQ==}
     engines: {node: '>= 18'}
 
-  rspress-plugin-api-extractor@0.16.3:
-    resolution: {integrity: sha512-4qhjdpswhZ5Tq0jYa8078qSAXPsAVvYmS+MOi3Dnp38Cfamw+CkaBwFnIqftR2np80GUs3Yibddk/EmBpqHvHw==}
+  rspress-plugin-api-extractor@0.16.4:
+    resolution: {integrity: sha512-RG9LdCuUXWjnr9r1yzXjBMtVgC9WvMdp4Y8BJ1D0QLlQU3FCy8V6bCctuaBPQrcFPh63cnQwvFbg+lJPYA0S5A==}
     engines: {node: '>=24.11.0'}
     peerDependencies:
       '@rspress/core': ^2.0.0
@@ -8281,7 +8281,7 @@ snapshots:
     dependencies:
       effect: 4.0.0-rc.112
 
-  '@tsdoctor/model@0.6.4(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)':
+  '@tsdoctor/model@0.6.5(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)':
     dependencies:
       '@effected/markdown': 0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112)
       '@effected/yaml': 0.14.0(effect@4.0.0-rc.112)
@@ -8296,11 +8296,11 @@ snapshots:
       - '@typescript/vfs'
       - typescript
 
-  '@tsdoctor/pages@0.1.5(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/package-json@0.14.0(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)':
+  '@tsdoctor/pages@0.1.6(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/package-json@0.14.0(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)':
     dependencies:
       '@effected/markdown': 0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112)
       '@microsoft/api-extractor-model': 7.33.12(@types/node@26.5.0)
-      '@tsdoctor/model': 0.6.4(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)
+      '@tsdoctor/model': 0.6.5(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)
       '@tsdoctor/seo': 0.2.1(@effected/package-json@0.14.0(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112)
       effect: 4.0.0-rc.112
       prettier: 3.9.6
@@ -8546,13 +8546,13 @@ snapshots:
       react: 19.2.8
       unhead: 2.1.17
 
-  '@vitest-agent/cli@2.2.17(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(redis@6.2.1)':
+  '@vitest-agent/cli@2.2.18(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(redis@6.2.1)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.112(effect@4.0.0-rc.112)
       '@effected/workspaces': 0.20.3(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112)
-      '@vitest-agent/sdk': 3.1.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
-      '@vitest-agent/sidecar': 2.1.17
+      '@vitest-agent/sdk': 3.1.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
+      '@vitest-agent/sidecar': 2.1.18
       effect: 4.0.0-rc.112
     transitivePeerDependencies:
       - '@effected/glob'
@@ -8561,13 +8561,13 @@ snapshots:
       - redis
       - utf-8-validate
 
-  '@vitest-agent/mcp@3.0.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@5.0.0)':
+  '@vitest-agent/mcp@3.0.2(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@5.0.0)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.112(effect@4.0.0-rc.112)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@9.4.0)(zod@4.5.4)
       '@trpc/server': 11.18.0(typescript@7.0.2)
-      '@vitest-agent/sdk': 3.1.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
+      '@vitest-agent/sdk': 3.1.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
       effect: 4.0.0-rc.112
       vitest: 5.0.0(@types/node@26.5.0)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(vite@8.2.2(@types/node@26.5.0)(esbuild@0.28.2)(jiti@2.6.1)(tsx@4.23.13)(yaml@2.9.0))
       zod: 4.5.4
@@ -8580,15 +8580,15 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@vitest-agent/plugin@3.0.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@types/react@19.2.18)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@5.0.0)':
+  '@vitest-agent/plugin@3.0.2(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@types/react@19.2.18)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@5.0.0)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.112(effect@4.0.0-rc.112)
       '@effected/workspaces': 0.20.3(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112)
-      '@vitest-agent/cli': 2.2.17(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(redis@6.2.1)
-      '@vitest-agent/mcp': 3.0.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@5.0.0)
-      '@vitest-agent/reporter': 3.0.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@types/react@19.2.18)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(vitest@5.0.0)
-      '@vitest-agent/sdk': 3.1.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
+      '@vitest-agent/cli': 2.2.18(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(redis@6.2.1)
+      '@vitest-agent/mcp': 3.0.2(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)(supports-color@9.4.0)(typescript@7.0.2)(vitest@5.0.0)
+      '@vitest-agent/reporter': 3.0.2(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@types/react@19.2.18)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(vitest@5.0.0)
+      '@vitest-agent/sdk': 3.1.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
       '@vitest/coverage-istanbul': 5.0.0(vitest@5.0.0)
       '@vitest/coverage-v8': 5.0.0(vitest@5.0.0)
       effect: 4.0.0-rc.112
@@ -8606,12 +8606,12 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@vitest-agent/reporter@3.0.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@types/react@19.2.18)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(vitest@5.0.0)':
+  '@vitest-agent/reporter@3.0.2(@effected/glob@0.5.0(effect@4.0.0-rc.112))(@types/react@19.2.18)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(vitest@5.0.0)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.112(effect@4.0.0-rc.112)
-      '@vitest-agent/sdk': 3.1.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
-      '@vitest-agent/ui': 2.4.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)(redis@6.2.1)
+      '@vitest-agent/sdk': 3.1.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
+      '@vitest-agent/ui': 2.4.2(@effected/glob@0.5.0(effect@4.0.0-rc.112))(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)(redis@6.2.1)
       effect: 4.0.0-rc.112
       ink: 7.1.1(@types/react@19.2.18)(react@19.2.8)
       react: 19.2.8
@@ -8627,7 +8627,7 @@ snapshots:
       - redis
       - utf-8-validate
 
-  '@vitest-agent/sdk@3.1.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)':
+  '@vitest-agent/sdk@3.1.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1)
       '@effect/sql-sqlite-node': 4.0.0-rc.112(effect@4.0.0-rc.112)
@@ -8649,28 +8649,28 @@ snapshots:
       - redis
       - utf-8-validate
 
-  '@vitest-agent/sidecar-darwin-arm64@2.1.17':
+  '@vitest-agent/sidecar-darwin-arm64@2.1.18':
     optional: true
 
-  '@vitest-agent/sidecar-linux-arm64@2.1.17':
+  '@vitest-agent/sidecar-linux-arm64@2.1.18':
     optional: true
 
-  '@vitest-agent/sidecar-linux-x64@2.1.17':
+  '@vitest-agent/sidecar-linux-x64@2.1.18':
     optional: true
 
-  '@vitest-agent/sidecar-win32-x64@2.1.17':
+  '@vitest-agent/sidecar-win32-x64@2.1.18':
     optional: true
 
-  '@vitest-agent/sidecar@2.1.17':
+  '@vitest-agent/sidecar@2.1.18':
     optionalDependencies:
-      '@vitest-agent/sidecar-darwin-arm64': 2.1.17
-      '@vitest-agent/sidecar-linux-arm64': 2.1.17
-      '@vitest-agent/sidecar-linux-x64': 2.1.17
-      '@vitest-agent/sidecar-win32-x64': 2.1.17
+      '@vitest-agent/sidecar-darwin-arm64': 2.1.18
+      '@vitest-agent/sidecar-linux-arm64': 2.1.18
+      '@vitest-agent/sidecar-linux-x64': 2.1.18
+      '@vitest-agent/sidecar-win32-x64': 2.1.18
 
-  '@vitest-agent/ui@2.4.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)(redis@6.2.1)':
+  '@vitest-agent/ui@2.4.2(@effected/glob@0.5.0(effect@4.0.0-rc.112))(ink@7.1.1(@types/react@19.2.18)(react@19.2.8))(react@19.2.8)(redis@6.2.1)':
     dependencies:
-      '@vitest-agent/sdk': 3.1.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
+      '@vitest-agent/sdk': 3.1.1(@effected/glob@0.5.0(effect@4.0.0-rc.112))(redis@6.2.1)
       effect: 4.0.0-rc.112
       ink: 7.1.1(@types/react@19.2.18)(react@19.2.8)
       react: 19.2.8
@@ -11508,7 +11508,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  rspress-plugin-api-extractor@0.16.3(@effected/config-file@0.7.0(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@rspress/core@2.0.21(@rspack/core@2.2.3(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.5.0)(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(supports-color@9.4.0):
+  rspress-plugin-api-extractor@0.16.4(@effected/config-file@0.7.0(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@rspress/core@2.0.21(@rspack/core@2.2.3(@swc/helpers@0.5.23))(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@9.4.0))(supports-color@9.4.0))(@types/node@26.5.0)(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(redis@6.2.1)(supports-color@9.4.0):
     dependencies:
       '@effect/platform-node': 4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1)
       '@effected/github': 0.9.0(effect@4.0.0-rc.112)
@@ -11528,8 +11528,8 @@ snapshots:
       '@shikijs/twoslash': 4.4.3(supports-color@9.4.0)(typescript@6.0.3)
       '@tsdoctor/bundle': 0.3.2(ed1b3ae2fa941d4f68e197e454617316)
       '@tsdoctor/manifest': 0.1.1(effect@4.0.0-rc.112)
-      '@tsdoctor/model': 0.6.4(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)
-      '@tsdoctor/pages': 0.1.5(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/package-json@0.14.0(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)
+      '@tsdoctor/model': 0.6.5(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)
+      '@tsdoctor/pages': 0.1.6(@effected/markdown@0.9.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/package-json@0.14.0(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@types/node@26.5.0)(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)
       '@tsdoctor/registry': 0.3.5(@effect/platform-node@4.0.0-rc.112(effect@4.0.0-rc.112)(redis@6.2.1))(@effected/semver@0.6.0(effect@4.0.0-rc.112))(@effected/store@0.7.0(effect@4.0.0-rc.112))(@effected/tsconfig-json@0.8.1(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/xdg@0.4.1(@effected/config-file@0.7.0(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/toml@0.6.0(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/yaml@0.14.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@effected/walker@0.7.0(@effected/glob@0.5.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(effect@4.0.0-rc.112))(@shikijs/twoslash@4.4.3(supports-color@9.4.0)(typescript@6.0.3))(@typescript/vfs@1.6.4(supports-color@9.4.0)(typescript@6.0.3))(effect@4.0.0-rc.112)(typescript@6.0.3)
       '@tsdoctor/seo': 0.2.1(@effected/package-json@0.14.0(effect@4.0.0-rc.112))(@effected/schema-org@0.2.0(effect@4.0.0-rc.112))(@effected/spdx@0.6.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112)
       '@tsdoctor/snapshot': 0.2.5(@effected/jsonc@0.9.0(effect@4.0.0-rc.112))(@effected/store@0.7.0(effect@4.0.0-rc.112))(effect@4.0.0-rc.112)
