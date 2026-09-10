@@ -13,7 +13,7 @@ Closes #670 (completing the environment-pinning work started in #647/#655): `git
 ## Refactoring
 
 - Every environment pin (`LC_ALL`, `GIT_TERMINAL_PROMPT`, `GIT_ASKPASS`, `SSH_ASKPASS_REQUIRE`, `GIT_SSH_COMMAND`) moved off the pure `GitCommand` constructors and onto the `Git` service, applied once per call at its single spawn choke point the same way `cwd` already was. A `GitCommand` value now carries only argv and its redaction mask — no `cwd`, no `env`. `extendEnv: true` stays on the constructor; it is not one of the pins, it only declares that git inherits the parent environment at all.
-- `Git.layer` now reads the ambient `GIT_SSH_COMMAND` once, through `ConfigProvider` rather than `process.env`, so a test swaps a provider instead of mutating the environment and the package keeps its zero-`node:`-imports boundary. `core.sshCommand` is resolved per call instead, since it is repository-local while one `Git` instance serves every `cwd`; the seven network-touching members pay one extra local `git config` read, and no other member pays anything.
+- `Git.layer` now reads the ambient `GIT_SSH_COMMAND`, `GIT_SSH` and `GIT_SSH_VARIANT` once each, concurrently, through `ConfigProvider` rather than `process.env` — so a test swaps a provider instead of mutating the environment and the package keeps its zero-`node:`-imports boundary. Their repository-local counterparts, `core.sshCommand` and `ssh.variant`, are resolved per call instead, since one `Git` instance serves every `cwd`: a network-touching member pays up to two extra local `git config` reads (run concurrently, and each skipped when its environment counterpart already decides), and no other member pays anything.
 
 ## Breaking Changes
 

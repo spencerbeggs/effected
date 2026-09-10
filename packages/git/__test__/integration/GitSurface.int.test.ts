@@ -79,6 +79,35 @@ const runFixtureGit = (
 /** Confirms a path exists on the real FS — dies (via the rejected promise) if it does not. */
 const assertExists = (path: string): Effect.Effect<void> => Effect.promise(() => stat(path)).pipe(Effect.asVoid);
 
+// The `Git` service probes `ssh.variant` before every network-touching member,
+// and that read is a MERGED config read — so without this it reaches the
+// developer's or runner's own global git config. A machine with a global
+// `ssh.variant` outside `auto`/`ssh` would decline the ssh pin and fail the
+// assertions below with a message that says nothing about why. Pointing both
+// config scopes at /dev/null makes every git spawn in this file see only the
+// repository config its fixture wrote. Safe here because the fixtures pin
+// everything they depend on locally, including `init.defaultBranch`.
+const HOST_CONFIG_KEYS = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const;
+const hostConfig = new Map<string, string | undefined>();
+
+beforeAll(() => {
+	for (const key of HOST_CONFIG_KEYS) {
+		hostConfig.set(key, process.env[key]);
+		process.env[key] = "/dev/null";
+	}
+});
+
+afterAll(() => {
+	for (const key of HOST_CONFIG_KEYS) {
+		const previous = hostConfig.get(key);
+		if (previous === undefined) {
+			delete process.env[key];
+		} else {
+			process.env[key] = previous;
+		}
+	}
+});
+
 describe("Git surface — introspection repository (fixture A)", () => {
 	let dirA: string;
 	let commit1Sha: string;

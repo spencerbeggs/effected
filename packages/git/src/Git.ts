@@ -59,17 +59,28 @@ const BATCH_MODE = "-o BatchMode=yes";
 const OPENSSH_PROGRAM = /(?:^|[\\/])ssh(?:\.exe)?$/i;
 
 /**
- * `ssh.variant` / `GIT_SSH_VARIANT` values under which git treats the command
- * as OpenSSH. `auto` means "infer from the basename", which is the inference
- * {@link OPENSSH_PROGRAM} mirrors.
+ * `ssh.variant` / `GIT_SSH_VARIANT` values under which this package is willing
+ * to treat the command as OpenSSH. `auto` means "infer from the basename",
+ * which is the inference {@link OPENSSH_PROGRAM} performs.
  *
  * @remarks
  * This exists because the basename inference is OVERRIDABLE, and the override
  * silently changes the argument grammar. Verified against git 2.55: a program
  * literally named `ssh` with `ssh.variant=plink` set is invoked with plink's
  * `-P` rather than OpenSSH's `-p`, and without `-o SendEnv=...`. Appending
- * `-o BatchMode=yes` to that would break an invocation that worked before, so
- * a variant naming anything else declines the pin.
+ * `-o BatchMode=yes` to that would break an invocation that worked before.
+ *
+ * It is an allow-list, and so **deliberately narrower than git**, which
+ * resolves any UNRECOGNIZED value to OpenSSH rather than rejecting it — also
+ * verified against git 2.55, where `ssh.variant=openssh` and an outright typo
+ * both produce the OpenSSH grammar. Two divergences follow, and both forgo
+ * the pin rather than corrupt a command, which is the direction to err in:
+ * a misspelled variant declines here where git would have accepted it, and a
+ * set-but-empty `GIT_SSH_VARIANT` — which git reads as "OpenSSH, and skip the
+ * config entirely" — is treated here as absent, so a `plink` in the config
+ * can still decline it. Widening this to a deny-list of the known non-OpenSSH
+ * variants would match git exactly today, at the cost of appending blindly to
+ * whatever variant git adds next.
  */
 const OPENSSH_VARIANTS = new Set(["", "auto", "ssh"]);
 
