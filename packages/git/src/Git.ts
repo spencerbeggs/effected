@@ -9,8 +9,8 @@ import { runCollected } from "./internal/run.js";
 const GIT_TIMEOUT = Duration.seconds(30);
 
 /**
- * The environment every `Git` invocation is spawned with, minus the one
- * conditional key {@link spawnEnv} computes.
+ * The environment EVERY `Git` invocation is spawned with. A network-touching
+ * member adds one more key on top, resolved per call — see {@link sshEnv}.
  *
  * @remarks
  * These live here, next to `classify` and `GIT_TIMEOUT`, because they exist
@@ -30,8 +30,8 @@ const GIT_TIMEOUT = Duration.seconds(30);
  *   blocking credential dialog.
  * - `SSH_ASKPASS_REQUIRE="never"` — defense in depth for the ssh path. With
  *   `BatchMode=yes` below, `ssh` never asks and never reaches an askpass
- *   helper; this still matters when the caller's own `GIT_SSH_COMMAND` is a
- *   wrapper that swallows the appended option.
+ *   helper; this still matters for an ssh command {@link withBatchMode}
+ *   declines to touch.
  */
 const BASE_ENV = {
 	LC_ALL: "C",
@@ -52,36 +52,65 @@ const BASE_ENV = {
 const BATCH_MODE = "-o BatchMode=yes";
 
 /**
- * Computes the spawn environment from the caller's own `GIT_SSH_COMMAND`.
+ * Matches an ssh command this package is willing to append an option to: the
+ * program's basename is `ssh`, mirroring git's own basename-driven variant
+ * detection.
+ */
+const OPENSSH_PROGRAM = /(?:^|\/)ssh(?:\.exe)?$/i;
+
+/** Whether an ssh command line already decides `BatchMode` for itself. */
+const DECIDES_BATCH_MODE = /\bBatchMode\b/i;
+
+/**
+ * Appends `-o BatchMode=yes` to an ssh command line, or declines.
  *
  * @remarks
- * `GIT_SSH_COMMAND` is the one pinned key a user legitimately sets
- * themselves — a custom identity file, a jump host, a non-default port, a
- * corporate wrapper. Because the command is spawned with `extendEnv: true`,
- * a pinned key WINS over the merged parent environment, so pinning it
- * unconditionally would discard a working ssh configuration and turn
- * "prompts for a passphrase" into "cannot reach the remote at all" — a worse
- * failure than the one being fixed.
+ * Declining is the important half, and it covers two cases where appending
+ * would do harm rather than good:
  *
- * So the caller's value is preserved and `BatchMode=yes` is appended to it;
- * only an absent value is replaced wholesale. Appending is safe for anything
- * ssh-shaped, since git appends the host and command AFTER this value. A
- * wrapper that takes its arguments positionally will reject the extra
- * option — deliberately accepted: that failure is immediate and legible,
- * where the hang it replaces is neither.
- *
- * This is pure in its input; the READ of the ambient environment happens
- * once, in {@link Git.layer}, through `ConfigProvider` rather than
- * `process.env` — so a test swaps a provider instead of mutating the
- * environment, and `src/` keeps its zero-`node:`-imports boundary.
+ * - **The program is not OpenSSH.** `plink` (PuTTY) has no `-o KEY=VALUE`
+ *   form at all — its non-interactive switch is `-batch` — so appending two
+ *   tokens breaks a previously working setup outright instead of degrading.
+ *   The same goes for a wrapper script taking positional arguments. git
+ *   itself dispatches on the program's basename; this mirrors that, and
+ *   anything unrecognized is left strictly alone.
+ * - **The caller already decides `BatchMode`.** OpenSSH takes the FIRST value
+ *   obtained for a repeated option (`ssh_config(5)`; verified against
+ *   OpenSSH 10.3 with `ssh -G`), so an append after the caller's own
+ *   `-o BatchMode=no` is silently inert. Rather than pretend otherwise, the
+ *   caller's decision stands and no pin is applied — a caller who explicitly
+ *   asked to be prompted owns the resulting wait.
  */
-const spawnEnv = (sshCommand: Option.Option<string>): Record<string, string> => ({
-	...BASE_ENV,
-	GIT_SSH_COMMAND: Option.match(sshCommand, {
-		onNone: () => `ssh ${BATCH_MODE}`,
-		onSome: (caller) => `${caller} ${BATCH_MODE}`,
-	}),
-});
+const withBatchMode = (command: string): Option.Option<string> => {
+	const trimmed = command.trim();
+	const program = trimmed.split(/\s+/)[0];
+	if (program === undefined || !OPENSSH_PROGRAM.test(program) || DECIDES_BATCH_MODE.test(trimmed)) {
+		return Option.none();
+	}
+	return Option.some(`${trimmed} ${BATCH_MODE}`);
+};
+
+/**
+ * The spawn environment for a network-touching member: {@link BASE_ENV} plus
+ * a `GIT_SSH_COMMAND` carrying `BatchMode`, when there is an ssh command
+ * worth pinning.
+ *
+ * @remarks
+ * `resolved` is the ssh command git WOULD have used if this package pinned
+ * nothing — the caller's `GIT_SSH_COMMAND`, else their `core.sshCommand`,
+ * else plain `ssh`. Resolving it first is what makes the pin additive rather
+ * than destructive: because a pinned environment key wins over the merged
+ * parent environment AND over `core.sshCommand`/`GIT_SSH` in git's own
+ * precedence order, pinning a bare `ssh` would silently discard a configured
+ * identity file and turn "prompts for a passphrase" into "cannot reach the
+ * remote at all" — a worse failure than the one being fixed, and the one this
+ * design set out to avoid.
+ */
+const sshEnv = (resolved: string): Record<string, string> =>
+	Option.match(withBatchMode(resolved), {
+		onNone: () => ({ ...BASE_ENV }),
+		onSome: (pinned) => ({ ...BASE_ENV, GIT_SSH_COMMAND: pinned }),
+	});
 
 /**
  * git ran and failed in a way that is not one of the recognized domain cases
@@ -1210,11 +1239,50 @@ const rejectNonNaturalNumber = (
 			);
 
 /** Builds the `Git.Service` shape over an already-resolved `ChildProcessSpawner`. */
-const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: Record<string, string>) => {
+const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], sshFromEnv: Option.Option<string>) => {
 	const runFor = (invocation: GitInvocation, cwd: string, kind: ClassifyKind) =>
-		runClassified(invocation, cwd, kind, env).pipe(
+		runClassified(invocation, cwd, kind, BASE_ENV).pipe(
 			Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 		);
+
+	/**
+	 * Resolves the ssh command git would use in `cwd`, in git's own precedence
+	 * order: `GIT_SSH_COMMAND` from the environment (read once at layer
+	 * construction), else `core.sshCommand` from the merged config AT THIS
+	 * `cwd`, else plain `ssh`.
+	 *
+	 * The config read is why this is per-call rather than per-service:
+	 * `core.sshCommand` can be repository-local, and a `Git` instance serves
+	 * every `cwd` a caller hands it. It is one extra local `git config` spawn
+	 * on a member that is about to touch the network anyway, and it is skipped
+	 * entirely when the environment variable already decides the answer.
+	 *
+	 * It deliberately runs through `runFor` (BASE_ENV, no ssh pin): a local
+	 * config read needs no ssh, and routing it through the network path would
+	 * recurse.
+	 */
+	const resolveSshEnv = (cwd: string) =>
+		Effect.gen(function* () {
+			if (Option.isSome(sshFromEnv)) {
+				return sshEnv(sshFromEnv.value);
+			}
+			const classified = yield* runFor(GitCommand.configGet("core.sshCommand"), cwd, "quiet");
+			const configured = classified._tag === "success" ? classified.output.trim() : "";
+			return sshEnv(configured === "" ? "ssh" : configured);
+		});
+
+	/**
+	 * `runFor` for a member that reaches a remote. Everything else spawns with
+	 * `BASE_ENV` alone — a member that never invokes ssh has no business
+	 * pinning an ssh command, and would pay the config read for nothing.
+	 */
+	const runForNetwork = (invocation: GitInvocation, cwd: string, kind: ClassifyKind) =>
+		Effect.gen(function* () {
+			const env = yield* resolveSshEnv(cwd);
+			return yield* runClassified(invocation, cwd, kind, env).pipe(
+				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+			);
+		});
 
 	const show = Effect.fn("Git.show")(function* (cwd: string, ref: string, path: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, ref, path });
@@ -1627,7 +1695,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: 
 		const remote = options?.remote ?? "origin";
 		yield* Effect.annotateCurrentSpan({ cwd });
 		yield* rejectOptionLikeRefs(cwd, [remote]);
-		const classified = yield* runFor(GitCommand.fetchUnshallow(remote), cwd, "generic");
+		const classified = yield* runForNetwork(GitCommand.fetchUnshallow(remote), cwd, "generic");
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -1672,7 +1740,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: 
 				}),
 			);
 		}
-		const classified = yield* runFor(
+		const classified = yield* runForNetwork(
 			GitCommand.fetch(remote, options.ref, options.depth, tag, unshallow),
 			cwd,
 			"generic",
@@ -1729,7 +1797,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: 
 		const checkout = options?.checkout ?? false;
 		yield* Effect.annotateCurrentSpan({ cwd, init, checkout });
 		yield* rejectNonNaturalNumber(cwd, "a submodule update depth", options?.depth);
-		const classified = yield* runFor(
+		const classified = yield* runForNetwork(
 			GitCommand.submoduleUpdate(init, options?.depth, options?.paths ?? [], {
 				checkout,
 				remote: options?.remote ?? false,
@@ -1764,7 +1832,11 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: 
 		// span annotations carry stable identifiers only (the #86 policy).
 		yield* Effect.annotateCurrentSpan({ cwd, path: options.path });
 		yield* rejectNonNaturalNumber(cwd, "a submodule add depth", options.depth);
-		const classified = yield* runFor(GitCommand.submoduleAdd(options.url, options.path, options.depth), cwd, "generic");
+		const classified = yield* runForNetwork(
+			GitCommand.submoduleAdd(options.url, options.path, options.depth),
+			cwd,
+			"generic",
+		);
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -2276,9 +2348,11 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: 
 		kind: ClassifyKind,
 		parse: (output: string) => A,
 		absent?: () => A,
+		/** Whether this member reaches a remote and so needs the ssh pin resolved. */
+		network = false,
 	) =>
 		Effect.gen(function* () {
-			const classified = yield* runFor(invocation, cwd, kind);
+			const classified = yield* (network ? runForNetwork : runFor)(invocation, cwd, kind);
 			switch (classified._tag) {
 				case "success":
 					return parse(classified.output);
@@ -2323,6 +2397,8 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: 
 			"ls-remote",
 			"generic",
 			parseLsRemote,
+			undefined,
+			true,
 		);
 	});
 
@@ -2524,7 +2600,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: 
 			forceWithLease: options?.forceWithLease ?? false,
 		});
 		yield* rejectOptionLikeRefs(cwd, [remote, ...(options?.refspec !== undefined ? [options.refspec] : [])]);
-		const classified = yield* runFor(
+		const classified = yield* runForNetwork(
 			GitCommand.push(
 				remote,
 				options?.refspec,
@@ -2574,7 +2650,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: 
 			rebase: options?.rebase ?? false,
 		});
 		yield* rejectOptionLikeRefs(cwd, [remote, ...(options?.ref !== undefined ? [options.ref] : [])]);
-		const classified = yield* runFor(
+		const classified = yield* runForNetwork(
 			GitCommand.pull(remote, options?.ref, options?.rebase ?? false, options?.ffOnly ?? false),
 			cwd,
 			"merge",
@@ -3827,13 +3903,17 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		this,
 		Effect.gen(function* () {
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-			// The ambient environment is read ONCE, here, and never again: the
-			// pins are a property of the service instance, not of a call. The
-			// read goes through ConfigProvider (whose default is `fromEnv()`)
-			// rather than `process.env`, so a test provides a provider instead of
-			// mutating the environment and `src/` keeps its zero-`node:` boundary.
-			// A blank value is treated as absent — an exported-but-empty
-			// GIT_SSH_COMMAND is not an ssh configuration worth preserving.
+			// The AMBIENT ENVIRONMENT is read ONCE, here, and never again — it
+			// cannot change under a running service. The read goes through
+			// ConfigProvider (whose default is `fromEnv()`) rather than
+			// `process.env`, so a test provides a provider instead of mutating the
+			// environment and `src/` keeps its zero-`node:` boundary. A blank value
+			// is treated as absent — an exported-but-empty GIT_SSH_COMMAND is not
+			// an ssh configuration worth preserving.
+			//
+			// `core.sshCommand` is NOT read here: it is repository-local, so it
+			// belongs to a cwd rather than to the service, and is resolved per
+			// network-touching call instead.
 			// A source-level ConfigError degrades to "absent" rather than escaping:
 			// the layer's error channel is `never` by contract, and an unreadable
 			// provider is answered with the pin that cannot hang.
@@ -3842,7 +3922,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 				Effect.catch(() => Effect.succeed(Option.none<string>())),
 			);
 			const sshCommand = Option.filter(configured, (value) => value.trim() !== "");
-			return make(spawner, spawnEnv(sshCommand));
+			return make(spawner, sshCommand);
 		}),
 	);
 

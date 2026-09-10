@@ -440,7 +440,10 @@ describe("Git — real repository integration", () => {
 		beforeAll(async () => {
 			sshDir = await mkdtemp(join(tmpdir(), "effected-git-ssh-"));
 			argvLog = join(sshDir, "argv.txt");
-			fakeSsh = join(sshDir, "fake-ssh.sh");
+			// The basename MUST be `ssh`: the service only appends `-o` to a command it
+			// recognizes as OpenSSH, mirroring git's own basename-driven variant
+			// detection. A stand-in named anything else is correctly left untouched.
+			fakeSsh = join(sshDir, "ssh");
 			await writeFile(fakeSsh, `#!/bin/sh\nprintf '%s\\n' "$@" >> "${argvLog}"\nexit 1\n`, { mode: 0o755 });
 		});
 

@@ -23,9 +23,11 @@ Typed git introspection as an Effect service. A read tier answers the questions 
 
 Shelling out to git looks easy until you have to interpret the answers. git speaks through exit codes and stderr prose, and the prose changes with the question: an unknown ref, a directory that is not a repository, a path absent at a ref, and a genuinely failed command all come back as "non-zero exit plus a sentence". Code that string-matches stderr at every call site gets this wrong somewhere, eventually, in a different way each time.
 
-This package reads git's exit codes and stderr in exactly one classification step and hands you typed answers instead: a path absent at a valid ref is `Option.none` from `show` (a fact about the ref, not an error), a ref that does not resolve is `false` from `refExists` and a typed `UnknownRefError` elsewhere, a directory outside any work tree is `NotARepositoryError`, and everything else is a `GitCommandError` carrying the exit code and stderr intact. Spawn-level platform failures and the 30-second per-run ceiling are absorbed into that same taxonomy — no `PlatformError` and no timeout defect ever leaks from a `Git` method. Every command the service spawns pins `LC_ALL=C`, so the classification is stable across locales, and a set of non-interactive pins (`GIT_TERMINAL_PROMPT=0`, an empty `GIT_ASKPASS`, and `-o BatchMode=yes` appended to your own `GIT_SSH_COMMAND`), so a credential-requiring remote — over https or ssh — fails fast instead of blocking on a prompt, a passphrase, or a host-key confirmation. Tree listings use NUL-terminated output, so a path containing a space — or a newline — survives parsing.
+This package reads git's exit codes and stderr in exactly one classification step and hands you typed answers instead: a path absent at a valid ref is `Option.none` from `show` (a fact about the ref, not an error), a ref that does not resolve is `false` from `refExists` and a typed `UnknownRefError` elsewhere, a directory outside any work tree is `NotARepositoryError`, and everything else is a `GitCommandError` carrying the exit code and stderr intact. Spawn-level platform failures and the 30-second per-run ceiling are absorbed into that same taxonomy — no `PlatformError` and no timeout defect ever leaks from a `Git` method. Every command the service spawns pins `LC_ALL=C`, so the classification is stable across locales, plus a set of non-interactive pins (`GIT_TERMINAL_PROMPT=0` and an empty `GIT_ASKPASS`), and a member that reaches a remote adds `-o BatchMode=yes` to the ssh command git would otherwise have used — so a credential-requiring remote, over https or ssh, fails fast instead of blocking on a prompt, a passphrase, or a host-key confirmation. Tree listings use NUL-terminated output, so a path containing a space — or a newline — survives parsing.
 
-Both pins are unconditional and there is no opt-out through the service: `extendEnv: true` merges the parent environment, but a pinned key wins over it, so `GIT_TERMINAL_PROMPT=1` in your environment does not re-enable prompting. A caller that genuinely wants git to prompt must take the `GitCommand` value and override the key with `ChildProcess.setEnv` before running it. Note also that this gags git's own prompt only — `ssh`'s key-passphrase and host-key prompts read the terminal directly and are not covered.
+There is no opt-out through the service, and the pins win: `extendEnv: true` merges the parent environment, but a pinned key beats it, so `GIT_TERMINAL_PROMPT=1` in your environment does not re-enable prompting. A caller who genuinely wants git to prompt runs a `GitCommand` value themselves — those are pure and carry no environment at all, so they inherit yours untouched.
+
+The ssh pin is the one that adapts to you rather than overriding you. Before a member that reaches a remote spawns, the service resolves the ssh command git would have used on its own — your `GIT_SSH_COMMAND`, else your `core.sshCommand`, else plain `ssh` — and appends `-o BatchMode=yes` to *that*, so a custom identity file, jump host or port survives. It leaves the command strictly alone in two cases: when the program is not OpenSSH (`plink` has no `-o KEY=VALUE` form, so appending would break it rather than degrade it), and when you already set `BatchMode` yourself — OpenSSH honors the first value given for a repeated option, so your choice stands either way.
 
 `GitCommand` is exported alongside the service: 24 pure constructors producing Effect core `Command` values you can inspect, log, or test against without spawning anything.
 
@@ -114,14 +116,17 @@ import { Run } from "@effected/commands";
 import { ChildProcess } from "effect/unstable/process";
 
 const shortlog = ChildProcess.make("git", ["shortlog", "-sn", "HEAD"], {
-  // The pins Git applies on every invocation, which you have to make
-  // yourself here: LC_ALL=C keeps stderr classifiable; the next three keep a
-  // credential-requiring remote from blocking on a prompt (an empty
-  // GIT_ASKPASS is a hard stop that also suppresses core.askPass and
-  // SSH_ASKPASS); BatchMode is the only lever that stops ssh reading a
-  // passphrase or host-key confirmation from /dev/tty. If you set
-  // GIT_SSH_COMMAND yourself, append BatchMode to it rather than replacing
-  // it. extendEnv keeps PATH.
+  // The pins Git applies to its own spawns, which you make yourself here:
+  // LC_ALL=C keeps stderr classifiable; the next two keep a credential-
+  // requiring remote from blocking on a prompt (an empty GIT_ASKPASS is a
+  // hard stop that also suppresses core.askPass and SSH_ASKPASS). extendEnv
+  // keeps PATH.
+  //
+  // GIT_SSH_COMMAND is shown at its default. If your command touches a
+  // remote, resolve the ssh command git would have used — GIT_SSH_COMMAND,
+  // else core.sshCommand, else plain ssh — and append BatchMode to THAT: a
+  // bare `ssh` here silently overrides a configured core.sshCommand, because
+  // the environment variable wins over it in git's own precedence order.
   env: {
     LC_ALL: "C",
     GIT_TERMINAL_PROMPT: "0",
