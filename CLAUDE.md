@@ -74,6 +74,8 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.buil
 
 **Every package typechecks with `tsc --noEmit`** (`types:check`), on `typescript` from `catalog:build` — which a configDependency injects, so its absence from `pnpm-workspace.yaml` is expected and must never be "repaired".
 
+**The root `tsconfig.json` sets `skipLibCheck: true`, and that override is deliberate — do not remove it.** The silk preset sets no `skipLibCheck`, so it defaults false and the root program typechecks dependencies' shipped declarations. `vitest@5.0.0` ships a broken one — `dist/chunks/plugin.d.ts` imports `MarkOptions` from `vitest/browser`, which `dist/browser.d.ts` does not export — and it was the ONLY error in the whole root program, failing the pre-commit hook's `tsc --noEmit` on every commit in the repo. Drop the override once vitest ships a consistent `.d.ts`; per-package `types:check` is unaffected either way.
+
 ## Commands
 
 **User-run only:** `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs, mutating the lockfile and the root `pnpm-workspace.yaml`. **Agents must not invoke them** — surface the command and let the user run it (advancing the Effect pin is `pnpm:up` then `pnpm:export`).

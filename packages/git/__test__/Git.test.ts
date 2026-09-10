@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Fiber, Option, PlatformError, Result } from "effect";
+import { Cause, ConfigProvider, Effect, Exit, Fiber, Layer, Option, PlatformError, Result, Sink, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
 	BranchEntry,
 	ConfigListEntry,
@@ -26,9 +27,55 @@ import { scripted } from "./fixtures.js";
 
 const cwd = "/repo";
 
-/** Runs `program` (which requires `Git`) against `Git.layer` over a scripted spawner. */
+/**
+ * Runs `program` (which requires `Git`) against `Git.layer` over a scripted
+ * spawner.
+ *
+ * The EMPTY ConfigProvider is deliberate: `Git.layer` reads `GIT_SSH_COMMAND`
+ * from the ambient provider, whose default resolves the host's real
+ * environment. Without this, a stray `GIT_SSH_COMMAND` on a dev machine or a
+ * runner would silently change the spawn environment of every test in this
+ * file.
+ */
 const run = <A, E>(program: Effect.Effect<A, E, Git>, byArgs: (args: ReadonlyArray<string>) => ScriptResult) =>
-	program.pipe(Effect.provide(Git.layer), Effect.provide(scripted(byArgs)));
+	program.pipe(
+		Effect.provide(Git.layer),
+		Effect.provide(scripted(withoutSshProbe(byArgs))),
+		Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({}))),
+	);
+
+/**
+ * The config keys a network-touching member probes before its own invocation,
+ * to resolve the ssh command git would have used.
+ */
+const SSH_PROBE_KEYS = ["core.sshCommand", "ssh.variant"];
+
+/**
+ * Whether an argv is one of those probes.
+ *
+ * HAZARD: this matches by argv alone, so a future test that legitimately calls
+ * `git.configGet(cwd, "core.sshCommand")` or `"ssh.variant"` through `run`
+ * would be answered `{ exit: 1 }` by {@link withoutSshProbe} instead of by its
+ * own `byArgs`. Nothing does today. If you write one, give it its own spawner
+ * rather than widening this.
+ */
+const isSshProbe = (args: ReadonlyArray<string>): boolean =>
+	args.length === 3 && args[0] === "config" && args[1] === "--get" && SSH_PROBE_KEYS.includes(args[2] ?? "");
+
+/**
+ * Answers the ssh probe as "unset" (a silent exit 1, the `quiet` shape) and
+ * keeps it out of `byArgs` entirely.
+ *
+ * Every network-touching member now spawns that probe first, which would
+ * otherwise trip the argv assertion — and skew the spawn COUNT — of every
+ * test written about the member's own invocation. Hiding it here keeps those
+ * tests about what they were written to test; the probe itself is pinned
+ * directly by the "spawn environment" suite, which does not use this helper.
+ */
+const withoutSshProbe =
+	(byArgs: (args: ReadonlyArray<string>) => ScriptResult) =>
+	(args: ReadonlyArray<string>): ScriptResult =>
+		isSshProbe(args) ? { exit: 1 } : byArgs(args);
 
 describe("Git", () => {
 	describe("show", () => {
@@ -2853,6 +2900,377 @@ describe("Git — remaining tiers (round 2)", () => {
 				assert.deepStrictEqual(result, [
 					LsFilesEntry.make({ mode: "100644", oid: blob, stage: 0, path: "line\none.txt" }),
 				]);
+			}),
+		);
+	});
+
+	describe("spawn environment (#647, #670)", () => {
+		/**
+		 * Runs one member against a spawner that records every spawned command,
+		 * and returns the options of the LAST one — the member's own invocation,
+		 * after any `core.sshCommand` probe.
+		 *
+		 * `env` seeds the ambient ConfigProvider; `configured` and `variant` are
+		 * what the probes report for `core.sshCommand` and `ssh.variant`
+		 * (omitted = unset, a silent exit 1).
+		 */
+		const spawned = (options: {
+			readonly env?: Record<string, string | undefined>;
+			readonly configured?: string;
+			readonly variant?: string;
+			readonly network?: boolean;
+		}) =>
+			Effect.gen(function* () {
+				const seen: Array<{
+					readonly args: ReadonlyArray<string>;
+					readonly options: ChildProcess.StandardCommand["options"];
+				}> = [];
+				const recording = Layer.succeed(
+					ChildProcessSpawner.ChildProcessSpawner,
+					ChildProcessSpawner.make((command) => {
+						if (!ChildProcess.isStandardCommand(command)) return Effect.die("piped commands not scripted");
+						seen.push({ args: command.args, options: command.options });
+						const probe = isSshProbe(command.args);
+						const asked = command.args[2];
+						const answer =
+							asked === "core.sshCommand" ? options.configured : asked === "ssh.variant" ? options.variant : undefined;
+						const unset = probe && answer === undefined;
+						return Effect.succeed(
+							ChildProcessSpawner.makeHandle({
+								pid: ChildProcessSpawner.ProcessId(1),
+								exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(unset ? 1 : 0)),
+								isRunning: Effect.succeed(false),
+								kill: () => Effect.void,
+								stdin: Sink.drain,
+								stdout: Stream.make(new TextEncoder().encode(probe ? `${answer ?? ""}\n` : "abc123\n")),
+								stderr: Stream.empty,
+								all: Stream.empty,
+								getInputFd: () => Sink.drain,
+								getOutputFd: () => Stream.empty,
+								unref: Effect.succeed(Effect.void),
+							}),
+						);
+					}),
+				);
+				yield* Effect.gen(function* () {
+					const git = yield* Git;
+					// lsRemote is network-touching (it reads over the wire); revParse
+					// is not — the ssh pin is scoped to members that can invoke ssh.
+					return options.network === false
+						? yield* git.revParse(cwd, "HEAD")
+						: yield* git.lsRemote(cwd, "ssh://git@example.invalid/x.git");
+				}).pipe(
+					Effect.provide(Git.layer),
+					Effect.provide(recording),
+					Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(options.env ?? {}))),
+				);
+				assert.isTrue(seen.length > 0);
+				const last = seen[seen.length - 1];
+				assert.isDefined(last);
+				return { seen, env: last.options.env, options: last.options };
+			});
+
+		it.effect("pins the classification, prompt and askpass keys on every spawn", () =>
+			Effect.gen(function* () {
+				const { env } = yield* spawned({ network: false });
+				assert.strictEqual(env?.LC_ALL, "C");
+				assert.strictEqual(env?.GIT_TERMINAL_PROMPT, "0");
+				// Probed against git 2.55: an EMPTY GIT_ASKPASS is a hard stop, not a
+				// fall-through — it suppresses core.askPass and SSH_ASKPASS too.
+				// GIT_TERMINAL_PROMPT=0 alone closes none of those routes.
+				assert.strictEqual(env?.GIT_ASKPASS, "");
+				assert.strictEqual(env?.SSH_ASKPASS_REQUIRE, "never");
+			}),
+		);
+
+		it.effect("keeps extendEnv true so the pins merge with the parent environment", () =>
+			Effect.gen(function* () {
+				const { options } = yield* spawned({ network: false });
+				// Without this, pinning env would REPLACE the environment and git
+				// would lose PATH, HOME and SSH_AUTH_SOCK.
+				assert.strictEqual(options.extendEnv, true);
+			}),
+		);
+
+		it.effect("leaves a non-network member alone: no ssh pin, and no probe spawned for it", () =>
+			Effect.gen(function* () {
+				const { seen, env } = yield* spawned({ network: false });
+				assert.isUndefined(env?.GIT_SSH_COMMAND);
+				// A member that never invokes ssh must not pay the config read.
+				assert.isFalse(seen.some((spawn) => isSshProbe(spawn.args)));
+			}),
+		);
+
+		it.effect("pins BatchMode when neither the environment nor git config names an ssh command", () =>
+			Effect.gen(function* () {
+				const { seen, env } = yield* spawned({});
+				// `-o BatchMode=yes` is the ONLY lever that stops ssh reading a
+				// passphrase or host-key confirmation from /dev/tty; no askpass pin
+				// reaches those (probed under a real pty).
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "ssh -o BatchMode=yes");
+				assert.isTrue(seen.some((spawn) => isSshProbe(spawn.args)));
+			}),
+		);
+
+		it.effect("preserves a caller's GIT_SSH_COMMAND and appends BatchMode to it", () =>
+			Effect.gen(function* () {
+				const { seen, env } = yield* spawned({ env: { GIT_SSH_COMMAND: "ssh -i /keys/id_ed25519 -p 2222" } });
+				// A hard pin would discard a working ssh configuration and turn
+				// "prompts for a passphrase" into "cannot reach the remote at all".
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "ssh -i /keys/id_ed25519 -p 2222 -o BatchMode=yes");
+				// The environment variable already settles the COMMAND — git resolves
+				// it ahead of core.sshCommand — so that probe is skipped. The
+				// ssh.variant probe still runs: the variant decides the argument
+				// grammar and is a separate question from which command to run.
+				assert.isFalse(seen.some((spawn) => spawn.args[2] === "core.sshCommand"));
+				assert.isTrue(seen.some((spawn) => spawn.args[2] === "ssh.variant"));
+			}),
+		);
+
+		it.effect("resolves core.sshCommand when the environment names none, and appends to THAT", () =>
+			Effect.gen(function* () {
+				const { env } = yield* spawned({ configured: "ssh -i /keys/deploy_key -o IdentitiesOnly=yes" });
+				// The regression this guards: git resolves GIT_SSH_COMMAND ahead of
+				// core.sshCommand, so pinning a bare `ssh` here would silently drop a
+				// configured deploy key and fail auth on every ssh operation that
+				// worked before.
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "ssh -i /keys/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("declines to touch an ssh command that is not OpenSSH", () =>
+			Effect.gen(function* () {
+				// plink has no `-o KEY=VALUE` form at all (its switch is -batch), so
+				// appending would break a working PuTTY setup rather than degrade it.
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "plink -i C:\\keys\\id.ppk" } });
+				assert.isUndefined(env?.GIT_SSH_COMMAND);
+			}),
+		);
+
+		it.effect("declines when the caller already decides BatchMode for themselves", () =>
+			Effect.gen(function* () {
+				// OpenSSH takes the FIRST value obtained for a repeated option, so an
+				// appended BatchMode=yes after the caller's BatchMode=no is inert
+				// (verified with `ssh -G` against OpenSSH 10.3). The caller's decision
+				// stands rather than being papered over with a pin that does nothing.
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "ssh -o BatchMode=no" } });
+				assert.isUndefined(env?.GIT_SSH_COMMAND);
+			}),
+		);
+
+		it.effect("pins a quoted ssh path containing spaces — the program is read quote-aware", () =>
+			Effect.gen(function* () {
+				// GIT_SSH_COMMAND is shell-interpreted, so quoting a path with spaces
+				// is a working setup (verified against git 2.55). Splitting on
+				// whitespace alone would read `"/opt/my` and silently skip the pin.
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: '"/opt/my tools/ssh" -i /keys/id' } });
+				assert.strictEqual(env?.GIT_SSH_COMMAND, '"/opt/my tools/ssh" -i /keys/id -o BatchMode=yes');
+			}),
+		);
+
+		it.effect("pins despite an incidental mention of BatchMode that decides nothing", () =>
+			Effect.gen(function* () {
+				// `-F /tmp/BatchMode` names a config file. Treating the bare word as
+				// the caller's decision would skip the pin for someone who never
+				// asked to be prompted.
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "ssh -F /tmp/BatchMode" } });
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "ssh -F /tmp/BatchMode -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("treats a blank GIT_SSH_COMMAND as absent rather than appending to nothing", () =>
+			Effect.gen(function* () {
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "   " } });
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "ssh -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("declines to pin when GIT_SSH is the deciding rung, rather than displacing it", () =>
+			Effect.gen(function* () {
+				// Git's order is GIT_SSH_COMMAND > core.sshCommand > GIT_SSH > ssh
+				// (verified against git 2.55). GIT_SSH names a PROGRAM and takes no
+				// arguments, so nothing can be appended to it — and because
+				// GIT_SSH_COMMAND outranks it, pinning even a bare `ssh` would
+				// silently replace the caller's working transport.
+				const { env } = yield* spawned({ env: { GIT_SSH: "/opt/corp/ssh-wrapper" } });
+				assert.isUndefined(env?.GIT_SSH_COMMAND);
+				// The rest of the non-interactive pins still apply to that caller.
+				assert.strictEqual(env?.GIT_TERMINAL_PROMPT, "0");
+			}),
+		);
+
+		it.effect("prefers core.sshCommand over GIT_SSH, the way git does", () =>
+			Effect.gen(function* () {
+				const { env } = yield* spawned({
+					env: { GIT_SSH: "/opt/corp/ssh-wrapper" },
+					configured: "ssh -i /keys/deploy_key",
+				});
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "ssh -i /keys/deploy_key -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("declines when ssh.variant tells git the command is not OpenSSH", () =>
+			Effect.gen(function* () {
+				// The basename inference is overridable: a program literally named
+				// `ssh` with ssh.variant=plink is invoked with plink's -P (verified
+				// against git 2.55), so the append would corrupt a working command.
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "ssh" }, variant: "plink" });
+				assert.isUndefined(env?.GIT_SSH_COMMAND);
+			}),
+		);
+
+		it.effect("declines when GIT_SSH_VARIANT says the same from the environment", () =>
+			Effect.gen(function* () {
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "ssh", GIT_SSH_VARIANT: "tortoiseplink" } });
+				assert.isUndefined(env?.GIT_SSH_COMMAND);
+			}),
+		);
+
+		it.effect("still pins under ssh.variant=auto, which just means 'infer from the basename'", () =>
+			Effect.gen(function* () {
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "ssh -p 2222" }, variant: "auto" });
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "ssh -p 2222 -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("recognizes a Windows ssh.exe path written with backslashes", () =>
+			Effect.gen(function* () {
+				const { env } = yield* spawned({
+					env: { GIT_SSH_COMMAND: "C:\\Windows\\System32\\OpenSSH\\ssh.exe" },
+				});
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "C:\\Windows\\System32\\OpenSSH\\ssh.exe -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("degrades a failing ConfigProvider to absent rather than escaping the layer", () =>
+			Effect.gen(function* () {
+				// Git.layer's error channel is `never` by contract. Config.option
+				// covers ABSENT input only — a provider whose `load` fails still
+				// propagates — so the layer's Effect.catch is what actually holds that
+				// contract, and this is the only test that exercises it.
+				const failing = ConfigProvider.make(() =>
+					Effect.fail(new ConfigProvider.SourceError({ message: "provider unavailable" })),
+				);
+				let captured: ChildProcess.StandardCommand["options"] | undefined;
+				const recording = Layer.succeed(
+					ChildProcessSpawner.ChildProcessSpawner,
+					ChildProcessSpawner.make((command) => {
+						if (!ChildProcess.isStandardCommand(command)) return Effect.die("piped commands not scripted");
+						captured = command.options;
+						return Effect.succeed(
+							ChildProcessSpawner.makeHandle({
+								pid: ChildProcessSpawner.ProcessId(1),
+								exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(isSshProbe(command.args) ? 1 : 0)),
+								isRunning: Effect.succeed(false),
+								kill: () => Effect.void,
+								stdin: Sink.drain,
+								stdout: Stream.make(new TextEncoder().encode("abc123\n")),
+								stderr: Stream.empty,
+								all: Stream.empty,
+								getInputFd: () => Sink.drain,
+								getOutputFd: () => Stream.empty,
+								unref: Effect.succeed(Effect.void),
+							}),
+						);
+					}),
+				);
+				yield* Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.lsRemote(cwd, "ssh://git@example.invalid/x.git");
+				}).pipe(Effect.provide(Git.layer), Effect.provide(recording), Effect.provide(ConfigProvider.layer(failing)));
+				// An unreadable provider is answered with the pin that cannot hang.
+				assert.strictEqual(captured?.env?.GIT_SSH_COMMAND, "ssh -o BatchMode=yes");
+			}),
+		);
+
+		// Each of the seven members that reaches a remote must route through
+		// `runForNetwork`. Nothing else pins that: a member reverted to `runFor`
+		// still passes its own tests, which only assert argv, and the vanished
+		// probe is invisible to them because `withoutSshProbe` swallows it by
+		// argv regardless of who emitted it. This table is the only guard.
+		const NETWORK_MEMBERS: ReadonlyArray<{
+			readonly name: string;
+			readonly call: (git: Git["Service"]) => Effect.Effect<unknown, unknown>;
+		}> = [
+			{ name: "lsRemote", call: (git) => git.lsRemote(cwd, "ssh://git@example.invalid/x.git") },
+			{ name: "fetch", call: (git) => git.fetch(cwd, { ref: "main", remote: "origin" }) },
+			{ name: "fetchUnshallow", call: (git) => git.fetchUnshallow(cwd, { remote: "origin" }) },
+			{ name: "push", call: (git) => git.push(cwd, { remote: "origin", refspec: "main" }) },
+			{ name: "pull", call: (git) => git.pull(cwd, { remote: "origin", ref: "main" }) },
+			{
+				name: "submoduleAdd",
+				call: (git) => git.submoduleAdd(cwd, { url: "ssh://git@example.invalid/m.git", path: "m" }),
+			},
+			{ name: "submoduleUpdate", call: (git) => git.submoduleUpdate(cwd, { init: true }) },
+		];
+
+		for (const member of NETWORK_MEMBERS) {
+			it.effect(`${member.name} resolves the ssh pin — it reaches a remote`, () =>
+				Effect.gen(function* () {
+					const seen: Array<{
+						readonly args: ReadonlyArray<string>;
+						readonly options: ChildProcess.StandardCommand["options"];
+					}> = [];
+					const recording = Layer.succeed(
+						ChildProcessSpawner.ChildProcessSpawner,
+						ChildProcessSpawner.make((command) => {
+							if (!ChildProcess.isStandardCommand(command)) return Effect.die("piped commands not scripted");
+							seen.push({ args: command.args, options: command.options });
+							return Effect.succeed(
+								ChildProcessSpawner.makeHandle({
+									pid: ChildProcessSpawner.ProcessId(1),
+									exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(isSshProbe(command.args) ? 1 : 0)),
+									isRunning: Effect.succeed(false),
+									kill: () => Effect.void,
+									stdin: Sink.drain,
+									stdout: Stream.empty,
+									stderr: Stream.empty,
+									all: Stream.empty,
+									getInputFd: () => Sink.drain,
+									getOutputFd: () => Stream.empty,
+									unref: Effect.succeed(Effect.void),
+								}),
+							);
+						}),
+					);
+					yield* Effect.gen(function* () {
+						const git = yield* Git;
+						return yield* member.call(git);
+					}).pipe(
+						Effect.provide(Git.layer),
+						Effect.provide(recording),
+						Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({}))),
+						Effect.catchCause(() => Effect.void),
+					);
+					const invocation = seen.find((spawn) => !isSshProbe(spawn.args));
+					assert.isDefined(invocation);
+					assert.strictEqual(invocation.options.env?.GIT_SSH_COMMAND, "ssh -o BatchMode=yes");
+				}),
+			);
+		}
+
+		it.effect("reads the ambient environment ONCE, at layer construction", () =>
+			Effect.gen(function* () {
+				// Two members off one service instance must carry the same pins: the
+				// environment read is a property of the instance, not of a call.
+				let reads = 0;
+				const counting = ConfigProvider.make((path) => {
+					if (path.join(".").includes("GIT_SSH_COMMAND")) reads += 1;
+					return Effect.succeed(undefined);
+				});
+				yield* Effect.gen(function* () {
+					const git = yield* Git;
+					// Two NETWORK members: both enter resolveSshEnv, so `reads === 1`
+					// discriminates a per-call provider re-read. Two revParse calls
+					// would only prove the layer itself reads once.
+					yield* git.lsRemote(cwd, "ssh://git@example.invalid/x.git");
+					yield* git.lsRemote(cwd, "ssh://git@example.invalid/x.git");
+				}).pipe(
+					Effect.provide(Git.layer),
+					Effect.provide(scripted(withoutSshProbe(() => ({ stdout: "abc123\n" })))),
+					Effect.provide(ConfigProvider.layer(counting)),
+				);
+				assert.strictEqual(reads, 1);
 			}),
 		);
 	});

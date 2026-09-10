@@ -23,12 +23,12 @@
 // surface) and the real Git service itself for checkout, which IS part of
 // the surface this package owns.
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { ConfigProvider, Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChildProcess } from "effect/unstable/process";
 import { Git, NotARepositoryError } from "../../src/Git.js";
@@ -40,7 +40,7 @@ const TestLayer = Git.layer.pipe(Layer.provideMerge(NodeServices.layer));
 const run = <A, E>(effect: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
 	effect.pipe(Effect.provide(TestLayer));
 
-/** Pinned the same way GitCommand pins its own invocations, plus a prompt kill-switch. */
+/** The locale and prompt pins the `Git` service applies to its own spawns (#670). */
 const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" } as const;
 
 /**
@@ -139,6 +139,35 @@ const buildFixture = (dir: string): Effect.Effect<RepoFixture, never, Git | Chil
 
 		return { dir, commit1, commit2, commit3, branchCommit, forkPoint, tag: "v1.0.0", bigContent };
 	});
+
+// The `Git` service probes `ssh.variant` before every network-touching member,
+// and that read is a MERGED config read — so without this it reaches the
+// developer's or runner's own global git config. A machine with a global
+// `ssh.variant` outside `auto`/`ssh` would decline the ssh pin and fail the
+// assertions below with a message that says nothing about why. Pointing both
+// config scopes at /dev/null makes every git spawn in this file see only the
+// repository config its fixture wrote. Safe here because the fixtures pin
+// everything they depend on locally, including `init.defaultBranch`.
+const HOST_CONFIG_KEYS = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const;
+const hostConfig = new Map<string, string | undefined>();
+
+beforeAll(() => {
+	for (const key of HOST_CONFIG_KEYS) {
+		hostConfig.set(key, process.env[key]);
+		process.env[key] = "/dev/null";
+	}
+});
+
+afterAll(() => {
+	for (const key of HOST_CONFIG_KEYS) {
+		const previous = hostConfig.get(key);
+		if (previous === undefined) {
+			delete process.env[key];
+		} else {
+			process.env[key] = previous;
+		}
+	}
+});
 
 describe("Git — real repository integration", () => {
 	let fixtureDir: string;
@@ -425,6 +454,55 @@ describe("Git — real repository integration", () => {
 					const failure = yield* Effect.flip(git.refExists(emptyDir, "HEAD"));
 					assert.instanceOf(failure, NotARepositoryError);
 				}),
+			),
+		);
+	});
+
+	// The mocked spawner proves the pins are COMPUTED; only a real git spawn
+	// proves they REACH git. A stand-in ssh records the argv git handed it, so
+	// the appended `-o BatchMode=yes` is observable without a network remote.
+	describe("ssh pins reach a real git invocation (#670)", () => {
+		let sshDir: string;
+		let argvLog: string;
+		let fakeSsh: string;
+
+		beforeAll(async () => {
+			sshDir = await mkdtemp(join(tmpdir(), "effected-git-ssh-"));
+			argvLog = join(sshDir, "argv.txt");
+			// The basename MUST be `ssh`: the service only appends `-o` to a command it
+			// recognizes as OpenSSH, mirroring git's own basename-driven variant
+			// detection. A stand-in named anything else is correctly left untouched.
+			fakeSsh = join(sshDir, "ssh");
+			await writeFile(fakeSsh, `#!/bin/sh\nprintf '%s\\n' "$@" >> "${argvLog}"\nexit 1\n`, { mode: 0o755 });
+		});
+
+		afterAll(async () => {
+			await rm(sshDir, { recursive: true, force: true });
+		});
+
+		it.effect("appends BatchMode to the caller's own GIT_SSH_COMMAND", () =>
+			Effect.gen(function* () {
+				// lsRemote over an ssh URL routes through GIT_SSH_COMMAND. The
+				// stand-in exits 1, so the call fails; the assertion is on the argv
+				// git handed it, not on the outcome.
+				const outcome = yield* Effect.exit(
+					Effect.gen(function* () {
+						const git = yield* Git;
+						return yield* git.lsRemote(sshDir, "ssh://git@example.invalid/repo.git");
+					}),
+				);
+				assert.strictEqual(outcome._tag, "Failure");
+				const recorded = yield* Effect.promise(() => readFile(argvLog, "utf8"));
+				const argv = recorded.split("\n").filter((line) => line !== "");
+				// The pin arrived at a REAL git, which passed it through to ssh.
+				assert.isTrue(
+					argv.some((token, index) => token === "-o" && argv[index + 1] === "BatchMode=yes"),
+					`expected "-o BatchMode=yes" in the ssh argv, got: ${JSON.stringify(argv)}`,
+				);
+			}).pipe(
+				Effect.provide(Git.layer),
+				Effect.provide(NodeServices.layer),
+				Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ GIT_SSH_COMMAND: fakeSsh }))),
 			),
 		);
 	});
