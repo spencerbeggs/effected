@@ -61,23 +61,30 @@ const redactUrlUserinfo = (value: string): string =>
  * against.
  *
  * @remarks
- * `LC_ALL=C` is pinned on every invocation because git's stderr
- * classification (used by `Git`'s error taxonomy) depends on a stable,
- * untranslated locale. `GIT_TERMINAL_PROMPT=0` is pinned alongside it: a
- * network-touching command (`lsRemote`, `fetch`, `push`, `pull`,
- * `submoduleAdd`) against a credential-requiring remote must fail fast with
- * git's auth error rather than block on an interactive terminal prompt until
- * the `GIT_TIMEOUT` ceiling fires — a library spawning git never reads stdin
- * from a human. `extendEnv: true` is required alongside it: the
- * default value of `extendEnv` is owned by the platform backend that
- * implements `ChildProcessSpawner`, not by core, so a command that needs
- * `PATH` and the rest of the parent environment must request the merge
- * explicitly rather than rely on an implementation-specific default.
+ * The returned command carries neither `cwd` NOR any environment pin — every
+ * `GitCommand` constructor produces a pure, context-free value. The caller
+ * (the `Git` service) applies both per invocation, via `ChildProcess.setCwd`
+ * and `ChildProcess.setEnv`, each of which returns a new command and leaves
+ * this one unchanged. The environment pins that make git's stderr
+ * classifiable and keep it from blocking on a prompt live in `Git.ts`
+ * alongside the classifier and the timeout they exist to serve; one of them
+ * is conditional on the caller's own environment, which a pure constructor
+ * must not read (#670).
  *
- * The returned command carries no `cwd` — every `GitCommand` constructor
- * produces a cwd-less, pure value. The caller (the `Git` service) applies
- * the working directory per invocation via `ChildProcess.setCwd`, which
- * returns a new command and leaves this one unchanged.
+ * `extendEnv: true` is the one spawn option set here, and it is deliberately
+ * NOT one of those pins: it declares that a git invocation inherits the
+ * parent environment at all (git needs `PATH`, `HOME`, `SSH_AUTH_SOCK` and
+ * the rest to function), rather than forcing any particular value. It must
+ * be set at construction because core exposes no run-time combinator for it
+ * — only `setCwd` and `setEnv` — and its default is owned by whichever
+ * platform backend implements `ChildProcessSpawner`, not by core, so a
+ * command that needs the merge must request it explicitly rather than rely
+ * on an implementation-specific default.
+ *
+ * A consumer running one of these values directly gets a plain inherited
+ * environment and no pins. That is the honest shape: such a caller is
+ * running a custom command, and `Git`'s classification guarantees do not
+ * travel with the argv.
  */
 const git = (args: ReadonlyArray<GitArg>, stdin?: string): GitInvocation => {
 	const raw = args.map((arg) => (typeof arg === "string" ? arg : arg.value));
@@ -86,7 +93,6 @@ const git = (args: ReadonlyArray<GitArg>, stdin?: string): GitInvocation => {
 	);
 	return {
 		command: ChildProcess.make("git", raw, {
-			env: { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
 			extendEnv: true,
 			// stdin is baked into the pure command value (check-ignore's --stdin
 			// form): a single UTF-8 chunk, closed when done. Constructors without

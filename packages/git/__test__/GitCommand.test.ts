@@ -5,13 +5,16 @@ import { ChildProcess } from "effect/unstable/process";
 import type { GitInvocation } from "../src/GitCommand.js";
 import { GitCommand } from "../src/GitCommand.js";
 
-const expectedEnv = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" };
-
 /**
  * Asserts the argv/env/extendEnv/no-cwd shape shared by every `GitCommand`
  * constructor. `expectedRedacted` defaults to the raw argv — a constructor
  * with no sensitive positional must produce an element-wise identical
  * `redactedArgs`.
+ *
+ * A constructor carries NO environment and NO cwd: both are run-time context
+ * the `Git` service applies at its single spawn choke point (#670). The
+ * `env` assertion here is therefore a purity guard — a pin that leaks back
+ * onto a pure constructor fails every one of these cases at once.
  */
 const assertGitCommand = (
 	invocation: GitInvocation,
@@ -24,7 +27,7 @@ const assertGitCommand = (
 	assert.strictEqual(command.command, "git");
 	assert.deepStrictEqual(command.args, expectedArgs);
 	assert.deepStrictEqual(invocation.redactedArgs, expectedRedacted);
-	assert.deepStrictEqual(command.options.env, expectedEnv);
+	assert.isUndefined(command.options.env);
 	assert.strictEqual(command.options.extendEnv, true);
 	assert.isUndefined(command.options.cwd);
 };

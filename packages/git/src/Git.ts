@@ -1,4 +1,4 @@
-import { Context, DateTime, Duration, Effect, Layer, Option, PlatformError, Result, Schema } from "effect";
+import { Config, Context, DateTime, Duration, Effect, Layer, Option, PlatformError, Result, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import type { GitConfigScope, GitInvocation } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
@@ -7,6 +7,81 @@ import { runCollected } from "./internal/run.js";
 
 /** git's own ceiling: a run that has not answered in 30s is not going to. */
 const GIT_TIMEOUT = Duration.seconds(30);
+
+/**
+ * The environment every `Git` invocation is spawned with, minus the one
+ * conditional key {@link spawnEnv} computes.
+ *
+ * @remarks
+ * These live here, next to `classify` and `GIT_TIMEOUT`, because they exist
+ * to serve them — not on the pure `GitCommand` constructors, which carry no
+ * run-time context at all (#670).
+ *
+ * - `LC_ALL=C` — `classify` matches untranslated stderr text (`"not a git
+ *   repository"`, `"unknown revision"`). A localized message silently
+ *   misclassifies into `GitCommandError` instead of the typed domain error.
+ * - `GIT_TERMINAL_PROMPT=0` — git's own credential prompt. Without it a
+ *   network-touching member against a credential-requiring remote blocks
+ *   until `GIT_TIMEOUT` fires (#647).
+ * - `GIT_ASKPASS=""` — the askpass chain, which `GIT_TERMINAL_PROMPT=0` does
+ *   NOT close. Probed against git 2.55: an empty `GIT_ASKPASS` is a hard
+ *   stop, not a fall-through — it suppresses a configured `core.askPass` and
+ *   `SSH_ASKPASS` too, so this single key closes all three routes to a
+ *   blocking credential dialog.
+ * - `SSH_ASKPASS_REQUIRE="never"` — defense in depth for the ssh path. With
+ *   `BatchMode=yes` below, `ssh` never asks and never reaches an askpass
+ *   helper; this still matters when the caller's own `GIT_SSH_COMMAND` is a
+ *   wrapper that swallows the appended option.
+ */
+const BASE_ENV = {
+	LC_ALL: "C",
+	GIT_TERMINAL_PROMPT: "0",
+	GIT_ASKPASS: "",
+	SSH_ASKPASS_REQUIRE: "never",
+} as const;
+
+/**
+ * `ssh` reads a key passphrase and a host-key confirmation from `/dev/tty`
+ * DIRECTLY, so neither `GIT_TERMINAL_PROMPT` nor any askpass pin reaches
+ * them; `-o BatchMode=yes` is the only lever that makes `ssh` fail instead of
+ * block. Probed against OpenSSH under a real pty: with the askpass chain
+ * closed but no `BatchMode`, a first-contact host key hangs indefinitely;
+ * with `BatchMode=yes` the same call fails immediately with `"Host key
+ * verification failed."` (#670).
+ */
+const BATCH_MODE = "-o BatchMode=yes";
+
+/**
+ * Computes the spawn environment from the caller's own `GIT_SSH_COMMAND`.
+ *
+ * @remarks
+ * `GIT_SSH_COMMAND` is the one pinned key a user legitimately sets
+ * themselves — a custom identity file, a jump host, a non-default port, a
+ * corporate wrapper. Because the command is spawned with `extendEnv: true`,
+ * a pinned key WINS over the merged parent environment, so pinning it
+ * unconditionally would discard a working ssh configuration and turn
+ * "prompts for a passphrase" into "cannot reach the remote at all" — a worse
+ * failure than the one being fixed.
+ *
+ * So the caller's value is preserved and `BatchMode=yes` is appended to it;
+ * only an absent value is replaced wholesale. Appending is safe for anything
+ * ssh-shaped, since git appends the host and command AFTER this value. A
+ * wrapper that takes its arguments positionally will reject the extra
+ * option — deliberately accepted: that failure is immediate and legible,
+ * where the hang it replaces is neither.
+ *
+ * This is pure in its input; the READ of the ambient environment happens
+ * once, in {@link Git.layer}, through `ConfigProvider` rather than
+ * `process.env` — so a test swaps a provider instead of mutating the
+ * environment, and `src/` keeps its zero-`node:`-imports boundary.
+ */
+const spawnEnv = (sshCommand: Option.Option<string>): Record<string, string> => ({
+	...BASE_ENV,
+	GIT_SSH_COMMAND: Option.match(sshCommand, {
+		onNone: () => `ssh ${BATCH_MODE}`,
+		onSome: (caller) => `${caller} ${BATCH_MODE}`,
+	}),
+});
 
 /**
  * git ran and failed in a way that is not one of the recognized domain cases
@@ -362,14 +437,20 @@ const classify = (
  * `GitCommandError` — is the invocation's REDACTED argv, never the raw one:
  * the redaction mask the pure constructor carries is applied here, at the
  * single classification choke point (the #86 redaction policy).
+ *
+ * This is also the single ENVIRONMENT choke point: `env` (computed once in
+ * {@link Git.layer}) is applied here the same way `cwd` is, so every one of
+ * the service's members is spawned with the pins and nothing else in the
+ * package needs to know they exist.
  */
 const runClassified = (
 	invocation: GitInvocation,
 	cwd: string,
 	kind: ClassifyKind,
+	env: Record<string, string>,
 ): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> => {
 	const args = invocation.redactedArgs;
-	const command = ChildProcess.setCwd(invocation.command, cwd);
+	const command = ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), env);
 	return runCollected(command).pipe(
 		Effect.map((collected) => classify(cwd, args, collected, kind)),
 		Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind))),
@@ -1129,9 +1210,11 @@ const rejectNonNaturalNumber = (
 			);
 
 /** Builds the `Git.Service` shape over an already-resolved `ChildProcessSpawner`. */
-const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) => {
+const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], env: Record<string, string>) => {
 	const runFor = (invocation: GitInvocation, cwd: string, kind: ClassifyKind) =>
-		runClassified(invocation, cwd, kind).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
+		runClassified(invocation, cwd, kind, env).pipe(
+			Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+		);
 
 	const show = Effect.fn("Git.show")(function* (cwd: string, ref: string, path: string) {
 		yield* Effect.annotateCurrentSpan({ cwd, ref, path });
@@ -3483,8 +3566,9 @@ export interface GitShape {
 	/**
 	 * Mutating: `git commit [--all] [--allow-empty] [--amend] [--author=<author>] -m <message>`
 	 * — records a commit. The message rides argv; committer identity comes
-	 * from the caller's ENVIRONMENT (this package pins only `LC_ALL` and
-	 * `GIT_TERMINAL_PROMPT`), and `options.author` is the explicit `--author=`
+	 * from the caller's ENVIRONMENT (the pins this service applies are the
+	 * locale and the non-interactive set — never an identity), and
+	 * `options.author` is the explicit `--author=`
 	 * override. "Nothing to commit" fails loudly as {@link GitCommandError}.
 	 */
 	readonly commit: (
@@ -3743,7 +3827,22 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		this,
 		Effect.gen(function* () {
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-			return make(spawner);
+			// The ambient environment is read ONCE, here, and never again: the
+			// pins are a property of the service instance, not of a call. The
+			// read goes through ConfigProvider (whose default is `fromEnv()`)
+			// rather than `process.env`, so a test provides a provider instead of
+			// mutating the environment and `src/` keeps its zero-`node:` boundary.
+			// A blank value is treated as absent — an exported-but-empty
+			// GIT_SSH_COMMAND is not an ssh configuration worth preserving.
+			// A source-level ConfigError degrades to "absent" rather than escaping:
+			// the layer's error channel is `never` by contract, and an unreadable
+			// provider is answered with the pin that cannot hang.
+			const configured = yield* Config.string("GIT_SSH_COMMAND").pipe(
+				Config.option,
+				Effect.catch(() => Effect.succeed(Option.none<string>())),
+			);
+			const sshCommand = Option.filter(configured, (value) => value.trim() !== "");
+			return make(spawner, spawnEnv(sshCommand));
 		}),
 	);
 
@@ -3764,7 +3863,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 	 *
 	 * The double deliberately models **none** of the live service's semantics:
 	 * no stderr classification, no option-injection guard (an option-like ref a
-	 * stub accepts would be refused live), no `LC_ALL=C` pinning, no timeout,
+	 * stub accepts would be refused live), no environment pinning, no timeout,
 	 * and no `./`-vs-bare path resolution on `show` — a stub answers exactly
 	 * what it is told and nothing else. A suite exercising any of those wants
 	 * `Git.layer` over a mocked `ChildProcessSpawner` (or real git) instead.

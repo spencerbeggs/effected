@@ -35,15 +35,15 @@ const TestLayer = Git.layer.pipe(Layer.provideMerge(NodeServices.layer));
 const run = <A, E>(effect: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
 	effect.pipe(Effect.provide(TestLayer));
 
-/** Pinned the same way GitCommand pins its own invocations, plus a prompt kill-switch. */
+/** The locale and prompt pins the `Git` service applies to its own spawns (#670). */
 const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" } as const;
 
 // git >= 2.38 (CVE-2022-39253) refuses a file:// submodule remote unless
 // explicitly allowed. Probed against the installed git (2.54.0): a repo-local
 // `git config protocol.file.allow always` on the superproject does NOT reach
 // `git submodule add`'s internal clone subprocess — only a command-line `-c`,
-// the environment, or global config do. `GitCommand`'s hardcoded per-call env
-// (`{ LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" }`, `extendEnv: true`) merges with
+// the environment, or global config do. The `Git` service's per-call env pins
+// (applied at its spawn choke point, over `extendEnv: true`) merge with
 // `process.env`, so setting it here on the running test process reaches every
 // spawn in this file, including the real `Git` service's own
 // submoduleAdd/fetch/sparseCheckoutSet calls. The fixtures below also set the

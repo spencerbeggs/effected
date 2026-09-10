@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Fiber, Option, PlatformError, Result } from "effect";
+import { Cause, ConfigProvider, Effect, Exit, Fiber, Layer, Option, PlatformError, Result, Sink, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
 	BranchEntry,
 	ConfigListEntry,
@@ -2853,6 +2854,116 @@ describe("Git — remaining tiers (round 2)", () => {
 				assert.deepStrictEqual(result, [
 					LsFilesEntry.make({ mode: "100644", oid: blob, stage: 0, path: "line\none.txt" }),
 				]);
+			}),
+		);
+	});
+
+	describe("spawn environment (#647, #670)", () => {
+		// The env pins live on the SERVICE, not on the pure GitCommand values, so
+		// they can only be observed here — at the spawn. `capturing` records the
+		// options of the one command a single-member program spawns.
+		/** Runs one `revParse` against a spawner that records the spawned options. */
+		const spawnedOptions = (env: Record<string, string | undefined>) =>
+			Effect.gen(function* () {
+				let captured: ChildProcess.StandardCommand["options"] | undefined;
+				const recording = Layer.succeed(
+					ChildProcessSpawner.ChildProcessSpawner,
+					ChildProcessSpawner.make((command) => {
+						if (!ChildProcess.isStandardCommand(command)) return Effect.die("piped commands not scripted");
+						captured = command.options;
+						return Effect.succeed(
+							ChildProcessSpawner.makeHandle({
+								pid: ChildProcessSpawner.ProcessId(1),
+								exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+								isRunning: Effect.succeed(false),
+								kill: () => Effect.void,
+								stdin: Sink.drain,
+								stdout: Stream.make(new TextEncoder().encode("abc123\n")),
+								stderr: Stream.empty,
+								all: Stream.empty,
+								getInputFd: () => Sink.drain,
+								getOutputFd: () => Stream.empty,
+								unref: Effect.succeed(Effect.void),
+							}),
+						);
+					}),
+				);
+				yield* Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.revParse(cwd, "HEAD");
+				}).pipe(
+					Effect.provide(Git.layer),
+					Effect.provide(recording),
+					Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord(env))),
+				);
+				assert.isDefined(captured);
+				return captured as ChildProcess.StandardCommand["options"];
+			});
+
+		it.effect("pins the classification, prompt and askpass keys on every spawn", () =>
+			Effect.gen(function* () {
+				const options = yield* spawnedOptions({});
+				assert.strictEqual(options.env?.LC_ALL, "C");
+				assert.strictEqual(options.env?.GIT_TERMINAL_PROMPT, "0");
+				// Probed against git 2.55: an EMPTY GIT_ASKPASS is a hard stop, not a
+				// fall-through — it suppresses core.askPass and SSH_ASKPASS too.
+				// GIT_TERMINAL_PROMPT=0 alone does not close any of those routes.
+				assert.strictEqual(options.env?.GIT_ASKPASS, "");
+				assert.strictEqual(options.env?.SSH_ASKPASS_REQUIRE, "never");
+			}),
+		);
+
+		it.effect("keeps extendEnv true so the pins merge with the parent environment", () =>
+			Effect.gen(function* () {
+				const options = yield* spawnedOptions({});
+				// Without this, pinning env would REPLACE the environment and git
+				// would lose PATH, HOME and SSH_AUTH_SOCK.
+				assert.strictEqual(options.extendEnv, true);
+			}),
+		);
+
+		it.effect("pins BatchMode when the caller has no GIT_SSH_COMMAND of their own", () =>
+			Effect.gen(function* () {
+				const options = yield* spawnedOptions({});
+				// `-o BatchMode=yes` is the ONLY lever that stops ssh reading a
+				// passphrase or host-key confirmation from /dev/tty; no askpass pin
+				// reaches those (probed under a real pty).
+				assert.strictEqual(options.env?.GIT_SSH_COMMAND, "ssh -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("preserves a caller's GIT_SSH_COMMAND and appends BatchMode to it", () =>
+			Effect.gen(function* () {
+				const options = yield* spawnedOptions({ GIT_SSH_COMMAND: "ssh -i /keys/id_ed25519 -p 2222" });
+				// A hard pin here would discard a working ssh configuration and turn
+				// "prompts for a passphrase" into "cannot reach the remote at all".
+				assert.strictEqual(options.env?.GIT_SSH_COMMAND, "ssh -i /keys/id_ed25519 -p 2222 -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("treats a blank GIT_SSH_COMMAND as absent rather than appending to nothing", () =>
+			Effect.gen(function* () {
+				const options = yield* spawnedOptions({ GIT_SSH_COMMAND: "   " });
+				assert.strictEqual(options.env?.GIT_SSH_COMMAND, "ssh -o BatchMode=yes");
+			}),
+		);
+
+		it.effect("reads the ambient environment ONCE, at layer construction", () =>
+			Effect.gen(function* () {
+				// Two members off one service instance must carry the same pins: the
+				// read is a property of the instance, not of a call.
+				let reads = 0;
+				const counting = ConfigProvider.make((path) => {
+					if (path.join(".").includes("GIT_SSH_COMMAND")) reads += 1;
+					return Effect.succeed(undefined);
+				});
+				const recording = scripted(() => ({ stdout: "abc123\n" }));
+				yield* Effect.gen(function* () {
+					const git = yield* Git;
+					yield* git.revParse(cwd, "HEAD");
+					yield* git.revParse(cwd, "HEAD");
+				}).pipe(Effect.provide(Git.layer), Effect.provide(recording), Effect.provide(ConfigProvider.layer(counting)));
+				assert.strictEqual(reads, 1);
 			}),
 		);
 	});
