@@ -35,7 +35,7 @@ _run_copilot() {
 	local cwd="$1"
 	local path_override="${2:-$PATH}"
 	printf '{"sessionId":"t","timestamp":1,"cwd":"%s","source":"startup"}' "$cwd" |
-		env -i PATH="$path_override" COPILOT_PLUGIN_ROOT="$PLUGIN_ROOT" bash "$SCRIPT"
+		env -i PATH="$path_override" bash "$SCRIPT"
 }
 
 _ctx_of() {
