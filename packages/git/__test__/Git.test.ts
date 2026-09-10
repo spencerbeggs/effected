@@ -3041,6 +3041,26 @@ describe("Git — remaining tiers (round 2)", () => {
 			}),
 		);
 
+		it.effect("pins a quoted ssh path containing spaces — the program is read quote-aware", () =>
+			Effect.gen(function* () {
+				// GIT_SSH_COMMAND is shell-interpreted, so quoting a path with spaces
+				// is a working setup (verified against git 2.55). Splitting on
+				// whitespace alone would read `"/opt/my` and silently skip the pin.
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: '"/opt/my tools/ssh" -i /keys/id' } });
+				assert.strictEqual(env?.GIT_SSH_COMMAND, '"/opt/my tools/ssh" -i /keys/id -o BatchMode=yes');
+			}),
+		);
+
+		it.effect("pins despite an incidental mention of BatchMode that decides nothing", () =>
+			Effect.gen(function* () {
+				// `-F /tmp/BatchMode` names a config file. Treating the bare word as
+				// the caller's decision would skip the pin for someone who never
+				// asked to be prompted.
+				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "ssh -F /tmp/BatchMode" } });
+				assert.strictEqual(env?.GIT_SSH_COMMAND, "ssh -F /tmp/BatchMode -o BatchMode=yes");
+			}),
+		);
+
 		it.effect("treats a blank GIT_SSH_COMMAND as absent rather than appending to nothing", () =>
 			Effect.gen(function* () {
 				const { env } = yield* spawned({ env: { GIT_SSH_COMMAND: "   " } });
@@ -3100,8 +3120,11 @@ describe("Git — remaining tiers (round 2)", () => {
 				});
 				yield* Effect.gen(function* () {
 					const git = yield* Git;
-					yield* git.revParse(cwd, "HEAD");
-					yield* git.revParse(cwd, "HEAD");
+					// Two NETWORK members: both enter resolveSshEnv, so `reads === 1`
+					// discriminates a per-call provider re-read. Two revParse calls
+					// would only prove the layer itself reads once.
+					yield* git.lsRemote(cwd, "ssh://git@example.invalid/x.git");
+					yield* git.lsRemote(cwd, "ssh://git@example.invalid/x.git");
 				}).pipe(
 					Effect.provide(Git.layer),
 					Effect.provide(scripted(withoutSshProbe(() => ({ stdout: "abc123\n" })))),

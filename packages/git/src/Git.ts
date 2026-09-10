@@ -58,8 +58,47 @@ const BATCH_MODE = "-o BatchMode=yes";
  */
 const OPENSSH_PROGRAM = /(?:^|\/)ssh(?:\.exe)?$/i;
 
-/** Whether an ssh command line already decides `BatchMode` for itself. */
-const DECIDES_BATCH_MODE = /\bBatchMode\b/i;
+/**
+ * Whether an ssh command line already decides `BatchMode` for itself.
+ *
+ * @remarks
+ * Deliberately matches `BatchMode` only where it is an OPTION — after a `-o`,
+ * with or without intervening space or quoting, and taking either the
+ * `Key=value` or the `"Key value"` spelling `ssh -o` accepts. A bare
+ * occurrence of the word does not count: `ssh -F /tmp/BatchMode` names a
+ * config file and decides nothing, and treating it as a decision would skip
+ * the pin for a caller who never asked to be prompted.
+ *
+ * A miss in the other direction is harmless, which is why this errs toward
+ * matching less: because OpenSSH honors the first value obtained, appending
+ * after a spelling this does not recognize is inert rather than overriding —
+ * the caller's own value still wins.
+ */
+const DECIDES_BATCH_MODE = /(?:^|\s)-o\s*["']?\s*BatchMode\s*[=\s]/i;
+
+/**
+ * The program an ssh command line invokes, as git's shell would see it.
+ *
+ * @remarks
+ * `GIT_SSH_COMMAND` is interpreted by the shell, so the program may be
+ * QUOTED to carry spaces — `"/opt/my tools/ssh" -i key` is a working setup
+ * (verified against git 2.55). Splitting on whitespace alone would read that
+ * as `"/opt/my`, fail to recognize ssh, and silently skip the pin.
+ *
+ * This is quote-aware, not shell-aware: it does not expand variables, honor
+ * escapes, or handle a command built by shell operators. Anything it cannot
+ * read confidently comes back `undefined` and the caller's command is left
+ * strictly alone — the safe direction, since declining only forgoes the new
+ * protection where mangling would break a working remote.
+ */
+const sshProgram = (command: string): string | undefined => {
+	const quote = command[0];
+	if (quote === '"' || quote === "'") {
+		const closing = command.indexOf(quote, 1);
+		return closing === -1 ? undefined : command.slice(1, closing);
+	}
+	return command.split(/\s+/)[0];
+};
 
 /**
  * Appends `-o BatchMode=yes` to an ssh command line, or declines.
@@ -83,7 +122,7 @@ const DECIDES_BATCH_MODE = /\bBatchMode\b/i;
  */
 const withBatchMode = (command: string): Option.Option<string> => {
 	const trimmed = command.trim();
-	const program = trimmed.split(/\s+/)[0];
+	const program = sshProgram(trimmed);
 	if (program === undefined || !OPENSSH_PROGRAM.test(program) || DECIDES_BATCH_MODE.test(trimmed)) {
 		return Option.none();
 	}
