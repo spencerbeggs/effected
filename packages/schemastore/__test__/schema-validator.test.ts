@@ -97,6 +97,65 @@ describe("SchemaValidator", () => {
 			);
 		});
 
+		// The #657 regression: the standard ajv-formats vocabulary is
+		// registered, so a published document can say "this string is an
+		// ISO-8601 instant" with `format` instead of falling back to a
+		// `pattern` plus a runtime filter that loses the annotation.
+		it("accepts standard formats (date-time, uri, email, uuid) under strict mode", () => {
+			assert.deepStrictEqual(
+				validate({
+					$schema: "http://json-schema.org/draft-07/schema#",
+					$id: "https://example.com/formats.schema.json",
+					type: "object",
+					properties: {
+						generatedAt: { type: "string", format: "date-time" },
+						homepage: { type: "string", format: "uri" },
+						contact: { type: "string", format: "email" },
+						id: { type: "string", format: "uuid" },
+					},
+				}),
+				[],
+			);
+		});
+
+		// The control for the above: registering the standard vocabulary must
+		// not silently accept arbitrary format strings — an UNKNOWN format is
+		// still a strict-mode rejection (a root-pathed finding, like every
+		// other compile throw).
+		it("reports an unknown format string as a strict-mode finding", () => {
+			const findings = validate({
+				$schema: "http://json-schema.org/draft-07/schema#",
+				$id: "https://example.com/bad-format.schema.json",
+				type: "object",
+				properties: {
+					when: { type: "string", format: "nonsense-format" },
+				},
+			});
+			assert.strictEqual(findings.length, 1);
+			assert.strictEqual(findings[0]?.path, "");
+			assert.include(findings[0]?.message ?? "", "nonsense-format");
+		});
+
+		// The plugin's default also registers the `formatMaximum` /
+		// `formatMinimum` (and exclusive) keywords; DocumentLint answers those
+		// as unknown keywords, so the engine gate must keep rejecting them —
+		// one predicate governs both verdicts.
+		it("still rejects the ajv-formats limit keywords (formatMaximum & co.)", () => {
+			for (const keyword of ["formatMaximum", "formatMinimum", "formatExclusiveMaximum", "formatExclusiveMinimum"]) {
+				const findings = validate({
+					$schema: "http://json-schema.org/draft-07/schema#",
+					$id: `https://example.com/${keyword}.schema.json`,
+					type: "object",
+					properties: {
+						when: { type: "string", format: "date", [keyword]: "2026-01-01" },
+					},
+				});
+				assert.strictEqual(findings.length, 1, `${keyword} should be rejected`);
+				assert.strictEqual(findings[0]?.path, "");
+				assert.include(findings[0]?.message ?? "", keyword);
+			}
+		});
+
 		it("validates documents sharing an $id across calls without collision", () => {
 			const document = { $id: "https://example.com/same.schema.json", type: "object" };
 			assert.deepStrictEqual(validate(document), []);

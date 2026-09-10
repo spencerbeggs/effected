@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-28
-updated: 2026-09-05
-last-synced: 2026-09-05
+updated: 2026-09-10
+last-synced: 2026-09-10
 completeness: 95
 related:
   - ../effect-standards.md
@@ -127,6 +127,10 @@ A companion `@effected/schemastore-ajv` package was available as a middle path a
 **What survives, and must:** the **channel convention** — findings are values, so a strict-mode rejection is a report rather than an error, and the error channel is reserved for the mechanism failing; the **engine-shaped input**, decoupled from the package's own classes; and the **service-as-interface**, with a noop layer, a test layer and a substitutable engine all intact. The seam survives as an interface, not as a requirement. What changed is only that not-writing-an-adapter is the default path.
 
 The shipped layer **registers every declared keyword family found in the document before compiling**, so ajv strict mode cannot reject the language-server families the lint deliberately allows. One predicate governs both verdicts.
+
+For the same reason the layer **registers the standard `ajv-formats` vocabulary, and only the vocabulary**. ajv knows no formats out of the box, so under the strict gate a document saying `format: "date-time"` was rejected as an unknown format — a consumer could not express "this string is an ISO-8601 instant" in a published document at all, and fell back to a `pattern` plus a runtime filter the document cannot carry (effected#657). Owning SchemaStore's gate means owning the standard vocabulary that gate is expected to understand; a per-consumer hook to register formats was the alternative and was declined for the same reason the adapter seam was: it makes every consumer re-express the standard set, and one of them will get it wrong.
+
+Two boundaries hold this open door narrow. An **unknown format string is still a strict-mode rejection** — registering the standard set is not a licence for arbitrary format names. And the plugin's `keywords` option is **off**: `addFormats` would otherwise also register `formatMaximum` / `formatMinimum` and their exclusive variants, which `DocumentLint` answers as unknown keywords — accepting them in the engine while the lint rejects them is exactly the two-verdicts drift the declared-families rule exists to prevent. Format registration does not move the meta-schema (`validateSchema`) verdict.
 
 ## Write-if-changed compares content, not bytes
 

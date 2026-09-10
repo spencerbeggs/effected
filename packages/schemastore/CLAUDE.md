@@ -170,6 +170,33 @@ validation gate, not a construction surface.
   the declared families before compiling, so ajv cannot reject what
   `DocumentLint` allows, and uses a fresh instance per call so shared `$id`s
   never collide.
+- **The engine gate registers the standard `ajv-formats` vocabulary, and ONLY
+  the vocabulary — `addFormats(ajv, { keywords: false })`.** Without it, strict
+  mode rejects every document using `format` (`date-time`, `uri`, `email`, …)
+  as an unknown format, so a consumer cannot express "this string is an
+  ISO-8601 instant" and falls back to a `pattern` plus a runtime filter that
+  the published document cannot carry (effected#657). An UNKNOWN format string
+  is still a strict-mode rejection: registering the standard set is not a
+  licence for arbitrary strings. `keywords: false` is load-bearing — the
+  plugin's default also registers `formatMaximum` / `formatMinimum` and their
+  exclusive variants, which `DocumentLint` answers as unknown keywords, so
+  registering them would drift the engine verdict from the lint verdict.
+  Registration does NOT move the meta-schema (`validateSchema`) verdict —
+  probed on `ajv@8.20.0` / `ajv-formats@3.0.1`.
+- **`ajv-formats` is bound with ONE hop and no cast:
+  `const addFormats = ajvFormats.default`.** The package does
+  `module.exports = exports = formatsPlugin` and then
+  `exports.default = formatsPlugin`, so the plugin points at itself and
+  `.default` is the callable in BOTH worlds — Node's ESM interop (default
+  binding is `module.exports`) and an `__esModule`-honouring bundler (default
+  binding is `exports.default`); probed under plain Node ESM,
+  `addFormats.default === addFormats`. Calling the default import DIRECTLY is
+  a `TS2349`: the shipped `.d.ts` declares `export default` in a CJS-mode file,
+  so TypeScript models the default import as the module namespace, which the
+  upstream `module.exports` reassignment contradicts. Do NOT reintroduce a
+  runtime `typeof imported === "function"` interop shim or an
+  `as unknown as` cast — the kit is ESM-only and the one hop is both correct
+  and correctly typed.
 - **`MAX_NESTING_DEPTH = 256` (`internal/limits.ts`) caps four recursive
   surfaces**; the lint degrades to a `DepthExceeded` finding (lint stays total),
   the others fail typed. `DocumentDiff`'s leaf comparison uses a looser stack
