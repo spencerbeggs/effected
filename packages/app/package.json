@@ -38,7 +38,7 @@
 		"@effected/memfs": "workspace:*",
 		"@effected/store": "workspace:*",
 		"@effected/xdg": "workspace:*",
-		"@savvy-web/bundler": "^2.3.2",
+		"@savvy-web/bundler": "^2.3.3",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
