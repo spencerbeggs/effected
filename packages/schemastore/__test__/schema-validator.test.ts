@@ -136,6 +136,26 @@ describe("SchemaValidator", () => {
 			assert.include(findings[0]?.message ?? "", "nonsense-format");
 		});
 
+		// The plugin's default also registers the `formatMaximum` /
+		// `formatMinimum` (and exclusive) keywords; DocumentLint answers those
+		// as unknown keywords, so the engine gate must keep rejecting them —
+		// one predicate governs both verdicts.
+		it("still rejects the ajv-formats limit keywords (formatMaximum & co.)", () => {
+			for (const keyword of ["formatMaximum", "formatMinimum", "formatExclusiveMaximum", "formatExclusiveMinimum"]) {
+				const findings = validate({
+					$schema: "http://json-schema.org/draft-07/schema#",
+					$id: `https://example.com/${keyword}.schema.json`,
+					type: "object",
+					properties: {
+						when: { type: "string", format: "date", [keyword]: "2026-01-01" },
+					},
+				});
+				assert.strictEqual(findings.length, 1, `${keyword} should be rejected`);
+				assert.strictEqual(findings[0]?.path, "");
+				assert.include(findings[0]?.message ?? "", keyword);
+			}
+		});
+
 		it("validates documents sharing an $id across calls without collision", () => {
 			const document = { $id: "https://example.com/same.schema.json", type: "object" };
 			assert.deepStrictEqual(validate(document), []);

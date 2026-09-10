@@ -10,8 +10,9 @@ import { KeywordFamilies } from "./KeywordFamilies.js";
 // `module.exports` namespace (the callable plugin sits on `.default`), while
 // bundlers and vitest honour the `__esModule` marker and hand over the
 // callable directly. Resolve both once, at the seam, instead of at the call.
-const addFormats: (ajv: Ajv) => Ajv = (() => {
-	const imported = ajvFormats as unknown as ((ajv: Ajv) => Ajv) | { default: (ajv: Ajv) => Ajv };
+type AddFormats = (ajv: Ajv, opts?: { keywords?: boolean }) => Ajv;
+const addFormats: AddFormats = (() => {
+	const imported = ajvFormats as unknown as AddFormats | { default: AddFormats };
 	return typeof imported === "function" ? imported : imported.default;
 })();
 
@@ -204,7 +205,12 @@ export class SchemaValidator extends Context.Service<SchemaValidator, SchemaVali
 					// unknown format, so a consumer cannot express "this string is an
 					// ISO-8601 instant" in the published schema — only a `pattern`
 					// fallback. An unknown format string still fails strict mode.
-					addFormats(ajv);
+					// `keywords: false` matters: the plugin default also registers
+					// `formatMaximum` / `formatMinimum` (and the exclusive
+					// variants), which DocumentLint reports as unknown keywords the
+					// engine would then compile clean — drifting the two verdicts
+					// apart. Only the format vocabulary belongs behind this gate.
+					addFormats(ajv, { keywords: false });
 					const declared = new Set<string>();
 					collectDeclaredKeywords(document, declared, 0);
 					try {
