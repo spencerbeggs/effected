@@ -13,7 +13,6 @@
 		"mikestead.dotenv",
 		"ms-vscode.live-server",
 		"ms-vscode.vscode-speech",
-		"ms-vscode.vscode-typescript-next",
 		"redhat.vscode-yaml",
 		"tombi-toml.tombi",
 		"tombonnike.vscode-status-bar-format-toggle",

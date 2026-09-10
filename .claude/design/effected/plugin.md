@@ -170,7 +170,7 @@ What remains before promoting the plugin to end users is validation in a repo wi
 
 `plugins/claude-code/hooks/hooks.json` registers a `SessionStart` hook (no matcher, so it fires on resume and compact too) that runs `session-start/orientation.sh`. The script briefs the main agent on the skills and agents the plugin ships and tells it to delegate whole write-or-review Effect tasks to the matching agent rather than hand-rolling them inline. Its `dogfood_feedback` block carries two loops — plugin feedback (wrong or unhelpful skill/agent/hook guidance) and `@effected` package feedback (service gaps, fluency suggestions, candidate new constructs) — and filing an issue always requires the user's explicit agreement. It is built on silk's hook pattern: `lib/hook-output.sh` provides the `emit_context` / `emit_noop` helpers, and the hook fails open when `jq` is absent.
 
-`plugins/copilot/hooks.json` registers the same briefing as a `sessionStart` command hook running `hooks/session-start/orientation.sh` under `COPILOT_PLUGIN_ROOT`. Copilot's hook format diverges from Claude Code's, so the port is a rewrite of the wiring rather than a copy — see [the development workflow](#development-workflow-claude-code-first-then-port).
+`plugins/copilot/hooks.json` registers the same briefing as a `sessionStart` command hook running `hooks/session-start/orientation.sh` under `${PLUGIN_ROOT}`. Copilot's hook format diverges from Claude Code's, so the port is a rewrite of the wiring rather than a copy — see [the development workflow](#development-workflow-claude-code-first-then-port).
 
 ## Versioning: two private tracking packages
 
