@@ -155,6 +155,15 @@ describe("YamlFormat.modify region-confined scalar replacement (#659)", () => {
 		assert.strictEqual(out, "a: y\nb: 1\n");
 	});
 
+	it("falls back to the whole-document pipeline on forceDefaultStyles", () => {
+		// Canonical mode drops quotes, comments and CRLFs; the fast path would
+		// preserve all three. Pins the `forceDefaultStyles` bail clause.
+		assert.strictEqual(
+			modifyToString("a: 'x' # note\r\nb: 1\r\n", ["a"], "y", { forceDefaultStyles: true }),
+			"a: y\nb: 1\n",
+		);
+	});
+
 	it("falls back to the whole-document pipeline on sortKeys", () => {
 		// The fast path would splice in place and return the UNSORTED
 		// "b: 'y'\na: 1\n"; the pipeline sorts keys and drops the quotes.
