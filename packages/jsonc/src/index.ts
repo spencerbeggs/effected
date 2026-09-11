@@ -41,6 +41,7 @@ export { JsoncEdit, JsoncFormattingOptions, JsoncRange } from "./JsoncEdit.js";
 export {
 	JsoncCanonicalizeError,
 	JsoncCanonicalizeErrorCode,
+	type JsoncDigest,
 	JsoncFingerprint,
 	JsoncTextHashOptions,
 } from "./JsoncFingerprint.js";

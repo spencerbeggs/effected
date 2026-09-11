@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-20
-updated: 2026-09-02
-last-synced: 2026-09-02
+updated: 2026-09-10
+last-synced: 2026-09-10
 completeness: 92
 related:
   - effect-standards.md
@@ -60,6 +60,8 @@ The sync form is spelled `*Result`. Three arguments, in ascending order of force
 1. **Precedent.** `*Result` is where the policy started and what the plugin skills name.
 2. **Accuracy.** `Sync` names a distinction that does not exist — **the `Effect` form is also synchronous**, which is the entire premise of the policy. `Result` names the one thing that actually differs: the return type.
 3. **`*Sync` is already taken in this kit, for an incompatible meaning.** `@effected/workspaces` ships a sync facade family (`findWorkspaceRootSync`, `getWorkspacePackagesSync`, `readPackageSync`) whose members are **genuinely IO-performing** functions returning nullables, not `Result`s. Within one kit `*Sync` would mean both "does blocking IO, returns a nullable" and "pure computation, returns a `Result`".
+
+The rule holds even where the `Effect` twin is **not** merely a span. `@effected/jsonc`'s `hash` requires core's `Crypto.Crypto`, so its synchronous twin is not a free derivation — it takes the digest from the caller — and argument 2 above does not apply, since the `Effect` form really is the effectful one. It is still spelled `hashResult`, on arguments 1 and 3: `Result` is what the kit's readers have been taught to look for, and `*Sync` would still collide with the workspaces meaning. **A sync twin that needs the caller to supply the platform is named for its return type like every other one, and takes that platform as an explicit argument** rather than importing `node:*` — the `TsconfigLoaderSyncOptions` shape.
 
 ## Where the policy stops
 

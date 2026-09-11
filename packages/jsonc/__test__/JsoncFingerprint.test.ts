@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
 import { Crypto, Effect, Layer, Result } from "effect";
+import type { JsoncDigest } from "../src/index.js";
 import { JsoncCanonicalizeError, JsoncFingerprint, JsoncTextHashOptions } from "../src/index.js";
 
 // A real SHA-256 backend over WebCrypto (Node 20+), wired through core's
@@ -15,6 +17,11 @@ const CryptoTest = Layer.succeed(
 			),
 	}),
 );
+
+// The consumer-side platform binding the sync twins take, written exactly as
+// the JsoncDigest docs tell a Node consumer to write it. Node's Buffer IS a
+// Uint8Array, so no copy is needed.
+const nodeDigest: JsoncDigest = (bytes) => createHash("sha256").update(bytes).digest();
 
 const provideCrypto = <A, E>(effect: Effect.Effect<A, E, Crypto.Crypto>): Effect.Effect<A, E> =>
 	Effect.provide(effect, CryptoTest);
@@ -393,6 +400,117 @@ describe("JsoncFingerprint", () => {
 			assert.strictEqual(JsoncFingerprint.normalizeEol("a\r\nb\rc\nd"), "a\nb\nc\nd");
 			assert.strictEqual(JsoncFingerprint.normalizeEol("no line endings"), "no line endings");
 			assert.strictEqual(JsoncFingerprint.normalizeEol(""), "");
+		});
+	});
+
+	describe("hashResult / hashTextResult (synchronous, caller-supplied digest)", () => {
+		it.effect("agrees with hash byte for byte, with no fiber in sight", () =>
+			provideCrypto(
+				Effect.gen(function* () {
+					// Deliberately key-disordered and nested, so agreement
+					// covers the canonical serialization and not just the
+					// digest of a flat scalar.
+					const value = { b: 2, a: [1, { y: 0, x: "\u20ac" }], c: null };
+					const async = yield* JsoncFingerprint.hash(value);
+					const sync = JsoncFingerprint.hashResult(value, nodeDigest);
+					assert.deepStrictEqual(sync, Result.succeed(async));
+					assert.match(async, /^[0-9a-f]{64}$/);
+				}),
+			),
+		);
+
+		it.effect("agrees with hashText byte for byte, normalizeEol included", () =>
+			provideCrypto(
+				Effect.gen(function* () {
+					const options = JsoncTextHashOptions.make({ normalizeEol: true });
+					const text = "line one\r\nline two\rline three";
+					assert.deepStrictEqual(
+						JsoncFingerprint.hashTextResult(text, nodeDigest),
+						Result.succeed(yield* JsoncFingerprint.hashText(text)),
+					);
+					assert.deepStrictEqual(
+						JsoncFingerprint.hashTextResult(text, nodeDigest, options),
+						Result.succeed(yield* JsoncFingerprint.hashText(text, options)),
+					);
+					// The two option settings must NOT agree: without this the
+					// pair above would pass even if normalizeEol were ignored.
+					assert.notStrictEqual(
+						Result.getOrThrow(JsoncFingerprint.hashTextResult(text, nodeDigest)),
+						Result.getOrThrow(JsoncFingerprint.hashTextResult(text, nodeDigest, options)),
+					);
+				}),
+			),
+		);
+
+		it("matches the known-answer SHA-256 vectors", () => {
+			assert.deepStrictEqual(
+				JsoncFingerprint.hashTextResult("", nodeDigest),
+				Result.succeed("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+			);
+			assert.deepStrictEqual(
+				JsoncFingerprint.hashTextResult("abc", nodeDigest),
+				Result.succeed("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+			);
+		});
+
+		it("propagates canonicalization failures unchanged, with the JSON-pointer path", () => {
+			const failure = JsoncFingerprint.hashResult({ a: { b: undefined } }, nodeDigest);
+			assert.isTrue(Result.isFailure(failure));
+			if (Result.isFailure(failure)) {
+				assert.instanceOf(failure.failure, JsoncCanonicalizeError);
+				assert.strictEqual(failure.failure.code, "UnrepresentableValue");
+				assert.strictEqual(failure.failure.path, "/a/b");
+			}
+		});
+
+		it("fails typed with InvalidDigest when the supplied digest is not 32 bytes wide", () => {
+			// A SHA-1 binding, the realistic mistake: 20 bytes, would have
+			// emitted a plausible-looking 40-character hex string.
+			const sha1: JsoncDigest = (bytes) => createHash("sha1").update(bytes).digest();
+			for (const failure of [
+				JsoncFingerprint.hashResult({ a: 1 }, sha1),
+				JsoncFingerprint.hashTextResult("abc", sha1),
+			]) {
+				assert.isTrue(Result.isFailure(failure));
+				if (Result.isFailure(failure)) {
+					assert.strictEqual(failure.failure.code, "InvalidDigest");
+					assert.strictEqual(failure.failure.path, "");
+					assert.include(failure.failure.detail, "20 bytes");
+				}
+			}
+		});
+
+		it("fails typed with InvalidDigest when the supplied digest throws", () => {
+			// The realistic binding mistake, thrown by Node itself rather than
+			// by a hand-written stub: an algorithm name OpenSSL does not know.
+			// The `assert.throws` is the precondition — without it this test
+			// would pass vacuously the day the name became valid, which is not
+			// hypothetical: "sha-256" (hyphenated) IS accepted by this Node.
+			// Escaping, the throw would crash the synchronous host these twins
+			// exist to be called from.
+			const unknownAlgorithm: JsoncDigest = (bytes) => createHash("sha256x").update(bytes).digest();
+			assert.throws(() => createHash("sha256x"));
+			for (const failure of [
+				JsoncFingerprint.hashResult({ a: 1 }, unknownAlgorithm),
+				JsoncFingerprint.hashTextResult("abc", unknownAlgorithm),
+			]) {
+				assert.isTrue(Result.isFailure(failure));
+				if (Result.isFailure(failure)) {
+					assert.strictEqual(failure.failure.code, "InvalidDigest");
+					assert.strictEqual(failure.failure.path, "");
+					assert.include(failure.failure.detail, "threw");
+				}
+			}
+		});
+
+		it("hashes the bytes it was given, not a re-encoding of them", () => {
+			// The digest sees the UTF-8 encoding of the canonical text and
+			// nothing else — proven by computing the expected answer from the
+			// canonical string independently.
+			const value = { \u00e9: "\u20ac" };
+			const canonical = Result.getOrThrow(JsoncFingerprint.canonicalizeResult(value));
+			const expected = createHash("sha256").update(new TextEncoder().encode(canonical)).digest("hex");
+			assert.deepStrictEqual(JsoncFingerprint.hashResult(value, nodeDigest), Result.succeed(expected));
 		});
 	});
 });
