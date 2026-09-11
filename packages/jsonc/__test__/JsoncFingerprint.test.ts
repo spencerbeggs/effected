@@ -480,6 +480,29 @@ describe("JsoncFingerprint", () => {
 			}
 		});
 
+		it("fails typed with InvalidDigest when the supplied digest throws", () => {
+			// The realistic binding mistake, thrown by Node itself rather than
+			// by a hand-written stub: an algorithm name OpenSSL does not know.
+			// The `assert.throws` is the precondition — without it this test
+			// would pass vacuously the day the name became valid, which is not
+			// hypothetical: "sha-256" (hyphenated) IS accepted by this Node.
+			// Escaping, the throw would crash the synchronous host these twins
+			// exist to be called from.
+			const unknownAlgorithm: JsoncDigest = (bytes) => createHash("sha256x").update(bytes).digest();
+			assert.throws(() => createHash("sha256x"));
+			for (const failure of [
+				JsoncFingerprint.hashResult({ a: 1 }, unknownAlgorithm),
+				JsoncFingerprint.hashTextResult("abc", unknownAlgorithm),
+			]) {
+				assert.isTrue(Result.isFailure(failure));
+				if (Result.isFailure(failure)) {
+					assert.strictEqual(failure.failure.code, "InvalidDigest");
+					assert.strictEqual(failure.failure.path, "");
+					assert.include(failure.failure.detail, "threw");
+				}
+			}
+		});
+
 		it("hashes the bytes it was given, not a re-encoding of them", () => {
 			// The digest sees the UTF-8 encoding of the canonical text and
 			// nothing else — proven by computing the expected answer from the

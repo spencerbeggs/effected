@@ -44,9 +44,9 @@ import { MAX_NESTING_DEPTH } from "./internal/limits.js";
  *   recurse forever.
  * - `InvalidDigest` — the {@link JsoncDigest} supplied to
  *   {@link JsoncFingerprint.hashResult} or
- *   {@link JsoncFingerprint.hashTextResult} returned something other than a
- *   32-byte SHA-256 digest. The `path` is `""`: the failure is the caller's
- *   platform binding, not a position in the document.
+ *   {@link JsoncFingerprint.hashTextResult} threw, or returned something
+ *   other than a 32-byte SHA-256 digest. The `path` is `""`: the failure is
+ *   the caller's platform binding, not a position in the document.
  *
  * @public
  */
@@ -274,6 +274,12 @@ const emit = (value: unknown, path: string, depth: number): string => {
  * algorithm, and the 64-lowercase-hex output guarantee is only as good as
  * what is passed here.
  *
+ * It **may throw** — an unsupported algorithm name, a crypto backend refusing
+ * to work in this environment. The throw surfaces as an `InvalidDigest`
+ * failure carrying its message in `detail`, never as an escaping exception:
+ * these twins exist to be called from synchronous host hooks, and crashing
+ * one over a platform-binding mistake would defeat the point.
+ *
  * @public
  */
 export type JsoncDigest = (bytes: Uint8Array) => Uint8Array;
@@ -287,7 +293,24 @@ const encoder = new TextEncoder();
 const SHA256_DIGEST_BYTES = 32;
 
 const digestHexResult = (text: string, digest: JsoncDigest): Result.Result<string, JsoncCanonicalizeError> => {
-	const bytes = digest(encoder.encode(text));
+	// A caller's platform binding can fail two ways, and both must arrive as a
+	// `Result`: the digest can THROW (`createHash("sha-256")` — hyphenated —
+	// throws `ERR_CRYPTO_UNKNOWN_DIGEST` on Node), and it can return the wrong
+	// width. An escaping exception would cross the `Result` contract and crash
+	// the synchronous host these twins exist to serve, so the call is wrapped
+	// exactly as `TsconfigLoaderSync` wraps the consumer's `readFile`.
+	let bytes: Uint8Array;
+	try {
+		bytes = digest(encoder.encode(text));
+	} catch (thrown) {
+		return Result.fail(
+			JsoncCanonicalizeError.make({
+				code: "InvalidDigest",
+				path: "",
+				detail: `the supplied digest threw: ${thrown instanceof Error ? thrown.message : String(thrown)}`,
+			}),
+		);
+	}
 	if (bytes.length !== SHA256_DIGEST_BYTES) {
 		return Result.fail(
 			JsoncCanonicalizeError.make({
@@ -454,8 +477,8 @@ export class JsoncFingerprint {
 	 * @returns A `Result` succeeding with the 64-character lowercase-hex
 	 *   SHA-256, or failing with a {@link JsoncCanonicalizeError} — the same
 	 *   canonicalization failures {@link JsoncFingerprint.canonicalizeResult}
-	 *   raises, plus `InvalidDigest` if `digest` returned a wrong-width
-	 *   result.
+	 *   raises, plus `InvalidDigest` if `digest` threw or returned a
+	 *   wrong-width result.
 	 */
 	static hashResult(value: unknown, digest: JsoncDigest): Result.Result<string, JsoncCanonicalizeError> {
 		return Result.flatMap(JsoncFingerprint.canonicalizeResult(value), (text) => digestHexResult(text, digest));
@@ -510,7 +533,8 @@ export class JsoncFingerprint {
 	 *   for omitted fields.
 	 * @returns A `Result` succeeding with the 64-character lowercase-hex
 	 *   SHA-256, or failing with a {@link JsoncCanonicalizeError} carrying
-	 *   the `InvalidDigest` code if `digest` returned a wrong-width result.
+	 *   the `InvalidDigest` code if `digest` threw or returned a wrong-width
+	 *   result.
 	 */
 	static hashTextResult(
 		text: string,
