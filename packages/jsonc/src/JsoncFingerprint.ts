@@ -42,6 +42,11 @@ import { MAX_NESTING_DEPTH } from "./internal/limits.js";
  * - `NestingDepthExceeded` — the value nests deeper than the package
  *   hardening cap, which also intercepts cyclic values before they can
  *   recurse forever.
+ * - `InvalidDigest` — the {@link JsoncDigest} supplied to
+ *   {@link JsoncFingerprint.hashResult} or
+ *   {@link JsoncFingerprint.hashTextResult} returned something other than a
+ *   32-byte SHA-256 digest. The `path` is `""`: the failure is the caller's
+ *   platform binding, not a position in the document.
  *
  * @public
  */
@@ -52,6 +57,7 @@ export const JsoncCanonicalizeErrorCode = Schema.Literals([
 	"LoneSurrogate",
 	"NonPlainObject",
 	"NestingDepthExceeded",
+	"InvalidDigest",
 ]);
 
 /**
@@ -66,8 +72,9 @@ export type JsoncCanonicalizeErrorCode = typeof JsoncCanonicalizeErrorCode.Type;
  * failure mode, the JSON-pointer `path` to the offending value (`""` is the
  * document root) and a human-readable `detail`. Raised by
  * {@link JsoncFingerprint.canonicalize},
- * {@link JsoncFingerprint.canonicalizeResult} and
- * {@link JsoncFingerprint.hash}.
+ * {@link JsoncFingerprint.canonicalizeResult},
+ * {@link JsoncFingerprint.hash}, {@link JsoncFingerprint.hashResult} and
+ * {@link JsoncFingerprint.hashTextResult}.
  *
  * @public
  */
@@ -245,7 +252,53 @@ const emit = (value: unknown, path: string, depth: number): string => {
 		.join(",")}}`;
 };
 
+/**
+ * The synchronous SHA-256 implementation {@link JsoncFingerprint.hashResult}
+ * and {@link JsoncFingerprint.hashTextResult} hash through, supplied by the
+ * consumer because this package imports no `node:*` and assumes no runtime.
+ *
+ * Node's built-in satisfies it with a one-line wrapper:
+ *
+ * ```ts
+ * import { createHash } from "node:crypto";
+ * import type { JsoncDigest } from "@effected/jsonc";
+ *
+ * const digest: JsoncDigest = (bytes) => createHash("sha256").update(bytes).digest();
+ * ```
+ *
+ * The platform binding is entirely the caller's — the same shape
+ * `@effected/tsconfig-json`'s `TsconfigLoaderSyncOptions` uses. The function
+ * **must** compute SHA-256 over exactly the bytes it is given: the digest's
+ * 32-byte length is checked (a wrong-length return fails typed with the
+ * `InvalidDigest` code), but no check can catch a different 32-byte
+ * algorithm, and the 64-lowercase-hex output guarantee is only as good as
+ * what is passed here.
+ *
+ * @public
+ */
+export type JsoncDigest = (bytes: Uint8Array) => Uint8Array;
+
 const encoder = new TextEncoder();
+
+// SHA-256 produces 32 bytes. The `Crypto.Crypto` path cannot return anything
+// else; the caller-supplied `JsoncDigest` can, so the sync twins check it
+// rather than quietly emitting a digest of the wrong width under a contract
+// that promises 64 hex characters.
+const SHA256_DIGEST_BYTES = 32;
+
+const digestHexResult = (text: string, digest: JsoncDigest): Result.Result<string, JsoncCanonicalizeError> => {
+	const bytes = digest(encoder.encode(text));
+	if (bytes.length !== SHA256_DIGEST_BYTES) {
+		return Result.fail(
+			JsoncCanonicalizeError.make({
+				code: "InvalidDigest",
+				path: "",
+				detail: `the supplied digest returned ${String(bytes.length)} bytes; SHA-256 produces ${SHA256_DIGEST_BYTES}`,
+			}),
+		);
+	}
+	return Result.succeed(Encoding.encodeHex(bytes));
+};
 
 const digestHex = (text: string): Effect.Effect<string, PlatformError.PlatformError, Crypto.Crypto> =>
 	Effect.gen(function* () {
@@ -367,6 +420,48 @@ export class JsoncFingerprint {
 	}
 
 	/**
+	 * The content fingerprint of a JSON value, computed synchronously through
+	 * a caller-supplied digest and returned as a `Result` instead of an
+	 * `Effect`: the lowercase-hex SHA-256 of the UTF-8 bytes of the value's
+	 * RFC 8785 canonical serialization.
+	 *
+	 * Byte-for-byte the same answer {@link JsoncFingerprint.hash} gives, for
+	 * callers with no fiber to run one in — a bundler plugin's synchronous
+	 * hook, a cache `read`/`write` invoked from inside a host's sync
+	 * callback. Hashing is the one place the package cannot stay pure on its
+	 * own, so the caller binds the platform: pass a {@link JsoncDigest}
+	 * wrapping `node:crypto`'s `createHash` (or any SHA-256 implementation),
+	 * exactly as a `Crypto` layer is provided at the edge for the `Effect`
+	 * variant.
+	 *
+	 * @example
+	 * ```ts
+	 * import { createHash } from "node:crypto";
+	 * import { JsoncFingerprint } from "@effected/jsonc";
+	 * import { Result } from "effect";
+	 *
+	 * const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest();
+	 *
+	 * const fingerprint = JsoncFingerprint.hashResult({ b: 2, a: 1 }, digest);
+	 * if (Result.isSuccess(fingerprint)) {
+	 *   console.log(fingerprint.success); // 64 lowercase hex characters
+	 * }
+	 * ```
+	 *
+	 * @param value - The plain JSON value to fingerprint.
+	 * @param digest - The consumer's SHA-256 implementation; see
+	 *   {@link JsoncDigest}.
+	 * @returns A `Result` succeeding with the 64-character lowercase-hex
+	 *   SHA-256, or failing with a {@link JsoncCanonicalizeError} — the same
+	 *   canonicalization failures {@link JsoncFingerprint.canonicalizeResult}
+	 *   raises, plus `InvalidDigest` if `digest` returned a wrong-width
+	 *   result.
+	 */
+	static hashResult(value: unknown, digest: JsoncDigest): Result.Result<string, JsoncCanonicalizeError> {
+		return Result.flatMap(JsoncFingerprint.canonicalizeResult(value), (text) => digestHexResult(text, digest));
+	}
+
+	/**
 	 * The content fingerprint of a JSON value: the lowercase-hex SHA-256 of
 	 * the UTF-8 bytes of its RFC 8785 canonical serialization. Values that
 	 * differ only in object key order fingerprint identically; any non-JSON
@@ -377,6 +472,9 @@ export class JsoncFingerprint {
 	 * `@effect/platform-node`'s `NodeCrypto.layer` (or any `Crypto` layer) at
 	 * the application edge. The digest itself can fail with the platform's
 	 * `PlatformError`, passed through untranslated.
+	 * Synchronous callers with no fiber to run this in reach for
+	 * {@link JsoncFingerprint.hashResult} instead, supplying their own
+	 * digest; the two agree byte for byte.
 	 *
 	 * The output format is a guarantee: exactly 64 lowercase hexadecimal
 	 * characters, with no `sha256:` (or other) algorithm prefix — the digest
@@ -395,6 +493,34 @@ export class JsoncFingerprint {
 	);
 
 	/**
+	 * The content fingerprint of raw text, computed synchronously through a
+	 * caller-supplied digest and returned as a `Result` instead of an
+	 * `Effect`: the lowercase-hex SHA-256 of its UTF-8 bytes, with the same
+	 * opt-in line-ending normalization {@link JsoncFingerprint.hashText}
+	 * applies.
+	 *
+	 * Byte-for-byte the same answer `hashText` gives, for callers with no
+	 * fiber to run one in. The caller binds the platform by passing a
+	 * {@link JsoncDigest}; see {@link JsoncFingerprint.hashResult}.
+	 *
+	 * @param text - The text content to fingerprint.
+	 * @param digest - The consumer's SHA-256 implementation; see
+	 *   {@link JsoncDigest}.
+	 * @param options - Optional {@link JsoncTextHashOptions}; defaults apply
+	 *   for omitted fields.
+	 * @returns A `Result` succeeding with the 64-character lowercase-hex
+	 *   SHA-256, or failing with a {@link JsoncCanonicalizeError} carrying
+	 *   the `InvalidDigest` code if `digest` returned a wrong-width result.
+	 */
+	static hashTextResult(
+		text: string,
+		digest: JsoncDigest,
+		options?: JsoncTextHashOptions,
+	): Result.Result<string, JsoncCanonicalizeError> {
+		return digestHexResult(options?.normalizeEol === true ? JsoncFingerprint.normalizeEol(text) : text, digest);
+	}
+
+	/**
 	 * The content fingerprint of raw text: the lowercase-hex SHA-256 of its
 	 * UTF-8 bytes, with opt-in line-ending normalization (`\r\n`/`\r` → `\n`)
 	 * for file content that must fingerprint identically across checkout
@@ -403,6 +529,9 @@ export class JsoncFingerprint {
 	 * Requires core's `Crypto.Crypto` service — provide
 	 * `@effect/platform-node`'s `NodeCrypto.layer` (or any `Crypto` layer) at
 	 * the application edge.
+	 * Synchronous callers reach for
+	 * {@link JsoncFingerprint.hashTextResult} instead, supplying their own
+	 * digest; the two agree byte for byte.
 	 *
 	 * The output format is a guarantee: exactly 64 lowercase hexadecimal
 	 * characters, with no `sha256:` (or other) algorithm prefix — the digest
