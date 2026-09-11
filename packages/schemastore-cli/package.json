@@ -1,0 +1,61 @@
+{
+	"name": "@effected/schemastore-cli",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Build, validate, version and publish SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources: document assembly, ajv strict-mode validation, structural lints, catalog entries, canonical JSON and a content-comparing emit pipeline.",
+	"keywords": ["schemastore", "json-schema", "draft-07", "catalog", "effect", "schema", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/schemastore#readme",
+	"bugs": {
+		"url": "https://github.com/spencerbeggs/effected/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/schemastore"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@beggs.codes",
+		"url": "https://spencerbeg.gs"
+	},
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./package.json": "./package.json"
+	},
+	"bin": {
+		"schemastore": "./src/bin.ts"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effect/platform-node": "catalog:effect",
+		"@effected/cli": "workspace:^",
+		"@effected/schemastore": "workspace:^",
+		"effect": "catalog:effect:peers"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:effect",
+		"@effected/memfs": "workspace:*",
+		"@savvy-web/bundler": "^2.3.3",
+		"@types/node": "catalog:build",
+		"typescript": "catalog:build"
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}

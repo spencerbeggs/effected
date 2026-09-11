@@ -71,6 +71,14 @@ catalogs:
     effect:
       specifier: 4.0.0-rc.115
       version: 4.0.0-rc.115
+  effect:peers:
+    effect:
+      specifier: 4.0.0-rc.115
+      version: 4.0.0-rc.115
+  silk:
+    tsx:
+      specifier: ^4.23.13
+      version: 4.23.13
 
 overrides:
   '@effect/vitest>vitest': ^5.0.0
@@ -93,6 +101,9 @@ importers:
       '@vitest-agent/plugin':
         specifier: ^4.0.0
         version: 4.0.0(@effected/glob@0.6.0(effect@4.0.0-rc.115))(@effected/jsonc@0.11.0(effect@4.0.0-rc.115))(@types/react@19.3.0)(@vitest/coverage-istanbul@5.0.0)(@vitest/coverage-v8@5.0.0)(redis@6.2.1)(vitest@5.0.0)
+      tsx:
+        specifier: catalog:silk
+        version: 4.23.13
 
   packages/app:
     devDependencies:
@@ -684,6 +695,38 @@ importers:
       effect:
         specifier: catalog:effect
         version: 4.0.0-rc.115
+      typescript:
+        specifier: catalog:build
+        version: 7.0.2
+    publishDirectory: dist/dev/pkg
+
+  packages/schemastore-cli:
+    dependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+      '@effected/cli':
+        specifier: workspace:^
+        version: link:../cli/dist/dev/pkg
+      '@effected/schemastore':
+        specifier: workspace:^
+        version: link:../schemastore/dist/dev/pkg
+      effect:
+        specifier: catalog:effect:peers
+        version: 4.0.0-rc.115
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.0)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
+      '@savvy-web/bundler':
+        specifier: ^2.3.3
+        version: 2.3.7(@effected/jsonc@0.11.0(effect@4.0.0-rc.115))(@effected/semver@0.7.0(effect@4.0.0-rc.115))(@effected/walker@0.9.0(@effected/glob@0.6.0(effect@4.0.0-rc.115))(effect@4.0.0-rc.115))(@types/node@26.5.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.5.1
       typescript:
         specifier: catalog:build
         version: 7.0.2
