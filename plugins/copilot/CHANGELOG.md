@@ -1,5 +1,17 @@
 # @effected/copilot-plugin
 
+## 0.5.1
+
+### Other
+
+- The generated construct index under `skills/effected-packages/references/constructs/jsonc.md` picks up `@effected/jsonc`'s synchronous fingerprint twins: the new `JsoncDigest` type, and `JsoncCanonicalizeError`'s updated summary naming `hashResult` and `hashTextResult` among its raisers. Regenerated output only — no skill prose or annotation changed. [#683][#683]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#683]: https://github.com/spencerbeggs/effected/pull/683
+
 ## 0.5.0
 
 ### Breaking Changes

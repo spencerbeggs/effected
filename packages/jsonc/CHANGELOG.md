@@ -1,5 +1,21 @@
 # @effected/jsonc
 
+## 0.10.0
+
+### Features
+
+- `JsoncFingerprint.hashResult(value, digest)` and `JsoncFingerprint.hashTextResult(text, digest, options?)` are the synchronous twins of `hash` and `hashText`, for callers with no fiber to run an `Effect` in — a bundler plugin's synchronous hook, a cache `read`/`write` invoked from inside a host callback. Each agrees byte for byte with its `Effect` counterpart. Closes effected#531.
+- The new `JsoncDigest` type (`(bytes: Uint8Array) => Uint8Array`) is the caller's own SHA-256 implementation, taken as an argument the way `@effected/tsconfig-json`'s `TsconfigLoaderSyncOptions` takes its file and path operations: the package still imports nothing from `node:*` and assumes no runtime, and a Node consumer passes a one-line `createHash("sha256")` wrapper.
+- They are named `*Result`, not `*Sync`, per the kit's sync primitive policy — what differs from the `Effect` form is the return type.
+- `JsoncCanonicalizeError` gains an `InvalidDigest` code, raised at path `""` when a supplied digest throws or returns anything other than 32 bytes. A wrong-algorithm binding therefore fails typed — never as an escaping exception through the `Result` contract, which would crash the synchronous host these twins exist to serve, and never as a plausible-looking digest of the wrong width. The 64-lowercase-hex output guarantee is unchanged.
+- No change to `hash`, `hashText`, `canonicalize`, `canonicalizeResult` or `normalizeEol`; the additions are purely additive. [#683][#683]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#683]: https://github.com/spencerbeggs/effected/pull/683
+
 ## 0.9.0
 
 ### Breaking Changes
@@ -254,7 +270,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ```
   `stringify` is the `Effect` form (carrying a `Jsonc.stringify` tracing span)
   and `stringifyResult` the synchronous `Result` form the first is defined in
-  terms of — the same pairing as `parse`/`parseResult`. Failures carry a&#10;`JsoncStringifyError` whose `code` is a `JsoncStringifyErrorCode`:&#10;`CircularReference`, `BigIntValue` or `TopLevelUnrepresentable`, plus the
+  terms of — the same pairing as `parse`/`parseResult`. Failures carry a
+  `JsoncStringifyError` whose `code` is a `JsoncStringifyErrorCode`:
+  `CircularReference`, `BigIntValue` or `TopLevelUnrepresentable`, plus the
   engine's `detail` message and the offending `value`.
   ```ts
   const bad = Jsonc.stringifyResult(0n);
@@ -288,7 +306,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   side, so a circular or `bigint` value fails as a schema issue during encode
   instead of throwing a defect out of the codec.
   ### `Jsonc.bind(target)`
-  `bind` composes a target schema with the JSONC codec once and hands back a&#10;`JsoncBoundCodec` — the `schema` plus both directions pre-derived, so the use
+  `bind` composes a target schema with the JSONC codec once and hands back a
+  `JsoncBoundCodec` — the `schema` plus both directions pre-derived, so the use
   site needs no generic `Schema` machinery:
   ```ts
   import { Jsonc } from "@effected/jsonc";
@@ -305,7 +324,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   	return [value, text] as const;
   });
   ```
-  Both directions fail with `Schema.SchemaError`, exactly as&#10;`Schema.decodeEffect`/`Schema.encodeEffect` over `Jsonc.schema(target)`&#10;would; `bind` adds no error taxonomy of its own. The target's decoding and
+  Both directions fail with `Schema.SchemaError`, exactly as
+  `Schema.decodeEffect`/`Schema.encodeEffect` over `Jsonc.schema(target)`
+  would; `bind` adds no error taxonomy of its own. The target's decoding and
   encoding service requirements flow through as `RD`/`RE`.
 
   Like `fromString` and `schema`, `bind` is schema-producing — each call
@@ -331,8 +352,11 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-- Added `Jsonc.parseResult(text, options?)` — a pure, synchronous&#10;`Result`-returning parse variant for callers that are not already inside an&#10;`Effect`. It runs the same error-recovery engine as `Jsonc.parse`: every
-  parse error is collected and the failure side carries one aggregate&#10;`JsoncParseError`.
+- Added `Jsonc.parseResult(text, options?)` — a pure, synchronous
+  `Result`-returning parse variant for callers that are not already inside an
+  `Effect`. It runs the same error-recovery engine as `Jsonc.parse`: every
+  parse error is collected and the failure side carries one aggregate
+  `JsoncParseError`.
   ```ts
   import { Jsonc } from "@effected/jsonc";
   import { Result } from "effect";
@@ -350,7 +374,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   `Jsonc.parse` is now defined in terms of `Jsonc.parseResult` — behavior is
   unchanged, and the `Effect` variant still carries the `Jsonc.parse` tracing
   span. Reach for `parseResult` at synchronous boundaries (a plain config
-  loader, a build script) instead of wrapping&#10;`Effect.runSync(Effect.result(Jsonc.parse(text)))`. [#112][#112]
+  loader, a build script) instead of wrapping
+  `Effect.runSync(Effect.result(Jsonc.parse(text)))`. [#112][#112]
 
 ### Minor Changes
 

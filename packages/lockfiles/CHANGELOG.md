@@ -1,5 +1,13 @@
 # @effected/lockfiles
 
+## 0.8.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.9.0 | 0.10.0 |
+
 ## 0.8.1
 
 ### Dependencies
@@ -287,7 +295,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 - `filenamesFor(format)` returns every filename a format is genuinely written
   under, primary name first — npm's `npm-shrinkwrap.json` alternate and bun's
-  older binary `bun.lockb` variant, in addition to the conventional name.&#10;`filenameFor` now delegates to it, so the conventional-name behavior is
+  older binary `bun.lockb` variant, in addition to the conventional name.
+  `filenameFor` now delegates to it, so the conventional-name behavior is
   unchanged.
 
 ````ts
