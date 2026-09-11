@@ -1,5 +1,13 @@
 # @effected/tsconfig-json
 
+## 0.8.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.9.0 | 0.10.0 |
+
 ## 0.8.1
 
 ### Dependencies
@@ -205,7 +213,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Refactoring
 
-- `PortableTsconfig`, `ResolvedTsconfig`, `TsEnumCodec`, `TsconfigDiscovery`,&#10;`TsconfigLoader` and `TsconfigLoaderSync` are now static classes with a
+- `PortableTsconfig`, `ResolvedTsconfig`, `TsEnumCodec`, `TsconfigDiscovery`,
+  `TsconfigLoader` and `TsconfigLoaderSync` are now static classes with a
   private constructor rather than `as const` namespace objects. Call syntax is
   unchanged (`TsconfigLoader.resolve(...)`); each member's TSDoc now ships in
   the built `.d.ts`, where an `as const` object's inferred member types
@@ -259,9 +268,11 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - ### `TsEnumCodec.encodeCompilerOptions` returns `ProgrammaticCompilerOptions`
   `encodeCompilerOptions` returned `Record<string, unknown>`, so a consumer
   handing the result to a `ts.CompilerOptions`-shaped API (`@typescript/vfs`,
-  the TypeScript compiler API) had to cast. It now returns the new exported&#10;`ProgrammaticCompilerOptions` type (values `ProgrammaticCompilerOptionsValue`)
+  the TypeScript compiler API) had to cast. It now returns the new exported
+  `ProgrammaticCompilerOptions` type (values `ProgrammaticCompilerOptionsValue`)
   — a structural transcription of TypeScript's own `CompilerOptionsValue`,
-  verified assignable to the real `ts.CompilerOptions` without importing&#10;`typescript`, preserving the package's zero-`typescript`-import rule:
+  verified assignable to the real `ts.CompilerOptions` without importing
+  `typescript`, preserving the package's zero-`typescript`-import rule:
   ```ts
   import { TsEnumCodec } from "@effected/tsconfig-json";
   import { createVirtualTypeScriptEnvironment } from "@typescript/vfs";

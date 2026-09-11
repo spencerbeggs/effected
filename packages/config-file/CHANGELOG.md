@@ -1,5 +1,13 @@
 # @effected/config-file
 
+## 0.7.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.9.0 | 0.10.0 |
+
 ## 0.7.0
 
 ### Features

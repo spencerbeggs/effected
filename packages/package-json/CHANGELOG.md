@@ -1,5 +1,13 @@
 # @effected/package-json
 
+## 0.14.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.9.0 | 0.10.0 |
+
 ## 0.14.0
 
 ### Breaking Changes
@@ -78,7 +86,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 #### `Funding` model
 
-- A new `Funding` class models npm's `funding` field. `Funding.FromField`&#10;always decodes to an array, whichever encoding the manifest used, so a
+- A new `Funding` class models npm's `funding` field. `Funding.FromField`
+  always decodes to an array, whichever encoding the manifest used, so a
   caller crediting maintainers never branches on arity; `url` is required.
 
 ```ts
@@ -92,12 +101,16 @@ entries[0]?.url; // "https://example.com/sponsor"
 #### `Repository.directoryUrl`
 
 - `Repository` gains `directoryUrl` — a monorepo member's own subdirectory URL
-  on GitHub/GitLab/Bitbucket. Falls back to `browseUrl` when there is no&#10;`directory`, and returns `Option.none()` for an unrecognized host or a `..`&#10;escape.
+  on GitHub/GitLab/Bitbucket. Falls back to `browseUrl` when there is no
+  `directory`, and returns `Option.none()` for an unrecognized host or a `..`
+  escape.
 
 #### `licenseExpressionOf`
 
-- A new `licenseExpressionOf(license: SpdxLicense) => Option<SpdxExpression>`&#10;turns a branded manifest license into a parsed `@effected/spdx` expression,
-  returning `Option.none()` for npm's `UNLICENSED` and `SEE LICENSE IN <file>`&#10;spellings.
+- A new `licenseExpressionOf(license: SpdxLicense) => Option<SpdxExpression>`
+  turns a branded manifest license into a parsed `@effected/spdx` expression,
+  returning `Option.none()` for npm's `UNLICENSED` and `SEE LICENSE IN <file>`
+  spellings.
 
 ### Bug Fixes
 
@@ -107,7 +120,8 @@ entries[0]?.url; // "https://example.com/sponsor"
   faithfulness guards matching `Person`'s.
 
 - The **string** branches had the same class of bug, reached through the fields
-  the shorthand has no syntax for. A repository decoded from `"effected/kit"`&#10;that gained a `type`, a `directory` or an unknown key re-encoded as the bare
+  the shorthand has no syntax for. A repository decoded from `"effected/kit"`
+  that gained a `type`, a `directory` or an unknown key re-encoded as the bare
   string, dropping the addition; `Bugs` did the same for an unknown key. Both now
   fall through to the object form unless the string can still carry the value,
   matching `Person` and `Funding`. The `directory` case is the live one, since
@@ -378,13 +392,16 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Features
 
-- Added `Repository` and `Bugs` field classes, plus `homepage`, `maintainers`&#10;and `keywords` fields on `Package`. `Repository` round-trips both the
+- Added `Repository` and `Bugs` field classes, plus `homepage`, `maintainers`
+  and `keywords` fields on `Package`. `Repository` round-trips both the
   shorthand string form and the object form byte-for-byte, the same wire
   fidelity discipline `Person` already carries.
 
 ### Bug Fixes
 
-- Fixed `Person` silently dropping unknown keys on an object-form `author` /&#10;`contributors` / `maintainers` field. `Person` lacked a `rest` catch-all, so&#10;`{"name":"Dee","twitter":"@dee"}` re-encoded as `{"name":"Dee"}` on a
+- Fixed `Person` silently dropping unknown keys on an object-form `author` /
+  `contributors` / `maintainers` field. `Person` lacked a `rest` catch-all, so
+  `{"name":"Dee","twitter":"@dee"}` re-encoded as `{"name":"Dee"}` on a
   read-then-write round trip; unknown keys are now preserved and flattened back
   on encode. An edited shorthand (e.g. `"Ann <ann@x.dev>"`) now re-emits as a
   shorthand rather than silently upgrading to the object form, unless the edit

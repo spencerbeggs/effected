@@ -1,5 +1,13 @@
 # @effected/markdown
 
+## 0.9.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.9.0 | 0.10.0 |
+
 ## 0.9.1
 
 ### Dependencies
@@ -320,7 +328,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Breaking Changes
 
-- `FrontmatterMissingError` gains a required `reason: "absent" | "captureDisabled"`&#10;field, exported as `FrontmatterMissingReason`. Any code constructing or
+- `FrontmatterMissingError` gains a required `reason: "absent" | "captureDisabled"`
+  field, exported as `FrontmatterMissingReason`. Any code constructing or
   pattern-matching on `new FrontmatterMissingError()` with no arguments now
   breaks at compile time.
   ```ts
@@ -330,7 +339,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   // After
   new FrontmatterMissingError({ reason: "absent" });
   ```
-  `reason` distinguishes why a frontmatter decoder found no capture:&#10;`"absent"` when the source genuinely has no frontmatter block, and&#10;`"captureDisabled"` when the source opens with a well-formed block but the
+  `reason` distinguishes why a frontmatter decoder found no capture:
+  `"absent"` when the source genuinely has no frontmatter block, and
+  `"captureDisabled"` when the source opens with a well-formed block but the
   document was parsed without `frontmatter: true` — the fix there is
   re-parsing with the toggle on, not editing the document.
 
@@ -341,8 +352,11 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   document was parsed. It's what `FrontmatterMissingError`'s `reason` is
   computed from, so the error and the accessor can never disagree.
   ### `codeBlockStyle` formatting option
-  `MarkdownFormattingOptions` gains `codeBlockStyle`, exported as&#10;`CodeBlockStyle` (`"fenced" | "indented"`), converting **language-less**&#10;code blocks between CommonMark's two spellings. It exists because the
-  default surprises: a language-less `Code` node with no explicit `fenceChar`&#10;serializes as an indented block, not a fence.
+  `MarkdownFormattingOptions` gains `codeBlockStyle`, exported as
+  `CodeBlockStyle` (`"fenced" | "indented"`), converting **language-less**
+  code blocks between CommonMark's two spellings. It exists because the
+  default surprises: a language-less `Code` node with no explicit `fenceChar`
+  serializes as an indented block, not a fence.
   ```ts
   import { MarkdownFormat } from "@effected/markdown";
 
@@ -365,7 +379,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Features
 
 - Added `DocumentSection`, a navigation projection over a parsed document's
-  root-level headings, with `MarkdownDocument.firstSection` and&#10;`.sectionByHeading` finder methods. A section's `bodyRange` spans from the end
+  root-level headings, with `MarkdownDocument.firstSection` and
+  `.sectionByHeading` finder methods. A section's `bodyRange` spans from the end
   of its heading to the end of its (sub)section content, so the range can be
   handed straight to the edit layer to splice a whole section. Heading-text
   matching against `sectionByHeading` is exact against trimmed text, never a
