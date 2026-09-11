@@ -127,23 +127,24 @@ describe("YamlFormat.modify region-confined scalar replacement (#659)", () => {
 
 	it("falls back for block scalar targets", () => {
 		const text = "a: |\n  line1\n  line2\nb: 1\n";
-		const out = modifyToString(text, ["a"], "replaced");
-		assert.ok(out.includes("replaced"));
-		assert.ok(out.includes("b: 1"));
+		// Exact whole-document pipeline output: the block scalar is replaced by
+		// the stringifier's plain-scalar rendering. A weaker includes() check
+		// would also pass if the fast path wrongly spliced the block header.
+		assert.strictEqual(modifyToString(text, ["a"], "replaced"), "a: replaced\nb: 1\n");
 	});
 
 	it("falls back for tagged and anchored targets", () => {
-		const tagged = "a: !str 'x'\nb: 1\n";
-		assert.ok(modifyToString(tagged, ["a"], "y").includes("y"));
-		const anchored = "a: &an 'x'\nb: 1\n";
-		assert.ok(modifyToString(anchored, ["a"], "y").includes("y"));
+		// The fallback re-serialises from the composed value: the replacement
+		// scalar takes the stringifier's own rendering, with no tag or anchor
+		// carried over from the replaced target. Exact outputs pin the
+		// tag/anchor bail precondition — includes() would pass under either path.
+		assert.strictEqual(modifyToString("a: !str 'x'\nb: 1\n", ["a"], "y"), "a: y\nb: 1\n");
+		assert.strictEqual(modifyToString("a: &an 'x'\nb: 1\n", ["a"], "y"), "a: y\nb: 1\n");
 	});
 
 	it("falls back for a multi-line quoted span", () => {
 		const text = "a: 'one\n  two'\nb: 1\n";
-		const out = modifyToString(text, ["a"], "joined");
-		assert.ok(out.includes("joined"));
-		assert.ok(out.includes("b: 1"));
+		assert.strictEqual(modifyToString(text, ["a"], "joined"), "a: joined\nb: 1\n");
 	});
 
 	it("falls back to the whole-document pipeline on an explicit defaultScalarStyle", () => {
@@ -152,6 +153,31 @@ describe("YamlFormat.modify region-confined scalar replacement (#659)", () => {
 		// the replacement as it always has (pins the fallback branch).
 		const out = modifyToString(text, ["a"], "y", { defaultScalarStyle: "double-quoted" });
 		assert.strictEqual(out, "a: y\nb: 1\n");
+	});
+
+	it("falls back to the whole-document pipeline on sortKeys", () => {
+		// The fast path would splice in place and return the UNSORTED
+		// "b: 'y'\na: 1\n"; the pipeline sorts keys and drops the quotes.
+		// Deleting the `sortKeys === true` bail clause must fail this test.
+		assert.strictEqual(modifyToString("b: 'x'\na: 1\n", ["b"], "y", { sortKeys: true }), "a: 1\nb: y\n");
+	});
+
+	it("falls back to the whole-document pipeline on indent", () => {
+		// The fast path would keep the original 4-space indentation; the
+		// pipeline re-indents to 2. Pins the `indent !== undefined` clause.
+		assert.strictEqual(modifyToString("a:\n    k: 'x'\n", ["a", "k"], "y", { indent: 2 }), "a:\n  k: y\n");
+	});
+
+	it("falls back to the whole-document pipeline on finalNewline", () => {
+		// The EOF newline sits outside the scalar span, so the fast path would
+		// keep it; the pipeline honours finalNewline:false. Pins the clause.
+		assert.strictEqual(modifyToString("a: 'x'\n", ["a"], "y", { finalNewline: false }), "a: y");
+	});
+
+	it("falls back to the whole-document pipeline on indentSequences", () => {
+		// The fast path would keep the indented sequence item; the pipeline
+		// dedents it. Pins the `indentSequences !== undefined` clause.
+		assert.strictEqual(modifyToString("a:\n  - 'x'\n", ["a", 0], "y", { indentSequences: false }), "a:\n- y\n");
 	});
 
 	it("keeps typed navigation errors unchanged", () => {

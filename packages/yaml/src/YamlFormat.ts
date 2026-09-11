@@ -830,9 +830,11 @@ export class YamlFormat {
 	 * caller's value and renders as a single line; a no-op replacement yields
 	 * no edits. Anything else — removals (`value === undefined`), nulls,
 	 * insertions, object/array values, block or multi-line scalars, tagged or anchored
-	 * targets, an explicit `defaultScalarStyle`/`forceDefaultStyles` request —
-	 * falls back to re-serialising the whole document, which normalises line
-	 * endings to LF and renders the replacement in the stringifier's styles.
+	 * targets, or any document-shaping / explicit-style option
+	 * (`defaultScalarStyle`, `forceDefaultStyles`, `sortKeys`, `indent`,
+	 * `indentSequences`, `finalNewline`) — falls back to re-serialising the
+	 * whole document, which normalises line endings to LF, applies those
+	 * options, and renders the replacement in the stringifier's styles.
 	 *
 	 * Two replacement values have no finite rendering and fail typed rather
 	 * than hanging or overflowing the stack: one containing a circular
