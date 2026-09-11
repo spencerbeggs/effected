@@ -654,8 +654,19 @@ function tryRegionalScalarEdit(
 	if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
 		return undefined;
 	}
-	// An explicit style request steers the stringifier — do not second-guess it.
-	if (options?.defaultScalarStyle !== undefined || options?.forceDefaultStyles) return undefined;
+	// Document-shaping options (sortKeys, indent, indentSequences, finalNewline)
+	// and explicit style requests all steer the whole-document pipeline.
+	// Silently dropping them on the fast path would change the output without
+	// error, so bail out to the existing compose → replace → re-stringify path.
+	if (
+		options?.defaultScalarStyle !== undefined ||
+		options?.forceDefaultStyles ||
+		options?.sortKeys === true ||
+		options?.indent !== undefined ||
+		options?.indentSequences !== undefined ||
+		options?.finalNewline !== undefined
+	)
+		return undefined;
 	const target = findExistingTarget(doc.contents, path);
 	if (!(target instanceof YamlScalar)) return undefined;
 	// A synthesised empty span (`key:` with no value) is an insertion site,
