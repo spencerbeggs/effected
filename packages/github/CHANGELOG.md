@@ -1,5 +1,57 @@
 # @effected/github
 
+## 0.10.0
+
+### Breaking Changes
+
+#### The whole kit tracks Effect `4.0.0-rc.115`
+
+- Every package's `effect` peer moves from `4.0.0-rc.112` to `4.0.0-rc.115`. The kit uses exact prerelease pins rather than a caret, so a consumer must move with it. This advance is the first whose Effect changes are not source-compatible with the previous pin, so a consumer that upgrades meets the same renames the kit did:
+
+- `SchemaTransformation.transformOrFail` and `SchemaGetter.transformOrFail` are `transformEffect`.
+
+- The `Config` constructors are PascalCase (`Config.String`, `Config.Redacted`, `Config.Int`, `Config.Boolean`, …) and `Config.mapOrFail` is `Config.mapEffect`.
+
+- `FileSystem.Size` and `FileSystem.SizeInput` are gone in favour of the `ByteSize` module: `File.Info.size` is a `ByteSize`, `File.seek` takes a `bigint`, `read`/`write` return a `number`.
+
+- The fast-check bridge (`effect/testing/FastCheck`, `Schema.toArbitrary`, the `fastCheck` property-test option) is removed in favour of `effect/unstable/arbitrary/Arbitrary`; `it.effect.prop` takes `arbitrary: { runs, size, seed, … }`.
+
+#### `@effected/schemastore` documents are open unless told otherwise
+
+- `Schema.ToJsonSchemaOptions.additionalProperties` became `onExcessProperty: "ignore" | "error"` upstream, and its default now mirrors the decoder's: generated object schemas carry `additionalProperties: true` unless `jsonSchema: { onExcessProperty: "error" }` is passed. `StoreDocument.fromSchema` passes the option through unchanged, so a document that was closed by default at rc.112 is open by default now. Pass `onExcessProperty: "error"` to keep a closed document; a generator that silently disagreed with the decoder it is paired with would be the worse default.
+
+#### `@effected/memfs` seeks before the start of a file fail
+
+- `File.seek` gained a `PlatformError` channel upstream, and memfs now matches Node: a seek whose resulting position would be negative fails with `BadArgument` ("Cannot seek before the start of the file") and leaves the cursor unchanged, where it previously stored the negative position and failed on the next read. No memfs-declared type changes; the `File`/`File.Info` shape changes are Effect's own, reaching consumers through the peer.
+
+### Documentation
+
+#### A `Schema.Class` root is annotated on the `Struct` it wraps
+
+- [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084), which the rc.112 notes carried as an open limitation, was closed upstream as by design: annotations passed as `Schema.Class`'s second argument sit on the class node, while the `$defs` entry is generated from the encoded fields `Struct`. Annotate that `Struct` — `Schema.Class<X>("X")(Schema.Struct({ … }).annotate({ title, description, "x-taplo": … }))` — and every key reaches the document. `@effected/schemastore`'s design doc and context files now state the rule instead of the limitation.
+
+#### The Claude Code and Copilot plugins teach the rc.115 surface
+
+- The `effect-v4-schema`, `effect-v4-testing` and `effect-v4-module-index` skills describe the native `Arbitrary` module in place of the fast-check bridge, including the migration traps met on this advance: the `size` clamp (default 10) that silently shrinks a property's string and array domains, the `-0` the generator's near-zero bias emits for an unbounded `Schema.Int` or any `Schema.Number`, which JSON and YAML cannot round-trip, and the absence of `oneof`/`constantFrom`/`array` combinators. `ByteSize` has a module-index row, the `Config` and CLI constructors are shown in their PascalCase spellings, and the session-start briefing reports rc.115 as the kit's pin. [#686][#686]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github-references | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/semver | dependency | updated | 0.6.0 | 0.7.0 |
+| @effect/platform-node | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| @effect/tsgo | devDependency | updated | 0.41.0 | 0.45.0 |
+| @effect/vitest | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| effect | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| effect | peerDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#686]: https://github.com/spencerbeggs/effected/pull/686
+
 ## 0.9.0
 
 ### Breaking Changes
@@ -431,7 +483,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ### `ArtifactMetadata.createStorageRecord` no longer takes a positional `org`
   The organization is now resolved from `Repo`'s `owner`, the same way every
   other resource on this surface reads it — `createStorageRecord` was the one
-  method that took `org` positionally instead. `Repo` is required in `R`;&#10;`Repo.provide` covers the cross-org case.
+  method that took `org` positionally instead. `Repo` is required in `R`;
+  `Repo.provide` covers the cross-org case.
   ```ts
   // Before
   yield* artifactMetadata.createStorageRecord(org, input);
@@ -447,7 +500,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   data. Commits created through the Git Data API bypass `git commit -s`, so
   the trailer has no porcelain to come from, and a hand-built one that is
   subtly wrong surfaces late as a red DCO check on someone else's pull
-  request. Whether a missing identity falls back to&#10;`BotIdentity.githubActions` stays the caller's policy.
+  request. Whether a missing identity falls back to
+  `BotIdentity.githubActions` stays the caller's policy.
 
 ### Bug Fixes
 
@@ -464,11 +518,15 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 - `GitBranch.upsert`'s remarks now warn about a live incident: resetting a
   branch to its pull request's base makes that PR's head equal its base for a
   window, and GitHub **auto-closes a PR whose diff is empty**. A consumer that
-  means to end at "target head plus a commit" should build the commit first —&#10;`GitCommit.get` the target for its tree sha, `createTree`, `createCommit`&#10;with the target as parent — and `upsert` once, straight to the finished sha.
+  means to end at "target head plus a commit" should build the commit first —
+  `GitCommit.get` the target for its tree sha, `createTree`, `createCommit`
+  with the target as parent — and `upsert` once, straight to the finished sha.
 
   `GitCommit.commitFiles`'s remarks now state plainly that it commits onto a
-  branch you own, not a rebase, and spell out the atomic composition — `get`,&#10;`createTree`, `createCommit`, `upsert` — that moves the ref once with no
-  observable intermediate state. Sequencing `upsert(branch, targetHead)`&#10;followed by `commitFiles` is the hazardous two-step above written a
+  branch you own, not a rebase, and spell out the atomic composition — `get`,
+  `createTree`, `createCommit`, `upsert` — that moves the ref once with no
+  observable intermediate state. Sequencing `upsert(branch, targetHead)`
+  followed by `commitFiles` is the hazardous two-step above written a
   different way: an open pull request from that branch sees an empty diff in
   the window between the two calls and GitHub can close it out from under a
   run that otherwise reports success. [#191][#191]
@@ -501,9 +559,14 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   through `requestDecoded(route, params, schema)`, where the schema is
   mandatory. One paginating engine backs every paginated read.
   ### Resource services
-  `GitBranch.upsert`, `GitTag.latestSemver` / `.upsert`, `CheckRun.withCheckRun`&#10;(with `conclude`), `PullRequest` / `PullRequestComment` upserts,&#10;`GitHubRelease`, `ArtifactMetadata`, `Attestation`, `GitHubCommit`,&#10;`GitHubContent`, `GitHubIssue`, `GitHubRepository` and `WorkflowDispatch`&#10;round out the typed surface over the raw request primitive.
+  `GitBranch.upsert`, `GitTag.latestSemver` / `.upsert`, `CheckRun.withCheckRun`
+  (with `conclude`), `PullRequest` / `PullRequestComment` upserts,
+  `GitHubRelease`, `ArtifactMetadata`, `Attestation`, `GitHubCommit`,
+  `GitHubContent`, `GitHubIssue`, `GitHubRepository` and `WorkflowDispatch`
+  round out the typed surface over the raw request primitive.
   ### Errors and auth
-  One `GitHubError` covers every REST resource, with a `kind` for routing and&#10;`hasKind` for narrowing; `kind: "alreadyExists"` is what makes an upsert
+  One `GitHubError` covers every REST resource, with a `kind` for routing and
+  `hasKind` for narrowing; `kind: "alreadyExists"` is what makes an upsert
   implementable without a second existence check. `GitHubGraphQLError` covers
   GraphQL, and `GitHubApp` mints installation tokens (`GitHubAppError` on
   failure) without pulling in `@octokit/auth-app`'s OAuth machinery. [#180][#180]
