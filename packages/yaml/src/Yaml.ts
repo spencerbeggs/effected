@@ -728,7 +728,7 @@ export class Yaml {
 		return Schema.String.pipe(
 			Schema.decodeTo(
 				Schema.Unknown,
-				SchemaTransformation.transformOrFail({
+				SchemaTransformation.transformEffect({
 					decode: (input: string) =>
 						Yaml.parse(input, options).pipe(
 							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),
@@ -761,7 +761,7 @@ export class Yaml {
 		return Schema.String.pipe(
 			Schema.decodeTo(
 				Schema.Array(Schema.Unknown),
-				SchemaTransformation.transformOrFail({
+				SchemaTransformation.transformEffect({
 					decode: (input: string) =>
 						Yaml.parseAll(input, options).pipe(
 							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),

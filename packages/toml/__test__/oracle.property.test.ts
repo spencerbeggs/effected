@@ -37,8 +37,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
-import { FastCheck as fc } from "effect/testing";
+import { Effect, Schema } from "effect";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import { parse as oracleParse, stringify as oracleStringify } from "smol-toml";
 import { Toml } from "../src/Toml.js";
 import { TomlLocalDate, TomlLocalDateTime, TomlLocalTime, TomlOffsetDateTime } from "../src/TomlDateTime.js";
@@ -181,62 +181,103 @@ const oracle = (text: string): unknown => oracleParse(text, { integersAsBigInt: 
 // Recursive TOML-representable plain values, bounded at depth 4 and width 5.
 // Array form ONLY for it.effect.prop: the named-record form silently discards
 // Schema conversion in @effect/vitest 4.0.0-beta.94.
+//
+// The native Arbitrary module has no weighted choice and no array-of-Arbitrary
+// combinator (only Schema-derived collections), so the two helpers below build
+// them from `flatMap` over a Schema-generated ticket or length. Both shrink the
+// way fast-check did: a weighted pick shrinks toward its first branch, a
+// collection shrinks its length before its elements.
 
-/** Any Unicode scalar value from space upward (escaping handled by emitters). */
-const scalarCharArb = fc
-	.integer({ min: 0x20, max: 0x10ffff })
-	.filter((codePoint) => codePoint < 0xd800 || codePoint > 0xdfff)
-	.map((codePoint) => String.fromCodePoint(codePoint));
-
-/** The characters that stress escaping: quotes, backslashes, controls, DEL. */
-const nastyCharArb = fc.constantFrom('"', "\\", "\n", "\r", "\t", "\b", "\f", "\u0000", "\u001f", "\u007f", "'", " ");
-
-const stringArb = fc
-	.array(fc.oneof({ arbitrary: scalarCharArb, weight: 5 }, { arbitrary: nastyCharArb, weight: 3 }), { maxLength: 12 })
-	.map((chars) => chars.join(""));
-
-const bareKeyArb = fc
-	.array(fc.constantFrom(..."abzAZ_-019"), { minLength: 1, maxLength: 8 })
-	.map((chars) => chars.join(""));
-
-/** Keys that force quoting: dots, spaces, the empty key, quotes, unicode. */
-const quotedKeyArb = fc.oneof(
-	fc.constantFrom("", "a.b", "a b", 'quo"te', "back\\slash", "uni é中", "\ttab", "new\nline"),
-	stringArb,
-);
-
-const keyArb = fc.oneof({ arbitrary: bareKeyArb, weight: 3 }, { arbitrary: quotedKeyArb, weight: 2 });
-
-const integerArb = fc.oneof(fc.integer(), fc.integer({ min: Number.MIN_SAFE_INTEGER, max: Number.MAX_SAFE_INTEGER }));
-
-const INT64_MAX = 2n ** 63n - 1n;
-
-const bigintArb = fc.bigInt({ min: -INT64_MAX, max: INT64_MAX });
-
-/** Finite-or-infinite doubles — NaN stays out of the equality properties. */
-const floatArb = fc.double({ noNaN: true });
-
-const leafArb: fc.Arbitrary<unknown> = fc.oneof(
-	{ arbitrary: stringArb, weight: 3 },
-	{ arbitrary: integerArb, weight: 2 },
-	{ arbitrary: floatArb, weight: 2 },
-	{ arbitrary: bigintArb, weight: 1 },
-	{ arbitrary: fc.boolean(), weight: 1 },
-);
-
-function valueArb(depth: number): fc.Arbitrary<unknown> {
-	if (depth <= 0) {
-		return leafArb;
-	}
-	return fc.oneof(
-		{ arbitrary: leafArb, weight: 4 },
-		{ arbitrary: fc.array(valueArb(depth - 1), { maxLength: 5 }), weight: 2 },
-		{ arbitrary: tableArb(depth - 1), weight: 2 },
+/** Picks one branch with the given relative weights. */
+function weighted<A>(
+	first: readonly [weight: number, arbitrary: Arbitrary.Arbitrary<A>],
+	...rest: ReadonlyArray<readonly [weight: number, arbitrary: Arbitrary.Arbitrary<A>]>
+): Arbitrary.Arbitrary<A> {
+	const total = rest.reduce((sum, [weight]) => sum + weight, first[0]);
+	return Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: total - 1 }))).pipe(
+		Arbitrary.flatMap((ticket) => {
+			let remaining = ticket - first[0];
+			for (const [weight, arbitrary] of rest) {
+				if (remaining < 0) break;
+				if (remaining < weight) return arbitrary;
+				remaining -= weight;
+			}
+			return first[1];
+		}),
 	);
 }
 
-function tableArb(depth: number): fc.Arbitrary<Record<string, unknown>> {
-	return fc.array(fc.tuple(keyArb, valueArb(depth)), { maxLength: 5 }).map((entries) => Object.fromEntries(entries));
+/** A collection of `minLength`..`maxLength` independent draws from `item`. */
+function arrayOf<A>(
+	item: Arbitrary.Arbitrary<A>,
+	{ minLength = 0, maxLength }: { readonly minLength?: number; readonly maxLength: number },
+): Arbitrary.Arbitrary<Array<A>> {
+	return Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: minLength, maximum: maxLength }))).pipe(
+		Arbitrary.flatMap((length) => Arbitrary.all(Array.from({ length }, () => item))),
+	);
+}
+
+/** Any Unicode scalar value from space upward (escaping handled by emitters). */
+const scalarCharArb = Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0x20, maximum: 0x10ffff }))).pipe(
+	Arbitrary.filter((codePoint) => codePoint < 0xd800 || codePoint > 0xdfff),
+	Arbitrary.map((codePoint) => String.fromCodePoint(codePoint)),
+);
+
+/** The characters that stress escaping: quotes, backslashes, controls, DEL. */
+const nastyCharArb = Arbitrary.schema(
+	Schema.Literals(['"', "\\", "\n", "\r", "\t", "\b", "\f", "\u0000", "\u001f", "\u007f", "'", " "]),
+);
+
+const stringArb = arrayOf(weighted([5, scalarCharArb], [3, nastyCharArb]), { maxLength: 12 }).pipe(
+	Arbitrary.map((chars) => chars.join("")),
+);
+
+const bareKeyArb = Arbitrary.schema(Schema.String.check(Schema.isPattern(/^[abzAZ_\-019]{1,8}$/)));
+
+/** Keys that force quoting: dots, spaces, the empty key, quotes, unicode. */
+const quotedKeyArb = weighted<string>(
+	[1, Arbitrary.schema(Schema.Literals(["", "a.b", "a b", 'quo"te', "back\\slash", "uni é中", "\ttab", "new\nline"]))],
+	[1, stringArb],
+);
+
+const keyArb = weighted([3, bareKeyArb], [2, quotedKeyArb]);
+
+/** Half 32-bit integers (fast-check's default range), half the full safe range. */
+const integerArb = Arbitrary.schema(
+	Schema.Union([
+		Schema.Int.check(Schema.isBetween({ minimum: -(2 ** 31), maximum: 2 ** 31 - 1 })),
+		Schema.Int.check(Schema.isBetween({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER })),
+	]),
+);
+
+const INT64_MAX = 2n ** 63n - 1n;
+
+const bigintArb = Arbitrary.schema(
+	Schema.BigInt.check(Schema.isBetweenBigInt({ minimum: -INT64_MAX, maximum: INT64_MAX })),
+);
+
+/** Finite-or-infinite doubles — NaN stays out of the equality properties. */
+const floatArb = Arbitrary.schema(Schema.Number.check(Schema.makeFilter((n) => !Number.isNaN(n))));
+
+const leafArb: Arbitrary.Arbitrary<unknown> = weighted<unknown>(
+	[3, stringArb],
+	[2, integerArb],
+	[2, floatArb],
+	[1, bigintArb],
+	[1, Arbitrary.schema(Schema.Boolean)],
+);
+
+function valueArb(depth: number): Arbitrary.Arbitrary<unknown> {
+	if (depth <= 0) {
+		return leafArb;
+	}
+	return weighted<unknown>([4, leafArb], [2, arrayOf(valueArb(depth - 1), { maxLength: 5 })], [2, tableArb(depth - 1)]);
+}
+
+function tableArb(depth: number): Arbitrary.Arbitrary<Record<string, unknown>> {
+	return arrayOf(Arbitrary.all([keyArb, valueArb(depth)]), { maxLength: 5 }).pipe(
+		Arbitrary.map((entries) => Object.fromEntries(entries)),
+	);
 }
 
 /** A TOML document is a table: the root arbitrary is always an object. */
@@ -250,7 +291,7 @@ const documentArb = tableArb(3);
  * the seed deliberately (with a green run) when fresh coverage is wanted;
  * the corpus differential below is exhaustive and does not depend on it.
  */
-const ORACLE_FC_PARAMS = { numRuns: 250, seed: 20260710 } as const;
+const ORACLE_CHECK_OPTIONS: Arbitrary.CheckOptions = { runs: 250, seed: 20260710 };
 
 describe("smol-toml differential oracle", () => {
 	it.effect.prop(
@@ -262,7 +303,7 @@ describe("smol-toml differential oracle", () => {
 				const ours = yield* Toml.parse(text);
 				assert.deepStrictEqual(canon(ours), canon(oracle(text)), text);
 			}),
-		{ fastCheck: ORACLE_FC_PARAMS },
+		{ arbitrary: ORACLE_CHECK_OPTIONS },
 	);
 
 	it.effect.prop(
@@ -274,7 +315,7 @@ describe("smol-toml differential oracle", () => {
 				const ours = yield* Toml.parse(text);
 				assert.deepStrictEqual(canon(ours), canon(oracle(text)), text);
 			}),
-		{ fastCheck: ORACLE_FC_PARAMS },
+		{ arbitrary: ORACLE_CHECK_OPTIONS },
 	);
 
 	it.effect("NaN round-trips through our stringify into NaN under both parsers", () =>

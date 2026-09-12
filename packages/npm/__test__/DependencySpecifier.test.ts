@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Schema } from "effect";
-import { FastCheck } from "effect/testing";
 import {
 	CatalogSpecifier,
 	DependencySpecifier,
@@ -285,7 +284,7 @@ describe("DependencySpecifier.FromString", () => {
 	it.effect.prop(
 		"encode(decode(s)) === s for every recognized specifier (byte-for-byte round-trip)",
 		[
-			FastCheck.constantFrom(
+			Schema.Literals([
 				"catalog:",
 				"catalog:react18",
 				"workspace:*",
@@ -304,7 +303,7 @@ describe("DependencySpecifier.FromString", () => {
 				"git+https://github.com/user/repo.git",
 				"github:u/r",
 				"https://example.com/pkg.tgz",
-			),
+			]),
 		],
 		([specifier]) =>
 			Effect.gen(function* () {

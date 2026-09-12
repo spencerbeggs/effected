@@ -18,7 +18,7 @@
  */
 
 import type { FileSystem, PlatformError } from "effect";
-import { Effect, Option } from "effect";
+import { ByteSize, Effect, Option } from "effect";
 
 /** UTF-8 BOM, as bytes. `U+FEFF` encodes to these three. */
 const BOM = [0xef, 0xbb, 0xbf] as const;
@@ -121,13 +121,13 @@ export const readTail = (
 ): Effect.Effect<TailWindow, PlatformError.PlatformError, never> =>
 	Effect.gen(function* () {
 		const info = yield* fs.stat(path);
-		const physicalSize = Number(info.size);
+		const physicalSize = ByteSize.toNumberUnsafe(info.size);
 		// Every offset below is LOGICAL — post-BOM — on every path, whether or not
 		// this particular window happens to reach the start of the file.
 		const logicalSize = physicalSize - bomBytes;
 		const from = Math.max(bomBytes, physicalSize - window);
 		const file = yield* fs.open(path, { flag: "r" });
-		yield* file.seek(from, "start");
+		yield* file.seek(BigInt(from), "start");
 		const read = yield* file.readAlloc(physicalSize - from);
 		const bytes = Option.getOrElse(read, () => new Uint8Array(0));
 
@@ -210,7 +210,7 @@ export const readRangeText = (
 			return "";
 		}
 		const file = yield* fs.open(path, { flag: "r" });
-		yield* file.seek(from, "start");
+		yield* file.seek(BigInt(from), "start");
 		const decoder = new TextDecoder();
 		let text = "";
 		let remaining = length;

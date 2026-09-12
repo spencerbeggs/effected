@@ -57,7 +57,7 @@ export const bytesToUtf8 = (bytes: Uint8Array): Option.Option<string> => {
 export const Uint8ArrayFromUtf8: Schema.Codec<Uint8Array, string> = Schema.String.pipe(
 	Schema.decodeTo(
 		Schema.Uint8Array,
-		SchemaTransformation.transformOrFail<Uint8Array, string>({
+		SchemaTransformation.transformEffect<Uint8Array, string>({
 			decode: (text: string) => Effect.succeed(utf8ToBytes(text)),
 			encode: (bytes: Uint8Array) =>
 				Option.match(bytesToUtf8(bytes), {

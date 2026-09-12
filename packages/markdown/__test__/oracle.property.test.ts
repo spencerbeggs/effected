@@ -11,8 +11,8 @@
 // added to a skip list. There is no skip list in this file, by design.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Result } from "effect";
-import { FastCheck as fc } from "effect/testing";
+import { Result, Schema } from "effect";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import { Markdown } from "../src/Markdown.js";
 import { loadSpecExamples } from "./e2e/support/corpus.js";
 import { renderHtml } from "./e2e/support/htmlWriter.js";
@@ -68,10 +68,10 @@ const correctOracleDefect = (html: string): string => html.replaceAll("<p></p>",
  * the generator inside the grammar where the two implementations can
  * actually disagree.
  */
-const markdownish = fc
-	.array(
-		fc.oneof(
-			fc.constantFrom(
+const markdownish = Arbitrary.schema(
+	Schema.Array(
+		Schema.Union([
+			Schema.Literals([
 				"# heading",
 				"## heading",
 				"###### heading",
@@ -97,8 +97,8 @@ const markdownish = fc
 				"",
 				"    ",
 				"\ttab",
-			),
-			fc.constantFrom(
+			]),
+			Schema.Literals([
 				"*em* and **strong**",
 				"_em_ and __strong__",
 				"***both***",
@@ -124,12 +124,11 @@ const markdownish = fc
 				"unmatched ] bracket",
 				"*unclosed emphasis",
 				"a > b < c",
-			),
-			fc.string({ maxLength: 12 }),
-		),
-		{ maxLength: 12 },
-	)
-	.map((lines) => `${lines.join("\n")}\n`);
+			]),
+			Schema.String.check(Schema.isMaxLength(12)),
+		]),
+	).check(Schema.isMaxLength(12)),
+).pipe(Arbitrary.map((lines) => `${lines.join("\n")}\n`));
 
 describe("differential oracle: commonmark.js 0.31.2", () => {
 	it("agrees with the reference implementation on every spec corpus input", () => {
@@ -157,23 +156,25 @@ describe("differential oracle: commonmark.js 0.31.2", () => {
 		);
 	});
 
-	it("agrees with the reference implementation on generated markdown", () => {
-		fc.assert(
-			fc.property(markdownish, (markdown) => {
-				const ours = renderOurs(markdown);
-				if (ours === undefined) {
-					// A hardening-guard trip is a legitimate outcome the oracle
-					// does not model (commonmark.js has no depth cap); it is not
-					// a disagreement.
-					return true;
-				}
-				const oracle = correctOracleDefect(normalizeHtml(renderOracleHtml(markdown)));
-				assert.strictEqual(ours, oracle, `disagreement on input:\n${JSON.stringify(markdown)}`);
+	// `size` lifts the length scale to the 12-line cap so documents reach the
+	// multi-line constructs (setext, fences, lists) the fragments are drawn for.
+	it.prop(
+		"agrees with the reference implementation on generated markdown",
+		[markdownish],
+		([markdown]) => {
+			const ours = renderOurs(markdown);
+			if (ours === undefined) {
+				// A hardening-guard trip is a legitimate outcome the oracle
+				// does not model (commonmark.js has no depth cap); it is not
+				// a disagreement.
 				return true;
-			}),
-			{ numRuns: 250 },
-		);
-	});
+			}
+			const oracle = correctOracleDefect(normalizeHtml(renderOracleHtml(markdown)));
+			assert.strictEqual(ours, oracle, `disagreement on input:\n${JSON.stringify(markdown)}`);
+			return true;
+		},
+		{ arbitrary: { runs: 250, size: 12 } },
+	);
 
 	it("oracle defect tripwire: the empty-paragraph divergence still exists and is still ours-correct", () => {
 		// Found by this suite's generator, minimized to this input. If a future

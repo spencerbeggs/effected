@@ -4035,7 +4035,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 			// the layer's error channel is `never` by contract, and an unreadable
 			// provider is answered with the pin that cannot hang.
 			const read = (name: string) =>
-				Config.string(name).pipe(
+				Config.String(name).pipe(
 					Config.option,
 					Effect.catch(() => Effect.succeed(Option.none<string>())),
 					// A blank value is treated as absent — an exported-but-empty

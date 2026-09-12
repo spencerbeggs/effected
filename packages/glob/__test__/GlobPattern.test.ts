@@ -4,7 +4,7 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
-import { FastCheck as fc } from "effect/testing";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import { minimatch as oracle } from "minimatch";
 import { GlobPattern, GlobPatternError, GlobPatternOptions } from "../src/index.js";
 
@@ -275,14 +275,17 @@ describe("GlobPattern statics", () => {
 });
 
 describe("GlobPattern oracle (public seam)", () => {
-	const literalSeg = fc.constantFrom("a", "b", "abc", "x-y", "a.b+c", ".hidden", "");
-	const magicSeg = fc.constantFrom("*", "?", "**", "*.js", "a*", "+(a|b)", "[abc]", "{a,b}", "!x");
-	const patternArb = fc
-		.array(fc.oneof(literalSeg, magicSeg), { minLength: 1, maxLength: 4 })
-		.map((xs: Array<string>) => xs.join("/"));
-	const candidateArb = fc
-		.array(fc.constantFrom("a", "b", "abc", ".hidden", "x", ""), { minLength: 1, maxLength: 5 })
-		.map((xs: Array<string>) => xs.join("/"));
+	// Literal and magic segments are two equal-weight groups (a Union of two
+	// Literals unions, not one flat list), so the pattern mix stays balanced
+	// between plain paths and paths that exercise the dialect.
+	const literalSeg = Schema.Literals(["a", "b", "abc", "x-y", "a.b+c", ".hidden", ""]);
+	const magicSeg = Schema.Literals(["*", "?", "**", "*.js", "a*", "+(a|b)", "[abc]", "{a,b}", "!x"]);
+	const patternArb = Arbitrary.schema(
+		Schema.Array(Schema.Union([literalSeg, magicSeg])).check(Schema.isLengthBetween(1, 4)),
+	).pipe(Arbitrary.map((xs) => xs.join("/")));
+	const candidateArb = Arbitrary.schema(
+		Schema.Array(Schema.Literals(["a", "b", "abc", ".hidden", "x", ""])).check(Schema.isLengthBetween(1, 5)),
+	).pipe(Arbitrary.map((xs) => xs.join("/")));
 
 	it.effect.prop(
 		"agrees with upstream through compile and matches",
@@ -297,7 +300,7 @@ describe("GlobPattern oracle (public seam)", () => {
 					`${pattern} vs ${candidate}`,
 				);
 			}),
-		{ fastCheck: { numRuns: 200 } },
+		{ arbitrary: { runs: 200 } },
 	);
 });
 

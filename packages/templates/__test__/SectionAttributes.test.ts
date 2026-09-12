@@ -3,8 +3,8 @@
 // but never in which block a marker names.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Equal, Option, Result } from "effect";
-import { FastCheck } from "effect/testing";
+import { Effect, Equal, Option, Result, Schema } from "effect";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import type { Section, SectionDocument, SectionRenderError } from "../src/index.js";
 import { CommentStyle, ManagedSection, SectionDialect, SectionId } from "../src/index.js";
 import { begin, block, end, id, lines, memoryFs, parse, parseFailure, section } from "./fixtures.js";
@@ -308,23 +308,27 @@ describe("marker attributes", () => {
 	describe("properties", () => {
 		// Inline styles, never presets: the properties must exercise structural
 		// identity, the path a consumer defining its own style takes.
-		const styleArb = FastCheck.constantFrom(
-			CommentStyle.make({ prefix: "#" }),
-			CommentStyle.make({ prefix: "//" }),
-			CommentStyle.make({ prefix: "<!--", suffix: "-->" }),
+		const styles = {
+			"#": CommentStyle.make({ prefix: "#" }),
+			"//": CommentStyle.make({ prefix: "//" }),
+			"<!--": CommentStyle.make({ prefix: "<!--", suffix: "-->" }),
+		};
+		const styleArb = Arbitrary.schema(Schema.Literals(["#", "//", "<!--"])).pipe(
+			Arbitrary.map((prefix) => styles[prefix]),
 		);
-		const nameArb = FastCheck.constantFrom("name", "other", "x1", "a-b", "c_d", "Z");
-		const valueArb = FastCheck.constantFrom("", "v", "1.2.3", "spaced value", "a --- b", "-->");
-		const attrsArb = FastCheck.uniqueArray(FastCheck.tuple(nameArb, valueArb), {
-			selector: ([name]) => name,
-			maxLength: 3,
-		}).map((pairs) => Object.fromEntries(pairs) as Record<string, string>);
-		const contentArb = FastCheck.constantFrom("", "echo hi", "a\nb", "  indented");
-		const documentArb = FastCheck.constantFrom("", "#!/bin/sh\n", "user line\nsecond\n");
+		const Name = Schema.Literals(["name", "other", "x1", "a-b", "c_d", "Z"]);
+		const Value = Schema.Literals(["", "v", "1.2.3", "spaced value", "a --- b", "-->"]);
+		// Unique by name, or the pairs would collapse into fewer entries than
+		// were generated and the round trip would compare against the wrong map.
+		const attrsArb = Arbitrary.schema(
+			Schema.Array(Schema.Tuple([Name, Value])).check(Schema.isUniqueKey(), Schema.isMaxLength(3)),
+		).pipe(Arbitrary.map((pairs) => Object.fromEntries(pairs) as Record<string, string>));
+		const Content = Schema.Literals(["", "echo hi", "a\nb", "  indented"]);
+		const Document = Schema.Literals(["", "#!/bin/sh\n", "user line\nsecond\n"]);
 
 		it.prop(
 			"attributes survive a reconcile round trip and reach a fixed point",
-			[documentArb, styleArb, attrsArb, contentArb],
+			[Document, styleArb, attrsArb, Content],
 			([text, commentStyle, attributes, content]) => {
 				const sectionId = SectionId.make({ key: "alpha", commentStyle });
 				const declared = sectionId.section(content, attributes);

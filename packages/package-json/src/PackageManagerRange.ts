@@ -110,7 +110,7 @@ export class PackageManagerRange extends Schema.Class<PackageManagerRange>("Pack
 	static readonly FromString: Schema.Codec<PackageManagerRange, string> = Schema.String.pipe(
 		Schema.decodeTo(
 			Schema.instanceOf(PackageManagerRange),
-			SchemaTransformation.transformOrFail({
+			SchemaTransformation.transformEffect({
 				decode: (input: string) => {
 					const at = input.indexOf("@");
 					if (at === -1) {

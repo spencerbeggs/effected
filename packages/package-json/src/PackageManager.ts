@@ -106,7 +106,7 @@ export class PackageManager extends Schema.Class<PackageManager>("PackageManager
 	static readonly FromString: Schema.Codec<PackageManager, string> = Schema.String.pipe(
 		Schema.decodeTo(
 			Schema.instanceOf(PackageManager),
-			SchemaTransformation.transformOrFail({
+			SchemaTransformation.transformEffect({
 				decode: (input: string) => {
 					const at = input.indexOf("@");
 					if (at === -1) {

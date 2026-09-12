@@ -22,13 +22,14 @@ export const inputVariable = (name: string): string => `INPUT_${name.replaceAll(
  * A validation failure for an input that is present but unusable.
  *
  * @remarks
- * `actual` carries the offending value, and that is load-bearing rather than
- * decorative: `Config.withDefault` and `Config.option` fall back only for
- * *missing data*, and their `isMissingDataOnly` check reads an `InvalidValue`
- * whose `actual` is `None` as missing (`Config.ts:304`). An error built without
- * it would therefore be **swallowed by a default** — so `dry-run: yes` would
- * quietly become `false` and the action would perform the mutations the author
- * meant to rehearse.
+ * `Config.withDefault` and `Config.option` fall back only when the config
+ * resolves *absent* — no provider input at all. A failure raised from inside
+ * `Config.mapEffect` is a hard evaluation failure carrying the evidence that
+ * input WAS present, so a default never swallows it (`Config.ts`: the
+ * `Resolved`/`Absent` resolution model and `mapEffect`). That is the guard
+ * against the shipped defect where `dry-run: yes` quietly became `false` and
+ * the action performed the mutations the author meant to rehearse. `actual`
+ * carries the offending value so the rendered error names it.
  */
 const configError = (message: string, actual: unknown): Config.ConfigError =>
 	new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue({ message }, actual)));
@@ -167,7 +168,7 @@ export class ActionInput {
 	 *   manifest default explicitly instead of omitting the key.
 	 */
 	static string(name: string): Config.Config<string> {
-		return Config.string(inputVariable(name));
+		return Config.String(inputVariable(name));
 	}
 
 	/**
@@ -181,8 +182,8 @@ export class ActionInput {
 	 * a malformed `dry-run` quietly reading as `false`.
 	 */
 	static boolean(name: string): Config.Config<boolean> {
-		return Config.string(inputVariable(name)).pipe(
-			Config.mapOrFail((raw) => {
+		return Config.String(inputVariable(name)).pipe(
+			Config.mapEffect((raw) => {
 				const value = raw.trim();
 				if (TRUE.has(value)) {
 					return Effect.succeed(true);
@@ -209,7 +210,7 @@ export class ActionInput {
 	 * `.pipe(Config.withDefault(n))`.
 	 */
 	static integer(name: string): Config.Config<number> {
-		return Config.int(inputVariable(name));
+		return Config.Int(inputVariable(name));
 	}
 
 	/**
@@ -221,7 +222,7 @@ export class ActionInput {
 	 * default to redact.
 	 */
 	static redacted(name: string): Config.Config<Redacted.Redacted<string>> {
-		return Config.redacted(inputVariable(name));
+		return Config.Redacted(inputVariable(name));
 	}
 
 	/**
@@ -236,7 +237,7 @@ export class ActionInput {
 	 * `Config.withDefault([])` is load-bearing for an optional multiline input.
 	 */
 	static lines(name: string): Config.Config<ReadonlyArray<string>> {
-		return Config.string(inputVariable(name)).pipe(
+		return Config.String(inputVariable(name)).pipe(
 			Config.map((raw) =>
 				raw
 					.split("\n")
@@ -281,8 +282,8 @@ export class ActionInput {
 	 * newline) is present, and parses to `[]`.
 	 */
 	static list(name: string): Config.Config<ReadonlyArray<string>> {
-		return Config.string(inputVariable(name)).pipe(
-			Config.mapOrFail((raw) => {
+		return Config.String(inputVariable(name)).pipe(
+			Config.mapEffect((raw) => {
 				const trimmed = raw.trim();
 				if (trimmed === "") {
 					return Effect.succeed<ReadonlyArray<string>>([]);
@@ -334,8 +335,8 @@ export class ActionInput {
 	 */
 	static pairs(name: string, options?: PairsOptions): Config.Config<Record<string, string>> {
 		const requireValue = options?.requireValue ?? false;
-		return Config.string(inputVariable(name)).pipe(
-			Config.mapOrFail((raw) => {
+		return Config.String(inputVariable(name)).pipe(
+			Config.mapEffect((raw) => {
 				const result: Record<string, string> = {};
 				for (const line of raw.split("\n")) {
 					const stripped = stripComment(line);
@@ -372,8 +373,8 @@ export class ActionInput {
 	 * never swallowed by a default.
 	 */
 	static schema<A, I>(name: string, schema: Schema.Codec<A, I>): Config.Config<A> {
-		return Config.string(inputVariable(name)).pipe(
-			Config.mapOrFail((raw) => {
+		return Config.String(inputVariable(name)).pipe(
+			Config.mapEffect((raw) => {
 				let parsed: unknown;
 				try {
 					parsed = JSON.parse(raw);
@@ -409,7 +410,7 @@ export class ActionInput {
 	 * A **flat single-segment** lookup additionally tries the `INPUT_`
 	 * derivation of the name first, mirroring the order the production runtime
 	 * installs ({@link ActionInput.providerOver} via `layerDefault`) — so a
-	 * bare `Config.string("biome-version")` resolves under this provider
+	 * bare `Config.String("biome-version")` resolves under this provider
 	 * exactly as it does inside `Action.run`. Nested and numeric paths pass
 	 * through as the joined spelling only, as ever.
 	 *
@@ -488,7 +489,7 @@ export class ActionInput {
 	 * Inputs-first resolution layered over an existing provider.
 	 *
 	 * @remarks
-	 * A bare `Config.string("dry-run")` resolves a **flat** name — one string
+	 * A bare `Config.String("dry-run")` resolves a **flat** name — one string
 	 * segment — by first trying the variable the runner would have published for
 	 * an input of that name (the `INPUT_` derivation this module owns), and only
 	 * then trying the name unchanged through `ambient`. Anything the runner
@@ -520,7 +521,7 @@ export class ActionInput {
 	 *
 	 * **The single-segment retry above makes the obvious test
 	 * non-discriminating**, which is worth knowing before writing one. Because a
-	 * bare `Config.string("release-branch")` resolves through the same `INPUT_`
+	 * bare `Config.String("release-branch")` resolves through the same `INPUT_`
 	 * derivation as `ActionInput.string("release-branch")`, a test meant to prove
 	 * the accessor reads the mangled key passes just as well with the accessor
 	 * swapped for a bare `Config`. Only a bare `fromEnv` underneath tells them

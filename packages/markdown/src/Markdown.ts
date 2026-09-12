@@ -460,7 +460,7 @@ export class Markdown {
 		return Schema.String.pipe(
 			Schema.decodeTo(
 				Root,
-				SchemaTransformation.transformOrFail({
+				SchemaTransformation.transformEffect({
 					decode: (input: string) =>
 						Effect.mapError(
 							Markdown.parse(input, options),

@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
-import { FastCheck as fc } from "effect/testing";
 import { CompilerOptionsFromProgrammatic } from "../src/CompilerOptionsFromProgrammatic.js";
 import { TsEnumCodec } from "../src/TsEnumCodec.js";
 
@@ -113,28 +112,28 @@ describe("CompilerOptionsFromProgrammatic", () => {
 describe("CompilerOptionsFromProgrammatic idempotence", () => {
 	// Canonical input must survive decode untouched — the property that lets a
 	// caller run mixed and already-normalized options through the same door.
-	const canonicalArb = fc.record(
-		{
-			target: fc.constantFrom("es5", "es2015", "es2023", "esnext"),
-			module: fc.constantFrom("commonjs", "es2015", "nodenext", "preserve"),
-			moduleResolution: fc.constantFrom("classic", "node10", "bundler"),
-			jsx: fc.constantFrom("preserve", "react", "react-jsx"),
-			newLine: fc.constantFrom("crlf", "lf"),
-			moduleDetection: fc.constantFrom("auto", "legacy", "force"),
-			lib: fc.array(fc.constantFrom("esnext", "dom", "dom.iterable"), { maxLength: 3 }),
-			strict: fc.boolean(),
-		},
-		{ requiredKeys: [] },
-	);
+	// Every key optional, so the generator walks subsets of the canonical fields.
+	const Canonical = Schema.Struct({
+		target: Schema.optionalKey(Schema.Literals(["es5", "es2015", "es2023", "esnext"])),
+		module: Schema.optionalKey(Schema.Literals(["commonjs", "es2015", "nodenext", "preserve"])),
+		moduleResolution: Schema.optionalKey(Schema.Literals(["classic", "node10", "bundler"])),
+		jsx: Schema.optionalKey(Schema.Literals(["preserve", "react", "react-jsx"])),
+		newLine: Schema.optionalKey(Schema.Literals(["crlf", "lf"])),
+		moduleDetection: Schema.optionalKey(Schema.Literals(["auto", "legacy", "force"])),
+		lib: Schema.optionalKey(
+			Schema.Array(Schema.Literals(["esnext", "dom", "dom.iterable"])).check(Schema.isMaxLength(3)),
+		),
+		strict: Schema.optionalKey(Schema.Boolean),
+	});
 
-	it.effect.prop("decode leaves already-canonical options unchanged", [canonicalArb], ([canonical]) =>
+	it.effect.prop("decode leaves already-canonical options unchanged", [Canonical], ([canonical]) =>
 		Effect.gen(function* () {
 			const decoded = yield* decode(canonical);
 			assert.deepStrictEqual(decoded, canonical);
 		}),
 	);
 
-	it.effect.prop("decode is idempotent", [canonicalArb], ([canonical]) =>
+	it.effect.prop("decode is idempotent", [Canonical], ([canonical]) =>
 		Effect.gen(function* () {
 			const once = yield* decode(canonical);
 			const twice = yield* decode(once);
@@ -144,7 +143,7 @@ describe("CompilerOptionsFromProgrammatic idempotence", () => {
 
 	// Guards the composition the downstream consumer actually writes: normalize
 	// through this codec, then hand the result to `encodeCompilerOptions`.
-	it.effect.prop("decode composes with encodeCompilerOptions", [canonicalArb], ([canonical]) =>
+	it.effect.prop("decode composes with encodeCompilerOptions", [Canonical], ([canonical]) =>
 		Effect.gen(function* () {
 			const decoded = yield* decode(canonical);
 			const programmatic = TsEnumCodec.encodeCompilerOptions(decoded);

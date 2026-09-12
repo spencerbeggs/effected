@@ -290,7 +290,7 @@ const fromString: Schema.Codec<ClassifiedSpecifier, string> = Schema.String.pipe
 		// Pinned to the union's ENCODED side (plain records, without instance
 		// methods like WorkspaceSpecifier#resolve): letting inference unify the
 		// transformation's target from decode/encode rejects the instance methods.
-		SchemaTransformation.transformOrFail<(typeof Classified)["Encoded"], string>({
+		SchemaTransformation.transformEffect<(typeof Classified)["Encoded"], string>({
 			decode: (input) =>
 				isValidDependencySpecifier(input)
 					? Effect.succeed(classify(input))

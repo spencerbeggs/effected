@@ -214,5 +214,5 @@ export class Secret {
 	 * naming the variable rather than an empty `Redacted` that fails much later
 	 * as an authentication error.
 	 */
-	static readonly adopt = (name: string): Config.Config<Redacted.Redacted<string>> => Config.redacted(name);
+	static readonly adopt = (name: string): Config.Config<Redacted.Redacted<string>> => Config.Redacted(name);
 }

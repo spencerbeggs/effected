@@ -22,7 +22,6 @@ import { Jsonc } from "@effected/jsonc";
 import { Toml } from "@effected/toml";
 import { Yaml } from "@effected/yaml";
 import { Effect, Schema } from "effect";
-import { FastCheck as fc } from "effect/testing";
 import { FrontmatterMissingError, FrontmatterValidationError, MarkdownFrontmatter } from "../src/Frontmatter.js";
 import { JsonFrontmatter } from "../src/JsonFrontmatter.js";
 import { MarkdownParseOptions } from "../src/Markdown.js";
@@ -209,9 +208,13 @@ describe("MarkdownDocument.hasFrontmatterBlock", () => {
 });
 
 describe("frontmatter round-trip property", () => {
-	// Newline-free strings only — see the file header for why.
-	const scalar = fc.string().filter((s) => !s.includes("\n") && !s.includes("\r"));
-	const metaArb = fc.record({ title: scalar, count: fc.integer() });
+	// Newline-free strings only — see the file header for why. The count stays
+	// in the 32-bit range every frontmatter codec represents exactly.
+	const Scalar = Schema.String.check(Schema.makeFilter((s) => !s.includes("\n") && !s.includes("\r")));
+	const MetaArb = Schema.Struct({
+		title: Scalar,
+		count: Schema.Int.check(Schema.isBetween({ minimum: -(2 ** 31), maximum: 2 ** 31 - 1 })),
+	});
 
 	/** Fence a stringified block, normalizing a missing trailing newline. */
 	const fenced = (open: string, block: string, close: string): string =>
@@ -223,33 +226,33 @@ describe("frontmatter round-trip property", () => {
 	): { readonly title: string; readonly count: number } =>
 		Effect.runSync(Effect.flatMap(parseDoc(source), (document) => MarkdownFrontmatter.schema(Meta, codec)(document)));
 
-	it("yaml: stringify, parse and decode recovers the data", () => {
-		fc.assert(
-			fc.property(metaArb, (data) => {
-				const block = Effect.runSync(Yaml.stringify(data));
-				assert.deepStrictEqual(decodeVia(fenced("---", block, "---"), YamlFrontmatter), data);
-			}),
-			{ numRuns: 60 },
-		);
-	});
+	it.prop(
+		"yaml: stringify, parse and decode recovers the data",
+		[MetaArb],
+		([data]) => {
+			const block = Effect.runSync(Yaml.stringify(data));
+			assert.deepStrictEqual(decodeVia(fenced("---", block, "---"), YamlFrontmatter), data);
+		},
+		{ arbitrary: { runs: 60 } },
+	);
 
-	it("toml: stringify, parse and decode recovers the data", () => {
-		fc.assert(
-			fc.property(metaArb, (data) => {
-				const block = Effect.runSync(Toml.stringify(data));
-				assert.deepStrictEqual(decodeVia(fenced("+++", block, "+++"), TomlFrontmatter), data);
-			}),
-			{ numRuns: 60 },
-		);
-	});
+	it.prop(
+		"toml: stringify, parse and decode recovers the data",
+		[MetaArb],
+		([data]) => {
+			const block = Effect.runSync(Toml.stringify(data));
+			assert.deepStrictEqual(decodeVia(fenced("+++", block, "+++"), TomlFrontmatter), data);
+		},
+		{ arbitrary: { runs: 60 } },
+	);
 
-	it("json: stringify, parse and decode recovers the data", () => {
-		fc.assert(
-			fc.property(metaArb, (data) => {
-				const block = Effect.runSync(Jsonc.stringify(data));
-				assert.deepStrictEqual(decodeVia(fenced("---json", block, "---"), JsonFrontmatter), data);
-			}),
-			{ numRuns: 60 },
-		);
-	});
+	it.prop(
+		"json: stringify, parse and decode recovers the data",
+		[MetaArb],
+		([data]) => {
+			const block = Effect.runSync(Jsonc.stringify(data));
+			assert.deepStrictEqual(decodeVia(fenced("---json", block, "---"), JsonFrontmatter), data);
+		},
+		{ arbitrary: { runs: 60 } },
+	);
 });

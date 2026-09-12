@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result, Schema } from "effect";
-import { FastCheck } from "effect/testing";
 import type { BlobEnvelopeError } from "../src/index.js";
 import { BlobEnvelope, UnsupportedBlobEnvelopeVersionError } from "../src/index.js";
 
@@ -130,7 +129,11 @@ describe("BlobEnvelope", () => {
 	describe("properties", () => {
 		it.prop(
 			"any metadata and body round-trips",
-			[FastCheck.string(), FastCheck.integer({ min: 0, max: 2 ** 31 }), FastCheck.uint8Array({ maxLength: 64 })],
+			[
+				Schema.String,
+				Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2 ** 31 })),
+				Schema.Uint8Array.check(Schema.isMaxLength(64)),
+			],
 			([tag, durationMs, body]) => {
 				const result = BlobEnvelope.decodeResult(encoded({ tag, durationMs }, body), Meta);
 				if (!Result.isSuccess(result)) {
@@ -143,11 +146,15 @@ describe("BlobEnvelope", () => {
 			},
 		);
 
-		it.prop("arbitrary bytes never throw — they fail typed", [FastCheck.uint8Array({ maxLength: 128 })], ([input]) => {
-			// A corrupt cache entry must be a typed miss, never a defect.
-			const result = BlobEnvelope.decodeResult(input, Meta);
-			assert.isTrue(Result.isSuccess(result) || Result.isFailure(result));
-			return true;
-		});
+		it.prop(
+			"arbitrary bytes never throw — they fail typed",
+			[Schema.Uint8Array.check(Schema.isMaxLength(128))],
+			([input]) => {
+				// A corrupt cache entry must be a typed miss, never a defect.
+				const result = BlobEnvelope.decodeResult(input, Meta);
+				assert.isTrue(Result.isSuccess(result) || Result.isFailure(result));
+				return true;
+			},
+		);
 	});
 });

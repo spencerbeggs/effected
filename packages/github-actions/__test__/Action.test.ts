@@ -199,7 +199,7 @@ describe("Action.run", () => {
 					// runtime installed the provider, the plain-named lookup found
 					// nothing, the default fired, and a rehearsal flag silently read as
 					// its fallback on every run.
-					const dryRun = yield* Config.string("dry-run").pipe(Config.withDefault("defaulted"));
+					const dryRun = yield* Config.String("dry-run").pipe(Config.withDefault("defaulted"));
 					yield* Effect.logWarning(`dry-run=${dryRun}`);
 				}),
 			);
@@ -212,7 +212,7 @@ describe("Action.run", () => {
 		await captured(async (lines) => {
 			await Action.run(
 				Effect.gen(function* () {
-					yield* Effect.logWarning(`plain=${yield* Config.string("PLAIN_VAR")}`);
+					yield* Effect.logWarning(`plain=${yield* Config.String("PLAIN_VAR")}`);
 				}),
 			);
 			// The fallback half of the installed provider is the ambient lookup
@@ -229,8 +229,8 @@ describe("Action.run", () => {
 					// Both INPUT_SHADOWED and SHADOWED are set. The input wins for a
 					// bare read in ANY casing, because the derivation uppercases; that
 					// is the documented trade for killing the false-green class.
-					yield* Effect.logWarning(`upper=${yield* Config.string("SHADOWED")}`);
-					yield* Effect.logWarning(`lower=${yield* Config.string("shadowed")}`);
+					yield* Effect.logWarning(`upper=${yield* Config.String("SHADOWED")}`);
+					yield* Effect.logWarning(`lower=${yield* Config.String("shadowed")}`);
 				}),
 			);
 			assert.include(lines, "::warning::upper=from-input");
@@ -242,7 +242,7 @@ describe("Action.run", () => {
 		await captured(async (lines) => {
 			await Action.run(
 				Effect.gen(function* () {
-					const dryRun = yield* Config.string("dry-run").pipe(Config.withDefault("defaulted"));
+					const dryRun = yield* Config.String("dry-run").pipe(Config.withDefault("defaulted"));
 					yield* Effect.logWarning(`dry-run=${dryRun}`);
 				}),
 				// Normal layer precedence: the extra layer's context merges LAST in
@@ -326,8 +326,8 @@ describe("Action.run", () => {
 			// The same provider `Action.run` installs, reached through the layer a
 			// test composes directly — with the ambient environment injected as a
 			// provider BENEATH the runtime, so nothing touches the process.
-			assert.strictEqual(yield* Config.string("dry-run").pipe(Config.withDefault("defaulted")), "x");
-			assert.strictEqual(yield* Config.string("PLAIN_VAR"), "y");
+			assert.strictEqual(yield* Config.String("dry-run").pipe(Config.withDefault("defaulted")), "x");
+			assert.strictEqual(yield* Config.String("PLAIN_VAR"), "y");
 		}).pipe(
 			Effect.provide(ActionRuntime.layer),
 			Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { "INPUT_DRY-RUN": "x", PLAIN_VAR: "y" } }))),

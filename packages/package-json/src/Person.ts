@@ -153,13 +153,13 @@ export class Person extends Schema.Class<Person>("Person")({
 	).pipe(
 		Schema.decodeTo(
 			Schema.instanceOf(Person),
-			// `transformOrFail` rather than `transform` because this transform
+			// `transformEffect` rather than `transform` because this transform
 			// constructs the instance itself — the only way to associate the raw
 			// wire object with the resulting `Person` — and so must carry the
 			// field validation that the class factory would otherwise perform.
 			// The issue tree comes from `PersonFields`, so diagnostics are
 			// unchanged from decoding the class directly.
-			SchemaTransformation.transformOrFail({
+			SchemaTransformation.transformEffect({
 				decode: (raw: { readonly [k: string]: unknown }) =>
 					decodePersonFields(raw).pipe(
 						Effect.mapError((error) => error.issue),

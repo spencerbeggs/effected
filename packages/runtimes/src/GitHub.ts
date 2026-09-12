@@ -161,13 +161,13 @@ const bearer = (token: Redacted.Redacted<string>): Readonly<Record<string, strin
 /**
  * Read the credentials as `Redacted` from the start.
  *
- * `Config.string` would hand back a plain string that only becomes `Redacted` at
+ * `Config.String` would hand back a plain string that only becomes `Redacted` at
  * the `bearer` call — a window in which the secret is an ordinary value that any
- * log, span annotation or error rendering could pick up. `Config.redacted` closes
+ * log, span annotation or error rendering could pick up. `Config.Redacted` closes
  * the window: the token is never a bare string anywhere in this module.
  */
-const patConfig = Config.redacted("GITHUB_PERSONAL_ACCESS_TOKEN").pipe(Config.option);
-const tokenConfig = Config.redacted("GITHUB_TOKEN").pipe(Config.option);
+const patConfig = Config.Redacted("GITHUB_PERSONAL_ACCESS_TOKEN").pipe(Config.option);
+const tokenConfig = Config.Redacted("GITHUB_TOKEN").pipe(Config.option);
 
 /**
  * How GitHub requests are authenticated.

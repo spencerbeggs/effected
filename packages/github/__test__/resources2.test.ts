@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Exit, Fiber, Latch, Layer, Option } from "effect";
-import { FastCheck, TestClock } from "effect/testing";
+import { Duration, Effect, Exit, Fiber, Latch, Layer, Option, Schema } from "effect";
+import { TestClock } from "effect/testing";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import { Attestation } from "../src/Attestation.js";
 import { Annotation, CheckRun, CheckRunOutput } from "../src/CheckRun.js";
 import type { GitHubClient } from "../src/GitHubClient.js";
@@ -68,9 +69,23 @@ describe("CheckRunOutput byte budgeting", () => {
 		assert.lengthOf(output.truncated().annotations ?? [], CheckRunOutput.MAX_ANNOTATIONS);
 	});
 
+	// Every scalar value — the whole plane minus the surrogate block, so the
+	// cut can land inside any multi-byte sequence or pair without the input
+	// itself carrying broken halves. Generated as code points rather than a
+	// string because the native string generator stays in printable ASCII;
+	// `size` lifts the length scale to the 40 000 cap so the input actually
+	// crosses the 65 535-byte budget.
+	const ScalarValue = Schema.Union([
+		Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0xd7ff })),
+		Schema.Int.check(Schema.isBetween({ minimum: 0xe000, maximum: 0x10ffff })),
+	]);
+	const binaryText = Arbitrary.schema(Schema.Array(ScalarValue).check(Schema.isMaxLength(40_000))).pipe(
+		Arbitrary.map((codePoints) => codePoints.map((codePoint) => String.fromCodePoint(codePoint)).join("")),
+	);
+
 	it.prop(
 		"stays valid UTF-8 within budget for any input",
-		[FastCheck.string({ unit: "binary", maxLength: 40_000 })],
+		[binaryText],
 		([summary]) => {
 			const cut = CheckRunOutput.make({ title: "t", summary }).truncated().summary;
 			const withinBudget = Buffer.byteLength(cut, "utf8") <= CheckRunOutput.LIMIT_BYTES;
@@ -79,6 +94,7 @@ describe("CheckRunOutput byte budgeting", () => {
 			const noNewDamage = (cut.match(/�/g) ?? []).length <= (summary.match(/�/g) ?? []).length + 1;
 			return withinBudget && noNewDamage;
 		},
+		{ arbitrary: { size: 40_000 } },
 	);
 });
 

@@ -79,7 +79,7 @@ export interface StoreDocumentOptions {
 	readonly $id: string;
 	/**
 	 * Passed through to core's `Schema.toJsonSchemaDocument`
-	 * (`additionalProperties`, `generateDescriptions`,
+	 * (`onExcessProperty`, `generateDescriptions`,
 	 * `includeAnnotationKey`).
 	 *
 	 * The declared non-standard keyword families ({@link KeywordFamilies})

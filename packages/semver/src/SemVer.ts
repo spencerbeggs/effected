@@ -46,7 +46,7 @@ const nonNegativeInteger = Schema.Number.check(
 // String prerelease identifiers must contain at least one non-digit:
 // all-numeric identifiers are numbers (the grammar parses them as such), so
 // requiring a non-digit keeps decode/encode round-trips canonical. Written
-// without lookahead so `Schema.toArbitrary` can derive a generator.
+// without lookahead so `Arbitrary.schema` can derive a generator.
 const prereleaseIdentifier = Schema.Union([
 	Schema.String.check(Schema.isPattern(/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/)),
 	nonNegativeInteger,
@@ -104,7 +104,7 @@ export class SemVer extends Schema.Class<SemVer>("SemVer")({
 	static readonly FromString: Schema.Codec<SemVer, string> = Schema.String.pipe(
 		Schema.decodeTo(
 			SemVer,
-			SchemaTransformation.transformOrFail({
+			SchemaTransformation.transformEffect({
 				decode: (input: string) => {
 					const result = parseVersion(input);
 					return result.ok

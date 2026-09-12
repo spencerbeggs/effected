@@ -291,7 +291,7 @@ const sriOfCorepack = (value: string): string | undefined =>
 const corepackFromSri: Schema.Codec<IntegrityHashBrand, string> = Schema.String.pipe(
 	Schema.decodeTo(
 		corepackRestricted,
-		SchemaTransformation.transformOrFail<string, string>({
+		SchemaTransformation.transformEffect<string, string>({
 			decode: (input) => {
 				const corepack = corepackOfSri(input);
 				return corepack === undefined

@@ -160,7 +160,7 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 			const asEnvError = <A>(name: string, config: Config.Config<A>): Effect.Effect<A, XdgEnvError> =>
 				Effect.catchTag(config, "ConfigError", (cause) => Effect.fail(new XdgEnvError({ variable: name, cause })));
 
-			const home = yield* asEnvError("HOME", Config.string("HOME"));
+			const home = yield* asEnvError("HOME", Config.String("HOME"));
 
 			/**
 			 * An unset variable is `Option.none()`, not a failure. The residual
@@ -169,7 +169,7 @@ export class Xdg extends Context.Service<Xdg, XdgPaths>()("@effected/xdg/Xdg") {
 			 * read), not a missing key — so it is mapped rather than swallowed.
 			 */
 			const read = (name: string): Effect.Effect<string | undefined, XdgEnvError> =>
-				Effect.map(asEnvError(name, Config.option(Config.string(name))), Option.getOrUndefined<string>);
+				Effect.map(asEnvError(name, Config.option(Config.String(name))), Option.getOrUndefined<string>);
 
 			const configHome = yield* read("XDG_CONFIG_HOME");
 			const dataHome = yield* read("XDG_DATA_HOME");

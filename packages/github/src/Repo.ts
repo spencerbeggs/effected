@@ -109,7 +109,7 @@ export class Repo extends Context.Service<Repo, RepoRef>()("@effected/github/Rep
 	): Layer.Layer<Repo, Config.ConfigError | InvalidRepoRefError> =>
 		Layer.effect(
 			Repo,
-			Effect.flatMap(Config.string(options.name ?? "GITHUB_REPOSITORY"), (slug) => RepoRef.parse(slug)),
+			Effect.flatMap(Config.String(options.name ?? "GITHUB_REPOSITORY"), (slug) => RepoRef.parse(slug)),
 		);
 
 	/** Run `effect` against a different repository. */
