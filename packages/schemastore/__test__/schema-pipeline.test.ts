@@ -245,6 +245,51 @@ describe("SchemaPipeline", () => {
 				assert.strictEqual(result.$id, "https://example.com/config.schema.json");
 			}),
 		);
+
+		// #688 — a target-level jsonSchema option threads through to
+		// StoreDocument.fromSchema, so a consumer can reproduce a closed-object
+		// document regardless of core's rc.113+ open-by-default.
+		it.effect(
+			'passes target.jsonSchema through so the written document is closed under onExcessProperty: "error"',
+			() =>
+				Effect.gen(function* () {
+					const closedTarget = SchemaTarget.make({
+						schema: Config,
+						$id: "https://example.com/closed.schema.json",
+						path: "schemas/closed.schema.json",
+						jsonSchema: { onExcessProperty: "error" },
+					});
+					const layersUnderTest = memLayers({});
+					const document = yield* Effect.provide(
+						Effect.gen(function* () {
+							yield* SchemaPipeline.run([closedTarget]);
+							const volume = yield* MemoryFileSystem.Volume;
+							const text = volume.text("schemas/closed.schema.json");
+							assert.isDefined(text);
+							return JSON.parse(text) as Record<string, unknown>;
+						}),
+						layersUnderTest,
+					);
+					assert.strictEqual(document.additionalProperties, false);
+				}),
+		);
+
+		it.effect("without jsonSchema, the written document keeps core's open-object default", () =>
+			Effect.gen(function* () {
+				const layersUnderTest = memLayers({});
+				const document = yield* Effect.provide(
+					Effect.gen(function* () {
+						yield* SchemaPipeline.run([target]);
+						const volume = yield* MemoryFileSystem.Volume;
+						const text = volume.text("schemas/config.schema.json");
+						assert.isDefined(text);
+						return JSON.parse(text) as Record<string, unknown>;
+					}),
+					layersUnderTest,
+				);
+				assert.strictEqual(document.additionalProperties, true);
+			}),
+		);
 	});
 
 	// Reported by the first pipeline adopter and confirmed by probe: a
@@ -584,6 +629,55 @@ describe("SchemaPipeline", () => {
 					assert.isTrue(result.contractBlocked);
 				}),
 			);
+
+			// #688 — the pinned document was generated CLOSED
+			// (onExcessProperty: "error"). Reproducing that generation contract
+			// is the target's job now: omitting jsonSchema drifts back to core's
+			// open default and reads as a contract change; supplying the same
+			// jsonSchema reproduces the document byte-for-contract and reads
+			// unchanged.
+			describe("reproducing a closed-object contract (#688)", () => {
+				const CLOSED_ID = "https://example.com/schemas/closed-1.0.0.json";
+				const CLOSED_PATH = "/schemas/1.0.0/closed-1.0.0.json";
+				const closedPredecessor = Result.getOrThrow(
+					Result.getOrThrow(
+						StoreDocument.fromSchemaResult(Config, { $id: CLOSED_ID, jsonSchema: { onExcessProperty: "error" } }),
+					).serializeResult(),
+				);
+				const closedPinnedTargetWithoutOption = SchemaTarget.make({
+					schema: Config,
+					$id: CLOSED_ID,
+					name: "closed",
+					path: CLOSED_PATH,
+					version: version("1.0.0"),
+				});
+				const closedPinnedTargetWithOption = SchemaTarget.make({
+					schema: Config,
+					$id: CLOSED_ID,
+					name: "closed",
+					path: CLOSED_PATH,
+					version: version("1.0.0"),
+					jsonSchema: { onExcessProperty: "error" },
+				});
+
+				it.effect("without jsonSchema, drifts back open and reads as a contract change", () =>
+					Effect.gen(function* () {
+						const layers = memLayers({ [CLOSED_PATH]: closedPredecessor });
+						const result = yield* Effect.provide(SchemaPipeline.checkOne(closedPinnedTargetWithoutOption), layers);
+						assert.strictEqual(result.change, "contract");
+						assert.isTrue(result.contractBlocked);
+					}),
+				);
+
+				it.effect("with the matching jsonSchema, reproduces the document as unchanged", () =>
+					Effect.gen(function* () {
+						const layers = memLayers({ [CLOSED_PATH]: closedPredecessor });
+						const result = yield* Effect.provide(SchemaPipeline.checkOne(closedPinnedTargetWithOption), layers);
+						assert.strictEqual(result.change, "none");
+						assert.isFalse(result.contractBlocked);
+					}),
+				);
+			});
 		});
 	});
 

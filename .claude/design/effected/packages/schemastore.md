@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-28
-updated: 2026-09-10
-last-synced: 2026-09-10
+updated: 2026-09-12
+last-synced: 2026-09-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -54,7 +54,7 @@ The constraints the emitted artifacts must satisfy, which is why several decisio
 Module-per-concept per the [module layout standard](../effect-standards.md#module-layout-module-per-concept); no barrel re-exports below the entrypoint. See `src/` and the package's modules context file for each module's as-built shape. The load-bearing division:
 
 - **`StoreDocument`** — the assembly. Owns the `#/definitions` → `#/$defs` `$ref` rewrite the Draft-07 lowering makes necessary (the lowering emits canonical `definitions` refs while the publication shape keeps its pool under `$defs`, a Draft-07-valid alias), the annotation-key admission gate (`UndeclaredAnnotationKeyError`) and the publication shape itself. **The package owns assembly, not a JSON Schema engine.**
-- **`SchemaTarget`** — the target manifest vocabulary: schema, identity, destination path and optional name and version.
+- **`SchemaTarget`** — the target manifest vocabulary: schema, identity, destination path, optional name and version, and an optional `jsonSchema` (`Schema.ToJsonSchemaOptions`) pass-through the pipeline forwards to `StoreDocument.fromSchema`, so each target states its own generation contract.
 - **`SchemaVersioning`** — both catalog modes and the version grammar, plus `isPinned` (a label with no prerelease — the one predicate shared by the pipeline's contract guard and `next`) and `next` (the version label a change classification calls for; see [versioning](#versioning-schemastores-file-convention-semvers-label-grammar)).
 - **`CatalogEntry`** — the catalog entry shape plus the fileMatch hygiene lint.
 - **`DocumentLint`** — owned structural checks: `$ref` resolution against the `$defs` pool, unknown keywords outside the declared families, best-practice advisories, and a depth cap that degrades to a finding rather than throwing.
@@ -189,6 +189,8 @@ Both gates' findings normalize into one finding type so a single predicate judge
 **`"block"` — refusing every contract change regardless of pinning — was considered and deliberately not shipped as a policy value.** It is the over-broad policy: it is exactly the shape of the hand-rolled preflight that silk-release-action's `generate-schema.ts` wrote for itself, and that preflight wedged on the action's own **unversioned** input schema, which has no predecessor for consumers to pin and no business being refused a rewrite. A policy with no notion of pinning cannot distinguish the document that must never move from the document that is expected to move on every run.
 
 **The default derives from `SchemaTarget.version`, a fact about the target, rather than from a separate boolean the caller would have to keep in sync with it.** A boolean flag independent of `version` could disagree with reality — a target could carry a pinned label and still be told it is not guarded — where reading `version` directly cannot drift from what the target actually is.
+
+**The same principle puts `jsonSchema` on the target, not on the pipeline** (#688). `SchemaTarget` carries an optional `jsonSchema?: Schema.ToJsonSchemaOptions` that `SchemaPipeline.run` and `check` forward to `StoreDocument.fromSchema`, which had accepted it since 2026-08-02; a pipeline-wide option was rejected because a document's generation contract is a fact about *that* document, and a target that can only be reproduced under options held somewhere else is not self-describing. The motivating case: effect 4.0.0-rc.113 flipped `toJsonSchemaDocument` to open objects by default (the `additionalProperties` option became `onExcessProperty: "ignore" | "error"`), so a consumer with a pinned closed-object document watched every struct flip `additionalProperties: false → true` — correctly classified as a `"contract"` change and correctly blocked, with no channel to say "generate it the way it was published". `jsonSchema: { onExcessProperty: "error" }` on the target reproduces the closed document and `check` reports it unchanged. The channel reaches only what `toJsonSchemaDocument` takes as options: #606 (`Schema.Class` root `title`/`description` loss) is a core limitation it does not touch.
 
 **The policy is only coherent when the version participates in `path`** — `schemas/<version>/<name>-<version>.json` is the shape that makes it so. A versioned target whose path does *not* embed the label compares the same file forever regardless of what `version` says, so bumping `version` alone would not move the write target and the guard would keep firing against a file the bump never touched.
 

@@ -404,7 +404,10 @@ export class SchemaPipeline {
 
 			// Phase 1 — generate, gate and classify. Nothing is written here.
 			for (const target of targets) {
-				const document = yield* StoreDocument.fromSchema(target.schema, { $id: target.$id });
+				const document = yield* StoreDocument.fromSchema(target.schema, {
+					$id: target.$id,
+					...(target.jsonSchema !== undefined ? { jsonSchema: target.jsonSchema } : {}),
+				});
 				const findings = yield* gather(document, options);
 				yield* gate(target, findings, options);
 				const version = target.version;
@@ -479,7 +482,10 @@ export class SchemaPipeline {
 			const files = yield* SchemaFile;
 			const results: Array<PipelineCheckResult> = [];
 			for (const target of targets) {
-				const document = yield* StoreDocument.fromSchema(target.schema, { $id: target.$id });
+				const document = yield* StoreDocument.fromSchema(target.schema, {
+					$id: target.$id,
+					...(target.jsonSchema !== undefined ? { jsonSchema: target.jsonSchema } : {}),
+				});
 				const findings = yield* gather(document, options);
 				const { wouldWrite, change } = yield* files.check(target.path, document, options?.write);
 				results.push({

@@ -138,6 +138,11 @@ validation gate, not a construction surface.
 - **`SchemaTarget` requires `name` whenever `version` is present**, enforced by
   an overload pair so version-without-name is a compile error (the runtime throw
   survives for untyped callers). Empty `$id`/`path` throw — wiring defect.
+  A target's generation options (`jsonSchema`, core's `ToJsonSchemaOptions`)
+  live ON the target and are forwarded to `fromSchema` by the pipeline — never
+  add a pipeline-wide equivalent: a document that only reproduces under
+  options held elsewhere is not self-describing (#688; the rc.113
+  `onExcessProperty` default flip is the motivating case).
 - **`SchemaPipeline` is a plain function, deliberately not a `Context.Service`**
   — it needs `SchemaFile | SchemaValidator` in `R`, which compose for free.
   `run` is **two-phase and all-or-nothing across targets**: phase 1 generates,
@@ -164,9 +169,10 @@ validation gate, not a construction surface.
   written under any contract policy, so its classification is noise.
 - **Know which gate actually blocks in the pipeline**: targets carry a `Schema`,
   so pipeline documents come from `fromSchema`, which never admits an
-  undeclared keyword in the first place (the pipeline passes no
-  `includeAnnotationKey`, and one that admitted anything undeclared would fail
-  the build). `UnknownKeyword` is therefore unreachable that way and the
+  undeclared keyword in the first place (a target's `jsonSchema` may carry an
+  `includeAnnotationKey`, but one that admits anything undeclared fails
+  `fromSchema`, not the lint). `UnknownKeyword` is therefore unreachable that
+  way and the
   **engine** gate is what stops a bad document. Until rc.112 the same
   conclusion held for a different reason — the lowering dropped undeclared
   keywords — so do not restate the mechanism from memory.

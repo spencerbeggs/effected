@@ -50,7 +50,7 @@ console.log(text.split("\n")[0]);
 // {
 ```
 
-Two things happened that are easy to miss. The document declares Draft-07 (`$schema` is `http://json-schema.org/draft-07/schema#`), because that is the dialect the language servers actually support. And `additionalProperties: false` appears without you asking — core's default for a struct — which is usually what a config schema wants and is worth knowing before a user reports a "spurious" error on an extra key.
+Two things happened that are easy to miss. The document declares Draft-07 (`$schema` is `http://json-schema.org/draft-07/schema#`), because that is the dialect the language servers actually support. And `additionalProperties: true` appears without you asking — core's default for a struct is an open object — which is usually *not* what a config schema wants: pass `jsonSchema: { onExcessProperty: "error" }` to `fromSchema` (or set the same field on a pipeline target) to close it, so a typo in a key is reported rather than silently accepted.
 
 Now gate it. [`DocumentLint.lint`](/schemastore/api/class/documentlint) is total: it returns findings as values and never fails, so it costs you nothing to call and never becomes an exception you did not plan for:
 

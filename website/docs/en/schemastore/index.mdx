@@ -57,9 +57,11 @@ console.log(Effect.runSync(program));
 //   "required": [
 //     "name"
 //   ],
-//   "additionalProperties": false
+//   "additionalProperties": true
 // }
 ```
+
+`additionalProperties: true` is core's default for a struct — `Schema.toJsonSchemaDocument` emits open objects unless told otherwise. Pass `jsonSchema: { onExcessProperty: "error" }` in the options for the closed form a config schema usually wants; a pipeline target takes the same option.
 
 [`fromSchema`](/schemastore/api/class/storedocument) runs the whole assembly — 2020-12 generation, the Draft-07 lowering, the `$ref` rewrite back to `$defs` and the declared-family gate — so every `$ref` in a built document already resolves against its own pool. `toJson()` is the flat publication shape (`$defs` omitted when empty), and `serializeResult()` routes through the owned canonical serializer.
 

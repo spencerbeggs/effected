@@ -418,20 +418,20 @@
 		{
 			"source": "packages/schemastore/CLAUDE.md",
 			"target": ".claude/design/effected/packages/schemastore.md",
-			"hash": "faf42374a26b8ee15a15ad7bf7599b0567b29fb3e84737740e02349962fa1319",
-			"recordedAt": "2026-09-04"
+			"hash": "8588fb1801e5fd8dbf0c7a2f443e3b8e84a650475789950127b89840d963ee10",
+			"recordedAt": "2026-09-12"
 		},
 		{
 			"source": "packages/schemastore/CLAUDE.modules.md",
 			"target": ".claude/design/effected/packages/schemastore.md",
-			"hash": "faf42374a26b8ee15a15ad7bf7599b0567b29fb3e84737740e02349962fa1319",
-			"recordedAt": "2026-09-04"
+			"hash": "8588fb1801e5fd8dbf0c7a2f443e3b8e84a650475789950127b89840d963ee10",
+			"recordedAt": "2026-09-12"
 		},
 		{
 			"source": "packages/schemastore/CLAUDE.verification.md",
 			"target": ".claude/design/effected/packages/schemastore.md",
-			"hash": "faf42374a26b8ee15a15ad7bf7599b0567b29fb3e84737740e02349962fa1319",
-			"recordedAt": "2026-09-04"
+			"hash": "8588fb1801e5fd8dbf0c7a2f443e3b8e84a650475789950127b89840d963ee10",
+			"recordedAt": "2026-09-12"
 		},
 		{
 			"source": "packages/semver/CLAUDE.md",

@@ -43,6 +43,30 @@ describe("SchemaTarget", () => {
 		assert.strictEqual(target.path, "out/config.json");
 	});
 
+	// #688 — a target-level jsonSchema option threads Schema.ToJsonSchemaOptions
+	// through to StoreDocument.fromSchema so a document's generation contract
+	// is self-describing rather than relying on core's default.
+	it("carries a jsonSchema option when given", () => {
+		const target = SchemaTarget.make({
+			schema: Config,
+			$id: "https://example.com/config.schema.json",
+			name: "config-tool",
+			path: "schemas/config-tool.json",
+			jsonSchema: { onExcessProperty: "error" },
+		});
+		assert.deepStrictEqual(target.jsonSchema, { onExcessProperty: "error" });
+	});
+
+	it("omits the jsonSchema key entirely when not given", () => {
+		const target = SchemaTarget.make({
+			schema: Config,
+			$id: "https://example.com/config.schema.json",
+			name: "config-tool",
+			path: "schemas/config-tool.json",
+		});
+		assert.notProperty(target, "jsonSchema");
+	});
+
 	// The overload pair makes version-without-name a COMPILE error; the
 	// runtime throw remains for untyped callers, which is what the cast
 	// simulates here.
