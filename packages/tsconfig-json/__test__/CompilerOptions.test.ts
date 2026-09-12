@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
-import { FastCheck as fc } from "effect/testing";
 import {
 	CompilerOptions,
 	Jsx,
@@ -133,16 +132,14 @@ describe("CompilerOptions", () => {
 });
 
 describe("CompilerOptions round-trip", () => {
-	const subsetArb = fc.record(
-		{
-			strict: fc.boolean(),
-			target: fc.constantFrom("es5", "es2015", "es2023", "esnext"),
-			maxNodeModuleJsDepth: fc.integer({ min: 0, max: 10 }),
-		},
-		{ requiredKeys: [] },
-	);
+	// Every key optional, so the generator walks subsets of the typed fields.
+	const Subset = Schema.Struct({
+		strict: Schema.optionalKey(Schema.Boolean),
+		target: Schema.optionalKey(Schema.Literals(["es5", "es2015", "es2023", "esnext"])),
+		maxNodeModuleJsDepth: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 10 }))),
+	});
 
-	it.effect.prop("decode ∘ encode is identity over a generated subset of typed fields", [subsetArb], ([subset]) =>
+	it.effect.prop("decode ∘ encode is identity over a generated subset of typed fields", [Subset], ([subset]) =>
 		Effect.gen(function* () {
 			const decoded = yield* Schema.decodeUnknownEffect(CompilerOptions)(subset);
 			const encoded = yield* Schema.encodeUnknownEffect(CompilerOptions)(decoded);

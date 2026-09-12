@@ -150,6 +150,18 @@ lowering makes necessary, the structural lint, a real ajv strict-mode gate,
 and a content-comparing write through a deterministic serializer. An action
 repository writes the *target manifest* and the log wording, nothing else.
 
+**The generated document is open by default since effect rc.113.** Core's
+`Schema.toJsonSchemaDocument` option `additionalProperties` became
+`onExcessProperty: "ignore" | "error"`, defaulting to `"ignore"` to mirror
+the decoder — so every object node in the emitted contract carries
+`additionalProperties: true` unless `"error"` is passed (probed at rc.115).
+`SchemaPipeline` passes only `$id` through to `StoreDocument.fromSchema`, so
+a pipeline-built output contract is open and a consumer validating a payload
+against it will not reject an extra key. That matches what `setJson`'s
+decoder accepts by default; if the contract must be closed, build the
+document with `StoreDocument.fromSchema(schema, { $id, jsonSchema: { onExcessProperty: "error" } })`
+and decode with the same option — the two must not disagree.
+
 ```ts
 // lib/scripts/generate-schema.ts
 import { realpathSync } from "node:fs";

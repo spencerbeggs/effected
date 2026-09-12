@@ -10,8 +10,8 @@
 // are tested separately and excluded from oracle comparison.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
-import { FastCheck as fc } from "effect/testing";
+import { Effect, Schema } from "effect";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import type { MinimatchOptions } from "minimatch";
 import { Minimatch as OracleMinimatch, minimatch as oracle } from "minimatch";
 import type { EngineOptions } from "../src/internal/minimatch.js";
@@ -216,9 +216,13 @@ describe("engine compliance: behavioral table", () => {
 // ── Oracle property tests ─────────────────────────────────────────────────
 // Array form ONLY: the named-record form of it.effect.prop silently discards
 // Schema conversion in @effect/vitest 4.0.0-beta.94.
+//
+// Literal and magic segments are two equal-weight groups (a Union of two
+// Literals unions, not one flat list), so the pattern mix stays balanced
+// between plain paths and paths that exercise the dialect.
 
-const literalSeg = fc.constantFrom("a", "b", "abc", "x-y", "a.b+c", ".hidden", "..", "");
-const magicSeg = fc.constantFrom(
+const literalSeg = Schema.Literals(["a", "b", "abc", "x-y", "a.b+c", ".hidden", "..", ""]);
+const magicSeg = Schema.Literals([
 	"*",
 	"?",
 	"**",
@@ -236,29 +240,40 @@ const magicSeg = fc.constantFrom(
 	"{1..3}",
 	"\\*",
 	"!x",
+]);
+const patternArb = Arbitrary.schema(
+	Schema.Array(Schema.Union([literalSeg, magicSeg])).check(Schema.isLengthBetween(1, 5)),
+).pipe(Arbitrary.map((xs) => xs.join("/")));
+const candidateArb = Arbitrary.schema(
+	Schema.Array(Schema.Literals(["a", "b", "abc", ".hidden", "x", "a.b+c", ""])).check(Schema.isLengthBetween(1, 6)),
+).pipe(Arbitrary.map((xs) => xs.join("/")));
+// Every key is optional so the bag ranges from `{}` to fully specified — the
+// generator draws a random subset of the optional keys per run.
+const optionBagArb = Arbitrary.schema(
+	Schema.Struct({
+		dot: Schema.optionalKey(Schema.Boolean),
+		nocase: Schema.optionalKey(Schema.Boolean),
+		matchBase: Schema.optionalKey(Schema.Boolean),
+		noglobstar: Schema.optionalKey(Schema.Boolean),
+		noext: Schema.optionalKey(Schema.Boolean),
+		nobrace: Schema.optionalKey(Schema.Boolean),
+		nonegate: Schema.optionalKey(Schema.Boolean),
+		flipNegate: Schema.optionalKey(Schema.Boolean),
+		preserveMultipleSlashes: Schema.optionalKey(Schema.Boolean),
+		optimizationLevel: Schema.optionalKey(Schema.Literals([0, 1, 2])),
+		platform: Schema.optionalKey(Schema.Literals(["posix", "win32"])),
+	}),
 );
-const patternArb = fc
-	.array(fc.oneof(literalSeg, magicSeg), { minLength: 1, maxLength: 5 })
-	.map((xs: Array<string>) => xs.join("/"));
-const candidateArb = fc
-	.array(fc.constantFrom("a", "b", "abc", ".hidden", "x", "a.b+c", ""), { minLength: 1, maxLength: 6 })
-	.map((xs: Array<string>) => xs.join("/"));
-const optionBagArb = fc.record(
-	{
-		dot: fc.boolean(),
-		nocase: fc.boolean(),
-		matchBase: fc.boolean(),
-		noglobstar: fc.boolean(),
-		noext: fc.boolean(),
-		nobrace: fc.boolean(),
-		nonegate: fc.boolean(),
-		flipNegate: fc.boolean(),
-		preserveMultipleSlashes: fc.boolean(),
-		optimizationLevel: fc.constantFrom(0, 1, 2),
-		platform: fc.constantFrom("posix" as const, "win32" as const),
-	},
-	{ requiredKeys: [] },
-);
+// Printable ASCII only, as the property's name promises; the pattern also
+// keeps `/` and `\` out constructively instead of by residual filtering. The
+// class is spelled as the four spans printable ASCII splits into around those
+// two characters so the exclusions read as such.
+const printableNoSlashArb = Arbitrary.schema(Schema.String.check(Schema.isPattern(/^[ -.0-9:-@A-Z[\]-~]{1,30}$/)));
+const braceSegArb = Arbitrary.schema(
+	Schema.Array(Schema.Literals(["a", "{b,c}", "{1..4}", "x{y,z}w", "{a,{b,c}}", "plain"])).check(
+		Schema.isLengthBetween(1, 4),
+	),
+).pipe(Arbitrary.map((xs) => xs.join("/")));
 
 describe("engine compliance: oracle properties", () => {
 	it.effect.prop(
@@ -273,7 +288,7 @@ describe("engine compliance: oracle properties", () => {
 					`${pattern} vs ${candidate}`,
 				);
 			}),
-		{ fastCheck: { numRuns: 500 } },
+		{ arbitrary: { runs: 500 } },
 	);
 
 	it.effect.prop(
@@ -288,12 +303,12 @@ describe("engine compliance: oracle properties", () => {
 					`${pattern} vs ${candidate} (${JSON.stringify(options)})`,
 				);
 			}),
-		{ fastCheck: { numRuns: 500 } },
+		{ arbitrary: { runs: 500 } },
 	);
 
 	it.effect.prop(
 		"a compiled escape of any printable string matches exactly that string",
-		[fc.string({ minLength: 1, maxLength: 30 }).filter((s: string) => !s.includes("/") && !s.includes("\\"))],
+		[printableNoSlashArb],
 		([s]) =>
 			Effect.sync(() => {
 				// nocomment/nonegate: escape() escapes glob magic, but a leading #
@@ -306,25 +321,18 @@ describe("engine compliance: oracle properties", () => {
 				assert.isTrue(m.match(s), `escape(${JSON.stringify(s)}) must match its own literal`);
 				assert.strictEqual(m.match(s), oracle(s, oracle.escape(s, { magicalBraces: true }), oracleOpts(opts)));
 			}),
-		{ fastCheck: { numRuns: 300 } },
+		{ arbitrary: { runs: 300 } },
 	);
 
 	it.effect.prop(
 		"braceExpand agrees with the upstream expansion for in-budget patterns",
-		[
-			fc
-				.array(fc.constantFrom("a", "{b,c}", "{1..4}", "x{y,z}w", "{a,{b,c}}", "plain"), {
-					minLength: 1,
-					maxLength: 4,
-				})
-				.map((xs: Array<string>) => xs.join("/")),
-		],
+		[braceSegArb],
 		([pattern]) =>
 			Effect.sync(() => {
 				const vendored = new Minimatch(pattern, { platform: "posix" });
 				const upstream = new OracleMinimatch(pattern, oracleOpts({ platform: "posix" }));
 				assert.deepStrictEqual(vendored.braceExpand(), upstream.braceExpand(), pattern);
 			}),
-		{ fastCheck: { numRuns: 300 } },
+		{ arbitrary: { runs: 300 } },
 	);
 });

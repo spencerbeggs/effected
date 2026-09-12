@@ -17,7 +17,6 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
-import { FastCheck as fc } from "effect/testing";
 import {
 	FrontmatterEncodeError,
 	FrontmatterFormatMismatchError,
@@ -204,9 +203,13 @@ describe("MarkdownFrontmatter.setToString", () => {
 });
 
 describe("frontmatter write round-trip property", () => {
-	// Newline-free strings only — see the file header for why.
-	const scalar = fc.string().filter((s) => !s.includes("\n") && !s.includes("\r"));
-	const metaArb = fc.record({ title: scalar, count: fc.integer() });
+	// Newline-free strings only — see the file header for why. The count stays
+	// in the 32-bit range every frontmatter codec represents exactly.
+	const Scalar = Schema.String.check(Schema.makeFilter((s) => !s.includes("\n") && !s.includes("\r")));
+	const MetaArb = Schema.Struct({
+		title: Scalar,
+		count: Schema.Int.check(Schema.isBetween({ minimum: -(2 ** 31), maximum: 2 ** 31 - 1 })),
+	});
 	const bodyDoc = "# Title\n\nsome *emphasis* text\n";
 
 	const insertRoundTrip = (
@@ -224,49 +227,49 @@ describe("frontmatter write round-trip property", () => {
 			}),
 		);
 
-	it("yaml: set then re-parse then decode recovers the data", () => {
-		fc.assert(
-			fc.property(metaArb, (data) => {
-				assert.deepStrictEqual(insertRoundTrip(YamlFrontmatter, data), data);
-			}),
-			{ numRuns: 60 },
-		);
-	});
+	it.prop(
+		"yaml: set then re-parse then decode recovers the data",
+		[MetaArb],
+		([data]) => {
+			assert.deepStrictEqual(insertRoundTrip(YamlFrontmatter, data), data);
+		},
+		{ arbitrary: { runs: 60 } },
+	);
 
-	it("toml: set then re-parse then decode recovers the data", () => {
-		fc.assert(
-			fc.property(metaArb, (data) => {
-				assert.deepStrictEqual(insertRoundTrip(TomlFrontmatter, data), data);
-			}),
-			{ numRuns: 60 },
-		);
-	});
+	it.prop(
+		"toml: set then re-parse then decode recovers the data",
+		[MetaArb],
+		([data]) => {
+			assert.deepStrictEqual(insertRoundTrip(TomlFrontmatter, data), data);
+		},
+		{ arbitrary: { runs: 60 } },
+	);
 
-	it("json: set then re-parse then decode recovers the data", () => {
-		fc.assert(
-			fc.property(metaArb, (data) => {
-				assert.deepStrictEqual(insertRoundTrip(JsonFrontmatter, data), data);
-			}),
-			{ numRuns: 60 },
-		);
-	});
+	it.prop(
+		"json: set then re-parse then decode recovers the data",
+		[MetaArb],
+		([data]) => {
+			assert.deepStrictEqual(insertRoundTrip(JsonFrontmatter, data), data);
+		},
+		{ arbitrary: { runs: 60 } },
+	);
 
-	it("yaml: replacing an existing block preserves the suffix byte-for-byte and recovers the data", () => {
-		const fenced = `---\ntitle: Old\ncount: 0\n---\n\n${bodyDoc}`;
-		fc.assert(
-			fc.property(metaArb, (data) => {
-				const result = Effect.runSync(
-					Effect.gen(function* () {
-						const document = yield* parseDoc(fenced);
-						const updated = yield* MarkdownFrontmatter.setToString(Meta, YamlFrontmatter)(document, data);
-						assert.isTrue(updated.endsWith(`\n\n${bodyDoc}`));
-						const reparsed = yield* parseDoc(updated);
-						return yield* MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(reparsed);
-					}),
-				);
-				assert.deepStrictEqual(result, data);
-			}),
-			{ numRuns: 60 },
-		);
-	});
+	const fenced = `---\ntitle: Old\ncount: 0\n---\n\n${bodyDoc}`;
+	it.prop(
+		"yaml: replacing an existing block preserves the suffix byte-for-byte and recovers the data",
+		[MetaArb],
+		([data]) => {
+			const result = Effect.runSync(
+				Effect.gen(function* () {
+					const document = yield* parseDoc(fenced);
+					const updated = yield* MarkdownFrontmatter.setToString(Meta, YamlFrontmatter)(document, data);
+					assert.isTrue(updated.endsWith(`\n\n${bodyDoc}`));
+					const reparsed = yield* parseDoc(updated);
+					return yield* MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(reparsed);
+				}),
+			);
+			assert.deepStrictEqual(result, data);
+		},
+		{ arbitrary: { runs: 60 } },
+	);
 });

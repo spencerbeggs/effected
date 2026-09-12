@@ -37,7 +37,7 @@ Four properties are load-bearing ([reasoning](../../.claude/design/effected/pack
 - **The literal must stay inline at the `PnpmConfigPlugin(...)` call site** — the `upgrade` CLI finds it by statically walking that call argument; hoisting it into an exported `const` makes it invisible to the rewriter.
 - **`lock-minor` floors peer patches**, so a first sync normalizing `^0.11.1` down to `^0.11.0` is correct, not drift.
 
-Currently `effect` pins `4.0.0-rc.109` — **exact, never a caret**. A caret on a prerelease floats across the release line and desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports. `@effect/tsgo` keeps an exact `lock` entry although no workspace package consumes it — do not reintroduce it as a typechecker devDependency.
+Currently `effect` pins `4.0.0-rc.115` — **exact, never a caret**. A caret on a prerelease floats across the release line and desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports. `@effect/tsgo` keeps an exact `lock` entry although no workspace package consumes it — do not reintroduce it as a typechecker devDependency.
 
 The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCase `effectPeers` alias were removed on the rc.109 advance. Do not reintroduce them.
 
@@ -67,7 +67,7 @@ Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key: `autoInstallP
 
 The v3/v4 peer-resolution defect is fixed in pnpm 11.12.0; there is no expected-residual set to ignore. **The root `CLAUDE.dependencies.md` is the authority on the live expected state — read it rather than trusting a count here.** Any peer warning outside the toolchain graph it describes is a genuine closure defect to fix upstream — do not silence it.
 
-**The direct `effect` (`catalog:effect`) devDependency here is load-bearing — do not remove it as unused** (347ca229). It gives the resolver the right version to bind; without it pnpm bound `@effected/*` peers to the v3 `effect` that `rolldown-pnpm-config` carries, loading v4 code against v3 at build time. The companion itself ships no `effect`-importing code.
+**This package declares no `effect` and no `@effect/vitest` devDependency, and that absence is deliberate (rc.115 advance).** It ships and tests no `effect`-importing code — `catalog.test.ts` is plain vitest over the file system. The `effect` devDependency it once carried was resolver steering (347ca229): in the v3/v4 era it made pnpm bind `rolldown-pnpm-config`'s `@effected/*` peers to the workspace's v4 `effect` instead of the v3 copy the tool then carried. `rolldown-pnpm-config` now carries v4 itself, so the steering had inverted: on a runtime-incompatible pin advance the importer's newer `effect` leaked into the tool's published `@effected/*` peers and crashed `pnpm:up` / `pnpm:export` / `catalog:check` at `Jsonc.js` static init with `transformOrFail is not a function` (`@effected/workspaces` publishes jsonc as both a dependency and a peer, so the `packageExtensions` bridge cannot pin it). With the devDependency gone, those peers bind to the tool's own `effect`, which is the version its published code was built against. Do not reintroduce it — the bridge shapes and their selection rule are in the root `CLAUDE.dependencies.md`.
 
 ## Hazards
 

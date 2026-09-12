@@ -4,7 +4,7 @@ import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
 
 /**
  * Expose a loaded, merged, schema-validated document as a v4 `ConfigProvider`,
- * so it can be read through `Config.string("port")` and layered beneath other
+ * so it can be read through `Config.String("port")` and layered beneath other
  * providers.
  *
  * @remarks
@@ -21,7 +21,7 @@ import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
  *    is the exact class of lie this port exists to undo.
  * 2. **Nested keys are structural, not dotted.** `fromUnknown` descends one path
  *    segment at a time, so `{ db: { host } }` is reached with
- *    `Config.nested(Config.string("host"), "db")` — never `Config.string("db.host")`,
+ *    `Config.nested(Config.String("host"), "db")` — never `Config.String("db.host")`,
  *    which is looked up as a single literal key and fails. No flattening happens
  *    here, because none is needed.
  * 3. **The decoded value is handed over as-is.** `fromUnknown` descends with
@@ -35,7 +35,7 @@ import type { ConfigFileShape, ConfigLoadError } from "./ConfigFile.js";
  *    `Expected string, got undefined` — so a `Config` read of a present `Date`
  *    field looks exactly like a typo in the key name. An `Option.some`
  *    descends as a record carrying Effect's internal `value` own-property, so
- *    `Config.nested(Config.string("value"), "field")` happens to read the
+ *    `Config.nested(Config.String("value"), "field")` happens to read the
  *    wrapped value straight through — an internal representation, not a
  *    supported spelling. An `Option.none` has no own keys and so reads as
  *    absent, making `Some` and `None` asymmetric. None of this is a supported

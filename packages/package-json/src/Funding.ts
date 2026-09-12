@@ -165,11 +165,11 @@ export class Funding extends Schema.Class<Funding>("Funding")({
 	static readonly FromValue: Schema.Codec<Funding, string | { readonly [k: string]: unknown }> = EntryValue.pipe(
 		Schema.decodeTo(
 			Schema.instanceOf(Funding),
-			// `transformOrFail` rather than `transform`: this transform constructs
+			// `transformEffect` rather than `transform`: this transform constructs
 			// the instance itself — the only way to associate the raw wire value
 			// with the result — so it must carry the field validation the class
 			// factory would otherwise perform, including the required `url`.
-			SchemaTransformation.transformOrFail({
+			SchemaTransformation.transformEffect({
 				decode: (input: string | { readonly [k: string]: unknown }) => decodeEntry(input),
 				encode: (funding: Funding) => Effect.succeed(encodeEntry(funding)),
 			}),
@@ -195,7 +195,7 @@ export class Funding extends Schema.Class<Funding>("Funding")({
 	> = FieldValue.pipe(
 		Schema.decodeTo(
 			Schema.Array(Schema.instanceOf(Funding)),
-			SchemaTransformation.transformOrFail({
+			SchemaTransformation.transformEffect({
 				decode: (
 					input: string | { readonly [k: string]: unknown } | ReadonlyArray<string | { readonly [k: string]: unknown }>,
 				) => {

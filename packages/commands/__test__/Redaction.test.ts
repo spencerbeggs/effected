@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Redacted } from "effect";
-import { FastCheck } from "effect/testing";
+import { Redacted, Schema } from "effect";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import { REDACTED, Redaction } from "../src/Redaction.js";
 
 const secret = (value: string) => Redacted.make(value);
@@ -95,18 +95,16 @@ describe("Redaction properties", () => {
 	// Secrets made only of the placeholder's own characters are excluded —
 	// replacing "*" with "***" reintroduces the needle, which is a documented
 	// limitation rather than a defect.
-	it.prop(
-		"no secret value survives apply",
-		[FastCheck.string({ minLength: 1 }).filter((s) => !REDACTED.includes(s)), FastCheck.string(), FastCheck.string()],
-		([value, before, after]) => {
-			const text = `${before}${value}${after}`;
-			return !Redaction.apply(text, [secret(value)]).includes(value);
-		},
-	);
+	const secretValue = Arbitrary.schema(Schema.NonEmptyString).pipe(Arbitrary.filter((s) => !REDACTED.includes(s)));
+
+	it.prop("no secret value survives apply", [secretValue, Schema.String, Schema.String], ([value, before, after]) => {
+		const text = `${before}${value}${after}`;
+		return !Redaction.apply(text, [secret(value)]).includes(value);
+	});
 
 	it.prop(
 		"no secret value survives applyArgs, in any position",
-		[FastCheck.string({ minLength: 1 }).filter((s) => !REDACTED.includes(s)), FastCheck.array(FastCheck.string())],
+		[secretValue, Schema.Array(Schema.String)],
 		([value, rest]) => {
 			const args = [...rest, value, `prefix-${value}-suffix`];
 			return Redaction.applyArgs(args, [secret(value)]).every((arg) => !arg.includes(value));

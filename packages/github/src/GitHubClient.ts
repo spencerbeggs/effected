@@ -283,7 +283,7 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 		Layer.effect(
 			this,
 			Effect.gen(function* () {
-				const token = yield* Config.redacted(options.name ?? "GITHUB_TOKEN");
+				const token = yield* Config.Redacted(options.name ?? "GITHUB_TOKEN");
 				return yield* makeClientShape({ ...options, token });
 			}),
 		);

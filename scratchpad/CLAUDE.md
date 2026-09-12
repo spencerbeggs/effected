@@ -27,9 +27,12 @@ Two working areas, both **gitignored and disposable**:
   like any package's. Without the flag, the repo's global coverage thresholds
   fail any project-scoped run — and through the MCP `run_tests` tool (which
   has the same behavior) read the Tests line, not the exit code. The
-  vitest-agent reporter owns CLI output (summary line only; `--reporter=*`
-  flags are overridden) — per-test names and console capture come from the
-  MCP `run_tests`/`test` tools.
+  vitest-agent reporter owns the TERMINAL output (summary line only;
+  `--reporter=*` flags do not change it) — per-test names and console capture
+  come from the MCP `run_tests`/`test` tools. A file reporter still writes:
+  `--reporter=json --outputFile=<path>` is how a property test's shrunk input
+  and replay token are read, since the terminal compacts a falsification to
+  `Property falsified after N run(s)`.
 
 `pnpm scratchpad:reset` (repo root) deletes both working areas and reseeds
 them from `lib/templates/`. It never runs git. Anything you leave in the

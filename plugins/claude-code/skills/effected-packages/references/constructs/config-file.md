@@ -46,5 +46,5 @@
 | `UpwardWalkOptions` | TypeAlias | Options for `ConfigResolver.upwardWalk`. | |
 | `VersionAccess` | Variable + Interface | How the version number is read from and written to the parsed config. | read and write the version field used by config migrations |
 | `YamlCodec` | Variable | A `ConfigCodec` backed by `@effected/yaml`. | parse and stringify config as yaml |
-| `asConfigProvider` | Function | Expose a loaded, merged, schema-validated document as a v4 `ConfigProvider`, so it can be read through `Config.string("port")` and layered beneath other providers. | bridge a loaded config document into effect's Config accessors |
+| `asConfigProvider` | Function | Expose a loaded, merged, schema-validated document as a v4 `ConfigProvider`, so it can be read through `Config.String("port")` and layered beneath other providers. | bridge a loaded config document into effect's Config accessors |
 | `layerConfigProvider` | Function | Install a loaded config document as a fallback beneath the **ambient** `ConfigProvider`, so `Config` accessors read env first and the file second. | install a config file as a fallback beneath the ambient ConfigProvider |

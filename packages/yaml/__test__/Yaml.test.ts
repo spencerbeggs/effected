@@ -1280,9 +1280,12 @@ describe("Yaml", () => {
 	});
 
 	describe("stringify ∘ parse roundtrip (property)", () => {
+		// `-0` is a valid `Int` the native generator does emit, and neither JSON nor
+		// YAML can carry it (`JSON.stringify(-0) === "0"`), so the round-trip domain
+		// excludes it explicitly rather than letting `deepStrictEqual` fail on +0/-0.
 		const Sample = Schema.Struct({
 			name: Schema.String,
-			count: Schema.Int,
+			count: Schema.Int.check(Schema.makeFilter((n) => !Object.is(n, -0))),
 			enabled: Schema.Boolean,
 			tags: Schema.Array(Schema.String),
 		});

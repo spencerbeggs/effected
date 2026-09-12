@@ -9,7 +9,7 @@ Load when: choosing between the three `GitHubClient` constructors, wiring
 | Constructor | Module | Needs | Error |
 | --- | --- | --- | --- |
 | `GitHubClient.layerFromToken({ token, ... })` | `GitHubClient` | a `Redacted<string>` you already hold | none |
-| `GitHubClient.layerFromConfig({ name?, ... })` | `GitHubClient` | `Config.redacted("GITHUB_TOKEN")` via the ambient `ConfigProvider` | `ConfigError` |
+| `GitHubClient.layerFromConfig({ name?, ... })` | `GitHubClient` | `Config.Redacted("GITHUB_TOKEN")` via the ambient `ConfigProvider` | `ConfigError` |
 | `GitHubApp.clientLayer(request, options?)` | `GitHubApp` | an app id and a PEM private key | `GitHubAppError` |
 
 `layerFromConfig` reads a token through the ambient `ConfigProvider` rather

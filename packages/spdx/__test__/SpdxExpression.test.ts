@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Equal, Exit, Option, Result, Schema } from "effect";
-import * as fc from "effect/testing/FastCheck";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import { InvalidSpdxExpressionError, License } from "../src/License.js";
 import type { SpdxExpression as SpdxExpressionAst } from "../src/SpdxExpression.js";
 import {
@@ -14,41 +14,53 @@ import {
 } from "../src/SpdxExpression.js";
 
 // A generative round-trip arbitrary built from the KNOWN SPDX id set, used
-// instead of `Schema.toArbitrary(SpdxExpression.Schema)`. `toArbitrary` exists
-// and runs on the recursive union, but every leaf's `id`/`ref`/`exception` is a
-// bare `Schema.String`, so it emits identifiers that no grammar recognizes
+// instead of `Arbitrary.schema(SpdxExpression.Schema)`. Native derivation runs
+// on the recursive union, but every leaf's `id`/`ref`/`exception` is a bare
+// `Schema.String`, so it emits identifiers that no grammar recognizes
 // (e.g. `"__+ WITH ?.Rf\4aV"`) — decode∘encode can never be identity on those.
 // Constraining the leaves to real ids and well-formed reference idstrings makes
 // the round-trip invariant meaningful: encode yields a canonical SPDX string
 // that re-decodes to an equal AST.
-const KNOWN_LICENSES = ["MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "GPL-2.0-or-later", "MPL-2.0"];
-const KNOWN_EXCEPTIONS = ["Classpath-exception-2.0", "Bison-exception-2.2", "GCC-exception-2.0"];
-const idstring = fc.stringMatching(/^[A-Za-z0-9.-]{1,12}$/);
-const licenseNode = fc
-	.record({ id: fc.constantFrom(...KNOWN_LICENSES), plus: fc.boolean() })
-	.map(({ id, plus }) => LicenseNode.make({ id, plus }));
-const licenseRefNode = fc
-	.record({ documentRef: fc.option(idstring, { nil: undefined }), ref: idstring })
-	.map(({ documentRef, ref }) =>
-		// Conditional spread — never pass an explicit `undefined` for `optionalKey`.
-		documentRef !== undefined ? LicenseRefNode.make({ documentRef, ref }) : LicenseRefNode.make({ ref }),
+const KNOWN_LICENSES = ["MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "GPL-2.0-or-later", "MPL-2.0"] as const;
+const KNOWN_EXCEPTIONS = ["Classpath-exception-2.0", "Bison-exception-2.2", "GCC-exception-2.0"] as const;
+const idstring = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9.-]{1,12}$/));
+/** A uniform choice between arbitraries — the native module only unions Schemas. */
+const oneOf = <A>(
+	first: Arbitrary.Arbitrary<A>,
+	...rest: ReadonlyArray<Arbitrary.Arbitrary<A>>
+): Arbitrary.Arbitrary<A> =>
+	Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: rest.length }))).pipe(
+		Arbitrary.flatMap((index) => (index === 0 ? first : (rest[index - 1] ?? first))),
 	);
+const licenseNode = Arbitrary.schema(Schema.Struct({ id: Schema.Literals(KNOWN_LICENSES), plus: Schema.Boolean })).pipe(
+	Arbitrary.map(({ id, plus }) => LicenseNode.make({ id, plus })),
+);
+// `documentRef` is an `optionalKey`, so the generator either draws it or
+// leaves the key absent — the value passes straight to `make` with no
+// explicit `undefined` ever reaching the optional field.
+const licenseRefNode = Arbitrary.schema(
+	Schema.Struct({ documentRef: Schema.optionalKey(idstring), ref: idstring }),
+).pipe(Arbitrary.map((fields) => LicenseRefNode.make(fields)));
 // `WITH` binds to any simple expression — a license id (optionally `+`) OR a
 // `LicenseRef` reference — so the arbitrary generates both license shapes.
-const withExceptionNode = fc
-	.record({
-		license: fc.oneof(licenseNode, licenseRefNode),
-		exception: fc.constantFrom(...KNOWN_EXCEPTIONS),
-	})
-	.map(({ license, exception }) => WithExceptionNode.make({ license, exception }));
-const spdxExpressionArb: fc.Arbitrary<SpdxExpressionAst> = fc.letrec<{ expr: SpdxExpressionAst }>((tie) => ({
-	expr: fc.oneof(
-		{ maxDepth: 4, depthIdentifier: "spdx" },
-		fc.oneof(licenseNode, licenseRefNode, withExceptionNode),
-		fc.tuple(tie("expr"), tie("expr")).map(([left, right]) => AndNode.make({ left, right })),
-		fc.tuple(tie("expr"), tie("expr")).map(([left, right]) => OrNode.make({ left, right })),
-	),
-})).expr;
+const withExceptionNode = Arbitrary.all({
+	license: oneOf<LicenseNode | LicenseRefNode>(licenseNode, licenseRefNode),
+	exception: Arbitrary.schema(Schema.Literals(KNOWN_EXCEPTIONS)),
+}).pipe(Arbitrary.map(({ license, exception }) => WithExceptionNode.make({ license, exception })));
+const simpleExpression = oneOf<SpdxExpressionAst>(licenseNode, licenseRefNode, withExceptionNode);
+// Compound expressions nest AND/OR at most four levels deep (the old
+// `maxDepth: 4`); below the floor only simple expressions remain, so every
+// generation path is finite.
+const expressionAt = (depth: number): Arbitrary.Arbitrary<SpdxExpressionAst> => {
+	if (depth === 0) return simpleExpression;
+	const operand = expressionAt(depth - 1);
+	return oneOf<SpdxExpressionAst>(
+		simpleExpression,
+		Arbitrary.all([operand, operand]).pipe(Arbitrary.map(([left, right]) => AndNode.make({ left, right }))),
+		Arbitrary.all([operand, operand]).pipe(Arbitrary.map(([left, right]) => OrNode.make({ left, right }))),
+	);
+};
+const spdxExpressionArb = expressionAt(4);
 
 const VALID = [
 	"MIT",

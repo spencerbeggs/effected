@@ -84,7 +84,15 @@ Three consumer-facing facts the design commits to:
 
 **The `#/definitions` → `#/$defs` `$ref` rewrite deliberately does not descend into a declared-family value.** Those payloads are opaque advice addressed to a language server, not schema positions: a `$ref`-shaped string inside one means whatever that tool says it means, and rewriting it corrupts it. Under the old design the carrier grafted values on *after* the rewrite had run, so the exemption was free; deleting the carrier put those values in the rewrite's path, and without the explicit skip the deletion would have silently started rewriting inside `x-taplo` and `x-ai-*` payloads. It is load-bearing by mutation testing rather than by assertion — the skip also keeps a deep payload from spending the walk's depth budget.
 
-**Open limitation: a `Schema.Class`'s class-level annotations never reach the document** — title and description as well as the declared families. Core emits a class's definition from its *encoded* AST, and the class-level annotations do not survive that; the same annotations on a hoisted `Schema.Struct` do survive, which is what makes this a core bug rather than a constraint this package should design around. Tracked as [effected#606](https://github.com/spencerbeggs/effected/issues/606) and upstream as [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084). Until it is fixed, the workaround is to annotate a `Schema.Struct` root rather than a `Schema.Class`.
+**A `Schema.Class` root is annotated on the `Struct` it wraps, never on the class.** Annotations passed as `Schema.Class`'s second argument, or added with `.annotate()` on the class, sit on the class node; core generates the class's `$defs` entry from the *encoded* schema — the fields `Struct` handed to the class — so title, description and the declared families all vanish from the document. Annotate that inner `Struct` instead:
+
+```ts
+class Config extends Schema.Class<Config>("Config")(
+  Schema.Struct({ a: Schema.String }).annotate({ title: "T", description: "D", "x-taplo": { hidden: true } }),
+) {}
+```
+
+and every key lands in `$defs.ConfigEncoded`. This is by design, not a core bug: [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084) was closed as such (2026-09-09) and [effected#606](https://github.com/spencerbeggs/effected/issues/606) resolves the same way. Re-probed at rc.115 on the advance (`scratchpad/probes/schema-class-annotations-rc115.ts`): class-arg annotations still drop, inner-`Struct` annotations carry.
 
 ## Versioning: SchemaStore's file convention, SemVer's label grammar
 

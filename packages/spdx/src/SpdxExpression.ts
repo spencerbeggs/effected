@@ -233,7 +233,7 @@ const parseEffect = Effect.fn("SpdxExpression.parse")((input: string) => Effect.
 const FromString: Schema.Codec<SpdxExpression, string> = Schema.String.pipe(
 	Schema.decodeTo(
 		SpdxExpressionUnion,
-		SchemaTransformation.transformOrFail({
+		SchemaTransformation.transformEffect({
 			decode: (input: string) => {
 				const result = parseResult(input);
 				return Result.isSuccess(result)

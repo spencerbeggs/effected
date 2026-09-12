@@ -32,7 +32,7 @@ describe("asConfigProvider", () => {
 		Effect.gen(function* () {
 			const cfg = yield* AppConfig;
 			const provider = yield* asConfigProvider(cfg);
-			const port = yield* Effect.provide(Config.number("port"), ConfigProvider.layer(provider));
+			const port = yield* Effect.provide(Config.Number("port"), ConfigProvider.layer(provider));
 			assert.strictEqual(port, 8080);
 		}).pipe(Effect.provide(found)),
 	);
@@ -43,12 +43,12 @@ describe("asConfigProvider", () => {
 			const provider = yield* asConfigProvider(cfg);
 			const layer = ConfigProvider.layer(provider);
 
-			const host = yield* Effect.provide(Config.nested(Config.string("host"), "db"), layer);
+			const host = yield* Effect.provide(Config.nested(Config.String("host"), "db"), layer);
 			assert.strictEqual(host, "db-from-file");
 
 			// The dotted spelling is NOT a synonym: `fromUnknown` descends segment by
 			// segment, so "db.host" is looked up as a single literal key.
-			const dotted = yield* Effect.flip(Effect.provide(Config.string("db.host"), layer));
+			const dotted = yield* Effect.flip(Effect.provide(Config.String("db.host"), layer));
 			assert.strictEqual(dotted._tag, "ConfigError");
 		}).pipe(Effect.provide(found)),
 	);
@@ -62,8 +62,8 @@ describe("asConfigProvider", () => {
 			const composed = ConfigProvider.orElse(envProvider, fileProvider);
 			const layer = ConfigProvider.layer(composed);
 
-			const host = yield* Effect.provide(Config.string("host"), layer);
-			const port = yield* Effect.provide(Config.number("port"), layer);
+			const host = yield* Effect.provide(Config.String("host"), layer);
+			const port = yield* Effect.provide(Config.Number("port"), layer);
 			assert.strictEqual(host, "from-env");
 			assert.strictEqual(port, 8080);
 		}).pipe(Effect.provide(found)),
@@ -87,8 +87,8 @@ describe("layerConfigProvider", () => {
 				Layer.provide(found),
 			);
 
-			const host = yield* Effect.provide(Config.string("host"), stack);
-			const port = yield* Effect.provide(Config.number("port"), stack);
+			const host = yield* Effect.provide(Config.String("host"), stack);
+			const port = yield* Effect.provide(Config.Number("port"), stack);
 			assert.strictEqual(host, "from-env");
 			assert.strictEqual(port, 8080);
 		}),
@@ -102,7 +102,7 @@ describe("layerConfigProvider", () => {
 				Layer.provide(found),
 			);
 
-			const host = yield* Effect.provide(Config.string("host"), stack);
+			const host = yield* Effect.provide(Config.String("host"), stack);
 			assert.strictEqual(host, "from-file");
 		}),
 	);
@@ -110,7 +110,7 @@ describe("layerConfigProvider", () => {
 	it.effect("surfaces ConfigFileNotFoundError in the layer's error channel", () =>
 		Effect.gen(function* () {
 			const stack = layerConfigProvider(AppConfig).pipe(Layer.provide(missing));
-			const error = yield* Effect.flip(Effect.provide(Config.string("host"), stack));
+			const error = yield* Effect.flip(Effect.provide(Config.String("host"), stack));
 			assert.strictEqual(error._tag, "ConfigFileNotFoundError");
 		}),
 	);

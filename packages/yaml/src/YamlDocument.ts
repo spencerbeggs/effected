@@ -109,7 +109,7 @@ export class YamlDocument extends Schema.Class<YamlDocument>("YamlDocument")({
 		return Schema.String.pipe(
 			Schema.decodeTo(
 				Schema.instanceOf(YamlDocument),
-				SchemaTransformation.transformOrFail({
+				SchemaTransformation.transformEffect({
 					decode: (input: string) =>
 						YamlDocument.parse(input, options).pipe(
 							Effect.mapError((error) => new SchemaIssue.InvalidValue({ message: error.message }, input)),

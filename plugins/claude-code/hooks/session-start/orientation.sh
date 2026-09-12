@@ -34,7 +34,7 @@ cat >/dev/null 2>&1 || true
 # deliberately a constant rather than read from the host repo's catalog — the
 # point is to tell a LAGGING repo what it should move to, so comparing against
 # that repo's own (possibly stale) catalog would defeat the check.
-EFFECT_PIN="4.0.0-rc.112"
+EFFECT_PIN="4.0.0-rc.115"
 
 # --- vendored-source posture -------------------------------------------------
 # Resolve the host repo root. CLAUDE_PROJECT_DIR is set by Claude Code; fall

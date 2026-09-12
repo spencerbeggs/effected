@@ -50,6 +50,11 @@ validation gate, not a construction surface.
 
 - **Annotate at the definition site.** A usage-site annotation on a *hoisted*
   (identifier'd) schema reaches nothing, even at 2020-12 — probed at beta.101.
+- **A `Schema.Class` root is annotated on the `Struct` it wraps, not on the
+  class.** Class-argument or class-level `.annotate()` keys sit on the class
+  node; the `$defs` entry is generated from the encoded fields `Struct`, so
+  annotate that (`Schema.Class<X>("X")(Schema.Struct({...}).annotate({...}))`).
+  By design — Effect-TS/effect#8084 closed as such; re-probed at rc.115.
 - **`KeywordFamilies` is the ONE owner of the declared non-standard families,
   in two groups.** Upstream language-server families (the vscode five by
   exact name; the `x-taplo`, `x-tombi-`, `x-intellij-` prefixes) are mirrored

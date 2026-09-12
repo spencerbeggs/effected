@@ -72,8 +72,8 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
   `Equal.equals` fast-paths on hash mismatch — the two must agree.
   `VersionCache` dedupe inherits these semantics.
 - `prereleaseIdentifier` in `src/SemVer.ts` is **lookahead-free** on purpose:
-  fast-check cannot synthesize lookahead, and `Schema.toArbitrary(SemVer)`
-  powers the `it.effect.prop` round-trip tests.
+  the native `Arbitrary` regex compiler rejects lookahead, and
+  `Arbitrary.schema(SemVer)` powers the `it.effect.prop` round-trip tests.
 - `Range.test` implements node-semver's prerelease restriction — a prerelease
   version matches a set only when some comparator carries a prerelease on the
   same `major.minor.patch` tuple.

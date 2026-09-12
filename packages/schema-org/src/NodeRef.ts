@@ -29,7 +29,7 @@ export class InvalidNodeIdError extends Schema.TaggedError<InvalidNodeIdError>()
  * The identifier rule: non-empty, no whitespace, no control characters.
  *
  * @remarks
- * Written lookahead-free so that `Schema.toArbitrary` derivation stays possible
+ * Written lookahead-free so that `Arbitrary.schema` derivation stays possible
  * for property tests, per the kit's schema standards.
  *
  * Control characters are excluded via `\p{Cc}` rather than a hand-written

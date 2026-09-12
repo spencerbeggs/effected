@@ -61,7 +61,7 @@ export class Comparator extends Schema.Class<Comparator>("Comparator")({
 	static readonly FromString: Schema.Codec<Comparator, string> = Schema.String.pipe(
 		Schema.decodeTo(
 			Comparator,
-			SchemaTransformation.transformOrFail({
+			SchemaTransformation.transformEffect({
 				decode: (input: string) => {
 					const result = parseComparator(input);
 					return result.ok

@@ -75,14 +75,16 @@ describe("StoreDocument", () => {
 		it.effect("passes jsonSchema options through to core generation", () =>
 			Effect.gen(function* () {
 				// additionalProperties survives the Draft-07 lowering, so it is
-				// the observable passthrough. (Non-standard annotation keys do
-				// NOT survive the lowering — the recorded phase-2 hazard.)
+				// the observable passthrough: core's default (`onExcessProperty`
+				// "ignore") leaves the object open, and "error" closes it.
+				// (Non-standard annotation keys do NOT survive the lowering —
+				// the recorded phase-2 hazard.)
 				const Flat = Schema.Struct({ name: Schema.String });
-				const closed = yield* StoreDocument.fromSchema(Flat, { $id });
-				const open = yield* StoreDocument.fromSchema(Flat, {
+				const closed = yield* StoreDocument.fromSchema(Flat, {
 					$id,
-					jsonSchema: { additionalProperties: true },
+					jsonSchema: { onExcessProperty: "error" },
 				});
+				const open = yield* StoreDocument.fromSchema(Flat, { $id });
 				assert.strictEqual(closed.root.additionalProperties, false);
 				assert.strictEqual(open.root.additionalProperties, true);
 			}),

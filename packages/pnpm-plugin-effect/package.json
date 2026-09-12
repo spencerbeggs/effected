@@ -33,10 +33,8 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^2.3.3",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
 		"rolldown-pnpm-config": "^0.7.13",
 		"typescript": "catalog:build"
 	},

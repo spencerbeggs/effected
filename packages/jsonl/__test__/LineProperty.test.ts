@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Result } from "effect";
-import { FastCheck } from "effect/testing";
+import { Effect, Option, Result, Schema } from "effect";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import { Line } from "../src/index.js";
 
 // Array form ONLY: the named-record form of it.effect.prop silently discards
@@ -17,71 +17,98 @@ const utf8RoundTrip = (text: string): string => decoder.decode(encoder.encode(te
  * are valid JSON but NOT envelopes, and strings carrying embedded newlines and
  * multi-byte characters, because those are what break a naive splitter.
  */
-const payload = FastCheck.oneof(
-	FastCheck.constant('{"at":"2026-08-03T00:00:00Z","event":"mail-received","data":{}}'),
-	FastCheck.constant('{"note":"line1\\nline2"}'),
-	FastCheck.constant('{"emoji":"\u{1F600}","snow":"☃"}'),
-	FastCheck.constant("null"),
-	FastCheck.constant("42"),
-	FastCheck.constant('"a bare string"'),
-	FastCheck.constant("[1,2,3]"),
-	FastCheck.constant("{}"),
-);
+const payload = Schema.Literals([
+	'{"at":"2026-08-03T00:00:00Z","event":"mail-received","data":{}}',
+	'{"note":"line1\\nline2"}',
+	'{"emoji":"\u{1F600}","snow":"☃"}',
+	"null",
+	"42",
+	'"a bare string"',
+	"[1,2,3]",
+	"{}",
+]);
 
 /**
  * Object payloads only. Every strict prefix of a JSON object text fails to
  * parse, which is what makes a mid-line truncation detectable at this layer.
  */
-const objectPayload = FastCheck.oneof(
-	FastCheck.constant('{"at":"2026-08-03T00:00:00Z","event":"mail-received","data":{}}'),
-	FastCheck.constant('{"note":"line1\\nline2"}'),
-	FastCheck.constant('{"emoji":"\u{1F600}","snow":"☃"}'),
-	FastCheck.constant("{}"),
-);
+const objectPayload = Schema.Literals([
+	'{"at":"2026-08-03T00:00:00Z","event":"mail-received","data":{}}',
+	'{"note":"line1\\nline2"}',
+	'{"emoji":"\u{1F600}","snow":"☃"}',
+	"{}",
+]);
 
 /** Lines that do not parse — the holes and the torn writes. */
-const brokenLine = FastCheck.oneof(
-	FastCheck.constant('{"a":'),
-	FastCheck.constant("not json at all"),
-	FastCheck.constant("{"),
-	FastCheck.constant("}"),
-	FastCheck.constant('{"unterminated":"str'),
-);
+const brokenLine = Schema.Literals(['{"a":', "not json at all", "{", "}", '{"unterminated":"str']);
 
-const terminator = FastCheck.oneof(FastCheck.constant("\n"), FastCheck.constant("\r\n"));
+const terminator = Schema.Literals(["\n", "\r\n"]);
+
+/** A line as written: valid or broken, in equal measure. */
+const anyLine = Schema.Union([payload, brokenLine]);
 
 /** A whole journal file: valid and broken lines, mixed terminators, torn tail or not. */
-const journal = FastCheck.tuple(
-	FastCheck.array(FastCheck.tuple(FastCheck.oneof(payload, brokenLine), terminator), { maxLength: 12 }),
-	FastCheck.option(FastCheck.oneof(payload, brokenLine), { nil: undefined }),
-).map(([lines, tail]) => {
-	const body = lines.map(([text, end]) => `${text}${end}`).join("");
-	return tail === undefined ? body : `${body}${tail}`;
-});
-
-/**
- * Arbitrary text, including text that is nothing like a journal.
- *
- * `unit: "binary"` emits arbitrary UTF-16 code units — unpaired surrogates
- * included — which is the case a hand-rolled byte counter gets wrong.
- * `fullUnicodeString` does not exist in fast-check v4; this is its replacement.
- */
-const anyText = FastCheck.oneof(
-	journal,
-	FastCheck.string(),
-	FastCheck.string({ unit: "binary" }),
-	FastCheck.string({ unit: "grapheme" }),
-	FastCheck.constantFrom("", "\n", "\r\n", "\n\n", "   ", "\ud800", "\ud800\n"),
+const journal = Arbitrary.schema(
+	Schema.Tuple([
+		Schema.Array(Schema.Tuple([anyLine, terminator])).check(Schema.isMaxLength(12)),
+		Schema.UndefinedOr(anyLine),
+	]),
+).pipe(
+	Arbitrary.map(([lines, tail]) => {
+		const body = lines.map(([text, end]) => `${text}${end}`).join("");
+		return tail === undefined ? body : `${body}${tail}`;
+	}),
 );
 
+/**
+ * Arbitrary UTF-16 code units — unpaired surrogates included — which is the
+ * case a hand-rolled byte counter gets wrong. Built from the code-unit domain
+ * directly: a Schema string only ever generates well-formed text plus a
+ * handful of edge cases, so the lone-surrogate space needs its own generator.
+ */
+const codeUnitText = Arbitrary.schema(
+	Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0xffff }))),
+).pipe(Arbitrary.map((units) => String.fromCharCode(...units)));
+
+/**
+ * Arbitrary Unicode scalar values, astral code points included — every UTF-8
+ * width from one byte to four, with no lone surrogates.
+ */
+const codePointText = Arbitrary.schema(
+	Schema.Array(
+		Schema.Int.check(
+			Schema.isBetween({ minimum: 0, maximum: 0x10ffff }),
+			Schema.makeFilter((codePoint) => codePoint < 0xd800 || codePoint > 0xdfff),
+		),
+	),
+).pipe(Arbitrary.map((codePoints) => String.fromCodePoint(...codePoints)));
+
+/** A uniform choice between arbitraries — the native module only unions Schemas. */
+const oneOf = <A>(
+	first: Arbitrary.Arbitrary<A>,
+	...rest: ReadonlyArray<Arbitrary.Arbitrary<A>>
+): Arbitrary.Arbitrary<A> =>
+	Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: rest.length }))).pipe(
+		Arbitrary.flatMap((index) => (index === 0 ? first : (rest[index - 1] ?? first))),
+	);
+
+/** Arbitrary text, including text that is nothing like a journal. */
+const anyText = oneOf<string>(
+	journal,
+	Arbitrary.schema(Schema.String),
+	codeUnitText,
+	codePointText,
+	Arbitrary.schema(Schema.Literals(["", "\n", "\r\n", "\n\n", "   ", "\ud800", "\ud800\n"])),
+);
+
+/** Any non-negative 32-bit integer — the cut position, taken modulo the tail length. */
+const nat = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 0x7fffffff }));
+
 describe("Line properties", () => {
-	it.effect.prop(
-		"byteLength agrees with TextEncoder for any string",
-		[FastCheck.string({ unit: "binary" })],
-		([text]) =>
-			Effect.sync(() => {
-				assert.strictEqual(Line.byteLength(text), byteLength(text));
-			}),
+	it.effect.prop("byteLength agrees with TextEncoder for any string", [codeUnitText], ([text]) =>
+		Effect.sync(() => {
+			assert.strictEqual(Line.byteLength(text), byteLength(text));
+		}),
 	);
 
 	it.effect.prop("every slice's byte offsets address its own text in the source", [anyText], ([text]) =>
@@ -167,7 +194,7 @@ describe("Line properties", () => {
 
 	it.effect.prop(
 		"truncating a journal mid-final-line walks back to the previous line",
-		[FastCheck.array(objectPayload, { minLength: 2, maxLength: 8 }), FastCheck.nat()],
+		[Schema.Array(objectPayload).check(Schema.isLengthBetween(2, 8)), nat],
 		([payloads, cut]) =>
 			Effect.sync(() => {
 				// OBJECT payloads only, and the reason is a real property of JSONL: every

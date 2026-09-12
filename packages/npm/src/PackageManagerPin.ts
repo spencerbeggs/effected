@@ -170,7 +170,7 @@ export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageM
 	static readonly FromString: Schema.Codec<PackageManagerPin, string> = Schema.String.pipe(
 		Schema.decodeTo(
 			Schema.instanceOf(PackageManagerPin),
-			SchemaTransformation.transformOrFail({
+			SchemaTransformation.transformEffect({
 				decode: (input: string) => {
 					const parsed = PackageManagerPin.parseResult(input);
 					return Result.isSuccess(parsed)

@@ -269,7 +269,7 @@ export class Gitmodules extends Schema.Class<Gitmodules>("Gitmodules")({
 			// `decodeTo` unifies the transformation against the target's Encoded
 			// type, which no longer satisfies the method-bearing instance type
 			// once the class carries `stringify`.
-			SchemaTransformation.transformOrFail<(typeof Gitmodules)["Encoded"], string>({
+			SchemaTransformation.transformEffect<(typeof Gitmodules)["Encoded"], string>({
 				decode: (text: string) => {
 					const result = Gitmodules.parseResult(text);
 					return Result.isSuccess(result)

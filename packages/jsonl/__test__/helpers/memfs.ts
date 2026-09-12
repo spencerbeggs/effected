@@ -169,13 +169,13 @@ export const makeMemFs = (): MemFs => {
 				[FileSystem.FileTypeId]: FileSystem.FileTypeId,
 				fd: 0 as never,
 				stat: Effect.sync(() => ({ size: BigInt(files.get(path)?.length ?? 0) })) as never,
-				seek: (offset: FileSystem.SizeInput) =>
+				seek: (offset: bigint) =>
 					Effect.sync(() => {
 						position = Number(offset);
 					}),
 				sync: Effect.void,
 				read: () => Effect.succeed(0 as never),
-				readAlloc: (size: FileSystem.SizeInput) =>
+				readAlloc: (size: number) =>
 					Effect.gen(function* () {
 						const gate = readGate;
 						if (gate?.sampleFirst === false) {
@@ -187,7 +187,7 @@ export const makeMemFs = (): MemFs => {
 						// A real handle advances its own position; a double that does not
 						// makes every chunked read re-read the same bytes, so the
 						// multi-chunk path in `readRangeText` would never be exercised.
-						const slice = new Uint8Array(current.subarray(position, position + Number(size)));
+						const slice = new Uint8Array(current.subarray(position, position + size));
 						position += slice.length;
 						if (gate?.sampleFirst === true) {
 							readGate = undefined;

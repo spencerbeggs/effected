@@ -34,7 +34,7 @@ CWD="$(printf '%s' "$ENVELOPE" | jq -r '.cwd // empty' 2>/dev/null || true)"
 # advance, in the same commit that moves catalog:effect. Deliberately a constant
 # rather than read from the host repo's catalog — the point is to tell a LAGGING
 # repo what to move to.
-EFFECT_PIN="4.0.0-rc.112"
+EFFECT_PIN="4.0.0-rc.115"
 
 # Walk up from cwd to the repo root (Copilot gives cwd, not the root).
 PROJECT_DIR="$CWD"
