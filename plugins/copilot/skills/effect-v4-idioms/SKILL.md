@@ -263,7 +263,7 @@ Effect.map(Effect.fromOption(Option.some(42)), (n) => n + 1)
 combinators, and there is no `Effect.fromConfig` to reach for:
 
 ```ts
-Config.string("PORT").pipe(Effect.catchTag("ConfigError", () => Effect.succeed("8080")))
+Config.String("PORT").pipe(Effect.catchTag("ConfigError", () => Effect.succeed("8080")))
 ```
 
 That `Config` sits beside `Option` in every "yieldable" list ever written — and

@@ -113,7 +113,7 @@ const URLSchema = Schema.declare(
         // The JSON representation is a plain string
         Schema.String,
         // How to convert between URL and string
-        SchemaTransformation.transformOrFail<URL, string>({
+        SchemaTransformation.transformEffect<URL, string>({
           // JSON string -> URL (may fail if the string is not a valid URL)
           decode: (s, options) =>
             Effect.try({

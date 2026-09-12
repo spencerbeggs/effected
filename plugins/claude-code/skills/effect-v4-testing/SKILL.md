@@ -1,6 +1,6 @@
 ---
 name: effect-v4-testing
-description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail — including the discriminating input that is wrong in exactly one way, per-clause and per-path mutation, and the positive control that must expect a non-zero answer before any "nothing found" is believed. Covers the sharp edges (no it.scoped, it.prop throws on a Schema, vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `Tests: 0/0 passed` summary line that lies while the exit code is honest (a positional filter is a substring match against each path as rendered from the cwd, while --project resolves against the config root and works from anywhere), TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
+description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail — including the discriminating input that is wrong in exactly one way, per-clause and per-path mutation, and the positive control that must expect a non-zero answer before any "nothing found" is believed. Covers the sharp edges (no it.scoped, the native effect/unstable/arbitrary engine behind it.prop/it.effect.prop — the size clamp, -0, exhaustion and dropped-regex traps — vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `Tests: 0/0 passed` summary line that lies while the exit code is honest (a positional filter is a substring match against each path as rendered from the cwd, while --project resolves against the config root and works from anywhere), TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
 ---
 
 # Effect v4 testing with `@effect/vitest`
@@ -10,8 +10,10 @@ APIs — with one exception (`vi.mock`, below). Effect programs run through
 `it.effect`, never through a bare `it()` that calls `Effect.runSync`/
 `runPromise`. Our house test files (`packages/jsonc/__test__/Jsonc.test.ts`,
 `packages/yaml/__test__/Yaml.test.ts`) are the canonical shapes. (The
-`effect/testing/*` modules — TestClock, TestConsole, TestSchema, FastCheck —
-are indexed in `effect-v4-module-index`; this skill owns how to use them.)
+`effect/testing/*` modules — TestClock, TestConsole, TestSchema — and the
+property engine `effect/unstable/arbitrary` are indexed in
+`effect-v4-module-index`; this skill owns how to use them. There is no
+`FastCheck` module any more.)
 
 **Migrating a plain-Vitest Effect repo? Adopt `@effect/vitest`.** A repo whose
 tests are plain Vitest is not "nothing to migrate on the testing axis": add
@@ -22,14 +24,14 @@ conversion has its own traps →
 **Install it by exact version, matching your `effect` pin** — never bare, never
 `@beta`, never `@rc`. The v4 line is published only under prerelease versions
 mirroring `effect`'s own numbering, and **the line moved from `beta` to `rc`**;
-no dist-tag resolves to your pin (dist-tags re-checked 2026-09-05):
+no dist-tag resolves to your pin (dist-tags re-checked 2026-09-12):
 
 | Specifier | Resolves to | Peers on |
 | --- | --- | --- |
 | bare / `@latest` | `0.30.0` | `effect@^3.22.0`, `vitest@^3.2.0` — **the v3 line** |
 | `@beta` | `4.0.0-beta.107` — **frozen**, not floating | that beta. The v4 line moved to `rc`, so `@beta` is now a *stale* pin that silently mismatches an `rc` `effect` |
-| `@rc` | the newest rc, whatever that is (`4.0.0-rc.112` today) | that same rc — it **floats off your pin** the moment upstream publishes |
-| `@4.0.0-rc.112` | `4.0.0-rc.112` | `effect@^4.0.0-rc.112`, `vitest@>=4.1.0 <5` ✅ |
+| `@rc` | the newest rc, whatever that is (`4.0.0-rc.115` today) | that same rc — it **floats off your pin** the moment upstream publishes |
+| `@4.0.0-rc.115` | `4.0.0-rc.115` | `effect@^4.0.0-rc.115`, `vitest@>=5.0.0 <6.0.0` ✅ (the vitest peer moved from `>=4.1.0 <5` at rc.112 — a vitest 4 host cannot take this rc) |
 
 The exact-pin row is not a recommendation of *this* rc — it is the shape:
 pin the same prerelease number your `effect` catalog pins. The `@beta` row is
@@ -43,7 +45,7 @@ a message naming neither `@effect/vitest` nor a version —
 which reads as a broken install. Confirm with `npm view @effect/vitest
 dist-tags` before believing any resolution. **Inside this monorepo** the
 dependency comes from `catalog:effect`, which already pins the matching rc
-(`@effect/vitest: 4.0.0-rc.112` in `pnpm-workspace.yaml`).
+(`@effect/vitest: 4.0.0-rc.115` in `pnpm-workspace.yaml`).
 
 **`vi.mock` is the one import that must NOT come from `@effect/vitest`.** Vitest
 hoists it above all imports, so a `vi` bound through the re-export is not yet
@@ -301,7 +303,7 @@ Other `layer(...)` mechanics (surface re-checked at rc.109 against
 
 **Testing a boundary-tier package that does real IO needs no platform package.**
 `Path.layer` and `FileSystem.layerNoop(partial)` both come from `effect` core
-(Path.ts:867; FileSystem.ts:954 — there is **no** `FileSystem.layer` in core,
+(Path.ts:867; FileSystem.ts:765 at rc.115, was :954 — there is **no** `FileSystem.layer` in core,
 only `layerNoop`), so `@effected/walker` tests filesystem behavior with zero
 `@effect/platform-node` devDependency:
 
@@ -381,54 +383,118 @@ itself a layer, and `Layer.mock` (`Layer.ts:2304`) for partial stubs that die
 loudly. Full scaffold and the three ways to get the spread wrong →
 **[references/fault-injection.md](./references/fault-injection.md)**.
 
-## Property testing with `it.effect.prop`
+## Property testing with `it.effect.prop` and `it.prop`
 
-Feed a Schema (or class — the class *is* the schema) directly as an arbitrary;
-`it.effect.prop` converts it via `Schema.toArbitrary` (`Schema.ts:14573`;
-called at `packages/vitest/src/internal/internal.ts:132`):
+Feed a Schema (or class — the class *is* the schema) directly as an arbitrary.
+Since rc.113 the engine is core's native **`effect/unstable/arbitrary`**, not
+fast-check: both `it.prop` and `it.effect.prop` compile every input through
+`Arbitrary.isArbitrary(input) ? input : Arbitrary.schema(input)`
+(`packages/vitest/src/internal/internal.ts:86-93` at rc.115) and run
+`Arbitrary.checkEffect` (`:117`), so inputs may be Schemas, `Arbitrary`
+values, or a mix, in the array or the named-record form:
 
 ```ts
+import { Arbitrary } from "effect/unstable/arbitrary";
+
 it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
   Effect.gen(function* () {
     const text = yield* Yaml.stringify(value);
     assert.deepStrictEqual(yield* Yaml.parse(text), value);
   }),
+  { arbitrary: { runs: 200, size: 64 } },
 );
+
+const Name = Arbitrary.schema(Schema.Literals(["Ada", "Grace"]));
+it.prop("mixed inputs", { name: Name, n: Schema.Int }, ({ name, n }) => typeof name === "string" && Number.isInteger(n));
 ```
 
+The options bag is **`arbitrary?: Arbitrary.CheckOptions`** on the
+`timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:104,157`):
+`{ runs, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:166`).
+**`fastCheck: { numRuns }` is gone** — `numRuns` is `runs`, `path` is the
+opaque `replay` token, `maxSkipsPerRun` is one absolute `maxDiscards`. A raw
+fast-check arbitrary in the inputs is a type error and a runtime failure;
+compose an `Arbitrary` instead. The module's surface, the fast-check → native
+translation table (`constantFrom` → `Schema.Literals`, `array` →
+`Schema.Array(...).check(isLengthBetween)`, `stringMatching` → `isPattern`,
+`oneof` over Arbitraries → `flatMap` over a Schema-generated index — there is
+**no** `oneof`/`constantFrom`/`array`/`weighted` in the module) and the
+declaration-level `toCodecArbitrary` contract live in
+`effect-v4-schema/references/11-generation-and-tooling.md`. What follows is
+what bit **this repo's** thirteen migrated property suites on the rc.115
+advance, each settled by a probe that printed `resolved effect: 4.0.0-rc.115`:
+
+- **The `size` clamp silently shrinks a domain.** Every unconstrained string
+  and array length is generated up to `min(maxLength, max(minLength, size))`
+  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1124-1125`,
+  `:1366-1367`; `runner.ts:425,566`), ramping from 0 across the runs. A
+  `Schema.String.check(Schema.isMaxLength(40_000))` input never exceeded 10
+  characters at the default and reached 40 000 with `arbitrary: { size: 40_000 }`.
+  A byte-budget or long-input property that does not pass `size: <cap>`
+  tests tiny inputs and greens for the wrong reason (`packages/github/__test__/resources2.test.ts`
+  is the worked case). Unbounded `Schema.Int` has magnitude `size²` (±100) —
+  bound it with `isBetween` when the property is about a 32-bit domain.
+- **A brand whose check is a bare `makeFilter` EXHAUSTS instead of hanging.**
+  The old bridge spun forever on `IntegrityHash`; the native engine budgets
+  rejections and fails typed — `SampleError { generated: 0, discards: 101 }`
+  in under a millisecond, or `Exhausted` from `it.prop` — and an `optionalKey`
+  field of that type is simply never populated, so the property never
+  exercises it. Fix the domain, not `maxDiscards`: a `Schema.Literals` of real
+  values, or an `arbitraryConstraint` on the filter
+  (`packages/lockfiles/__test__/roundtrip.property.test.ts` header is the
+  worked case).
+- **The generator emits `-0`.** Always for `Schema.Number`/`Finite`, and for
+  `Schema.Int` whenever the effective lower bound is `-1` — which an
+  **unbounded** `Schema.Int` has during the early small-size runs
+  (`internal/arbitrary/model.ts:561-565`; `checkEffect(Arbitrary.schema(Schema.Int),
+  (n) => !Object.is(n, -0))` is Falsified after 5 runs). Neither JSON nor
+  YAML can carry `-0` (`JSON.stringify(-0) === "0"`), so a round-trip property
+  over serialized numbers excludes it —
+  `Schema.Int.check(Schema.makeFilter((n) => !Object.is(n, -0)))` — rather
+  than letting `deepStrictEqual` fail on `+0`/`-0`
+  (`packages/jsonc/__test__/Jsonc.test.ts`, `packages/yaml/__test__/Yaml.test.ts`).
+- **A partial dictionary is a Struct of `optionalKey`.** `Schema.Record(Schema.Literals([...]), V)`
+  always emits **every** key (200 samples, key count always 3), and
+  `Schema.Array(Schema.Tuple([K, V])).check(Schema.isUniqueKey())` over a
+  tiny key domain samples lengths 0-3 but never the *some-keys-present*
+  dictionary a lockfile carries. `Schema.Struct({ a: optionalKey(V), b: optionalKey(V) })`
+  samples key counts 0, 1, 2 and 3.
+- **`isPattern` regexes must be lookaround-free and flag-free.** The native
+  regexp compiler returns `undefined` for lookahead/lookbehind, backreferences
+  and the `i`/`m`/`v` flags (`internal/arbitrary/regexp.ts:344,350,832`), and
+  the string node then **silently drops the pattern** (`schema.ts:1111-1112`)
+  and filters random strings — which exhausts for any selective pattern
+  (`/^(?=.*[0-9])[a-f0-9]{8}$/` and `/^[a-f]{8}$/i` both died with
+  `discards: 201`). Rewrite `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as
+  `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/` (`packages/semver/src/SemVer.ts`,
+  `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
+  as **code points** (`Schema.Array(Schema.Int.check(isBetween({ minimum: 0, maximum: 0x10ffff })))`
+  mapped through `String.fromCodePoint`), because the native string
+  generator stays in printable ASCII — the `fc.string({ unit: "binary" })`
+  spelling is gone with the bridge.
 - **Derivation composes through `Schema.Union` of `Schema.Class` members, and
-  the generated values are REAL class instances.** `Schema.Array(Schema.Union([
-  StyleVote, StyleFloor]))` — two `Schema.Class`es — needs no manual wiring, in
-  both the array and named-record forms, and the instances satisfy `instanceof`,
-  so code under test that branches on `x instanceof StyleVote` takes the real
-  branch. That is exactly the shape a monoid-law or tagged-union property test
-  wants; the trap it replaces is assuming a Union needs a hand-rolled
-  `FastCheck.oneof` and either building one or skipping the property test.
-  In-repo reference: `packages/yaml/__test__/inference.test.ts` (the
-  `StyleEvidence` monoid-law suite). Probed at `effect@4.0.0-rc.112`.
-- **Schema conversion is `it.effect.prop`-only.** The top-level `it.prop`
-  (non-Effect body) accepts a `Schema` in its *type* but **throws
-  `Schemas are not supported yet`** at runtime, in both the array and record
-  forms (`packages/vitest/src/internal/internal.ts:181,197` — still thrown at
-  rc.112). Hand-built arbitraries go to `it.prop` instead, importing
-  `FastCheck` from `effect/testing`:
-  `it.prop("addition commutes", [FastCheck.integer(), FastCheck.integer()], ([a, b]) => a + b === b + a)`.
-- **The named-record form of `it.effect.prop` is FIXED** (since beta.101, still
-  so at rc.112) — `internal.ts:153` converts a Schema value inside the record
-  reducer, so both `[Schema]` and `{ n: Schema }` work. The array-form-only
-  workaround for beta.94 is retired.
-- **`isPattern` regexes must be lookahead-free.** `Schema.toArbitrary` derives
-  generators from `.check(...)` constraints, and fast-check's `stringMatching`
-  throws `Assertions of kind Lookahead not implemented yet`. Rewrite
-  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`.
-- **`fc.fullUnicodeString` / `fc.fullUnicode` do not exist** in the FastCheck
-  `effect/testing` re-exports (probed 2026-07-18; re-confirmed at rc.109,
-  where `effect/testing/FastCheck` is a bare re-export of `fast-check@^4.9.0`
-  and both names are `undefined` on the module). The v4 spelling for
-  hostile-unicode strings is `FastCheck.string({ unit: "binary" })` — `unit` is
-  `"grapheme" | "grapheme-composite" | "grapheme-ascii" | "binary" |
-  "binary-ascii" | Arbitrary<string>`; plain `FastCheck.string()` stays BMP-safe
-  and misses exactly the inputs a never-throws property exists to find.
+  the generated values are REAL class instances** — `instanceof` holds for
+  each member and every element is one of them (re-probed at rc.115 on the
+  native engine; first probed rc.112). Code under test that branches on
+  `x instanceof StyleVote` takes the real branch. In-repo reference:
+  `packages/yaml/__test__/inference.test.ts`.
+- **`it.prop` no longer throws on a Schema.** The rc.112 trap
+  (`Schemas are not supported yet` at `internal.ts:181,197`) is gone with the
+  bridge: both runners share `makeArbitrary` (`internal.ts:89`). Hand-built
+  inputs are `Arbitrary` values now, not `FastCheck.*` ones.
+
+**Reading a property failure.** `@effect/vitest` dies with
+`Arbitrary.formatCheckFailure` (`Arbitrary.ts:298`): runs, shrinks, the
+**shrunk input**, the failure and the **replay token**. The vitest-agent
+reporter that owns this repo's CLI output compacts that to its first line —
+`Property falsified after 33 run(s) and 1 shrink(s)` — and drops the input
+and the token (verified 2026-09-12 on a deliberately falsified control).
+The terminal stays the agent reporter's, but
+`pnpm exec vitest run --project <p> --coverage.enabled=false --reporter=json --outputFile=<path>`
+still writes the full message to the file (`Shrunk input: [5]` /
+`Replay: [0,"1",32,3,[1],"ReturnedFalse"]`). Re-run with `arbitrary: { replay }` to reproduce
+the shrink path — and pin the counterexample as an ordinary regression test,
+because replay tokens are not promised across releases of the unstable module.
 
 ## Time-dependent logic: `TestClock`
 
@@ -502,8 +568,8 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
 - `TestClock.adjust(duration)` moves virtual time forward and runs everything
   scheduled up to the new time; `TestClock.setTime(timestamp)` jumps to an
   absolute time. Both return `Effect<void>`. All the time helpers live under the
-  **`effect/testing`** subpath — `TestClock`, `TestConsole`, `FastCheck`,
-  `TestSchema`, not `@effect/vitest`.
+  **`effect/testing`** subpath — `TestClock`, `TestConsole`, `TestSchema`
+  (property generation is `effect/unstable/arbitrary`), not `@effect/vitest`.
 - **Do not manually provide `TestClock.layer()` under `it.effect`.** They
   compose — `Clock` is a `Context.Reference` (`Clock.ts:189`), `TestClock.layer()`
   merely sets it via `Layer.effect(Clock.Clock)` (`TestClock.ts:436`), and
@@ -790,3 +856,15 @@ stale-dist signature.
 > Everything else in this file still carries its older stamp. A version note
 > that says "re-verified" without saying *which claims* is the trap: it reads
 > as a blanket re-stamp of the whole document.
+>
+> **rc.115 pass (2026-09-12).** The fast-check bridge was removed in rc.113,
+> so the whole property-testing section was rewritten against
+> `effect/unstable/arbitrary` and `packages/vitest/src` at rc.115 — every
+> claim in it is stamped inline, at **rung 3** where it is behavioural (the
+> `size` clamp, `-0`, brand exhaustion, the dropped-pattern fallback, the
+> Record/`isUniqueKey` shapes, class instances through `Union`) and at
+> **rung 2** for the surface (`arbitrary: CheckOptions`, the shared
+> `makeArbitrary`, `formatCheckFailure`). Also re-read at rc.115: the
+> `@effect/vitest` dist-tags and peers (the vitest peer is now `>=5.0.0 <6.0.0`),
+> `FileSystem.layerNoop` moved to `FileSystem.ts:765`. `it.prop`-throws-on-Schema
+> is **retracted** — both runners take Schemas now.

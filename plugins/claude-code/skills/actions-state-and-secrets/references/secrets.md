@@ -38,7 +38,7 @@ Four members, one seam:
   name — same mask-then-return contract, distinct only in *why* the caller
   needed a string.
 - **`adopt`** — the far side of a handoff: re-wrap a plaintext environment
-  variable as `Redacted` via `Config.redacted`. A `Config`, so a missing or
+  variable as `Redacted` via `Config.Redacted`. A `Config`, so a missing or
   empty handoff is an honest `ConfigError` naming the variable, rather than
   an empty `Redacted` that fails much later as an opaque authentication
   error.

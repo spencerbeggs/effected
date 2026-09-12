@@ -10,7 +10,7 @@ those for the at-a-glance directives, come here for the worked examples and the
 reasoning.
 
 The class IS the schema: one `Schema.Class` carries fields, validation, methods,
-statics, and derived tooling (`toArbitrary`, `toEquivalence`,
+statics, and derived tooling (`Arbitrary.schema`, `toEquivalence`,
 `toJsonSchemaDocument`) in a single artifact. These patterns keep that artifact
 idiomatic and sound. The API surface below — every `Schema.*`,
 `SchemaTransformation.*`, `SchemaGetter.*` and `SchemaIssue.*` name it asserts,
@@ -300,26 +300,27 @@ const BooleanFromString = Schema.Literals(["on", "off"]).pipe(
 ```
 
 Fallible transform — **both spellings are still valid at rc.109**
-(`SchemaTransformation.transformOrFail` at `SchemaTransformation.ts:286`,
-`SchemaGetter.transformOrFail` at `SchemaGetter.ts:561`, and `SchemaGetter.String`);
+(`SchemaTransformation.transformEffect` at `SchemaTransformation.ts:332`,
+`SchemaGetter.transformEffect` at `SchemaGetter.ts:612`, and `SchemaGetter.String` —
+both renamed from `transformOrFail` in rc.113 and re-cited at rc.115);
 know both, because both spellings occur in the wild:
 
 ```ts
-// (a) the kit's spelling — SchemaTransformation.transformOrFail passed positionally
+// (a) the kit's spelling — SchemaTransformation.transformEffect passed positionally
 Schema.String.pipe(
  Schema.decodeTo(
   Target,
-  SchemaTransformation.transformOrFail({
+  SchemaTransformation.transformEffect({
    decode: (s) => /* Effect.succeed(...) | Effect.fail(new SchemaIssue.InvalidValue({ message: "…" }, s)) */,
    encode: (v) => Effect.succeed(/* … */),
   }),
  ),
 );
 
-// (b) the upstream docs' spelling — { decode: SchemaGetter.transformOrFail(...), encode: … }
+// (b) the upstream docs' spelling — { decode: SchemaGetter.transformEffect(...), encode: … }
 const NumberFromString = Schema.String.pipe(
  Schema.decodeTo(Schema.Number, {
-  decode: SchemaGetter.transformOrFail((s) => {
+  decode: SchemaGetter.transformEffect((s) => {
    const n = Number.parse(s);
    return n === undefined
     ? Effect.fail(new SchemaIssue.InvalidValue({ message: "not a number" }, s))
@@ -332,7 +333,7 @@ const NumberFromString = Schema.String.pipe(
 
 Failures come from `effect/SchemaIssue` — `InvalidValue` (ctor), `MissingKey`,
 `Composite`. Signature trap: since beta.102–105 `InvalidValue` is
-`(annotations?, input?, options?)` (`SchemaIssue.ts:572`, still exact at rc.109) — the earlier v4 shape
+`(annotations?, input?, options?)` (`SchemaIssue.ts:572`, still exact at rc.109; `:747` at rc.115, signature unchanged) — the earlier v4 shape
 `new SchemaIssue.InvalidValue(Option.some(s), { message })` no longer
 type-checks (the `Option` wrapper is gone, the argument order flipped, and the
 input is retained only under `reportInput: true`). A failed
@@ -356,7 +357,7 @@ encoded form of the *same* schema — round-trips and arbitraries come free:
 static readonly FromString: Schema.Codec<SemVer, string> = Schema.String.pipe(
  Schema.decodeTo(
   SemVer,
-  SchemaTransformation.transformOrFail({
+  SchemaTransformation.transformEffect({
    decode: (input: string) => {
     const result = parseVersion(input); // pure internal grammar
     return result.ok
@@ -457,7 +458,11 @@ export type PackageName = string & Brand.Brand<"PackageName">;
 
 From any schema (the class included):
 
-- `Schema.toArbitrary(S)` — fast-check generators, honoring `.check(...)` bounds.
+- `Arbitrary.schema(S)` from `effect/unstable/arbitrary` — the native generator,
+  honoring `.check(...)` bounds. **`Schema.toArbitrary` is `undefined` since
+  rc.113** (the fast-check bridge is gone; probed at rc.115), and the module has
+  no `oneof`/`constantFrom`/`array` — choice and collections are Schemas. Full
+  surface and the migration traps → `11-generation-and-tooling.md`.
 - `Schema.toEquivalence(S)` — structural equivalence.
 - `Schema.toFormatter(S)` — pretty formatter.
 - `Schema.toStandardSchemaV1(S)` — Standard Schema v1.
@@ -489,12 +494,19 @@ fields must be `Equal.equals` AND have identical `Hash.hash`.
 
 ## Arbitrary-safe field constraints
 
-`Schema.toArbitrary` derives generators from `.check(...)` constraints, and
+`Arbitrary.schema` derives generators from `.check(...)` constraints, and
 `it.effect.prop` accepts the class schema directly as an arbitrary. Two traps:
 
-- **No lookahead in `isPattern` regexes** — fast-check's `stringMatching` throws
-  `Assertions of kind Lookahead not implemented yet`. Rewrite
-  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`.
+- **No lookaround and no flags in `isPattern` regexes.** The native regexp
+  compiler cannot take lookahead/lookbehind, backreferences or the `i`/`m`/`v`
+  flags (`internal/arbitrary/regexp.ts:344,350,832`); it does not throw — the
+  pattern is **silently dropped** from constructive generation and left as a
+  residual filter over random strings, which exhausts (`SampleError` /
+  `Exhausted`) for any selective pattern (probed at rc.115: `/^(?=.*[0-9])[a-f0-9]{8}$/`
+  and `/^[a-f]{8}$/i` both die with `discards: 201`; the flag-free,
+  lookaround-free control generates). Rewrite
+  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`
+  (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`).
 - **Make the field model canonical or round-trips lie.** If two type-level
   values print to the same string (e.g. prerelease `"7"` vs `7` both print
   `-7`), decode(encode(v)) cannot restore the original. Constrain the schema so

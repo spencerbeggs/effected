@@ -4,7 +4,7 @@ description: >-
   Use when designing, reading, reviewing, or debugging any Effect v4 Schema — the Class-vs-Struct
   decision, fields and optionality, checks/refine/makeFilter, tagged unions, transformations and
   codecs (decodeTo, the FromString static), make-vs-new construction, brand/Opaque scalars, custom
-  Equal/Hash, and derived tooling (toArbitrary, toJsonSchemaDocument). Also covers primitives,
+  Equal/Hash, and derived tooling (Arbitrary.schema, toJsonSchemaDocument). Also covers primitives,
   records, recursive schemas, custom declare types, serialization (JSON/XML/FormData), and error
   formatting. Identifier existence and every source citation re-verified against
   effect@4.0.0-rc.109.
@@ -53,9 +53,9 @@ are still `undefined` at rc.109; the rename did not get reverted.
 | `.check(is*)` to constrain, `refine` to narrow, `check(makeFilter(...))` for cross-field | `positive`/`negative`, or the `filter`/`greaterThan` spellings — none of them exist |
 | tagged unions of `TaggedClass` members (`_tag` branching) | untagged unions for domain variants |
 | `Schema.Literals(["a", "b", "c"])` for any multi-literal union (reason fields, enums) | the variadic `Schema.Literal("a", "b", "c")` — v4 `Literal` takes ONE argument; tsgo rejects the variadic call (TS2554), but the **runtime silently keeps only the first literal**, so a suite run before typecheck green-lights a schema that rejects every other member (re-probed rc.109 against a passing `Schema.Literals(["a","b","c"])` control: `Schema.Literal("a","b","c")` accepts `"a"`, rejects `"b"` and `"c"`) |
-| `Source.pipe(decodeTo(Target, SchemaTransformation.transform({...})))` | a top-level `Schema.transform` / `transformOrFail` — **not callable** — both are `undefined` on the `Schema` namespace, re-verified rc.109 |
-| pin `transformOrFail`'s type params explicitly when a union codec's members carry instance methods — `SchemaTransformation.transformOrFail<(typeof Classified)["Encoded"], string>({...})` | relying on inference after adding an instance method to a `Schema.TaggedClass` union member — `transformOrFail` unifies one `T` from decode-out and encode-in, and `decodeTo` pins both to the union's **Encoded** side, which no longer satisfies the method-bearing instance type; the existing codec breaks at the declaration site (hit on beta.98 adding a method to a `DependencySpecifier.FromString` member) |
-| return an **`Effect`** from both `transformOrFail` callbacks, failing with `SchemaIssue.InvalidValue({ message }, value)` ([contract](#transformorfails-callback-contract)) | return a `Result` (or a bare value) from a `transformOrFail` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:286`); a `Result` is not an Effect and will not bridge itself |
+| `Source.pipe(decodeTo(Target, SchemaTransformation.transform({...})))` | a top-level `Schema.transform` / `transformEffect` — **not callable** — both are `undefined` on the `Schema` namespace, re-verified rc.109 |
+| pin `transformEffect`'s type params explicitly when a union codec's members carry instance methods — `SchemaTransformation.transformEffect<(typeof Classified)["Encoded"], string>({...})` | relying on inference after adding an instance method to a `Schema.TaggedClass` union member — `transformEffect` unifies one `T` from decode-out and encode-in, and `decodeTo` pins both to the union's **Encoded** side, which no longer satisfies the method-bearing instance type; the existing codec breaks at the declaration site (hit on beta.98 adding a method to a `DependencySpecifier.FromString` member) |
+| return an **`Effect`** from both `transformEffect` callbacks, failing with `SchemaIssue.InvalidValue({ message }, value)` ([contract](#transformeffects-callback-contract)) | return a `Result` (or a bare value) from a `transformEffect` callback — the signature demands `Effect<T, SchemaIssue.Issue, R>` (`SchemaTransformation.ts:332` at rc.115); a `Result` is not an Effect and will not bridge itself |
 | a `FromString` `Schema.Codec<Self, string>` static (string = the encoded form of the same schema) | a second parser divorced from the schema |
 | `cause: Schema.Defect()` on an error class | `cause: Schema.Defect` — the bare (uncalled) form throws at construction (`Schema.ts:10769` is a *function*; `Schema.ErrorInstance` at `:10669` is the same trap — beta.102–105 renamed it from `Schema.Error`, which is now the error-**class factory** at `:14427`, not an instance schema — full list of the call-not-value family in **`effect-v4-idioms`**) |
 | `Schema.decodeUnknownEffect` / `encodeUnknownEffect` in Effect flows | `*Sync` outside a genuine sync boundary |
@@ -197,14 +197,14 @@ while `parse`/`parseResult` own string input. (Why both forms: see
 `formatter-convention` in the design docs. The `Effect.fromResult` bridge, and
 why `yield* someResult` does not work, are owned by `effect-v4-idioms`.)
 
-## `transformOrFail`'s callback contract
+## `transformEffect`'s callback contract
 
 Both callbacks must return an **`Effect`** — not a `Result`, not a bare value —
 failing with a `SchemaIssue`. The vendored signature
-(`SchemaTransformation.ts:286`):
+(`SchemaTransformation.ts:332` — renamed from `transformOrFail` in rc.113, re-cited at rc.115):
 
 ```ts
-export function transformOrFail<T, E, RD = never, RE = never>(options: {
+export function transformEffect<T, E, RD = never, RE = never>(options: {
   readonly decode: (e: E, options: SchemaAST.ParseOptions) => Effect.Effect<T, SchemaIssue.Issue, RD>
   readonly encode: (t: T, options: SchemaAST.ParseOptions) => Effect.Effect<E, SchemaIssue.Issue, RE>
 }): Transformation<T, E, RD, RE>
@@ -215,7 +215,7 @@ the offending value as the second argument:
 
 ```ts
 Schema.String.pipe(Schema.decodeTo(Schema.Date,
-  SchemaTransformation.transformOrFail({
+  SchemaTransformation.transformEffect({
     decode: (s) => {
       const d = new Date(s);
       return isNaN(d.getTime())
@@ -227,15 +227,16 @@ Schema.String.pipe(Schema.decodeTo(Schema.Date,
 ```
 
 Signature trap: beta.102–105 changed the constructor to
-`(annotations?, input?, options?)` (`SchemaIssue.ts:572`) — the earlier v4
+`(annotations?, input?, options?)` (`SchemaIssue.ts:747` at rc.115, was `:572`) — the earlier v4
 shape `new SchemaIssue.InvalidValue(Option.some(s), { message })` no longer
 type-checks: the `Option` wrapper is gone and the argument order flipped.
 The input is retained on the issue only when parse options set
-`reportInput: true` (`SchemaIssue.ts:159`); `InvalidType` is now
-`(ast, input?, options?)` (`SchemaIssue.ts:511`). All three `SchemaIssue.ts`
-lines re-confirmed unchanged at rc.109. If your
+`reportInput: true` (`SchemaIssue.ts:167-168`, was `:159`); `InvalidType` is now
+`(ast, input?, options?)` (`SchemaIssue.ts:668`, was `:511`). All three `SchemaIssue.ts`
+lines re-confirmed unchanged at rc.109; at rc.115 the signatures are identical but
+the lines moved (re-cited 2026-09-12). If your
 transformation is infallible, use `SchemaTransformation.transform` (plain
-values, no Effect) instead; reach for `transformOrFail` only when it can fail.
+values, no Effect) instead; reach for `transformEffect` only when it can fail.
 
 ## A nested `Schema.Class` field: foreign and self-recursive now behave identically
 
@@ -566,7 +567,7 @@ source + the beta-skew warning).
 | [08-flipping-schemas](./references/08-flipping-schemas.md) | `Schema.flip` — swapping Type and Encoded, and what it does to constructors. |
 | [09-classes-and-opaque-types](./references/09-classes-and-opaque-types.md) | Opaque structs, schema-as-a-class, the `Schema.Class` family (methods, statics, extension). |
 | [10-serialization](./references/10-serialization.md) | JSON, string-encoding, FormData, URLSearchParams, canonical codecs, the XML encoder. |
-| [11-generation-and-tooling](./references/11-generation-and-tooling.md) | Deriving JSON Schema, Arbitrary, Equivalence, Optic; type-safe JSON patches via Differ. |
+| [11-generation-and-tooling](./references/11-generation-and-tooling.md) | Deriving JSON Schema (`onExcessProperty`, open by default since rc.113), the native `effect/unstable/arbitrary` generator (rewritten at rc.115 — the fast-check bridge is gone; size clamp, `-0`, exhaustion and regexp traps), Equivalence, Optic; type-safe JSON patches via Differ. |
 | [12-schema-representation](./references/12-schema-representation.md) | The introspectable representation data model, its limitations, JSON round-tripping, rebuilding runtime schemas, code generation. |
 | [13-error-handling-and-formatting](./references/13-error-handling-and-formatting.md) | `SchemaError`/`SchemaIssue`, formatters, Standard-Schema-v1 issue output. |
 | [14-middlewares](./references/14-middlewares.md) | Decode/encode middlewares and fallbacks. |

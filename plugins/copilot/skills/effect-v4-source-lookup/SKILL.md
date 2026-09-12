@@ -44,7 +44,16 @@ path breaks the moment you do.
   tree, which can drift from the catalog between re-pins. Every `@effect/*` package
   ships the same way (`@effect/platform-node`, `@effect/vitest`, …), so resolve
   whichever one your claim is about — the vendored tree's `packages/*/src` has a
-  `node_modules` counterpart in each case.
+  `node_modules` counterpart in each case. **The converse is false**: the vendored
+  checkout is sparse and carries only `packages/effect` and `packages/vitest`, so
+  the platform *implementations* are not there. The Node `FileSystem` — the one
+  `@effected/memfs` has to mirror, e.g. `seek` failing `BadArgument` before the
+  start of the file — lives in `@effect/platform-node-shared`; under pnpm read
+  `node_modules/.pnpm/@effect+platform-node-shared@<pin>_effect@<pin>/node_modules/@effect/platform-node-shared/src/NodeFileSystem.ts`
+  (the store directory carries the peer suffix; `find node_modules/.pnpm -path
+  '*platform-node-shared@<pin>*' -name NodeFileSystem.ts` locates it). When a
+  semantic has to be *copied* from the platform layer, that file is rung 2 for it;
+  the vendored tree is silent, not authoritative.
 
 Resolve both before you trust any lookup. The bottom of the ladder is a hard failure,
 never a fallback to memory — a wrong answer from v3 memory is indistinguishable from
@@ -108,9 +117,13 @@ resolved v3 source at the repo root and reported it in passing. Print a version 
 reader skims past it. Refuse, and the trap cannot spring.
 
 **Do not read that history as "the root gives you v3" today.** In *this* repo the
-lockfile carries exactly one `effect` — `4.0.0-rc.112` — and the workspace root
-resolves **nothing**: a bare `effect` import there dies with `ERR_MODULE_NOT_FOUND`
-(re-checked 2026-09-05). Which failure you get depends on what a given repo has
+workspace root resolves **nothing**: a bare `effect` import there dies with
+`ERR_MODULE_NOT_FOUND` (re-checked 2026-09-05). The lockfile carried exactly one
+`effect` at the rc.112 pin; on the rc.115 advance it carries **two by intent** —
+`4.0.0-rc.112` for the toolchain's `packageExtensions` bridge and `4.0.0-rc.115` for
+the kit (`CLAUDE.dependencies.md` explains why this advance needed the reversed
+bridge). Neither copy is v3, and neither resolves from the root; which one a probe
+links against is decided by where the probe file lives — which is the point of the rule. Which failure you get depends on what a given repo has
 installed, so the gate must key on the *resolved version*, never on a remembered
 answer for a particular directory.
 
@@ -121,7 +134,8 @@ release's directory lingers there, orphaned. And a grep of the lockfile itself
 can show a second version that is not a second copy — while a toolchain
 `overrides` bridge is up, `pnpm-lock.yaml` carries a redirect line
 (`effect@4.0.0-rc.109: 4.0.0-rc.112`) whose *only* hit is the mapping. One
-resolved version, two spellings. What voids a probe is the version it
+resolved version, two spellings. (A `packageExtensions` bridge, the other shape,
+really does keep two copies — read `CLAUDE.dependencies.md` for which shape stands.) What voids a probe is the version it
 **resolves**, printed from inside itself.
 
 **Rung 1 has no fallback.** The npm package ships no `migration/`, no `ai-docs/`, no
@@ -354,7 +368,7 @@ Two riders on the package-root form, both learned by leaving mess behind:
   root is committed ground.
 
 1. **Run from inside the package, never the repo root.** A workspace root that has a v3 installed resolves it and will describe the v3 surface with total confidence; a root that has none — this repo today — fails with `ERR_MODULE_NOT_FOUND` instead. Both are the same rule: only `packages/<pkg>/` is guaranteed to resolve the pinned v4.
-2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once (it is `4.0.0-rc.112` in this repo today), so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
+2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once (it is `4.0.0-rc.115` in this repo today), so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
 3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
@@ -401,7 +415,7 @@ has no `await`.
 
 ```ts
 import pkg from "effect/package.json" with { type: "json" };
-console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.112 today
+console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.115 today
 ```
 
 ## Portability

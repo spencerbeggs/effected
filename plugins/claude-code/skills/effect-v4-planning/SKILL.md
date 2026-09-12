@@ -99,8 +99,8 @@ equality, or a nominal domain type); optionality (`optionalKey` vs `optional` vs
 spread `.fields`) instead of parallel schemas; brand/`Opaque` at boundaries where
 two same-shaped types must not mix (`UserId` vs `AccountId`); transformations as
 reusable codecs at the edges (`decodeTo`, with a fallible
-`SchemaGetter.transformOrFail(...)` where the conversion can fail — there is no
-top-level `Schema.transformOrFail` in v4), domain model stays
+`SchemaGetter.transformEffect(...)` where the conversion can fail — there is no
+top-level `Schema.transformEffect` in v4), domain model stays
 clean; validate late (shape first, business-rule `.check(...)` after).
 
 **Errors — name every fallible operation's error, and pin three attributes:**

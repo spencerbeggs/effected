@@ -109,9 +109,10 @@ holds. Not for writing feature code from scratch — that is the developer.
 `@effect/vitest` with `it.effect` + `Effect.gen` as the default (never plain
 `it()` + `Effect.runSync`/`runPromise` for an Effect). Assert typed errors with
 `Effect.flip` or `Effect.result` + `Result.isFailure`. Property tests via
-`it.effect.prop` over a `Schema` arbitrary (top-level `it.prop` throws on a
-Schema). There is no `it.scoped` — scoped effects run under `it.effect`. Test
-utilities (`TestClock`, `FastCheck`) import from `effect/testing`. Construct via
+`it.effect.prop` / `it.prop` over a `Schema` or an `effect/unstable/arbitrary`
+`Arbitrary` (the fast-check bridge is gone; options go under `arbitrary: { runs, size, seed }`).
+There is no `it.scoped` — scoped effects run under `it.effect`. Test
+utilities (`TestClock`, `TestConsole`) import from `effect/testing`. Construct via
 `X.make`, tests in `__test__/`.
 
 ## Output format

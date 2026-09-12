@@ -8,7 +8,7 @@ Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 API surface audited against effect@4.0.0-beta.107: `decodeTo`, `decode`, `encodeTo`, the
 `SchemaTransformation` constructors and the passthrough helpers all exist as described, and every code
 block typechecks. FALSIFIED and corrected inline: `new Issue.InvalidValue(...)` with nothing named
-`Issue` in scope (the module is `SchemaIssue`) and the dropped `options` argument — `transformOrFail`
+`Issue` in scope (the module is `SchemaIssue`) and the dropped `options` argument — `transformEffect`
 hands the callback `(input, options)` precisely so the issue can honour `{ reportInput: true }`.
 NOT PROBED: the optional-key and omit-during-encoding runtime behaviour.
 -->
@@ -205,7 +205,7 @@ const Kilometers = Schema.Finite.pipe(
 )
 ```
 
-You can define transformations that may fail during decoding or encoding using `SchemaTransformation.transformOrFail`.
+You can define transformations that may fail during decoding or encoding using `SchemaTransformation.transformEffect`.
 
 This is useful when you need to validate input or enforce rules that may not always succeed.
 
@@ -217,7 +217,7 @@ import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect"
 const URLFromString = Schema.String.pipe(
   Schema.decodeTo(
     Schema.instanceOf(URL),
-    SchemaTransformation.transformOrFail({
+    SchemaTransformation.transformEffect({
       decode: (s, options) =>
         Effect.try({
           try: () => new URL(s),
@@ -232,7 +232,7 @@ const URLFromString = Schema.String.pipe(
 > **Beta trap.** The module is `SchemaIssue`; there is no bare `Issue` module to
 > import. An earlier draft of this example wrote `new Issue.InvalidValue(...)`
 > with nothing named `Issue` in scope — `TS2304: Cannot find name 'Issue'`. The
-> constructor's third parameter is the effective parse options; `transformOrFail`
+> constructor's third parameter is the effective parse options; `transformEffect`
 > hands them to the callback as `(input, options)` so you can pass them on.
 
 ## Schema composition

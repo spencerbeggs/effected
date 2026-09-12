@@ -7,10 +7,10 @@ service:
 
 | Accessor | Returns | Notes |
 | --- | --- | --- |
-| `ActionInput.string(name)` | `Config.Config<string>` | `Config.string(inputVariable(name))` |
+| `ActionInput.string(name)` | `Config.Config<string>` | `Config.String(inputVariable(name))` |
 | `ActionInput.boolean(name)` | `Config.Config<boolean>` | YAML 1.2 core schema only: `true\|True\|TRUE\|false\|False\|FALSE` |
-| `ActionInput.integer(name)` | `Config.Config<number>` | `Config.int(inputVariable(name))` |
-| `ActionInput.redacted(name)` | `Config.Config<Redacted.Redacted<string>>` | `Config.redacted(inputVariable(name))` |
+| `ActionInput.integer(name)` | `Config.Config<number>` | `Config.Int(inputVariable(name))` |
+| `ActionInput.redacted(name)` | `Config.Config<Redacted.Redacted<string>>` | `Config.Redacted(inputVariable(name))` |
 | `ActionInput.lines(name)` | `Config.Config<ReadonlyArray<string>>` | Splits on `\n`, trims, drops blanks |
 | `ActionInput.list(name)` | `Config.Config<ReadonlyArray<string>>` | Accepts a JSON array, a YAML bullet list, or comma/newline-separated values |
 | `ActionInput.pairs(name, options?)` | `Config.Config<Record<string, string>>` | One `key=value` per line, `#` comments stripped, splits on the first `=` only. An **empty key** (`=value`, or a bare `=`) is always rejected; an empty **value** (`key=`) is accepted unless `options.requireValue` is `true`. Every rejection names the offending line |

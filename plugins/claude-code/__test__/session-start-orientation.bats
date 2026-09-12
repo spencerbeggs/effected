@@ -43,7 +43,7 @@ _run_hook() {
 # The pin the hook advertises. Kept in sync with EFFECT_PIN in the hook itself;
 # a mismatch here is the point — it fails the "advertised pin" test below and
 # forces the bump to be deliberate.
-EXPECTED_PIN="4.0.0-rc.112"
+EXPECTED_PIN="4.0.0-rc.115"
 
 # _ctx_of output — extract additionalContext from a hook response.
 _ctx_of() {
