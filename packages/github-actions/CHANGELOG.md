@@ -1,5 +1,61 @@
 # @effected/github-actions
 
+## 0.12.0
+
+### Breaking Changes
+
+#### The whole kit tracks Effect `4.0.0-rc.115`
+
+- Every package's `effect` peer moves from `4.0.0-rc.112` to `4.0.0-rc.115`. The kit uses exact prerelease pins rather than a caret, so a consumer must move with it. This advance is the first whose Effect changes are not source-compatible with the previous pin, so a consumer that upgrades meets the same renames the kit did:
+
+- `SchemaTransformation.transformOrFail` and `SchemaGetter.transformOrFail` are `transformEffect`.
+
+- The `Config` constructors are PascalCase (`Config.String`, `Config.Redacted`, `Config.Int`, `Config.Boolean`, …) and `Config.mapOrFail` is `Config.mapEffect`.
+
+- `FileSystem.Size` and `FileSystem.SizeInput` are gone in favour of the `ByteSize` module: `File.Info.size` is a `ByteSize`, `File.seek` takes a `bigint`, `read`/`write` return a `number`.
+
+- The fast-check bridge (`effect/testing/FastCheck`, `Schema.toArbitrary`, the `fastCheck` property-test option) is removed in favour of `effect/unstable/arbitrary/Arbitrary`; `it.effect.prop` takes `arbitrary: { runs, size, seed, … }`.
+
+#### `@effected/schemastore` documents are open unless told otherwise
+
+- `Schema.ToJsonSchemaOptions.additionalProperties` became `onExcessProperty: "ignore" | "error"` upstream, and its default now mirrors the decoder's: generated object schemas carry `additionalProperties: true` unless `jsonSchema: { onExcessProperty: "error" }` is passed. `StoreDocument.fromSchema` passes the option through unchanged, so a document that was closed by default at rc.112 is open by default now. Pass `onExcessProperty: "error"` to keep a closed document; a generator that silently disagreed with the decoder it is paired with would be the worse default.
+
+#### `@effected/memfs` seeks before the start of a file fail
+
+- `File.seek` gained a `PlatformError` channel upstream, and memfs now matches Node: a seek whose resulting position would be negative fails with `BadArgument` ("Cannot seek before the start of the file") and leaves the cursor unchanged, where it previously stored the negative position and failed on the next read. No memfs-declared type changes; the `File`/`File.Info` shape changes are Effect's own, reaching consumers through the peer.
+
+### Documentation
+
+#### A `Schema.Class` root is annotated on the `Struct` it wraps
+
+- [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084), which the rc.112 notes carried as an open limitation, was closed upstream as by design: annotations passed as `Schema.Class`'s second argument sit on the class node, while the `$defs` entry is generated from the encoded fields `Struct`. Annotate that `Struct` — `Schema.Class<X>("X")(Schema.Struct({ … }).annotate({ title, description, "x-taplo": … }))` — and every key reaches the document. `@effected/schemastore`'s design doc and context files now state the rule instead of the limitation.
+
+#### The Claude Code and Copilot plugins teach the rc.115 surface
+
+- The `effect-v4-schema`, `effect-v4-testing` and `effect-v4-module-index` skills describe the native `Arbitrary` module in place of the fast-check bridge, including the migration traps met on this advance: the `size` clamp (default 10) that silently shrinks a property's string and array domains, the `-0` the generator's near-zero bias emits for an unbounded `Schema.Int` or any `Schema.Number`, which JSON and YAML cannot round-trip, and the absence of `oneof`/`constantFrom`/`array` combinators. `ByteSize` has a module-index row, the `Config` and CLI constructors are shown in their PascalCase spellings, and the session-start briefing reports rc.115 as the kit's pin. [#686][#686]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/glob | dependency | updated | 0.5.0 | 0.6.0 |
+| @effected/markdown | dependency | updated | 0.9.2 | 0.10.0 |
+| @effected/npm | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/sbom | dependency | updated | 0.5.0 | 0.6.0 |
+| @effected/templates | dependency | updated | 0.5.0 | 0.6.0 |
+| @effect/platform-node | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| @effect/tsgo | devDependency | updated | 0.41.0 | 0.45.0 |
+| @effect/vitest | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| effect | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| effect | peerDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#686]: https://github.com/spencerbeggs/effected/pull/686
+
 ## 0.11.0
 
 ### Breaking Changes
@@ -393,7 +449,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Features
 
 - ### `GitHubContext.headRef` and `branch`
-  `GitHubContext` now carries `headRef`, the pull request's source branch as an&#10;`Option<string>`. `GITHUB_HEAD_REF` is only set for `pull_request` events, and
+  `GitHubContext` now carries `headRef`, the pull request's source branch as an
+  `Option<string>`. `GITHUB_HEAD_REF` is only set for `pull_request` events, and
   on every other event the runner may write it as the **empty string** rather
   than omitting it — both spellings of absence now decode to `Option.none()`,
   so a consumer can't build a cache key segment out of an empty branch name by
@@ -408,11 +465,13 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   const branch = context.branch; // headRef, or refName when absent
   ```
   ### `CacheKey.digest`
-  `CacheKey.digest(input, length = 8)` is a segment-safe short digest for&#10;**non-file** key inputs — a sorted version list, a branch name — replacing
+  `CacheKey.digest(input, length = 8)` is a segment-safe short digest for
+  **non-file** key inputs — a sorted version list, a branch name — replacing
   the by-hand SHA-256-and-truncate every compound key used to repeat. The
   result is lowercase hex, guaranteed nonempty and free of the characters the
   restore-key protocol reserves, so it drops straight into `CacheKey.of` with
-  nothing to check at the call site. A `length` outside `1..64` throws a&#10;`RangeError` rather than silently answering fewer characters than asked for.
+  nothing to check at the call site. A `length` outside `1..64` throws a
+  `RangeError` rather than silently answering fewer characters than asked for.
   ```ts
   import { CacheKey } from "@effected/github-actions";
 
@@ -425,9 +484,12 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ### `ChildEnv`
   A new zero-import module for building the environment additions a spawned
   child process needs to see prepended `PATH` entries, without the three traps
-  that cost a cross-OS matrix round each: `prependPath(dirs, { base, platform })`&#10;answers `{ env, extendEnv: true }` as one value (a bare `env` silently
-  replaces the child's whole environment), writes through the inherited `PATH`&#10;key's own casing (Windows spells it `Path`), and appends nothing for an
-  absent inherited value. `needsShell(platform)` reports the win32 rule for&#10;`.cmd` shims required since CVE-2024-27980.
+  that cost a cross-OS matrix round each: `prependPath(dirs, { base, platform })`
+  answers `{ env, extendEnv: true }` as one value (a bare `env` silently
+  replaces the child's whole environment), writes through the inherited `PATH`
+  key's own casing (Windows spells it `Path`), and appends nothing for an
+  absent inherited value. `needsShell(platform)` reports the win32 rule for
+  `.cmd` shims required since CVE-2024-27980.
   ````ts
   import { ChildEnv } from "@effected/github-actions";
   import { ChildProcess } from "effect/unstable/process";
@@ -510,7 +572,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Features
 
 - ### Sigstore identity token adapter for Actions
-  `ActionsIdentityToken.layer` implements `@effected/sbom`'s `IdentityToken`&#10;contract over this package's `OidcTokenIssuer`, so an action can sign
+  `ActionsIdentityToken.layer` implements `@effected/sbom`'s `IdentityToken`
+  contract over this package's `OidcTokenIssuer`, so an action can sign
   attestations without either package depending on the other:
   ```ts
   import { ActionsIdentityToken, OidcTokenIssuer } from "@effected/github-actions";
@@ -523,7 +586,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   );
   ```
   ### Discardable log buffers
-  `ActionLogger.withBuffer` takes a new options argument,&#10;`{ onSuccess: "flush" | "discard" }`, defaulting to `"flush"`. A step that
+  `ActionLogger.withBuffer` takes a new options argument,
+  `{ onSuccess: "flush" | "discard" }`, defaulting to `"flush"`. A step that
   should stay quiet on a clean run passes `{ onSuccess: "discard" }`; a
   failure, defect or interruption always flushes the transcript regardless of
   the setting.
@@ -533,7 +597,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   ### GitHub-surfaces markdown suite
   A new set of services for building and maintaining GitHub-rendered
   documents — PR comments, PR descriptions, check-run summaries:
-  - **`CheckState`** — a check-lifecycle vocabulary (`running`, `pass`, `fail`,&#10;`warn`, `user_interaction_required`, `skipped`, `timeout`) wider than
+  - **`CheckState`** — a check-lifecycle vocabulary (`running`, `pass`, `fail`,
+    `warn`, `user_interaction_required`, `skipped`, `timeout`) wider than
     GitHub's own check-run conclusions, with `projectCheckState` mapping it onto
     GitHub's wire vocabulary.
   - **`ManagedDocument`** — marker-delimited named regions inside text a human
@@ -541,13 +606,15 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
     replaced from current state, never appended, so re-rendering the same state
     is idempotent.
   - **`GitHubMarkdown`** — a fluent, escaping-safe markdown writer for GitHub
-    surfaces (tables, headings, links, code, lists, `<details>` blocks), plus&#10;`tableFor(schema, options?)`: a GFM table whose columns are defined once by
+    surfaces (tables, headings, links, code, lists, `<details>` blocks), plus
+    `tableFor(schema, options?)`: a GFM table whose columns are defined once by
     a row schema — headers from `title` annotations with field-name fallback,
     column order from field declaration order, cells encoded through each
     field's own codec, and a per-column `format` that the types require exactly
     where a field's encoded side is not a string. The only module in this
     package that imports `@effected/markdown`.
-  - **`CheckDocument`** — an in-process reconciler that turns a stream of&#10;`report` calls into a debounced (trailing, 500ms quiet / 3s max-wait),
+  - **`CheckDocument`** — an in-process reconciler that turns a stream of
+    `report` calls into a debounced (trailing, 500ms quiet / 3s max-wait),
     byte-identical-render-skips-the-write update to a managed document:
 
   ```ts
@@ -562,9 +629,11 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
     sink: (rendered) => Effect.log(rendered),
   });
   ```
-  This package adds `@effected/templates`, `@effected/markdown` and&#10;`@effected/sbom` as workspace dependencies.
+  This package adds `@effected/templates`, `@effected/markdown` and
+  `@effected/sbom` as workspace dependencies.
   ### SLSA provenance capture from OIDC claims
-  `ActionsProvenance.capture(audience?)` reads the runner's OIDC claims and&#10;`GITHUB_SERVER_URL` and returns a `SlsaProvenance`, replacing an eleven-field
+  `ActionsProvenance.capture(audience?)` reads the runner's OIDC claims and
+  `GITHUB_SERVER_URL` and returns a `SlsaProvenance`, replacing an eleven-field
   snake-case-to-camelCase rename every attesting consumer previously wrote by
   hand — a hazardous mapping where transposing the repository and owner ids
   compiles clean and produces a validly signed wrong attestation:
@@ -574,7 +643,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   const provenance = yield* ActionsProvenance.capture();
   ```
   The typed `OidcTokenError` passes through untouched, so skip-versus-mandatory
-  attestation stays the caller's decision. A missing `GITHUB_SERVER_URL`&#10;defaults to `https://github.com` rather than failing — only GHES runners set
+  attestation stays the caller's decision. A missing `GITHUB_SERVER_URL`
+  defaults to `https://github.com` rather than failing — only GHES runners set
   it.
 
 ### Documentation
@@ -608,7 +678,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Features
 
 - First release. The GitHub Actions runtime — the services an action needs to
-  talk to the runner it is executing inside. The one package in the kit with&#10;`@effect/platform-node` as a required peer, because a GitHub Action always
+  talk to the runner it is executing inside. The one package in the kit with
+  `@effect/platform-node` as a required peer, because a GitHub Action always
   runs as a Node process on a GitHub-provided runner.
   ### `Action.run` — the default runtime
   ```ts
@@ -619,20 +690,27 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   // Azure, so pulling one in costs exactly one line:
   Action.run(program, { layer: ActionCache.layer });
   ```
-  `ActionRuntime.layer` installs an input-aware `ConfigProvider`, so a bare&#10;`Config.string("dry-run")` resolves correctly instead of silently taking a
+  `ActionRuntime.layer` installs an input-aware `ConfigProvider`, so a bare
+  `Config.string("dry-run")` resolves correctly instead of silently taking a
   default. `ActionInput` owns the `INPUT_` name mangling and the absence
   contract: a missing input and an input set to `""` are both treated as
   missing data.
   ### Inputs, outputs, state, logging
-  `ActionInput`, `ActionOutputs`, `ActionState`, `ActionLogger` (mapping&#10;`Effect.log*` onto workflow commands and structured annotations),&#10;`ActionEnvironment` (`GitHubContext` / `RunnerContext`), and `WorkflowCommand`&#10;for the raw runner protocol.
+  `ActionInput`, `ActionOutputs`, `ActionState`, `ActionLogger` (mapping
+  `Effect.log*` onto workflow commands and structured annotations),
+  `ActionEnvironment` (`GitHubContext` / `RunnerContext`), and `WorkflowCommand`
+  for the raw runner protocol.
   ### Cache, artifacts and the blob store
-  `ActionCache`, `Artifact`, `BlobStore` / `GitHubCacheBlobStore`, and&#10;`CacheKey.hashFiles` implement the Actions cache and artifact protocols
+  `ActionCache`, `Artifact`, `BlobStore` / `GitHubCacheBlobStore`, and
+  `CacheKey.hashFiles` implement the Actions cache and artifact protocols
   directly over HTTP — no `@actions/*` dependency. `Secret` is the only place a
   secret ever becomes a plain string (declassification and masking are the same
   call).
   ### Auth, OIDC and process control
   `GitHubToken` bridges an installation token from `@effected/github` into the
-  runner; `OidcTokenIssuer` reads the runner's OIDC claims; `ToolInstaller`&#10;downloads and stages a tool atomically into the tool cache; `DetachedProcess`&#10;manages a spawned child that must outlive the current step. [#180][#180]
+  runner; `OidcTokenIssuer` reads the runner's OIDC claims; `ToolInstaller`
+  downloads and stages a tool atomically into the tool cache; `DetachedProcess`
+  manages a spawned child that must outlive the current step. [#180][#180]
 
 ### Dependencies
 

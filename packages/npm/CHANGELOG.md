@@ -1,5 +1,57 @@
 # @effected/npm
 
+## 0.14.0
+
+### Breaking Changes
+
+#### The whole kit tracks Effect `4.0.0-rc.115`
+
+- Every package's `effect` peer moves from `4.0.0-rc.112` to `4.0.0-rc.115`. The kit uses exact prerelease pins rather than a caret, so a consumer must move with it. This advance is the first whose Effect changes are not source-compatible with the previous pin, so a consumer that upgrades meets the same renames the kit did:
+
+- `SchemaTransformation.transformOrFail` and `SchemaGetter.transformOrFail` are `transformEffect`.
+
+- The `Config` constructors are PascalCase (`Config.String`, `Config.Redacted`, `Config.Int`, `Config.Boolean`, …) and `Config.mapOrFail` is `Config.mapEffect`.
+
+- `FileSystem.Size` and `FileSystem.SizeInput` are gone in favour of the `ByteSize` module: `File.Info.size` is a `ByteSize`, `File.seek` takes a `bigint`, `read`/`write` return a `number`.
+
+- The fast-check bridge (`effect/testing/FastCheck`, `Schema.toArbitrary`, the `fastCheck` property-test option) is removed in favour of `effect/unstable/arbitrary/Arbitrary`; `it.effect.prop` takes `arbitrary: { runs, size, seed, … }`.
+
+#### `@effected/schemastore` documents are open unless told otherwise
+
+- `Schema.ToJsonSchemaOptions.additionalProperties` became `onExcessProperty: "ignore" | "error"` upstream, and its default now mirrors the decoder's: generated object schemas carry `additionalProperties: true` unless `jsonSchema: { onExcessProperty: "error" }` is passed. `StoreDocument.fromSchema` passes the option through unchanged, so a document that was closed by default at rc.112 is open by default now. Pass `onExcessProperty: "error"` to keep a closed document; a generator that silently disagreed with the decoder it is paired with would be the worse default.
+
+#### `@effected/memfs` seeks before the start of a file fail
+
+- `File.seek` gained a `PlatformError` channel upstream, and memfs now matches Node: a seek whose resulting position would be negative fails with `BadArgument` ("Cannot seek before the start of the file") and leaves the cursor unchanged, where it previously stored the negative position and failed on the next read. No memfs-declared type changes; the `File`/`File.Info` shape changes are Effect's own, reaching consumers through the peer.
+
+### Documentation
+
+#### A `Schema.Class` root is annotated on the `Struct` it wraps
+
+- [Effect-TS/effect#8084](https://github.com/Effect-TS/effect/issues/8084), which the rc.112 notes carried as an open limitation, was closed upstream as by design: annotations passed as `Schema.Class`'s second argument sit on the class node, while the `$defs` entry is generated from the encoded fields `Struct`. Annotate that `Struct` — `Schema.Class<X>("X")(Schema.Struct({ … }).annotate({ title, description, "x-taplo": … }))` — and every key reaches the document. `@effected/schemastore`'s design doc and context files now state the rule instead of the limitation.
+
+#### The Claude Code and Copilot plugins teach the rc.115 surface
+
+- The `effect-v4-schema`, `effect-v4-testing` and `effect-v4-module-index` skills describe the native `Arbitrary` module in place of the fast-check bridge, including the migration traps met on this advance: the `size` clamp (default 10) that silently shrinks a property's string and array domains, the `-0` the generator's near-zero bias emits for an unbounded `Schema.Int` or any `Schema.Number`, which JSON and YAML cannot round-trip, and the absence of `oneof`/`constantFrom`/`array` combinators. `ByteSize` has a module-index row, the `Config` and CLI constructors are shown in their PascalCase spellings, and the session-start briefing reports rc.115 as the kit's pin. [#686][#686]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.6.1 | 0.7.0 |
+| @effected/semver | dependency | updated | 0.6.0 | 0.7.0 |
+| @effect/platform-node | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| @effect/tsgo | devDependency | updated | 0.41.0 | 0.45.0 |
+| @effect/vitest | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| effect | devDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+| effect | peerDependency | updated | 4.0.0-rc.112 | 4.0.0-rc.115 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#686]: https://github.com/spencerbeggs/effected/pull/686
+
 ## 0.13.0
 
 ### Breaking Changes
@@ -234,7 +286,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 - `PackageManagerCache.defaultDirectory(manager, { platform, home })` is a
   pure, no-IO facts table answering where each package manager caches by
-  default: `npm`, `pnpm`, `yarn-classic`, `yarn-berry` (split from a bare&#10;`yarn` because the two majors document different cache locations) and&#10;`bun`. Every cell is verified against the manager's own documentation or
+  default: `npm`, `pnpm`, `yarn-classic`, `yarn-berry` (split from a bare
+  `yarn` because the two majors document different cache locations) and
+  `bun`. Every cell is verified against the manager's own documentation or
   source, cited on the member — two of the three rows this replaces in prior
   art were wrong (pnpm's macOS store is not the Linux XDG path, and yarn
   Classic's cache was never `~/.yarn/cache`).
@@ -288,7 +342,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 
 ### Breaking Changes
 
-- `PublishOutcome.provenanceUrl` is now a plain optional field instead of an&#10;`Option.Option<string>`. Read it as `outcome.provenanceUrl` (possibly&#10;`undefined`), not `Option.getOrUndefined(outcome.provenanceUrl)`.
+- `PublishOutcome.provenanceUrl` is now a plain optional field instead of an
+  `Option.Option<string>`. Read it as `outcome.provenanceUrl` (possibly
+  `undefined`), not `Option.getOrUndefined(outcome.provenanceUrl)`.
   ```ts
   // Before
   const url = Option.getOrUndefined(outcome.provenanceUrl);
@@ -323,16 +379,21 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Features
 
 - ### `NpmRegistry` — registry reads over `HttpClient`
-  `version` / `versions` / `distTags` / `publishTimes`, each taking a per-call&#10;`RegistryTarget` (`{ registry?, token? }`) so one program can probe two
+  `version` / `versions` / `distTags` / `publishTimes`, each taking a per-call
+  `RegistryTarget` (`{ registry?, token? }`) so one program can probe two
   registries for the same package. A 404 decodes to `Option.none()` rather than
-  being classified from response text. Test doubles: `NpmRegistry.layerTest`&#10;(unstubbed members die) and `NpmRegistry.layerSeeded` (a working fake keyed by&#10;`registries[registry][name][version]`).
+  being classified from response text. Test doubles: `NpmRegistry.layerTest`
+  (unstubbed members die) and `NpmRegistry.layerSeeded` (a working fake keyed by
+  `registries[registry][name][version]`).
   ### `PackagePublish` — pack and publish over `@effected/commands`
   `setupAuth` / `pack` / `publishTarball` / `dryRun`. The auth token is written
-  to a caller-supplied `.npmrc` path, never passed as an argv flag. `pack`&#10;reports both an SRI `integrity` digest (compares against the registry) and a
+  to a caller-supplied `.npmrc` path, never passed as an argv flag. `pack`
+  reports both an SRI `integrity` digest (compares against the registry) and a
   local `sha256Hex` digest (the attestation subject) — the two are not
   interchangeable. A failed `dryRun` is a result, not a thrown error.
   ### `NpmExecutor` — ambient npm or a pinned `dlx`
-  `NpmExecutor.ambient` or `NpmExecutor.dlx(spec)`, replacing repeated&#10;`packageManager?:` options scattered across call sites. With no launcher
+  `NpmExecutor.ambient` or `NpmExecutor.dlx(spec)`, replacing repeated
+  `packageManager?:` options scattered across call sites. With no launcher
   configured it fails typed rather than silently degrading to whatever `npm` is
   on `PATH`.
   ### `RegistryKind` and `PublishError`
@@ -410,7 +471,8 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 ### Features
 
 - ### `ReleaseAgeGate` / `PartialReleaseAgeGate`
-  Adds shared vocabulary for pnpm's publish-time release-age gate — the&#10;`minimumReleaseAge` / `minimumReleaseAgeExclude` config pnpm uses to refuse
+  Adds shared vocabulary for pnpm's publish-time release-age gate — the
+  `minimumReleaseAge` / `minimumReleaseAgeExclude` config pnpm uses to refuse
   installing a version younger than a cutoff
   (`ERR_PNPM_NO_MATURE_MATCHING_VERSION`). A resolver that picks the highest
   in-range version with no publish-time awareness can pick a version pnpm then
@@ -430,7 +492,9 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
   `ReleaseAgeGate.combine` merges partial contributions from multiple config
   sources strictest-wins: the maximum of the contributed ages (clamped
   non-negative), and the exclude sets unioned. `matchesExclude` mirrors pnpm's
-  own `@pnpm/matcher` name-matching semantics — a `*`-glob crosses `/`, unlike&#10;`@effected/glob`'s minimatch dialect — so `isExcluded` and `filterVersions`&#10;behave exactly like pnpm's own gate. `filterVersions` takes the caller's
+  own `@pnpm/matcher` name-matching semantics — a `*`-glob crosses `/`, unlike
+  `@effected/glob`'s minimatch dialect — so `isExcluded` and `filterVersions`
+  behave exactly like pnpm's own gate. `filterVersions` takes the caller's
   clock; a version with a missing or unparseable publish timestamp is dropped,
   matching pnpm's strict posture. [#139][#139]
 
