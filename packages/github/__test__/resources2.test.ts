@@ -94,7 +94,12 @@ describe("CheckRunOutput byte budgeting", () => {
 			const noNewDamage = (cut.match(/�/g) ?? []).length <= (summary.match(/�/g) ?? []).length + 1;
 			return withinBudget && noNewDamage;
 		},
-		{ arbitrary: { size: 40_000 } },
+		// `size: 40_000` is load-bearing: at 20_000 no run ever crosses the
+		// 65 535-byte budget (0/100 probed), at 40_000 about one in five does.
+		// That makes each run expensive — ~0.7s for 100 locally, past the 5s
+		// default under coverage on a CI runner — so the run count is halved and
+		// the timeout raised rather than the domain shrunk.
+		{ arbitrary: { size: 40_000, runs: 50 }, timeout: 30_000 },
 	);
 });
 

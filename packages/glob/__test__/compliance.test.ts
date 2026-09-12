@@ -265,8 +265,10 @@ const optionBagArb = Arbitrary.schema(
 	}),
 );
 // Printable ASCII only, as the property's name promises; the pattern also
-// keeps `/` and `\` out constructively instead of by residual filtering.
-const printableNoSlashArb = Arbitrary.schema(Schema.String.check(Schema.isPattern(/^[ -.0-[\]-~]{1,30}$/)));
+// keeps `/` and `\` out constructively instead of by residual filtering. The
+// class is spelled as the four spans printable ASCII splits into around those
+// two characters so the exclusions read as such.
+const printableNoSlashArb = Arbitrary.schema(Schema.String.check(Schema.isPattern(/^[ -.0-9:-@A-Z[\]-~]{1,30}$/)));
 const braceSegArb = Arbitrary.schema(
 	Schema.Array(Schema.Literals(["a", "{b,c}", "{1..4}", "x{y,z}w", "{a,{b,c}}", "plain"])).check(
 		Schema.isLengthBetween(1, 4),
