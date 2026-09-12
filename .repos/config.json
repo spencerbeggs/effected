@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.0.0-rc.112",
+			"ref": "effect@4.0.0-rc.115",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -24,10 +24,10 @@
 			},
 			"notes": [
 				{
-					"id": "n-e776",
-					"date": "2026-09-05",
-					"ref": "effect@4.0.0-rc.112",
-					"note": "rc.112 (PR #7420) made JSON Schema dialect conversion PRESERVE custom keywords: the Draft-07 lowering carries unknown/custom keys through as opaque values, in place, including across prefixItems[i]->items[i] and trailing items->additionalItems. RESOLVED in @effected/schemastore this pin: AnnotationCarriers deleted as redundant (six preservation cases now pinned in __test__/annotation-carrying.test.ts, asserting on raw toDocumentDraft07 output), and the declared-family gate is now the package's own typed failure (UndeclaredAnnotationKeyError) instead of a side effect of core's drop. STILL OPEN: a Schema.Class's class-level annotations never reach the document (core emits from the encoded AST); a hoisted Schema.Struct keeps its own - Effect-TS/effect#8084, effected#606."
+					"id": "n-5158",
+					"date": "2026-09-12",
+					"ref": "effect@4.0.0-rc.115",
+					"note": "rc.113-115 advance (2026-09-11): the previous note's STILL OPEN item is resolved BY DESIGN, not by a fix — Effect-TS/effect#8084 was closed as such: annotations passed as Schema.Class's second argument (or .annotate() on the class) sit on the class node, while the $defs entry is generated from the encoded fields Struct, so annotate that inner Struct and title/description/declared families all carry (probe: scratchpad/probes/schema-class-annotations-rc115.ts). Also from this advance: the fast-check bridge is gone (effect/testing/FastCheck, Schema.toArbitrary, fastCheck option) in favour of effect/unstable/arbitrary/Arbitrary with it.effect.prop taking arbitrary: CheckOptions; FileSystem.Size/SizeInput became ByteSize (File.Info.size is ByteSize, seek takes bigint and fails BadArgument before the start); Config constructors are PascalCase and Config.mapOrFail is mapEffect; SchemaTransformation/SchemaGetter.transformOrFail is transformEffect; ToJsonSchemaOptions.additionalProperties became onExcessProperty and the DEFAULT IS NOW OPEN (additionalProperties: true unless \"error\"). The Node FileSystem implementation is not in the vendored tree — read platform-node-shared under node_modules when a platform semantic must be copied."
 				}
 			]
 		},
