@@ -200,12 +200,15 @@ const sshEnv = (resolved: string): Record<string, string> =>
  * to parse the prose in `message` or `detail`.
  *
  * **`message` is the rendering; `detail` is the datum.** `message` composes a
- * one-line prose from the redacted argv, the cwd, and — when git never ran —
- * `detail` itself. A consumer forwarding the underlying reason should map
+ * one-line prose from the redacted argv, the cwd, and — whenever `detail` is
+ * set — `detail` itself. A consumer forwarding the underlying reason should map
  * `detail` through only when it is set: falling back to `message` nests one
  * rendered message inside another (`git … in cwd: git … in cwd failed (exit
  * N): …`). When `detail` is absent, git ran and failed — `exitCode` and
- * `stderr` are the data to forward.
+ * `stderr` are the data to forward. Note that `detail` may be set after git ran
+ * and exited successfully (e.g. `Git.log` sets `detail: \"unparseable log output: …\"`
+ * with `kind: \"failed\"`), so routing on `detail !== undefined` rather than
+ * assuming git never started is the correct consumer boundary.
  *
  * @public
  */
@@ -4014,11 +4017,17 @@ const notStubbed = (method: string) => () =>
  * that — a caller running two mutating calls (or a mutating call alongside a
  * read) against one `cwd` at once owns the race.
  *
- * **Every member already runs under a per-call 30 s timeout** (this module's
+ * **Every member already runs under a per-spawn 30 s timeout** (this module's
  * `GIT_TIMEOUT`): a call that has not answered in time fails as a
- * {@link GitCommandError} with `detail` set to `"timed out after 30s"`.
+ * {@link GitCommandError} with `detail` set to "timed out after 30s".
  * Consumers do not need their own timeout layer on top — adding one just
  * races two ceilings against each other (#652).
+ *
+ * The network-touching members (`lsRemote`, `fetch`, `fetchUnshallow`,
+ * `push`, `pull`, `submoduleAdd`, `submoduleUpdate`) first await
+ * `resolveSshEnv` (two concurrent `runFor` calls, each bounded by
+ * `GIT_TIMEOUT`), so their worst case is 60 s; `fetchAny`, which runs
+ * `fetch` twice, is 120 s.
  *
  * **Redaction policy (documented, not just convention).** Error values
  * persist only the constructor's REDACTED argv (see `GitCommandError.args`),
