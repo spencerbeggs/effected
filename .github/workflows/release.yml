@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main, changeset-release/main]
     types: [opened, synchronize, reopened, closed]
+  # Fork pull requests: runs in this repository's context, so it has secrets,
+  # and is gated behind the fork-review environment's required reviewer. No
+  # `closed` -- the close-issues phase is driven by pull_request alone.
+  pull_request_target:
+    branches: [main, changeset-release/main]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -14,7 +20,9 @@ on:
         default: false
 
 concurrency:
-  group: release-${{ github.event.pull_request.number || github.sha }}
+  # The event name keeps a fork push's pull_request and pull_request_target
+  # runs in separate groups; sharing one would cancel one of them.
+  group: release-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -37,4 +45,8 @@ jobs:
       # the kit's next release versions. Exit-code only: the gate's own non-zero
       # exit is the sole failure signal; stderr is not inspected.
       on-build: pnpm catalog:check
+      # Fork PRs wait on this environment's required reviewer before any run
+      # touches secrets. The environment exists in repo settings; the
+      # dispatcher refuses to proceed if it has no required reviewer.
+      fork-review-environment: fork-review
     secrets: inherit
