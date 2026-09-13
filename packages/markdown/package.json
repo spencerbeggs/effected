@@ -40,7 +40,6 @@
 		"@types/node": "catalog:build",
 		"commonmark": "0.31.2",
 		"effect": "catalog:effect",
-		"entities": "8.0.0",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {

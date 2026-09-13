@@ -43,18 +43,20 @@ respective frontmatter codec modules — a recorded delta from
 false`.
 
 The HTML5 named character references ship as a committed TypeScript map
-generated from the `entities` npm package's packed binary trie; `entities` is
-an exact-pinned devDependency that exists only for the generator
-(`packages/markdown/__test__/tools/generate-entities.ts`, hand-run, never in
-CI or the test suite) — nothing at runtime imports it, which is what keeps
-the pure tier's zero-runtime-dependency claim true for a table of roughly two
-thousand entries. Only semicolon-terminated entity names are kept, since
-CommonMark's entity grammar requires the semicolon. The trie encoding is an
-upstream internal that changes across `entities` majors, so a bump is a
-re-derivation of the walker rather than a plain version bump: the acceptance
-test is entry-for-entry data equality between the old and new maps, and the
-version stamp embedded in the generated file is read out of the installed
-package's own `package.json` rather than hand-typed.
+generated from the WHATWG HTML standard's entity document
+(`https://html.spec.whatwg.org/entities.json`) by
+`packages/markdown/__test__/tools/generate-entities.ts` — hand-run, never in
+CI or the test suite, and the only thing that fetches — so nothing at runtime
+carries a dependency for a table of roughly two thousand entries, which is
+what keeps the pure tier's zero-runtime-dependency claim true. Only
+semicolon-terminated entity names are kept, since CommonMark's entity grammar
+requires the semicolon. The generator used to flatten the `entities` npm
+package's packed binary trie instead, with `entities` as an exact-pinned
+devDependency; that trie is a private structure that re-encoded in the 8.1.0
+minor and broke the walker, so the generator was moved to the spec document
+`entities` itself builds from (2026-09-13) and the devDependency dropped. The
+acceptance test for any regeneration is entry-for-entry data equality
+between the old and new maps; the generated file stamps the fetch date.
 
 ## Engine: a hardened commonmark.js port, modularized like micromark
 
