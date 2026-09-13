@@ -1,5 +1,21 @@
 # @effected/github
 
+## 0.10.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @octokit/types | dependency | updated | ^17.0.0 | ^18.0.0 |
+
+[#699][#699]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#699]: https://github.com/spencerbeggs/effected/pull/699
+
 ## 0.10.0
 
 ### Breaking Changes
