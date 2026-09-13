@@ -194,7 +194,11 @@ export function setup(): void {
 }
 ```
 
-The entry guard itself is not wrong to rely on the runner's marker variable — the ambient test environment is what's wrong, and this is the one place to fix it for the whole suite at once rather than working around it per test file. Stripping input and state variables alongside the marker keeps a test from silently reading a *host* workflow's own inputs or state when a fixture forgets to seed its own.
+The entry guard itself is not wrong to rely on the runner's marker variable — the ambient test environment is what's wrong, and this is the one place to fix it for the whole suite at once rather than working around it per test file. Stripping input and state variables alongside the marker keeps a test from silently reading a *host* workflow's own inputs or state when a fixture forgets to seed its own — a leaked `INPUT_*` on a runner substitutes a real value for a fixture, and the test passes for the wrong reason.
+
+**Timing is the whole point of doing it here, and either global registration works.** The exported `setup` function above is vitest's `globalSetup` shape; a plain top-level `delete` in a `setupFiles` module works equally. Probed 2026-09-13 on `vitest@5.0.0`, `pool: "forks"`, with the variable set in the parent environment: a control with no stripping fails, and both `globalSetup` and `setupFiles` pass — with and without a `projects` layout, and whether `globalSetup` sits on the root or the project. Two action repos carry opposite folklore about this — one says `globalSetup` runs in a separate process and its deletions "would still be present" in the workers; the other wires `globalSetup` and relies on it — and the first is false as stated: the fork pool inherits the main process's already-stripped environment. Pick whichever registration the runner plugin already wires (`AgentPlugin.discover()` points each project's `setupFiles` at `vitest.setup.ts`), and do not migrate a working one on the strength of that comment.
+
+What does **not** work is a per-file precaution: a `delete process.env.GITHUB_ACTIONS` at the top of a test file runs *after* that file's static imports were evaluated, so the entry it imports has already seen the marker and the guard has already fired (same probe: an imported module recorded the variable as still set). Strip it once, globally, before any test file loads.
 
 ## What a full suite for this shape typically pins
 

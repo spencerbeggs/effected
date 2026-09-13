@@ -4,7 +4,7 @@ description: >-
   Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class
   factory (Schema.Class, TaggedClass, TaggedError, Opaque, Context.Service) under the silk bundler
   — and for the OTHER ae-*/tsdoc-* diagnostics a package build surfaces, ae-unresolved-link above
-  all ({@link} selector rules for merged value+type names, namespace-object members, inherited
+  all ({@link} selector rules for merged value+type names, overloaded functions (the parenthesized index selector), namespace-object members, inherited
   members, schema-declared Schema.Class fields, and cross-package symbols, where backticks are the
   only correct form), plus how to read issues.json without being fooled. The house policy for
   bases is to write the factory INLINE and suppress the synthesized X_base warning narrowly via
@@ -319,6 +319,53 @@ and `types:check` — it only surfaces in the **prod** build's `issues.json`.
    inherited-member case above — there the *declaration* does not own the
    member; here the class does own it, but only through the factory, which is
    the same dead end from API Extractor's side.
+
+## Overloaded exported functions: the index selector, parenthesized
+
+Adding a second overload to an exported function is an ordinary additive
+change, and it breaks every existing `{@link fn}` at once with the same
+*"ambiguous… add a TSDoc member reference selector"* diagnostic the merged-name
+case emits. The selector that fixes it is **not** `:function` — it is the
+**overload index**, 1-based in `.d.ts` declaration order, and the whole
+reference must be parenthesized:
+
+```ts
+/** The recipe form of {@link (descend:1)}; under `"record"` see {@link (descend:2)}. */
+```
+
+Probed 2026-09-13 at the `@effected/walker` prod build (`descend` carries two
+overload signatures plus an implementation signature), every form in one
+comment so the controls and the answer share a run:
+
+| Form | Result |
+| --- | --- |
+| `{@link (descend:1)}`, `{@link (descend:2)}` | resolve, no warning |
+| `{@link descend}` | *ambiguous… add a TSDoc member reference selector* |
+| `{@link (descend:function)}` | *More than one declaration "descend" matches the TSDoc selector "function"* |
+| `{@link descend:1}` | *Syntax error… the member selector must be enclosed in parentheses* |
+| `{@link (descend:3)}` | *An overload for "descend" was not found that matches the TSDoc selector ":3"* |
+
+Three consequences worth holding onto:
+
+- **The system selector cannot disambiguate overloads.** Every overload is a
+  `FunctionDeclaration`, so `:function` matches all of them and fails on the
+  count — reach for the number, not the kind.
+- **The implementation signature does not count.** `:3` fails on a function
+  with two overloads and an implementation, because the index walks the
+  rolled-up `.d.ts`, where only the overload signatures survive
+  (`AstReferenceResolver.#selectUsingIndexSelector` →
+  `Collector.getOverloadIndex`, which numbers same-kind declarations of the
+  symbol in order, from 1).
+- **Reordering overloads renumbers links.** `:1` names *position*, not
+  signature, so a refactor that swaps two overloads silently repoints every
+  link without a warning — the build stays green either way. Prefer citing the
+  overload whose position is stable, and re-read the links when you reorder.
+
+Backticks still work here, and `@effected/walker` shipped `#629` with five
+`` `descend` `` spans for want of this section — that was a retreat, not a
+choice. Where the link would carry the reader to the right overload, use the
+selector; where any overload will do and the position is likely to move, a
+backtick is the honest form.
 
 ## `{@link X.member}` where the member name IS a TSDoc selector keyword
 

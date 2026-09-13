@@ -36,6 +36,7 @@ src/
   CLAUDE.md               # src conventions, kept current
 __test__/
   unit/                   # mirrors src/ module for module — src/utils/ mirrors to unit/utilities/, never unit/utils/
+    generate-schema.test.ts # the output-contract drift test, only when schemas/ exists (actions-inputs-outputs, output-contracts)
   integration/            # *.int.test.ts + fixtures/
   utils/                  # doubles and recording adapters — helper code, NEVER tests: a utils, fixtures or snapshots dir is skipped by discovery ONLY as a direct child of __test__ (references/tests.md)
   CLAUDE.md               # test conventions + the collection contract

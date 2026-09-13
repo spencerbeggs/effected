@@ -25,15 +25,25 @@ A cleanup phase must never turn a successful run into a failed one. Wrap its who
 
 ```ts
 // post.ts
+import { Action } from "@effected/github-actions";
+import { Effect } from "effect";
+
 export const post: Effect.Effect<void, never, /* … */> = Effect.gen(function* () {
  // cleanup work
 }).pipe(
  Effect.catch((error) => Effect.logWarning(`Post-action warning: ${String(error)}`)),
  Effect.catchDefect((defect) => Effect.logWarning(`Post-action warning: ${String(defect)}`)),
 );
+
+/* v8 ignore next 3 -- entry-point guard, only runs inside a GitHub Actions runner */
+if (process.env.GITHUB_ACTIONS) {
+ await Action.run(post);
+}
 ```
 
 Both nets matter: a typed failure without the defect net still crashes the process on a bug; a defect net without the typed-error net still fails the workflow on an ordinary, anticipated error.
+
+The guard is part of the file, not an omission from the example. An earlier revision of this page showed `post.ts` without it, and a downstream action shipped a guardless entry as a result: nothing failed locally, because `GITHUB_ACTIONS` is unset on a developer machine, but on a runner the first test to import that entry would have executed the real phase — in that action, minting and revoking a live installation token — as an import side effect. The double net and the guard answer different questions (what happens when cleanup fails; whether importing the module runs it at all), and every entry carries both.
 
 ## Layers start empty, and grow only on genuine need
 
