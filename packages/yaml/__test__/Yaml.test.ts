@@ -5,8 +5,10 @@ import {
 	Yaml,
 	YamlDocument,
 	YamlFormat,
+	YamlMap,
 	YamlParseError,
 	YamlParseOptions,
+	YamlScalar,
 	YamlStringifyError,
 	YamlStringifyOptions,
 } from "../src/index.js";
@@ -203,6 +205,35 @@ describe("Yaml", () => {
 				const text = `x: &a 1\n${Array.from({ length: 5 }, (_, i) => `k${i}: *a`).join("\n")}`;
 				const error = yield* Effect.flip(Yaml.parse(text, { maxAliasCount: 3 }));
 				assert.isTrue(error.diagnostics.some((d) => d.code === "AliasCountExceeded"));
+			}),
+		);
+	});
+
+	describe("leading byte-order mark (#694)", () => {
+		it.effect("a BOM does not shift the first line's indentation — every node survives", () =>
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* Yaml.parse("\uFEFFa: 'x'\nb: 1\n"), { a: "x", b: 1 });
+				assert.deepStrictEqual(yield* Yaml.parse("\uFEFF- 1\n- 2\n"), [1, 2]);
+				assert.deepStrictEqual(yield* Yaml.parse("\uFEFFa: 1\n"), { a: 1 });
+			}),
+		);
+
+		it.effect("a comment directly after the BOM is a line-start comment, not trailing content", () =>
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* Yaml.parse("\uFEFF# c\na: 'x'\n"), { a: "x" });
+			}),
+		);
+
+		it.effect("node offsets stay indices into the original text, BOM included", () =>
+			Effect.gen(function* () {
+				const text = "\uFEFFa: 'x'\nb: 1\n";
+				const doc = yield* YamlDocument.parse(text);
+				const map = doc.contents;
+				assert.instanceOf(map, YamlMap);
+				const first = (map as YamlMap).items[0]?.value;
+				assert.instanceOf(first, YamlScalar);
+				const scalar = first as YamlScalar;
+				assert.strictEqual(text.slice(scalar.offset, scalar.offset + scalar.length), "'x'");
 			}),
 		);
 	});
@@ -851,6 +882,39 @@ describe("Yaml", () => {
 					const value = { key: "line one\n\tindented line\n" };
 					const text = yield* Yaml.stringify(value);
 					assert.ok(text.includes("|"), `expected a block scalar, got: ${JSON.stringify(text)}`);
+					assert.deepStrictEqual(yield* Yaml.parse(text), value);
+				}),
+			);
+		});
+
+		describe("flow-context plain safety (#695)", () => {
+			it.effect("a scalar carrying a flow indicator is quoted inside a flow sequence", () =>
+				Effect.gen(function* () {
+					const flow = YamlStringifyOptions.make({ defaultCollectionStyle: "flow" });
+					assert.strictEqual(yield* Yaml.stringify({ a: ["p, q", "y"] }, flow), "{a: ['p, q', y]}\n");
+					assert.strictEqual(yield* Yaml.stringify({ a: ["p}", "y"] }, flow), "{a: ['p}', y]}\n");
+					assert.strictEqual(yield* Yaml.stringify({ a: ["x[0]"] }, flow), "{a: ['x[0]']}\n");
+				}),
+			);
+
+			it.effect("a flow mapping key or value carrying a flow indicator is quoted", () =>
+				Effect.gen(function* () {
+					const flow = YamlStringifyOptions.make({ defaultCollectionStyle: "flow" });
+					assert.strictEqual(yield* Yaml.stringify({ "k,1": "p,q" }, flow), "{'k,1': 'p,q'}\n");
+				}),
+			);
+
+			it.effect("the same scalars stay plain in block context", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* Yaml.stringify({ a: ["p, q", "x[0]"] }), "a:\n- p, q\n- x[0]\n");
+				}),
+			);
+
+			it.effect("every flow rendering round-trips to the caller's value", () =>
+				Effect.gen(function* () {
+					const flow = YamlStringifyOptions.make({ defaultCollectionStyle: "flow" });
+					const value = { a: ["p, q", "p}", "[x", "{y", "k]"], "b,c": { "d}": "e{" } };
+					const text = yield* Yaml.stringify(value, flow);
 					assert.deepStrictEqual(yield* Yaml.parse(text), value);
 				}),
 			);
