@@ -1,5 +1,35 @@
 # @effected/github-actions
 
+## 0.13.0
+
+### Features
+
+- New `ActionOutputs.recording()` test double: every member journals a `RecordedOutput { member, name?, value }` in call order, with `setJson` recording the schema-encoded JSON text — what a later step's `steps.<id>.outputs.<name>` expression would actually read:
+
+```ts
+import { ActionOutputs } from "@effected/github-actions";
+
+const { layer, entries } = ActionOutputs.recording();
+// provide `layer`, run the program, then:
+entries(); // ReadonlyArray<RecordedOutput>, in call order
+```
+
+### Bug Fixes
+
+- `ActionOutputs.makeTest` and `layerTest` now always run the typed schema encode on `setJson` before calling any supplied override, so a `setJson` override that ignores `schema` can no longer let a value/schema drift pass silently — it now fails typed with `OutputEncodeError` exactly as the real layer would. A test relying on the old bypass now fails until the override (or the value) is corrected. [#708][#708]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/sbom | dependency | updated | 0.6.0 | 0.6.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#708]: https://github.com/spencerbeggs/effected/pull/708
+
 ## 0.12.0
 
 ### Breaking Changes
