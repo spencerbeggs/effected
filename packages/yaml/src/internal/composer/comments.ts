@@ -224,10 +224,17 @@ export function joinComments(a: string | undefined, b: string): string {
 	return a === undefined ? b : `${a}\n${b}`;
 }
 
-/** Zero-based column of `offset` within its line. */
+/**
+ * Zero-based column of `offset` within its line. A byte-order mark at the
+ * line start occupies no column — the lexer's convention (#694) — so a
+ * BOM-prefixed root mapping's content column is `0`, not `1`, and its
+ * terminal own-line comment is not mistaken for one escaping a nested map.
+ */
 export function columnAt(text: string, offset: number): number {
 	if (offset <= 0) return 0;
-	return offset - (text.lastIndexOf("\n", offset - 1) + 1);
+	const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
+	const bom = text[lineStart] === "\uFEFF" && offset > lineStart ? 1 : 0;
+	return offset - lineStart - bom;
 }
 
 /**

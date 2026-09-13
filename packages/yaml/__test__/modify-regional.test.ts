@@ -211,4 +211,25 @@ describe("YamlFormat.modify region-confined scalar replacement (#659)", () => {
 		assert.strictEqual(modifyToString(text, ["list", 1], "B"), "list:\r\n  - 'a'\r\n  - \"B\"\r\n  - c\r\n");
 		assert.strictEqual(modifyToString(text, ["list", 2], "C"), "list:\r\n  - 'a'\r\n  - \"b\"\r\n  - C\r\n");
 	});
+
+	it("quotes a plain replacement carrying a flow indicator when the target sits in a flow collection (#695)", () => {
+		assert.strictEqual(modifyToString("a: [x, y]\n", ["a", 0], "p, q"), "a: ['p, q', y]\n");
+		assert.strictEqual(modifyToString("a: {b: x, c: y}\n", ["a", "b"], "p,q"), "a: {b: 'p,q', c: y}\n");
+		assert.strictEqual(modifyToString("a: {b: x, c: y}\n", ["a", "b"], "p}"), "a: {b: 'p}', c: y}\n");
+		// Still regional: one edit, confined to the target span.
+		const edits = modify("a: [x, y]\n", ["a", 0], "p, q");
+		assert.strictEqual(edits.length, 1);
+		const edit = edits[0] as { offset: number; length: number; content: string };
+		assert.strictEqual(edit.offset, 4);
+		assert.strictEqual(edit.length, 1);
+		assert.strictEqual(edit.content, "'p, q'");
+	});
+
+	it("a replacement without a flow indicator stays plain inside a flow collection", () => {
+		assert.strictEqual(modifyToString("a: [x, y]\n", ["a", 0], "p q"), "a: [p q, y]\n");
+	});
+
+	it("finds the first key behind a leading BOM and keeps the BOM (#694)", () => {
+		assert.strictEqual(modifyToString("\uFEFFa: 'x'\nb: 1\n", ["a"], "y"), "\uFEFFa: 'y'\nb: 1\n");
+	});
 });

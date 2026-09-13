@@ -268,6 +268,18 @@ function toOutputDocument(doc: RawYamlDocument, preserveComments: boolean): RawY
  * A multi-document stream routes to {@link formatStream}, which formats
  * every document and shares the same directive refusal.
  */
+/**
+ * Re-attach the source's leading byte-order mark to a whole-document
+ * re-emission. The stringifier never emits a BOM (it is framing, not
+ * content), so without this every `format` and whole-pipeline `modify` on a
+ * BOM-prefixed file would produce a delete-at-offset-0 edit. Preserving it
+ * keeps the file's encoding signature the author's business, in line with
+ * the fidelity contract that leaves untouched bytes alone.
+ */
+function withSourceBom(text: string, formatted: string): string {
+	return text.startsWith("\uFEFF") ? `\uFEFF${formatted}` : formatted;
+}
+
 function formatDocument(text: string, options: YamlFormattingOptions | undefined): string | undefined {
 	// ONE composition serves both paths: the stream path receives the same
 	// documents and stream errors rather than composing the text a second
@@ -552,13 +564,17 @@ function isSingleQuoteUnsafe(s: string): boolean {
 
 /**
  * Read-only navigation twin of `modifyNode`: returns the EXISTING node at
- * `path`, or `undefined` whenever the path does not resolve to one (missing
+ * `path` together with whether its parent collection is flow-styled, or
+ * `undefined` whenever the path does not resolve to a node (missing
  * key/index, non-navigable node, empty path, null value mid-path).
  * `undefined` sends `modify` down its normal pipeline, which owns the
  * insert/append/remove semantics and the typed navigation errors — this
  * helper never throws and never guesses.
  */
-function findExistingTarget(contents: YamlNode | null, path: YamlPath): YamlNode | null | undefined {
+function findExistingTarget(
+	contents: YamlNode | null,
+	path: YamlPath,
+): { readonly node: YamlNode | null; readonly inFlow: boolean } | undefined {
 	if (contents === null || path.length === 0) return undefined;
 	let current: YamlNode = contents;
 	for (let depth = 0; depth < path.length; depth++) {
@@ -567,14 +583,14 @@ function findExistingTarget(contents: YamlNode | null, path: YamlPath): YamlNode
 		if (current instanceof YamlMap) {
 			const pair = current.items.find((p) => p.key instanceof YamlScalar && p.key.value === segment);
 			if (pair === undefined) return undefined;
-			if (isLast) return pair.value;
+			if (isLast) return { node: pair.value, inFlow: current.style === "flow" };
 			if (pair.value === null) return undefined;
 			current = pair.value;
 		} else if (current instanceof YamlSeq) {
 			const idx = typeof segment === "number" ? segment : Number(segment);
 			if (Number.isNaN(idx) || idx < 0 || idx >= current.items.length) return undefined;
 			const child = current.items[idx] as YamlNode;
-			if (isLast) return child;
+			if (isLast) return { node: child, inFlow: current.style === "flow" };
 			current = child;
 		} else {
 			return undefined;
@@ -590,13 +606,16 @@ function findExistingTarget(contents: YamlNode | null, path: YamlPath): YamlNode
  * out; double-quoted expresses everything); a non-string into a quoted
  * target renders through `stringifyValue` — quoting it would change the
  * resolved type — as does any plain target, so the stringifier's own
- * plain-safety rules decide whether the text needs quotes. A rendering that
- * spans lines (folding, block styles) bails out: the fast path never
- * introduces a line break inside the spliced region.
+ * plain-safety rules decide whether the text needs quotes — under the
+ * target's own context, so a flow indicator inside a value spliced into a
+ * flow collection is quoted rather than corrupting the collection (#695). A
+ * rendering that spans lines (folding, block styles) bails out: the fast
+ * path never introduces a line break inside the spliced region.
  */
 function renderRegionalScalarText(
 	target: YamlScalar,
 	value: string | number | boolean,
+	inFlow: boolean,
 	options?: YamlStringifyOptions,
 ): string | undefined {
 	let rendered: string;
@@ -607,7 +626,7 @@ function renderRegionalScalarText(
 		rendered = renderDoubleQuoted(value);
 	} else {
 		// finalNewline: false — the splice renders a scalar, never a document.
-		rendered = stringifyValue(value, { ...toStringifyInput(options), finalNewline: false });
+		rendered = stringifyValue(value, { ...toStringifyInput(options), finalNewline: false, inFlow });
 	}
 	if (/[\n\r]/.test(rendered)) return undefined;
 	return rendered;
@@ -616,17 +635,25 @@ function renderRegionalScalarText(
 /**
  * Prove the rendered text means exactly what the caller asked: re-compose a
  * one-pair probe document and compare the resolved scalar with `Object.is`.
- * Any parse error, structural surprise, or value drift (a plain rendering
- * that re-resolves as a bool/timestamp instead of the caller's string, say)
- * bails out to the whole-document pipeline.
+ * The probe mirrors the target's context — `k: [rendered]` for a flow
+ * parent, so a rendering that would split or close the collection is caught
+ * as a structural surprise rather than a quiet corruption. Any parse error,
+ * structural surprise, or value drift (a plain rendering that re-resolves
+ * as a bool/timestamp instead of the caller's string, say) bails out to the
+ * whole-document pipeline.
  */
-function regionalRenderPreservesValue(rendered: string, value: string | number | boolean): boolean {
-	const { document: probeDoc } = composeFirstDocumentCounted(`k: ${rendered}\n`, {});
+function regionalRenderPreservesValue(rendered: string, value: string | number | boolean, inFlow: boolean): boolean {
+	const probeText = inFlow ? `k: [${rendered}]\n` : `k: ${rendered}\n`;
+	const { document: probeDoc } = composeFirstDocumentCounted(probeText, {});
 	if (probeDoc.errors.some((e) => isFatalCode(e.code))) return false;
 	const contents = probeDoc.contents;
 	if (!(contents instanceof YamlMap)) return false;
 	const pair = contents.items.find((p) => p.key instanceof YamlScalar && p.key.value === "k");
-	const node = pair?.value;
+	let node = pair?.value;
+	if (inFlow) {
+		if (!(node instanceof YamlSeq) || node.items.length !== 1) return false;
+		node = node.items[0];
+	}
 	if (!(node instanceof YamlScalar)) return false;
 	return Object.is(node.value, value);
 }
@@ -667,7 +694,9 @@ function tryRegionalScalarEdit(
 		options?.finalNewline !== undefined
 	)
 		return undefined;
-	const target = findExistingTarget(doc.contents, path);
+	const found = findExistingTarget(doc.contents, path);
+	if (found === undefined) return undefined;
+	const { node: target, inFlow } = found;
 	if (!(target instanceof YamlScalar)) return undefined;
 	// A synthesised empty span (`key:` with no value) is an insertion site,
 	// not a replaceable range.
@@ -679,10 +708,10 @@ function tryRegionalScalarEdit(
 	if (target.sourceMultiline === true) return undefined;
 	const span = text.slice(target.offset, target.offset + target.length);
 	if (/[\n\r]/.test(span)) return undefined;
-	const rendered = renderRegionalScalarText(target, value, options);
+	const rendered = renderRegionalScalarText(target, value, inFlow, options);
 	if (rendered === undefined) return undefined;
 	if (rendered === span) return []; // no-op replace: the span already says exactly this
-	if (!regionalRenderPreservesValue(rendered, value)) return undefined;
+	if (!regionalRenderPreservesValue(rendered, value, inFlow)) return undefined;
 	return [{ offset: target.offset, length: target.length, content: rendered }];
 }
 
@@ -771,7 +800,7 @@ export class YamlFormat {
 		const formatted = formatDocument(text, options);
 		if (formatted === undefined) return [];
 
-		let edits = computeEdits(text, formatted);
+		let edits = computeEdits(text, withSourceBom(text, formatted));
 
 		const effectiveRange = resolveRange(range, options?.range);
 		if (effectiveRange !== undefined) {
@@ -939,7 +968,7 @@ export class YamlFormat {
 
 		const outputDoc: RawYamlDocument = { ...doc, contents: newContents };
 		const formatted = stringifyDocument(outputDoc, toStringifyInput(options));
-		return computeEdits(text, formatted).map((e) => YamlEdit.make(e)) as ReadonlyArray<YamlEdit>;
+		return computeEdits(text, withSourceBom(text, formatted)).map((e) => YamlEdit.make(e)) as ReadonlyArray<YamlEdit>;
 	});
 
 	/**

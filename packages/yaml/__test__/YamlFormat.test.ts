@@ -517,6 +517,31 @@ describe("YamlFormat", () => {
 		);
 	});
 
+	describe("leading byte-order mark is preserved on whole-document re-emit (#694)", () => {
+		it("format keeps the BOM", () => {
+			assert.strictEqual(YamlFormat.formatToString("\uFEFFa:   1\nb: 2\n"), "\uFEFFa: 1\nb: 2\n");
+			assert.deepStrictEqual(YamlFormat.format("\uFEFFa: 1\nb: 2\n"), []);
+		});
+
+		it("format keeps the BOM on a multi-document stream", () => {
+			const text = "\uFEFFa:   1\n---\nb: 2\n";
+			assert.strictEqual(YamlFormat.formatToString(text), "\uFEFFa: 1\n---\nb: 2\n");
+		});
+
+		it.effect("modify keeps the BOM when it falls back to the whole-document pipeline", () =>
+			Effect.gen(function* () {
+				// Insertion, removal and an object value all leave the fast path.
+				assert.strictEqual(yield* YamlFormat.modifyToString("\uFEFFa: 1\n", ["b"], 2), "\uFEFFa: 1\nb: 2\n");
+				assert.strictEqual(yield* YamlFormat.modifyToString("\uFEFFa: 1\nb: 2\n", ["b"], undefined), "\uFEFFa: 1\n");
+				assert.strictEqual(yield* YamlFormat.modifyToString("\uFEFFa: 1\n", ["a"], { c: 3 }), "\uFEFFa:\n  c: 3\n");
+				assert.strictEqual(
+					yield* YamlFormat.modifyToString("\uFEFFb: 1\na: 2\n", ["a"], 3, { sortKeys: true }),
+					"\uFEFFa: 3\nb: 1\n",
+				);
+			}),
+		);
+	});
+
 	describe("modify — insert", () => {
 		it.effect("appends a new key after the last one", () =>
 			Effect.gen(function* () {

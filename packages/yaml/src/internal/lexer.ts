@@ -1104,13 +1104,16 @@ export function createScanner(text: string): YamlScanner {
 
 		const ch = peek();
 
-		// BOM
+		// BOM (YAML 1.2 §5.2). Consumed WITHOUT `advance()`: the mark is
+		// invisible, so it must not occupy a column — otherwise the first
+		// line's content lexes one column deeper than every line that follows
+		// and the composer opens a second collection at that indent (#694).
+		// The token still spans its real offset so node offsets stay indices
+		// into the original text.
 		if (ch === "\uFEFF") {
 			const start = pos;
-			const sLine = line;
-			const sCol = col;
-			advance();
-			return makeToken("byte-order-mark", "\uFEFF", start, sLine, sCol);
+			pos++;
+			return makeToken("byte-order-mark", "\uFEFF", start, line, col);
 		}
 
 		// Newlines
@@ -1475,7 +1478,8 @@ export function createScanner(text: string): YamlScanner {
 				if (text[pos] === "\n") {
 					line++;
 					col = 0;
-				} else {
+				} else if (text[pos] !== "\uFEFF") {
+					// A BOM occupies no column — the same convention as `scanNext`.
 					col++;
 				}
 				pos++;
