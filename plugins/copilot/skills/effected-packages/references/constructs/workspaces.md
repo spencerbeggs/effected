@@ -18,7 +18,13 @@
 | `CyclicDependencyError` | Class | Raised when the workspace dependency graph cannot be topologically ordered because it contains a cycle. | handle a circular workspace dependency, cannot topologically sort packages |
 | `DependencyDiff` | Interface | The result of comparing two `WorkspacePackage` dependency snapshots. | |
 | `DependencyGraph` | Class | The directed graph of dependencies **between workspace packages**. External npm dependencies are not nodes. | inter-package dependency graph, topological sort, parallel build levels, blast radius |
+| `Dependent` | Variable + TypeAlias | The decoded form of `(Dependent:variable)`: who pulls one resolved instance, as a tagged union a renderer narrows with `switch (dependent._tag)`. | who pulls one resolved copy of a package, importer path or dependent package name and version |
 | `DetectedPackageManager` | Class | The outcome of package-manager detection at a workspace root. | which package manager and version runs this workspace, detection result and evidence |
+| `DuplicateCheck` | Class | The result of checking a lockfile for packages resolved at more than one version. | find packages resolved at more than one version in a lockfile and who pulls each copy, duplicate kit copies, pnpm why aggregated, Layer mismatch from two @effected copies |
+| `DuplicateCheckOptions` | Interface | Options for `DuplicateCheck.run`. | |
+| `DuplicateInstance` | Class | One resolved instance of a duplicated version, with everything that pulls it. | one resolved instance of a duplicated package with everything that pulls it |
+| `DuplicatedPackage` | Class | One package name reached at two or more distinct versions. | one package name resolved at two or more distinct versions |
+| `DuplicatedVersion` | Class | One version a duplicated package resolved at. | one version of a duplicated package with its resolved instances |
 | `FindWorkspaceRootOptions` | Interface | Options for `WorkspaceRoot`'s `find`. | |
 | `GetWorkspacePackagesSyncOptions` | Interface | Options for `getWorkspacePackagesSync`: the required consumer-supplied operations plus the traversal bound. | |
 | `HookInjection` | Interface | The result of replaying a workspace's `configDependencies` hooks: the catalogs the hooks yield, and the release-age gate contribution they leave on the config (pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude`). | |
