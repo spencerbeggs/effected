@@ -289,8 +289,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/schemastore": {
-							range: "^0.7.0",
-							peer: "^0.7.0",
+							range: "^0.8.0",
+							peer: "^0.8.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
