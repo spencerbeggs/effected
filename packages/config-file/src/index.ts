@@ -3,6 +3,8 @@ export { ConfigCodecError } from "./ConfigCodec.js";
 export type { ConfigEventsShape } from "./ConfigEvent.js";
 export { ConfigEvent, ConfigEventPayload, ConfigEvents, ConfigSourceRef } from "./ConfigEvent.js";
 export type {
+	ConfigEncodeError,
+	ConfigEncodeOptions,
 	ConfigFileOptions,
 	ConfigFileShape,
 	ConfigFileTestOptions,

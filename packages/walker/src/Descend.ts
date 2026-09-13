@@ -10,6 +10,7 @@
 // `crossesSegments` and calls `matches`.
 
 import type { GlobPattern } from "@effected/glob";
+import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Schema } from "effect";
 
 /**
@@ -60,30 +61,42 @@ export interface DescendRecordOptions extends Omit<DescendOptions, "onUnreadable
 }
 
 /**
+ * One directory `descend` could not read under `onUnreadable: "record"`: its
+ * `cwd`-relative path and the `PlatformError` that `readDirectory` failed
+ * with. The cause is the very failure the walk absorbed, so a caller that
+ * must report WHY a directory was unreadable never re-reads it.
+ *
+ * @public
+ */
+export interface UnreadableDirectory {
+	/**
+	 * The directory's path relative to `cwd`, POSIX separators.
+	 *
+	 * @remarks
+	 * **The walk base appears as the empty string `""`**, since its own
+	 * `cwd`-relative path is empty — so an unreadable base yields
+	 * `{ matches: [], unreadable: [{ path: "", cause }] }`. Code matching
+	 * these entries as ordinary paths will not expect that; special-case it.
+	 */
+	readonly path: string;
+	/** The `readDirectory` failure, never `NotFound` (a vanished directory is a benign race and is not recorded). */
+	readonly cause: PlatformError.PlatformError;
+}
+
+/**
  * `descend`'s success value under `onUnreadable: "record"`: the matched
- * FILE paths plus the `cwd`-relative path of every mid-walk directory whose
- * `readDirectory` failed for a reason other than `NotFound` (a vanished
- * directory stays a benign race in every mode and is never recorded).
+ * FILE paths plus an {@link UnreadableDirectory} for every mid-walk
+ * directory whose `readDirectory` failed for a reason other than `NotFound`
+ * (a vanished directory stays a benign race in every mode and is never
+ * recorded).
  *
  * @public
  */
 export interface DescendResult {
 	/** Matching FILE paths relative to `cwd`, POSIX separators, sorted — identical in shape to the `"fail"`/`"skip"` success value. */
 	readonly matches: ReadonlyArray<string>;
-	/**
-	 * `cwd`-relative paths of directories that could not be read, in walk order.
-	 *
-	 * @remarks
-	 * **The walk base appears as the empty string `""`**, since its own
-	 * `cwd`-relative path is empty — so an unreadable base yields
-	 * `{ matches: [], unreadable: [""] }`. Code matching these entries as
-	 * ordinary paths will not expect that; special-case it.
-	 *
-	 * No cause travels with an entry. A caller that must report WHY a directory
-	 * was unreadable has to re-read it to obtain the `PlatformError`, which is
-	 * a second syscall for information this walk had and discarded.
-	 */
-	readonly unreadable: ReadonlyArray<string>;
+	/** Directories that could not be read, each with its cause, in walk order. */
+	readonly unreadable: ReadonlyArray<UnreadableDirectory>;
 }
 
 /**
@@ -167,7 +180,7 @@ const descendImpl: (
 	const prune = new Set(options.prune ?? DEFAULT_PRUNE);
 	const onUnreadable = options.onUnreadable ?? "fail";
 	// Populated only under "record"; the wrapper decides the return shape.
-	const unreadable: Array<string> = [];
+	const unreadable: Array<UnreadableDirectory> = [];
 
 	/** The stat-resolved type of `absolute`, or `undefined` when it does not resolve (missing, dangling symlink, unstatable). */
 	const typeOf = (absolute: string): Effect.Effect<FileSystem.File.Info["type"] | undefined> =>
@@ -226,8 +239,8 @@ const descendImpl: (
 		// and (unlike walker's upward per-probe absorption, where the scan can
 		// still succeed above) a swallowed subtree down here is silently missing
 		// membership — so the default fails typed. `"record"` also absorbs and
-		// continues, like `"skip"`, but keeps the offending relative path instead
-		// of discarding it.
+		// continues, like `"skip"`, but keeps the offending relative path AND
+		// the failure itself instead of discarding them.
 		const entries = yield* fs.readDirectory(frame.absolute).pipe(
 			Effect.catch((error) => {
 				if (error.reason._tag === "NotFound") return Effect.succeed<Array<string>>([]);
@@ -236,7 +249,7 @@ const descendImpl: (
 						new DescendError({ pattern: pattern.source, reason: "unreadableDirectory", path: frame.relative }),
 					);
 				}
-				if (onUnreadable === "record") unreadable.push(frame.relative);
+				if (onUnreadable === "record") unreadable.push({ path: frame.relative, cause: error });
 				return Effect.succeed<Array<string>>([]);
 			}),
 		);
@@ -276,11 +289,11 @@ const descendImpl: (
 /**
  * Expand a compiled glob pattern against the filesystem under
  * `onUnreadable: "record"`, resolving to a {@link DescendResult} — the
- * matched FILE paths relative to `cwd` (POSIX separators, sorted) plus the
- * `cwd`-relative path of every mid-walk directory whose `readDirectory`
- * failed for a reason other than `NotFound`. The walk continues past each
- * such directory exactly as `"skip"` does; it never aborts and it never
- * discards the offending path.
+ * matched FILE paths relative to `cwd` (POSIX separators, sorted) plus an
+ * {@link UnreadableDirectory} — path and cause — for every mid-walk
+ * directory whose `readDirectory` failed for a reason other than `NotFound`.
+ * The walk continues past each such directory exactly as `"skip"` does; it
+ * never aborts and it never discards the offending path or its cause.
  *
  * @public
  */

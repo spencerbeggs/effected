@@ -18,6 +18,7 @@ export {
 	type DescendOptions,
 	type DescendRecordOptions,
 	type DescendResult,
+	type UnreadableDirectory,
 	descend,
 } from "./Descend.js";
 export { type CompileAndExpandOptions, GlobExpansionError, compileAndExpand } from "./Expand.js";

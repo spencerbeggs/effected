@@ -125,7 +125,7 @@ Every one of these is a routed value or a deliberate defect — nothing here thr
 - **A negated pattern walks from `cwd`, not from its prefix.** Because a negated pattern can match paths outside the inner pattern's literal prefix, `descend` walks from `cwd` itself for it. You do not have to account for this — but do not assume the walk is bounded to `enumerationPrefix` when the pattern is negated.
 - **`prune` suppresses directories only.** A *file* named `.git` (a submodule or worktree gitlink) stays matchable even when `.git` is in the prune list.
 
-`descend`'s two failure reasons are the ones worth routing explicitly. `onUnreadable: "skip"` is the built-in absorb; reach for `catchTag` only when you need to branch on *why*:
+`descend`'s two failure reasons are the ones worth routing explicitly. `onUnreadable: "skip"` is the built-in absorb, and `onUnreadable: "record"` is the absorb that keeps receipts — it resolves to a `DescendResult` instead of a bare array, and each `unreadable` entry carries the `cwd`-relative `path` and the `PlatformError` `cause`, so a report can name the directory and the reason without a second `readDirectory`. The walk base appears as `path: ""`, and a directory that vanished mid-walk (`NotFound`) is a benign race in every mode, never recorded. Reach for `catchTag` only when you need to branch on *why* under the default:
 
 ```ts with-api
 import type { GlobPattern } from "@effected/glob";
@@ -173,9 +173,9 @@ describe("Walker.ascend", () => {
 });
 ```
 
-For `descend`, flip the channel with `Effect.flip` and assert on the tag: an unreadable directory under the default `onUnreadable: "fail"` yields a `DescendError` with `reason === "unreadableDirectory"`, and the same tree under `onUnreadable: "skip"` returns the readable matches instead. Driving both against one fixture tree pins the absorb/fail seam exactly where it belongs.
+For `descend`, flip the channel with `Effect.flip` and assert on the tag: an unreadable directory under the default `onUnreadable: "fail"` yields a `DescendError` with `reason === "unreadableDirectory"`, the same tree under `onUnreadable: "skip"` returns the readable matches instead, and under `onUnreadable: "record"` it returns those matches plus an `unreadable` entry whose `path` names the fixture directory and whose `cause` is the `PlatformError` your `readDirectory` fault handler raised. Driving all three against one fixture tree pins the absorb/fail seam exactly where it belongs.
 
 ## Learn more
 
 - [Overview](/walker) — why the package exists, install, and the quick start.
-- [API reference](/walker/api) — every export with full signatures: `Walker` (`ascend`, `firstMatch`, `findUpward`, `findRoot`), `descend`, `AscendOptions`, `DescendOptions`, and the `DescendError` tagged error.
+- [API reference](/walker/api) — every export with full signatures: `Walker` (`ascend`, `firstMatch`, `findUpward`, `findRoot`), `descend`, `AscendOptions`, `DescendOptions`, `DescendRecordOptions`, `DescendResult`, `UnreadableDirectory`, and the `DescendError` tagged error.

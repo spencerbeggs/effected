@@ -143,6 +143,40 @@ export type ConfigReadError = ConfigFileReadError | ConfigCodecError | ConfigVal
 export type ConfigWriteError = ConfigFileWriteError | ConfigCodecError | ConfigValidationError;
 
 /**
+ * The failure modes of {@link ConfigFileShape.encode}: everything on the write
+ * path except the write itself.
+ *
+ * @remarks
+ * Deliberately excludes {@link ConfigFileWriteError} — nothing touches the
+ * filesystem — so a `--dry-run` caller's error channel is honest about that.
+ *
+ * @public
+ */
+export type ConfigEncodeError = ConfigCodecError | ConfigValidationError;
+
+/**
+ * Options shared by {@link ConfigFileShape.encode} and {@link ConfigFileShape.write}.
+ *
+ * @public
+ */
+export interface ConfigEncodeOptions {
+	/**
+	 * Text emitted **verbatim** in front of the serialized document, separated
+	 * from it by exactly one newline. If `header` already ends in `"\n"`, no
+	 * further newline is added.
+	 *
+	 * @remarks
+	 * The caller owns the header's validity in the target format: `#` comment
+	 * lines for TOML and YAML, `//` for JSONC. JSON has no comment syntax, so a
+	 * header on a JSON codec yields an unparseable file by construction — the
+	 * service does not check. The motivating case is a schema directive such as
+	 * `#:schema https://example.com/config.schema.json` at the top of a TOML
+	 * file, which editors read for completion and validation.
+	 */
+	readonly header?: string;
+}
+
+/**
  * The failure modes of {@link ConfigFileShape.save}.
  *
  * @public
@@ -191,14 +225,26 @@ export interface ConfigFileShape<A> {
 	/** Decode and validate an in-memory value. */
 	readonly validate: (value: unknown) => Effect.Effect<A, ConfigValidationError>;
 	/**
+	 * Encode `value` to its serialized text without writing anything.
+	 *
+	 * @remarks
+	 * Produces byte-for-byte what `write(value, path, options)` puts on disk —
+	 * the primitive for `--dry-run` and "show me the file" callers. Emits no
+	 * event, because nothing was written. A codec failure here carries no
+	 * `path`, and a validation failure's `path` is `Option.none()`: there is no
+	 * file to name.
+	 */
+	readonly encode: (value: A, options?: ConfigEncodeOptions) => Effect.Effect<string, ConfigEncodeError>;
+	/**
 	 * Encode `value` and write it to an explicit `path`.
 	 *
 	 * @remarks
 	 * Does **not** create the parent directory — that is
 	 * {@link ConfigFileShape.save}'s job, and the distinction is load-bearing:
-	 * `write` targets a path the caller already vouched for.
+	 * `write` targets a path the caller already vouched for. `options` are the
+	 * same as {@link ConfigFileShape.encode}'s, so the two stay in lockstep.
 	 */
-	readonly write: (value: A, path: string) => Effect.Effect<void, ConfigWriteError>;
+	readonly write: (value: A, path: string, options?: ConfigEncodeOptions) => Effect.Effect<void, ConfigWriteError>;
 	/**
 	 * Resolve `defaultPath`, `mkdir -p` its parent, encode `value` into it, and
 	 * return the path written.
@@ -319,6 +365,15 @@ const withCodecPath = <E>(error: E, target: string): E =>
 				path: target,
 			}) as E)
 		: error;
+
+/**
+ * Put `header` in front of `document`, separated by exactly one newline.
+ *
+ * A header that already ends in a newline is not given another — a caller who
+ * built the line with a trailing `"\n"` and one who did not get the same file.
+ */
+const prependHeader = (document: string, header: string | undefined): string =>
+	header === undefined ? document : header.endsWith("\n") ? `${header}${document}` : `${header}\n${document}`;
 
 const makeImpl = <A, I, RR>(
 	options: ConfigFileOptions<A, I, RR>,
@@ -464,25 +519,52 @@ const makeImpl = <A, I, RR>(
 	});
 
 	/**
-	 * Shared by `write` and `save`. Not an `Effect.fn`: it is internal, and the
-	 * public boundaries that call it already open a span.
+	 * Schema-encode, stringify, and prepend the header. Shared by `encode`,
+	 * `write` and `save`. Not an `Effect.fn`: it is internal, and the public
+	 * boundaries that call it already open a span.
+	 *
+	 * `target` is the file this text is destined for, when there is one. It is
+	 * only ever used to NAME the file in an error — `encode` passes `none` and
+	 * its errors honestly carry no path.
 	 */
-	const encodeAndWrite = (value: A, target: string): Effect.Effect<void, ConfigWriteError> =>
+	const encodeTo = (
+		value: A,
+		target: Option.Option<string>,
+		encodeOptions?: ConfigEncodeOptions,
+	): Effect.Effect<string, ConfigEncodeError> =>
 		Effect.gen(function* () {
 			const encoded = yield* Schema.encodeEffect(options.schema)(value).pipe(
 				// Same normalization as `decode`: carry the structured issue, never stringify.
 				Effect.catchTag("SchemaError", (error) =>
-					Effect.fail(new ConfigValidationError({ path: Option.some(target), issue: error.issue })),
+					Effect.fail(new ConfigValidationError({ path: target, issue: error.issue })),
 				),
 			);
 			const serialized = yield* options.codec.stringify(encoded).pipe(
-				Effect.mapError((error) => withCodecPath(error, target)),
+				Effect.mapError((error) =>
+					Option.match(target, { onNone: () => error, onSome: (file) => withCodecPath(error, file) }),
+				),
 				Effect.tapError((error) => emit({ _tag: "StringifyFailed", codec: options.codec.name, error })),
 			);
+			return prependHeader(serialized, encodeOptions?.header);
+		});
+
+	/** `encodeTo` a known file, then write it. Shared by `write` and `save`. */
+	const encodeAndWrite = (
+		value: A,
+		target: string,
+		encodeOptions?: ConfigEncodeOptions,
+	): Effect.Effect<void, ConfigWriteError> =>
+		Effect.gen(function* () {
+			const serialized = yield* encodeTo(value, Option.some(target), encodeOptions);
 			yield* fs
 				.writeFileString(target, serialized)
 				.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
 		});
+
+	// No event: nothing was written.
+	const encode = Effect.fn("ConfigFile.encode")(function* (value: A, encodeOptions?: ConfigEncodeOptions) {
+		return yield* encodeTo(value, Option.none(), encodeOptions);
+	});
 
 	/**
 	 * Resolve `defaultPath`, `mkdir -p` its parent and write. Shared by `save`
@@ -507,9 +589,13 @@ const makeImpl = <A, I, RR>(
 			return target;
 		});
 
-	const write = Effect.fn("ConfigFile.write")(function* (value: A, target: string) {
+	const write = Effect.fn("ConfigFile.write")(function* (
+		value: A,
+		target: string,
+		encodeOptions?: ConfigEncodeOptions,
+	) {
 		// No `makeDirectory` here, deliberately: `write` trusts the caller's path.
-		yield* encodeAndWrite(value, target);
+		yield* encodeAndWrite(value, target, encodeOptions);
 		yield* emit({ _tag: "Written", path: target });
 	});
 
@@ -552,6 +638,7 @@ const makeImpl = <A, I, RR>(
 		discover: discover(),
 		loadOrDefault,
 		validate,
+		encode,
 		write,
 		save,
 		update,

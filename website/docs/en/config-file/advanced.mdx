@@ -188,7 +188,7 @@ const resilient = program.pipe(
 );
 ```
 
-- **Per-method error channels are narrowed.** `load` can fail with `ConfigFileNotFoundError`; `loadFrom` cannot, because it takes an explicit path. `write` targets a path you already vouched for and never creates its parent directory; `save` resolves `defaultPath`, `mkdir -p`s its parent, and can additionally fail with `ConfigDefaultPathMissingError` when no `defaultPath` was configured — a typed error with an empty payload rather than a fabricated path.
+- **Per-method error channels are narrowed.** `load` can fail with `ConfigFileNotFoundError`; `loadFrom` cannot, because it takes an explicit path. `encode` fails with `ConfigEncodeError` — codec or validation, never `ConfigFileWriteError`, because nothing is written; `write` targets a path you already vouched for and never creates its parent directory; `save` resolves `defaultPath`, `mkdir -p`s its parent, and can additionally fail with `ConfigDefaultPathMissingError` when no `defaultPath` was configured — a typed error with an empty payload rather than a fabricated path.
 - **`update` is a serialized read-modify-write.** It loads, applies your function, and saves under a semaphore so two concurrent `update`s on one service instance do not clobber each other. That lock guards a single instance in a single process — it is **not** a file lock, so another process writing the same path concurrently can still win.
 - **`loadOrDefault`'s default is trusted, not validated.** The `defaultValue` you pass is returned as-is when nothing is discovered; neither the schema nor your `validate` runs on it. It is caller input, not a discovered document — construct it as a valid instance yourself.
 

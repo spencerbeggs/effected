@@ -158,7 +158,7 @@ Every failure is a tagged error you route on with `Effect.catchTag`. The tags ex
 | `ConfigMigrationError` | A versioned migration failed. Carries `version`, `name`, `phase` and the structural `cause`. | Report which step failed; the config on disk is left untouched. |
 | `ConfigEncryptionError` | An encrypt, decrypt, key-derivation or base64 step failed. Carries `phase` and the structural `cause`. | A wrong passphrase and a corrupt envelope both land here; inspect `phase`. |
 
-`ConfigLoadError`, `ConfigReadError`, `ConfigWriteError`, `ConfigSaveError` and `ConfigUpdateError` are exported unions naming exactly the failures each method can produce. Catching one tag narrows the union, leaving the rest to propagate:
+`ConfigLoadError`, `ConfigReadError`, `ConfigEncodeError`, `ConfigWriteError`, `ConfigSaveError` and `ConfigUpdateError` are exported unions naming exactly the failures each method can produce — `ConfigEncodeError` is `ConfigWriteError` minus `ConfigFileWriteError`, because `encode` never touches the disk. Catching one tag narrows the union, leaving the rest to propagate:
 
 ```ts
 import type { ConfigFileShape } from "@effected/config-file";
@@ -213,6 +213,7 @@ export const secret = EncryptedCodec(migrating, EncryptedCodecKey.fromPassphrase
 - `ConfigFile.Service` / `ConfigFile.layer` / `ConfigFile.testLayer` — a per-schema service class and its layers. `testLayer` seeds files into a temp directory and wires the *real* implementation over them, so tests exercise the actual pipeline rather than a stub that can drift from it.
 - `parseOptions` — decode options threaded into every decode, on the layer and on `read`. `onExcessProperty: "error"` is the only way to report a typo'd section or a field the schema deliberately removed.
 - `ConfigFile.read` — the one-shot escape from the service: read, decode and validate one explicit path, schema and codec named per call, with no resolver chain and no write path.
+- `encode` / `write` / `save` / `update` — the write path. `encode(value, options?)` returns the serialized text a `write` would put on disk without writing, emitting an event or naming a path in its errors: the primitive behind a `--dry-run` flag. `write` takes an explicit path the caller vouches for; `save` and `update` resolve the layer's `defaultPath` and create its parent directory. `encode` and `write` accept `{ header }`, text prepended verbatim above the document with exactly one newline between — a `#:schema https://…` directive atop a TOML file, say. The caller owns its validity in the target format; JSON has no comment syntax, so a header on `JsonCodec` yields an unparseable file by construction.
 - `ConfigResolver` — `explicitPath`, `staticDir`, `upwardWalk`, `workspaceRoot`, `gitRoot` and `systemEtc`. A resolver's error channel is `never` by contract: every filesystem failure becomes `Option.none()`, so one unreadable tier never aborts the chain.
 - `MergeStrategy` — `firstMatch` and `layeredMerge`, combining discovered sources in priority order.
 - `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec` — JSON, JSONC, YAML and TOML in the box, exported free-standing so an unused format's engine is tree-shaken away.
