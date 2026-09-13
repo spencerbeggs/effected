@@ -192,12 +192,24 @@ const sshEnv = (resolved: string): Record<string, string> =>
  *
  * @remarks
  * `exitCode` and `stderr` are populated when git actually ran. `detail`
- * carries a human-readable explanation of an absorbed spawn-level
- * `PlatformError` or a per-run timeout — the two cases where git never
- * produced an exit code at all. `kind`
- * discriminates a pre-spawn guard rejection (`"refused"`) from a genuine git
- * failure (`"failed"`) structurally, so composed retry/fallback logic never has
- * to parse the prose in `message` or `detail`.
+ * carries a human-readable explanation whenever the failure is not summed up
+ * by an exit code: an absorbed spawn-level `PlatformError`, a per-run timeout,
+ * a pre-spawn guard refusal, or output git produced that the member could not
+ * parse. `kind` discriminates a pre-spawn guard rejection (`"refused"`) from a
+ * genuine git failure (`"failed"`) structurally, so composed retry/fallback
+ * logic never has to parse the prose in `message` or `detail`.
+ *
+ * **`message` is the rendering; `detail` is the datum.** `message` composes a
+ * one-line prose from the redacted argv, the cwd, and — whenever `detail` is
+ * set — `detail` itself. A consumer forwarding the underlying reason should map
+ * `detail` through only when it is set: falling back to `message` nests one
+ * rendered message inside another
+ * (`git … in cwd: git … in cwd failed (exit N): …`). When `detail` is absent,
+ * git ran and failed — `exitCode` and `stderr` are the data to forward. Note
+ * that `detail` may be set after git ran
+ * and exited successfully (e.g. `Git.log` sets `detail: "unparseable log output: …"`
+ * with `kind: "failed"`), so routing on `detail !== undefined` rather than
+ * assuming git never started is the correct consumer boundary.
  *
  * @public
  */
@@ -227,7 +239,12 @@ export class GitCommandError extends Schema.TaggedError<GitCommandError>()("GitC
 	exitCode: Schema.optionalKey(Schema.Number),
 	/** git's stderr, captured under `LC_ALL=C`. */
 	stderr: Schema.String,
-	/** Set when git never ran: an absorbed spawn failure or a timeout. */
+	/**
+	 * A human-readable reason, set whenever an exit code does not sum up the
+	 * failure: an absorbed spawn failure, a timeout, a pre-spawn guard refusal,
+	 * or output git produced that the member could not parse. `message` renders
+	 * it verbatim when present.
+	 */
 	detail: Schema.optionalKey(Schema.String),
 }) {
 	/** Renders the invocation and its failure into a one-line message. */
@@ -4005,6 +4022,19 @@ const notStubbed = (method: string) => () =>
  * safe to run concurrently against the same `cwd`; nothing here serializes
  * that — a caller running two mutating calls (or a mutating call alongside a
  * read) against one `cwd` at once owns the race.
+ *
+ * **Every spawn already runs under a 30 s timeout** (this module's
+ * `GIT_TIMEOUT`): a command that has not answered in time fails as a
+ * {@link GitCommandError} with `detail` set to `"timed out after 30s"`.
+ *
+ * That ceiling is per run, not per member call. The network-touching members
+ * (`lsRemote`, `fetch`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
+ * `submoduleUpdate`) first resolve their ssh command with up to two concurrent
+ * local `git config` reads, each bounded separately, so their worst case is
+ * 60 s; `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
+ * duplicating a 30 s layer buys nothing but two ceilings racing each other;
+ * one whose budget is tighter than the figures above still needs its own
+ * (#652).
  *
  * **Redaction policy (documented, not just convention).** Error values
  * persist only the constructor's REDACTED argv (see `GitCommandError.args`),
