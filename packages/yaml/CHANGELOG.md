@@ -1,5 +1,24 @@
 # @effected/yaml
 
+## 0.15.1
+
+### Bug Fixes
+
+- A leading byte-order mark no longer drops the first node of a document. The lexer counted the BOM as a column, so the first line lexed one column deeper than every line after it and the composer opened a second collection at that indent: `Yaml.parse("﻿a: 'x'\nb: 1\n")` returned `{ b: 1 }`, a BOM-prefixed sequence returned only its last item, and a BOM followed by a comment failed with `UnexpectedToken`. The BOM now occupies no column in the lexer and in the composer's column helpers (so a BOM-prefixed root mapping's terminal own-line comment survives too); node offsets stay indices into the original text, so `YamlFormat.modify` finds the first key and splices it in place. `YamlFormat.format` and the whole-document `modify` pipeline re-attach the source's leading BOM on re-emit instead of producing a delete-at-offset-0 edit; `YamlDocument.stringify` and `Yaml.stringify` still emit no BOM. Closes effected#694.
+- A plain scalar rendered inside a flow collection is now quoted whenever it contains a flow indicator (`,`, `[`, `]`, `{`, `}`), per the flow-plain rules of YAML 1.2 §7.3.3. Previously `requiresQuoting` applied block-context rules everywhere, so `Yaml.stringify` with `defaultCollectionStyle: "flow"`, `YamlDocument.stringify` on a flow-styled node, and `YamlFormat.modify` into a flow collection could all emit `[p, q, y]` for the value `"p, q"` (three items on re-parse) or `{b: p}, c: y}` (unparseable). Block context is unchanged. The region-confined modify fast path renders and round-trip-probes under the target's own context, so it stays regional for flow parents. Closes effected#695. [#697][#697]
+
+* `YamlFormat.modify` now takes a region-confined fast path when the target resolves to an existing single-line scalar: only that scalar's source span is spliced, preserving the original quote style, trailing same-line comments, and CRLF line endings everywhere else in the document. Previously every modify re-serialised the whole document, dropping the replaced node's comment and quote style and normalising line endings throughout. Closes effected#659.
+* The whole-document pipeline remains the path for removals, insertions, `null` values, object values, block or multi-line scalars, tagged or anchored targets, and any explicit stringify option (`defaultScalarStyle`, `forceDefaultStyles`, `sortKeys`, `indent`, `indentSequences`, `finalNewline`); those results are byte-identical to prior behavior (line endings normalised to LF).
+* An `Object.is` round-trip probe re-composes the spliced document before the edit is returned; any mismatch falls back to the whole-document pipeline, so the fast path can never change the resolved value. [#682][#682]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) and [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#682]: https://github.com/spencerbeggs/effected/pull/682
+
+[#697]: https://github.com/spencerbeggs/effected/pull/697
+
 ## 0.15.0
 
 ### Breaking Changes
