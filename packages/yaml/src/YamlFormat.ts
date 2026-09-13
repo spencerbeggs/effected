@@ -268,6 +268,18 @@ function toOutputDocument(doc: RawYamlDocument, preserveComments: boolean): RawY
  * A multi-document stream routes to {@link formatStream}, which formats
  * every document and shares the same directive refusal.
  */
+/**
+ * Re-attach the source's leading byte-order mark to a whole-document
+ * re-emission. The stringifier never emits a BOM (it is framing, not
+ * content), so without this every `format` and whole-pipeline `modify` on a
+ * BOM-prefixed file would produce a delete-at-offset-0 edit. Preserving it
+ * keeps the file's encoding signature the author's business, in line with
+ * the fidelity contract that leaves untouched bytes alone.
+ */
+function withSourceBom(text: string, formatted: string): string {
+	return text.startsWith("\uFEFF") ? `\uFEFF${formatted}` : formatted;
+}
+
 function formatDocument(text: string, options: YamlFormattingOptions | undefined): string | undefined {
 	// ONE composition serves both paths: the stream path receives the same
 	// documents and stream errors rather than composing the text a second
@@ -788,7 +800,7 @@ export class YamlFormat {
 		const formatted = formatDocument(text, options);
 		if (formatted === undefined) return [];
 
-		let edits = computeEdits(text, formatted);
+		let edits = computeEdits(text, withSourceBom(text, formatted));
 
 		const effectiveRange = resolveRange(range, options?.range);
 		if (effectiveRange !== undefined) {
@@ -956,7 +968,7 @@ export class YamlFormat {
 
 		const outputDoc: RawYamlDocument = { ...doc, contents: newContents };
 		const formatted = stringifyDocument(outputDoc, toStringifyInput(options));
-		return computeEdits(text, formatted).map((e) => YamlEdit.make(e)) as ReadonlyArray<YamlEdit>;
+		return computeEdits(text, withSourceBom(text, formatted)).map((e) => YamlEdit.make(e)) as ReadonlyArray<YamlEdit>;
 	});
 
 	/**

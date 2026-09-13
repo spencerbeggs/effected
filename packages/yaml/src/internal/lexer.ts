@@ -1478,7 +1478,8 @@ export function createScanner(text: string): YamlScanner {
 				if (text[pos] === "\n") {
 					line++;
 					col = 0;
-				} else {
+				} else if (text[pos] !== "\uFEFF") {
+					// A BOM occupies no column — the same convention as `scanNext`.
 					col++;
 				}
 				pos++;

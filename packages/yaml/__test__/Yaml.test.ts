@@ -236,6 +236,17 @@ describe("Yaml", () => {
 				assert.strictEqual(text.slice(scalar.offset, scalar.offset + scalar.length), "'x'");
 			}),
 		);
+
+		it.effect("a root mapping's terminal own-line comment survives behind a BOM", () =>
+			Effect.gen(function* () {
+				// The composer's column helpers count the BOM too; with it counted
+				// the root mapping reads as nested and its tail comment escapes to
+				// document scope, where it is dropped.
+				const doc = yield* YamlDocument.parse("\uFEFFa: 1\nb: 2\n# tail\n");
+				assert.strictEqual(doc.comment, " tail");
+				assert.strictEqual(yield* doc.stringify(), "a: 1\nb: 2\n# tail\n");
+			}),
+		);
 	});
 
 	describe("parseAll", () => {

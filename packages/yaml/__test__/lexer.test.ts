@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { lexAll } from "../src/internal/lexer.js";
+import { createScanner, lexAll } from "../src/internal/lexer.js";
 
 describe("lexer", () => {
 	describe("anchor and alias token spans", () => {
@@ -29,6 +29,25 @@ describe("lexer", () => {
 			const tokens = lexAll(text);
 			assert.strictEqual(tokens.find((t) => t.kind === "anchor")?.value, "anc");
 			assert.strictEqual(tokens.find((t) => t.kind === "alias")?.value, "anc");
+		});
+	});
+
+	describe("leading byte-order mark (#694)", () => {
+		it("the BOM occupies no column, so the first line lexes at the same indent as the rest", () => {
+			const tokens = lexAll("\uFEFFa: 1\nb: 2\n");
+			const scalars = tokens.filter((t) => t.kind === "scalar" && (t.value === "a" || t.value === "b"));
+			assert.deepStrictEqual(
+				scalars.map((t) => t.column),
+				[0, 0],
+			);
+			assert.strictEqual(tokens.filter((t) => t.kind === "block-map-start").length, 1);
+		});
+
+		it("setPosition replays the BOM without a column, matching scan", () => {
+			const scanner = createScanner("\uFEFF---\na: 1\n");
+			scanner.setPosition(1);
+			assert.strictEqual(scanner.scan(), "document-start");
+			assert.strictEqual(scanner.getTokenColumn(), 0);
 		});
 	});
 });
