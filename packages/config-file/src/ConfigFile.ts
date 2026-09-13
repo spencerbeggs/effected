@@ -539,23 +539,36 @@ const makeImpl = <A, I, RR>(
 					Effect.fail(new ConfigValidationError({ path: target, issue: error.issue })),
 				),
 			);
-			const serialized = yield* options.codec.stringify(encoded).pipe(
-				Effect.mapError((error) =>
-					Option.match(target, { onNone: () => error, onSome: (file) => withCodecPath(error, file) }),
-				),
-				Effect.tapError((error) => emit({ _tag: "StringifyFailed", codec: options.codec.name, error })),
-			);
+			const serialized = yield* options.codec
+				.stringify(encoded)
+				.pipe(
+					Effect.mapError((error) =>
+						Option.match(target, { onNone: () => error, onSome: (file) => withCodecPath(error, file) }),
+					),
+				);
 			return prependHeader(serialized, encodeOptions?.header);
 		});
 
-	/** `encodeTo` a known file, then write it. Shared by `write` and `save`. */
+	/**
+	 * `encodeTo` a known file, then write it. Shared by `write` and `save`.
+	 *
+	 * `StringifyFailed` is emitted HERE, not in `encodeTo`: it is a write-path
+	 * event, and `encode` promises to publish nothing. A subscriber counting
+	 * failed writes must not see a dry run's codec failure.
+	 */
 	const encodeAndWrite = (
 		value: A,
 		target: string,
 		encodeOptions?: ConfigEncodeOptions,
 	): Effect.Effect<void, ConfigWriteError> =>
 		Effect.gen(function* () {
-			const serialized = yield* encodeTo(value, Option.some(target), encodeOptions);
+			const serialized = yield* encodeTo(value, Option.some(target), encodeOptions).pipe(
+				Effect.tapError((error) =>
+					error._tag === "ConfigCodecError"
+						? emit({ _tag: "StringifyFailed", codec: options.codec.name, error })
+						: Effect.void,
+				),
+			);
 			yield* fs
 				.writeFileString(target, serialized)
 				.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));

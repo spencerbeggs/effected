@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Effect, FileSystem, Layer, Option, Path, PubSub, Schema } from "effect";
 import type { ConfigCodec as ConfigCodecShape } from "../src/ConfigCodec.js";
 import { ConfigCodecError } from "../src/ConfigCodec.js";
+import { ConfigEvents } from "../src/ConfigEvent.js";
 import type { ConfigEncodeError, ConfigWriteError } from "../src/ConfigFile.js";
 import { ConfigFile, ConfigValidationError } from "../src/ConfigFile.js";
 import { JsonCodec } from "../src/JsonCodec.js";
@@ -119,6 +120,51 @@ describe("ConfigFile.encode", () => {
 			assert.strictEqual((fromEncode as ConfigCodecError).path, undefined);
 			assert.instanceOf(fromWrite, ConfigCodecError);
 			assert.strictEqual((fromWrite as ConfigCodecError).path, "/x/config.json");
+		}),
+	);
+
+	it.effect("a stringify failure emits StringifyFailed from write but nothing at all from encode", () =>
+		Effect.gen(function* () {
+			const broken: ConfigCodecShape = {
+				name: "broken",
+				parse: JsonCodec.parse,
+				stringify: () =>
+					Effect.fail(new ConfigCodecError({ codec: "broken", operation: "stringify", cause: new Error("nope") })),
+			};
+			const eventful = Layer.mergeAll(
+				ConfigEvents.layer,
+				ConfigFile.layer(DocConfig, {
+					schema: Doc,
+					codec: broken,
+					resolvers: [],
+					strategy: MergeStrategy.firstMatch<Doc>(),
+					events: ConfigEvents,
+				}).pipe(Layer.provide(platform())),
+			);
+			const program = Effect.gen(function* () {
+				const svc = yield* ConfigEvents;
+				const sub = yield* PubSub.subscribe(svc.events);
+				const cfg = yield* DocConfig;
+
+				yield* Effect.flip(cfg.encode(value));
+				const afterEncode = yield* PubSub.takeUpTo(sub, Number.MAX_SAFE_INTEGER);
+
+				// Positive control: the same failure through `write` still publishes, so
+				// an empty `afterEncode` cannot be a subscription that never worked.
+				yield* Effect.flip(cfg.write(value, "/x/config.json"));
+				const afterWrite = yield* PubSub.takeUpTo(sub, Number.MAX_SAFE_INTEGER);
+				return { afterEncode, afterWrite };
+			});
+			const { afterEncode, afterWrite } = yield* program.pipe(Effect.scoped, Effect.provide(eventful));
+
+			assert.deepStrictEqual(
+				afterEncode.map((e) => e.event._tag),
+				[],
+			);
+			assert.deepStrictEqual(
+				afterWrite.map((e) => e.event._tag),
+				["StringifyFailed"],
+			);
 		}),
 	);
 
