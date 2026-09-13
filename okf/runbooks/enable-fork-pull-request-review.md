@@ -8,8 +8,8 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T22:04:49Z
-  body_sha256: 12275f10eeb11ea8f7b990ba6027152919b9915676539287c01ac2281125b543
+  at: 2026-09-13T22:30:14Z
+  body_sha256: c2aee865987bef15d4d45af952c4559427bfebac6bf6f379a54245b9e5ed848c
 ---
 
 # Enable fork pull-request review on a repository
@@ -27,5 +27,7 @@ validation (check runs, Claude review) only after reading the diff.
 4. Merge the caller change, then open any same-repo PR: its `pull_request_target` run must show `Fork Approval` and `Fork Validation` as skipped. (The PR carrying the change itself shows no `pull_request_target` run — that event reads the workflow from the base branch.)
 
 Done when a fork PR shows two Silk runs: `Code Validation` completing unauthenticated within minutes, and `Fork Approval` waiting with a *Review deployments* button; approving it posts the check runs on the fork commit.
+
+Fork mode is for GitHub-hosted runners only: an approved fork run on a self-hosted runner is a persistent compromise of that runner. After approval the contributor's code can reach the App private key and the Claude tokens — the accepted residual; every other secret, the OIDC token and the caches are kept out.
 
 Each push is a new run and needs a new approval. Branch protection's required checks are only satisfied by an approved run, so an unapproved fork PR is never mergeable.
