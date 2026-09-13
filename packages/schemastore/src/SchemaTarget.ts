@@ -44,6 +44,19 @@ export interface SchemaTarget {
 	 * rewritten in place.
 	 */
 	readonly version?: SchemaVersion;
+	/**
+	 * Options passed through to {@link StoreDocument.fromSchema} (and, from
+	 * there, core's `Schema.toJsonSchemaDocument`).
+	 *
+	 * A target-level field rather than a pipeline-wide default keeps each
+	 * document's generation contract self-describing, so
+	 * {@link SchemaPipeline} reproduces a document deterministically
+	 * regardless of core's own default — for example, an `onExcessProperty`
+	 * setting of `error` restores closed objects after rc.113 flipped that
+	 * default open. See {@link StoreDocumentOptions.jsonSchema} for the
+	 * `includeAnnotationKey` gate this option is also subject to.
+	 */
+	readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 }
 
 /**
@@ -64,6 +77,7 @@ export class SchemaTarget {
 		readonly $id: string;
 		readonly name?: string;
 		readonly path: string;
+		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 	}): SchemaTarget;
 	/**
 	 * Builds a versioned target. `name` is **required** here: versioned
@@ -77,6 +91,7 @@ export class SchemaTarget {
 		readonly name: string;
 		readonly path: string;
 		readonly version: SchemaVersion;
+		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 	}): SchemaTarget;
 	/**
 	 * Builds a target. `$id` and `path` must be non-empty — an empty
@@ -90,6 +105,7 @@ export class SchemaTarget {
 		readonly name?: string;
 		readonly path: string;
 		readonly version?: SchemaVersion;
+		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 	}): SchemaTarget {
 		for (const key of ["$id", "path"] as const) {
 			if (options[key].length === 0) {
@@ -110,6 +126,7 @@ export class SchemaTarget {
 			path: options.path,
 			...(options.name !== undefined ? { name: options.name } : {}),
 			...(options.version !== undefined ? { version: options.version } : {}),
+			...(options.jsonSchema !== undefined ? { jsonSchema: options.jsonSchema } : {}),
 		};
 	}
 }

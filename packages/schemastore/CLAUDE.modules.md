@@ -102,12 +102,16 @@ parent.
   diverged on error shape and gating.
 - `SchemaTarget` — an interface + statics-only merged class (NOT a
   `Schema.Class`: it carries a live `Schema.Constraint`).
-  `{schema, $id, path, name?, version?}`. `name` is optional so a file-only
-  target need not duplicate its path's basename, and versioned naming is
-  `name-<version>.json`. `version`'s second meaning: a **pinned** label (no
+  `{schema, $id, path, name?, version?, jsonSchema?}`. `name` is optional so a
+  file-only target need not duplicate its path's basename, and versioned naming
+  is `name-<version>.json`. `version`'s second meaning: a **pinned** label (no
   prerelease) declares that consumers pin this document's URL, so
   `SchemaPipeline.run` refuses to rewrite it in place under a `"contract"`
-  change — only coherent when `version` participates in `path`.
+  change — only coherent when `version` participates in `path`. `jsonSchema?`
+  (`Schema.ToJsonSchemaOptions`) is forwarded by `SchemaPipeline` to
+  `StoreDocument.fromSchema`, so a target reproduces its document regardless
+  of core's `toJsonSchemaDocument` default (e.g. `onExcessProperty: "error"`
+  for closed objects post-rc.113; #688).
 - `SchemaVersioning` — `SchemaVersion` (a branded string) with
   `parseResult`/`parse` and `InvalidSchemaVersionError`; `Order`/`latest` are
   plain SemVer precedence (`1.10.0` > `1.9.0`; the label round-trips verbatim);

@@ -23,7 +23,7 @@ Two things are services, and each earns it. [`SchemaFile`](/schemastore/api/clas
 
 ## Run the whole emit loop
 
-`SchemaPipeline.run` walks a target manifest: generate each target's document, lint it, validate it with the engine, gate on the findings, write it. A [`SchemaTarget`](/schemastore/api/class/schematarget) names a schema, its `$id`, where the file goes, and optionally a catalog name and version.
+`SchemaPipeline.run` walks a target manifest: generate each target's document, lint it, validate it with the engine, gate on the findings, write it. A [`SchemaTarget`](/schemastore/api/class/schematarget) names a schema, its `$id`, where the file goes, and optionally a catalog name, a version and the `jsonSchema` options core generates the document with.
 
 ```ts with-api
 import { SchemaFile, SchemaPipeline, SchemaTarget, SchemaValidator } from "@effected/schemastore";
@@ -35,6 +35,7 @@ const targets = [
     schema: Schema.Struct({ name: Schema.String }),
     $id: "https://example.com/schemas/mytool.json",
     path: "schemas/mytool.json",
+    jsonSchema: { onExcessProperty: "error" },
   }),
 ];
 
@@ -52,6 +53,8 @@ Effect.runPromise(program).then(console.log);
 `NodeServices` is composed **into** the layer with `Layer.provide` rather than stacked onto the program with a second `Effect.provide`. Both run correctly here — `SchemaFile` holds no state, so nothing observes the difference — but the composed form is the shape to copy. Stacking `Effect.provide` calls at the call site is how a layer ends up built more than once, and the first stateful service you add is where that starts to matter. Binding the composition to a named `const` also makes it reusable: the generator and the drift test that provide the same value cannot disagree about what the layer contains.
 
 `name` is optional on a target because only catalog naming reads it — a file-only target does not repeat its path's basename. Supply it when you also pass a `version`, since versioned naming is `<name>-<version>.json`; an overload pair makes version-without-name a compile error rather than a runtime surprise. `runOne` takes a single target and answers its one result directly, so a one-target caller need not prove element zero exists.
+
+`jsonSchema` is optional as well and carries core's `Schema.ToJsonSchemaOptions` for that one target. Set it when the document's shape must not follow core's defaults: `onExcessProperty: "error"` keeps a published closed-object document closed, where the open-by-default generator would otherwise flip every struct's `additionalProperties` and the contract gate below would refuse to rewrite a pinned version in place. It lives on the target rather than in the pipeline options so each document's generation contract is self-describing.
 
 ## Gating is policy, not mechanism
 

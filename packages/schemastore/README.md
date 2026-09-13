@@ -71,9 +71,11 @@ console.log(Effect.runSync(program));
 //   "required": [
 //     "name"
 //   ],
-//   "additionalProperties": false
+//   "additionalProperties": true
 // }
 ```
+
+`additionalProperties: true` is core's default for a struct: `Schema.toJsonSchemaDocument` emits open objects unless told otherwise. A config schema usually wants the closed form, and `jsonSchema: { onExcessProperty: "error" }` in the options produces it; the same option lives on a pipeline target, below.
 
 `fromSchema` runs the whole pipeline — 2020-12 generation, Draft-07 lowering, the `$ref` rewrite and the declared-family gate — so every `$ref` in a built document already resolves against its `$defs` pool. `toJson()` is the flat publication shape (`$defs` omitted when empty) and `serializeResult` routes through the owned canonical serializer, tab-indented with a single trailing newline. If core cannot convert a schema, the failure is typed as `SchemaConversionError` and carries the `$id` and the structured cause.
 
@@ -243,6 +245,7 @@ const targets = [
     schema: Schema.Struct({ name: Schema.String }),
     $id: "https://example.com/config.schema.json",
     path: "schemas/config.schema.json",
+    jsonSchema: { onExcessProperty: "error" },
   }),
 ];
 
@@ -267,6 +270,8 @@ named `const` also makes it reusable: a drift test and the generator that
 provide the same value cannot disagree about what the layer contains.
 
 A target names its schema, its `$id` and where the file goes. `name` is optional and only catalog naming reads it, so a file-only target like the one above does not repeat its path's basename; supply it when you also pass a `version`, since versioned naming is `<name>-<version>.json`.
+
+`jsonSchema` is optional too, and carries core's `Schema.ToJsonSchemaOptions` for that one target. Set it when the document's shape must not follow core's defaults: `onExcessProperty: "error"` keeps a published closed-object document closed, where the open-by-default generator would otherwise flip every struct's `additionalProperties` and the contract gate would refuse the rewrite. Living on the target rather than in the pipeline options keeps each document's generation contract self-describing.
 
 Both gates' findings normalize into one `PipelineFinding` shape, so a single predicate judges them. Gating is **policy, not mechanism**: `blocking` defaults to `severity === "warning"`, which is what `UnresolvedRef`, `UnknownKeyword` and `DepthExceeded` are. Replace the predicate rather than the loop when you disagree.
 
@@ -326,7 +331,7 @@ The classification is key-order insensitive and keyword-position aware, like the
 - `DocumentDiff` — `classify` puts two documents in `"none"` / `"annotations"` / `"contract"`, the signal for whether a change needs a new schema version, plus `isClean` for the clean case.
 - `SchemaPipeline` — the emit loop over a target manifest, two-phase and all-or-nothing across targets: `run` and `check`, the single-target `runOne` and `checkOne`, `PipelineFinding`, `SchemaGateError` and an overridable gating predicate, plus the contract gate (`ContractChangePolicy`, `ContractChangeTarget`, `SchemaContractChangeError`, `PipelineCheckResult.contractBlocked`) that refuses to rewrite a published document's validation contract in place.
 - `SchemaFile` — write-if-changed IO over core `FileSystem` / `Path`, comparing by content and answering what changed as a value; `check` is the non-writing drift half, answering `wouldWrite` alongside `change`.
-- `SchemaTarget` — the target manifest vocabulary: schema, `$id`, destination path, an optional name and an optional version that requires one.
+- `SchemaTarget` — the target manifest vocabulary: schema, `$id`, destination path, an optional name, an optional version that requires one, and optional per-target `jsonSchema` generation options.
 - `CanonicalJson` — the deterministic serializer with typed failures (`NonJsonValueError`, `JsonDepthExceededError`).
 
 ## License
