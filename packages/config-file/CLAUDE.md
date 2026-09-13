@@ -32,8 +32,9 @@ when changing the pipeline seams, the error set, or the codec boundaries.
 - `src/MergeStrategy.ts` — `MergeStrategy` (`firstMatch`, `layeredMerge`),
   `ConfigSource`, `NonEmptySources`
 - `src/ConfigFile.ts` — `ConfigFile` (`Service`, `layer`, `testLayer`, `read`),
-  `ConfigFileShape`, `ConfigFileOptions`, `ConfigFileTestOptions`,
-  `ConfigReadOptions`, and five
+  `ConfigFileShape` (whose members include `encode` and `write`),
+  `ConfigFileOptions`, `ConfigFileTestOptions`, `ConfigReadOptions`,
+  `ConfigEncodeOptions`, the `ConfigEncodeError` union, and five
   errors: `ConfigFileNotFoundError`, `ConfigFileReadError`,
   `ConfigFileWriteError`, `ConfigDefaultPathMissingError`,
   `ConfigValidationError`
@@ -119,6 +120,15 @@ and provide that const, or you mint two independent service instances.
 `makeImpl` over them — not a mock; it has no `defaultPath`, so `save`/`update`
 honestly fail with `ConfigDefaultPathMissingError` under it.
 
+`encode(value, options?)` is the **`--dry-run` primitive**: it returns the exact
+string `write` puts on disk — schema-encode, stringify, header — with no write,
+no event and path-less errors (`ConfigEncodeError = ConfigCodecError |
+ConfigValidationError`). `write(value, path, options?)` and `encode` share one
+`encodeTo`, so they cannot drift. `ConfigEncodeOptions.header` is prepended
+**verbatim** with exactly one newline; the caller owns its validity in the
+target format — JSON has no comment syntax, so a `#` header on `JsonCodec`
+yields an unparseable file by construction, and the package does not check.
+
 `ConfigFile.update` is serialized by a `Semaphore` (`Semaphore.makeUnsafe(1)`,
 then `withPermits(1)`) because load → transform → save is a read-modify-write.
 `Effect.makeSemaphore` does not exist in v4 — `Semaphore` is a top-level module.
@@ -196,7 +206,7 @@ now expressed over `Walker.ascend`, `Walker.findUpward` and `Walker.findRoot`.
 
 ## Testing and building
 
-Tests live in `__test__/` (14 files, 154 passing), use `@effect/vitest`, and
+Tests live in `__test__/` (18 files, 182 passing), use `@effect/vitest`, and
 assert with `assert.*` — **never** `expect`.
 
 ```bash

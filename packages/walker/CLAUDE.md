@@ -73,8 +73,13 @@ hands in — never re-derived here.
 - Unreadable directory mid-walk: `onUnreadable: "fail"` (default) fails typed
   as `DescendError` — the OPPOSITE of the upward per-probe absorption, because
   a swallowed subtree in a downward enumeration is silently missing
-  membership. `"skip"` absorbs and continues. A NotFound mid-walk is a benign
-  vanished-directory race and reads as empty in both modes.
+  membership. `"skip"` absorbs and continues. `"record"` absorbs and resolves
+  to a `DescendResult { matches, unreadable }` instead of a bare array, where
+  each `UnreadableDirectory` is `{ path, cause }` — the absorbed
+  `readDirectory` `PlatformError` travels with the entry, so a caller that
+  must report WHY never re-reads the directory. The walk base records as
+  `path: ""`. A NotFound mid-walk is a benign vanished-directory race and
+  reads as empty in every mode — it is never recorded.
 - Depth past `maxDepth` (default 256) is a typed `depthExceeded` failure,
   never a truncation; an invalid `maxDepth` is a **defect**, exactly
   `ascend`'s guard.

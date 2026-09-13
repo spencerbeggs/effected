@@ -175,13 +175,13 @@ await build({
 				effected: {
 					packages: {
 						"@effected/app": {
-							range: "^0.16.0",
+							range: "^0.16.1",
 							peer: "^0.16.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
 						"@effected/cli": {
-							range: "^0.4.0",
+							range: "^0.4.1",
 							peer: "^0.4.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -193,8 +193,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/config-file": {
-							range: "^0.8.0",
-							peer: "^0.8.0",
+							range: "^0.9.0",
+							peer: "^0.9.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -325,25 +325,25 @@ await build({
 							source: "workspace",
 						},
 						"@effected/tsconfig-json": {
-							range: "^0.9.0",
+							range: "^0.9.1",
 							peer: "^0.9.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
 						"@effected/walker": {
-							range: "^0.8.0",
-							peer: "^0.8.0",
+							range: "^0.9.0",
+							peer: "^0.9.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
 						"@effected/workspaces": {
-							range: "^0.21.0",
+							range: "^0.21.1",
 							peer: "^0.21.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
 						"@effected/xdg": {
-							range: "^0.5.0",
+							range: "^0.5.1",
 							peer: "^0.5.0",
 							strategy: "lock-minor",
 							source: "workspace",

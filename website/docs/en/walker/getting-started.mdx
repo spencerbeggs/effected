@@ -204,7 +204,7 @@ const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 Effect.runPromise(program.pipe(Effect.provide(PlatformLive))).then(console.log);
 ```
 
-The error carries `pattern`, `reason`, `path` and (for `depthExceeded`) `limit`, so you can report precisely what happened and where. If you would rather tolerate an unreadable subtree than fail on it, pass `onUnreadable: "skip"` and the walk continues past it — trading the guarantee of completeness for resilience. (Compiling the pattern is a separate fallible step: an invalid glob fails as a `GlobPatternError` from `@effected/glob`, routed the same way.)
+The error carries `pattern`, `reason`, `path` and (for `depthExceeded`) `limit`, so you can report precisely what happened and where. If you would rather tolerate an unreadable subtree than fail on it, pass `onUnreadable: "skip"` and the walk continues past it — trading the guarantee of completeness for resilience. `onUnreadable: "record"` makes the same trade without losing the information: the result becomes a `DescendResult` whose `matches` are the file paths and whose `unreadable` array holds one `UnreadableDirectory` — `{ path, cause }` — for every mid-walk directory whose `readDirectory` failed for a reason other than `NotFound`, with the `PlatformError` it failed with. (A child that cannot be `stat`ed is skipped silently in every mode; only a listing failure is recorded.) (Compiling the pattern is a separate fallible step: an invalid glob fails as a `GlobPatternError` from `@effected/glob`, routed the same way.)
 
 ## Next steps
 

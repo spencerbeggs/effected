@@ -173,6 +173,22 @@ const program = Effect.gen(function* () {
 
 Without a `defaultPath`, `save` and `update` fail honestly with `ConfigDefaultPathMissingError` rather than inventing a path to write to.
 
+To show what *would* be written without writing it — a `--dry-run` flag, a preview in a prompt — call `encode`. It returns the exact text `write` would put on disk, emits no event, and its errors carry no path because there is no file to name:
+
+```ts
+const preview = Effect.gen(function* () {
+  const config = yield* TodoConfig;
+  return yield* config.encode(new TodoSettings({ editor: "code", color: true, maxItems: 200 }));
+  // {
+  //   "editor": "code",
+  //   "color": true,
+  //   "maxItems": 200
+  // }
+});
+```
+
+Both `encode` and `write` also accept `{ header }` — text prepended verbatim, with exactly one newline between it and the document. Its validity in the target format is on you: `#` lines suit TOML and YAML, `//` suits JSONC, and plain JSON has no comment syntax at all, so a header on `JsonCodec` produces a file `load` will reject. The motivating case is a `#:schema https://example.com/todo.schema.json` directive atop a TOML file, which editors read for completion.
+
 ### Switch formats with one word
 
 The codec is the only thing that changes to read YAML or TOML instead of JSON — the schema, resolvers and strategy are untouched. One install covers every format, and naming `YamlCodec` never drags the TOML or JSONC engines into your bundle:

@@ -230,7 +230,13 @@ layer(platform(unreadableTree, unreadableOptions))("descend, unreadable director
 			const pattern = yield* GlobPattern.compile("src/**/*.ts");
 			const result = yield* descend(pattern, { cwd: "/proj", onUnreadable: "record" });
 			assert.deepStrictEqual(result.matches, ["src/a.ts"]);
-			assert.deepStrictEqual(result.unreadable, ["src/locked"]);
+			assert.strictEqual(result.unreadable.length, 1);
+			const [entry] = result.unreadable;
+			assert.strictEqual(entry?.path, "src/locked");
+			// The cause is the very PlatformError the walk absorbed — the injected
+			// fault, not a re-read — so the caller never needs a second syscall.
+			assert.strictEqual(entry?.cause._tag, "PlatformError");
+			assert.strictEqual(entry?.cause.reason._tag, "PermissionDenied");
 		}),
 	);
 
@@ -265,6 +271,26 @@ layer(platform(vanishedTree, vanishedOptions))("descend, vanished directory", (i
 			const result = yield* descend(pattern, { cwd: "/proj", onUnreadable: "record" });
 			assert.deepStrictEqual(result.matches, ["src/a.ts"]);
 			assert.deepStrictEqual(result.unreadable, []);
+		}),
+	);
+});
+
+// The walk BASE itself is unreadable: its cwd-relative path is the empty
+// string, so the record entry carries the `""` sentinel — with its cause.
+const unreadableBaseTree = { "/proj/src/a.ts": "" };
+const unreadableBaseOptions = { unreadable: new Set(["/proj"]) };
+
+layer(platform(unreadableBaseTree, unreadableBaseOptions))("descend, unreadable walk base", (it) => {
+	it.effect("records the base as the empty-string path, carrying the cause, with no matches", () =>
+		Effect.gen(function* () {
+			// No literal prefix, so the walk starts at cwd itself.
+			const pattern = yield* GlobPattern.compile("**/*.ts");
+			const result = yield* descend(pattern, { cwd: "/proj", onUnreadable: "record" });
+			assert.deepStrictEqual(result.matches, []);
+			assert.strictEqual(result.unreadable.length, 1);
+			const [entry] = result.unreadable;
+			assert.strictEqual(entry?.path, "");
+			assert.strictEqual(entry?.cause.reason._tag, "PermissionDenied");
 		}),
 	);
 });

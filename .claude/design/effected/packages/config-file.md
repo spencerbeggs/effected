@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-08
-updated: 2026-08-25
-last-synced: 2026-08-25
+updated: 2026-09-12
+last-synced: 2026-09-12
 completeness: 93
 related:
   - cli.md
@@ -92,6 +92,12 @@ Options are supplied to the layer, **not baked into the factory**, for two reaso
 
 The service keeps a deliberate **save versus write** distinction — default path with directory creation, versus explicit path with none — and update is load-transform-save. The default-taking loader returns its default **as-is**, applying neither the schema nor a configured validation hook to it. Discovery **aborts** on a found-but-corrupt low-priority source rather than skipping it: silently continuing would run the pipeline on a different, wrong configuration than the one closest to the caller's intent.
 
+### encode, and the header option
+
+`encode(value, options?)` yields the serialized text — byte-for-byte what `write` would put on disk — **without touching the filesystem**. Internally the old encode-and-write step is split into `encodeTo(value, Option<target>, options)` plus the write, so `encode`, `write` and `save` share one encoding path. Two consequences fall out of "nothing was written": `encode` emits **no event**, and its errors carry **no path** — the validation error's `path` is `None` and there is no codec path — with `ConfigEncodeError` being the write union minus `ConfigFileWriteError`, deliberately.
+
+`encode` and `write` take `ConfigEncodeOptions { header?: string }`. The header is prepended **verbatim** by the service, separated from the document by exactly one newline (a header that already ends in one is not doubled). It is **not** threaded through `ConfigCodec.stringify`, and codecs declare no comment support: the caller owns the header's validity in the target format — `#` for TOML and YAML, `//` for JSONC, and JSON has no comment syntax at all, so a header on the JSON codec is an unparseable file by construction. The rationale is the same stateless "value in, string out" seam the [JSONC comment question](#the-four-codecs) already records: threading the option would have touched all four codecs plus the encryption and migration decorators for one line of behaviour. `save` and `update` do not take options — the seam is kept to `encode`/`write` on purpose.
+
 ### Decode options, and why `validate` cannot substitute
 
 `ConfigFileOptions` and `ConfigReadOptions` both take `parseOptions`, threaded into **every** schema decode either performs. Absent, core's defaults apply and nothing changes.
@@ -132,7 +138,7 @@ Two shape facts govern it. `ConfigProvider.fromUnknown` does not flatten nested 
 
 Each codec is a thin implementation over one format package. The JSON one is the zero-dependency built-in over the platform's own parser.
 
-**The JSONC codec cannot preserve comments across a round trip.** Its encode direction is plain JSON emission, so comments never survive decode-then-encode, and its output is byte-identical to the JSON codec's. The edit-based surfaces cannot help, because they need the *original* source text while the codec seam is stateless — value in, string out. A comment-preserving write would require the seam itself to accept the prior raw text, which is an open question recorded rather than resolved.
+**The JSONC codec cannot preserve comments across a round trip.** Its encode direction is plain JSON emission, so comments never survive decode-then-encode, and its output is byte-identical to the JSON codec's. The edit-based surfaces cannot help, because they need the *original* source text while the codec seam is stateless — value in, string out. A comment-preserving write would require the seam itself to accept the prior raw text, which is an open question recorded rather than resolved. The one comment the service *does* write — the [`header` option](#encode-and-the-header-option) — is prepended above the codec rather than passed through it, which is why that seam stayed stateless.
 
 **The TOML codec is the one with a cheap genuine stringify failure**, since TOML has no null, so it is where the tests pin a structural stringify cause. Its hostile-input coverage trips the format package's parse-side nesting cap and asserts a typed *failure*, not a defect. TOML datetimes and large integers decode to their domain classes and `bigint`; the seam is `unknown`, so the consumer's schema decides.
 

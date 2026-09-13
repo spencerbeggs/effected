@@ -3,8 +3,8 @@ status: current
 module: effected
 category: architecture
 created: 2026-07-09
-updated: 2026-09-02
-last-synced: 2026-09-02
+updated: 2026-09-12
+last-synced: 2026-09-12
 completeness: 95
 related:
   - ../effect-standards.md
@@ -124,6 +124,14 @@ Because the channel is `never`, the walking resolvers in config-file inherit the
 - Downward, a swallowed subtree is **silently missing membership dressed as an empty result**. The caller cannot tell "no files matched" from "I could not look", and every consumer that acts on the answer — publishing, hashing, change detection — acts on a quietly wrong set.
 
 So unreadable directories **fail** by default. A skip mode exists for callers who genuinely want best-effort, but it must be **asked for**, never assumed. Depth exhaustion is likewise a typed failure, never a truncation — silent truncation silently changes match semantics. An invalid depth cap stays a defect, exactly as upward.
+
+A third mode, `onUnreadable: "record"`, resolves to `DescendResult { matches, unreadable }` — best-effort matches plus an `UnreadableDirectory` (`{ path, cause }`) for every directory the walk absorbed. The `cause` is the `PlatformError` the `readDirectory` failure carried, so a consumer reporting **why** a subtree is missing needs no second syscall to rediscover it. Three choices in that shape are deliberate:
+
+- **The entry was widened from a bare path string, not extended sideways.** Adding an asymmetric `base` field or a parallel `failures` array alongside a string list would have left two things to keep aligned; one record with both fields is the honest shape. The widening is breaking for record-mode consumers, of which okfit is the only one and the one that asked for it.
+- **The walk base stays `path: ""`**, consistent with `DescendError.path` — a caller that used to match `unreadable.includes("")` now matches on `entry.path`.
+- **`NotFound` is still never recorded.** A vanished directory remains the benign race the section above describes, in every mode.
+
+`compileAndExpand` deliberately does **not** accept record mode — the recipe still surfaces fail and skip only — until a second consumer asks for it.
 
 `DescendError`'s reason field uses `Schema.Literals`, not `Schema.Literal`: the variadic `Literal` **silently ignores every argument after the first**, so a two-argument `Literal` union quietly narrows to the first member.
 

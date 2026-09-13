@@ -86,6 +86,7 @@ The predicate can be expensive — reading and parsing a `package.json` to decid
 - `Walker.firstMatch(candidates, predicate)` — the first candidate the predicate accepts. Absorbs each predicate failure individually and short-circuits at the first match.
 - `Walker.findUpward(dirs, candidatesFor)` — the first existing path, directory-major: every candidate in the nearest directory is tried before ascending.
 - `Walker.findRoot(dirs, isRoot)` — the nearest directory a marker predicate accepts. `firstMatch` where the candidate expansion is the identity.
+- `descend(pattern, options)` — the file paths a compiled `@effected/glob` pattern selects under `cwd`, POSIX separators, sorted. `onUnreadable` decides what an unreadable directory mid-walk means: `"fail"` (the default) raises a typed `DescendError`, `"skip"` continues past it and forgets it, and `"record"` continues past it and returns a `DescendResult` — `{ matches, unreadable }`, where each `UnreadableDirectory` carries the directory's `cwd`-relative `path` and the `PlatformError` it failed with, so a report never has to re-read the directory to learn why. The walk base records as `path: ""`, and a directory that vanished mid-walk (`NotFound`) is a benign race, never recorded.
 
 ## License
 
