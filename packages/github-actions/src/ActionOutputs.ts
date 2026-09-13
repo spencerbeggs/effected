@@ -134,6 +134,63 @@ const delimiterFor = (value: string): string => {
 const isUsableName = (name: string): boolean => name !== "" && !/[\r\n]/.test(name);
 
 /**
+ * The JSON text `setJson` publishes for `value`: encoded through `schema`,
+ * then stringified. The one step of `setJson` that can fail, shared by the
+ * real layer and both test doubles so that none of them can skip it.
+ */
+const encodeJson = <A, I>(
+	name: string,
+	value: A,
+	schema: Schema.Codec<A, I>,
+): Effect.Effect<string, OutputEncodeError> =>
+	Schema.encodeUnknownEffect(schema)(value).pipe(
+		Effect.mapError((cause) => new OutputEncodeError({ name, cause })),
+		Effect.map((encoded) => JSON.stringify(encoded)),
+	);
+
+/**
+ * One call an {@link ActionOutputs.recording} double observed.
+ *
+ * @remarks
+ * `value` is always the string the runner would have seen: for `setJson` that
+ * is the **encoded** JSON text, after the same schema encode the real layer
+ * performs, so a test asserting on it reads exactly what a later step's
+ * `steps.<id>.outputs.<name>` expression would. `name` is present for the
+ * members that take one (`set`, `setJson`, `exportVariable`) and absent
+ * otherwise.
+ *
+ * @public
+ */
+export class RecordedOutput extends Schema.Class<RecordedOutput>("RecordedOutput")({
+	/** Which {@link ActionOutputsShape} member was called. */
+	member: Schema.Literals(["set", "setJson", "summary", "exportVariable", "addPath", "setFailed", "setSecret"]),
+	/** The output or variable name, for the members that take one. */
+	name: Schema.optionalKey(Schema.String),
+	/** What was published — value, message, path, content or secret — as the runner would have read it. */
+	value: Schema.String,
+}) {}
+
+/**
+ * The member names a {@link RecordedOutput} can carry.
+ *
+ * @public
+ */
+export type RecordedOutputMember = RecordedOutput["member"];
+
+/**
+ * What {@link ActionOutputs.recording} returns: the layer to provide and the
+ * journal it fills.
+ *
+ * @public
+ */
+export interface RecordingOutputs {
+	/** An {@link ActionOutputs} whose every member records into this journal. */
+	readonly layer: Layer.Layer<ActionOutputs>;
+	/** A snapshot of every recorded call so far, in call order. */
+	readonly entries: () => ReadonlyArray<RecordedOutput>;
+}
+
+/**
  * The {@link ActionOutputs} service shape.
  *
  * @public
@@ -194,10 +251,7 @@ const make = Effect.gen(function* () {
 	return {
 		set,
 		setJson: <A, I>(name: string, value: A, schema: Schema.Codec<A, I>) =>
-			Schema.encodeUnknownEffect(schema)(value).pipe(
-				Effect.mapError((cause) => new OutputEncodeError({ name, cause })),
-				Effect.flatMap((encoded) => set(name, JSON.stringify(encoded))),
-			),
+			encodeJson(name, value, schema).pipe(Effect.flatMap((json) => set(name, json))),
 		summary: (content: string) => append("GITHUB_STEP_SUMMARY", content),
 		exportVariable: (name: string, value: string) => appendBlock("GITHUB_ENV", name, value),
 		addPath: (path: string) => append("GITHUB_PATH", `${path}\n`),
@@ -281,19 +335,90 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 		setSecret: () => Effect.void,
 	} satisfies ActionOutputsShape);
 
-	/** A test double. Unstubbed members die rather than silently succeeding. */
-	static readonly makeTest = (overrides: Partial<ActionOutputsShape> = {}): ActionOutputsShape => ({
-		set: () => Effect.sync(() => unimplemented("set")),
-		setJson: () => Effect.sync(() => unimplemented("setJson")),
-		summary: () => Effect.sync(() => unimplemented("summary")),
-		exportVariable: () => Effect.sync(() => unimplemented("exportVariable")),
-		addPath: () => Effect.sync(() => unimplemented("addPath")),
-		setFailed: () => Effect.sync(() => unimplemented("setFailed")),
-		setSecret: () => Effect.sync(() => unimplemented("setSecret")),
-		...overrides,
-	});
+	/**
+	 * A test double. Unstubbed members die rather than silently succeeding.
+	 *
+	 * @remarks
+	 * **`setJson` always encodes first.** The value is encoded through its
+	 * schema exactly as the real layer does — failing typed with
+	 * {@link OutputEncodeError} — and only then is a supplied `setJson`
+	 * override called, with the original `(name, value, schema)`. An override
+	 * that accepts `schema` and ignores it therefore **cannot disable
+	 * output-schema checking**: a value/schema drift is a typed failure under
+	 * this double whether or not the override looks at the schema. Without an
+	 * override, a valid value still dies unimplemented as every other unstubbed
+	 * member does. Most tests want neither: reach for
+	 * {@link ActionOutputs.recording} instead.
+	 */
+	static readonly makeTest = (overrides: Partial<ActionOutputsShape> = {}): ActionOutputsShape => {
+		const setJson: ActionOutputsShape["setJson"] =
+			overrides.setJson ?? (() => Effect.sync(() => unimplemented("setJson")));
+		return {
+			set: () => Effect.sync(() => unimplemented("set")),
+			summary: () => Effect.sync(() => unimplemented("summary")),
+			exportVariable: () => Effect.sync(() => unimplemented("exportVariable")),
+			addPath: () => Effect.sync(() => unimplemented("addPath")),
+			setFailed: () => Effect.sync(() => unimplemented("setFailed")),
+			setSecret: () => Effect.sync(() => unimplemented("setSecret")),
+			...overrides,
+			setJson: <A, I>(name: string, value: A, schema: Schema.Codec<A, I>) =>
+				encodeJson(name, value, schema).pipe(Effect.flatMap(() => setJson(name, value, schema))),
+		};
+	};
 
 	/** {@link ActionOutputs.makeTest} behind `Layer.succeed`. */
 	static readonly layerTest = (overrides: Partial<ActionOutputsShape> = {}): Layer.Layer<ActionOutputs> =>
 		Layer.succeed(ActionOutputs, ActionOutputs.makeTest(overrides));
+
+	/**
+	 * A recording double: every member appends a {@link RecordedOutput} to a
+	 * journal the test reads back, in call order.
+	 *
+	 * @remarks
+	 * This is the double most tests of an action want — "what did it publish?"
+	 * — shipped so that nobody hand-writes a `setJson` override that drops the
+	 * schema encode (the trap `makeTest` now closes too). `setJson` encodes
+	 * through its schema exactly as the real layer does, failing typed with
+	 * {@link OutputEncodeError} and recording nothing on a drift, and records
+	 * the **encoded JSON text** — what the runner would have read — not the
+	 * decoded value. `set`, `exportVariable` and `setJson` refuse an unusable
+	 * name with {@link InvalidOutputNameError}, as the real layer does, rather
+	 * than recording it.
+	 *
+	 * `setSecret` records the secret's **plaintext** under
+	 * `member: "setSecret"`. That is deliberate for a recording double: the
+	 * journal never leaves the test, and a test asserting that a value *was*
+	 * masked needs to see which one. Do not hand this journal to anything that
+	 * logs.
+	 *
+	 * Each call returns a fresh, independent journal — there is no state shared
+	 * between two `recording()` calls.
+	 */
+	static readonly recording = (): RecordingOutputs => {
+		const entries: Array<RecordedOutput> = [];
+		const record = (member: RecordedOutputMember, value: string, name?: string): Effect.Effect<void> =>
+			Effect.sync(() => {
+				entries.push(RecordedOutput.make({ member, value, ...(name === undefined ? {} : { name }) }));
+			});
+		const recordNamed = (
+			member: RecordedOutputMember,
+			file: string,
+			name: string,
+			value: string,
+		): Effect.Effect<void, InvalidOutputNameError> =>
+			isUsableName(name) ? record(member, value, name) : Effect.fail(new InvalidOutputNameError({ file, name }));
+		const layer = Layer.succeed(ActionOutputs, {
+			set: (name, value) => recordNamed("set", "GITHUB_OUTPUT", name, value),
+			setJson: <A, I>(name: string, value: A, schema: Schema.Codec<A, I>) =>
+				isUsableName(name)
+					? encodeJson(name, value, schema).pipe(Effect.flatMap((json) => record("setJson", json, name)))
+					: Effect.fail(new InvalidOutputNameError({ file: "GITHUB_OUTPUT", name })),
+			summary: (content) => record("summary", content),
+			exportVariable: (name, value) => recordNamed("exportVariable", "GITHUB_ENV", name, value),
+			addPath: (path) => record("addPath", path),
+			setFailed: (message) => record("setFailed", message),
+			setSecret: (value) => record("setSecret", value),
+		} satisfies ActionOutputsShape);
+		return { layer, entries: () => entries.slice() };
+	};
 }

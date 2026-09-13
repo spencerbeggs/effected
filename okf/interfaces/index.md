@@ -13,6 +13,7 @@
 * [@effected/workspaces catalogs and the config-dependency seam](workspaces-catalogs.md) - WorkspaceCatalogs and CatalogSet assembly, the release-age gate, and the ConfigDependencyHooks opt-in replay seam over pnpm config dependencies.
 * [@effected/workspaces dependency graph](workspaces-graph.md) - The pure DependencyGraph value class over the discovered package list — the edge index, cycle detection, topological levels, and Mermaid rendering.
 * [@effected/workspaces discovery and detection](workspaces-discovery.md) - Root finding, the packages: enumerator, the WorkspacePackage located-member model, and package-manager detection.
+* [@effected/workspaces duplicate-copy checking](workspaces-duplicate-check.md) - DuplicateCheck — a lockfile-only report of every package resolving at two or more versions and who pulls each copy, with the kit predicate that names the Layer-mismatch trap.
 * [@effected/workspaces peer-dependency checking](workspaces-peer-check.md) - PeerCheck — a lockfile-only reproduction of pnpm peers check, returning a report rather than an array and failing closed on what it cannot verify.
 * [@effected/workspaces release surface](workspaces-release.md) - PublishabilityDetector, VersioningStrategy, and ReleaseTag — the release-shaped questions the workspace model already holds the facts for.
 * [@effected/workspaces snapshots](workspaces-snapshots.md) - WorkspaceSnapshots and WorkspaceStateSnapshot — point-in-time workspace reads at a git ref or in the worktree, and the at/worktree hook-catalog asymmetry.

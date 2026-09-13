@@ -114,6 +114,9 @@
 | `ProvisionedFile` | Interface | Where `ToolInstallerShape.provisionFile` put a single-binary tool. | |
 | `ReadOptions` | Interface | Where to read a persisted token from. | |
 | `ReadinessOptions` | Interface | How long to wait for a child to become ready. | |
+| `RecordedOutput` | Class | One call an `ActionOutputs.recording` double observed. | assert what an action published under a recording double: member, name, encoded value |
+| `RecordedOutputMember` | TypeAlias | The member names a `RecordedOutput` can carry. | |
+| `RecordingOutputs` | Interface | What `ActionOutputs.recording` returns: the layer to provide and the journal it fills. | |
 | `RunnerContext` | Class | The runner's own context, projected from the `RUNNER_*` variables. | RUNNER_* context: os, arch, temp directory, tool cache root |
 | `RunnerFileUnavailableError` | Class | Raised when an action cannot publish an output. | handle a runner file (GITHUB_OUTPUT/STATE/ENV/PATH) that is not available |
 | `RunnerFileWriteError` | Class | Raised when a runner file exists but could not be appended to. | handle a runner file that exists but could not be appended to |

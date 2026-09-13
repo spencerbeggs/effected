@@ -17,6 +17,8 @@ import type { Lockfile, ResolvedPackage } from "@effected/lockfiles";
 import { Range, SemVer } from "@effected/semver";
 import { Result, Schema } from "effect";
 import type { PeerDependencyRules } from "./ConfigDependencyHooks.js";
+import type { ImporterRoots } from "./internal/roots.js";
+import { indexInstances, rootInstances } from "./internal/roots.js";
 
 /**
  * Why a report is not a complete answer.
@@ -275,23 +277,20 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 			return PeerCheck.make({ supported: false, unsatisfied: [], unresolvedImporters: [], unverified });
 		}
 
-		const byId = new Map(lockfile.packages.map((pkg) => [pkg.instanceId, pkg]));
-		const workspaceByPath = new Map<string, ResolvedPackage>();
-		for (const pkg of lockfile.packages) {
-			if (pkg.isWorkspace && pkg.relativePath !== undefined) workspaceByPath.set(pkg.relativePath, pkg);
-		}
+		const index = indexInstances(lockfile);
+		const { byId } = index;
 
 		const rows: Array<UnsatisfiedPeer> = [];
 		const unresolved: Array<string> = [];
 		const seen = new Set<string>();
 
 		for (const importer of lockfile.importers) {
-			const roots = rootInstances(lockfile, importer.path, workspaceByPath, byId);
+			const roots = rootInstances(lockfile, importer.path, index);
 			if (roots === undefined) {
 				unresolved.push(importer.path);
 				continue;
 			}
-			collect(importer.path, roots, byId, rows, seen, allowed);
+			collect(importer.path, walksFrom(roots), byId, rows, seen, allowed);
 		}
 
 		// An edge the lockfile records but the model could not name means some
@@ -309,63 +308,21 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 }
 
 /**
- * The instances an importer's dependencies resolved to, plus the importer's own
- * workspace row when the lockfile records one.
+ * An importer's roots as walk nodes with their `parents` chain started.
  *
- * Returns `undefined` when the importer cannot be resolved at all, which the
- * caller reports rather than treating as "no problems here".
+ * The importer's own row is the walk's first node with an empty chain — its
+ * peers are the importer's own. A dependency instance joined from the importer
+ * entry starts the chain with itself, as `pnpm peers check` reports it.
  *
  * @internal
  */
-const rootInstances = (
-	lockfile: Lockfile,
-	importerPath: string,
-	workspaceByPath: ReadonlyMap<string, ResolvedPackage>,
-	byId: ReadonlyMap<string, ResolvedPackage>,
-): ReadonlyArray<Walk> | undefined => {
-	const own = workspaceByPath.get(importerPath);
-	if (own !== undefined) {
-		// The importer's own row carries both its declared peers (npm, bun) and
-		// its resolved edges, so it is the walk's first node.
-		return [{ instance: own, path: [] }];
-	}
-
-	// No row for this importer — the root under every format, and any importer
-	// whose row the lockfile omits. Fall back to what the importer entry records
-	// about each dependency.
-	const importer = lockfile.importer(importerPath);
-	if (importer._tag === "None") return undefined;
-
-	const walks: Array<Walk> = [];
-	let resolvable = false;
-	for (const dep of importer.value.dependencies) {
-		if (dep.version === undefined) continue;
-
-		// Compose the identity the importer entry describes, then VERIFY it
-		// against the real id set — the same compose-then-verify rule the
-		// lockfile's own edge resolution follows. A composed string matching
-		// nothing is discarded and the dependency is skipped; there is no
-		// name-and-version fallback, because guessing between two peer variants
-		// of one name@version would attribute one variant's peers to an importer
-		// that resolved the other, and a fabricated finding is worse than a
-		// missing one.
-		//
-		// This is not parsing an instanceId: nothing is split, indexed or
-		// pattern-matched. `peerSuffix` is a field the lockfile hands us
-		// precisely because a version alone cannot name a peer-resolved
-		// instance, and dropping it is what made the root importer of a
-		// workspace with two peer variants silently unanswerable.
-		const composed = byId.get(`${dep.name}@${dep.version}${dep.peerSuffix ?? ""}`);
-		if (composed === undefined) continue;
-		resolvable = true;
-		walks.push({ instance: composed, path: [PeerParent.make({ name: composed.name, version: composed.version })] });
-	}
-
-	// An importer with no dependencies at all is legitimately clean, not
-	// unresolvable; one whose every dependency failed to join is not.
-	if (!resolvable && importer.value.dependencies.length > 0) return undefined;
-	return walks;
-};
+const walksFrom = (roots: ImporterRoots): ReadonlyArray<Walk> =>
+	roots._tag === "own"
+		? [{ instance: roots.instance, path: [] }]
+		: roots.instances.map((instance) => ({
+				instance,
+				path: [PeerParent.make({ name: instance.name, version: instance.version })],
+			}));
 
 /**
  * Walk the resolution graph from an importer's roots, emitting a row for every

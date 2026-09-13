@@ -43,6 +43,14 @@ export {
 } from "./ConfigDependencyHooks.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
 export {
+	Dependent,
+	DuplicateCheck,
+	type DuplicateCheckOptions,
+	DuplicateInstance,
+	DuplicatedPackage,
+	DuplicatedVersion,
+} from "./DuplicateCheck.js";
+export {
 	LockfileReadError,
 	type LockfileReadFailure,
 	LockfileReader,

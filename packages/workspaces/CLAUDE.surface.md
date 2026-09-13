@@ -24,6 +24,7 @@ Read the module for its types; this is the index, not the API.
 - `ConfigDependencyHooks.ts` — the contract, `HookInjection`, `PeerDependencyRules` / `NoPeerDependencyRules`, and `layerNoop` / `layerLive` / `layerSubprocess`
 - `LockfileReader.ts` — `LockfileReader`, `LockfileReadError`
 - `PeerCheck.ts` — `PeerCheck`, `UnsatisfiedPeer`, `PeerParent` (all **value classes**; pure, total, no service and nothing in `R`), plus `PeerCheckOptions` and `UnverifiedReason` — see [peers](./CLAUDE.peers.md)
+- `DuplicateCheck.ts` — `DuplicateCheck` (`run` / `kit`), `DuplicatedPackage`, `DuplicatedVersion`, `DuplicateInstance`, `Dependent` (all **value classes**; `PeerCheck`'s sibling on the same posture), plus `DuplicateCheckOptions`
 - `Publishability.ts` — `PublishabilityDetector`, `PublishTarget`
 - `ReleaseTag.ts` — `ReleaseTag`, `TagStyle`, `TagFormatOptions`, the floating-alias family `TrackingTag` / `TrackingTagOptions`, and `classifyTag` / `TagClassification` (all **value classes**; a leaf importing nothing else here)
 - `VersioningStrategy.ts` — `VersioningStrategy` (a **value class**: `classify` / `detect` / `tagsFor`), `VersioningStrategyType`, `ClassifyOptions`, `VersioningDetectOptions`, `PackageRelease`

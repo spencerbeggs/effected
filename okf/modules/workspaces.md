@@ -143,12 +143,13 @@ mechanics:
 
 ## Public surface
 
-`src/index.ts` is the only re-exporting entry point.[^index-ts] The six
+`src/index.ts` is the only re-exporting entry point.[^index-ts] The seven
 subsystems each ship their own contract, covered as their own Interface
 concepts: [discovery and detection](../interfaces/workspaces-discovery.md),
 [the dependency graph](../interfaces/workspaces-graph.md),
 [catalogs and the config-dependency seam](../interfaces/workspaces-catalogs.md),
 [peer-dependency checking](../interfaces/workspaces-peer-check.md),
+[duplicate-copy checking](../interfaces/workspaces-duplicate-check.md),
 [git integration and snapshots](../interfaces/workspaces-snapshots.md), and
 [the release surface](../interfaces/workspaces-release.md).
 
@@ -301,6 +302,7 @@ suppressed.
 - [The dependency graph](../interfaces/workspaces-graph.md)
 - [Catalogs and the config-dependency seam](../interfaces/workspaces-catalogs.md)
 - [Peer-dependency checking](../interfaces/workspaces-peer-check.md)
+- [Duplicate-copy checking](../interfaces/workspaces-duplicate-check.md)
 - [Git integration and snapshots](../interfaces/workspaces-snapshots.md)
 - [The release surface](../interfaces/workspaces-release.md)
 - [The sync-facade escape-hatch decision](../decisions/workspaces-sync-facade-escape-hatch.md)

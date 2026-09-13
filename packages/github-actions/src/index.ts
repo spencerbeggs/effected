@@ -27,6 +27,9 @@ export {
 	DetachedOutputError,
 	InvalidOutputNameError,
 	OutputEncodeError,
+	RecordedOutput,
+	type RecordedOutputMember,
+	type RecordingOutputs,
 	RunnerFileUnavailableError,
 	RunnerFileWriteError,
 } from "./ActionOutputs.js";

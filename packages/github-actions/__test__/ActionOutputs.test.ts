@@ -1,12 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Redacted, Schema } from "effect";
+import { Cause, Effect, FileSystem, Layer, Redacted, Schema } from "effect";
 import { TestConsole } from "effect/testing";
 import {
 	ActionEnvironment,
 	ActionOutputs,
 	DetachedOutputError,
 	InvalidOutputNameError,
+	OutputEncodeError,
 	RunnerFileUnavailableError,
 	Secret,
 } from "../src/index.js";
@@ -291,5 +292,163 @@ describe("ActionOutputs", () => {
 				yield* (yield* ActionOutputs).setSecret("x");
 			}).pipe(Effect.provide(ActionOutputs.layerTest({ setSecret: () => Effect.void }))),
 		);
+
+		describe("setJson always encodes first (#636)", () => {
+			/** The output contract: `count` must be an integer. */
+			const Report = Schema.Struct({ count: Schema.Int });
+			/** The drift: a projection handing over a string where the schema says Int. */
+			const drifted = { count: "3" as unknown as number };
+
+			it.effect("the #636 trap: an override that ignores `schema` can no longer hide a drift", () =>
+				Effect.gen(function* () {
+					// The natural consumer override from the issue — accepts `schema`,
+					// never looks at it. Before the fix this typechecked, read complete,
+					// and turned a production OutputEncodeError into a green suite.
+					const error = yield* Effect.flip((yield* ActionOutputs).setJson("result", drifted, Report));
+					assert.strictEqual(error._tag, "OutputEncodeError");
+					assert.strictEqual(error.name, "result");
+				}).pipe(
+					Effect.provide(
+						ActionOutputs.layerTest({
+							setJson: (_name, _value, schema) =>
+								Effect.sync(() => {
+									void schema;
+								}),
+						}),
+					),
+				),
+			);
+
+			it.effect("a valid value reaches the override with the ORIGINAL name, value and schema", () =>
+				Effect.gen(function* () {
+					const seen: Array<{ name: string; value: unknown; schema: unknown }> = [];
+					const value = { count: 3 };
+					const outputs = ActionOutputs.makeTest({
+						setJson: (name, value, schema) =>
+							Effect.sync(() => {
+								seen.push({ name, value, schema });
+							}),
+					});
+					yield* outputs.setJson("result", value, Report);
+					assert.strictEqual(seen.length, 1);
+					assert.strictEqual(seen[0]?.name, "result");
+					assert.strictEqual(seen[0]?.value, value, "the override receives the decoded value, not the encoded one");
+					assert.strictEqual(seen[0]?.schema, Report);
+				}),
+			);
+
+			it.effect("no override + a valid value still dies unimplemented", () =>
+				Effect.gen(function* () {
+					const exit = yield* Effect.exit((yield* ActionOutputs).setJson("result", { count: 3 }, Report));
+					assert.isTrue(exit._tag === "Failure");
+					if (exit._tag === "Failure") {
+						assert.isTrue(Cause.hasDies(exit.cause), "a valid value with no override is a die, not a typed failure");
+						assert.include(Cause.pretty(exit.cause), "setJson() was called but not stubbed");
+					}
+				}).pipe(Effect.provide(ActionOutputs.layerTest())),
+			);
+
+			it.effect("no override + an invalid value fails typed — the encode runs before the die", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip((yield* ActionOutputs).setJson("result", drifted, Report));
+					assert.instanceOf(error, OutputEncodeError);
+					assert.strictEqual(error.name, "result");
+				}).pipe(Effect.provide(ActionOutputs.layerTest())),
+			);
+		});
+	});
+
+	describe("recording", () => {
+		it.effect("setJson records the ENCODED JSON string, not the decoded value", () => {
+			const recorder = ActionOutputs.recording();
+			const Stamped = Schema.Struct({ at: Schema.DateFromString });
+			const at = new Date("2026-09-13T00:00:00.000Z");
+			return Effect.gen(function* () {
+				yield* (yield* ActionOutputs).setJson("result", { at }, Stamped);
+				const entries = recorder.entries();
+				assert.strictEqual(entries.length, 1);
+				assert.strictEqual(entries[0]?.member, "setJson");
+				assert.strictEqual(entries[0]?.name, "result");
+				assert.strictEqual(entries[0]?.value, '{"at":"2026-09-13T00:00:00.000Z"}');
+			}).pipe(Effect.provide(recorder.layer));
+		});
+
+		it.effect("setJson fails typed on a drift and records nothing", () => {
+			const recorder = ActionOutputs.recording();
+			return Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					(yield* ActionOutputs).setJson(
+						"result",
+						{ count: "3" as unknown as number },
+						Schema.Struct({ count: Schema.Int }),
+					),
+				);
+				assert.instanceOf(error, OutputEncodeError);
+				assert.strictEqual(recorder.entries().length, 0);
+			}).pipe(Effect.provide(recorder.layer));
+		});
+
+		it.effect("every member records in call order with its member, name and value", () => {
+			const recorder = ActionOutputs.recording();
+			return Effect.gen(function* () {
+				const outputs = yield* ActionOutputs;
+				yield* outputs.set("version", "1.2.3");
+				yield* outputs.exportVariable("FOO", "bar");
+				yield* outputs.addPath("/opt/bin");
+				yield* outputs.summary("## Results\n");
+				yield* outputs.setFailed("it broke");
+				yield* outputs.setSecret("s3cr3t");
+				yield* outputs.setJson("n", 2, Schema.Number);
+				assert.deepStrictEqual(
+					recorder.entries().map((entry) => [entry.member, entry.name, entry.value]),
+					[
+						["set", "version", "1.2.3"],
+						["exportVariable", "FOO", "bar"],
+						["addPath", undefined, "/opt/bin"],
+						["summary", undefined, "## Results\n"],
+						["setFailed", undefined, "it broke"],
+						["setSecret", undefined, "s3cr3t"],
+						["setJson", "n", "2"],
+					],
+				);
+			}).pipe(Effect.provide(recorder.layer));
+		});
+
+		it.effect("two recording() calls are independent journals", () => {
+			const first = ActionOutputs.recording();
+			const second = ActionOutputs.recording();
+			return Effect.gen(function* () {
+				yield* Effect.provide(
+					Effect.flatMap(ActionOutputs, (outputs) => outputs.set("a", "1")),
+					first.layer,
+				);
+				yield* Effect.provide(
+					Effect.flatMap(ActionOutputs, (outputs) => outputs.set("b", "2")),
+					second.layer,
+				);
+				assert.deepStrictEqual(
+					first.entries().map((entry) => entry.name),
+					["a"],
+				);
+				assert.deepStrictEqual(
+					second.entries().map((entry) => entry.name),
+					["b"],
+				);
+			});
+		});
+
+		it.effect("an invalid output name fails typed and records nothing", () => {
+			const recorder = ActionOutputs.recording();
+			return Effect.gen(function* () {
+				const outputs = yield* ActionOutputs;
+				const forSet = yield* Effect.flip(outputs.set("bad\nname", "1"));
+				assert.instanceOf(forSet, InvalidOutputNameError);
+				const forEnv = yield* Effect.flip(outputs.exportVariable("", "1"));
+				assert.instanceOf(forEnv, InvalidOutputNameError);
+				const forJson = yield* Effect.flip(outputs.setJson("bad\nname", 1, Schema.Number));
+				assert.instanceOf(forJson, InvalidOutputNameError);
+				assert.strictEqual(recorder.entries().length, 0);
+			}).pipe(Effect.provide(recorder.layer));
+		});
 	});
 });
