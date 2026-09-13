@@ -1,6 +1,7 @@
 import { Clock, Context, Duration, Effect, Layer, Option, Schedule, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
+import { numericId } from "./internal/ids.js";
 import { Repo } from "./Repo.js";
 import { PageOptions } from "./Rest.js";
 
@@ -140,13 +141,13 @@ const unstubbed = (member: string): never => {
 };
 
 const statusOf = (raw: {
-	id: number;
+	id: number | bigint;
 	status?: string | null;
 	conclusion?: string | null;
 	html_url: string;
 }): WorkflowRunStatus =>
 	WorkflowRunStatus.make({
-		id: raw.id,
+		id: numericId(raw.id),
 		status: raw.status ?? "unknown",
 		...(raw.conclusion != null ? { conclusion: raw.conclusion } : {}),
 		url: raw.html_url,

@@ -72,9 +72,14 @@ export type Data<R extends Route> = Endpoints[R]["response"]["data"];
  * Handing a non-paginating route to a paginating call is a **compile** error,
  * which the string-keyed surface this package replaces could not express.
  *
+ * Intersected with `Rest.Route` because `plugin-paginate-rest` generates its
+ * map from its own `@octokit/types` pin, which can trail the one this package
+ * resolves; a route the newer map has deleted must not survive here as a key
+ * `Endpoints` no longer indexes.
+ *
  * @public
  */
-export type PaginatingRoute = keyof PaginatingEndpoints;
+export type PaginatingRoute = keyof PaginatingEndpoints & Route;
 
 /**
  * One element of a paginating route's collection.
