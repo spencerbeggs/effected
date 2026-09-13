@@ -1,5 +1,20 @@
 # @effected/pnpm-plugin-effect
 
+## 0.8.2
+
+### Maintenance
+
+#### Updates 2 catalog:effected versions
+
+- `@effected/git` ^0.15.0 -> ^0.15.1 (peer ^0.15.0)
+- `@effected/yaml` ^0.15.0 -> ^0.15.1 (peer ^0.15.0) [#693][#693]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#693]: https://github.com/spencerbeggs/effected/pull/693
+
 ## 0.8.1
 
 ### Maintenance

@@ -1,5 +1,14 @@
 # @effected/app
 
+## 0.16.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.8.0 | 0.9.0 |
+| @effected/xdg | dependency | updated | 0.5.0 | 0.5.1 |
+
 ## 0.16.0
 
 ### Breaking Changes
