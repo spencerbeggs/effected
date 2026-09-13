@@ -199,7 +199,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/git": {
-							range: "^0.15.0",
+							range: "^0.15.1",
 							peer: "^0.15.0",
 							strategy: "lock-minor",
 							source: "workspace",
@@ -349,7 +349,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/yaml": {
-							range: "^0.15.0",
+							range: "^0.15.1",
 							peer: "^0.15.0",
 							strategy: "lock-minor",
 							source: "workspace",
