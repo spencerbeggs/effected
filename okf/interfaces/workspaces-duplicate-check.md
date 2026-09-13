@@ -18,6 +18,8 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/603
 generated:
   by: "okfit/claude-code"
+  at: 2026-09-13T16:45:41Z
+  body_sha256: dc9d9bdd2a38278b149304bcbb89d56a00707bf0df41aaf3fe79ddec60b1b1a0
 ---
 
 # @effected/workspaces duplicate-copy checking
