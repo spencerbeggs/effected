@@ -38,7 +38,6 @@
 		"pnpm:up": "pnpm --filter '@effected/pnpm-plugin-effect' run pnpm:up",
 		"prepare": "husky",
 		"preview": "turbo run preview --filter=docs",
-		"schemastore": "tsx packages/schemastore-cli/src/bin.ts",
 		"scratchpad:check": "pnpm --filter scratchpad check",
 		"scratchpad:probe": "pnpm --filter scratchpad probe",
 		"scratchpad:reset": "pnpm --filter scratchpad reset",
@@ -52,8 +51,7 @@
 	"devDependencies": {
 		"@okfit/plugin": "^0.3.4",
 		"@savvy-web/silk": "^4.0.2",
-		"@vitest-agent/plugin": "^4.0.0",
-		"tsx": "catalog:silk"
+		"@vitest-agent/plugin": "^4.0.0"
 	},
 	"packageManager": "pnpm@11.27.0+sha512.ad12821463bb143295f1fa3ecde77a6b9b97a7990386da800ff57bffc3964dc64b7b1c7559d5dbe5c337aea659ed9c8937d4370bd198ca2009bc6fa0249808e7",
 	"engines": {

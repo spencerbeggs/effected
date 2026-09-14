@@ -1,17 +1,17 @@
 {
 	"name": "@effected/schemastore-cli",
-	"version": "0.0.0",
+	"version": "0.8.0",
 	"private": true,
-	"description": "Build, validate, version and publish SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources: document assembly, ajv strict-mode validation, structural lints, catalog entries, canonical JSON and a content-comparing emit pipeline.",
-	"keywords": ["schemastore", "json-schema", "draft-07", "catalog", "effect", "schema", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/schemastore#readme",
+	"description": "The schemastore command: build and check SchemaStore-shaped JSON Schema documents from a schemastore.config.ts, with a per-schema published flag and a drift policy.",
+	"keywords": ["schemastore", "json-schema", "draft-07", "cli", "effect", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/schemastore-cli#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/spencerbeggs/effected.git",
-		"directory": "packages/schemastore"
+		"directory": "packages/schemastore-cli"
 	},
 	"license": "MIT",
 	"author": {
@@ -22,7 +22,6 @@
 	"sideEffects": false,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts",
 		"./package.json": "./package.json"
 	},
 	"bin": {
@@ -37,15 +36,20 @@
 	"dependencies": {
 		"@effect/platform-node": "catalog:effect",
 		"@effected/cli": "workspace:^",
-		"@effected/schemastore": "workspace:^",
-		"effect": "catalog:effect:peers"
+		"jiti": "^2.6.0"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@effected/memfs": "workspace:*",
-		"@savvy-web/bundler": "^2.3.3",
+		"@effected/schemastore": "workspace:*",
+		"@savvy-web/bundler": "^2.3.7",
 		"@types/node": "catalog:build",
+		"effect": "catalog:effect",
 		"typescript": "catalog:build"
+	},
+	"peerDependencies": {
+		"@effected/schemastore": "workspace:*",
+		"effect": "catalog:effect:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"
