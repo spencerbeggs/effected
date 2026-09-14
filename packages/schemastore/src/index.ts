@@ -80,8 +80,12 @@ export {
 	type SchemaPipelineOptions,
 } from "./SchemaPipeline.js";
 export {
-	type CatalogConfig,
-	type CatalogTarget,
+	type CatalogInput,
+	type FrozenVersion,
+	type ResolvedSchema,
+	SCHEMASTORE_CATALOG_BASE,
+	SCHEMASTORE_ID_BASE,
+	type SchemaEntryInput,
 	type SchemastoreConfig,
 	type SchemastoreConfigInput,
 	defineConfig,
