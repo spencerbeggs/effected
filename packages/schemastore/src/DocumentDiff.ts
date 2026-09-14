@@ -7,6 +7,7 @@
 // Pure — no IO. `SchemaFile` consumes it to answer what changed alongside
 // whether it wrote.
 
+import { CanonicalJson } from "./CanonicalJson.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { KeywordFamilies } from "./KeywordFamilies.js";
 
@@ -61,44 +62,6 @@ const SCHEMA_KEYWORDS = new Set([
 const isSchemaObject = (node: unknown): node is Record<string, unknown> =>
 	typeof node === "object" && node !== null && !Array.isArray(node);
 
-// A stack guard for the leaf value comparison, deliberately looser than the
-// structural cap above: `MAX_NESTING_DEPTH` bounds how deep the walk keeps
-// CLASSIFYING, while this only stops the comparison from overflowing the
-// stack on hostile (or cyclic) input. Sharing one budget between the two
-// made a deeply-nested but identical document compare as different, because
-// the fallback ran out of frames before reaching the leaves.
-const VALUE_COMPARISON_STACK_GUARD = MAX_NESTING_DEPTH * 8;
-
-// Order-insensitive for object keys, order-sensitive for arrays — key order
-// is a serialization detail (a formatter may sort), element order is data.
-// Past the stack guard, unequal-by-reference is reported as different,
-// which is the conservative direction.
-const deepEqual = (a: unknown, b: unknown, depth: number): boolean => {
-	if (a === b) {
-		return true;
-	}
-	if (depth >= VALUE_COMPARISON_STACK_GUARD) {
-		return false;
-	}
-	if (Array.isArray(a) || Array.isArray(b)) {
-		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
-			return false;
-		}
-		return a.every((element, index) => deepEqual(element, b[index], depth + 1));
-	}
-	if (!isSchemaObject(a) || !isSchemaObject(b)) {
-		// Primitives that failed `===` (including NaN, and null vs object).
-		return false;
-	}
-	const aKeys = Object.keys(a);
-	if (aKeys.length !== Object.keys(b).length) {
-		return false;
-	}
-	return aKeys.every(
-		(key) => Object.hasOwn(b, key) && deepEqual(a[key], (b as Record<string, unknown>)[key], depth + 1),
-	);
-};
-
 // `"contract"` dominates `"annotations"` dominates `"none"`.
 const worst = (left: SchemaChange, right: SchemaChange): SchemaChange => {
 	if (left === "contract" || right === "contract") {
@@ -122,11 +85,11 @@ const compareSchema = (a: unknown, b: unknown, depth: number): SchemaChange => {
 	if (depth >= MAX_NESTING_DEPTH) {
 		// Past the cap the walk stops distinguishing: a difference of any
 		// kind below here reads as a contract change (the safe direction).
-		return deepEqual(a, b, 0) ? "none" : "contract";
+		return CanonicalJson.equals(a, b) ? "none" : "contract";
 	}
 	if (!isSchemaObject(a) || !isSchemaObject(b)) {
 		// Draft-07 boolean schemas and any non-object leaf.
-		return deepEqual(a, b, depth) ? "none" : "contract";
+		return CanonicalJson.equals(a, b) ? "none" : "contract";
 	}
 
 	let change: SchemaChange = "none";
@@ -145,7 +108,7 @@ const compareSchema = (a: unknown, b: unknown, depth: number): SchemaChange => {
 		const left = a[key];
 		const right = b[key];
 		if (isAnnotationKey(key)) {
-			change = worst(change, deepEqual(left, right, depth) ? "none" : "annotations");
+			change = worst(change, CanonicalJson.equals(left, right) ? "none" : "annotations");
 			continue;
 		}
 		if (SCHEMA_MAP_KEYWORDS.has(key)) {
@@ -167,7 +130,7 @@ const compareSchema = (a: unknown, b: unknown, depth: number): SchemaChange => {
 			// Data-position keywords (`type`, `enum`, `const`, `required`,
 			// `default`, `examples`, `$ref`, `$id`, ...) and any unknown key:
 			// compared as opaque values, never descended into.
-			change = worst(change, deepEqual(left, right, depth) ? "none" : "contract");
+			change = worst(change, CanonicalJson.equals(left, right) ? "none" : "contract");
 		}
 		if (change === "contract") {
 			return "contract";
@@ -178,7 +141,7 @@ const compareSchema = (a: unknown, b: unknown, depth: number): SchemaChange => {
 
 const compareSchemaMap = (a: unknown, b: unknown, depth: number): SchemaChange => {
 	if (!isSchemaObject(a) || !isSchemaObject(b)) {
-		return deepEqual(a, b, depth) ? "none" : "contract";
+		return CanonicalJson.equals(a, b) ? "none" : "contract";
 	}
 	let change: SchemaChange = "none";
 	const names = new Set([...Object.keys(a), ...Object.keys(b)]);
@@ -214,7 +177,7 @@ const compareSchemaArray = (a: unknown, b: unknown, depth: number): SchemaChange
 // property names; the array form is data.
 const compareDependencies = (a: unknown, b: unknown, depth: number): SchemaChange => {
 	if (!isSchemaObject(a) || !isSchemaObject(b)) {
-		return deepEqual(a, b, depth) ? "none" : "contract";
+		return CanonicalJson.equals(a, b) ? "none" : "contract";
 	}
 	let change: SchemaChange = "none";
 	const names = new Set([...Object.keys(a), ...Object.keys(b)]);
@@ -227,7 +190,7 @@ const compareDependencies = (a: unknown, b: unknown, depth: number): SchemaChang
 		change = worst(
 			change,
 			Array.isArray(left) || Array.isArray(right)
-				? deepEqual(left, right, depth)
+				? CanonicalJson.equals(left, right)
 					? "none"
 					: "contract"
 				: compareSchema(left, right, depth + 1),

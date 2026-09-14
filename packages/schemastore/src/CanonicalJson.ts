@@ -77,6 +77,45 @@ class SerializeFailure {
 
 const escapePointerSegment = (segment: string): string => segment.replace(/~/g, "~0").replace(/\//g, "~1");
 
+// A stack guard for content equality, deliberately looser than the
+// structural cap: `MAX_NESTING_DEPTH` bounds how deep a walk keeps
+// CLASSIFYING, while this only stops the comparison from overflowing the
+// stack on hostile (or cyclic) input. Sharing one budget with `DocumentDiff`'s
+// structural walk once made a deeply-nested but identical document compare
+// as different, because the fallback ran out of frames before the leaves.
+const EQUALITY_STACK_GUARD = MAX_NESTING_DEPTH * 8;
+
+const isPlainRecord = (node: unknown): node is Record<string, unknown> =>
+	typeof node === "object" && node !== null && !Array.isArray(node);
+
+// Order-insensitive for object keys, order-sensitive for arrays — key order
+// is a serialization detail (a formatter may sort), element order is data.
+// Past the stack guard, unequal-by-reference is reported as different,
+// which is the conservative direction.
+const contentEqual = (a: unknown, b: unknown, depth: number): boolean => {
+	if (a === b) {
+		return true;
+	}
+	if (depth >= EQUALITY_STACK_GUARD) {
+		return false;
+	}
+	if (Array.isArray(a) || Array.isArray(b)) {
+		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+			return false;
+		}
+		return a.every((element, index) => contentEqual(element, b[index], depth + 1));
+	}
+	if (!isPlainRecord(a) || !isPlainRecord(b)) {
+		// Primitives that failed `===` (including NaN, and null vs object).
+		return false;
+	}
+	const aKeys = Object.keys(a);
+	if (aKeys.length !== Object.keys(b).length) {
+		return false;
+	}
+	return aKeys.every((key) => Object.hasOwn(b, key) && contentEqual(a[key], b[key], depth + 1));
+};
+
 /**
  * Deterministic, canonical JSON text: the package's owned serializer, so a
  * consumer never shells out to an external formatter to produce a stable
@@ -124,6 +163,23 @@ export class CanonicalJson {
 		(value: unknown, options?: CanonicalJsonOptions): Effect.Effect<string, CanonicalJsonError> =>
 			Effect.fromResult(CanonicalJson.serializeResult(value, options)),
 	);
+
+	/**
+	 * Content equality under the serializer's own semantics: two values are
+	 * equal when they would parse to the same JSON document — object key
+	 * order is a serialization detail and is ignored, array order is data
+	 * and is not. `NaN` is never equal to itself (it is not JSON). Total:
+	 * a cyclic or hostile-depth value reports `false` rather than
+	 * overflowing.
+	 *
+	 * This is the comparison `SchemaFile`'s write-if-changed and
+	 * `DocumentDiff`'s leaf comparison already make, exported so a consumer
+	 * writing its own JSON artifact (a catalog entry) can decide "unchanged"
+	 * by the same rule instead of re-implementing it.
+	 */
+	static equals(left: unknown, right: unknown): boolean {
+		return contentEqual(left, right, 0);
+	}
 }
 
 // A numeric indent must be a non-negative integer: `" ".repeat` throws a
