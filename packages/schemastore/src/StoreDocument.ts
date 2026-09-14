@@ -1,4 +1,4 @@
-import { Effect, JsonSchema, Result, Schema } from "effect";
+import { Effect, JsonPointer, JsonSchema, Result, Schema } from "effect";
 import type { CanonicalJsonError, CanonicalJsonOptions } from "./CanonicalJson.js";
 import { CanonicalJson } from "./CanonicalJson.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
@@ -112,7 +112,9 @@ export interface StoreDocumentOptions {
 	 * ({@link KeywordFamilies}); any other key fails the build with
 	 * {@link UndeclaredAnnotationKeyError}, so the override cannot become a
 	 * back door for assertion keywords. Override keys win over generated
-	 * ones.
+	 * ones. The override is checked before generation, so when both this
+	 * gate and the `includeAnnotationKey` gate would fire, the override's
+	 * keys are the ones reported and the predicate's are not.
 	 *
 	 * When the assembled root is a bare local `$ref` (the shape a
 	 * `Schema.Class` root produces — `{ "$ref": "#/$defs/FooEncoded" }`),
@@ -143,12 +145,16 @@ const STANDARD_ANNOTATION_KEYWORDS = new Set([
 	"writeOnly",
 ]);
 
-const LOCAL_DEFS_REF_PREFIX = "#/$defs/";
-
 // Applies `rootAnnotations` per the placement rule. Mutates the freshly
 // assembled `root`/`defs` (both are this call's own null-prototype
 // accumulators, never the caller's schema AST). Declared-family values are
 // shared by reference, matching the annotate() path.
+//
+// The `$ref` token core emits is JSON-Pointer escaped AND percent-encoded
+// (`My Foo/Bar` → `#/$defs/My%20Foo~1Bar`), so the pool name is recovered by
+// decoding the fragment, never by slicing a prefix. An `undefined` value is
+// skipped rather than written: an `undefined` key is not JSON and would
+// otherwise fail serialization later, far from the override that caused it.
 const applyRootAnnotations = (
 	root: Record<string, unknown>,
 	defs: Record<string, unknown>,
@@ -156,13 +162,14 @@ const applyRootAnnotations = (
 ): void => {
 	const keys = Object.keys(root);
 	const ref = keys.length === 1 && keys[0] === "$ref" ? root.$ref : undefined;
-	const pool =
-		typeof ref === "string" && ref.startsWith(LOCAL_DEFS_REF_PREFIX)
-			? defs[ref.slice(LOCAL_DEFS_REF_PREFIX.length)]
-			: undefined;
+	const path = typeof ref === "string" ? JsonPointer.parseUriFragment(ref) : undefined;
+	const pool = path !== undefined && path.length === 2 && path[0] === "$defs" ? defs[path[1]] : undefined;
 	const target =
 		typeof pool === "object" && pool !== null && !Array.isArray(pool) ? (pool as Record<string, unknown>) : root;
 	for (const [key, value] of Object.entries(annotations)) {
+		if (value === undefined) {
+			continue;
+		}
 		target[key] = value;
 	}
 };

@@ -138,6 +138,34 @@ describe("StoreDocument", () => {
 			assert.strictEqual(entry.type, "object");
 		});
 
+		// The $ref token core emits is JSON-Pointer + URI escaped, so the pool
+		// lookup must decode it rather than slice a prefix.
+		it("rootAnnotations follow a pointer-escaped $ref root onto its $defs entry", () => {
+			class Foo extends Schema.Class<Foo>("My Foo/Bar")({ a: Schema.String }) {}
+			const document = Result.getOrThrow(
+				StoreDocument.fromSchemaResult(Foo, {
+					$id: "https://example.com/foo.json",
+					rootAnnotations: { title: "T" },
+				}),
+			);
+			assert.deepStrictEqual(document.root, { $ref: "#/$defs/My%20Foo~1BarEncoded" }, "the root stays a bare $ref");
+			const entry = document.defs["My Foo/BarEncoded"] as Record<string, unknown>;
+			assert.isDefined(entry);
+			assert.strictEqual(entry.title, "T");
+			assert.strictEqual(entry.type, "object");
+		});
+
+		it("rootAnnotations skips undefined-valued entries instead of writing an undefined key", () => {
+			const document = Result.getOrThrow(
+				StoreDocument.fromSchemaResult(Schema.Struct({ a: Schema.String }), {
+					$id: "https://example.com/a.json",
+					rootAnnotations: { title: undefined, description: "D" },
+				}),
+			);
+			assert.isFalse(Object.hasOwn(document.root, "title"));
+			assert.strictEqual(document.root.description, "D");
+		});
+
 		it("rootAnnotations outside the standard keywords and declared families fail UndeclaredAnnotationKeyError", () => {
 			const result = StoreDocument.fromSchemaResult(Schema.Struct({ a: Schema.String }), {
 				$id: "https://example.com/a.json",
