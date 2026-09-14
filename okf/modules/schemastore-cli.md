@@ -203,8 +203,12 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
   catalog entry the same way.
 - `check` is the identical walk with **no writes**: it reports what
   `build` would do under the same flags and exits under the same
-  conditions. It is the CI gate, and it retires the six drift tests.
-  Never-writes is one predicate, not a separate code path: both modes
+  conditions — and, because it is the CI drift gate, it ALSO exits `1`
+  whenever a build would write anything: a committed schema or catalog
+  entry that differs from what the config generates, or one that is
+  missing, is stale, and the message says to run `schemastore build` and
+  commit the result (`StaleError`, evaluated after the gate and drift
+  verdicts). It retires the six drift tests. Never-writes is one predicate, not a separate code path: both modes
   share one `SchemaFile`, and `Runner` gates every write — schemas and
   catalog entries alike — on a single `writing` predicate
   (`mode === "build" && !refused`), pinned by the "check never writes"
@@ -225,7 +229,7 @@ Exit codes:
 | code | meaning |
 | ------ | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
-| 1 | drift under `onDrift: error`, or a gate failure |
+| 1 | drift under `onDrift: error`, a gate failure, or — for `check` — any document `build` would write |
 | 2 | config not found, failed to load, or failed `SchemastoreConfig` validation |
 | 3 | infrastructure failure (`CliRuntime.reportFailures` fallback) |
 | 64 | usage error — `ShowHelp` carrying parse errors |
@@ -319,7 +323,9 @@ becomes moot: there is no longer a canonical generator script to copy.
   a child process — seeded config plus prior outputs, then assertions on
   the volume (what was written; that `check` wrote nothing), captured
   output and exit code. Cases: discovery up the tree, positional
-  override, not found → `2`; flag-over-config precedence; `--force`
+  override, not found → `2`; `check` on a fresh volume exits `1` stale,
+  over the exact generated documents exits `0`, with only a stale catalog
+  entry exits `1`; flag-over-config precedence; `--force`
   warning; `onDrift: warn` writes and exits `0`; gate failure exits `1`
   under either `onDrift`; `--format=json` parses with nothing else on
   stdout; step summary appended when set, logged-not-fatal when

@@ -38,6 +38,19 @@ export class GateError extends Schema.TaggedError<GateError>()("GateError", { co
 }
 
 /**
+ * `check` found committed documents that differ from what the config
+ * generates (or are missing), so a `build` would write. `check` is the CI
+ * drift gate, so a stale tree fails it. Exit `1`.
+ *
+ * @public
+ */
+export class StaleError extends Schema.TaggedError<StaleError>()("StaleError", { count: Schema.Number }) {
+	override get message(): string {
+		return `${this.count} document(s) are stale; run \`schemastore build\` and commit the result.`;
+	}
+}
+
+/**
  * The parsed flags and argument of `build` / `check`.
  *
  * @public
@@ -102,8 +115,9 @@ const emit = Effect.fn("schemastore.emit")(function* (report: RunReport, format:
  * @remarks
  * Loads the config, applies the flag overrides, runs the shared walk,
  * emits the report in the requested format, appends the step summary, and
- * fails typed — `GateError` before `DriftError`, each carrying exit `1` —
- * when the report says the run refused to write. `SchemaFile` is built
+ * fails typed — `GateError`, then `DriftError`, then (for `check` only)
+ * `StaleError`, each carrying exit `1` — when the report says the run
+ * refused to write or, under `check`, that a build would write. `SchemaFile` is built
  * here over the environment's `FileSystem`; the validator is
  * `deps.validator` or the real engine.
  *
@@ -138,5 +152,13 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 	if (report.drifted && drift.onDrift === "error") {
 		const count = report.schemas.filter((schema) => schema.verdict === "drift").length;
 		return yield* Effect.fail(reported(new DriftError({ count }), 1));
+	}
+	if (mode === "check") {
+		const count =
+			report.schemas.filter((schema) => schema.outcome === "would-write").length +
+			report.catalog.filter((entry) => entry.outcome === "would-write").length;
+		if (count > 0) {
+			return yield* Effect.fail(reported(new StaleError({ count }), 1));
+		}
 	}
 });

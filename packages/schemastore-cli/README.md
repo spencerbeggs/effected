@@ -89,7 +89,7 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 ```
 
 - `build` generates every schema, runs the gates (structural lints and ajv strict mode), applies the drift policy, and writes what passes — content-compared, so unchanged files are untouched — along with each catalog entry.
-- `check` is the identical walk with no writes: it reports what `build` would do under the same flags and exits under the same conditions. It is the CI gate.
+- `check` is the identical walk with no writes: it reports what `build` would do under the same flags and exits under the same conditions. It is the CI gate, so it also fails (exit `1`) whenever a build would write anything — a committed schema or catalog entry that differs from what the config generates, or is missing, is stale; run `schemastore build` and commit the result.
 - `--drift` and `--on-drift` override the config's `drift` block for one run; `--force` is sugar for `--drift=allow`.
 - `--format=json` emits one JSON document on stdout (config path, per-schema outcome, per-catalog-entry outcome, effective drift policy and its source); human text moves to stderr.
 - When `GITHUB_STEP_SUMMARY` is set, both commands append a markdown summary table.
@@ -101,7 +101,7 @@ An unpublished schema is never drift: a contract change at a pinned but unpublis
 | code | meaning |
 | ---- | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
-| 1 | drift under `onDrift: error`, or a gate failure |
+| 1 | drift under `onDrift: error`, a gate failure, or — for `check` — any document `build` would write |
 | 2 | config not found, failed to load, or failed `SchemastoreConfig` validation |
 | 3 | infrastructure failure |
 | 64 | usage error |

@@ -9,7 +9,7 @@ First release of the `schemastore` command, the bin-only companion to `@effected
 ### `build` and `check`
 
 * `schemastore build [config]` generates every declared schema, runs the lint and ajv gates, applies the drift policy, and writes what passes — content-compared, so unchanged files are untouched — plus each derived catalog entry.
-* `schemastore check [config]` is the identical walk with no writes: it reports what `build` would do under the same flags and exits under the same conditions, so it is the CI gate.
+* `schemastore check [config]` is the identical walk with no writes: it reports what `build` would do under the same flags and exits under the same conditions. It is the CI gate, so it also exits `1` on stale documents — whenever a build would write anything (a committed schema or catalog entry that differs from what the config generates, or is missing) — with a message that says to run `schemastore build` and commit the result.
 
 ### Config discovery
 
@@ -28,7 +28,7 @@ The config is `schemastore.config.ts` (also `.mts`, `.js`, `.mjs`) found by walk
 
 ### Exit codes
 
-`0` success (including drift under `warn`), `1` drift under `error` or a gate failure, `2` config not found, failed to load or failed validation, `3` infrastructure failure, `64` usage error.
+`0` success (including drift under `warn`), `1` drift under `error`, a gate failure, or (`check` only) a stale document a build would write, `2` config not found, failed to load or failed validation, `3` infrastructure failure, `64` usage error.
 
 ## Dependencies
 

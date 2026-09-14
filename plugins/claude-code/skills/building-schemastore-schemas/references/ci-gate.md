@@ -2,9 +2,11 @@
 
 `schemastore check` is the identical walk to `build` with no writes: it
 reports what a build would do under the same flags and exits under the same
-conditions. That makes it the CI gate — a repository with three broken
-documents learns all three in one run — and it replaces the drift test every
-generator script used to carry.
+conditions — plus one more: it exits `1` whenever a build would write
+anything, because a committed document that differs from what the config
+generates (or is missing) is stale. That makes it the CI gate — a repository
+with three broken documents learns all three in one run — and it replaces
+the drift test every generator script used to carry.
 
 ## Scripts and turbo
 
@@ -35,7 +37,7 @@ the generated files as `schema:build`'s outputs:
 Locally, `schema:build` regenerates and you commit the result; in CI,
 `schema:check` proves the committed documents match the schemas. A `check`
 that reports `would write` means someone changed a schema and did not run
-the build.
+the build; it fails with ``N document(s) are stale; run `schemastore build` and commit the result.`` at exit `1`.
 
 ## Commands and flags
 
@@ -57,7 +59,7 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 | code | meaning |
 | --- | --- |
 | `0` | success, including drift under `--on-drift=warn` |
-| `1` | drift under `--on-drift=error`, or a gate failure (lint warning, ajv strict finding) |
+| `1` | drift under `--on-drift=error`, a gate failure (lint warning, ajv strict finding), or — for `check` — any document `build` would write |
 | `2` | config not found, failed to load, or failed `defineConfig` validation |
 | `3` | infrastructure failure |
 | `64` | usage error (an unknown flag, a bad literal) |

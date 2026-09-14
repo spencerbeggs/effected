@@ -49,9 +49,10 @@ program. What varies between them is exactly the config it takes.
    treat the move as the version bump it is.
 5. Replace the `generate-schema` script with `schema:build` and
    `schema:check`; point turbo's `build` at `schema:build`.
-6. Run `pnpm schema:check`. `unchanged` on every line proves the config
-   reproduces the committed documents; `would write` means a target moved in
-   translation — diff the generated file before trusting the config.
+6. Run `pnpm schema:check`. `unchanged` on every line (exit `0`) proves the
+   config reproduces the committed documents; `would write` (exit `1`,
+   stale) means a target moved in translation — diff the generated file
+   before trusting the config.
 7. Delete the script, its drift test, the `CATALOGUED` constant, the
    hand-written catalog-entry write, and `tsx` if nothing else used it. The
    remaining `__test__` files that assert on the *documents* (decoding a

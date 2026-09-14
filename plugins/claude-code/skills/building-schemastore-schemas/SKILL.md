@@ -77,8 +77,8 @@ install both at the same version, with `effect`, as devDependencies.
   document reproduces regardless of core's default. See
   [references/document-authoring.md](references/document-authoring.md).
 - **Run `schema:check` in CI and read its exit code.** `0` is clean (or drift
-  under `--on-drift=warn`), `1` is drift or a gate failure, `2` is a config
-  problem, `64` is a usage error. See
+  under `--on-drift=warn`), `1` is drift, a gate failure, or a stale document
+  a build would write, `2` is a config problem, `64` is a usage error. See
   [references/ci-gate.md](references/ci-gate.md).
 - **Retire the generator script when the config lands** — the script, its
   drift test, the `CATALOGUED`-style constant and the hand-written catalog

@@ -3,6 +3,7 @@ import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import type { SchemastoreConfig } from "@effected/schemastore";
 import {
+	CatalogEntry,
 	SchemaTarget,
 	SchemaValidator,
 	SchemaVersioning,
@@ -16,7 +17,7 @@ import type { Command } from "effect/unstable/cli";
 import { CliError } from "effect/unstable/cli";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { ConfigLoadError, ConfigNotFoundError } from "../src/ConfigLoader.js";
-import { DriftError, GateError } from "../src/cli/execute.js";
+import { DriftError, GateError, StaleError } from "../src/cli/execute.js";
 import type { ProgramDeps } from "../src/cli/program.js";
 import { loggerLayer, program } from "../src/cli/program.js";
 
@@ -118,11 +119,34 @@ const run = <A, E>(
 
 const exitCodeOf = (error: unknown): number => Runtime.getErrorExitCode(error);
 
+// `check` fails on a stale tree by design; tests about SOME OTHER property
+// of a stale check (its stdout shape, the step summary) tolerate exactly
+// that error and nothing else.
+const tolerateStale = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+	effect.pipe(
+		Effect.catchIf(
+			(error) => error instanceof StaleError,
+			() => Effect.void,
+		),
+	);
+
+// The fresh-volume seed plus the exact documents a `build` writes, so a
+// `check` over it is clean.
+const builtSeed: MemoryFileSystemSeed = {
+	[CONFIG_PATH]: "",
+	[BASIC_PATH]: emitted(Config, BASIC_ID),
+	[CATALOG_PATH]: `${JSON.stringify(Schema.encodeSync(CatalogEntry)(basicConfig().catalog[0]?.entry as CatalogEntry))}\n`,
+};
+
 describe("schemastore CLI", () => {
-	it.effect("check discovers the config from cwd and reports what build would write", () =>
+	it.effect("check on a fresh volume reports what build would write and fails stale at exit 1", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["check"], deps(basicConfig()));
+				const error = yield* Effect.flip(program(["check"], deps(basicConfig())));
+				assert.instanceOf(error, StaleError);
+				assert.strictEqual(exitCodeOf(error), 1);
+				assert.strictEqual(error.count, 2, "one schema plus one catalog entry");
+				assert.include(error.message, "2 document(s) are stale");
 				const out = yield* stdout;
 				assert.include(out, `would write (created) ${BASIC_PATH}`);
 				assert.include(out, `would write catalog ${CATALOG_PATH}`);
@@ -134,6 +158,45 @@ describe("schemastore CLI", () => {
 				assert.isFalse(yield* fs.exists(BASIC_PATH), "check never writes");
 			}),
 			{ [CONFIG_PATH]: "" },
+		),
+	);
+
+	it.effect("check over the exact generated documents exits 0", () =>
+		run(
+			Effect.gen(function* () {
+				yield* program(["check"], deps(basicConfig()));
+				const out = yield* stdout;
+				assert.include(out, `unchanged ${BASIC_PATH}`);
+				assert.include(out, `unchanged catalog ${CATALOG_PATH}`);
+			}),
+			builtSeed,
+		),
+	);
+
+	it.effect("check with only a stale catalog entry fails stale at exit 1", () =>
+		run(
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(program(["check"], deps(basicConfig())));
+				assert.instanceOf(error, StaleError);
+				assert.strictEqual(exitCodeOf(error), 1);
+				assert.strictEqual(error.count, 1);
+				const out = yield* stdout;
+				assert.include(out, `unchanged ${BASIC_PATH}`);
+				assert.include(out, `would write catalog ${CATALOG_PATH}`);
+			}),
+			{ ...builtSeed, [CATALOG_PATH]: '{"name":"basic","description":"old"}\n' },
+		),
+	);
+
+	it.effect("build over the exact generated documents changes nothing and exits 0", () =>
+		run(
+			Effect.gen(function* () {
+				yield* program(["build"], deps(basicConfig()));
+				const out = yield* stdout;
+				assert.include(out, `unchanged ${BASIC_PATH}`);
+				assert.include(out, `unchanged catalog ${CATALOG_PATH}`);
+			}),
+			builtSeed,
 		),
 	);
 
@@ -238,10 +301,11 @@ describe("schemastore CLI", () => {
 		),
 	);
 
-	it.effect("check --on-drift=warn writes nothing and says what a build would write", () =>
+	it.effect("check --on-drift=warn writes nothing, says what a build would write, and still fails stale", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["check", "--on-drift=warn"], deps(basicConfig()));
+				const error = yield* Effect.flip(program(["check", "--on-drift=warn"], deps(basicConfig())));
+				assert.instanceOf(error, StaleError);
 				const fs = yield* FileSystem.FileSystem;
 				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID), "check never writes");
 				const out = yield* stdout;
@@ -303,7 +367,7 @@ describe("schemastore CLI", () => {
 	it.effect("--format=json puts one parseable document on stdout and the human lines on stderr", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["check", "--format=json"], deps(basicConfig()));
+				yield* tolerateStale(program(["check", "--format=json"], deps(basicConfig())));
 				const out = yield* stdout;
 				assert.strictEqual(out.length, 1, out.join("\n"));
 				const doc = JSON.parse(out[0] as string) as { mode: string; schemas: ReadonlyArray<{ outcome: string }> };
@@ -319,7 +383,7 @@ describe("schemastore CLI", () => {
 	it.effect("appends the markdown summary when GITHUB_STEP_SUMMARY is set", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["check"], deps(basicConfig()));
+				yield* tolerateStale(program(["check"], deps(basicConfig())));
 				const fs = yield* FileSystem.FileSystem;
 				assert.include(yield* fs.readFileString("/summary.md"), "### schemastore check");
 			}),
@@ -331,7 +395,7 @@ describe("schemastore CLI", () => {
 	it.effect("writes no summary when GITHUB_STEP_SUMMARY is unset", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["check"], deps(basicConfig()));
+				yield* tolerateStale(program(["check"], deps(basicConfig())));
 				const fs = yield* FileSystem.FileSystem;
 				assert.isFalse(yield* fs.exists("/summary.md"));
 			}),
@@ -342,7 +406,7 @@ describe("schemastore CLI", () => {
 	it.effect("--format=json keeps stdout to one document even with a warning in play", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["check", "--format=json", "--force"], deps(basicConfig()));
+				yield* tolerateStale(program(["check", "--format=json", "--force"], deps(basicConfig())));
 				const out = yield* stdout;
 				assert.strictEqual(out.length, 1, out.join("\n"));
 				const doc = JSON.parse(out[0] as string) as { drift: { policy: string; source: string } };

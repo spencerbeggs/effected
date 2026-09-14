@@ -56,7 +56,7 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
 ```
 
 - **`build`** generates, gates (structural lint + ajv strict mode), applies the drift table, and writes what passes — content-compared, so an unchanged or merely reformatted file is untouched — then the catalog entries the same way. When any schema fails the gate, or drifts under `onDrift: "error"`, **nothing is written** and every otherwise-writable schema reports `held`.
-- **`check`** is the identical walk with no writes: it reports exactly what `build` would do under the same flags (`would write`, `unchanged`, `DRIFT`, `held`, `GATE FAILED`) and exits under the same conditions. It is the CI gate and replaces a hand-written drift test.
+- **`check`** is the identical walk with no writes: it reports exactly what `build` would do under the same flags (`would write`, `unchanged`, `DRIFT`, `held`, `GATE FAILED`) and exits under the same conditions — and, as the CI gate, it also exits `1` whenever a build would write anything (`StaleError`: ``N document(s) are stale; run `schemastore build` and commit the result.``), evaluated after the gate and drift verdicts. It replaces a hand-written drift test.
 - **`--force`** is `--drift=allow` for one run, announced loudly; it never overrides a gate failure.
 - **`--format=json`** emits one document on stdout — config path, effective drift policy with its `source` (`config` | `flag`), per-schema `{ $id, path, name?, version?, published, change, verdict, outcome, nextVersion?, findings }`, per-catalog-entry outcome, `drifted`, `gateFailed`, `wrote` — and moves every human line to stderr.
 - When `GITHUB_STEP_SUMMARY` is set (read through Effect `Config`), both commands append a markdown table and the drift verdict; a failure to write it is logged, never fatal.
@@ -77,7 +77,7 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
 | code | meaning |
 | ------ | --------- |
 | 0 | success, including drift under `onDrift: "warn"` |
-| 1 | drift under `onDrift: "error"`, or a gate failure |
+| 1 | drift under `onDrift: "error"`, a gate failure, or — for `check` — any document `build` would write |
 | 2 | config not found, failed to load, or not a `defineConfig(...)` value |
 | 3 | infrastructure failure |
 | 64 | usage error |
