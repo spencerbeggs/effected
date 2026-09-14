@@ -331,14 +331,9 @@ export class SchemaVersioning {
 	 * a contradiction (versioned mode with no versions) and throws — pass
 	 * `undefined` for the unversioned mode.
 	 *
-	 * Labels are inserted in ascending {@link SchemaVersioning.Order}, but a
-	 * bare-major label (`"2"`) is array-index-like, so JavaScript enumerates
-	 * it FIRST regardless of insertion order — the serialized order of the
-	 * `versions` map is not meaningful when such a label is present. A two-
-	 * or three-component label is never integer-like and keeps insertion
-	 * order through serialization. Deriving ordering from the labels
-	 * themselves (as {@link SchemaVersioning.latest} does) is still the
-	 * robust read.
+	 * Labels are inserted in ascending {@link SchemaVersioning.Order}; see
+	 * {@link CatalogUrls.versions} for why a bare-major key's serialized
+	 * position is not meaningful.
 	 */
 	static catalogUrls(options: {
 		readonly baseUrl: string;

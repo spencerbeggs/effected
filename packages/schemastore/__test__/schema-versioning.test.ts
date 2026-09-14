@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Result } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
+import { Arbitrary } from "effect/unstable/arbitrary";
 import type { SchemaVersion, WriteChange } from "../src/index.js";
 import { CanonicalJson, InvalidSchemaVersionError, SchemaVersioning } from "../src/index.js";
 
@@ -332,6 +333,41 @@ describe("SchemaVersioning", () => {
 
 		it("throws on the versioned/empty contradiction", () => {
 			assert.throws(() => SchemaVersioning.catalogUrls({ baseUrl: "https://example.com", name: "cfg", versions: [] }));
+		});
+	});
+
+	describe("label grammar (property)", () => {
+		// 1..3 numeric components, optional `-prerelease` of dot-separated
+		// alphanumeric identifiers. Numeric components are bounded so padding
+		// never overflows, and leading zeros are excluded because SemVer
+		// rejects them ("01" is not a valid numeric identifier).
+		const Component = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 999 }));
+		const Ident = Schema.String.check(Schema.isPattern(/^[1-9A-Za-z][0-9A-Za-z-]{0,5}$/));
+		const LabelParts = Schema.Struct({
+			core: Schema.Array(Component).check(Schema.isMinLength(1), Schema.isMaxLength(3)),
+			prerelease: Schema.Array(Ident).check(Schema.isMaxLength(2)),
+		});
+		const label = Arbitrary.schema(LabelParts).pipe(
+			Arbitrary.map(
+				({ core, prerelease }) => `${core.join(".")}${prerelease.length > 0 ? `-${prerelease.join(".")}` : ""}`,
+			),
+		);
+
+		it.prop("every generated label parses and round-trips verbatim", [label], ([raw]) => {
+			const parsed = SchemaVersioning.parseResult(raw);
+			return Result.isSuccess(parsed) && parsed.success === raw;
+		});
+
+		it.prop("ordering is invariant under zero-padding to three components", [label], ([raw]) => {
+			// Split on the FIRST dash only, matching the module's own `split`
+			// (`input.indexOf("-")`) — an `Ident` may itself contain a dash
+			// (`/^[1-9A-Za-z][0-9A-Za-z-]{0,5}$/`), so `String#split("-", 2)`
+			// truncates a multi-dash prerelease instead of isolating it.
+			const dash = raw.indexOf("-");
+			const core = dash === -1 ? raw : raw.slice(0, dash);
+			const prerelease = dash === -1 ? "" : raw.slice(dash);
+			const padded = `${[...core.split("."), "0", "0"].slice(0, 3).join(".")}${prerelease}`;
+			return SchemaVersioning.Order(version(raw), version(padded)) === 0;
 		});
 	});
 });
