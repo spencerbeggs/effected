@@ -83,6 +83,11 @@ file named by the optional positional argument. The positional form is
 what repositories with a `lib/scripts/` convention use; the discovery
 form serves everyone else.
 
+The module is loaded through `jiti` created against the **config
+file's own path** (`createJiti(configPath, …)`), so its relative
+specifiers and its `effect` / `@effected/schemastore` imports resolve
+from the consumer's tree, never from the CLI's.
+
 The module's default export is a `defineConfig(...)` value. `defineConfig`
 lives in `@effected/schemastore` (module `SchemastoreConfig`), is pure,
 and is identity-with-validation over a `Schema.Struct`, so a malformed
@@ -119,8 +124,12 @@ export default defineConfig({
 ```
 
 - `schemas` — at least one `SchemaTarget`. `SchemaTarget` gains one
-  optional field, `published` (default `false`), carried on the target so
-  `SchemaPipeline`'s contract guard can read it.[^pipeline]
+  optional field, `published` (default `false`), and `version` accepts a
+  plain string label as well as a parsed `SchemaVersion`. The pipeline
+  does NOT read `published`: `SchemaPipeline`'s own `block-versioned`
+  contract guard is untouched, and the CLI's `Runner` runs
+  `SchemaPipeline.check(..., { contractChanges: "allow" })` and applies
+  `DriftPolicy.classify` over each result itself.[^pipeline]
 - `catalog` — zero or more entries. `name` must match at least one
   versioned schema; `versions` is **derived** from every versioned schema
   of that name, published or not — the entry is what gets submitted to
@@ -214,12 +223,20 @@ Exit codes:
 
 - **Human** (default): one line per schema — `written (contract)`,
   `unchanged`, `would write (annotations)`, `DRIFT contract at published
-  1.2 → suggest 1.3` — with advisory findings indented beneath, one line
-  per catalog entry, and a summary line. Warnings and errors go through
-  `CliLogger` on stderr.
+  1.2 → suggest 1.3`, and `held (drift elsewhere)` or `held (gate failed
+  elsewhere)` for a schema that passed but was not written because a
+  sibling refused the run — with advisory findings indented beneath, one
+  line per catalog entry, and a summary line. A prerelease label's
+  contract change has `nextVersion === version` (the label is not
+  pinned) and renders no suggestion. Warnings and errors go through
+  `CliLogger` on stderr; the logger is built with `stderrFrom: "All"` so
+  a `--format=json` stdout stays parseable.
 - **JSON**: the document above, stable key order.
-- **GitHub step summary**: when `GITHUB_STEP_SUMMARY` is set, both
-  commands append a markdown table (schema · version · published · change
+- **GitHub step summary**: `GITHUB_STEP_SUMMARY` is read through Effect
+  `Config` (`Config.String(...).pipe(Config.option)` under the default
+  `fromEnv` provider — tests substitute `ConfigProvider.fromMap`), never
+  `process.env`; `__PACKAGE_VERSION__` stays the bundler's compile-time
+  substitution.[^owner] When it is set, both commands append a markdown table (schema · version · published · change
   · outcome) and the drift verdict. This is a short append in the CLI, not
   a dependency on `@effected/github-actions`, whose weight is wrong for a
   bin that appends one file. A failure to write the summary is logged and
@@ -255,7 +272,10 @@ recorded as a Gotcha rather than fought.
 - `packages/schemastore-cli`: `bin: { schemastore: "./src/bin.ts" }`,
   `exports` limited to `./package.json`, no `index.ts`, no api-extractor
   model and no website page — the documentation is `--help`, the README,
-  and the library's page.
+  and the library's page. The bundler runs with `emitDts: false` — the
+  prod meta pass refuses a package with zero entry points — so there is
+  no dts pass, no `_base` suppression and no `tsdoc.json`; it is the one
+  package that departs from the scaffold convention there.
 - `dependencies`: `jiti`, `@effect/platform-node`, `@effected/cli`.
   `peerDependencies`: `effect`, `@effected/schemastore` (exact fixed
   version).
@@ -292,6 +312,10 @@ becomes moot: there is no longer a canonical generator script to copy.
   under either `onDrift`; `--format=json` parses with nothing else on
   stdout; step summary appended when set, logged-not-fatal when
   unwritable.
+- Two `effect/unstable/cli` notes the tests pin: a `Flag.Boolean` must
+  carry `withDefault(false)` or its omission is a parse error rather
+  than `false`, and `CliLogger` must be given `stderrFrom: "All"` for the
+  JSON-mode stdout assertion to hold.
 - The jiti edge — a config whose `./x.js` specifiers resolve to `.ts`
   sources, on the consumer's own `effect` instance — is one real-filesystem
   integration test over a fixture directory, plus a scratchpad probe
@@ -301,5 +325,5 @@ becomes moot: there is no longer a canonical generator script to copy.
 [^owner]: The owner's design conversation of 2026-09-13: the six duplicated generators, the `defineConfig`/`schemas`/`catalog`/`drift` shape, `published` per schema, `build` + `check`, catalog versions including unpublished labels, and the widened version grammar with a minor-bump suggestion.
 [^release-action-generator]: `lib/scripts/generate-schema.ts` in silk-release-action — the fullest of the six, with `--check`, `--allow-contract-change`, and the `SchemaContractChangeError` handler the CLI absorbs.
 [^okfit-generator]: `lib/scripts/generate-schema.ts` in okfit — the `CATALOGUED = false` constant that `published` replaces, and the hand-written catalog-entry write the `catalog` block replaces.
-[^pipeline]: `SchemaPipeline.run` / `SchemaPipeline.check`, `ContractChangePolicy`, and the `change`, `blocked`, `contractBlocked`, `wouldWrite` result fields.
-[^versioning]: `SchemaVersioning` — the strict three-component grammar and its stated reasons, and `next`'s current major-bump rule.
+[^pipeline]: `SchemaPipeline.run` / `SchemaPipeline.check`, `ContractChangePolicy`, and the `change`, `blocked`, `contractBlocked`, `wouldWrite` result fields. The pipeline never reads `published`; the CLI's `Runner` classifies over `check` results with the contract guard set to `"allow"`.
+[^versioning]: `SchemaVersioning` — the widened one-to-three-component grammar, `parseResult`, and `next`'s minor-bump rule (identity on a prerelease label).
