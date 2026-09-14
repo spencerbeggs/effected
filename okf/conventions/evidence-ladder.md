@@ -11,8 +11,8 @@ sources:
     resource: ../../scratchpad/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: f1368fbaed55e40f5219dc01393405980bdea8ea8b8fd90b793e3bcfba07a9e5
+  at: 2026-09-14T02:44:47Z
+  body_sha256: c2f91c061d58e44d293bf5839e2180c9b192e1cd96caf2a98f54e7bf6c326aaf
 ---
 
 # Climb the evidence ladder in order — renames, then source, then a probe

@@ -13,6 +13,8 @@ sources:
     resource: ../../vitest.config.ts
 generated:
   by: "okfit/claude-code"
+  at: 2026-09-14T02:44:47Z
+  body_sha256: 4a4572cb59dbc6091574851ab8be07fc9ec8205f7e120cb16776a55f03cbfa95
 ---
 
 # A vitest positional filter is a cwd-rendered substring match, and a miss collects nothing

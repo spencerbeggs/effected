@@ -8,6 +8,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
+  at: 2026-09-14T02:44:47Z
+  body_sha256: aa8b9b36d366405eed5fe6cee057ab938b74225543722ece673d38eee7734424
 ---
 
 # A single embedded NUL byte makes grep silently skip a text file

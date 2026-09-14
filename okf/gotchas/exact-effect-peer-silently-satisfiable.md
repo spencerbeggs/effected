@@ -13,6 +13,8 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "okfit/claude-code"
+  at: 2026-09-14T02:44:47Z
+  body_sha256: afe0ea2064eb176bdae180a29fa31ba1ebf1e1b690bc1ff32cbe46baef6d1a86
 ---
 
 # An unsatisfiable exact effect peer installs clean and fails somewhere else

@@ -14,8 +14,8 @@ sources:
     resource: ../../package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 24c3212d956d3565b10aaa42921e86b66c763484376b78d5e80f51ed1af842a7
+  at: 2026-09-14T02:44:47Z
+  body_sha256: d3ba71f4783de297076dd1f9ac6ffae48c3b82915db19e69f8ce966f300cc036
 ---
 
 # Build through turbo, never by invoking the bundler script directly

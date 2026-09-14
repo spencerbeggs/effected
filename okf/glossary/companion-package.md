@@ -11,8 +11,8 @@ sources:
     resource: ../project.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: e39d78ee39bee722729118a42dcc946fd167e731505699e9eaaac36fe608d7b7
+  at: 2026-09-14T02:44:47Z
+  body_sha256: 4d274552508ff63b7cc2f19c644d19699805f409bfb8fb34266a3c51791576d1
 ---
 
 # Companion package

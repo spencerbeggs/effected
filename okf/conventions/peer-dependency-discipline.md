@@ -12,8 +12,8 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 459f227534a2bf913070d91c4684d3dd87f19fad8ebeffe623f60b1b0a6e306b
+  at: 2026-09-14T02:44:47Z
+  body_sha256: 6948f741b25d4e455d0f170fc9ed1bf779250f94b969bd5377e8ee03f919f081
 ---
 
 # Peer-dependency discipline

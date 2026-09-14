@@ -10,8 +10,8 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: ede38808a928bada067da5e98d23c2f02233bc4205834916c2a9fc1333cede41
+  at: 2026-09-14T02:44:47Z
+  body_sha256: 799fa69250a71cd8be2031eee03ab042b754c6418749a1483e7b632180b4b963
 ---
 
 # catalog:build is missing from pnpm-workspace.yaml because it is injected

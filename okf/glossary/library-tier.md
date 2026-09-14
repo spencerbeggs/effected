@@ -11,8 +11,8 @@ sources:
     resource: ../project.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 3d07c6956058e5cad4d074b2a903f7ab5e13754ecc721f9a47090822d8c27d3a
+  at: 2026-09-14T02:44:47Z
+  body_sha256: c763896639627b1512e33fc1361f2ccb7c52d71e1942669da64278a755a75f10
 ---
 
 # Library tier (pure / boundary / integrated)

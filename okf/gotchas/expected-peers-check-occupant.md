@@ -10,6 +10,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
+  at: 2026-09-14T02:44:47Z
+  body_sha256: 8d67ea9bd619a9e2726be4703b72b3aeba06bf72c4edb211de915cfa269ef50a
 ---
 
 # pnpm peers check is expected to report exactly one occupant
