@@ -638,7 +638,7 @@
 		"Vocabulary": "ask the vendored schema.org vocabulary directly about types, properties and inheritance"
 	},
 	"schemastore": {
-		"CanonicalJson": "deterministic canonical json text, stable diff-friendly serialization for committed schema files",
+		"CanonicalJson": "deterministic canonical json text, stable diff-friendly serialization for committed schema files, content equality for two parsed json documents",
 		"CatalogEntry": "build a schemastore catalog.json entry, assemble unversioned or versioned schema urls",
 		"CatalogLintFinding": "catalog fileMatch hygiene warning, generic pattern or complex glob rejection",
 		"ConfigBrand": "the private symbol key isSchemastoreConfig checks and defineConfig sets, not itself importable",

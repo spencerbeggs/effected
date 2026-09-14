@@ -320,6 +320,14 @@ The classification is key-order insensitive and keyword-position aware, like the
 
 `CanonicalJson` is the deterministic serializer behind `serializeResult` and `SchemaFile.write`: insertion-order keys (assembly owns ordering — nothing is sorted), tab indentation by default, LF line endings and a single trailing newline, so equal documents serialize to equal bytes. Where `JSON.stringify` silently drops or rewrites `undefined`, `NaN` and non-plain objects, it fails typed instead — `NonJsonValueError` carries a JSON pointer to the offending value, and `JsonDepthExceededError` catches hostile nesting and cycles.
 
+`CanonicalJson.equals` is content equality under the same semantics: two values are equal when they would parse to the same JSON document — object key order is ignored, arrays compare positionally, and a non-plain object (a class instance, a `Date`) compares by reference. It is the comparison `SchemaFile`'s write-if-changed and `DocumentDiff`'s leaf checks already make, exported so a consumer writing its own JSON artifact can decide "unchanged" by the same rule.
+
+## Root annotations
+
+Some annotations cannot be expressed on the source schema — a `Schema.Class` root's `title`, or a description on a field the generator filtered. `rootAnnotations` (on `StoreDocumentOptions`, and forwarded from `SchemaTarget.rootAnnotations` by the pipeline) merges them onto the emitted root after assembly. The gate is up front: only the standard annotation keywords (`title`, `description`, `$comment`, `default`, `examples`, `readOnly`, `writeOnly`, `contentMediaType`, `contentEncoding`) and the declared keyword families are admitted; anything else fails with `UndeclaredAnnotationKeyError` before generation, so the override cannot become a back door for assertion keywords.
+
+Placement follows the assembled root: an inline root takes the annotations directly; a bare local `$ref` root whose `$defs` entry nothing else references takes them on that entry (Draft-07 validators ignore `$ref` siblings); a bare `$ref` root whose entry is shared — a recursive class — becomes `{ ...annotations, allOf: [{ $ref }] }`, so the document is annotated without every occurrence of the type inheriting its title.
+
 ## Features
 
 - `StoreDocument` — the assembly pipeline: `fromSchema` / `fromSchemaResult`, the `draft07` constructor for hand-built documents, the flat `toJson()` publication shape, `serializeResult()`, the `DRAFT_07_META_SCHEMA` constant and `SchemaConversionError`.
@@ -331,8 +339,8 @@ The classification is key-order insensitive and keyword-position aware, like the
 - `DocumentDiff` — `classify` puts two documents in `"none"` / `"annotations"` / `"contract"`, the signal for whether a change needs a new schema version, plus `isClean` for the clean case.
 - `SchemaPipeline` — the emit loop over a target manifest, two-phase and all-or-nothing across targets: `run` and `check`, the single-target `runOne` and `checkOne`, `PipelineFinding`, `SchemaGateError` and an overridable gating predicate, plus the contract gate (`ContractChangePolicy`, `ContractChangeTarget`, `SchemaContractChangeError`, `PipelineCheckResult.contractBlocked`) that refuses to rewrite a published document's validation contract in place.
 - `SchemaFile` — write-if-changed IO over core `FileSystem` / `Path`, comparing by content and answering what changed as a value; `check` is the non-writing drift half, answering `wouldWrite` alongside `change`.
-- `SchemaTarget` — the target manifest vocabulary: schema, `$id`, destination path, an optional name, an optional version that requires one, and optional per-target `jsonSchema` generation options.
-- `CanonicalJson` — the deterministic serializer with typed failures (`NonJsonValueError`, `JsonDepthExceededError`).
+- `SchemaTarget` — the target manifest vocabulary: schema, `$id`, destination path, an optional name, an optional version that requires one, optional per-target `jsonSchema` generation options and `rootAnnotations` merged onto the emitted root.
+- `CanonicalJson` — the deterministic serializer with typed failures (`NonJsonValueError`, `JsonDepthExceededError`) and `equals`, content equality under the same semantics.
 
 ## License
 

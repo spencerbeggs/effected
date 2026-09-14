@@ -73,6 +73,32 @@ convention moved `Config` in the same release (`Config.String`/`Int`/
 requirements** — it needs no platform package at all, so an HTTP-calling CLI does
 not become integrated tier on the HTTP client's account.
 
+## `Flag.Boolean` has no implicit `false` — omission is `MissingOption`
+
+A boolean flag is **not** "false unless `--x` is passed". `Flag.Boolean(name)`
+is `Param.Boolean(Param.flagKind, name)` with no fallback (`unstable/cli/Flag.ts:76`;
+its own docstring at `:69` says *"Omission fails unless the flag is made
+optional or given a fallback"*), and the shared flag parser fails with
+`CliError.MissingOption({ option: name })` the moment the flag is absent from
+the parsed args (`unstable/cli/Param.ts:1949`) — the primitive's type never
+enters into it. So a bare `Flag.Boolean("force")` turns every invocation that
+*omits* `--force` into a usage error, which is the opposite of what a
+boolean flag is for. Spell the default:
+
+~~~ts
+import { Flag } from "effect/unstable/cli"
+
+const force = Flag.Boolean("force").pipe(
+  Flag.withDefault(false),               // or Flag.optional for Option<boolean>
+  Flag.withDescription("Shorthand for --drift=allow"),
+)
+~~~
+
+The trap this replaces: a plan and its first implementation both assumed the
+default and shipped a CLI whose happy path — no flags at all — failed with
+`MissingOption`. The test that pins it is the one that runs the command with
+**no** flags and expects success.
+
 ## `Command.Environment` — the fact that decides your package tier
 
 ~~~ts
@@ -163,12 +189,59 @@ Two implementation facts worth knowing even if you write your own:
   asserted without stubbing globals, which is why nobody notices when the
   stderr/stdout split regresses. **Compare levels ordinally**
   (`LogLevel.isGreaterThanOrEqualTo`), never by string equality against `"Error"`.
+- **`CliLogger.layer()` routes to stderr from `"Error"` up, by default.**
+  `stderrFrom` defaults to `"Error"` (`CliLogger.make`: `options.stderrFrom ??
+  "Error"`), so `Info`/`Warning` go to **stdout** as program output. That is
+  right for a tool whose output *is* its log lines and wrong the moment stdout
+  is a machine-readable document: a `--format=json` command that leaves the
+  default in place interleaves its warnings into the JSON stream. Install
+  `CliLogger.layer({ stderrFrom: "All" })` for any CLI whose stdout is a
+  document, and write the document with `Console.log`, not `Effect.log`. The
+  trap this replaces is assuming the logger already splits "output" from
+  "diagnostics" by level — it does, but the split point is a *policy* you set.
 - **Exit code and duplicate-report suppression are markers on the error**, read
   off the squashed failure: `Runtime.errorExitCode` and `Runtime.errorReported`.
   Beware the polarity — **`errorReported: false` is what SUPPRESSES** the
   runtime's own log ("already reported"); omitted or non-boolean is treated as
   `true` and it logs. The intuitive `true` produces exactly the double report
   you were trying to avoid.
+
+## A bin-only CLI package: `emitDts: false`, `exports` = `./package.json`
+
+A CLI that exports nothing for import — `bin` only — is a legitimate package
+shape, and the build pipeline has an opinion about it. With `exports` limited
+to `"./package.json"` and no `index.ts`, the default `@savvy-web/bundler`
+build still runs the declaration pass and then the prod meta (API Extractor)
+pass over **zero** entry points, and dies with the opaque
+`Cannot merge zero API models`. The switch is `emitDts: false` in
+`savvy.build.ts` — documented on `BuildConfigInput.emitDts` as *"intended for
+JS-only artifacts that never consume declarations (e2e fixtures, bins,
+internal tools)"* — which skips the dts pass and, with nothing to read, the
+meta pass, while still emitting JS, the byte-variant targets and the
+transformed `package.json`:
+
+~~~ts
+// savvy.build.ts of a bin-only package
+import { build } from "@savvy-web/bundler";
+
+await build({ emitDts: false });
+~~~
+
+Three consequences follow, and each looks like a gap until you know why:
+
+- **No `_base` suppression, no `tsdoc.json`, no api-extractor model, no
+  website page.** There is no `.d.ts` to extract from. The documentation is
+  `--help`, the README and the library page of the package the bin fronts.
+- **Every type a consumer's config file needs comes from the library
+  package**, never from the bin — a bin-only package has no import surface,
+  so `defineConfig`-style helpers live in the sibling library.
+- **Tooling that enumerates packages by their doc model must exclude it**,
+  or it reports the bin as a perpetually missing build. The test is the
+  `exports` map: every key is `"./package.json"`.
+
+The trap this replaces: reading `Cannot merge zero API models` as an
+extractor bug, or as a sign the bin needs an `index.ts` to satisfy the gate.
+See `effect-api-extractor-bases` for how the gate reads for the *other* case.
 
 ## The exit-code contract
 

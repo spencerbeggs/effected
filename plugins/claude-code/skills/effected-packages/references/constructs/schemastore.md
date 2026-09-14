@@ -5,7 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `CanonicalJson` | Class | Deterministic, canonical JSON text: the package's owned serializer, so a consumer never shells out to an external formatter to produce a stable committed schema file. | deterministic canonical json text, stable diff-friendly serialization for committed schema files |
+| `CanonicalJson` | Class | Deterministic, canonical JSON text: the package's owned serializer, so a consumer never shells out to an external formatter to produce a stable committed schema file. | deterministic canonical json text, stable diff-friendly serialization for committed schema files, content equality for two parsed json documents |
 | `CanonicalJsonError` | TypeAlias | Union of the failures `CanonicalJson.serialize` can raise. | |
 | `CanonicalJsonOptions` | Interface | Options for `CanonicalJson.serialize`. | |
 | `CatalogConfig` | Interface | One catalog entry a `schemastore.config.ts` declares: the SchemaStore `catalog.json` fields plus where to write the assembled entry. The entry's `versions` and `url` are derived by `defineConfig` from every versioned schema of the same `name`. | |
