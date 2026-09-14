@@ -121,9 +121,34 @@ parent.
   order survives serialization. `isPinned(version)` answers "no prerelease" —
   the one predicate shared by `SchemaPipeline`'s contract guard and `next`.
   `next(current, change)` is the version label a `WriteChange` classification
-  calls for: identity for `"none"`/`"annotations"`/`"created"` and for a
-  non-pinned `current`; otherwise MINOR on the 0.x line, MAJOR above it. Pure,
-  total, never mints a prerelease from a stable input.
+  suggests: identity for `"none"`/`"annotations"`/`"created"` and for a
+  non-pinned `current`; otherwise a MINOR bump preserving the label's
+  component count. Pure, total, never mints a prerelease from a stable input.
+  The grammar is `major`, `major.minor` or `major.minor.patch` (plus an
+  optional prerelease); missing components order as `0`, so `1`/`1.0`/`1.0.0`
+  are one version spelled three ways.
+- `DriftPolicy` — the pure classifier the CLI runs over a published target's
+  `WriteChange`: `classify({published, change}, policy)` answers a
+  `DriftVerdict` (`"write"` | `"drift"`). An unpublished target is NEVER drift
+  (regenerated in place until someone depends on its label); `"allow"` writes
+  everything, `"semantic"` (the default) holds only `"contract"` changes,
+  `"strict"` holds `"annotations"` too. `DriftPolicy.defaults` is
+  `{ policy: "semantic", onDrift: "error" }`; `DriftOptions`/`DriftTolerance`/
+  `OnDrift` are the option types a config declares and a CLI flag overrides.
+- `SchemastoreConfig` — the `schemastore.config.ts` contract, pure and
+  IO-free. `defineConfig({schemas, catalog?, drift?})` validates the input
+  (at least one schema; `catalog` entries decoded against a struct schema;
+  `drift` decoded and merged over `DriftPolicy.defaults`), refuses two
+  spellings of one version under one name (`1.2` and `1.2.0` compare equal),
+  derives each `CatalogConfig`'s `CatalogEntry` via `CatalogEntry.assemble`
+  from EVERY versioned schema of that name (published or not — the entry is
+  what gets submitted), throws a plain `Error` naming the offending part
+  (the CLI wraps it into its typed load error), and brands the result with a
+  private symbol so `isSchemastoreConfig(value)` recognises a loaded module's
+  default export. `CatalogConfig` adds `path` (where the loader writes the
+  assembled entry, relative to the config file) to the catalog.json fields;
+  `CatalogTarget` is `{config, entry}`; `SchemastoreConfigInput` and
+  `SchemastoreConfig` are the input and output shapes.
 - `CatalogEntry` — the `Schema.Class` of a catalog.json entry (`versions` is
   `optionalKey`); `assemble` composes `SchemaVersioning.catalogUrls`;
   `lint`/`lintFileMatch` are the fileMatch hygiene checks (`CatalogLintFinding`:

@@ -79,6 +79,14 @@ export {
 	SchemaPipeline,
 	type SchemaPipelineOptions,
 } from "./SchemaPipeline.js";
+export {
+	type CatalogConfig,
+	type CatalogTarget,
+	type SchemastoreConfig,
+	type SchemastoreConfigInput,
+	defineConfig,
+	isSchemastoreConfig,
+} from "./SchemastoreConfig.js";
 export { SchemaTarget } from "./SchemaTarget.js";
 export {
 	SchemaValidator,
