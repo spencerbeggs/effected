@@ -407,6 +407,7 @@ export class SchemaPipeline {
 				const document = yield* StoreDocument.fromSchema(target.schema, {
 					$id: target.$id,
 					...(target.jsonSchema !== undefined ? { jsonSchema: target.jsonSchema } : {}),
+					...(target.rootAnnotations !== undefined ? { rootAnnotations: target.rootAnnotations } : {}),
 				});
 				const findings = yield* gather(document, options);
 				yield* gate(target, findings, options);
@@ -485,6 +486,7 @@ export class SchemaPipeline {
 				const document = yield* StoreDocument.fromSchema(target.schema, {
 					$id: target.$id,
 					...(target.jsonSchema !== undefined ? { jsonSchema: target.jsonSchema } : {}),
+					...(target.rootAnnotations !== undefined ? { rootAnnotations: target.rootAnnotations } : {}),
 				});
 				const findings = yield* gather(document, options);
 				const { wouldWrite, change } = yield* files.check(target.path, document, options?.write);

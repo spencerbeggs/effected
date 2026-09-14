@@ -274,6 +274,31 @@ describe("SchemaPipeline", () => {
 				}),
 		);
 
+		// #624 — a target-level rootAnnotations override threads through to
+		// StoreDocument.fromSchema the same way jsonSchema does.
+		it.effect("passes target.rootAnnotations through so the written document carries the override", () =>
+			Effect.gen(function* () {
+				const annotatedTarget = SchemaTarget.make({
+					schema: Config,
+					$id: "https://example.com/annotated.schema.json",
+					path: "schemas/annotated.schema.json",
+					rootAnnotations: { title: "T" },
+				});
+				const layersUnderTest = memLayers({});
+				const document = yield* Effect.provide(
+					Effect.gen(function* () {
+						yield* SchemaPipeline.run([annotatedTarget]);
+						const volume = yield* MemoryFileSystem.Volume;
+						const text = volume.text("schemas/annotated.schema.json");
+						assert.isDefined(text);
+						return JSON.parse(text) as Record<string, unknown>;
+					}),
+					layersUnderTest,
+				);
+				assert.strictEqual(document.title, "T");
+			}),
+		);
+
 		it.effect("without jsonSchema, the written document keeps core's open-object default", () =>
 			Effect.gen(function* () {
 				const layersUnderTest = memLayers({});

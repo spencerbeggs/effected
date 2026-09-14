@@ -39,7 +39,10 @@ export class SchemaConversionError extends Schema.TaggedError<SchemaConversionEr
 /**
  * Indicates that a caller-supplied `includeAnnotationKey` admitted an
  * annotation key outside the declared keyword families
- * ({@link KeywordFamilies}).
+ * ({@link KeywordFamilies}), or that a
+ * {@link StoreDocumentOptions.rootAnnotations} override names a key outside
+ * the admitted set (the standard annotation keywords plus the declared
+ * families).
  *
  * Raised by {@link StoreDocument.fromSchema}. This package emits
  * SchemaStore-compatible documents only, so the declared families are the
@@ -50,7 +53,8 @@ export class SchemaConversionError extends Schema.TaggedError<SchemaConversionEr
  *
  * The predicate itself cannot be introspected, so the offending keys are
  * the ones it actually admitted while the document was being generated: a
- * key the source schema never annotates cannot appear here.
+ * key the source schema never annotates cannot appear here. Override keys,
+ * by contrast, are checked up front, before anything is generated.
  *
  * @public
  */
@@ -96,6 +100,27 @@ export interface StoreDocumentOptions {
 	 * `ToJsonSchemaOptions` passes through, and is best left unset.
 	 */
 	readonly jsonSchema?: Schema.ToJsonSchemaOptions;
+	/**
+	 * Annotations merged onto the emitted document's root after assembly —
+	 * the escape hatch for a generator-side annotation loss the source
+	 * schema cannot express (a filtered field, or a root whose annotations
+	 * core does not carry).
+	 *
+	 * Admitted keys are the standard JSON Schema annotation keywords
+	 * (`title`, `description`, `$comment`, `default`, `examples`,
+	 * `readOnly`, `writeOnly`) and the declared keyword families
+	 * ({@link KeywordFamilies}); any other key fails the build with
+	 * {@link UndeclaredAnnotationKeyError}, so the override cannot become a
+	 * back door for assertion keywords. Override keys win over generated
+	 * ones.
+	 *
+	 * When the assembled root is a bare local `$ref` (the shape a
+	 * `Schema.Class` root produces — `{ "$ref": "#/$defs/FooEncoded" }`),
+	 * the annotations are merged onto the `$defs` entry it names instead:
+	 * Draft-07 validators ignore `$ref` siblings, so the root would carry
+	 * them nowhere.
+	 */
+	readonly rootAnnotations?: Readonly<Record<string, unknown>>;
 }
 
 // Matches a Draft-07 `#/definitions/...` `$ref` pointer prefix. Core's
@@ -104,6 +129,43 @@ export interface StoreDocumentOptions {
 // `$defs` (a Draft-07-valid alias), so refs are rewritten back to stay
 // resolvable against that pool.
 const DEFINITIONS_REF_PREFIX = /^#\/definitions(?=\/|$)/;
+
+// Standard JSON Schema annotation keywords a root override may set. The
+// assertion vocabulary is deliberately absent: an override is for annotation
+// loss, not for changing what a validator asserts.
+const STANDARD_ANNOTATION_KEYWORDS = new Set([
+	"title",
+	"description",
+	"$comment",
+	"default",
+	"examples",
+	"readOnly",
+	"writeOnly",
+]);
+
+const LOCAL_DEFS_REF_PREFIX = "#/$defs/";
+
+// Applies `rootAnnotations` per the placement rule. Mutates the freshly
+// assembled `root`/`defs` (both are this call's own null-prototype
+// accumulators, never the caller's schema AST). Declared-family values are
+// shared by reference, matching the annotate() path.
+const applyRootAnnotations = (
+	root: Record<string, unknown>,
+	defs: Record<string, unknown>,
+	annotations: Readonly<Record<string, unknown>>,
+): void => {
+	const keys = Object.keys(root);
+	const ref = keys.length === 1 && keys[0] === "$ref" ? root.$ref : undefined;
+	const pool =
+		typeof ref === "string" && ref.startsWith(LOCAL_DEFS_REF_PREFIX)
+			? defs[ref.slice(LOCAL_DEFS_REF_PREFIX.length)]
+			: undefined;
+	const target =
+		typeof pool === "object" && pool !== null && !Array.isArray(pool) ? (pool as Record<string, unknown>) : root;
+	for (const [key, value] of Object.entries(annotations)) {
+		target[key] = value;
+	}
+};
 
 class RewriteDepthExceeded {
 	readonly _tag = "RewriteDepthExceeded";
@@ -233,6 +295,15 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 		options: StoreDocumentOptions,
 	): Result.Result<StoreDocument, SchemaConversionError | UndeclaredAnnotationKeyError> {
 		try {
+			// The override is gated up front: a bad override fails the build
+			// before anything is generated.
+			const overrideKeys = Object.keys(options.rootAnnotations ?? {});
+			const refusedOverrides = overrideKeys.filter(
+				(key) => !STANDARD_ANNOTATION_KEYWORDS.has(key) && !KeywordFamilies.isDeclared(key),
+			);
+			if (refusedOverrides.length > 0) {
+				return Result.fail(UndeclaredAnnotationKeyError.make({ $id: options.$id, keys: [...refusedOverrides].sort() }));
+			}
 			const userIncludes = options.jsonSchema?.includeAnnotationKey;
 			// A predicate cannot be introspected, so the gate is enforced by
 			// wrapping it: every key it admits outside the declared families is
@@ -262,6 +333,9 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 			const defs: Record<string, unknown> = Object.create(null);
 			for (const [name, definition] of Object.entries(lowered.definitions)) {
 				defs[name] = restoreDefsRefs(definition, 1);
+			}
+			if (options.rootAnnotations !== undefined) {
+				applyRootAnnotations(root, defs, options.rootAnnotations);
 			}
 			return Result.succeed(StoreDocument.make({ $schema: DRAFT_07_META_SCHEMA, $id: options.$id, root, defs }));
 		} catch (cause) {

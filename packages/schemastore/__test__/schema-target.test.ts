@@ -67,6 +67,20 @@ describe("SchemaTarget", () => {
 		assert.notProperty(target, "jsonSchema");
 	});
 
+	// #624 — rootAnnotations is a target-level field for the same
+	// self-describing reason as jsonSchema.
+	it("carries rootAnnotations when given and omits the key when not", () => {
+		const with_ = SchemaTarget.make({
+			schema: Schema.String,
+			$id: "https://e.com/a.json",
+			path: "a.json",
+			rootAnnotations: { title: "T" },
+		});
+		assert.deepStrictEqual(with_.rootAnnotations, { title: "T" });
+		const without = SchemaTarget.make({ schema: Schema.String, $id: "https://e.com/a.json", path: "a.json" });
+		assert.isFalse(Object.hasOwn(without, "rootAnnotations"));
+	});
+
 	// The overload pair makes version-without-name a COMPILE error; the
 	// runtime throw remains for untyped callers, which is what the cast
 	// simulates here.

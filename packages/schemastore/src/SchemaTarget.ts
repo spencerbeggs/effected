@@ -70,6 +70,12 @@ export interface SchemaTarget {
 	 * `includeAnnotationKey` gate this option is also subject to.
 	 */
 	readonly jsonSchema?: Schema.ToJsonSchemaOptions;
+	/**
+	 * Forwarded to {@link StoreDocumentOptions.rootAnnotations}; a
+	 * target-level field for the same self-describing reason as
+	 * `jsonSchema`.
+	 */
+	readonly rootAnnotations?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -92,6 +98,7 @@ export class SchemaTarget {
 		readonly path: string;
 		readonly published?: boolean;
 		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
+		readonly rootAnnotations?: Readonly<Record<string, unknown>>;
 	}): SchemaTarget;
 	/**
 	 * Builds a versioned target. `name` is **required** here: versioned
@@ -108,6 +115,7 @@ export class SchemaTarget {
 		readonly version: SchemaVersion | string;
 		readonly published?: boolean;
 		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
+		readonly rootAnnotations?: Readonly<Record<string, unknown>>;
 	}): SchemaTarget;
 	/**
 	 * Builds a target. `$id` and `path` must be non-empty — an empty
@@ -125,6 +133,7 @@ export class SchemaTarget {
 		readonly version?: SchemaVersion | string;
 		readonly published?: boolean;
 		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
+		readonly rootAnnotations?: Readonly<Record<string, unknown>>;
 	}): SchemaTarget {
 		for (const key of ["$id", "path"] as const) {
 			if (options[key].length === 0) {
@@ -155,6 +164,7 @@ export class SchemaTarget {
 			...(options.name !== undefined ? { name: options.name } : {}),
 			...(version !== undefined ? { version } : {}),
 			...(options.jsonSchema !== undefined ? { jsonSchema: options.jsonSchema } : {}),
+			...(options.rootAnnotations !== undefined ? { rootAnnotations: options.rootAnnotations } : {}),
 		};
 	}
 }
