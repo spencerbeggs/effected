@@ -2,7 +2,12 @@
 // `GITHUB_STEP_SUMMARY`, when the environment declares one. A failure here is
 // never fatal to the run it is reporting on — it is logged and swallowed.
 
-import { Effect, FileSystem } from "effect";
+import { Config, Effect, FileSystem, Option } from "effect";
+
+// `ConfigProvider` is a `Context.Reference` defaulting to `fromEnv()`, so the
+// read never enters `R`; a test swaps the provider. An empty string is
+// "absent" to the env provider, which is exactly the contract here.
+const summaryTarget = Config.String("GITHUB_STEP_SUMMARY").pipe(Config.option);
 
 /**
  * Appends a rendered {@link Report.markdown} document to `GITHUB_STEP_SUMMARY`.
@@ -17,26 +22,22 @@ export class StepSummary {
 	 * empty, or when the read/write failed — a failure is logged at warning
 	 * and never fails the run it is reporting on.
 	 */
-	static readonly append: (
-		markdown: string,
-		env?: Record<string, string | undefined>,
-	) => Effect.Effect<boolean, never, FileSystem.FileSystem> = Effect.fn("StepSummary.append")(function* (
-		markdown: string,
-		env: Record<string, string | undefined> = process.env,
-	) {
-		const target = env.GITHUB_STEP_SUMMARY;
-		if (target === undefined || target === "") {
-			return false;
-		}
+	static readonly append: (markdown: string) => Effect.Effect<boolean, never, FileSystem.FileSystem> = Effect.fn(
+		"StepSummary.append",
+	)(function* (markdown: string) {
 		const fs = yield* FileSystem.FileSystem;
 		return yield* Effect.gen(function* () {
-			const exists = yield* fs.exists(target);
-			const existing = exists ? yield* fs.readFileString(target) : "";
-			yield* fs.writeFileString(target, existing + markdown);
+			const target = yield* summaryTarget;
+			if (Option.isNone(target)) {
+				return false;
+			}
+			const exists = yield* fs.exists(target.value);
+			const existing = exists ? yield* fs.readFileString(target.value) : "";
+			yield* fs.writeFileString(target.value, existing + markdown);
 			return true;
 		}).pipe(
 			Effect.catch((error) =>
-				Effect.logWarning(`StepSummary.append: could not update ${target}`, error).pipe(Effect.as(false)),
+				Effect.logWarning("StepSummary.append: could not update GITHUB_STEP_SUMMARY", error).pipe(Effect.as(false)),
 			),
 		);
 	});

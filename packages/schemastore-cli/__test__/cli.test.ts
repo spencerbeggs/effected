@@ -10,7 +10,7 @@ import {
 	ValidationFinding,
 	defineConfig,
 } from "@effected/schemastore";
-import { Effect, FileSystem, Layer, Path, Result, Runtime, Schema, Stdio, Terminal } from "effect";
+import { ConfigProvider, Effect, FileSystem, Layer, Path, Result, Runtime, Schema, Stdio, Terminal } from "effect";
 import { TestConsole } from "effect/testing";
 import type { Command } from "effect/unstable/cli";
 import { CliError } from "effect/unstable/cli";
@@ -90,7 +90,6 @@ const basicConfig = (options: { readonly drift?: Partial<SchemastoreConfig["drif
 
 const deps = (config: SchemastoreConfig, overrides: Partial<ProgramDeps> = {}): ProgramDeps => ({
 	cwd: "/repo",
-	env: {},
 	importModule: () => Promise.resolve({ default: config }),
 	version: "0.0.0",
 	...overrides,
@@ -104,8 +103,18 @@ const rejectEverything = SchemaValidator.layerTest({
 	validate: () => Effect.succeed([ValidationFinding.make({ path: "/type", message: "rejected", keyword: "type" })]),
 });
 
-const run = <A, E>(effect: Effect.Effect<A, E, Command.Environment>, seed: MemoryFileSystemSeed = {}) =>
-	effect.pipe(Effect.provide(environment(seed)), Effect.provide(loggerLayer));
+// The env is a `ConfigProvider`, swapped here so nothing reads the process:
+// empty by default, which is the "GITHUB_STEP_SUMMARY unset" case.
+const run = <A, E>(
+	effect: Effect.Effect<A, E, Command.Environment>,
+	seed: MemoryFileSystemSeed = {},
+	env: Record<string, string> = {},
+) =>
+	effect.pipe(
+		Effect.provide(environment(seed)),
+		Effect.provide(loggerLayer),
+		Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env }))),
+	);
 
 const exitCodeOf = (error: unknown): number => Runtime.getErrorExitCode(error);
 
@@ -273,11 +282,42 @@ describe("schemastore CLI", () => {
 	it.effect("appends the markdown summary when GITHUB_STEP_SUMMARY is set", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["check"], deps(basicConfig(), { env: { GITHUB_STEP_SUMMARY: "/summary.md" } }));
+				yield* program(["check"], deps(basicConfig()));
 				const fs = yield* FileSystem.FileSystem;
 				assert.include(yield* fs.readFileString("/summary.md"), "### schemastore check");
 			}),
 			{ [CONFIG_PATH]: "" },
+			{ GITHUB_STEP_SUMMARY: "/summary.md" },
+		),
+	);
+
+	it.effect("writes no summary when GITHUB_STEP_SUMMARY is unset", () =>
+		run(
+			Effect.gen(function* () {
+				yield* program(["check"], deps(basicConfig()));
+				const fs = yield* FileSystem.FileSystem;
+				assert.isFalse(yield* fs.exists("/summary.md"));
+			}),
+			{ [CONFIG_PATH]: "" },
+		),
+	);
+
+	it.effect("--format=json keeps stdout to one document even with a warning in play", () =>
+		run(
+			Effect.gen(function* () {
+				yield* program(["check", "--format=json", "--force"], deps(basicConfig()));
+				const out = yield* stdout;
+				assert.strictEqual(out.length, 1, out.join("\n"));
+				const doc = JSON.parse(out[0] as string) as { drift: { policy: string; source: string } };
+				assert.strictEqual(doc.drift.policy, "allow");
+				assert.strictEqual(doc.drift.source, "flag");
+				const err = yield* stderr;
+				assert.isTrue(
+					err.some((line) => line.includes("--force") && line.includes("would be rewritten")),
+					err.join("\n"),
+				);
+			}),
+			driftedSeed,
 		),
 	);
 

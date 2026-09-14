@@ -1,6 +1,6 @@
 // The shared body of `build` and `check`: load the config, merge the flags
 // over its drift block, run, report, and turn the report's verdicts into the
-// exit-code contract. Process globals (cwd, env, the module loader) arrive
+// exit-code contract. Process globals (cwd, the module loader) arrive
 // through `ExecuteDeps` so the command tree never reads them itself.
 
 import { CliRuntime } from "@effected/cli";
@@ -51,17 +51,16 @@ export interface ExecuteInput {
 }
 
 /**
- * What the process boundary supplies: the ONLY place `process.cwd()`,
- * `process.env` and the real module loader are read is `main.ts`, which
- * fills this in; tests inject all of it.
+ * What the process boundary supplies: the ONLY place `process.cwd()` is
+ * read is `main.ts`, which fills this in; tests inject all of it.
+ * Environment variables are not here — they are read through `Config`
+ * against the ambient `ConfigProvider`.
  *
  * @public
  */
 export interface ExecuteDeps {
 	/** Where config discovery starts and what an explicit path resolves against. */
 	readonly cwd: string;
-	/** The environment `GITHUB_STEP_SUMMARY` is read from. */
-	readonly env: Record<string, string | undefined>;
 	/** The config module importer; omitted, `ConfigLoader`'s `jiti` default. */
 	readonly importModule?: (path: string) => Promise<unknown>;
 	/** The validator engine; omitted, the real ajv layer. A test seam, like `importModule`. */
@@ -123,7 +122,7 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 	const drift = effectiveDrift(loaded.config.drift, input);
 	if (input.force) {
 		yield* Effect.logWarning(
-			"--force: drift policy is allow for this run; a published document may be rewritten in place, which breaks every consumer pinned to its URL.",
+			`--force: drift policy is allow for this run; a published document ${mode === "check" ? "would be" : "may be"} rewritten in place, which breaks every consumer pinned to its URL.`,
 		);
 	}
 	const report = yield* Runner.run(loaded.config, { mode, configPath: loaded.path, drift }).pipe(
@@ -131,7 +130,7 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 		Effect.provide(deps.validator ?? SchemaValidator.layer),
 	);
 	yield* emit(report, input.format);
-	yield* StepSummary.append(Report.markdown(report), deps.env);
+	yield* StepSummary.append(Report.markdown(report));
 	if (report.gateFailed) {
 		const count = report.schemas.filter((schema) => schema.outcome === "gate-failed").length;
 		return yield* Effect.fail(reported(new GateError({ count }), 1));

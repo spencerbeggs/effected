@@ -20,10 +20,11 @@ const render = (error: unknown): ReadonlyArray<string> =>
 		: [error instanceof Error ? error.message : String(error)];
 
 export const main = (): void => {
-	// The ONLY place process globals are read.
+	// The ONLY place process globals are read. (`process.env.__PACKAGE_VERSION__`
+	// is not an env read: the bundler replaces that exact expression with the
+	// package version at build time, so it must stay spelled this way.)
 	const run = program(process.argv.slice(2), {
 		cwd: process.cwd(),
-		env: process.env,
 		version: process.env.__PACKAGE_VERSION__ ?? "0.0.0",
 	}).pipe(
 		Effect.provide(NodeServices.layer),
