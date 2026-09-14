@@ -381,6 +381,17 @@ describe("SchemaVersioning", () => {
 				/current "1\.1" is not one of the versions/,
 			);
 		});
+
+		it("current matched under Order builds the url from the map's own spelling", () => {
+			const urls = SchemaVersioning.catalogUrls({
+				baseUrl: "https://x/schemas",
+				name: "okfit",
+				versions: [version("1.0"), version("1.2.0")],
+				current: version("1.2"),
+			});
+			assert.strictEqual(urls.url, "https://x/schemas/okfit-1.2.0.json");
+			assert.deepStrictEqual(Object.keys(urls.versions ?? {}), ["1.0", "1.2.0"]);
+		});
 	});
 
 	describe("label grammar (property)", () => {

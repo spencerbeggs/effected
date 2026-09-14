@@ -346,8 +346,12 @@ export class SchemaVersioning {
 	 * points at `current` (default: the newest label under
 	 * {@link SchemaVersioning.Order}). An **empty** `versions` array is
 	 * a contradiction (versioned mode with no versions) and throws — pass
-	 * `undefined` for the unversioned mode. `current`, when given, must be
-	 * one of `versions` or this throws.
+	 * `undefined` for the unversioned mode. `current`, when given, must
+	 * compare equal under {@link SchemaVersioning.Order} to a member of
+	 * `versions` or this throws; `url` is built from that member's own
+	 * spelling (the `versions` map's key), not from the `current` argument
+	 * verbatim — so a differently-spelled equivalent (`"1.2"` matching a
+	 * `"1.2.0"` member) still points `url` at the same file the map does.
 	 *
 	 * `layout` (default `"flat"`) is forwarded to every URL derivation, so
 	 * `"versioned"` nests every map value and `url` under its own version
@@ -380,9 +384,10 @@ export class SchemaVersioning {
 			map[version] = SchemaVersioning.schemaUrl(baseUrl, name, version, layout);
 		}
 		const newest = ascending[ascending.length - 1] as SchemaVersion;
-		const current = options.current ?? newest;
-		if (!ascending.some((v) => SchemaVersioning.Order(v, current) === 0)) {
-			throw new Error(`catalogUrls: current "${current}" is not one of the versions of "${name}"`);
+		const requested = options.current ?? newest;
+		const current = ascending.find((v) => SchemaVersioning.Order(v, requested) === 0);
+		if (current === undefined) {
+			throw new Error(`catalogUrls: current "${requested}" is not one of the versions of "${name}"`);
 		}
 		return { url: SchemaVersioning.schemaUrl(baseUrl, name, current, layout), versions: map };
 	}
