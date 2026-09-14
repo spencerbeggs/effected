@@ -38,6 +38,40 @@ describe("defineConfig", () => {
 		);
 	});
 
+	it("rejects an output path declared twice across schemas, after lexical normalisation", () => {
+		const a = SchemaTarget.make({ schema: Config, $id: "https://x/a.json", path: "schemas/a.json" });
+		const twin = SchemaTarget.make({ schema: Config, $id: "https://x/b.json", path: "./schemas/x/../a.json" });
+		assert.throws(
+			() => defineConfig({ schemas: [a, twin] }),
+			/defineConfig: output path "\.\/schemas\/x\/\.\.\/a\.json" is declared twice/,
+		);
+	});
+
+	it("rejects a catalog entry whose path collides with a schema's", () => {
+		assert.throws(
+			() =>
+				defineConfig({
+					schemas: [versioned("1.0")],
+					catalog: [
+						{
+							name: "okfit",
+							description: "okfit config",
+							fileMatch: ["okfit.toml"],
+							baseUrl: "https://x/schemas",
+							path: "schemas/okfit-1.0.json/",
+						},
+					],
+				}),
+			/output path "schemas\/okfit-1\.0\.json\/" is declared twice/,
+		);
+	});
+
+	it("accepts distinct paths that only look alike", () => {
+		const a = SchemaTarget.make({ schema: Config, $id: "https://x/a.json", path: "schemas/a.json" });
+		const b = SchemaTarget.make({ schema: Config, $id: "https://x/b.json", path: "../schemas/a.json" });
+		assert.strictEqual(defineConfig({ schemas: [a, b] }).schemas.length, 2);
+	});
+
 	it("derives catalog versions from every versioned schema of that name, published or not", () => {
 		const config = defineConfig({
 			schemas: [versioned("1.0", true), versioned("1.1"), unversioned],

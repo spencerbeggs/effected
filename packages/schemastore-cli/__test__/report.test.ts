@@ -172,6 +172,17 @@ describe("Report.warnings", () => {
 		assert.deepStrictEqual(Report.warnings(driftAndGate), []);
 	});
 
+	it("is empty when the gate failed under onDrift: warn — nothing was written", () => {
+		const gateAndWarn: RunReport = {
+			...warnBuild,
+			schemas: [{ ...warnDriftSchema, outcome: "held" }, gateFailedSchema],
+			catalog: [],
+			gateFailed: true,
+			wrote: false,
+		};
+		assert.deepStrictEqual(Report.warnings(gateAndWarn), []);
+	});
+
 	it("carries one line per drifted-and-written schema under onDrift: warn", () => {
 		assert.deepStrictEqual(Report.warnings(warnBuild), [
 			"warning: DRIFT contract at published 1.2 written under --on-drift=warn — schemas/1.2/okfit-1.2.json",

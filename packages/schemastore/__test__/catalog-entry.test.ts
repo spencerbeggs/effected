@@ -36,6 +36,22 @@ describe("CatalogEntry", () => {
 		});
 	});
 
+	describe("assemble rejects", () => {
+		it("two spellings of one version, naming both", () => {
+			assert.throws(
+				() =>
+					CatalogEntry.assemble({
+						name: "okfit",
+						description: "okfit config",
+						fileMatch: ["okfit.toml"],
+						baseUrl: "https://example.com/schemas",
+						versions: ["1.2", "1.2.0"].map(version),
+					}),
+				/"okfit".*"1\.2".*"1\.2\.0"/,
+			);
+		});
+	});
+
 	describe("codec round trip", () => {
 		it.effect("decodes a catalog.json entry and encodes it back unchanged (versioned)", () =>
 			Effect.gen(function* () {

@@ -13,6 +13,7 @@ import {
 	defineConfig,
 } from "@effected/schemastore";
 import { Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
+import { Report } from "../src/Report.js";
 import type { RunOptions, RunReport } from "../src/Runner.js";
 import { Runner } from "../src/Runner.js";
 
@@ -207,6 +208,36 @@ describe("Runner.run", () => {
 			assert.strictEqual(yield* fs.readFileString(PINNED_PATH), predecessor, "the predecessor is left alone");
 			assert.isFalse(yield* fs.exists(CATALOG_PATH), "the catalog is held with the schemas");
 		}).pipe(Effect.provide(layers({ [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
+	);
+
+	it.effect("a prerelease published contract change carries no nextVersion", () =>
+		Effect.gen(function* () {
+			const PRE_ID = "https://example.com/schemas/pre-2.0.0-beta.1.json";
+			const PRE_PATH = "/repo/schemas/pre-2.0.0-beta.1.json";
+			const prerelease = SchemaTarget.make({
+				schema: Config,
+				$id: PRE_ID,
+				name: "pre",
+				path: PRE_PATH,
+				version: version("2.0.0-beta.1"),
+				published: true,
+			});
+			const report = yield* Runner.run(defineConfig({ schemas: [prerelease] }), options("build"));
+			const schema = byId(report, PRE_ID);
+			assert.strictEqual(schema.change, "contract");
+			assert.strictEqual(schema.verdict, "drift");
+			assert.isUndefined(schema.nextVersion, "a prerelease declares its own instability; nothing to suggest");
+			assert.isFalse(
+				Report.human(report).some((line) => line.includes("suggest")),
+				Report.human(report).join("\n"),
+			);
+		}).pipe(
+			Effect.provide(
+				layers({
+					"/repo/schemas/pre-2.0.0-beta.1.json": emitted(Wider, "https://example.com/schemas/pre-2.0.0-beta.1.json"),
+				}),
+			),
+		),
 	);
 
 	it.effect("published + semantic + contract predecessor + onDrift warn: written, verdict stays drift", () =>

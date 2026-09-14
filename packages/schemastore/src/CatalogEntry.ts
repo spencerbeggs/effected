@@ -44,6 +44,22 @@ const GENERIC_BASENAMES = new Set(["conf", "config", "configuration", "options",
 // classes and negation.
 const COMPLEX_GLOB = /[{}[\]]|[?*+@!]\(|^!/;
 
+// Two labels one version apart in spelling only (`1.2`, `1.2.0`) would mint
+// two `versions` keys and two URLs for one document; `defineConfig` already
+// refuses them, and the library entry point must too.
+const assertDistinctVersions = (name: string, versions: ReadonlyArray<SchemaVersion>): void => {
+	const seen: Array<SchemaVersion> = [];
+	for (const version of versions) {
+		const duplicate = seen.find((v) => SchemaVersioning.Order(v, version) === 0);
+		if (duplicate !== undefined) {
+			throw new Error(
+				`CatalogEntry.assemble: "${name}" declares the same version twice, as "${duplicate}" and "${version}"`,
+			);
+		}
+		seen.push(version);
+	}
+};
+
 const lintPattern = (pattern: string): ReadonlyArray<CatalogLintFinding> => {
 	const findings: Array<CatalogLintFinding> = [];
 	const basename = pattern.slice(pattern.lastIndexOf("/") + 1);
@@ -107,7 +123,10 @@ export class CatalogEntry extends Schema.Class<CatalogEntry>("CatalogEntry")({
 	 * Assembles an entry from a catalog identity plus
 	 * {@link SchemaVersioning.catalogUrls}' inputs: pass `versions` for the
 	 * versioned mode (the `versions` map and latest-pointing `url` are
-	 * derived), omit it for the unversioned mode.
+	 * derived), omit it for the unversioned mode. Throws an `Error` naming
+	 * both spellings when two labels compare equal under
+	 * {@link SchemaVersioning.Order} (`1.2` and `1.2.0`): each would be its
+	 * own key and URL for one document.
 	 */
 	static assemble(options: {
 		readonly name: string;
@@ -117,6 +136,9 @@ export class CatalogEntry extends Schema.Class<CatalogEntry>("CatalogEntry")({
 		readonly fileBaseName?: string;
 		readonly versions?: ReadonlyArray<SchemaVersion>;
 	}): CatalogEntry {
+		if (options.versions !== undefined) {
+			assertDistinctVersions(options.name, options.versions);
+		}
 		const urls: CatalogUrls = SchemaVersioning.catalogUrls({
 			baseUrl: options.baseUrl,
 			name: options.fileBaseName ?? options.name,

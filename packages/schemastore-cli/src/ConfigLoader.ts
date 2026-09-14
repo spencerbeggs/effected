@@ -21,7 +21,8 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
 /**
  * The config file exists but could not be turned into a `SchemastoreConfig`:
  * the module threw on import, its default export is not a `defineConfig(...)`
- * value, or a `schemas` element is not `SchemaTarget`-shaped.
+ * value, a `schemas` element is not `SchemaTarget`-shaped, or two outputs
+ * resolve to one absolute path.
  *
  * @public
  */
@@ -74,19 +75,40 @@ const describeCause = (cause: unknown): string =>
 
 // `defineConfig` validates the catalog block with a schema but takes `schemas`
 // on trust (they carry live Schema values). A plain-JS config can hand it
-// anything, so the loader checks the three fields the pipeline dereferences.
-// (A v4 Schema value is callable — `typeof` says "function" — hence `isSchema`.)
-const describeMalformedTarget = (schemas: ReadonlyArray<unknown>): string | undefined => {
-	for (const [index, target] of schemas.entries()) {
+// anything, so the loader checks the fields the pipeline and the drift
+// policy dereference. (A v4 Schema value is callable — `typeof` says
+// "function" — hence `isSchema`.)
+const describeMalformedTarget = (schemas: unknown): string | undefined => {
+	if (!Array.isArray(schemas)) {
+		return "schemas is not an array";
+	}
+	for (const [index, target] of (schemas as ReadonlyArray<unknown>).entries()) {
 		const record = typeof target === "object" && target !== null ? (target as Record<string, unknown>) : undefined;
 		const shaped =
 			record !== undefined &&
 			Schema.isSchema(record.schema) &&
 			typeof record.$id === "string" &&
-			typeof record.path === "string";
+			typeof record.path === "string" &&
+			typeof record.published === "boolean";
 		if (!shaped) {
-			return `schemas[${index}] is not a SchemaTarget (missing schema/$id/path)`;
+			return `schemas[${index}] is not a SchemaTarget (missing schema/$id/path/published)`;
 		}
+	}
+	return undefined;
+};
+
+// `defineConfig` already rejects duplicate output paths lexically; two
+// spellings it could not unify (`../x/a.json` from one directory, `a.json`
+// after resolution) can still collide once absolute, so the check re-runs
+// here on the resolved paths.
+const describeDuplicatePath = (config: SchemastoreConfig): string | undefined => {
+	const seen = new Set<string>();
+	const paths = [...config.schemas.map((target) => target.path), ...config.catalog.map((c) => c.config.path)];
+	for (const p of paths) {
+		if (seen.has(p)) {
+			return `output path "${p}" is declared twice after resolution`;
+		}
+		seen.add(p);
 	}
 	return undefined;
 };
@@ -196,6 +218,10 @@ export class ConfigLoader {
 		}
 		const directory = path.dirname(configPath);
 		const config = yield* ConfigLoader.resolvePaths(exported, directory);
+		const duplicate = describeDuplicatePath(config);
+		if (duplicate !== undefined) {
+			return yield* Effect.fail(new ConfigLoadError({ path: configPath, reason: duplicate }));
+		}
 		const loaded: LoadedConfig = { path: configPath, directory, config };
 		return loaded;
 	});

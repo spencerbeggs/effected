@@ -62,7 +62,7 @@ export interface SchemaReport {
 	readonly outcome: SchemaOutcome;
 	/** Every finding, blocking or not. */
 	readonly findings: ReadonlyArray<PipelineFinding>;
-	/** The label to publish under instead — set only for a `contract` change on a versioned schema. */
+	/** The label to publish under instead — set only for a `contract` change on a pinned (non-prerelease) versioned schema. */
 	readonly nextVersion?: SchemaVersion;
 }
 
@@ -207,8 +207,10 @@ export class Runner {
 		const classified = checks.map((check, i) => {
 			const target = config.schemas[i] as SchemaTarget;
 			const verdict = DriftPolicy.classify({ published: target.published, change: check.change }, options.drift.policy);
+			// A prerelease label declares its own instability: `next` would answer
+			// the same label, so there is no suggestion to carry.
 			const nextVersion =
-				target.version !== undefined && check.change === "contract"
+				target.version !== undefined && check.change === "contract" && SchemaVersioning.isPinned(target.version)
 					? SchemaVersioning.next(target.version, "contract")
 					: undefined;
 			return { target, check, verdict, nextVersion };

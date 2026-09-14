@@ -99,9 +99,13 @@ export class Report {
 		return lines;
 	}
 
-	/** stderr lines: one per drift written (or, under `check`, would be written) under `onDrift: "warn"`. */
+	/**
+	 * stderr lines: one per drift written (or, under `check`, would be written)
+	 * under `onDrift: "warn"`. Empty when the gate failed — nothing was (or
+	 * would be) written, so there is no drift to warn about.
+	 */
 	static warnings(report: RunReport): ReadonlyArray<string> {
-		if (report.drift.onDrift !== "warn") {
+		if (report.drift.onDrift !== "warn" || report.gateFailed) {
 			return [];
 		}
 		return report.schemas.filter((schema) => schema.verdict === "drift").map((schema) => warningLine(schema, report));

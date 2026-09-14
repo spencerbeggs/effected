@@ -106,6 +106,44 @@ const versionsByName = (schemas: ReadonlyArray<SchemaTarget>): ReadonlyMap<strin
 	return map;
 };
 
+// Lexical path normalisation, so two spellings of one output (`./a.json`,
+// `x/../a.json`, `a.json/`) collide here rather than at write time. This is
+// a pure module with no `Path` service, so it is a string walk, not
+// `posix.normalize`: collapse `.` and empty segments, resolve `..` against
+// a preceding segment, keep a leading `..` (or `/`) as-is. The loader
+// re-checks on the absolute paths it resolves, which catches what a
+// lexical pass cannot (`../x/a.json` versus `a.json` from another root).
+const normalizePath = (raw: string): string => {
+	const absolute = raw.startsWith("/");
+	const out: Array<string> = [];
+	for (const segment of raw.split("/")) {
+		if (segment === "" || segment === ".") {
+			continue;
+		}
+		if (segment === "..") {
+			if (out.length > 0 && out[out.length - 1] !== "..") {
+				out.pop();
+			} else if (!absolute) {
+				out.push(segment);
+			}
+			continue;
+		}
+		out.push(segment);
+	}
+	return `${absolute ? "/" : ""}${out.join("/")}`;
+};
+
+const assertUniquePaths = (schemas: ReadonlyArray<SchemaTarget>, catalog: ReadonlyArray<CatalogConfig>): void => {
+	const seen = new Set<string>();
+	for (const p of [...schemas.map((target) => target.path), ...catalog.map((entry) => entry.path)]) {
+		const normalized = normalizePath(p);
+		if (seen.has(normalized)) {
+			throw new Error(`defineConfig: output path "${p}" is declared twice`);
+		}
+		seen.add(normalized);
+	}
+};
+
 /**
  * Validate and assemble a `schemastore.config.ts` value.
  *
@@ -115,7 +153,10 @@ const versionsByName = (schemas: ReadonlyArray<SchemaTarget>): ReadonlyMap<strin
  * versioned schema of that name (published or not — the entry is what gets
  * submitted to become published), and branding the result so a loader can
  * recognise a config module's default export. Throws a plain `Error` on a
- * bad input; the CLI wraps it into its typed config-load error.
+ * bad input; the CLI wraps it into its typed config-load error. Rejects an
+ * output `path` declared twice across schemas and catalog entries, compared
+ * after a lexical normalisation (`./`, `..`, trailing `/`); the CLI's loader
+ * re-checks on the resolved absolute paths.
  *
  * @public
  */
@@ -144,6 +185,10 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 		});
 		return { config, entry };
 	});
+	assertUniquePaths(
+		input.schemas,
+		catalog.map((c) => c.config),
+	);
 	return {
 		[ConfigBrand]: true,
 		schemas: input.schemas,

@@ -140,6 +140,68 @@ describe("ConfigLoader.load", () => {
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
+	it.effect("fails typed when schemas is not an array (JS config)", () =>
+		Effect.gen(function* () {
+			// Only a plain-JS config can get here: `defineConfig` rejects a non-array, so
+			// forge the branded value the way a hand-rolled module might.
+			const forged = { ...config, schemas: { length: 1 } } as unknown as typeof config;
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.js",
+					cwd: "/repo",
+					importModule: () => Promise.resolve({ default: forged }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, "schemas is not an array");
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when a schemas element lacks a boolean published flag (JS config)", () =>
+		Effect.gen(function* () {
+			const malformed = defineConfig({
+				schemas: [
+					{
+						schema: Config,
+						$id: "https://x/b.json",
+						path: "schemas/b.json",
+						published: "yes",
+					} as unknown as SchemaTarget,
+				],
+			});
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.js",
+					cwd: "/repo",
+					importModule: () => Promise.resolve({ default: malformed }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.match(error.reason, /schemas\[0\] is not a SchemaTarget/);
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when two outputs resolve to one absolute path", () =>
+		Effect.gen(function* () {
+			// Lexically distinct, so `defineConfig` accepts them; identical once resolved.
+			const colliding = defineConfig({
+				schemas: [
+					SchemaTarget.make({ schema: Config, $id: "https://x/a.json", path: "schemas/a.json" }),
+					SchemaTarget.make({ schema: Config, $id: "https://x/b.json", path: "/repo/schemas/a.json" }),
+				],
+			});
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.ts",
+					cwd: "/repo",
+					importModule: () => Promise.resolve({ default: colliding }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, 'output path "/repo/schemas/a.json" is declared twice after resolution');
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
+	);
+
 	it.effect("fails typed when the module throws on import", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(
