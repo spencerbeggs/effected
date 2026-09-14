@@ -1,5 +1,11 @@
 # @effected/schemastore
 
+## 0.9.1
+
+### Maintenance
+
+- Version-only release to keep workspace versions consistent; no changes to this package.
+
 ## 0.9.0
 
 ### Breaking Changes

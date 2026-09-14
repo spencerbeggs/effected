@@ -1,5 +1,17 @@
 # @effected/copilot-plugin
 
+## 0.7.1
+
+### Bug Fixes
+
+- `skills/effected-packages/references/cli.md` no longer states `CliRuntime.reported` unconditionally returns `Error`. It now documents the overloaded contract — a typed `Error` argument comes back as its own type, any other value is wrapped in a plain `Error` — matching `@effected/cli`'s widened return type. [#726][#726]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) for their contributions!
+
+[#726]: https://github.com/spencerbeggs/effected/pull/726
+
 ## 0.7.0
 
 ### Features
