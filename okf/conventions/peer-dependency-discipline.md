@@ -11,7 +11,7 @@ sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
 generated:
-  by: "okfit/claude-code"
+  by: "claude-code/opus-5"
   at: 2026-09-14T02:44:47Z
   body_sha256: 6948f741b25d4e455d0f170fc9ed1bf779250f94b969bd5377e8ee03f919f081
 ---
@@ -80,9 +80,21 @@ pnpm >= 11.12.0.
 ## Cross-@effected dependencies
 
 Every internal `@effected/*` edge — peer and regular dependency alike —
-uses `workspace:^`. The one exception is the paired `devDependency` that
-satisfies an auto-installed peer, which stays `workspace:*` and is never
-published. Patch-floating is the point: a sibling patch flows into an
+uses `workspace:^`. Two enumerated exceptions stay `workspace:*`:
+
+- the paired `devDependency` that satisfies an auto-installed peer, which
+  is never published;
+- `@effected/schemastore-cli`'s **peer** on `@effected/schemastore`. The
+  two release as a changesets fixed group at one version, and the CLI's
+  pipeline pattern-matches annotation symbols the consumer's config
+  created through the library — so there must be exactly one
+  `@effected/schemastore` instance, and it must be the very version the
+  bin was built against. An exact pin turns a second copy into an install
+  error rather than a silent runtime mismatch. This exception is a
+  property of a bin-only companion fronting one library; a library edge
+  never earns it.
+
+Patch-floating is the point everywhere else: a sibling patch flows into an
 existing release without forcing a coordinated re-release, while a minor
 bump still needs one. Whether an edge is a peer or a regular dependency
 is decided per edge at design time — that choice is about the

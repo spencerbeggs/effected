@@ -14,10 +14,11 @@ place by being something one of those five actually needs.
 
 ## How this ships
 
-The kit is **31 publishable packages**: 30 libraries plus one companion. All of them are on npm except
-[@effected/schema-org](/schema-org), which is built and documented but has not cut its first release yet.
-[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) is the companion — it is not a library, so the tier
-taxonomy does not describe it, but it is a public package and it publishes like the rest. Everything is
+The kit is **32 publishable packages**: 30 libraries plus two companions. All of them are on npm except
+`@effected/schemastore-cli`, which is built and documented but has not cut its first release yet.
+[@effected/pnpm-plugin-effect](/pnpm-plugin-effect) and `@effected/schemastore-cli` are the companions —
+neither is a library, so the tier taxonomy does not describe them, but both are public packages and
+publish like the rest. Everything is
 `0.x` and unstable; `1.0.0` waits for Effect v4 GA.
 
 Releases are changeset-driven. CI releases whatever the pending changesets name, which is sometimes the

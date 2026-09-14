@@ -4,8 +4,9 @@ The `schemastore` command: a **bin-only** companion to `@effected/schemastore`. 
 
 **Design doc:** `@./okf/modules/schemastore-cli.md` — the config contract, the drift table, the command and exit-code contracts, and the reporting shapes. Read it before touching any of them.
 
-## Tier: integrated — and bin-only
+## A companion package — bin-only, no tier
 
+- Companion, not library: tier measures what an importer pays, and nothing imports this package (the `pnpm-plugin-effect` precedent; see `okf/glossary/companion-package.md`). It runs under a CLI environment and touches the filesystem, which would make a library integrated, but that cost falls on nobody.
 - Its published surface is the `schemastore` executable and `./package.json`. **Never add an `exports` entry beyond `./package.json`**, and never add an `index.ts`: nothing is importable from this package. Every type a config needs (`defineConfig`, `SchemaTarget`, the versioning helpers) comes from `@effected/schemastore`.
 - `savvy.build.ts` sets `emitDts: false`. There are no declarations to bundle and no API model to extract, and the bundler's prod meta pass refuses a package with zero entry points. No api-extractor model, no website page — the documentation is `--help`, the README and the library's page.
 - It runs under `Command.Environment` (`NodeServices.layer` from `@effect/platform-node`), loads consumer TypeScript through `jiti`, and touches the real filesystem.

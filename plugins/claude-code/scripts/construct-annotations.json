@@ -664,7 +664,7 @@
 		"SchemaTarget": "declare one schema publication target with its $id, path and optional version",
 		"SchemaValidator": "validate a json schema document with a real engine, ajv strict mode gate",
 		"SchemaValidatorError": "handle the validation engine failing as a mechanism rather than a rejection",
-		"SchemaVersion": "branded schema version label, full three-component semver for catalog file naming",
+		"SchemaVersion": "branded schema version label, one to three components with optional prerelease for catalog file naming",
 		"SchemaVersioning": "compute versioned or unversioned catalog urls, order schema version labels, derive schema file names",
 		"StoreDocument": "assemble a schemastore-shaped draft-07 document from an effect schema, publish a json schema",
 		"ValidationFinding": "one ajv validation problem in a document, a value never an error",

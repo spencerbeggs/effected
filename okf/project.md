@@ -6,7 +6,7 @@ status: stable
 tags:
   - architecture
 generated:
-  by: "claude-code/sonnet-5"
+  by: "claude-code/opus-5"
   at: 2026-09-13T05:33:04Z
   body_sha256: 7ee3e9f57cf6a97a8fe3cd8bacb07fca148ba271ff2db246fbf268fa515fafea
 ---
@@ -23,7 +23,7 @@ The developer-experience exemplar is the [`semver`](modules/semver.md) package, 
 
 ## Boundaries
 
-The repository holds **libraries only**. Tools and applications built on these libraries stay in their own repos and consume published `@effected` packages: a repository with an entry point a user runs, rather than an API a program imports, does not belong here. Package membership is the `packages/` directory listing.
+The repository holds **libraries and their companions**. Standalone tools and applications built on these libraries stay in their own repos and consume published `@effected` packages: a repository with an entry point a user runs, rather than an API a program imports, does not belong here. The one admitted exception is a **bin-only companion** that fronts exactly one library here and releases as a fixed pair with it (`schemastore-cli` over `schemastore`): it is the library's own command-line surface, not an application, and it carries no library tier — see [companion package](glossary/companion-package.md). Package membership is the `packages/` directory listing.
 
 | Package | Tier | Provenance |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ The repository holds **libraries only**. Tools and applications built on these l
 | `github-actions` | integrated | port-with-redesign of the same package's Actions half |
 | `sbom` | integrated | port-with-redesign of the same package's `Attest` knot |
 | `schemastore` | integrated (was boundary) | invention; SchemaStore-shaped JSON Schema documents from Effect Schema sources |
-| `schemastore-cli` | integrated | invention; the `schemastore` bin over `@effected/schemastore`: build/check a `schemastore.config.ts` under a per-schema published flag and a drift policy |
+| `schemastore-cli` | companion — no tier | invention; the `schemastore` bin over `@effected/schemastore`: build/check a `schemastore.config.ts` under a per-schema published flag and a drift policy |
 | `schema-org` | pure | invention; schema.org vocabulary as Effect Schema classes |
 | `jsonl` | boundary | invention; append-only schema-validated JSONL journals |
 | `pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against |

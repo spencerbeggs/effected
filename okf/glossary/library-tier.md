@@ -10,7 +10,7 @@ sources:
   - id: project
     resource: ../project.md
 generated:
-  by: "okfit/claude-code"
+  by: "claude-code/opus-5"
   at: 2026-09-14T02:44:47Z
   body_sha256: c763896639627b1512e33fc1361f2ccb7c52d71e1942669da64278a755a75f10
 ---
@@ -69,9 +69,11 @@ pushed up a tier by that edge.
 
 Every package's tier is recorded in the `Tier` column of the packages
 table.[^project] The
-companion package, `pnpm-plugin-effect`, carries no tier at all — see
+companion packages — `pnpm-plugin-effect` and `schemastore-cli` — carry
+no tier at all, even the one that runs code: tier measures what an
+importer pays, and a bin-only package has no importer. See
 [companion package](companion-package.md) for why tier does not apply to
-it.
+them.
 
 [^project]: `project.md` — the packages table's `Tier` column, for
     example the `config-file` row: "boundary | port of

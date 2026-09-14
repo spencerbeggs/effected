@@ -219,8 +219,10 @@ hyphen-separated, matching its guide and its corpus.
 
 The label grammar accepts one to three components — `major`,
 `major.minor` or `major.minor.patch`, with an optional prerelease —
-checked through `@effected/semver`'s own parse over the label padded to
-three components rather than a parallel regex. The store's own labels
+matched by a grammar regex first and then checked through
+`@effected/semver`'s own parse over the label padded to three components:
+the regex admits the shape, the parse settles validity and rejects build
+metadata. The store's own labels
 are commonly two-part, and a config author writing `okfit-1.2.json`
 should not have to spell `1.2.0`; a missing component reads as `0` for
 ordering, so `1`, `1.0` and `1.0.0` compare equal while each label
@@ -238,8 +240,9 @@ prerelease is "pinned" — a published, URL-pinned document — and both
 consume the exact same test. `next(current, change)` is pure and total
 with three arms: any non-`"contract"` classification is identity; a
 non-pinned (prerelease) `current` is identity; otherwise a MINOR bump
-that preserves the label's component count (`1` → `1.1`, `1.2` →
-`1.3`, `1.2.3` → `1.3.0`). It is a suggestion the CLI surfaces, not a
+that preserves the label's component count (`1` → `2`, major being
+the only axis a one-component label has; `1.2` → `1.3`; `1.2.3` →
+`1.3.0`). It is a suggestion the CLI surfaces, not a
 verdict — the drift policy decides whether a published document may
 change at all — so the bump's job is to be strictly greater and
 conspicuous, not to encode SemVer compatibility: `DocumentDiff` cannot

@@ -55,8 +55,15 @@ The pair releases together: a changesets **fixed** group holds
 `@effected/schemastore` and `@effected/schemastore-cli` at one version,
 and the CLI's peer range on the library is that exact version.
 
-Tier: **integrated** — it runs under `Command.Environment`, loads
-consumer TypeScript through `jiti`, and touches the real filesystem.
+Tier: **none — a companion package**, like `pnpm-plugin-effect`. It runs
+under `Command.Environment`, loads consumer TypeScript through `jiti`,
+and touches the real filesystem — which would make a *library* integrated
+tier — but tier measures what an importer pays, and nothing can import
+this package: its published surface is the bin and `./package.json`. The
+[companion package](../glossary/companion-package.md) glossary rules,
+and the `pnpm-plugin-effect` precedent (a companion with no tier) is the
+one this follows rather than arguing a running-code companion into a
+tier.
 
 ## Motivation: the six generators
 

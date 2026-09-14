@@ -49,7 +49,7 @@
 | `SchemaValidatorError` | Class | Indicates that the validation engine behind the `SchemaValidator` contract failed as a *mechanism* — it could not run at all. | handle the validation engine failing as a mechanism rather than a rejection |
 | `SchemaValidatorOptions` | Interface | Options for `SchemaValidatorShape.validate`. | |
 | `SchemaValidatorShape` | Interface | The shape of the `SchemaValidator` service — what an implementation provides. | |
-| `SchemaVersion` | Variable + TypeAlias | The type of a validated SchemaStore version label. | branded schema version label, full three-component semver for catalog file naming |
+| `SchemaVersion` | Variable + TypeAlias | The type of a validated SchemaStore version label. | branded schema version label, one to three components with optional prerelease for catalog file naming |
 | `SchemaVersioning` | Class | Both SchemaStore catalog modes as pure derivations: unversioned (a plain `name.json` file, `url` only) and versioned (`name-<version>.json` files — SchemaStore's own suffix convention — a `versions` map, and `url` pointing at the latest version). | compute versioned or unversioned catalog urls, order schema version labels, derive schema file names |
 | `SchemaWriteOptions` | Interface | Options for `SchemaFileShape.write` and `SchemaFileShape.check`: the `CanonicalJsonOptions` the document serializes under, plus how `write` decides whether to touch the file. | |
 | `SchemastoreConfig` | Interface | The validated, defaults-filled config `defineConfig` answers and the CLI consumes. Recognisable via `isSchemastoreConfig`. | |

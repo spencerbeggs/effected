@@ -1,6 +1,6 @@
 # @effected/schemastore-cli
 
-The `schemastore` command: a bin-only companion to `@effected/schemastore` that loads a `schemastore.config.ts`, builds or checks every schema and catalog entry it declares under a per-schema `published` flag and a drift policy, and reports to a terminal, JSON or a GitHub step summary. **Integrated tier** — it runs under `effect/unstable/cli`'s `Command.Environment`, loads consumer TypeScript through `jiti`, and touches the real filesystem. Nothing is importable from it: every type a config file needs comes from `@effected/schemastore`.
+The `schemastore` command: a bin-only companion to `@effected/schemastore` that loads a `schemastore.config.ts`, builds or checks every schema and catalog entry it declares under a per-schema `published` flag and a drift policy, and reports to a terminal, JSON or a GitHub step summary. **Companion — no tier** (like `pnpm-plugin-effect`): it runs under `effect/unstable/cli`'s `Command.Environment`, loads consumer TypeScript through `jiti`, and touches the real filesystem, but tier measures what an importer pays and nothing is importable from it — every type a config file needs comes from `@effected/schemastore`.
 
 For the end-to-end procedure — writing the config, deciding `published`, wiring the CI gate, retiring a hand-rolled generator script — load the `building-schemastore-schemas` skill. This reference is the package's contract.
 

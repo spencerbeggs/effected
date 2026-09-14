@@ -181,7 +181,7 @@ console.log(Effect.runSync(program).url);
 // https://example.com/schemas/mytool-1.10.0.json
 ```
 
-`1.10.0` wins over `1.9.0` because ordering is real SemVer precedence, not a string sort. Labels are full three-component SemVer — `1.2` does not parse — so a label can always be split back out of a file name unambiguously.
+`1.10.0` wins over `1.9.0` because ordering is real SemVer precedence, not a string sort. Labels are one to three components — `1`, `1.2` and `1.2.0` all parse, optionally with a prerelease — and a missing component reads as `0` for ordering, so those three compare equal while each round-trips verbatim into its file name; `defineConfig` refuses two spellings of one version under one name for exactly that reason.
 
 ### Check `fileMatch` hygiene before you submit
 

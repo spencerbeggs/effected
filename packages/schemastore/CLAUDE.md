@@ -119,8 +119,10 @@ validation gate, not a construction surface.
   values fail typed instead of `JSON.stringify`'s silent drops.
 - **`SchemaVersion` is a one-to-three-component label** — `major`,
   `major.minor` or `major.minor.patch`, optionally with a prerelease —
-  checked by `@effected/semver`'s parse over the label padded to three
-  components, not a parallel regex. Missing components read as `0` for
+  matched by a grammar regex (`LABEL`) first, then checked by
+  `@effected/semver`'s parse over the label padded to three components —
+  the regex admits the shape, the parse settles validity and rejects build
+  metadata. Missing components read as `0` for
   ordering, so `1`, `1.0` and `1.0.0` compare EQUAL under
   `SchemaVersioning.Order` while each label round-trips verbatim (the file
   name keeps the spelling the config wrote). Build metadata is rejected
@@ -135,8 +137,9 @@ validation gate, not a construction surface.
   deadlock. `next(current, change)` is pure and total, three arms:
   non-contract change → identity (nothing to break); non-pinned `current` →
   identity (a prerelease already declares its own instability); otherwise →
-  a MINOR bump that **preserves the component count** (`1` → `1.1`, `1.2` →
-  `1.3`, `1.2.3` → `1.3.0`). It is a suggestion, not a verdict: the CLI's
+  a MINOR bump that **preserves the component count** (`1` → `2`, since major
+  is the only axis a one-component label has; `1.2` → `1.3`; `1.2.3` →
+  `1.3.0`). It is a suggestion, not a verdict: the CLI's
   drift policy decides whether a published document may change at all, and
   `DocumentDiff` cannot tell an added optional property from a removed
   required one, so the label only has to be strictly greater and
