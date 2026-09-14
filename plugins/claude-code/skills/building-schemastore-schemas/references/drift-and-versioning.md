@@ -94,7 +94,8 @@ SchemaStore reads that map by key, not by position; nothing is broken.
 - a non-`contract` change → the same label (nothing to break);
 - a prerelease label → the same label (it already declares instability);
 - otherwise → a **minor** bump that preserves the component count
-  (`1` → `1.1`, `1.2` → `1.3`, `1.2.3` → `1.3.0`).
+  (`1.2` → `1.3`, `1.2.3` → `1.3.0`). A one-component label has no minor
+  axis, so it bumps **major**: `1` → `2`.
 
 It suggests minor because the differ cannot tell an added optional property
 from a removed required one — every contract change reads as a change, not
