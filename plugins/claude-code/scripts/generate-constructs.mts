@@ -64,6 +64,16 @@ const parseArgs = (argv: readonly string[]) => {
 	return { command, flags };
 };
 
+// A bin-only package (exports map with nothing but "./package.json") has no
+// import surface, so `emitDts: false` leaves it with no doc model to ever
+// join against — exclude it from enumeration rather than reporting it as a
+// perpetually missing build.
+const isBinOnly = (manifest: { exports?: Record<string, unknown> }): boolean => {
+	if (!manifest.exports) return false;
+	const keys = Object.keys(manifest.exports);
+	return keys.length > 0 && keys.every((key) => key === "./package.json");
+};
+
 const listPackages = (packagesDir: string): Pkg[] =>
 	readdirSync(packagesDir, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory())
@@ -72,7 +82,15 @@ const listPackages = (packagesDir: string): Pkg[] =>
 		.sort()
 		.map((dir) => ({
 			dir,
-			name: (JSON.parse(readFileSync(join(packagesDir, dir, "package.json"), "utf8")) as { name: string }).name,
+			manifest: JSON.parse(readFileSync(join(packagesDir, dir, "package.json"), "utf8")) as {
+				name: string;
+				exports?: Record<string, unknown>;
+			},
+		}))
+		.filter(({ manifest }) => !isBinOnly(manifest))
+		.map(({ dir, manifest }) => ({
+			dir,
+			name: manifest.name,
 			modelPath: join(packagesDir, dir, "dist", "prod", "npm", "meta", `${dir}.api.json`),
 		}));
 
