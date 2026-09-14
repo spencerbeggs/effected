@@ -1,5 +1,7 @@
 import type { Schema } from "effect";
+import { Result } from "effect";
 import type { SchemaVersion } from "./SchemaVersioning.js";
+import { SchemaVersioning } from "./SchemaVersioning.js";
 
 /**
  * A single schema publication target: an Effect Schema source paired with
@@ -45,6 +47,17 @@ export interface SchemaTarget {
 	 */
 	readonly version?: SchemaVersion;
 	/**
+	 * Whether a consumer already depends on this document at this label.
+	 *
+	 * @remarks
+	 * The lifecycle switch the drift policy reads: an unpublished target is
+	 * always regenerated in place, a published one is held to the configured
+	 * drift tolerance. Defaults to `false`. The library's own
+	 * `contractChanges: "block-versioned"` policy keys on a pinned `version`,
+	 * not on this flag — the CLI is what reads it.
+	 */
+	readonly published: boolean;
+	/**
 	 * Options passed through to {@link StoreDocument.fromSchema} (and, from
 	 * there, core's `Schema.toJsonSchemaDocument`).
 	 *
@@ -77,34 +90,40 @@ export class SchemaTarget {
 		readonly $id: string;
 		readonly name?: string;
 		readonly path: string;
+		readonly published?: boolean;
 		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 	}): SchemaTarget;
 	/**
 	 * Builds a versioned target. `name` is **required** here: versioned
 	 * catalog naming is `name-<version>.json`, so a version without a name
 	 * cannot be resolved — the overload pair makes that unrepresentable
-	 * rather than a runtime throw.
+	 * rather than a runtime throw. `version` also accepts a plain string
+	 * label, parsed via {@link SchemaVersioning.parseResult}.
 	 */
 	static make(options: {
 		readonly schema: Schema.Constraint;
 		readonly $id: string;
 		readonly name: string;
 		readonly path: string;
-		readonly version: SchemaVersion;
+		readonly version: SchemaVersion | string;
+		readonly published?: boolean;
 		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 	}): SchemaTarget;
 	/**
 	 * Builds a target. `$id` and `path` must be non-empty — an empty
 	 * identity is a wiring mistake and throws, as does an empty `name` when
 	 * one is given. The `name`-with-`version` invariant is enforced by the
-	 * overloads above; the runtime check remains for untyped callers.
+	 * overloads above; the runtime check remains for untyped callers. A
+	 * string `version` that fails {@link SchemaVersioning.parseResult} throws,
+	 * naming the invalid label.
 	 */
 	static make(options: {
 		readonly schema: Schema.Constraint;
 		readonly $id: string;
 		readonly name?: string;
 		readonly path: string;
-		readonly version?: SchemaVersion;
+		readonly version?: SchemaVersion | string;
+		readonly published?: boolean;
 		readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 	}): SchemaTarget {
 		for (const key of ["$id", "path"] as const) {
@@ -120,12 +139,21 @@ export class SchemaTarget {
 				'SchemaTarget.make requires a "name" when "version" is given (catalog naming is name-<version>.json)',
 			);
 		}
+		const version =
+			options.version === undefined
+				? undefined
+				: Result.getOrThrowWith(
+						SchemaVersioning.parseResult(options.version),
+						(error) =>
+							new Error(`SchemaTarget.make received an invalid version label "${options.version}": ${error.message}`),
+					);
 		return {
 			schema: options.schema,
 			$id: options.$id,
 			path: options.path,
+			published: options.published ?? false,
 			...(options.name !== undefined ? { name: options.name } : {}),
-			...(options.version !== undefined ? { version: options.version } : {}),
+			...(version !== undefined ? { version } : {}),
 			...(options.jsonSchema !== undefined ? { jsonSchema: options.jsonSchema } : {}),
 		};
 	}
