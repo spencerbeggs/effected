@@ -1,5 +1,19 @@
 # @effected/copilot-plugin
 
+## 0.7.0
+
+### Features
+
+- Add the `building-schemastore-schemas` skill, ported from the Claude Code plugin: how a consumer repository publishes SchemaStore-shaped JSON Schema documents from Effect Schemas with `@effected/schemastore` and the `schemastore` CLI — the config file, the `published` flag and drift policy, version labels, the editor keyword families, the CI gate, and migrating a hand-rolled generator script.
+
+- The session-start briefing now names the skill [#721][#721]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#721]: https://github.com/spencerbeggs/effected/pull/721
+
 ## 0.6.2
 
 ### Documentation
