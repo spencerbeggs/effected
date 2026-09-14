@@ -178,9 +178,11 @@ export class CanonicalJson {
 	 * Content equality under the serializer's own semantics: two values are
 	 * equal when they would parse to the same JSON document — object key
 	 * order is a serialization detail and is ignored, array order is data
-	 * and is not. `NaN` is never equal to itself (it is not JSON). Total:
-	 * a cyclic or hostile-depth value reports `false` rather than
-	 * overflowing.
+	 * and is not. `NaN` is never equal to itself (it is not JSON). The same
+	 * reference compares `true` before any structural walk — so a cyclic
+	 * value equals itself — and the comparison is total: two distinct
+	 * cyclic or hostile-depth values report `false` at the stack guard
+	 * rather than overflowing.
 	 *
 	 * This is the comparison `SchemaFile`'s write-if-changed and
 	 * `DocumentDiff`'s leaf comparison already make, exported so a consumer

@@ -155,6 +155,45 @@ describe("StoreDocument", () => {
 			assert.strictEqual(entry.type, "object");
 		});
 
+		// A recursive class shares its $defs entry with every self-reference:
+		// merging the document title onto it would title every occurrence, so
+		// the root is wrapped instead (annotations + `allOf: [{ $ref }]`).
+		it("rootAnnotations wrap a bare $ref root in allOf when its $defs entry has other referents", () => {
+			class Node extends Schema.Class<Node>("Node")({
+				value: Schema.String,
+				children: Schema.Array(Schema.suspend((): Schema.Codec<Node> => Node)),
+			}) {}
+			const document = Result.getOrThrow(
+				StoreDocument.fromSchemaResult(Node, {
+					$id: "https://example.com/node.json",
+					rootAnnotations: { title: "T", description: "D" },
+				}),
+			);
+			assert.deepStrictEqual(document.root, { title: "T", description: "D", allOf: [{ $ref: "#/$defs/NodeEncoded" }] });
+			assert.deepStrictEqual(
+				Object.keys(document.root),
+				["title", "description", "allOf"],
+				"annotations serialize first",
+			);
+			const entry = document.defs.NodeEncoded as Record<string, unknown>;
+			assert.isFalse(Object.hasOwn(entry, "title"), "the shared entry carries no title");
+			assert.isFalse(Object.hasOwn(entry, "description"), "the shared entry carries no description");
+			assert.strictEqual(entry.type, "object");
+		});
+
+		// Draft-07 §8 content vocabulary: annotations, not assertions.
+		it("rootAnnotations admit the contentMediaType and contentEncoding annotation keywords", () => {
+			const document = Result.getOrThrow(
+				StoreDocument.fromSchemaResult(Schema.String, {
+					$id: "https://example.com/a.json",
+					rootAnnotations: { contentMediaType: "application/json", contentEncoding: "base64" },
+				}),
+			);
+			assert.strictEqual(document.root.contentMediaType, "application/json");
+			assert.strictEqual(document.root.contentEncoding, "base64");
+			assert.strictEqual(document.root.type, "string");
+		});
+
 		it("rootAnnotations skips undefined-valued entries instead of writing an undefined key", () => {
 			const document = Result.getOrThrow(
 				StoreDocument.fromSchemaResult(Schema.Struct({ a: Schema.String }), {

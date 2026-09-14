@@ -20,10 +20,13 @@ parent.
   admits anything else fails the build with `UndeclaredAnnotationKeyError`
   (`$id` + the sorted, deduplicated `keys`). `StoreDocumentOptions.rootAnnotations`
   is merged onto the assembled root afterwards (override keys win,
-  `undefined` skipped; admitted keys are the standard annotation keywords
-  plus the declared families, gated up front with the same error; a root that
-  is exactly a bare local `$ref` receives the merge on the `$defs` entry it
-  names). `toJson()` emits the flat publication
+  `undefined` skipped; admitted keys are the nine standard annotation
+  keywords — `title`, `description`, `$comment`, `default`, `examples`,
+  `readOnly`, `writeOnly`, `contentMediaType`, `contentEncoding` — plus the
+  declared families, gated up front with the same error; a root that is
+  exactly a bare local `$ref` receives the merge on the `$defs` entry it
+  names when it is that entry's only referent, and is otherwise rewritten to
+  `{ ...overrides, allOf: [{ $ref }] }`). `toJson()` emits the flat publication
   shape, omitting `$defs` when empty (a deliberate divergence from the
   extraction source). `serializeResult` routes through `CanonicalJson`. Fails
   typed with `SchemaConversionError` (`$id` + `cause: Schema.Defect()`).
@@ -57,7 +60,9 @@ parent.
   `$defs`; `#` self-refs are fine; a surviving `#/definitions/...` pointer
   warns), `UnknownKeyword` (keyword-position-aware walk over the allowed
   families), `DescriptionWithoutUrl` (advisory — the root description's last
-  line should be a docs URL), `DepthExceeded` (hostile nesting degrades to a
+  line should be a docs URL; for a bare local `$ref` root the description is
+  read from the `$defs` entry it names, at `/$defs/<name>/description`),
+  `DepthExceeded` (hostile nesting degrades to a
   finding).
 - `DocumentDiff` — pure classification of two emitted documents as
   `SchemaChange` (`"none"` | `"annotations"` | `"contract"`), keyword-position

@@ -139,6 +139,31 @@ describe("DocumentLint", () => {
 			assert.deepStrictEqual(findings, []);
 		});
 
+		// Assembly places a bare-$ref root's annotations on the $defs entry
+		// (#624), so the advisory must read the description from there too.
+		it("advises on the $defs entry a bare $ref root names, at the entry's path", () => {
+			const findings = DocumentLint.lint(
+				StoreDocument.draft07({
+					$id: "https://example.com/x.schema.json",
+					root: { $ref: "#/$defs/X~1Y" },
+					defs: { "X/Y": { type: "object", description: "A config file" } },
+				}),
+			);
+			assert.deepStrictEqual(checks(findings), ["DescriptionWithoutUrl"]);
+			assert.strictEqual(findings[0]?.path, "/$defs/X~1Y/description");
+		});
+
+		it("passes clean when the $defs entry a bare $ref root names ends with a URL line", () => {
+			const findings = DocumentLint.lint(
+				StoreDocument.draft07({
+					$id: "https://example.com/x.schema.json",
+					root: { $ref: "#/$defs/X" },
+					defs: { X: { type: "object", description: "A config file\nhttps://example.com/docs" } },
+				}),
+			);
+			assert.deepStrictEqual(findings, []);
+		});
+
 		it("stays silent when there is no description at all", () => {
 			assert.deepStrictEqual(DocumentLint.lint(document({ type: "object" })), []);
 		});

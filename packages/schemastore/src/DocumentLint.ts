@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { JsonPointer, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { KeywordFamilies } from "./KeywordFamilies.js";
 import type { StoreDocument } from "./StoreDocument.js";
@@ -106,6 +106,28 @@ const checkRef = (value: unknown, path: string, context: LintContext): void => {
 			message: `$ref "${value}" does not resolve against the document's $defs pool`,
 		}),
 	);
+};
+
+// The node whose `description` is the document's: the root, or — when the
+// root is exactly a bare local `$ref` into the pool (the `Schema.Class`
+// shape) — the `$defs` entry it names, because that is where assembly
+// places a root annotation (`StoreDocumentOptions.rootAnnotations`). The
+// `$ref` token is decoded the same way assembly decodes it, so a
+// pointer-escaped or percent-encoded name resolves.
+const describedNode = (
+	document: StoreDocument,
+): { readonly node: Readonly<Record<string, unknown>>; readonly path: string } | undefined => {
+	const keys = Object.keys(document.root);
+	if (keys.length !== 1 || keys[0] !== "$ref" || typeof document.root.$ref !== "string") {
+		return { node: document.root, path: "" };
+	}
+	const pointer = JsonPointer.parseUriFragment(document.root.$ref);
+	if (pointer === undefined || pointer.length !== 2 || pointer[0] !== "$defs") {
+		return { node: document.root, path: "" };
+	}
+	const name = pointer[1] as string;
+	const entry = Object.hasOwn(document.defs, name) ? document.defs[name] : undefined;
+	return isSchemaObject(entry) ? { node: entry, path: `/$defs/${escapePointerSegment(name)}` } : undefined;
 };
 
 // Walks one schema node, keyword-position aware: descends only into
@@ -217,7 +239,9 @@ const lintSchema = (node: unknown, path: string, depth: number, context: LintCon
  *   non-standard families ({@link KeywordFamilies}: `x-taplo*`, `x-tombi-*`,
  *   `x-intellij-*`, `x-ai-*` and the vscode set), which ajv strict mode would reject.
  * - `DescriptionWithoutUrl` — advisory: SchemaStore's description
- *   convention ends the root description with a docs URL line.
+ *   convention ends the root description with a docs URL line. Read from
+ *   the root, or from the `$defs` entry a bare local `$ref` root names —
+ *   where assembly places a root annotation.
  *
  * Tractable because the input is bounded `toJsonSchemaDocument` output;
  * this is not a general JSON Schema validator.
@@ -237,7 +261,8 @@ export class DocumentLint {
 		for (const [name, definition] of Object.entries(document.defs)) {
 			lintSchema(definition, `/$defs/${escapePointerSegment(name)}`, 1, context);
 		}
-		const description = document.root.description;
+		const described = describedNode(document);
+		const description = described?.node.description;
 		if (typeof description === "string") {
 			const lines = description.split("\n");
 			const last = lines[lines.length - 1] ?? "";
@@ -246,7 +271,7 @@ export class DocumentLint {
 					DocumentLintFinding.make({
 						check: "DescriptionWithoutUrl",
 						severity: "advisory",
-						path: "/description",
+						path: `${described?.path ?? ""}/description`,
 						message:
 							"SchemaStore's description convention ends with a documentation URL on its own line (<description>\\n<docs-url>)",
 					}),

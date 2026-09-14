@@ -108,7 +108,8 @@ export interface StoreDocumentOptions {
 	 *
 	 * Admitted keys are the standard JSON Schema annotation keywords
 	 * (`title`, `description`, `$comment`, `default`, `examples`,
-	 * `readOnly`, `writeOnly`) and the declared keyword families
+	 * `readOnly`, `writeOnly`, `contentMediaType`, `contentEncoding`) and
+	 * the declared keyword families
 	 * ({@link KeywordFamilies}); any other key fails the build with
 	 * {@link UndeclaredAnnotationKeyError}, so the override cannot become a
 	 * back door for assertion keywords. Override keys win over generated
@@ -116,11 +117,20 @@ export interface StoreDocumentOptions {
 	 * gate and the `includeAnnotationKey` gate would fire, the override's
 	 * keys are the ones reported and the predicate's are not.
 	 *
-	 * When the assembled root is a bare local `$ref` (the shape a
-	 * `Schema.Class` root produces — `{ "$ref": "#/$defs/FooEncoded" }`),
-	 * the annotations are merged onto the `$defs` entry it names instead:
-	 * Draft-07 validators ignore `$ref` siblings, so the root would carry
-	 * them nowhere.
+	 * Placement follows the assembled root's shape, in three cases:
+	 *
+	 * - An inline root (a `Struct`, a primitive) takes the annotations
+	 *   directly.
+	 * - A bare local `$ref` root (the shape a `Schema.Class` root produces —
+	 *   `{ "$ref": "#/$defs/FooEncoded" }`) whose `$defs` entry has no
+	 *   other referent takes them on that entry instead: Draft-07
+	 *   validators ignore `$ref` siblings, so the root would carry them
+	 *   nowhere.
+	 * - A bare local `$ref` root whose entry is shared — a recursive class,
+	 *   or one another definition also references — is replaced by
+	 *   `{ ...annotations, allOf: [{ "$ref": ... }] }`, so the document is
+	 *   annotated without every other occurrence of the type inheriting
+	 *   the root's title.
 	 */
 	readonly rootAnnotations?: Readonly<Record<string, unknown>>;
 }
@@ -143,7 +153,36 @@ const STANDARD_ANNOTATION_KEYWORDS = new Set([
 	"examples",
 	"readOnly",
 	"writeOnly",
+	"contentMediaType",
+	"contentEncoding",
 ]);
+
+// Counts the `$ref` string values equal to `ref` reachable from `node`
+// through schema positions. Declared-family values are opaque payloads
+// addressed to a language server, so the walk does not descend into them —
+// a `$ref`-shaped string inside one is not a referent. Runs after
+// `restoreDefsRefs`, so every local pointer is already in `#/$defs/...`
+// form and a raw string comparison is exact.
+const countRefs = (node: unknown, ref: string): number => {
+	if (Array.isArray(node)) {
+		let count = 0;
+		for (const item of node) {
+			count += countRefs(item, ref);
+		}
+		return count;
+	}
+	if (typeof node === "object" && node !== null) {
+		let count = 0;
+		for (const [key, value] of Object.entries(node)) {
+			if (KeywordFamilies.isDeclared(key)) {
+				continue;
+			}
+			count += key === "$ref" && value === ref ? 1 : countRefs(value, ref);
+		}
+		return count;
+	}
+	return 0;
+};
 
 // Applies `rootAnnotations` per the placement rule. Mutates the freshly
 // assembled `root`/`defs` (both are this call's own null-prototype
@@ -155,6 +194,14 @@ const STANDARD_ANNOTATION_KEYWORDS = new Set([
 // decoding the fragment, never by slicing a prefix. An `undefined` value is
 // skipped rather than written: an `undefined` key is not JSON and would
 // otherwise fail serialization later, far from the override that caused it.
+//
+// A bare-`$ref` root merges onto its `$defs` entry ONLY when the root is
+// that entry's sole referent. A recursive class (`children: Array(Node)`)
+// shares the entry with every self-reference, and a document title merged
+// onto it would title each occurrence; that root is instead replaced by
+// `{ ...annotations, allOf: [{ $ref }] }` — the Draft-07 shape that
+// annotates a root without aliasing the type. Annotations are written
+// before `allOf` so the serialized document reads title-first.
 const applyRootAnnotations = (
 	root: Record<string, unknown>,
 	defs: Record<string, unknown>,
@@ -164,13 +211,21 @@ const applyRootAnnotations = (
 	const ref = keys.length === 1 && keys[0] === "$ref" ? root.$ref : undefined;
 	const path = typeof ref === "string" ? JsonPointer.parseUriFragment(ref) : undefined;
 	const pool = path !== undefined && path.length === 2 && path[0] === "$defs" ? defs[path[1]] : undefined;
-	const target =
-		typeof pool === "object" && pool !== null && !Array.isArray(pool) ? (pool as Record<string, unknown>) : root;
+	const entry =
+		typeof pool === "object" && pool !== null && !Array.isArray(pool) ? (pool as Record<string, unknown>) : undefined;
+	const shared = entry !== undefined && typeof ref === "string" && countRefs(defs, ref) > 0;
+	if (shared) {
+		delete root.$ref;
+	}
+	const target = entry !== undefined && !shared ? entry : root;
 	for (const [key, value] of Object.entries(annotations)) {
 		if (value === undefined) {
 			continue;
 		}
 		target[key] = value;
+	}
+	if (shared) {
+		root.allOf = [{ $ref: ref }];
 	}
 };
 

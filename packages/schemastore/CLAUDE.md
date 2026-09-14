@@ -62,17 +62,27 @@ validation gate, not a construction surface.
   `SchemaTarget.rootAnnotations` by the pipeline) merges onto the emitted root
   after assembly — override keys win, `undefined` values are skipped. Admitted
   keys are the standard annotation keywords (`title`, `description`,
-  `$comment`, `default`, `examples`, `readOnly`, `writeOnly`) plus the
+  `$comment`, `default`, `examples`, `readOnly`, `writeOnly`,
+  `contentMediaType`, `contentEncoding` — the last two are Draft-07 §8
+  content vocabulary, annotations ajv does not assert) plus the
   declared families; anything else fails `UndeclaredAnnotationKeyError`
   BEFORE generation, naming the override keys (so when both gates would
   fire, the override's keys are reported, not the predicate's) — the
   override is for annotation loss (a filtered field, a class root), never a
   back door for assertion keywords. When the assembled root is exactly a
   bare local `$ref` (`{ $ref: "#/$defs/X" }` — decoded via core's
-  `JsonPointer.parseUriFragment`, so a pointer-escaped name resolves) the
-  merge lands on `defs.X` instead, because Draft-07 validators ignore `$ref`
-  siblings. Values are shared by reference like `.annotate()` payloads, and
-  the `$ref` rewrite never walks them.
+  `JsonPointer.parseUriFragment`, so a pointer-escaped name resolves) AND
+  the root is that entry's only referent, the merge lands on `defs.X`
+  instead, because Draft-07 validators ignore `$ref` siblings. When the
+  entry has other referents (a recursive class, or one another definition
+  reaches — counted over `root` and every `defs` entry, never inside a
+  declared-family payload) the root becomes
+  `{ ...overrides, allOf: [{ $ref }] }`, the Draft-07 shape that annotates a
+  root without titling every occurrence of the type. `DocumentLint`'s
+  `DescriptionWithoutUrl` reads the description from the same place
+  assembly put it (the entry, at `/$defs/<name>/description`, for a bare
+  `$ref` root). Values are shared by reference like `.annotate()` payloads,
+  and the `$ref` rewrite never walks them.
 - **`KeywordFamilies` is the ONE owner of the declared non-standard families,
   in two groups.** Upstream language-server families (the vscode five by
   exact name; the `x-taplo`, `x-tombi-`, `x-intellij-` prefixes) are mirrored
