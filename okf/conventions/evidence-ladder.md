@@ -86,6 +86,54 @@ Encoded as skill preconditions because each was learned by being burned:
   and false-passes its control.
 - **The control assertion runs first.** A probe that cannot fail is worse
   than no probe.
+- **A probe writes no file under `__test__/`.** A stray
+  `__test__/tmp-probe.test.ts` is collected by the ordinary suite and
+  inflates the `Tests:` count, which looks exactly like added coverage —
+  destroying any later count-delta audit against that number (see [state
+  the reason when a gate count
+  moves](state-the-reason-when-a-gate-count-moves.md)). Do not solve this
+  with an exclude pattern: an exclude only catches the names someone
+  predicted, and fails silently when it misses one it did not. Prefer, in
+  order: a probe that writes no file at all (`cd packages/<name> && node
+  --input-type=module -e '<script>'` — running from *inside* the package
+  is what lets bare specifiers such as `effect` or `@effected/*` resolve,
+  since pnpm's store layout resolves by the *importer's* location, not
+  the invoking cwd); the [scratchpad workspace](../modules/scratchpad.md)
+  when a file is genuinely needed; and, only as a backstop,
+  `@vitest-agent/plugin`'s own warning on a zero-collection run.
+
+## Absence results need a second, differently-derived source
+
+An absence result and a broken query are indistinguishable at the call
+site: a grep returning zero, a `str.replace` that matched nothing, a
+projection that dropped a field, a mutant nothing caught, a clean build
+log — each looks identical whether or not the thing being checked for is
+genuinely absent. `suppressed: 0` and "the build never ran" produce the
+same JSON; a cached turbo replay and a real build produce the same clean
+log (see [a turbo cache hit reads like a fresh
+build](../gotchas/turbo-cache-hit-replays-clean-log.md)).
+
+The remedy is not a better query — it is **a positive control asserted
+first**: prove the query finds something known to be there, then trust
+it to report that something else is not. The sharp form, the one that
+gets skipped, is that **the control must expect a non-zero answer**. A
+control that returns zero when zero is the correct answer looks exactly
+like success on a broken tool. Where a control is impossible, use a
+second signal derived **differently** from the first — `generatedAt` in
+`issues.json` against source mtime for "did this build actually run," one
+lint tool's output against another's for a severity, the whole-suite
+`Tests:` line against a filtered one.
+
+A control must also vary only the thing under test: running it against
+the very input that produced the surprising result cannot distinguish
+"the tool is broken" from "this input is special" — it has to run
+against a known-good input instead. [A single embedded NUL byte making
+`grep` silently skip a
+file](../gotchas/nul-byte-makes-file-look-binary-to-grep.md) is the
+concrete case this repository has hit: a `grep -c ""` that returned
+nothing was first read as proof `grep` itself was broken, and only a
+control run against a different, known-good file located the actual
+cause in that one file.
 
 ## Recorded coupling: the vendored path
 

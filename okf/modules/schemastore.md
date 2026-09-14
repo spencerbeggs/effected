@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/schemastore/src/internal/limits.ts
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 77d02d7f79696693f980a74ecae0d47bacfe703837cbdd79f2a303f90d5aad35
+  at: 2026-09-14T01:29:52Z
+  body_sha256: 48594b01f69290a39e438229c9b543cbda796896a3211540eff10efd76ebebfe
 ---
 
 # @effected/schemastore

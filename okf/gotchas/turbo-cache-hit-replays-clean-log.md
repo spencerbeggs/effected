@@ -3,7 +3,7 @@ type: Gotcha
 title: A turbo cache hit reads exactly like a fresh build in the log
 description: "FULL TURBO and a clean issues.json summary print identically whether the build ran or a stale cached artifact was replayed; only `dist/<target>/issues.json`'s generatedAt distinguishes them."
 status: stable
-resource: ../../CLAUDE.build-and-test.md
+resource: ../../turbo.json
 stale_after: 2027-03-13T00:00:00Z
 tags:
   - dx
@@ -21,7 +21,7 @@ generated:
 `pnpm build --filter <pkg>` prints `FULL TURBO`, the same emitted-file
 count, and the same `suppressed:` figure a genuinely clean gate prints. The
 log gives no visual signal distinguishing "turbo re-ran the build" from
-"turbo replayed a cached artifact from before your last edit."[^claude-build-and-test]
+"turbo replayed a cached artifact from before your last edit."[^turbo-json]
 
 ## What they wrongly conclude
 
@@ -55,5 +55,6 @@ the source files the change touched. Treat a `generatedAt` that does not
 postdate the edit as "this gate has not run yet," not as "the build is
 clean."
 
-[^claude-build-and-test]: `CLAUDE.build-and-test.md` — "A turbo cache hit is
-    indistinguishable from a fresh build in the log."
+[^turbo-json]: `turbo.json` — `build:prod`'s task declares `"cache": true`
+    with `dist/prod/**` as its only output, so a cache hit replays that
+    whole directory, `issues.json` included, without re-running the task.

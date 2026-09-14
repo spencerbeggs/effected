@@ -7,8 +7,8 @@ tags:
   - architecture
   - release
 sources:
-  - id: claude-packages
-    resource: ../../CLAUDE.packages.md
+  - id: project
+    resource: ../project.md
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
@@ -39,7 +39,7 @@ fourth one.
 catalogs and a pnpmfile — configuration, not code — and installing it
 pins a consumer's `effect` versions and peer floors, and the kit's own
 package versions, to the values the kit was built and tested
-against.[^claude-packages] It is a real published package a consumer
+against.[^project] It is a real published package a consumer
 installs and depends on for its effect, even though there is no
 JavaScript to import from it.
 
@@ -52,8 +52,6 @@ package's relationship to the *consumer* — it ships alongside the kit,
 installation of it is optional, and it has no API — which makes that
 wrong reading harder to fall into.
 
-[^claude-packages]: `CLAUDE.packages.md` — "`pnpm-plugin-effect` — pnpm
-    catalog/config plugin, publishing the Effect catalogs and the kit's
-    own `effected` / `effected:peers` catalogs. The kit's one
-    **companion**: published to npm like every library here, but not a
-    library, so it has **no tier**."
+[^project]: `project.md` — the packages table's `pnpm-plugin-effect` row:
+    "companion — no tier | invention; publishes the Effect catalogs the
+    kit pins against."

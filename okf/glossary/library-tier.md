@@ -7,8 +7,8 @@ tags:
   - architecture
   - bundle
 sources:
-  - id: claude-packages
-    resource: ../../CLAUDE.packages.md
+  - id: project
+    resource: ../project.md
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
@@ -67,12 +67,13 @@ pushed up a tier by that edge.
 
 ## How a package's tier is read
 
-Every package's tier is recorded as a parenthetical tag next to its
-one-line description in the package roster.[^claude-packages] The
+Every package's tier is recorded in the `Tier` column of the packages
+table.[^project] The
 companion package, `pnpm-plugin-effect`, carries no tier at all — see
 [companion package](companion-package.md) for why tier does not apply to
 it.
 
-[^claude-packages]: `CLAUDE.packages.md` — the package roster records
-    each library's tier as a parenthetical tag, for example "`config-file`
-    — composable config file loading … (boundary)."
+[^project]: `project.md` — the packages table's `Tier` column, for
+    example the `config-file` row: "boundary | port of
+    `config-file-effect`; the four config codecs as free-standing named
+    exports."

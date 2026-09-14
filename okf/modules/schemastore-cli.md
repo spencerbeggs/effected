@@ -25,6 +25,8 @@ sources:
     resource: ../../packages/schemastore/src/SchemaVersioning.ts
 generated:
   by: "claude-code/opus-5"
+  at: 2026-09-14T00:42:15Z
+  body_sha256: 92fc91323ed56079d5686d0235c7ee65084283fb29888999fac16bd357ff5a3e
 ---
 
 # @effected/schemastore-cli

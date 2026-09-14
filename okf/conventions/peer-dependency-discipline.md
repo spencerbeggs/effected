@@ -10,8 +10,6 @@ tags:
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
-  - id: claude-dependencies
-    resource: ../../CLAUDE.dependencies.md
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
@@ -26,7 +24,12 @@ is a defect — unfulfilled transitive peers escape to the consumer's
 importer, where pnpm's `autoInstallPeers` can bind an incompatible
 `effect` version (historically a v4 beta bound into a v3-wanting
 package, and on at least one prerelease advance, two different v4
-prereleases glued into a single decode pipeline).
+prereleases glued into a single decode pipeline). Because every
+published package's `effect` peer is an exact pin, an unsatisfiable one
+glues in anyway with no install-time error and surfaces later as a
+runtime failure far from its cause — see [an unsatisfiable exact effect
+peer installs clean and fails somewhere
+else](../gotchas/exact-effect-peer-silently-satisfiable.md).
 
 - Libraries keep `effect` as a peer dependency, never a regular one.
 - Tools and applications consuming libraries declare the full stack as
@@ -36,8 +39,9 @@ prereleases glued into a single decode pipeline).
 `pnpm peers check` has one known-issue slot and its occupant rotates,
 always somewhere in the toolchain graph rather than in this workspace,
 clearing when the offending tool republishes against the current
-`effect` prerelease. `CLAUDE.dependencies.md` is the live registry of who
-currently occupies that slot. Do not silence the occupant, and do not
+`effect` prerelease — see [the expected `pnpm peers check`
+occupant](../gotchas/expected-peers-check-occupant.md) for who currently
+holds it. Do not silence the occupant, and do not
 read its presence as license to tolerate a second one: any other warning
 from `pnpm peers check` is a genuine closure defect to fix upstream.
 
@@ -123,5 +127,15 @@ The consumer-side half of why internal edges float on `workspace:^` — the
 requirement that the same one-copy property this kit maintains for
 itself also holds in a consumer's own tree — is covered in
 [one resolved effect copy](one-resolved-effect-copy.md).
+
+## A CommonJS dependency's named exports are detected per-symbol, not all-or-nothing
+
+A dependency vendored or consumed as CommonJS does not uniformly support
+or reject named imports — Node's `cjs-module-lexer` detects some of its
+named exports and misses others in the same module, so one named import
+can work while its neighbour throws only at runtime. See [Node detects
+only some of a CommonJS dependency's named
+exports](../gotchas/cjs-named-import-detection-is-partial.md) for the
+measured example and the testing rule it implies.
 
 [^pnpm-workspace]: `pnpm-workspace.yaml:6` — `autoInstallPeers: true`.

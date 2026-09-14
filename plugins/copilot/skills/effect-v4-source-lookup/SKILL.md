@@ -121,7 +121,7 @@ workspace root resolves **nothing**: a bare `effect` import there dies with
 `ERR_MODULE_NOT_FOUND` (re-checked 2026-09-05). The lockfile carried exactly one
 `effect` at the rc.112 pin; on the rc.115 advance it carries **two by intent** —
 `4.0.0-rc.112` for the toolchain's `packageExtensions` bridge and `4.0.0-rc.115` for
-the kit (`CLAUDE.dependencies.md` explains why this advance needed the reversed
+the kit (`okf/conventions/one-resolved-effect-copy.md` explains why this advance needed the reversed
 bridge). Neither copy is v3, and neither resolves from the root; which one a probe
 links against is decided by where the probe file lives — which is the point of the rule. Which failure you get depends on what a given repo has
 installed, so the gate must key on the *resolved version*, never on a remembered
@@ -135,7 +135,7 @@ can show a second version that is not a second copy — while a toolchain
 `overrides` bridge is up, `pnpm-lock.yaml` carries a redirect line
 (`effect@4.0.0-rc.109: 4.0.0-rc.112`) whose *only* hit is the mapping. One
 resolved version, two spellings. (A `packageExtensions` bridge, the other shape,
-really does keep two copies — read `CLAUDE.dependencies.md` for which shape stands.) What voids a probe is the version it
+really does keep two copies — read `okf/conventions/one-resolved-effect-copy.md` for which shape stands.) What voids a probe is the version it
 **resolves**, printed from inside itself.
 
 **Rung 1 has no fallback.** The npm package ships no `migration/`, no `ai-docs/`, no
