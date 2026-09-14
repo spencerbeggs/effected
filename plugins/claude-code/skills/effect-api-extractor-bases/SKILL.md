@@ -422,6 +422,35 @@ one wrapped argv/route literal; a reader triaging the second incident from
 the brace warnings alone diagnosed brace-escaping, which is exactly the wrong
 fix.)
 
+## A bin-only package has no API model — `emitDts: false`, not a fake entry point
+
+A package whose published surface is a `bin` and nothing else (`exports`
+limited to `"./package.json"`, no `index.ts`) fails `build:prod` under the
+default bundler config with `Cannot merge zero API models`. Nothing is wrong
+with the package: the declaration pass ran over zero entry points and the
+prod meta pass then had nothing to extract. The fix is **not** an `index.ts`
+that exports nothing, and not a `meta: false` (which still runs the dts
+pass). It is `emitDts: false` in `savvy.build.ts`:
+
+```ts
+import { build } from "@savvy-web/bundler";
+
+// Bin-only: no declarations to bundle, no API model to extract.
+await build({ emitDts: false });
+```
+
+`BuildConfigInput.emitDts` is documented as the switch for *"JS-only artifacts
+that never consume declarations (e2e fixtures, bins, internal tools)"* — it
+skips the dts pass (dev and prod) and therefore the meta pass, while still
+emitting JS, the byte-variant targets and the transformed `package.json`.
+Such a package therefore carries **no `_base` suppression, no `tsdoc.json`, no
+api-extractor model and no website page** — all of that machinery reads a
+`.d.ts` that does not exist. It is also the one package shape a
+doc-model-driven enumerator (a construct index, a docs site) must exclude by
+its `exports` map (every key `"./package.json"`), or it reports the bin as a
+perpetually missing build. The `effect-v4-cli` skill covers the package shape
+itself.
+
 ## Reading the gate without fooling yourself
 
 `issues.json` is a **false-green oracle**. Four rules, each learned by being burned:

@@ -156,6 +156,20 @@ rc.109. The `reason` field is where the detail lives: a `PlatformError` wraps
 a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
 carrying a normalized `SystemErrorTag`), `PlatformError.ts:36,109,157`.
 
+**`fs.exists` already absorbs `NotFound` — anything else is a real failure.**
+Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:499`):
+`access(path)` mapped to `true`, with a `PlatformError` whose `reason._tag` is
+`"NotFound"` mapped to `false` and **every other reason re-failed**
+(`EACCES`, `ENOTDIR`, `EIO`). So `fs.exists(p)` answers the question "is it
+there?" and refuses to answer "may I see it?". Appending
+`Effect.orElseSucceed(() => false)` therefore does not fix a missing case — it
+is a **policy choice** to report an unreadable path as absent, and it should be
+written and reviewed as one (a config *discovery* walk may want it; a
+"write here" check does not). The trap this replaces: adding the fallback
+because an in-memory test filesystem seemed to need it — `@effected/memfs`
+answers an unseeded path with `NotFound`, which `exists` already maps to
+`false` without help.
+
 **Construct one through the module's factories, never `new`.**
 `new FileSystem.SystemError(...)` fails with "is not a constructor" — the
 constructors are `PlatformError.systemError({...})` and
@@ -504,7 +518,7 @@ reference. The twelve that do exist: `CurrentLogAnnotations`, `CurrentLogLevel`,
 
 **Overriding the config provider is ordinary service provision.** There is no
 `Effect.withConfigProvider`; `ConfigProvider.ConfigProvider` is itself a
-`Context.Reference` (`ConfigProvider.ts:341`), so swap it with
+`Context.Reference` (`ConfigProvider.ts:342` at rc.115), so swap it with
 `Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`. Reach
 for a combinator name instead and you get `undefined is not a function` at the
 call site — which reads like a bad import, not a missing API.

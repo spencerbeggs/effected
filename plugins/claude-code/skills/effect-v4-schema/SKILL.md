@@ -57,6 +57,8 @@ are still `undefined` at rc.109; the rename did not get reverted.
 | derive variants via `mapFields(Struct.pick/omit/map(...))` | duplicate a schema to re-encode the same data |
 | attach brand statics with `Object.assign`; export the type as `string & Brand.Brand<"N">` | try to merge a `namespace` into the brand `const` (impossible) |
 | override BOTH `[Equal.symbol]` AND `[Hash.symbol]` when equality ignores fields | override `[Equal.symbol]` alone — the hash fast-path silently defeats it |
+| `Schema.isSchema(x)` (`Schema.ts:2261`) to recognise a schema value at runtime — every schema is a **function** (`typeof === "function"`), probed rc.115 ([why](#a-schema-value-is-a-function-at-runtime)) | `typeof x === "object" && x !== null` as a schema guard — it rejects **every** schema, so a config loader that "accepts objects" silently drops all of them |
+| `S extends Schema.ConstraintDecoder<unknown>` as the bound of a helper that wraps `decodeUnknownResult` / `decodeUnknownExit` / `decodeUnknownOption` — that is the bound core's own decode entry points use (`Schema.ts:1668,1540,1606`) | `S extends Schema.Top` — `Top` erases `DecodingServices` to `unknown`, so the helper's call into `decodeUnknownResult` fails to type-check (`unknown` is not assignable to `never`); `Top` is for utilities that never decode (its docstring at `Schema.ts:734` sends decode-only APIs to `ConstraintDecoder`; the mismatch was type-probed at rc.115) |
 | `Schema.toJsonSchemaDocument(S)` | `Schema.toJsonSchema(S)` — that export does not exist. It returns `{ dialect, schema, definitions }`, **not** `$defs` / `properties` |
 | a single-return **ternary chain** in an error's `message` getter | an exhaustive `switch` with no terminal return — tsgo accepts it, but Biome's `useGetterReturn` rejects it (see below) |
 | `Schema.Class` + `Schema.tag("literal")` on an explicitly-named field when the discriminator belongs to a FOREIGN contract | `Schema.TaggedClass` for a foreign discriminator — it hardwires the key `_tag` (see below) |
@@ -522,6 +524,29 @@ them apart. Probed at beta.101, and the consequence bites in two directions:
   (package-json's `PackageManager` version fold) ships a byte-identical
   `.d.ts` while previously-accepted inputs now fail at decode. Announce
   such changes loudly in handoffs — nothing downstream fails to compile.
+
+## A schema value is a function at runtime
+
+Every schema — `Schema.String`, a `Struct`, a `Literals`, a `Schema.Class`
+factory result, a `.check(...)`-ed schema — is built by `internal/schema/make.ts:27`
+as `function Schema() {}` with its prototype swapped to the schema proto, so
+`typeof` reports `"function"`, never `"object"`. Probed at rc.115 against a
+control (`Schema.isSchema(42)` → `false`):
+
+```text
+Schema.String:                        typeof=function  isSchema=true  objectGuardAccepts=false
+Schema.Struct({...}):                 typeof=function  isSchema=true  objectGuardAccepts=false
+Schema.Literals([...]):               typeof=function  isSchema=true  objectGuardAccepts=false
+Schema.Class factory result (Person): typeof=function  isSchema=true  objectGuardAccepts=false
+Schema.String.check(...):             typeof=function  isSchema=true  objectGuardAccepts=false
+```
+
+The trap this replaces: a `typeof value === "object"` guard in a config loader
+that classified every user-supplied schema as "not a schema" and reported a
+config with five schemas as declaring none — a false *negative* the loader's
+own tests could not see because their fixtures were objects too. Use
+`Schema.isSchema` (`Schema.ts:2261`, a `TypeId` brand check), and when a guard
+must also accept plain objects, test `isSchema` **first**.
 
 ## Verify against the installed beta, not the references
 
