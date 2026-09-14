@@ -33,7 +33,9 @@ export class StepSummary {
 			}
 			const exists = yield* fs.exists(target.value);
 			const existing = exists ? yield* fs.readFileString(target.value) : "";
-			yield* fs.writeFileString(target.value, existing + markdown);
+			// A preceding step may have ended mid-line; never glue onto it.
+			const separator = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
+			yield* fs.writeFileString(target.value, existing + separator + markdown);
 			return true;
 		}).pipe(
 			Effect.catch((error) =>

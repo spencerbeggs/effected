@@ -104,8 +104,8 @@ export default defineConfig({
    schema: ReleaseOutput,
    $id: SCHEMA_URL,
    name: "silk-release-action",
-   version: "5.0",
-   path: "schemas/5.0/silk-release-action-5.0.json",
+   version: "5.0.0",
+   path: "schemas/silk-release-action-5.0.0.json",
    published: true,
    jsonSchema: { onExcessProperty: "error" },
   }),
@@ -124,7 +124,8 @@ export default defineConfig({
 ```
 
 - `schemas` — at least one `SchemaTarget`. `SchemaTarget` gains one
-  optional field, `published` (default `false`), and `version` accepts a
+  field, `published` (optional on `make`, which defaults it to `false`;
+  required on the interface itself), and `version` accepts a
   plain string label as well as a parsed `SchemaVersion`. The pipeline
   does NOT read `published`: `SchemaPipeline`'s own `block-versioned`
   contract guard is untouched, and the CLI's `Runner` runs
@@ -136,7 +137,12 @@ export default defineConfig({
   become published, so the draft label has to be in it before its flag
   flips.[^owner] `defineConfig` assembles the entry through
   `CatalogEntry.assemble`, so a version bump on a schema and its catalog
-  entry cannot disagree.
+  entry cannot disagree. The entry's `url` and every `versions` value are
+  **derived** as `<baseUrl>/<name>-<version>.json` for each versioned
+  schema of that name, so each schema's `path` must sit directly under
+  the directory `baseUrl` names and its `$id` must be that exact URL —
+  the CLI does not yet cross-check `$id` against the derived URL (a
+  follow-up), so a mismatch ships a catalog entry that 404s.
 - `drift` — the default policy for published schemas; defaults to
   `{ policy: "semantic", onDrift: "error" }`. Command-line flags override
   it for one run.
@@ -198,8 +204,13 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
 - `check` is the identical walk with **no writes**: it reports what
   `build` would do under the same flags and exits under the same
   conditions. It is the CI gate, and it retires the six drift tests.
-  Never-writes is structural, not a threaded flag: `check` runs with a
-  `SchemaFile` whose `write` fails typed.
+  Never-writes is one predicate, not a separate code path: both modes
+  share one `SchemaFile`, and `Runner` gates every write — schemas and
+  catalog entries alike — on a single `writing` predicate
+  (`mode === "build" && !refused`), pinned by the "check never writes"
+  tests. Because `check` reports what `build` would do, it also reports
+  `held` for the clean siblings of a gate failure or a refused drift,
+  exactly as a build would.
 - `--force` is sugar for `--drift=allow`.
 - `--format=json` emits one document on stdout — config path, per-schema
   `{ $id, path, version, published, change, outcome, findings, nextVersion? }`,
@@ -224,8 +235,9 @@ Exit codes:
 - **Human** (default): one line per schema — `written (contract)`,
   `unchanged`, `would write (annotations)`, `DRIFT contract at published
   1.2 → suggest 1.3`, and `held (drift elsewhere)` or `held (gate failed
-  elsewhere)` for a schema that passed but was not written because a
-  sibling refused the run — with advisory findings indented beneath, one
+  elsewhere)` for a schema that passed but was not (or, under `check`,
+  would not be) written because a sibling refused the run — with
+  advisory findings indented beneath, one
   line per catalog entry, and a summary line. A prerelease label's
   contract change has `nextVersion === version` (the label is not
   pinned) and renders no suggestion. Warnings and errors go through

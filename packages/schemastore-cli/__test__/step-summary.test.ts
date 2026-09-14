@@ -20,6 +20,18 @@ describe("StepSummary.append", () => {
 		),
 	);
 
+	it.effect("starts a new line when the existing summary does not end in one", () =>
+		Effect.gen(function* () {
+			const appended = yield* StepSummary.append("### hello\n");
+			assert.isTrue(appended);
+			const fs = yield* FileSystem.FileSystem;
+			assert.strictEqual(yield* fs.readFileString("/summary.md"), "existing\n### hello\n");
+		}).pipe(
+			Effect.provide(MemoryFileSystem.layerWith({ "/summary.md": "existing" })),
+			Effect.provide(env({ GITHUB_STEP_SUMMARY: "/summary.md" })),
+		),
+	);
+
 	it.effect("creates the file when GITHUB_STEP_SUMMARY points at nothing yet", () =>
 		Effect.gen(function* () {
 			const appended = yield* StepSummary.append("hello\n");

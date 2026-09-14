@@ -177,6 +177,19 @@ describe("Report.warnings", () => {
 			"warning: DRIFT contract at published 1.2 written under --on-drift=warn — schemas/1.2/okfit-1.2.json",
 		]);
 	});
+
+	it("says what a build would write when the report came from check", () => {
+		const warnCheck: RunReport = {
+			...warnBuild,
+			mode: "check",
+			schemas: [{ ...warnDriftSchema, outcome: "would-write" }],
+			catalog: [],
+			wrote: false,
+		};
+		assert.deepStrictEqual(Report.warnings(warnCheck), [
+			"warning: DRIFT contract at published 1.2 would write under --on-drift=warn — schemas/1.2/okfit-1.2.json",
+		]);
+	});
 });
 
 describe("Report.json", () => {
@@ -234,6 +247,12 @@ describe("Report.markdown", () => {
 		assert.include(markdown, "### schemastore build");
 		assert.include(markdown, "| schema | version | published | change | outcome |");
 		assert.include(markdown, "**Drift:** none");
+	});
+
+	it("ends with exactly one newline so a later append starts on its own line", () => {
+		const markdown = Report.markdown(cleanBuild);
+		assert.isTrue(markdown.endsWith("**Drift:** none\n"), JSON.stringify(markdown.slice(-24)));
+		assert.isFalse(markdown.endsWith("\n\n"));
 	});
 
 	it("reports the gate verdict when the run failed its gate", () => {

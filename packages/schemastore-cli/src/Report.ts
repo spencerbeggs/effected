@@ -71,8 +71,9 @@ const summaryLine = (report: RunReport): string => {
 	);
 };
 
-const warningLine = (schema: SchemaReport): string =>
-	`warning: DRIFT ${schema.change}${publishedClause(schema)} written under --on-drift=warn — ${schema.path}`;
+// `check` writes nothing, so its warn-mode line says what a build would do.
+const warningLine = (schema: SchemaReport, report: RunReport): string =>
+	`warning: DRIFT ${schema.change}${publishedClause(schema)} ${report.mode === "build" ? "written" : "would write"} under --on-drift=warn — ${schema.path}`;
 
 const tableRow = (columns: ReadonlyArray<string>): string => `| ${columns.join(" | ")} |`;
 
@@ -98,12 +99,12 @@ export class Report {
 		return lines;
 	}
 
-	/** stderr lines: one per drift written under `onDrift: "warn"`. */
+	/** stderr lines: one per drift written (or, under `check`, would be written) under `onDrift: "warn"`. */
 	static warnings(report: RunReport): ReadonlyArray<string> {
 		if (report.drift.onDrift !== "warn") {
 			return [];
 		}
-		return report.schemas.filter((schema) => schema.verdict === "drift").map(warningLine);
+		return report.schemas.filter((schema) => schema.verdict === "drift").map((schema) => warningLine(schema, report));
 	}
 
 	/** One JSON document, stable key order. */
@@ -138,7 +139,7 @@ export class Report {
 		return JSON.stringify(doc, null, "\t");
 	}
 
-	/** The step-summary table. */
+	/** The step-summary table; ends with a newline so a later append starts on its own line. */
 	static markdown(report: RunReport): string {
 		const lines: Array<string> = [`### schemastore ${report.mode}`, ""];
 		lines.push(
@@ -172,6 +173,7 @@ export class Report {
 		} else {
 			lines.push("**Drift:** none");
 		}
+		lines.push("");
 		return lines.join("\n");
 	}
 }

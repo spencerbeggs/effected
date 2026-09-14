@@ -47,8 +47,8 @@ export default defineConfig({
    schema: ReleaseOutput,
    $id: SCHEMA_URL,
    name: "silk-release-action",
-   version: "5.0",
-   path: "schemas/5.0/silk-release-action-5.0.json",
+   version: "5.0.0",
+   path: "schemas/silk-release-action-5.0.0.json",
    published: true,
    jsonSchema: { onExcessProperty: "error" },
   }),
@@ -67,7 +67,7 @@ export default defineConfig({
 ```
 
 - `schemas` — at least one `SchemaTarget`; `published` (default `false`) marks a version other people depend on.
-- `catalog` — zero or more SchemaStore catalog entries; `versions` is derived from every versioned schema of that name.
+- `catalog` — zero or more SchemaStore catalog entries; `versions` is derived from every versioned schema of that name. The entry's `url` and each `versions` value are derived as `<baseUrl>/<name>-<version>.json`, so every schema's `path` must sit directly under the directory `baseUrl` names and its `$id` must be that exact URL — the CLI does not yet cross-check them.
 - `drift` — the default policy for published schemas (`strict`, `semantic` or `allow`) and what drift means (`error` or `warn`). Defaults to `{ policy: "semantic", onDrift: "error" }`.
 
 Then add two scripts:

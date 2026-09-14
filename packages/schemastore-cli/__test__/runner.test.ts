@@ -324,13 +324,20 @@ describe("Runner.run", () => {
 		),
 	);
 
-	it.effect("in check mode a gate failure reports gate-failed and the clean schema would-write", () =>
+	// `check` reports what `build` would do: a build holds the clean sibling
+	// of a gate failure, so `check` reports `held` for it too — never
+	// `would-write`, which a build would not honour.
+	it.effect("in check mode a gate failure reports gate-failed and holds the clean schema and the catalog", () =>
 		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
 			const report = yield* Runner.run(twoSchemas, options("check"));
 			assert.strictEqual(byId(report, PINNED_ID).outcome, "gate-failed");
-			assert.strictEqual(byId(report, PLAIN_ID).outcome, "would-write", "check never holds — it never writes");
-			assert.deepStrictEqual(report.catalog, [{ name: "pinned", path: CATALOG_PATH, outcome: "would-write" }]);
+			assert.strictEqual(byId(report, PLAIN_ID).outcome, "held", "check holds what build would hold");
+			assert.deepStrictEqual(report.catalog, [{ name: "pinned", path: CATALOG_PATH, outcome: "held" }]);
 			assert.isTrue(report.gateFailed);
+			assert.isFalse(report.wrote);
+			assert.isFalse(yield* fs.exists(PLAIN_PATH), "check never writes");
+			assert.isFalse(yield* fs.exists(CATALOG_PATH), "check never writes");
 		}).pipe(
 			Effect.provide(
 				layers(
@@ -360,6 +367,34 @@ describe("Runner.run", () => {
 			assert.isFalse(report.wrote);
 			assert.isFalse(yield* fs.exists(PLAIN_PATH), "the clean schema is held, not written");
 			assert.strictEqual(yield* fs.readFileString(PINNED_PATH), emitted(Wider, PINNED_ID));
+		}).pipe(Effect.provide(layers({ [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
+	);
+
+	it.effect("in check mode one drifting schema under onDrift error holds the clean one and the catalog", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const report = yield* Runner.run(twoSchemas, options("check"));
+			assert.strictEqual(byId(report, PINNED_ID).outcome, "drift");
+			const clean = byId(report, PLAIN_ID);
+			assert.strictEqual(clean.verdict, "write");
+			assert.strictEqual(clean.outcome, "held", "check holds what build would hold");
+			assert.deepStrictEqual(report.catalog, [{ name: "pinned", path: CATALOG_PATH, outcome: "held" }]);
+			assert.isTrue(report.drifted);
+			assert.isFalse(report.wrote);
+			assert.isFalse(yield* fs.exists(PLAIN_PATH), "check never writes");
+			assert.isFalse(yield* fs.exists(CATALOG_PATH), "check never writes");
+		}).pipe(Effect.provide(layers({ [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
+	);
+
+	// The contrast: under `onDrift: "warn"` a build is not refused, so
+	// `check` reports `would-write` for the clean sibling and the catalog.
+	it.effect("in check mode one drifting schema under onDrift warn leaves the clean one would-write", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(twoSchemas, options("check", drift({ onDrift: "warn" })));
+			assert.strictEqual(byId(report, PINNED_ID).outcome, "drift");
+			assert.strictEqual(byId(report, PLAIN_ID).outcome, "would-write");
+			assert.deepStrictEqual(report.catalog, [{ name: "pinned", path: CATALOG_PATH, outcome: "would-write" }]);
+			assert.isFalse(report.wrote);
 		}).pipe(Effect.provide(layers({ [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
 	);
 

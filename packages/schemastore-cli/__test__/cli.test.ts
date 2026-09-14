@@ -221,6 +221,43 @@ describe("schemastore CLI", () => {
 		),
 	);
 
+	it.effect("check refuses published contract drift like build and holds the catalog rather than would-write", () =>
+		run(
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(program(["check"], deps(basicConfig())));
+				assert.instanceOf(error, DriftError);
+				assert.strictEqual(exitCodeOf(error), 1);
+				const fs = yield* FileSystem.FileSystem;
+				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID));
+				assert.isFalse(yield* fs.exists(CATALOG_PATH), "check never writes");
+				const out = yield* stdout;
+				assert.include(out, `held catalog ${CATALOG_PATH}`);
+				assert.notInclude(out, `would write catalog ${CATALOG_PATH}`);
+			}),
+			driftedSeed,
+		),
+	);
+
+	it.effect("check --on-drift=warn writes nothing and says what a build would write", () =>
+		run(
+			Effect.gen(function* () {
+				yield* program(["check", "--on-drift=warn"], deps(basicConfig()));
+				const fs = yield* FileSystem.FileSystem;
+				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID), "check never writes");
+				const out = yield* stdout;
+				assert.include(out, `would write catalog ${CATALOG_PATH}`);
+				const err = yield* stderr;
+				assert.isTrue(
+					err.some((line) =>
+						line.includes("warning: DRIFT contract at published 1.0 would write under --on-drift=warn"),
+					),
+					err.join("\n"),
+				);
+			}),
+			driftedSeed,
+		),
+	);
+
 	it.effect("--force rewrites the published document and warns about it", () =>
 		run(
 			Effect.gen(function* () {

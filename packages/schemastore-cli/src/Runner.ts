@@ -34,9 +34,10 @@ import { Effect, FileSystem, Path, Schema } from "effect";
  * - `would-write` — `check` mode: a build would touch the file.
  * - `drift` — the drift policy refused it (and, under `onDrift: "error"`,
  *   held everything else).
- * - `held` — a `build` that wrote nothing because ANOTHER schema failed its
- *   gate or drifted under `onDrift: "error"`; this one was clean and would
- *   otherwise have been written.
+ * - `held` — the run wrote nothing because ANOTHER schema failed its gate
+ *   or drifted under `onDrift: "error"`; this one was clean and would
+ *   otherwise have been written. Reported by both modes: `check` reports
+ *   what `build` would do, so it holds the same schemas a build holds.
  * - `gate-failed` — a lint warning or engine finding blocked it.
  *
  * @public
@@ -67,8 +68,8 @@ export interface SchemaReport {
 
 /**
  * One catalog entry's line in the {@link RunReport}. `held` mirrors
- * {@link SchemaOutcome}: a build wrote nothing, so an entry that differs
- * was not written either.
+ * {@link SchemaOutcome}: the run refused every write, so an entry that
+ * differs was not (or, under `check`, would not be) written either.
  *
  * @public
  */
@@ -163,9 +164,13 @@ const sameJson = (existing: string, text: string): boolean => {
  * A build writes NOTHING when any schema fails its gate, or when any schema
  * drifts under `onDrift: "error"` — a partial write would leave a
  * repository half-bumped. Every otherwise-writable schema then reports
- * `held`, so a reader sees why a clean schema was not written. Under
- * `onDrift: "warn"` drifting schemas are written and keep their `"drift"`
- * verdict for the renderer to shout about.
+ * `held`, so a reader sees why a clean schema was not written — in both
+ * modes, since `check` reports what `build` would do under the same
+ * flags. Both modes share one `SchemaFile`; the single `writing`
+ * predicate (`mode === "build" && !refused`) gates every write, schemas
+ * and catalog entries alike. Under `onDrift: "warn"` drifting schemas are
+ * written and keep their `"drift"` verdict for the renderer to shout
+ * about.
  *
  * Catalog entries follow the schemas: serialized canonically, compared by
  * parsed content against the file on disk, written only when different and
@@ -230,7 +235,7 @@ export class Runner {
 					? (written[i] as PipelineResult).outcome
 					: verdict === "drift"
 						? "drift"
-						: options.mode === "build" && refused && check.wouldWrite
+						: refused && check.wouldWrite
 							? "held"
 							: check.wouldWrite
 								? "would-write"
@@ -258,7 +263,7 @@ export class Runner {
 			if (same) {
 				catalog.push({ name, path: file, outcome: "unchanged" });
 			} else if (!writing) {
-				catalog.push({ name, path: file, outcome: options.mode === "build" ? "held" : "would-write" });
+				catalog.push({ name, path: file, outcome: refused ? "held" : "would-write" });
 			} else {
 				// Mirrors `SchemaFile.write`: create the parent, then write.
 				yield* fs.makeDirectory(path.dirname(file), { recursive: true });
