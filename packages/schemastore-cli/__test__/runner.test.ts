@@ -363,6 +363,33 @@ describe("Runner.run", () => {
 		}).pipe(Effect.provide(layers({ [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
 	);
 
+	it.effect("a catalog file that does not parse is repaired by a build", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const report = yield* Runner.run(twoSchemas, options("build"));
+			assert.deepStrictEqual(report.catalog, [{ name: "pinned", path: CATALOG_PATH, outcome: "written" }]);
+			const entry = Schema.decodeUnknownSync(CatalogEntry)(JSON.parse(yield* fs.readFileString(CATALOG_PATH)));
+			assert.strictEqual(entry.name, "pinned");
+		}).pipe(Effect.provide(layers({ [CATALOG_PATH]: "{ not json" }))),
+	);
+
+	it.effect("a stale but parseable catalog entry would-write under check and is left alone", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const stale = `${JSON.stringify({ name: "pinned", description: "old", fileMatch: [], url: "https://old" })}\n`;
+			const report = yield* Runner.run(twoSchemas, options("check"));
+			assert.deepStrictEqual(report.catalog, [{ name: "pinned", path: CATALOG_PATH, outcome: "would-write" }]);
+			assert.isFalse(report.wrote);
+			assert.strictEqual(yield* fs.readFileString(CATALOG_PATH), stale);
+		}).pipe(
+			Effect.provide(
+				layers({
+					[CATALOG_PATH]: `${JSON.stringify({ name: "pinned", description: "old", fileMatch: [], url: "https://old" })}\n`,
+				}),
+			),
+		),
+	);
+
 	it.effect("a catalog file that another tool reformatted is unchanged by content", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;

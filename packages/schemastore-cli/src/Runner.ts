@@ -5,17 +5,26 @@
 // (`contractChanges: "allow"`) — the two must never both hold a write.
 
 import type {
+	CanonicalJsonError,
 	CatalogTarget,
 	DriftOptions,
 	DriftVerdict,
 	PipelineFinding,
 	PipelineResult,
+	SchemaConversionError,
+	SchemaFile,
+	SchemaFileReadError,
+	SchemaFileWriteError,
 	SchemaTarget,
+	SchemaValidator,
+	SchemaValidatorError,
 	SchemaVersion,
 	SchemastoreConfig,
+	UndeclaredAnnotationKeyError,
 	WriteChange,
 } from "@effected/schemastore";
 import { CanonicalJson, CatalogEntry, DriftPolicy, SchemaPipeline, SchemaVersioning } from "@effected/schemastore";
+import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Schema } from "effect";
 
 /**
@@ -167,7 +176,20 @@ const sameJson = (existing: string, text: string): boolean => {
 export class Runner {
 	private constructor() {}
 
-	static readonly run = Effect.fn("Runner.run")(function* (config: SchemastoreConfig, options: RunOptions) {
+	static readonly run: (
+		config: SchemastoreConfig,
+		options: RunOptions,
+	) => Effect.Effect<
+		RunReport,
+		| SchemaConversionError
+		| UndeclaredAnnotationKeyError
+		| SchemaValidatorError
+		| CanonicalJsonError
+		| SchemaFileReadError
+		| SchemaFileWriteError
+		| PlatformError.PlatformError,
+		SchemaFile | SchemaValidator | FileSystem.FileSystem | Path.Path
+	> = Effect.fn("Runner.run")(function* (config: SchemastoreConfig, options: RunOptions) {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 
@@ -190,7 +212,16 @@ export class Runner {
 		const refused = gateFailed || (drifted && options.drift.onDrift === "error");
 		const writing = options.mode === "build" && !refused;
 
-		const written = writing ? yield* SchemaPipeline.run(config.schemas, pipelineOptions) : undefined;
+		// Unreachable: `check` already ran the same gate (so nothing is blocked
+		// here) and the contract guard is off under `contractChanges: "allow"`.
+		const written = writing
+			? yield* SchemaPipeline.run(config.schemas, pipelineOptions).pipe(
+					Effect.catchTags({
+						SchemaGateError: (error) => Effect.die(error),
+						SchemaContractChangeError: (error) => Effect.die(error),
+					}),
+				)
+			: undefined;
 
 		const schemas = classified.map(({ target, check, verdict, nextVersion }, i): SchemaReport => {
 			const outcome: SchemaOutcome = check.blocked
