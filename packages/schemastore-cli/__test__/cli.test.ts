@@ -17,7 +17,7 @@ import type { Command } from "effect/unstable/cli";
 import { CliError } from "effect/unstable/cli";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { ConfigLoadError, ConfigNotFoundError } from "../src/ConfigLoader.js";
-import { DriftError, GateError, StaleError } from "../src/cli/execute.js";
+import { ConflictingFlagsError, DriftError, GateError, StaleError } from "../src/cli/execute.js";
 import type { ProgramDeps } from "../src/cli/program.js";
 import { loggerLayer, program } from "../src/cli/program.js";
 
@@ -338,6 +338,31 @@ describe("schemastore CLI", () => {
 					err.some((line) => line.includes("--force")),
 					err.join("\n"),
 				);
+			}),
+			driftedSeed,
+		),
+	);
+
+	it.effect("--force with --drift=strict is a usage error (exit 64) and writes nothing", () =>
+		run(
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(program(["build", "--force", "--drift=strict"], deps(basicConfig())));
+				assert.instanceOf(error, ConflictingFlagsError);
+				assert.strictEqual(exitCodeOf(error), 64);
+				assert.include(error.message, "--force conflicts with --drift=strict");
+				const fs = yield* FileSystem.FileSystem;
+				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID), "nothing written");
+			}),
+			driftedSeed,
+		),
+	);
+
+	it.effect("--force with --drift=allow is accepted (redundant, not conflicting)", () =>
+		run(
+			Effect.gen(function* () {
+				yield* program(["build", "--force", "--drift=allow"], deps(basicConfig()));
+				const fs = yield* FileSystem.FileSystem;
+				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Config, BASIC_ID));
 			}),
 			driftedSeed,
 		),

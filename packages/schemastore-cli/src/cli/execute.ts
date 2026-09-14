@@ -51,6 +51,21 @@ export class StaleError extends Schema.TaggedError<StaleError>()("StaleError", {
 }
 
 /**
+ * `--force` (shorthand for `--drift=allow`) was combined with an explicit
+ * `--drift` that is not `allow`. Contradictory, so refused as a usage
+ * error rather than silently resolving to `allow`. Exit `64`.
+ *
+ * @public
+ */
+export class ConflictingFlagsError extends Schema.TaggedError<ConflictingFlagsError>()("ConflictingFlagsError", {
+	policy: Schema.String,
+}) {
+	override get message(): string {
+		return `--force conflicts with --drift=${this.policy}: --force means --drift=allow`;
+	}
+}
+
+/**
  * The parsed flags and argument of `build` / `check`.
  *
  * @public
@@ -124,6 +139,9 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 	input: ExecuteInput,
 	deps: ExecuteDeps,
 ) {
+	if (input.force && Option.isSome(input.drift) && input.drift.value !== "allow") {
+		return yield* Effect.fail(CliRuntime.reported(new ConflictingFlagsError({ policy: input.drift.value }), 64));
+	}
 	const loaded = yield* ConfigLoader.load({
 		cwd: deps.cwd,
 		...(Option.isSome(input.config) ? { explicit: input.config.value } : {}),
