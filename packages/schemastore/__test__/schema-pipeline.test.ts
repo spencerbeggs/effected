@@ -383,8 +383,8 @@ describe("SchemaPipeline", () => {
 				assert.strictEqual(error.targets[0]?.$id, PINNED_ID);
 				assert.strictEqual(error.targets[0]?.path, PINNED_PATH);
 				assert.strictEqual(error.targets[0]?.version, "5.0.0");
-				assert.strictEqual(error.targets[0]?.nextVersion, "6.0.0");
-				assert.include(error.message, "5.0.0 → 6.0.0");
+				assert.strictEqual(error.targets[0]?.nextVersion, "5.1.0");
+				assert.include(error.message, "5.0.0 → 5.1.0");
 				assert.strictEqual(text, predecessor, "the published document is untouched");
 			}),
 		);
@@ -404,8 +404,8 @@ describe("SchemaPipeline", () => {
 				assert.deepStrictEqual(
 					error.targets.map((entry) => [entry.version, entry.nextVersion]),
 					[
-						["5.0.0", "6.0.0"],
-						["1.2.3", "2.0.0"],
+						["5.0.0", "5.1.0"],
+						["1.2.3", "1.3.0"],
 					],
 				);
 			}),
@@ -540,7 +540,7 @@ describe("SchemaPipeline", () => {
 				const layers = memLayers({ [PINNED_PATH]: emitted(Wider, PINNED_ID) });
 				const error = yield* Effect.flip(Effect.provide(SchemaPipeline.runOne(pinnedTarget), layers));
 				assert.instanceOf(error, SchemaContractChangeError);
-				assert.strictEqual(error.targets[0]?.nextVersion, "6.0.0");
+				assert.strictEqual(error.targets[0]?.nextVersion, "5.1.0");
 			}),
 		);
 

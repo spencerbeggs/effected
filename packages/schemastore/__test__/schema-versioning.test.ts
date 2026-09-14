@@ -22,11 +22,19 @@ describe("SchemaVersioning", () => {
 			}
 		});
 
-		// The deliberate divergence from SchemaStore's own corpus, which uses
-		// labels like `agripparc-1.2`: a partial label cannot be split back
-		// out of a file name unambiguously.
-		it("rejects the partial labels SchemaStore's corpus uses", () => {
-			for (const label of ["1", "1.2", "0.4", "2-beta"]) {
+		it("accepts one-, two- and three-component labels with optional prerelease", () => {
+			for (const label of ["1", "12", "1.2", "0.4", "1.2.3", "2-beta", "1.2-rc.1", "1.2.0-rc.1"]) {
+				assert.isTrue(Result.isSuccess(SchemaVersioning.parseResult(label)), label);
+			}
+		});
+
+		it("preserves the label verbatim rather than normalizing it", () => {
+			assert.strictEqual(version("1.2"), "1.2");
+			assert.strictEqual(version("1"), "1");
+		});
+
+		it("still rejects build metadata, whitespace, leading v, and empty components", () => {
+			for (const label of ["1.2.3+build", "1.2+1", " 1.2 ", "v1.2", "1.", ".2", "1..2", "1.2.3.4", "", "abc"]) {
 				assert.isTrue(Result.isFailure(SchemaVersioning.parseResult(label)), label);
 			}
 		});
@@ -83,6 +91,15 @@ describe("SchemaVersioning", () => {
 		);
 	});
 
+	describe("components", () => {
+		it("counts the numeric components present in the label", () => {
+			assert.strictEqual(SchemaVersioning.components(version("1")), 1);
+			assert.strictEqual(SchemaVersioning.components(version("1.2")), 2);
+			assert.strictEqual(SchemaVersioning.components(version("1.2.3")), 3);
+			assert.strictEqual(SchemaVersioning.components(version("1.2-rc.1")), 2);
+		});
+	});
+
 	describe("isPinned", () => {
 		it("a stable label is pinned", () => {
 			assert.isTrue(SchemaVersioning.isPinned(version("1.2.3")));
@@ -110,15 +127,13 @@ describe("SchemaVersioning", () => {
 			}
 		});
 
-		it("bumps MAJOR on a contract change above the 0.x line", () => {
-			assert.strictEqual(SchemaVersioning.next(version("5.0.0"), "contract"), "6.0.0");
-			assert.strictEqual(SchemaVersioning.next(version("1.2.3"), "contract"), "2.0.0");
-		});
-
-		// The 0.x arm: MINOR is the breaking axis below 1.0.0.
-		it("bumps MINOR on a contract change on the 0.x line", () => {
-			assert.strictEqual(SchemaVersioning.next(version("0.4.0"), "contract"), "0.5.0");
-			assert.strictEqual(SchemaVersioning.next(version("0.0.1"), "contract"), "0.1.0");
+		it("suggests a MINOR bump on a contract change, preserving the component count", () => {
+			assert.strictEqual(SchemaVersioning.next(version("5.0.0"), "contract"), "5.1.0");
+			assert.strictEqual(SchemaVersioning.next(version("1.2.3"), "contract"), "1.3.0");
+			assert.strictEqual(SchemaVersioning.next(version("1.2"), "contract"), "1.3");
+			assert.strictEqual(SchemaVersioning.next(version("0.4"), "contract"), "0.5");
+			assert.strictEqual(SchemaVersioning.next(version("1"), "contract"), "2");
+			assert.strictEqual(SchemaVersioning.next(version("0"), "contract"), "1");
 		});
 
 		// A delegation straight to `bump.major()` would have answered "3.0.0"
@@ -173,12 +188,15 @@ describe("SchemaVersioning", () => {
 		// module's own invariant error names the cap instead of a raw schema
 		// failure escaping from SemVer.make.
 		it("dies with the named invariant when a component cannot be bumped", () => {
-			assert.throws(
-				() => SchemaVersioning.next(version(`${Number.MAX_SAFE_INTEGER}.0.0`), "contract"),
-				/Number\.MAX_SAFE_INTEGER/,
-			);
+			// Three components: `next` bumps MINOR, so only an exhausted minor
+			// overflows.
 			assert.throws(
 				() => SchemaVersioning.next(version(`0.${Number.MAX_SAFE_INTEGER}.0`), "contract"),
+				/Number\.MAX_SAFE_INTEGER/,
+			);
+			// One component: MAJOR is the only axis, so it overflows there instead.
+			assert.throws(
+				() => SchemaVersioning.next(version(`${Number.MAX_SAFE_INTEGER}`), "contract"),
 				/Number\.MAX_SAFE_INTEGER/,
 			);
 		});
@@ -192,6 +210,13 @@ describe("SchemaVersioning", () => {
 
 		it("ranks prereleases below their release", () => {
 			assert.isBelow(SchemaVersioning.Order(version("2.0.0-beta"), version("2.0.0")), 0);
+		});
+
+		it("reads a missing component as zero, so 1, 1.0 and 1.0.0 compare equal", () => {
+			assert.strictEqual(SchemaVersioning.Order(version("1"), version("1.0.0")), 0);
+			assert.strictEqual(SchemaVersioning.Order(version("1.0"), version("1.0.0")), 0);
+			assert.isBelow(SchemaVersioning.Order(version("1.9"), version("1.10")), 0);
+			assert.isBelow(SchemaVersioning.Order(version("1"), version("1.0.1")), 0);
 		});
 
 		it("every accepted label orders without throwing (the closure invariant)", () => {
