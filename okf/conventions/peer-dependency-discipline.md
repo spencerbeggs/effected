@@ -12,8 +12,8 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-14T02:44:47Z
-  body_sha256: 6948f741b25d4e455d0f170fc9ed1bf779250f94b969bd5377e8ee03f919f081
+  at: 2026-09-14T04:45:45Z
+  body_sha256: f79ab9e095c64f9cb6e5038c7ac14d2800bb6958a01480dba281d1b848f83a4c
 ---
 
 # Peer-dependency discipline

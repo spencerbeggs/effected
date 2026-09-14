@@ -11,8 +11,8 @@ sources:
     resource: ../project.md
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-14T02:44:47Z
-  body_sha256: 4d274552508ff63b7cc2f19c644d19699805f409bfb8fb34266a3c51791576d1
+  at: 2026-09-14T04:45:45Z
+  body_sha256: b412178e33d2b84bb1d58a1ce66c90d6f3dcd3e2eaec52ea8f5477d7d9731801
 ---
 
 # Companion package

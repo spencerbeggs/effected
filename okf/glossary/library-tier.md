@@ -11,8 +11,8 @@ sources:
     resource: ../project.md
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-14T02:44:47Z
-  body_sha256: c763896639627b1512e33fc1361f2ccb7c52d71e1942669da64278a755a75f10
+  at: 2026-09-14T04:45:45Z
+  body_sha256: 44b97f69b6614168783b609cf2f8bdeb6d46bad64df8c8c609957aee124a256f
 ---
 
 # Library tier (pure / boundary / integrated)

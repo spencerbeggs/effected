@@ -18,7 +18,12 @@ parent.
   through verbatim rather than descended into) — the declared families are
   **always admitted** into `includeAnnotationKey`, and a caller predicate that
   admits anything else fails the build with `UndeclaredAnnotationKeyError`
-  (`$id` + the sorted, deduplicated `keys`). `toJson()` emits the flat publication
+  (`$id` + the sorted, deduplicated `keys`). `StoreDocumentOptions.rootAnnotations`
+  is merged onto the assembled root afterwards (override keys win,
+  `undefined` skipped; admitted keys are the standard annotation keywords
+  plus the declared families, gated up front with the same error; a root that
+  is exactly a bare local `$ref` receives the merge on the `$defs` entry it
+  names). `toJson()` emits the flat publication
   shape, omitting `$defs` when empty (a deliberate divergence from the
   extraction source). `serializeResult` routes through `CanonicalJson`. Fails
   typed with `SchemaConversionError` (`$id` + `cause: Schema.Defect()`).
@@ -32,7 +37,10 @@ parent.
   default (`indent` option), LF, single trailing newline. Fails typed
   (`NonJsonValueError` with a JSON-pointer path, `JsonDepthExceededError`)
   instead of `JSON.stringify`'s silent drops of `undefined`/`NaN`/non-plain
-  objects.
+  objects. `equals(left, right)` is parsed-content equality under the same
+  semantics — key order ignored, array order significant, `NaN` unequal,
+  total past a stack guard of `MAX_NESTING_DEPTH * 8` — consumed by
+  `DocumentDiff` and by the CLI's catalog-entry compare.
 
 ## Validation, lint and diff
 
@@ -102,7 +110,8 @@ parent.
   diverged on error shape and gating.
 - `SchemaTarget` — an interface + statics-only merged class (NOT a
   `Schema.Class`: it carries a live `Schema.Constraint`).
-  `{schema, $id, path, name?, version?, jsonSchema?}`. `name` is optional so a
+  `{schema, $id, path, name?, version?, published, jsonSchema?, rootAnnotations?}`.
+  `name` is optional so a
   file-only target need not duplicate its path's basename, and versioned naming
   is `name-<version>.json`. `version`'s second meaning: a **pinned** label (no
   prerelease) declares that consumers pin this document's URL, so
@@ -111,14 +120,17 @@ parent.
   (`Schema.ToJsonSchemaOptions`) is forwarded by `SchemaPipeline` to
   `StoreDocument.fromSchema`, so a target reproduces its document regardless
   of core's `toJsonSchemaDocument` default (e.g. `onExcessProperty: "error"`
-  for closed objects post-rc.113; #688).
+  for closed objects post-rc.113; #688). `rootAnnotations?` is forwarded the
+  same way to `StoreDocumentOptions.rootAnnotations`.
 - `SchemaVersioning` — `SchemaVersion` (a branded string) with
   `parseResult`/`parse` and `InvalidSchemaVersionError`; `Order`/`latest` are
   plain SemVer precedence (`1.10.0` > `1.9.0`; the label round-trips verbatim);
   `fileName`/`schemaUrl`/`catalogUrls` derive both catalog modes (`versions: []`
-  is a contradiction and throws — pass `undefined` for unversioned). Because no
-  SemVer label is array-index-like, the `versions` map's ascending insertion
-  order survives serialization. `isPinned(version)` answers "no prerelease" —
+  is a contradiction and throws — pass `undefined` for unversioned). Labels are
+  inserted in ascending `Order`, but a bare-major label (`"2"`) is
+  array-index-like and enumerates first regardless — the prose lives once, on
+  `CatalogUrls.versions`; derive ordering from the labels (`latest`), never
+  from position. `isPinned(version)` answers "no prerelease" —
   the one predicate shared by `SchemaPipeline`'s contract guard and `next`.
   `next(current, change)` is the version label a `WriteChange` classification
   suggests: identity for `"none"`/`"annotations"`/`"created"` and for a
@@ -137,7 +149,9 @@ parent.
   `OnDrift` are the option types a config declares and a CLI flag overrides.
 - `SchemastoreConfig` — the `schemastore.config.ts` contract, pure and
   IO-free. `defineConfig({schemas, catalog?, drift?})` validates the input
-  (at least one schema; `catalog` entries decoded against a struct schema;
+  (at least one schema; `catalog` must be an array and each entry an object —
+  a non-array or non-object element is a typed `invalid catalog…` error, not
+  a raw `TypeError` — with entries decoded against a struct schema;
   `drift` decoded and merged over `DriftPolicy.defaults`), refuses two
   spellings of one version under one name (`1.2` and `1.2.0` compare equal),
   derives each `CatalogConfig`'s `CatalogEntry` via `CatalogEntry.assemble`

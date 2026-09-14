@@ -13,8 +13,8 @@ sources:
     resource: ../../plugins/claude-code/scripts/generate-constructs.mts
 generated:
   by: "claude-code/sonnet-5"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 6d2cd6a67b4da145d9e653eaaf031d1531002bb9276eb970b281ee7e12f5c424
+  at: 2026-09-14T04:45:45Z
+  body_sha256: 65a82676c929c2e093fbcbe3e7518c3e5680063fce5d6828a0487ac5618d1b94
 ---
 
 # construct-annotations.json

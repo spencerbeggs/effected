@@ -8,8 +8,8 @@ sources:
     resource: ../../packages/schemastore/package.json
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 43af0f80619fe7eceb0c6c868f6a54397f082c70b2ae7237e1aa172b7e57630a
+  at: 2026-09-14T04:45:45Z
+  body_sha256: 6afbdcd93b2227732d7214090ffbb94fe9e2c26064dafa95669f6c3c24f05e5f
 ---
 
 # No shipped templates/ directory

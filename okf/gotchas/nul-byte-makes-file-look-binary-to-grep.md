@@ -8,8 +8,8 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-14T02:44:47Z
-  body_sha256: aa8b9b36d366405eed5fe6cee057ab938b74225543722ece673d38eee7734424
+  at: 2026-09-14T04:45:45Z
+  body_sha256: aee51355b9da9099a212e5be9fef3067aff8e35971ef46aa1ff2dffefe64adc5
 ---
 
 # A single embedded NUL byte makes grep silently skip a text file

@@ -55,6 +55,24 @@ validation gate, not a construction surface.
   node; the `$defs` entry is generated from the encoded fields `Struct`, so
   annotate that (`Schema.Class<X>("X")(Schema.Struct({...}).annotate({...}))`).
   By design — Effect-TS/effect#8084 closed as such; re-probed at rc.115.
+  `rootAnnotations` (below) is the complement for what that rule cannot
+  reach, not a replacement for it.
+- **`rootAnnotations` is gated up front and placed by the `$ref` rule.**
+  `StoreDocumentOptions.rootAnnotations` (forwarded from
+  `SchemaTarget.rootAnnotations` by the pipeline) merges onto the emitted root
+  after assembly — override keys win, `undefined` values are skipped. Admitted
+  keys are the standard annotation keywords (`title`, `description`,
+  `$comment`, `default`, `examples`, `readOnly`, `writeOnly`) plus the
+  declared families; anything else fails `UndeclaredAnnotationKeyError`
+  BEFORE generation, naming the override keys (so when both gates would
+  fire, the override's keys are reported, not the predicate's) — the
+  override is for annotation loss (a filtered field, a class root), never a
+  back door for assertion keywords. When the assembled root is exactly a
+  bare local `$ref` (`{ $ref: "#/$defs/X" }` — decoded via core's
+  `JsonPointer.parseUriFragment`, so a pointer-escaped name resolves) the
+  merge lands on `defs.X` instead, because Draft-07 validators ignore `$ref`
+  siblings. Values are shared by reference like `.annotate()` payloads, and
+  the `$ref` rewrite never walks them.
 - **`KeywordFamilies` is the ONE owner of the declared non-standard families,
   in two groups.** Upstream language-server families (the vscode five by
   exact name; the `x-taplo`, `x-tombi-`, `x-intellij-` prefixes) are mirrored
@@ -117,6 +135,11 @@ validation gate, not a construction surface.
 - **`CanonicalJson` emits keys in insertion order — never sorted** (assembly
   owns ordering). Tab indent by default, LF, one trailing newline; non-JSON
   values fail typed instead of `JSON.stringify`'s silent drops.
+- **`CanonicalJson.equals` is the ONE content-equality rule** — key order
+  ignored, array order significant, `NaN` never equal, total past a stack
+  guard (`false` rather than an overflow). `DocumentDiff`'s leaf comparison
+  and the CLI's catalog-entry compare both consume it; never re-implement a
+  `deepEqual` beside it.
 - **`SchemaVersion` is a one-to-three-component label** — `major`,
   `major.minor` or `major.minor.patch`, optionally with a prerelease —
   matched by a grammar regex (`LABEL`) first, then checked by
@@ -152,6 +175,12 @@ validation gate, not a construction surface.
   add a pipeline-wide equivalent: a document that only reproduces under
   options held elsewhere is not self-describing (#688; the rc.113
   `onExcessProperty` default flip is the motivating case).
+- **`defineConfig` fails typed on every malformed input, never with a raw
+  `TypeError`.** A non-array `catalog`, or a non-object element, is an
+  `invalid catalog…` `Error` before anything is mapped or decoded, the same
+  shape as the drift-block and per-entry decode failures the CLI wraps into
+  its load error (exit `2`). Keep every guard ahead of the dereference it
+  protects.
 - **`SchemaPipeline` is a plain function, deliberately not a `Context.Service`**
   — it needs `SchemaFile | SchemaValidator` in `R`, which compose for free.
   `run` is **two-phase and all-or-nothing across targets**: phase 1 generates,
@@ -219,9 +248,10 @@ validation gate, not a construction surface.
   and correctly typed.
 - **`MAX_NESTING_DEPTH = 256` (`internal/limits.ts`) caps four recursive
   surfaces**; the lint degrades to a `DepthExceeded` finding (lint stays total),
-  the others fail typed. `DocumentDiff`'s leaf comparison uses a looser stack
-  guard on purpose — one shared budget made a deep-but-identical document
-  compare as different.
+  the others fail typed. `CanonicalJson.equals` (which `DocumentDiff`'s leaf
+  comparison consumes) uses its own looser stack guard on purpose
+  (`MAX_NESTING_DEPTH * 8`, in `CanonicalJson`) — one shared budget made a
+  deep-but-identical document compare as different.
 - **`DRAFT_07_META_SCHEMA` keeps its trailing `#`** where core's URI constant
   omits it — a documented divergence, not a typo.
 

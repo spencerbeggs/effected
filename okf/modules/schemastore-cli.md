@@ -24,9 +24,9 @@ sources:
   - id: versioning
     resource: ../../packages/schemastore/src/SchemaVersioning.ts
 generated:
-  by: "claude-code/opus-5"
-  at: 2026-09-14T00:42:15Z
-  body_sha256: 92fc91323ed56079d5686d0235c7ee65084283fb29888999fac16bd357ff5a3e
+  by: "okfit/claude-code"
+  at: 2026-09-14T16:39:01Z
+  body_sha256: f28550f704acee14aa98b7856dfe6a1e42720ab79adeec5d6875704534e543f3
 ---
 
 # @effected/schemastore-cli
@@ -99,7 +99,10 @@ The module's default export is a `defineConfig(...)` value. `defineConfig`
 lives in `@effected/schemastore` (module `SchemastoreConfig`), is pure,
 and is identity-with-validation over a `Schema.Struct`, so a malformed
 file fails typed at load rather than with a `TypeError` deep in the
-pipeline:
+pipeline. The loader also re-checks the shapes a forged brand could
+carry past `defineConfig` — a malformed schema target, or a `catalog`
+that is not an array — and fails them as `ConfigLoadError` (exit `2`)
+before any path is resolved:
 
 ```ts
 import { defineConfig, SchemaTarget } from "@effected/schemastore";
@@ -181,10 +184,12 @@ label yet.
 `onDrift` then decides what **drift** means:
 
 - `error` — nothing is written for ANY schema (a partial write would
-  leave a repository half-bumped); exit `1`; the message names each
-  drifting schema, its change class, the `nextVersion` the pipeline
-  computed, and the two ways out: bump the version in the config, or
-  `--force`.
+  leave a repository half-bumped); exit `1` with `DriftError`, which
+  carries `drifted: [{ $id, change, version?, nextVersion? }]` (one entry
+  per schema whose verdict is `drift`; `count` is derived from it) and
+  renders one line per schema — `$id`, its change class, `at published
+  <version>` and `→ suggest <nextVersion>` when known — followed by the
+  two ways out: bump the version in the config, or `--force`.
 - `warn` — write anyway, exit `0`, one warning per drifting schema. This
   is the posture for an automated dependency-bump workflow, where the
   bump should land and the summary should shout.
@@ -207,7 +212,11 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
 
 - `build` generates, gates, applies the drift table, writes what passes
   (content-compared, so unchanged files are untouched) and writes each
-  catalog entry the same way.
+  catalog entry the same way: `Runner` reads the existing file once
+  (`NotFound` → absent, so a build creates it) and compares the parsed
+  content with the library's `CanonicalJson.equals`, so key order is a
+  serialization detail and unparseable text is simply different and
+  gets repaired.
 - `check` is the identical walk with **no writes**: it reports what
   `build` would do under the same flags and exits under the same
   conditions — and, because it is the CI drift gate, it ALSO exits `1`
@@ -222,7 +231,11 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
   tests. Because `check` reports what `build` would do, it also reports
   `held` for the clean siblings of a gate failure or a refused drift,
   exactly as a build would.
-- `--force` is sugar for `--drift=allow`.
+- `--force` is sugar for `--drift=allow` — and nothing more: combined
+  with an explicit `--drift` other than `allow` it is a contradiction,
+  refused before the config loads as `ConflictingFlagsError` at exit
+  `64` (a usage error, not a run outcome) rather than silently resolving
+  to `allow`.
 - `--format=json` emits one document on stdout — config path, per-schema
   `{ $id, path, version, published, change, outcome, findings, nextVersion? }`,
   per-catalog-entry outcome, and the effective drift policy with its
@@ -239,7 +252,7 @@ Exit codes:
 | 1 | drift under `onDrift: error`, a gate failure, or — for `check` — any document `build` would write |
 | 2 | config not found, failed to load, or failed `SchemastoreConfig` validation |
 | 3 | infrastructure failure (`CliRuntime.reportFailures` fallback) |
-| 64 | usage error — `ShowHelp` carrying parse errors |
+| 64 | usage error — `ShowHelp` carrying parse errors, or `--force` combined with an explicit non-`allow` `--drift` (`ConflictingFlagsError`) |
 
 ## Reporting
 
@@ -249,7 +262,11 @@ Exit codes:
   elsewhere)` for a schema that passed but was not (or, under `check`,
   would not be) written because a sibling refused the run — with
   advisory findings indented beneath, one
-  line per catalog entry, and a summary line. A prerelease label's
+  line per catalog entry, and a summary line whose `drift` count is
+  verdict-based — the number of schemas classified `drift`, independent
+  of `written`/`unchanged`, so under `onDrift: warn` a drifting schema
+  is both written and counted as drift and the four counts need not sum
+  to the schema total. A prerelease label's
   contract change has `nextVersion === version` (the label is not
   pinned) and renders no suggestion. Warnings and errors go through
   `CliLogger` on stderr; the logger is built with `stderrFrom: "All"` so
@@ -333,7 +350,8 @@ becomes moot: there is no longer a canonical generator script to copy.
   override, not found → `2`; `check` on a fresh volume exits `1` stale,
   over the exact generated documents exits `0`, with only a stale catalog
   entry exits `1`; flag-over-config precedence; `--force`
-  warning; `onDrift: warn` writes and exits `0`; gate failure exits `1`
+  warning; `--force` with `--drift=strict` exits `64` and writes
+  nothing; `onDrift: warn` writes and exits `0`; gate failure exits `1`
   under either `onDrift`; `--format=json` parses with nothing else on
   stdout; step summary appended when set, logged-not-fatal when
   unwritable.

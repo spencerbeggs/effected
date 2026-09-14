@@ -19,9 +19,9 @@ sources:
   - id: limits
     resource: ../../packages/schemastore/src/internal/limits.ts
 generated:
-  by: "claude-code/opus-5"
-  at: 2026-09-14T01:29:52Z
-  body_sha256: 48594b01f69290a39e438229c9b543cbda796896a3211540eff10efd76ebebfe
+  by: "okfit/claude-code"
+  at: 2026-09-14T16:39:01Z
+  body_sha256: 45df36e84925eb37488acea83030925dbecbf16b35efe219a7c24f4a1f65f676
 ---
 
 # @effected/schemastore
@@ -104,14 +104,15 @@ entrypoint.[^claude-md][^claude-modules] The load-bearing division:
 
 - **`StoreDocument`** — the assembly. Owns the `#/definitions` →
   `#/$defs` `$ref` rewrite the Draft-07 lowering makes necessary, the
-  annotation-key admission gate (`UndeclaredAnnotationKeyError`), and the
-  publication shape itself. The package owns assembly, not a JSON Schema
-  engine.
+  annotation-key admission gate (`UndeclaredAnnotationKeyError`), the
+  `rootAnnotations` override merged onto the root after assembly, and
+  the publication shape itself. The package owns assembly, not a JSON
+  Schema engine.
 - **`SchemaTarget`** — the target manifest vocabulary: schema, identity,
-  destination path, optional name and version, and an optional
-  `jsonSchema` (`Schema.ToJsonSchemaOptions`) pass-through the pipeline
-  forwards to `StoreDocument.fromSchema`, so each target states its own
-  generation contract.
+  destination path, optional name and version, and two optional
+  generation options the pipeline forwards to `StoreDocument.fromSchema`
+  so each target states its own generation contract: `jsonSchema`
+  (`Schema.ToJsonSchemaOptions`) and `rootAnnotations`.
 - **`SchemaVersioning`** — both catalog modes and the version grammar,
   plus `isPinned` and `next`; see [Versioning](#versioning-schemastores-file-convention-semvers-label-grammar).
 - **`CatalogEntry`** — the catalog entry shape plus the `fileMatch`
@@ -123,7 +124,12 @@ entrypoint.[^claude-md][^claude-modules] The load-bearing division:
 - **`CanonicalJson`** — the owned deterministic serializer. A library
   must own canonical JSON rather than shelling out to a formatter
   binary; it fails typed on values `JSON.stringify` would silently drop
-  or rewrite.
+  or rewrite. It also exports `equals(left, right)`, parsed-content
+  equality under the serializer's own semantics — object key order
+  ignored, array order significant, `NaN` never equal, total past a
+  stack guard — so `DocumentDiff`, `SchemaFile` and a consumer writing
+  its own JSON artifact (the CLI's catalog entries) decide "unchanged"
+  by one rule.
 - **`KeywordFamilies`** — the one owner of the declared non-standard
   keyword registry, in two groups: the upstream language-server families
   and the house `x-ai-` machine-annotation namespace. The assembly, the
@@ -210,7 +216,31 @@ on the class — class-argument or class-level `.annotate()` keys sit on
 the class node, but core generates the `$defs` entry from the *encoded*
 fields `Struct`, so title, description and the declared families vanish
 unless annotated on that inner struct. This is by design, not a core
-bug (Effect-TS/effect#8084, closed as such).
+bug (Effect-TS/effect#8084, closed as such), and the inner-Struct rule
+stands; the `rootAnnotations` override below is its complement, not a
+replacement.
+
+`StoreDocumentOptions.rootAnnotations` (and `SchemaTarget.rootAnnotations`,
+which `SchemaPipeline` forwards) is the escape hatch for a generator-side
+annotation loss the source schema cannot express — a filtered field, or
+a root whose annotations core does not carry. The map is merged onto the
+emitted root after assembly, override keys winning over generated ones
+and `undefined` values skipped rather than written. Admission is gated
+up front, before anything is generated: a key must be one of the
+standard annotation keywords (`title`, `description`, `$comment`,
+`default`, `examples`, `readOnly`, `writeOnly`) or fall in a declared
+keyword family, and anything else fails `UndeclaredAnnotationKeyError`
+naming the override keys — so when both this gate and the
+`includeAnnotationKey` gate would fire, the override's keys are the ones
+reported, and the override can never smuggle in an assertion keyword.
+Placement follows Draft-07's rule that validators ignore `$ref`
+siblings: when the assembled root is exactly a bare local `$ref`
+(`{ "$ref": "#/$defs/X" }`, the shape a `Schema.Class` root produces),
+the merge lands on the `$defs` entry the pointer names — decoded through
+core's `JsonPointer.parseUriFragment`, so a pointer-escaped or
+percent-encoded name resolves — rather than on a root that would carry
+the keys nowhere. Override values are shared by reference exactly like
+`.annotate()` payloads, and the `$ref` rewrite never walks them.
 
 ## Versioning: SchemaStore's file convention, SemVer's label grammar
 
@@ -263,7 +293,9 @@ a `"contract"` change is drift) as the default, `"strict"` holding
 annotation changes too and `"allow"` holding nothing; `DriftPolicy.defaults`
 is `{ policy: "semantic", onDrift: "error" }`. `defineConfig` is the
 `schemastore.config.ts` contract: pure and IO-free, it validates the
-schema targets, decodes the catalog and drift blocks, merges a partial
+schema targets, decodes the catalog and drift blocks (a non-array
+`catalog` or a non-object element is a typed `invalid catalog…` error,
+never a raw `TypeError` off `.map`), merges a partial
 drift block over the defaults, derives each catalog entry through
 `CatalogEntry.assemble` from every versioned schema of its name
 (published or not — the entry is what gets submitted to become
@@ -323,9 +355,11 @@ transparently replaceable by definition. The asymmetry is deliberate:
 misreporting a contract change as annotations ships a silent breaking
 change, while the reverse costs only an unnecessary version bump.
 
-The leaf value comparison uses a looser stack guard than the structural
-depth cap (`MAX_NESTING_DEPTH = 256`);[^limits] sharing one budget was a
-real bug, since the structural walk stopped classifying at the cap and
+The leaf value comparison is `CanonicalJson.equals`, whose stack guard
+(`MAX_NESTING_DEPTH * 8`, owned by `CanonicalJson`, not `DocumentDiff`)
+is deliberately looser than the structural depth cap
+(`MAX_NESTING_DEPTH = 256`);[^limits] sharing one budget was a real
+bug, since the structural walk stopped classifying at the cap and
 handed the remainder to a comparison that then ran out of frames before
 reaching the leaves, comparing a deeply-nested but identical document as
 different.
@@ -383,7 +417,10 @@ file forever regardless of what `version` says.
 Tests live in `__test__/` (`@effect/vitest`, `assert.*` — never
 `expect`); `SchemaFile`'s real-IO tests are under `integration/`, using
 `@effect/platform-node` as a devDependency for the differential
-integration test.[^package-json] `savvy.build.ts` carries the narrow
+integration test.[^package-json] The version-label grammar is pinned by
+property tests (`it.prop` over generated one-to-three-component labels):
+every label parses and round-trips verbatim, and `Order` is invariant
+under zero-padding to three components. `savvy.build.ts` carries the narrow
 `{ messageId: "ae-forgotten-export", pattern: "_base" }` suppression for
 the heritage symbols, and `SchemaTarget`'s class/interface merge carries
 a house `biome-ignore lint/suspicious/noUnsafeDeclarationMerging` under
