@@ -16,10 +16,10 @@ describe("ConfigLoader through jiti (integration)", () => {
 			const loaded = yield* ConfigLoader.load({ cwd: fixture });
 			assert.isTrue(loaded.path.endsWith("/fixtures/basic/schemastore.config.ts"));
 			assert.strictEqual(loaded.config.schemas.length, 1);
-			assert.strictEqual(loaded.config.schemas[0]?.version, "1.0");
-			assert.isTrue(loaded.config.schemas[0]?.path.endsWith("/fixtures/basic/schemas/basic-1.0.json"));
-			assert.isTrue(loaded.config.catalog[0]?.config.path.endsWith("/fixtures/basic/schemas/catalog-entry.json"));
-			assert.strictEqual(loaded.config.catalog[0]?.entry.url, "https://example.com/schemas/basic-1.0.json");
+			assert.strictEqual(loaded.config.schemas[0]?.target.version, "1.0");
+			assert.isTrue(loaded.config.schemas[0]?.target.path.endsWith("/fixtures/basic/schemas/basic-1.0.json"));
+			assert.isTrue(loaded.config.catalogPath.endsWith("/fixtures/basic/schemas/catalog.json"));
+			assert.strictEqual(loaded.config.schemas[0]?.catalog?.url, "https://example.com/schemas/basic-1.0.json");
 		}).pipe(Effect.provide(Platform)),
 	);
 });
