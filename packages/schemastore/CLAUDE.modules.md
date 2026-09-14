@@ -150,8 +150,9 @@ parent.
 - `SchemastoreConfig` — the `schemastore.config.ts` contract, pure and
   IO-free. `defineConfig({schemas, catalog?, drift?})` validates the input
   (at least one schema; `catalog` must be an array and each entry an object —
-  a non-array or non-object element is a typed `invalid catalog…` error, not
-  a raw `TypeError` — with entries decoded against a struct schema;
+  a non-array or non-object element is a clear `Error`
+  (`defineConfig: invalid catalog…`), not a raw `TypeError` — with entries
+  decoded against a struct schema;
   `drift` decoded and merged over `DriftPolicy.defaults`), refuses two
   spellings of one version under one name (`1.2` and `1.2.0` compare equal),
   derives each `CatalogConfig`'s `CatalogEntry` via `CatalogEntry.assemble`

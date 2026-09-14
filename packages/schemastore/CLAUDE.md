@@ -175,12 +175,12 @@ validation gate, not a construction surface.
   add a pipeline-wide equivalent: a document that only reproduces under
   options held elsewhere is not self-describing (#688; the rc.113
   `onExcessProperty` default flip is the motivating case).
-- **`defineConfig` fails typed on every malformed input, never with a raw
-  `TypeError`.** A non-array `catalog`, or a non-object element, is an
-  `invalid catalog…` `Error` before anything is mapped or decoded, the same
-  shape as the drift-block and per-entry decode failures the CLI wraps into
-  its load error (exit `2`). Keep every guard ahead of the dereference it
-  protects.
+- **`defineConfig` fails with a clear `Error` on every malformed input, never
+  with a raw `TypeError`.** A non-array `catalog`, or a non-object element, is
+  a `defineConfig: invalid catalog…` `Error` before anything is mapped or
+  decoded, the same shape as the drift-block and per-entry decode failures
+  the CLI wraps into its load error (exit `2`). Keep every guard ahead of the
+  dereference it protects.
 - **`SchemaPipeline` is a plain function, deliberately not a `Context.Service`**
   — it needs `SchemaFile | SchemaValidator` in `R`, which compose for free.
   `run` is **two-phase and all-or-nothing across targets**: phase 1 generates,

@@ -85,8 +85,18 @@ const escapePointerSegment = (segment: string): string => segment.replace(/~/g, 
 // as different, because the fallback ran out of frames before the leaves.
 const EQUALITY_STACK_GUARD = MAX_NESTING_DEPTH * 8;
 
-const isPlainRecord = (node: unknown): node is Record<string, unknown> =>
-	typeof node === "object" && node !== null && !Array.isArray(node);
+// Mirrors `emit`'s own prototype check so a value the serializer would
+// reject as "non-plain object" falls through to the `a === b` reference
+// check in `contentEqual` instead of being treated as a comparable record —
+// otherwise two distinct `Date`s (or any other non-plain object) with the
+// same enumerable own keys would report equal under `equals`.
+const isPlainRecord = (node: unknown): node is Record<string, unknown> => {
+	if (typeof node !== "object" || node === null || Array.isArray(node)) {
+		return false;
+	}
+	const prototype = Object.getPrototypeOf(node);
+	return prototype === Object.prototype || prototype === null;
+};
 
 // Order-insensitive for object keys, order-sensitive for arrays — key order
 // is a serialization detail (a formatter may sort), element order is data.
