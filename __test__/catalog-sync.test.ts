@@ -41,6 +41,9 @@ function addPublishable(root: string, name: string): void {
 	);
 }
 
+/** Output goes nowhere: what the script prints is the CLI's concern, and it leaks through the reporter otherwise. */
+const quiet = { write: () => {} } as const;
+
 /** A repo-shaped temp tree: the config the CLI would rewrite, and a .changeset directory. */
 function makeRoot(config: string): string {
 	const root = mkdtempSync(join(tmpdir(), "catalog-sync-"));
@@ -71,7 +74,7 @@ describe("catalog:sync", () => {
 		const root = makeRoot(SYNCED);
 		const run = runner();
 
-		const changed = await sync({ root, run });
+		const changed = await sync({ ...quiet, root, run });
 
 		assert.isFalse(changed);
 		assert.strictEqual(readFileSync(join(root, CONFIG_PATH), "utf8"), SYNCED);
@@ -81,7 +84,7 @@ describe("catalog:sync", () => {
 	it("writes exactly one fixed-name changeset when the catalog moves", async () => {
 		const root = makeRoot(SYNCED);
 
-		const changed = await sync({ root, run: runner(DRIFTED) });
+		const changed = await sync({ ...quiet, root, run: runner(DRIFTED) });
 
 		assert.isTrue(changed);
 		assert.strictEqual(readFileSync(join(root, CONFIG_PATH), "utf8"), DRIFTED);
@@ -93,8 +96,8 @@ describe("catalog:sync", () => {
 	it("overwrites rather than accumulates across repeated runs", async () => {
 		const root = makeRoot(SYNCED);
 
-		await sync({ root, run: runner(DRIFTED) });
-		await sync({ root, run: runner('range: "^0.12.0"') });
+		await sync({ ...quiet, root, run: runner(DRIFTED) });
+		await sync({ ...quiet, root, run: runner('range: "^0.12.0"') });
 
 		// Changesets only: the sync also writes a commit-message file beside them,
 		// which is gitignored and never committed. The property under test is that
@@ -109,7 +112,7 @@ describe("catalog:sync", () => {
 		// the plugin has leaked into the catalog and the release loop is live.
 		const root = makeRoot(SYNCED);
 
-		const changed = await sync({ root, run: runner() });
+		const changed = await sync({ ...quiet, root, run: runner() });
 
 		assert.isFalse(changed);
 		assert.isFalse(existsSync(join(root, CHANGESET_PATH)));
@@ -119,7 +122,7 @@ describe("catalog:sync", () => {
 		const root = makeRoot(SYNCED);
 		const run = runner();
 
-		await sync({ root, run });
+		await sync({ ...quiet, root, run });
 
 		assert.lengthOf(run.calls, 1);
 		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--yes", "--json"]);
@@ -131,7 +134,7 @@ describe("catalog:sync", () => {
 
 		let message = "";
 		try {
-			await sync({ root, run: async () => ({ code: 2, stdout: "" }) });
+			await sync({ ...quiet, root, run: async () => ({ code: 2, stdout: "" }) });
 			assert.fail("a non-zero CLI exit must not report a clean sync");
 		} catch (error) {
 			message = error instanceof Error ? error.message : String(error);
@@ -146,7 +149,7 @@ describe("catalog:check", () => {
 		const root = makeRoot(SYNCED);
 		const run = runner();
 
-		await check({ root, run });
+		await check({ ...quiet, root, run });
 
 		assert.notInclude(run.calls[0]?.args ?? [], "--json", "the gate's output feeds a check-run message");
 	});
@@ -155,8 +158,8 @@ describe("catalog:check", () => {
 		const root = makeRoot(SYNCED);
 		const run = runner();
 
-		assert.strictEqual(await check({ root, run }), 0);
-		assert.strictEqual(await check({ root, run: async () => ({ code: 1, stdout: "" }) }), 1);
+		assert.strictEqual(await check({ ...quiet, root, run }), 0);
+		assert.strictEqual(await check({ ...quiet, root, run: async () => ({ code: 1, stdout: "" }) }), 1);
 		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--check"]);
 		assert.strictEqual(readFileSync(join(root, CONFIG_PATH), "utf8"), SYNCED);
 		assert.isFalse(existsSync(join(root, CHANGESET_PATH)));
@@ -250,7 +253,7 @@ describe("catalog membership gate", () => {
 		addPublishable(root, "@effected/spdx");
 		addPublishable(root, "@effected/schema-org");
 
-		const code = await check({ root, run: async () => ({ code: 0, stdout: "" }) });
+		const code = await check({ ...quiet, root, run: async () => ({ code: 0, stdout: "" }) });
 
 		assert.notStrictEqual(code, 0, "a green CLI must not carry an incomplete catalog to success");
 	});
@@ -259,7 +262,7 @@ describe("catalog membership gate", () => {
 		const root = makeRoot(catalogConfig(["@effected/spdx"]));
 		addPublishable(root, "@effected/spdx");
 
-		return check({ root, run: async () => ({ code: 0, stdout: "" }) }).then((code) => {
+		return check({ ...quiet, root, run: async () => ({ code: 0, stdout: "" }) }).then((code) => {
 			assert.strictEqual(code, 0);
 		});
 	});
@@ -272,7 +275,7 @@ describe("catalog membership gate", () => {
 		addPublishable(root, "@effected/spdx");
 		addPublishable(root, PLUGIN);
 
-		assert.strictEqual(await check({ root, run: async () => ({ code: 0, stdout: "" }) }), 0);
+		assert.strictEqual(await check({ ...quiet, root, run: async () => ({ code: 0, stdout: "" }) }), 0);
 	});
 
 	it("sync refuses before writing anything when the catalog is incomplete", async () => {
@@ -283,7 +286,7 @@ describe("catalog membership gate", () => {
 
 		let message = "";
 		try {
-			await sync({ root, run });
+			await sync({ ...quiet, root, run });
 			assert.fail("sync must refuse an incomplete catalog rather than proceeding");
 		} catch (error) {
 			message = error instanceof Error ? error.message : String(error);
@@ -303,7 +306,7 @@ describe("catalog membership gate", () => {
 		addPublishable(root, "@effected/spdx");
 		mkdirSync(join(root, "packages/leftover-build-output"), { recursive: true });
 
-		assert.strictEqual(await check({ root, run: async () => ({ code: 0, stdout: "" }) }), 0);
+		assert.strictEqual(await check({ ...quiet, root, run: async () => ({ code: 0, stdout: "" }) }), 0);
 	});
 });
 
@@ -341,6 +344,7 @@ describe("dependency-ripple bumps", () => {
 		addPublishable(root, "@effected/sbom");
 
 		const code = await check({
+			...quiet,
 			root,
 			run: async () => ({ code: 0, stdout: "" }),
 			status: planRunner([{ name: "@effected/sbom", newVersion: "0.4.5" }]),
@@ -365,6 +369,7 @@ describe("dependency-ripple bumps", () => {
 		addPublishable(root, "@effected/sbom");
 
 		await sync({
+			...quiet,
 			root,
 			run: runner(),
 			status: planRunner([{ name: "@effected/sbom", newVersion: "0.4.5" }]),
@@ -381,6 +386,7 @@ describe("dependency-ripple bumps", () => {
 		addPublishable(root, "@effected/sbom");
 
 		await sync({
+			...quiet,
 			root,
 			run: runner(),
 			status: planRunner([{ name: "@effected/sbom", newVersion: "0.4.5" }]),
@@ -401,6 +407,7 @@ describe("dependency-ripple bumps", () => {
 		addPublishable(root, "@effected/sbom");
 
 		const code = await check({
+			...quiet,
 			root,
 			run: async () => ({ code: 0, stdout: "" }),
 			status: async () => ({ code: 1, stdout: "" }),

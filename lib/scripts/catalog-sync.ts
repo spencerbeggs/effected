@@ -30,7 +30,13 @@ export interface SyncOptions {
 	readonly run?: UpgradeRunner;
 	/** Override the `changeset status` invocation. Defaults to the real CLI. */
 	readonly status?: StatusRunner;
+	/** Where progress and gate output goes. Defaults to stdout; tests pass a sink. */
+	readonly write?: (text: string) => void;
 }
+
+const defaultWrite = (text: string): void => {
+	process.stdout.write(text);
+};
 
 /** The package whose build config carries the catalog, and which the changeset bumps. */
 export const PLUGIN = "@effected/pnpm-plugin-effect";
@@ -490,6 +496,7 @@ function applyRipples(root: string, mismatches: readonly { pkg: string; from: st
 export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	const root = options.root ?? DEFAULT_ROOT;
 	const run = options.run ?? defaultRunner;
+	const write = options.write ?? defaultWrite;
 
 	// Checked BEFORE the CLI runs: a sync that upgrades versions while a package is
 	// missing entirely would write a changeset and commit, reporting success for a
@@ -507,7 +514,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 
 	const changed = parseChanged(stdout);
 	for (const entry of changed) {
-		console.log(`  ${entry.catalog}.${entry.pkg}  ${entry.from} -> ${entry.to}`);
+		write(`  ${entry.catalog}.${entry.pkg}  ${entry.from} -> ${entry.to}\n`);
 	}
 
 	// The CLI cannot see a package bumped only as a dependency ripple, so ask
@@ -515,7 +522,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	const ripples = rippleMismatches(root, await releasePlan(root, options.status));
 	applyRipples(root, ripples);
 	for (const ripple of ripples) {
-		console.log(`  effected.${ripple.pkg}  ${ripple.from} -> ${ripple.to}  (ripple)`);
+		write(`  effected.${ripple.pkg}  ${ripple.from} -> ${ripple.to}  (ripple)\n`);
 	}
 
 	if (readConfig(root) === before) return false;
@@ -540,11 +547,12 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 export async function check(options: SyncOptions = {}): Promise<number> {
 	const root = options.root ?? DEFAULT_ROOT;
 	const run = options.run ?? defaultRunner;
+	const write = options.write ?? defaultWrite;
 	const { code, stdout } = await run(
 		["upgrade", "savvy.build.ts", "--check"],
 		join(root, "packages/pnpm-plugin-effect"),
 	);
-	if (stdout !== "") process.stdout.write(stdout);
+	if (stdout !== "") write(stdout);
 
 	// The CLI's verdict covers versions only. Membership is this script's to check,
 	// and a green CLI over an incomplete catalog is the exact false pass this gate
@@ -552,7 +560,7 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 	// one of them was being asked.
 	const missing = missingFromCatalog(root);
 	if (missing.length > 0) {
-		process.stdout.write(`${membershipFailure(missing)}\n`);
+		write(`${membershipFailure(missing)}\n`);
 		return code === 0 ? 1 : code;
 	}
 
@@ -563,7 +571,7 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 	const ripples = rippleMismatches(root, await releasePlan(root, options.status));
 	if (ripples.length > 0) {
 		const lines = ripples.map((r) => `  ${r.pkg}  ${r.from} -> ${r.to}`).join("\n");
-		process.stdout.write(
+		write(
 			`Catalog is behind on ${ripples.length} dependency-ripple bump(s):\n${lines}\n\nThese carry no changeset of their own, so the upgrade CLI cannot see them. Run \`pnpm catalog:sync\`.\n`,
 		);
 		return code === 0 ? 1 : code;

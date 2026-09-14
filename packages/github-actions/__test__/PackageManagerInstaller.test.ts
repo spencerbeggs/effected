@@ -48,7 +48,14 @@ const live = (root: string, fetch: typeof globalThis.fetch = alwaysFails, env: R
 		NodeServices.layer,
 		FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fetch))),
 	);
-	return PackageManagerInstaller.layer.pipe(Layer.provideMerge(ToolInstaller.layer), Layer.provide(platform));
+	// Loggers are cleared: the "no integrity hash" warning every unsigned pin
+	// emits is asserted once, by the test that records it, and leaks through
+	// the reporter everywhere else.
+	return PackageManagerInstaller.layer.pipe(
+		Layer.provideMerge(ToolInstaller.layer),
+		Layer.provideMerge(Logger.layer([])),
+		Layer.provide(platform),
+	);
 };
 
 const withRoot = <A, E>(
@@ -568,8 +575,10 @@ describe("PackageManagerInstaller", () => {
 						entries.push({ level: options.logLevel, message: options.message });
 					}),
 				]);
+				// Provided inside `live`, so the recorder overrides the cleared loggers.
 				const installed = yield* install("pnpm@1.0.2").pipe(
-					Effect.provide(Layer.mergeAll(live(root, script.fetch), recorder)),
+					Effect.provide(recorder),
+					Effect.provide(live(root, script.fetch)),
 					Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
 				);
 				assert.strictEqual(installed.source, "tool-cache");
