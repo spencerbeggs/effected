@@ -96,6 +96,17 @@ const compactCatalogText = (): string => {
 	return `${JSON.stringify(Schema.encodeSync(CatalogEntry)(first.entry))}\n`;
 };
 
+// Same content, keys reversed and pretty-printed with a two-space indent —
+// a shape only a structural (`CanonicalJson.equals`) compare tolerates; a
+// byte or insertion-order-sensitive compare would not.
+const reorderedCatalogText = (): string => {
+	const [first] = twoSchemas.catalog;
+	assert.isDefined(first);
+	const encoded = Schema.encodeSync(CatalogEntry)(first.entry) as Record<string, unknown>;
+	const reordered = Object.fromEntries(Object.entries(encoded).reverse());
+	return `${JSON.stringify(reordered, null, 2)}\n`;
+};
+
 const byId = (report: RunReport, $id: string) => {
 	const found = report.schemas.find((schema) => schema.$id === $id);
 	assert.isDefined(found, `no report for ${$id}`);
@@ -454,6 +465,16 @@ describe("Runner.run", () => {
 				}),
 			),
 		),
+	);
+
+	it.effect("a catalog file with reordered keys and different indentation is unchanged by content", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const reformatted = reorderedCatalogText();
+			const report = yield* Runner.run(twoSchemas, options("build"));
+			assert.deepStrictEqual(report.catalog, [{ name: "pinned", path: CATALOG_PATH, outcome: "unchanged" }]);
+			assert.strictEqual(yield* fs.readFileString(CATALOG_PATH), reformatted, "the reformatted text is left alone");
+		}).pipe(Effect.provide(layers({ [CATALOG_PATH]: reorderedCatalogText() }))),
 	);
 
 	it.effect("a catalog file that another tool reformatted is unchanged by content", () =>

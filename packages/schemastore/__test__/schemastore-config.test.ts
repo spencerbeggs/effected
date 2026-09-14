@@ -31,6 +31,16 @@ describe("defineConfig", () => {
 		assert.throws(() => defineConfig({ schemas: [] }), /at least one schema/);
 	});
 
+	it("rejects a non-array catalog and a non-object catalog element as invalid catalog entries, not TypeErrors", () => {
+		const schemas = [SchemaTarget.make({ schema: Schema.String, $id: "https://e.com/a.json", path: "a.json" })];
+		assert.throws(() => defineConfig({ schemas, catalog: "nope" as never }), /invalid catalog/);
+		assert.throws(() => defineConfig({ schemas, catalog: [42 as never] }), /invalid catalog entry/);
+		assert.throws(
+			() => defineConfig({ schemas, catalog: [{ name: "a", fileMatch: "x" } as never] }),
+			/invalid catalog entry/,
+		);
+	});
+
 	it("rejects two spellings of one version under one name", () => {
 		assert.throws(
 			() => defineConfig({ schemas: [versioned("1.2"), versioned("1.2.0")] }),

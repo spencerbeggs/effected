@@ -25,7 +25,7 @@ import type {
 } from "@effected/schemastore";
 import { CanonicalJson, CatalogEntry, DriftPolicy, SchemaPipeline, SchemaVersioning } from "@effected/schemastore";
 import type { PlatformError } from "effect";
-import { Effect, FileSystem, Path, Schema } from "effect";
+import { Effect, FileSystem, Option, Path, Schema } from "effect";
 
 /**
  * What the run did with one schema.
@@ -120,36 +120,13 @@ const pipelineOptions = { contractChanges: "allow" } as const;
 
 const catalogText = (target: CatalogTarget) => CanonicalJson.serialize(Schema.encodeSync(CatalogEntry)(target.entry));
 
-// Plain-JSON structural equality: key order is a serialization detail
-// (another tool may have sorted or compacted the file), element order is
-// data. `Equal.equals` would only be structural for Effect data types and
-// falls back to reference equality on the parsed objects, which is why this
-// is spelled out. Same shape as the comparison `SchemaFile` makes for a
-// document, which the library does not export.
-const jsonEqual = (a: unknown, b: unknown): boolean => {
-	if (a === b) {
-		return true;
-	}
-	if (Array.isArray(a) || Array.isArray(b)) {
-		return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => jsonEqual(v, b[i]));
-	}
-	if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
-		return false;
-	}
-	const left = a as Record<string, unknown>;
-	const right = b as Record<string, unknown>;
-	const keys = Object.keys(left);
-	return (
-		keys.length === Object.keys(right).length &&
-		keys.every((k) => Object.hasOwn(right, k) && jsonEqual(left[k], right[k]))
-	);
-};
-
 // Text on disk that does not parse is not a catalog entry, so there is
 // nothing it can be content-equal to: it differs, and a build repairs it.
-const sameJson = (existing: string, text: string): boolean => {
+// Key order is a serialization detail (another tool may have sorted or
+// compacted the file); `CanonicalJson.equals` compares structurally.
+const parsesEqual = (existing: string, text: string): boolean => {
 	try {
-		return jsonEqual(JSON.parse(existing), JSON.parse(text));
+		return CanonicalJson.equals(JSON.parse(existing), JSON.parse(text));
 	} catch {
 		return false;
 	}
@@ -260,8 +237,16 @@ export class Runner {
 		for (const entry of config.catalog) {
 			const { name, path: file } = entry.config;
 			const text = yield* catalogText(entry);
-			const exists = yield* fs.exists(file);
-			const same = exists && sameJson(yield* fs.readFileString(file), text);
+			// One read; a missing file is "different" (a build creates it), and so
+			// is text that does not parse — nothing unparseable is content-equal.
+			const existing = yield* fs.readFileString(file).pipe(
+				Effect.map(Option.some),
+				Effect.catchIf(
+					(error) => error.reason._tag === "NotFound",
+					() => Effect.succeed(Option.none<string>()),
+				),
+			);
+			const same = Option.isSome(existing) && parsesEqual(existing.value, text);
 			if (same) {
 				catalog.push({ name, path: file, outcome: "unchanged" });
 			} else if (!writing) {

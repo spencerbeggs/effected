@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { SchemaTarget, defineConfig } from "@effected/schemastore";
+import { SchemaTarget, defineConfig, isSchemastoreConfig } from "@effected/schemastore";
 import { Effect, Layer, Path, Schema } from "effect";
 import { ConfigLoadError, ConfigLoader, ConfigNotFoundError } from "../src/ConfigLoader.js";
 
@@ -154,6 +154,58 @@ describe("ConfigLoader.load", () => {
 			);
 			assert.instanceOf(error, ConfigLoadError);
 			assert.strictEqual(error.reason, "schemas is not an array");
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when a forged brand carries no schemas array", () =>
+		Effect.gen(function* () {
+			// Only a hand-rolled JS config can forge the brand directly, skipping
+			// `defineConfig` (and its own `schemas` validation) entirely.
+			const forged = {
+				[Symbol.for("@effected/schemastore/SchemastoreConfig")]: true,
+				catalog: [],
+				drift: { policy: "semantic", onDrift: "error" },
+			} as unknown as typeof config;
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.js",
+					cwd: "/repo",
+					importModule: () => Promise.resolve({ default: forged }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, "schemas is not an array");
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("keeps the defineConfig brand after resolvePaths", () =>
+		Effect.gen(function* () {
+			const loaded = yield* ConfigLoader.load({
+				explicit: "schemastore.config.ts",
+				cwd: "/repo",
+				importModule: () => Promise.resolve({ default: config }),
+			});
+			assert.isTrue(isSchemastoreConfig(loaded.config));
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
+	);
+
+	it.effect("fails typed when a forged brand carries no catalog array", () =>
+		Effect.gen(function* () {
+			const forged = {
+				[Symbol.for("@effected/schemastore/SchemastoreConfig")]: true,
+				schemas: config.schemas,
+				catalog: "nope",
+				drift: { policy: "semantic", onDrift: "error" },
+			} as unknown as typeof config;
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.js",
+					cwd: "/repo",
+					importModule: () => Promise.resolve({ default: forged }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, "catalog is not an array");
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 

@@ -166,12 +166,13 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 	}
 	const drift = decodeOrThrow(DriftSchema, input.drift ?? {}, "drift block");
 	const versions = versionsByName(input.schemas);
-	const catalog = (input.catalog ?? []).map((raw) => {
-		const config = decodeOrThrow(
-			CatalogConfigSchema,
-			raw,
-			`catalog entry "${String((raw as { name?: unknown }).name)}"`,
-		);
+	const rawCatalog = input.catalog ?? [];
+	if (!Array.isArray(rawCatalog)) {
+		throw new Error("defineConfig: invalid catalog: expected an array of catalog entries");
+	}
+	const catalog = rawCatalog.map((raw) => {
+		const label = typeof raw === "object" && raw !== null ? String((raw as { name?: unknown }).name) : String(raw);
+		const config = decodeOrThrow(CatalogConfigSchema, raw, `catalog entry "${label}"`);
 		const found = versions.get(config.name);
 		if (found === undefined) {
 			throw new Error(`defineConfig: catalog entry "${config.name}" matches no versioned schema`);

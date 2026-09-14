@@ -97,6 +97,13 @@ const describeMalformedTarget = (schemas: unknown): string | undefined => {
 	return undefined;
 };
 
+// A forged brand can carry a `catalog` that is not an array at all (a
+// `defineConfig`-produced config never does — it validates this) — guarded
+// separately from `describeMalformedTarget` since it stops a different
+// dereference (`.map` in `resolvePaths`), not a per-element shape check.
+const describeMalformedCatalog = (catalog: unknown): string | undefined =>
+	Array.isArray(catalog) ? undefined : "catalog is not an array";
+
 // `defineConfig` already rejects duplicate output paths lexically; two
 // spellings it could not unify (`../x/a.json` from one directory, `a.json`
 // after resolution) can still collide once absolute, so the check re-runs
@@ -215,6 +222,10 @@ export class ConfigLoader {
 		const malformed = describeMalformedTarget(exported.schemas);
 		if (malformed !== undefined) {
 			return yield* Effect.fail(new ConfigLoadError({ path: configPath, reason: malformed }));
+		}
+		const malformedCatalog = describeMalformedCatalog(exported.catalog);
+		if (malformedCatalog !== undefined) {
+			return yield* Effect.fail(new ConfigLoadError({ path: configPath, reason: malformedCatalog }));
 		}
 		const directory = path.dirname(configPath);
 		const config = yield* ConfigLoader.resolvePaths(exported, directory);
