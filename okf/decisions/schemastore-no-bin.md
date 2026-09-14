@@ -1,47 +1,71 @@
 ---
 type: Decision
-title: No bin — the package is a library, not a CLI
-description: schemastore ships no bin entry; it is a library consumed by a generator script the caller owns, not a command-line tool.
+title: No bin on the library — the CLI is a fixed-version companion package
+description: "@effected/schemastore ships no bin entry; the schemastore executable lives in @effected/schemastore-cli, a bin-only companion released in a fixed group with the library."
 status: draft
 sources:
   - id: package-json
     resource: ../../packages/schemastore/package.json
+  - id: owner
+    resource: conversation with the repository owner
+    author: human:spencerbeggs
+    last_modified: 2026-09-13T00:00:00Z
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: b3b9f6f49d448c8636b63eb2aa21afb5ec5cb87d6255aca1e1a134599dc80a6d
+  by: "claude-code/opus-5"
 ---
 
-# No bin — the package is a library, not a CLI
+# No bin on the library — the CLI is a fixed-version companion package
 
 ## Context
 
 A package that builds and validates artifacts is sometimes packaged as
 a CLI a consumer invokes directly, rather than as a library a consumer's
-own script imports. `@effected/schemastore` needed to pick one shape.
+own script imports. `@effected/schemastore` needed to pick one shape —
+and then, once six consuming repositories had each written the same
+generator script around the library, needed to pick where the shared
+executable would live.
 
 ## Decision
 
-The package ships no `bin` entry.[^package-json] It is a library
-consumed by a generator script the caller owns, not a CLI.
+`@effected/schemastore` ships no `bin` entry.[^package-json] It is a
+library whose inputs — `SchemaTarget`s, the gating policy, the contract
+policy — are TypeScript values.
+
+The command-line tool those values feed is a separate package,
+[`@effected/schemastore-cli`](../modules/schemastore-cli.md): bin-only,
+nothing importable, peering on `effect` and on the library at an exact
+version, released with it in one changesets fixed group. Its input is
+still TypeScript — a `schemastore.config.ts` whose default export is
+`defineConfig(...)`, and `defineConfig` lives in the library, not the
+CLI, so the config and the pipeline share one `effect` and one
+`SchemaTarget` class.
 
 ## Alternatives rejected
 
-**Ship a `bin` entry running `SchemaPipeline` over a config file.**
-Rejected because the pipeline's inputs — the set of `SchemaTarget`s, the
-gating policy, the contract-change policy — are naturally expressed as
-TypeScript values a consumer's own script constructs, not as a
-configuration file format this package would then have to own and
-version. A CLI would also need its own argument-parsing and exit-code
-contract layered over a package whose entire value is composability
-through `R`, undermining the "plain statics, not a service" design of
-`SchemaPipeline` itself.
+**Ship a `bin` entry on the library running `SchemaPipeline` over a
+config file.** Rejected because a library consumed through `R` and a
+binary with an exit-code contract have different dependency shapes: the
+bin needs `jiti`, a platform layer and `@effected/cli`, none of which a
+consumer composing the pipeline in its own program should install.
+
+**Ship the CLI with its own copy of the library and re-export
+`defineConfig` from it.** Rejected because the consumer's config
+constructs `SchemaTarget`s and `Schema`s from ITS `node_modules`; a second
+`effect` or `@effected/schemastore` instance inside the CLI would make
+class identity and annotation symbols diverge in ways no type-check
+reports. The library is a peer of the CLI for the same reason `effect`
+is a peer of every kit package.
+
+**Leave every consumer its own generator script.** The status quo: six
+repositories carried the same two hundred lines and the same drift test.
+Rejected by the owner on 2026-09-13.[^owner]
 
 ## Consequences
 
-The `packages/schemastore-cli/` directory on disk holds only build
-residue (`dist/`, `node_modules/`) with no manifest, and is not read as
-evidence that a CLI was ever shipped or is planned — it is an ignored
-ghost, not a package under active development.
+`packages/schemastore-cli/` is a package under active development, not
+the ignored build residue an earlier revision of this decision described.
+A consumer installs both packages as devDependencies; a version bump in
+one is a bump in the other.
 
 [^package-json]: `packages/schemastore/package.json` — no `bin` field.
+[^owner]: The owner's design conversation of 2026-09-13 that scoped the companion package.
