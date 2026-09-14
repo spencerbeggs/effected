@@ -1,5 +1,40 @@
 # @effected/schemastore
 
+## 0.10.0
+
+### Features
+
+- `StoreDocument.fromSchema` accepts a `rootAnnotations` option (also forwarded through `SchemaTarget`'s builders): annotations merged onto the emitted document's root after assembly, for a generator-side annotation loss the source schema cannot express.
+
+```ts
+StoreDocument.fromSchema(schema, {
+	$id: "https://example.com/foo.json",
+	rootAnnotations: { title: "Foo", description: "…" },
+});
+```
+
+- Admitted keys are the standard JSON Schema annotation keywords (`title`, `description`, `$comment`, `default`, `examples`, `readOnly`, `writeOnly`, `contentMediaType`, `contentEncoding`) plus the declared keyword families — any other key fails the build with `UndeclaredAnnotationKeyError`, checked up front before anything is generated. When the assembled root is a bare local `$ref` (the shape a `Schema.Class` root produces), the annotations are merged onto the `$defs` entry it names instead, since Draft-07 validators ignore `$ref` siblings. When that entry is shared with other references (a recursive class, for instance), the root is instead rewritten to `{ ...annotations, allOf: [{ $ref }] }` so the document is annotated without every occurrence of the type inheriting its title.
+
+- `CanonicalJson.equals(left, right)` is now exported: content equality under the serializer's own semantics (object key order ignored, array order preserved, total against cyclic or hostile-depth input). It is the same comparison `DocumentDiff`'s leaf checks and a catalog write-if-changed decision already make, exposed for a consumer that writes its own JSON artifact and wants to decide "unchanged" by the same rule.
+
+### Bug Fixes
+
+- `defineConfig` throws a clear "invalid catalog: expected an array of catalog entries" error when a config's `catalog` field is not an array, instead of failing later with an opaque `.map is not a function` — and its per-entry error label no longer stringifies a non-object entry as `"undefined"`. [#730][#730]
+
+* `DocumentLint.checkRef` decodes local `$ref` pointers the way ajv does — split on `/`, then percent-decode and pointer-unescape each token — so a percent-encoded pointer (core emits `encodeURI(escapeToken(name))`, e.g. `#/$defs/My%20Foo~1BarEncoded` for the class identifier `My Foo/BarEncoded`) resolves against the literal `$defs` key instead of linting as `UnresolvedRef`. Pointer-escaped (`~1`/`~0`) names and subpath refs resolve exactly as before, and a `$ref` that is not a well-formed URI fragment (a raw space, non-ASCII, `#`) resolves as the engine resolves it; only malformed percent-encoding, which ajv also refuses, warns. A `#/definitions/...` pointer stays a warning.
+
+### Other
+
+- The duplicate pointer-segment escapers in `DocumentLint` and `CanonicalJson` are folded onto `JsonPointer.escapeToken` (identical semantics; lint/error `path` strings unchanged). [#734][#734]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) and [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#730]: https://github.com/spencerbeggs/effected/pull/730
+
+[#734]: https://github.com/spencerbeggs/effected/pull/734
+
 ## 0.9.1
 
 ### Maintenance

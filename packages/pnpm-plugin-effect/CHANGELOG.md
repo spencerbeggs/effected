@@ -1,5 +1,20 @@
 # @effected/pnpm-plugin-effect
 
+## 0.8.7
+
+### Maintenance
+
+#### Updates 4 catalog:effected versions
+
+- `@effected/app` ^0.16.1 -> ^0.16.2 (peer ^0.16.0)
+- `@effected/cli` ^0.5.0 -> ^0.5.1 (peer ^0.5.0)
+- `@effected/config-file` ^0.9.0 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/xdg` ^0.5.1 -> ^0.5.2 (peer ^0.5.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.8.6
 
 ### Maintenance
