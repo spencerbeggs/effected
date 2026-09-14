@@ -8,20 +8,28 @@
 | `CanonicalJson` | Class | Deterministic, canonical JSON text: the package's owned serializer, so a consumer never shells out to an external formatter to produce a stable committed schema file. | deterministic canonical json text, stable diff-friendly serialization for committed schema files |
 | `CanonicalJsonError` | TypeAlias | Union of the failures `CanonicalJson.serialize` can raise. | |
 | `CanonicalJsonOptions` | Interface | Options for `CanonicalJson.serialize`. | |
+| `CatalogConfig` | Interface | One catalog entry a `schemastore.config.ts` declares: the SchemaStore `catalog.json` fields plus where to write the assembled entry. The entry's `versions` and `url` are derived by `defineConfig` from every versioned schema of the same `name`. | |
 | `CatalogEntry` | Class | A SchemaStore `catalog.json` entry: the class is the schema, so decoding an existing entry and encoding one for submission are the same artifact. `versions` is present only for versioned catalogs (`SchemaVersioning.catalogUrls` assembles both modes). | build a schemastore catalog.json entry, assemble unversioned or versioned schema urls |
 | `CatalogLintFinding` | Class | A fileMatch hygiene finding: a value in a lint report, not an error — SchemaStore reviewers reject entries over these, so surfacing them locally is the point, but a warned entry is still a valid entry. | catalog fileMatch hygiene warning, generic pattern or complex glob rejection |
+| `CatalogTarget` | Interface | A validated catalog declaration paired with the `CatalogEntry` assembled from it. | |
 | `CatalogUrls` | Interface | The `url`/`versions` half of a catalog entry, as assembled by `SchemaVersioning.catalogUrls`. | |
 | `CheckResult` | Interface | The result of `SchemaFileShape.check`: the same two answers `WriteResult` carries, for a call that touched nothing. | |
+| `ConfigBrand` | Variable | | the private symbol key isSchemastoreConfig checks and defineConfig sets, not itself importable |
 | `ContractChangePolicy` | TypeAlias | How `SchemaPipeline.run` treats a target whose document would change its validation contract. | |
 | `ContractChangeTarget` | Class | One published document whose validation contract would change. | one published schema target whose contract changed, pair its pinned version with the next bumped label |
 | `DRAFT_07_META_SCHEMA` | Variable | The Draft-07 meta-schema URL SchemaStore documents declare as `$schema`. | draft-07 meta-schema url constant for $schema |
 | `DocumentDiff` | Class | Classifies the difference between two emitted schema documents by meaning: identical, documentation-only, or a change to the validation contract. | diff two schema documents, classify annotation-only vs contract change, decide new version |
 | `DocumentLint` | Class | Owned structural checks over an assembled `StoreDocument` — the always-available half of the validation story (a real-engine gate like ajv strict mode stays at the consumer's edge): | structural lint over an assembled schema document, unresolved $ref check, unknown keyword check |
 | `DocumentLintFinding` | Class | A structural lint finding over an assembled document: a value in a report, never an error channel — a document with findings is still a document, and the consumer decides what a finding gates. | lint finding value for a schema document structural check |
+| `DriftOptions` | Interface | The drift settings a config declares and a CLI flag may override. | |
+| `DriftPolicy` | Class | Classifies one target's change against a drift tolerance. | classify a published target's change as write or drift against its configured tolerance |
+| `DriftTolerance` | TypeAlias | How much change a PUBLISHED schema document may absorb before a build is refused. | |
+| `DriftVerdict` | TypeAlias | The verdict for one target: write it, or hold it as drift. | |
 | `InvalidSchemaVersionError` | Class | Indicates that a string is not a valid SchemaStore version label. | handle a version label that is not full major.minor.patch semver |
 | `JsonDepthExceededError` | Class | Indicates that the serialization input nests deeper than the package's hardening cap (256 levels), which also intercepts cyclic values before they can recurse forever. | handle json value nesting past the hardening cap during canonical serialize |
 | `KeywordFamilies` | Class | The declared non-standard keyword families as one predicate: the vscode-json-languageservice set by exact name, plus the `x-taplo`, `x-tombi-`, `x-intellij-` and `x-ai-` prefixes. | recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint |
 | `NonJsonValueError` | Class | Indicates that a value reachable from the serialization input is not a JSON value: `undefined`, a function, a symbol, a `bigint`, a non-finite number, or an object that is neither an array nor a plain object. | handle a non-json value (undefined, bigint, function, NaN) during canonical serialize |
+| `OnDrift` | TypeAlias | What a build does when it finds drift: refuse to write anything, or write and warn. | |
 | `PipelineCheckResult` | Interface | What `SchemaPipeline.check` found for one target — the same report without the write. | |
 | `PipelineFinding` | Class | One problem found while emitting a target, from either gate, normalized so a single policy predicate can judge both. | normalized lint or validator finding surfaced by the schema pipeline |
 | `PipelineResult` | Interface | What the pipeline did with one target. | |
@@ -44,6 +52,8 @@
 | `SchemaVersion` | Variable + TypeAlias | The type of a validated SchemaStore version label. | branded schema version label, full three-component semver for catalog file naming |
 | `SchemaVersioning` | Class | Both SchemaStore catalog modes as pure derivations: unversioned (a plain `name.json` file, `url` only) and versioned (`name-<version>.json` files — SchemaStore's own suffix convention — a `versions` map, and `url` pointing at the latest version). | compute versioned or unversioned catalog urls, order schema version labels, derive schema file names |
 | `SchemaWriteOptions` | Interface | Options for `SchemaFileShape.write` and `SchemaFileShape.check`: the `CanonicalJsonOptions` the document serializes under, plus how `write` decides whether to touch the file. | |
+| `SchemastoreConfig` | Interface | The validated, defaults-filled config `defineConfig` answers and the CLI consumes. Recognisable via `isSchemastoreConfig`. | |
+| `SchemastoreConfigInput` | Interface | What a `schemastore.config.ts` hands to `defineConfig`: the schema targets, an optional catalog block and an optional partial drift block. | |
 | `StoreDocument` | Class | A SchemaStore-shaped Draft-07 JSON Schema document assembled from an Effect Schema source: `$schema` (the Draft-07 meta-schema) + `$id` + the root schema + the `$defs` pool. | assemble a schemastore-shaped draft-07 document from an effect schema, publish a json schema |
 | `StoreDocumentOptions` | Interface | Options for `StoreDocument.fromSchema`. | |
 | `UndeclaredAnnotationKeyError` | Class | Indicates that a caller-supplied `includeAnnotationKey` admitted an annotation key outside the declared keyword families (`KeywordFamilies`). | refuse an annotation key outside the declared language-server families, fail a schemastore document build naming every offending key, gate includeAnnotationKey |
@@ -51,3 +61,5 @@
 | `WriteChange` | TypeAlias | How the document being written relates to what was already on disk: `SchemaChange` plus `"created"` for a file that did not exist, so there was nothing to compare against. | |
 | `WriteOutcome` | TypeAlias | What `SchemaFileShape.write` did to the filesystem: `"written"` when it wrote, `"unchanged"` when it left the file alone — reported as a value so the caller decides what to surface, never a log. | |
 | `WriteResult` | Interface | The result of `SchemaFileShape.write`: what happened to the file, and what the difference MEANT. | |
+| `defineConfig` | Function | Validate and assemble a `schemastore.config.ts` value. | validate and assemble a schemastore.config.ts value, fill drift defaults, derive catalog versions |
+| `isSchemastoreConfig` | Function | Whether a value is a config produced by `defineConfig` — the check a loader runs on a config module's default export. | recognize a config module's default export as one defineConfig produced |
