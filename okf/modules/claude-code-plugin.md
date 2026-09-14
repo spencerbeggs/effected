@@ -16,7 +16,7 @@ sources:
   - id: plugins-claude-md
     resource: ../../plugins/CLAUDE.md
 generated:
-  by: "okfit/claude-code"
+  by: "claude-code/opus-5"
   at: 2026-09-13T05:33:04Z
   body_sha256: a666730a98392504845126354549c85faf24993ec440489a8a5d185193a0cc8e
 ---
@@ -73,7 +73,8 @@ frontmatter `description` is the authoritative trigger. On disk today:
 `actions-cache-and-artifacts`, `actions-inputs-outputs`,
 `actions-reporting`, `actions-runtime`, `actions-state-and-secrets`,
 `bootstrapping-an-action`, `building-a-format-package`,
-`building-a-github-action`, `designing-an-action`,
+`building-a-github-action`, `building-schemastore-schemas`,
+`designing-an-action`,
 `effect-api-extractor-bases`, `effect-v4-cli`, `effect-v4-house-style`,
 `effect-v4-idioms`, `effect-v4-module-index`, `effect-v4-observability`,
 `effect-v4-planning`, `effect-v4-schema`, `effect-v4-services-layers`,
@@ -106,6 +107,11 @@ ladder and probe preconditions — see
 
 **API-surface and hardening discipline**: `effect-api-extractor-bases`,
 `hardening-a-parser-port`, `building-a-format-package`.
+
+**Consumer adoption of a kit package**: `building-schemastore-schemas`,
+teaching a consumer repository to publish SchemaStore-shaped JSON Schema
+documents through `@effected/schemastore` and its CLI companion — the
+config file, the drift policy, document authoring, and the CI gate.
 
 **The actions suite** — the catalog's largest group and the teaching
 surface for building a GitHub Action repository on the kit. Three entry
