@@ -186,11 +186,20 @@ validation gate, not a construction surface.
   options held elsewhere is not self-describing (#688; the rc.113
   `onExcessProperty` default flip is the motivating case).
 - **`defineConfig` fails with a clear `Error` on every malformed input, never
-  with a raw `TypeError`.** A non-array `catalog`, or a non-object element, is
-  a `defineConfig: invalid catalog…` `Error` before anything is mapped or
-  decoded, the same shape as the drift-block and per-entry decode failures
-  the CLI wraps into its load error (exit `2`). Keep every guard ahead of the
-  dereference it protects.
+  with a raw `TypeError`.** A missing/empty `outputDir`, an empty `schemas`
+  record, a schema key that is not a simple file base name, an invalid
+  `baseUrl`/`layout`/`versions`/`current`/`drift`/`onDrift`, a missing or
+  empty-`fileMatch` `catalog` under `baseUrl: "schemastore"`, or a duplicate
+  output path — every one is a `defineConfig: …` `Error` naming the offending
+  schema, before anything is written, the same shape as the CLI's load-error
+  wrap (exit `2`). Keep every guard ahead of the dereference it protects.
+- **Identity is derived, never cross-checked: `$id`, the file path and every
+  catalog URL come from one `relativeFile(name, version, layout)`; there is
+  no `$id` override by design (#715).** Frozen labels (`versions` other than
+  `current`) are advertised by the catalog and verified on disk by the CLI,
+  never regenerated. `baseUrl: "schemastore"` means two hosts —
+  `json.schemastore.org` in `$id`, `www.schemastore.org` in the catalog —
+  verified 2026-09-14.
 - **`SchemaPipeline` is a plain function, deliberately not a `Context.Service`**
   — it needs `SchemaFile | SchemaValidator` in `R`, which compose for free.
   `run` is **two-phase and all-or-nothing across targets**: phase 1 generates,

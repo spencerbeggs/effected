@@ -153,22 +153,41 @@ parent.
   `{ policy: "semantic", onDrift: "error" }`; `DriftOptions`/`DriftTolerance`/
   `OnDrift` are the option types a config declares and a CLI flag overrides.
 - `SchemastoreConfig` — the `schemastore.config.ts` contract, pure and
-  IO-free. `defineConfig({schemas, catalog?, drift?})` validates the input
-  (at least one schema; `catalog` must be an array and each entry an object —
-  a non-array or non-object element is a clear `Error`
-  (`defineConfig: invalid catalog…`), not a raw `TypeError` — with entries
-  decoded against a struct schema;
-  `drift` decoded and merged over `DriftPolicy.defaults`), refuses two
-  spellings of one version under one name (`1.2` and `1.2.0` compare equal),
-  derives each `CatalogConfig`'s `CatalogEntry` via `CatalogEntry.assemble`
-  from EVERY versioned schema of that name (published or not — the entry is
-  what gets submitted), throws a plain `Error` naming the offending part
-  (the CLI wraps it into its typed load error), and brands the result with a
-  private symbol so `isSchemastoreConfig(value)` recognises a loaded module's
-  default export. `CatalogConfig` adds `path` (where the loader writes the
-  assembled entry, relative to the config file) to the catalog.json fields;
-  `CatalogTarget` is `{config, entry}`; `SchemastoreConfigInput` and
-  `SchemastoreConfig` are the input and output shapes.
+  IO-free. `defineConfig({outputDir, baseUrl?, drift?, onDrift?,
+  catalogPath?, schemas})` takes `schemas` **keyed by file base name** — the
+  key IS the `name` every derived path and URL is built from (`assertSimpleName`
+  rule: non-empty, no separators, no whitespace). Each entry
+  (`{schema, versions?, current?, published?, baseUrl?, layout?, drift?,
+  catalog?, jsonSchema?, rootAnnotations?}`) resolves through ONE
+  `relativeFile(name, version, layout)`-style derivation that decides `$id`,
+  the write `path` and every catalog URL — there are no `$id`/`path`/`name`/
+  `version` fields on an entry, all four are derived, and there is
+  deliberately **no `$id` override**. `baseUrl: "schemastore"` expands to
+  `SCHEMASTORE_ID_BASE`/`SCHEMASTORE_CATALOG_BASE` and forces the `"flat"`
+  layout (`layout` under it is an error); a custom `https://` `baseUrl` is
+  one base for both `$id` and the catalog URL, defaulting to the
+  `"versioned"` layout. `versions` lists every advertised label; `current`
+  (default: highest under `SchemaVersioning.Order`) is the one generated,
+  the rest become `FrozenVersion` entries the CLI verifies but never
+  regenerates. `catalog` (`{description, fileMatch}`) is required under
+  `baseUrl: "schemastore"`, optional under a custom host. Validation refuses
+  an empty `schemas` record or `outputDir`, a key that fails the simple-name
+  rule, an empty/invalid `versions` entry, `current` not among `versions`,
+  an invalid `baseUrl`/`layout` combination, a missing/empty-`fileMatch`
+  `catalog` where required, an invalid `drift`/`onDrift`, and a duplicate
+  output path (target, frozen file or `catalogPath`), after lexical path
+  normalisation — every failure is a plain `Error` prefixed
+  `defineConfig:` naming the offending schema, never a raw `TypeError`, the
+  same shape the CLI wraps into its typed load error. Brands the result with
+  a private symbol so `isSchemastoreConfig(value)` recognises a loaded
+  module's default export. `CatalogInput`, `SchemaEntryInput`,
+  `SchemastoreConfigInput`, `FrozenVersion`, `ResolvedSchema` and
+  `SchemastoreConfig` are the input and resolved-output shapes;
+  the array-of-targets `catalog`/entry-pair types from the pre-keyed shape
+  no longer exist.
+  `SchemaTarget.make` survives unchanged as the library-level primitive for
+  a caller driving `SchemaPipeline` directly; `defineConfig` lowers each
+  entry onto it.
 - `CatalogEntry` — the `Schema.Class` of a catalog.json entry (`versions` is
   `optionalKey`); `assemble` composes `SchemaVersioning.catalogUrls`;
   `lint`/`lintFileMatch` are the fileMatch hygiene checks (`CatalogLintFinding`:

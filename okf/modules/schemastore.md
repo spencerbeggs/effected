@@ -146,7 +146,7 @@ entrypoint.[^claude-md][^claude-modules] The load-bearing division:
   [the pipeline](#the-pipeline-orchestration-as-a-shipped-surface).
 - **`DriftPolicy`** — the pure drift classifier over a published
   target's `WriteChange`; see [the CLI contract](#the-cli-contract-defineconfig-drift-and-published).
-- **`SchemastoreConfig`** — `defineConfig`, the `schemastore.config.ts`
+- **`SchemastoreConfig`** — `defineConfig`, the keyed `schemastore.config.ts`
   contract; see [the CLI contract](#the-cli-contract-defineconfig-drift-and-published).
 
 There is no annotation-carrier module. `AnnotationCarriers` existed to
@@ -291,20 +291,78 @@ is the pure classifier over that switch — `classify({published,
 change}, policy)` answers `"write"` or `"drift"`, with `"semantic"` (only
 a `"contract"` change is drift) as the default, `"strict"` holding
 annotation changes too and `"allow"` holding nothing; `DriftPolicy.defaults`
-is `{ policy: "semantic", onDrift: "error" }`. `defineConfig` is the
-`schemastore.config.ts` contract: pure and IO-free, it validates the
-schema targets, decodes the catalog and drift blocks (a non-array
-`catalog` or a non-object element is a typed `invalid catalog…` error,
-never a raw `TypeError` off `.map`), merges a partial
-drift block over the defaults, derives each catalog entry through
-`CatalogEntry.assemble` from every versioned schema of its name
-(published or not — the entry is what gets submitted to become
-published), throws a plain `Error` the CLI wraps into its typed load
-error, and brands the result with a private symbol so
-`isSchemastoreConfig` recognises a loaded module's default export
-without the loader inspecting its shape. Together with the widened
-version grammar above, these are the whole surface the CLI needs from
-the library.
+is `{ policy: "semantic", onDrift: "error" }`.
+
+`defineConfig` is the `schemastore.config.ts` contract, pure and IO-free,
+keyed by schema name:
+
+```ts
+import { defineConfig } from "@effected/schemastore";
+import { OkfitConfig } from "./src/config-schema.js";
+
+export default defineConfig({
+  outputDir: "schemas",
+  baseUrl: "schemastore",
+  schemas: {
+    okfit: {
+      schema: OkfitConfig,
+      versions: ["1.0", "1.1"],
+      published: true,
+      catalog: { description: "okfit configuration", fileMatch: ["okfit.toml", ".okfit.toml"] },
+    },
+  },
+});
+```
+
+Self-hosted, the same entry takes
+`baseUrl: "https://raw.githubusercontent.com/o/r/main/schemas"` and derives
+`schemas/1.1/okfit-1.1.json` (the `"versioned"` layout) instead of the flat
+SchemaStore file.
+
+The record key IS the schema's `name` — every derived `path`, `$id` and
+catalog URL is built from it, so it must satisfy the existing simple-name
+rule (non-empty, no separators, no whitespace). **Identity is derived, never
+cross-checked: `$id`, the file path and every catalog URL come from one
+`relativeFile(name, version, layout)`; there is no `$id` override by
+design (#715)** — `layout` covers the one known divergence, and an override
+would reopen exactly the disagreement #715 is about. `versions` lists every
+label the catalog advertises; exactly one of them, `current` (default: the
+highest under `SchemaVersioning.Order`), is generated from `schema`, and the
+rest become **frozen** `FrozenVersion` entries — files that already exist on
+disk, advertised by the catalog and verified on disk by the CLI, never
+regenerated. `outputDir` is top-level only, one destination per config;
+`baseUrl` and `drift` are top-level defaults an entry may override; `onDrift`
+is run-wide and not overridable. `catalog` is opt-in on any host but
+**required** under `baseUrl: "schemastore"` — hosting there means being in
+its catalog — and `layout` is only meaningful for a custom URL, an error
+under `"schemastore"`, which serves one flat shape.
+
+`baseUrl: "schemastore"` means two hosts, a verified fact and not a guess:
+hosted documents carry `$id: https://json.schemastore.org/<file>` while
+`catalog.json` points `url` at `https://www.schemastore.org/<file>`
+(checked against `clangd.json` and `agripparc-1.4.json` on 2026-09-14). A
+custom `baseUrl` is one base for both `$id` and the catalog URL instead.
+
+`defineConfig` validates the whole input and throws a plain `Error`
+prefixed `defineConfig:` naming the offending schema — never a raw
+`TypeError` — on an empty `schemas` record or a missing/empty `outputDir`;
+a key that fails the simple-name rule; an empty `versions` array or a label
+that fails to parse or duplicates another under
+`SchemaVersioning.Order`; `current` given without `versions`, or naming one
+not among them; `layout` under `"schemastore"`; a missing `catalog` under
+`"schemastore"`, or one with an empty `fileMatch`; an invalid `drift` or
+top-level `onDrift`; and an output path (a target, a frozen file or the
+catalog path) declared twice, compared after lexical normalisation. The CLI
+wraps the throw into its typed load error (exit `2`). The result is branded
+with a private symbol so `isSchemastoreConfig` recognises a loaded module's
+default export without the loader inspecting its shape.
+
+`SchemaTarget.make` survives unchanged as the library-level primitive for a
+caller driving `SchemaPipeline` directly; `defineConfig` lowers each entry
+onto it. The old array-of-targets `SchemastoreConfigInput` and its
+per-target catalog/entry-pair types no longer exist. Together with the
+widened version grammar above, this is the whole surface the CLI needs
+from the library.
 
 ## The validation gate: ajv ships closed
 
