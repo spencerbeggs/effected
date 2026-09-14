@@ -86,7 +86,15 @@ const tableRow = (columns: ReadonlyArray<string>): string => `| ${columns.join("
 export class Report {
 	private constructor() {}
 
-	/** stdout lines. */
+	/**
+	 * stdout lines.
+	 *
+	 * @remarks
+	 * The summary's `drift` count is the number of schemas whose VERDICT is
+	 * `"drift"`, independent of `written`/`unchanged`: under
+	 * `onDrift: "warn"` a drifting schema is written AND counted as drift,
+	 * so the four counts need not sum to the schema total.
+	 */
 	static human(report: RunReport): ReadonlyArray<string> {
 		const lines: Array<string> = [];
 		for (const schema of report.schemas) {
