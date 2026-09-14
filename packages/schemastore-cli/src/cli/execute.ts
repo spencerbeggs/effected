@@ -14,15 +14,31 @@ import type { RunReport } from "../Runner.js";
 import { Runner } from "../Runner.js";
 import { StepSummary } from "../StepSummary.js";
 
+const DriftedSchema = Schema.Struct({
+	$id: Schema.String,
+	change: Schema.Literals(["none", "created", "annotations", "contract"]),
+	version: Schema.optionalKey(Schema.String),
+	nextVersion: Schema.optionalKey(Schema.String),
+});
+
 /**
  * A published schema drifted under `onDrift: "error"`, so nothing was
  * written. Exit `1`.
  *
  * @public
  */
-export class DriftError extends Schema.TaggedError<DriftError>()("DriftError", { count: Schema.Number }) {
+export class DriftError extends Schema.TaggedError<DriftError>()("DriftError", {
+	drifted: Schema.Array(DriftedSchema),
+}) {
+	get count(): number {
+		return this.drifted.length;
+	}
 	override get message(): string {
-		return `${this.count} published schema(s) drifted; nothing was written. Bump the drifting versions in the config, or re-run with --force to write anyway.`;
+		const lines = this.drifted.map(
+			(s) =>
+				`  ${s.$id}: ${s.change}${s.version !== undefined ? ` at published ${s.version}` : ""}${s.nextVersion !== undefined ? ` → suggest ${s.nextVersion}` : ""}`,
+		);
+		return `${this.count} published schema(s) drifted; nothing was written.\n${lines.join("\n")}\nBump the drifting versions in the config, or re-run with --force to write anyway.`;
 	}
 }
 
@@ -124,13 +140,16 @@ const emit = Effect.fn("schemastore.emit")(function* (report: RunReport, format:
  * Run one `build` or `check`.
  *
  * @remarks
- * Loads the config, applies the flag overrides, runs the shared walk,
- * emits the report in the requested format, appends the step summary, and
- * fails typed — `GateError`, then `DriftError`, then (for `check` only)
- * `StaleError`, each carrying exit `1` — when the report says the run
- * refused to write or, under `check`, that a build would write. `SchemaFile` is built
- * here over the environment's `FileSystem`; the validator is
- * `deps.validator` or the real engine.
+ * Before anything is loaded, `--force` combined with an explicit `--drift`
+ * other than `allow` short-circuits with `ConflictingFlagsError` at exit
+ * `64` — a usage error, not a run outcome. Otherwise loads the config,
+ * applies the flag overrides, runs the shared walk, emits the report in the
+ * requested format, appends the step summary, and fails typed —
+ * `GateError`, then `DriftError`, then (for `check` only) `StaleError`,
+ * each carrying exit `1` — when the report says the run refused to write
+ * or, under `check`, that a build would write. `SchemaFile` is built here
+ * over the environment's `FileSystem`; the validator is `deps.validator` or
+ * the real engine.
  *
  * @public
  */
@@ -164,8 +183,15 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 		return yield* Effect.fail(CliRuntime.reported(new GateError({ count }), 1));
 	}
 	if (report.drifted && drift.onDrift === "error") {
-		const count = report.schemas.filter((schema) => schema.verdict === "drift").length;
-		return yield* Effect.fail(CliRuntime.reported(new DriftError({ count }), 1));
+		const drifted = report.schemas
+			.filter((schema) => schema.verdict === "drift")
+			.map((schema) => ({
+				$id: schema.$id,
+				change: schema.change,
+				...(schema.version !== undefined ? { version: schema.version } : {}),
+				...(schema.nextVersion !== undefined ? { nextVersion: schema.nextVersion } : {}),
+			}));
+		return yield* Effect.fail(CliRuntime.reported(new DriftError({ drifted }), 1));
 	}
 	if (mode === "check") {
 		const count =

@@ -249,7 +249,13 @@ describe("schemastore CLI", () => {
 				const error = yield* Effect.flip(program(["build"], deps(basicConfig())));
 				assert.instanceOf(error, DriftError);
 				assert.strictEqual(exitCodeOf(error), 1);
+				assert.strictEqual(error.count, 1);
+				assert.deepStrictEqual(error.drifted, [
+					{ $id: BASIC_ID, change: "contract", version: "1.0", nextVersion: "1.1" },
+				]);
 				assert.include(error.message, "1 published schema(s) drifted");
+				assert.include(error.message, BASIC_ID);
+				assert.include(error.message, "suggest 1.1");
 				const fs = yield* FileSystem.FileSystem;
 				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID));
 				const out = yield* stdout;
