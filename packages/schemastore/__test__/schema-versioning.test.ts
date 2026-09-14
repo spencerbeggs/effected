@@ -291,6 +291,15 @@ describe("SchemaVersioning", () => {
 				"https://example.com/schemas/cfg.json",
 			);
 		});
+
+		it("versioned layout nests the file under its version directory", () => {
+			assert.strictEqual(SchemaVersioning.fileName("okfit", version("1.2"), "versioned"), "1.2/okfit-1.2.json");
+			assert.strictEqual(SchemaVersioning.fileName("okfit", undefined, "versioned"), "okfit.json");
+			assert.strictEqual(
+				SchemaVersioning.schemaUrl("https://x/schemas/", "okfit", version("1.2"), "versioned"),
+				"https://x/schemas/1.2/okfit-1.2.json",
+			);
+		});
 	});
 
 	describe("catalogUrls", () => {
@@ -333,6 +342,44 @@ describe("SchemaVersioning", () => {
 
 		it("throws on the versioned/empty contradiction", () => {
 			assert.throws(() => SchemaVersioning.catalogUrls({ baseUrl: "https://example.com", name: "cfg", versions: [] }));
+		});
+
+		it("versioned layout: every map value and the url carry the version directory", () => {
+			const urls = SchemaVersioning.catalogUrls({
+				baseUrl: "https://x/schemas",
+				name: "okfit",
+				versions: [version("1.0"), version("1.1")],
+				layout: "versioned",
+			});
+			assert.strictEqual(urls.url, "https://x/schemas/1.1/okfit-1.1.json");
+			assert.deepStrictEqual(urls.versions, {
+				"1.0": "https://x/schemas/1.0/okfit-1.0.json",
+				"1.1": "https://x/schemas/1.1/okfit-1.1.json",
+			});
+		});
+
+		it("current pins the url to that label instead of the newest", () => {
+			const urls = SchemaVersioning.catalogUrls({
+				baseUrl: "https://x/schemas",
+				name: "okfit",
+				versions: [version("1.0"), version("2.0.0-alpha.1")],
+				current: version("1.0"),
+			});
+			assert.strictEqual(urls.url, "https://x/schemas/okfit-1.0.json");
+			assert.deepStrictEqual(Object.keys(urls.versions ?? {}), ["1.0", "2.0.0-alpha.1"]);
+		});
+
+		it("rejects a current label that is not in versions", () => {
+			assert.throws(
+				() =>
+					SchemaVersioning.catalogUrls({
+						baseUrl: "https://x",
+						name: "okfit",
+						versions: [version("1.0")],
+						current: version("1.1"),
+					}),
+				/current "1\.1" is not one of the versions/,
+			);
 		});
 	});
 

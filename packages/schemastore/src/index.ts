@@ -98,6 +98,7 @@ export {
 export {
 	type CatalogUrls,
 	InvalidSchemaVersionError,
+	type SchemaLayout,
 	SchemaVersion,
 	SchemaVersioning,
 } from "./SchemaVersioning.js";

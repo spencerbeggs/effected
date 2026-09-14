@@ -153,6 +153,16 @@ const joinUrl = (baseUrl: string, file: string): string => {
 };
 
 /**
+ * Where a versioned document sits relative to its base: `flat` is
+ * `<name>-<version>.json` (the only shape SchemaStore serves), `versioned`
+ * nests it as `<version>/<name>-<version>.json`. An unversioned document is
+ * `<name>.json` under either.
+ *
+ * @public
+ */
+export type SchemaLayout = "flat" | "versioned";
+
+/**
  * The `url`/`versions` half of a catalog entry, as assembled by
  * {@link SchemaVersioning.catalogUrls}.
  *
@@ -303,22 +313,28 @@ export class SchemaVersioning {
 
 	/**
 	 * Derives the schema file name for a catalog name: `name.json`
-	 * unversioned, `name-<version>.json` versioned.
+	 * unversioned, `name-<version>.json` versioned under the `"flat"`
+	 * layout (the default and the only shape SchemaStore serves), or
+	 * `<version>/name-<version>.json` under `"versioned"`.
 	 *
 	 * The name must be a simple file base name (no separators, no
 	 * whitespace); anything else is a wiring mistake and throws.
 	 */
-	static fileName(name: string, version?: SchemaVersion): string {
+	static fileName(name: string, version?: SchemaVersion, layout: SchemaLayout = "flat"): string {
 		assertSimpleName(name);
-		return version === undefined ? `${name}.json` : `${name}-${version}.json`;
+		if (version === undefined) {
+			return `${name}.json`;
+		}
+		const file = `${name}-${version}.json`;
+		return layout === "versioned" ? `${version}/${file}` : file;
 	}
 
 	/**
 	 * The canonical URL a schema file is hosted at: `baseUrl` joined with
 	 * {@link SchemaVersioning.fileName}.
 	 */
-	static schemaUrl(baseUrl: string, name: string, version?: SchemaVersion): string {
-		return joinUrl(baseUrl, SchemaVersioning.fileName(name, version));
+	static schemaUrl(baseUrl: string, name: string, version?: SchemaVersion, layout: SchemaLayout = "flat"): string {
+		return joinUrl(baseUrl, SchemaVersioning.fileName(name, version, layout));
 	}
 
 	/**
@@ -327,9 +343,15 @@ export class SchemaVersioning {
 	 * Omitting `versions` selects the unversioned mode (`url` only,
 	 * pointing at the plain `name.json`). Providing them selects the
 	 * versioned mode: the `versions` map carries every label, and `url`
-	 * points at the latest version's file. An **empty** `versions` array is
+	 * points at `current` (default: the newest label under
+	 * {@link SchemaVersioning.Order}). An **empty** `versions` array is
 	 * a contradiction (versioned mode with no versions) and throws — pass
-	 * `undefined` for the unversioned mode.
+	 * `undefined` for the unversioned mode. `current`, when given, must be
+	 * one of `versions` or this throws.
+	 *
+	 * `layout` (default `"flat"`) is forwarded to every URL derivation, so
+	 * `"versioned"` nests every map value and `url` under its own version
+	 * directory.
 	 *
 	 * Labels are inserted in ascending {@link SchemaVersioning.Order}; see
 	 * {@link CatalogUrls.versions} for why a bare-major key's serialized
@@ -339,10 +361,13 @@ export class SchemaVersioning {
 		readonly baseUrl: string;
 		readonly name: string;
 		readonly versions?: ReadonlyArray<SchemaVersion>;
+		readonly layout?: SchemaLayout;
+		readonly current?: SchemaVersion;
 	}): CatalogUrls {
 		const { baseUrl, name, versions } = options;
+		const layout = options.layout ?? "flat";
 		if (versions === undefined) {
-			return { url: SchemaVersioning.schemaUrl(baseUrl, name) };
+			return { url: SchemaVersioning.schemaUrl(baseUrl, name, undefined, layout) };
 		}
 		if (versions.length === 0) {
 			throw new Error(
@@ -352,9 +377,13 @@ export class SchemaVersioning {
 		const ascending = [...versions].sort(SchemaVersioning.Order);
 		const map: Record<string, string> = {};
 		for (const version of ascending) {
-			map[version] = SchemaVersioning.schemaUrl(baseUrl, name, version);
+			map[version] = SchemaVersioning.schemaUrl(baseUrl, name, version, layout);
 		}
 		const newest = ascending[ascending.length - 1] as SchemaVersion;
-		return { url: SchemaVersioning.schemaUrl(baseUrl, name, newest), versions: map };
+		const current = options.current ?? newest;
+		if (!ascending.some((v) => SchemaVersioning.Order(v, current) === 0)) {
+			throw new Error(`catalogUrls: current "${current}" is not one of the versions of "${name}"`);
+		}
+		return { url: SchemaVersioning.schemaUrl(baseUrl, name, current, layout), versions: map };
 	}
 }
