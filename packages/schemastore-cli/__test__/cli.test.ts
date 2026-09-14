@@ -453,6 +453,20 @@ describe("schemastore CLI", () => {
 		),
 	);
 
+	it.effect("check --force with --drift=strict is a usage error (exit 64) and writes nothing", () =>
+		run(
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(program(["check", "--force", "--drift=strict"], deps(basicConfig())));
+				assert.instanceOf(error, ConflictingFlagsError);
+				assert.strictEqual(exitCodeOf(error), 64);
+				assert.include(error.message, "--force conflicts with --drift=strict");
+				const fs = yield* FileSystem.FileSystem;
+				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID), "nothing written");
+			}),
+			driftedSeed,
+		),
+	);
+
 	it.effect("the config's own drift block is honoured when no flag overrides it", () =>
 		run(
 			Effect.gen(function* () {

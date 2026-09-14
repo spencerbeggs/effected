@@ -209,6 +209,26 @@ describe("ConfigLoader.load", () => {
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
+	it.effect("fails typed when a forged brand carries a catalog entry without config.path", () =>
+		Effect.gen(function* () {
+			const forged = {
+				[Symbol.for("@effected/schemastore/SchemastoreConfig")]: true,
+				schemas: config.schemas,
+				catalog: [null],
+				drift: { policy: "semantic", onDrift: "error" },
+			} as unknown as typeof config;
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.js",
+					cwd: "/repo",
+					importModule: () => Promise.resolve({ default: forged }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(error.reason, "catalog[0] is not a catalog entry (missing config.path)");
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
 	it.effect("fails typed when a schemas element lacks a boolean published flag (JS config)", () =>
 		Effect.gen(function* () {
 			const malformed = defineConfig({

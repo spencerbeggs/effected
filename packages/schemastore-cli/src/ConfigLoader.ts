@@ -100,9 +100,24 @@ const describeMalformedTarget = (schemas: unknown): string | undefined => {
 // A forged brand can carry a `catalog` that is not an array at all (a
 // `defineConfig`-produced config never does — it validates this) — guarded
 // separately from `describeMalformedTarget` since it stops a different
-// dereference (`.map` in `resolvePaths`), not a per-element shape check.
-const describeMalformedCatalog = (catalog: unknown): string | undefined =>
-	Array.isArray(catalog) ? undefined : "catalog is not an array";
+// dereference: `.map` in `resolvePaths`, then `entry.config.path` per
+// element — a forged `catalog: [null]` would otherwise throw there.
+const describeMalformedCatalog = (catalog: unknown): string | undefined => {
+	if (!Array.isArray(catalog)) {
+		return "catalog is not an array";
+	}
+	for (const [index, entry] of (catalog as ReadonlyArray<unknown>).entries()) {
+		const record = typeof entry === "object" && entry !== null ? (entry as Record<string, unknown>) : undefined;
+		const config =
+			record !== undefined && typeof record.config === "object" && record.config !== null
+				? (record.config as Record<string, unknown>)
+				: undefined;
+		if (config === undefined || typeof config.path !== "string") {
+			return `catalog[${index}] is not a catalog entry (missing config.path)`;
+		}
+	}
+	return undefined;
+};
 
 // `defineConfig` already rejects duplicate output paths lexically; two
 // spellings it could not unify (`../x/a.json` from one directory, `a.json`
