@@ -6,24 +6,30 @@
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { CliLogger, CliRuntime } from "@effected/cli";
+import { CliRuntime } from "@effected/cli";
 import { Effect } from "effect";
-import { Command } from "effect/unstable/cli";
-import { rootCommand } from "./cli/root.js";
+import { CliError } from "effect/unstable/cli";
+import { loggerLayer, program } from "./cli/program.js";
+
+// `Command.runWith` already rendered a `ShowHelp`; everything else prints
+// its own message. Exit 3 is the infrastructure tier for a typed error that
+// carries no code of its own.
+const render = (error: unknown): ReadonlyArray<string> =>
+	CliError.isCliError(error) && error._tag === "ShowHelp"
+		? []
+		: [error instanceof Error ? error.message : String(error)];
 
 export const main = (): void => {
-	const program = Command.run(rootCommand, {
+	// The ONLY place process globals are read.
+	const run = program(process.argv.slice(2), {
+		cwd: process.cwd(),
+		env: process.env,
 		version: process.env.__PACKAGE_VERSION__ ?? "0.0.0",
 	}).pipe(
-		// `ShowHelp` exits 0 with no parse errors and 1 with them; remap only
-		// the second to 64 (BSD EX_USAGE).
-		Effect.catchTag("ShowHelp", (help) => Effect.fail(CliRuntime.reported(help, help.errors.length > 0 ? 64 : 0))),
 		Effect.provide(NodeServices.layer),
-		// `renderFailure` returns `[]` for a `ShowHelp` because `Command.runWith`
-		// already rendered the help document. Exit 3 is the infrastructure tier
-		// for a typed error that carries no code of its own.
-		CliRuntime.reportFailures({ exitCode: 3, render: () => [] }),
+		CliRuntime.reportFailures({ exitCode: 3, render }),
+		Effect.provide(loggerLayer),
 	);
 
-	NodeRuntime.runMain(program.pipe(Effect.provide(CliLogger.layer())));
+	NodeRuntime.runMain(run);
 };

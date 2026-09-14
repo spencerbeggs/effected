@@ -20,8 +20,11 @@ A changesets **fixed** group holds `@effected/schemastore` and `@effected/schema
 
 ## Modules (`src/`)
 
-- `bin.ts` → `main.ts` — the assembled program: `Command.run`, the `ShowHelp` exit remap (`0` clean, `64` with parse errors), `CliRuntime.reportFailures` (`3` fallback), `CliLogger`.
-- `cli/root.ts` and `cli/commands/` — the command tree (`build`, `check`).
+- `bin.ts` → `main.ts` — the process boundary and nothing else: the ONLY reads of `process.argv`/`cwd()`/`env`, then `NodeServices.layer`, `CliRuntime.reportFailures` (`3` fallback, renders `error.message`, `[]` for `ShowHelp`) and `NodeRuntime.runMain`.
+- `cli/program.ts` — `program(args, deps)`: `Command.runWith` over the tree plus the exit-code mapping (`ShowHelp` → `64` with parse errors / `0` without; `ConfigNotFoundError`/`ConfigLoadError` → `2`, a load error's stack trimmed to its first line and the rest logged at debug) and `loggerLayer` (`CliLogger` with `stderrFrom: "All"` — stdout is `Console.log` only, every log level is stderr). Tests drive this over a test `Command.Environment`.
+- `cli/root.ts` and `cli/commands/` — `makeCommands(deps)`: the command tree (`build`, `check`) closed over `ExecuteDeps` (`cwd`, `env`, optional `importModule` and `validator` test seams).
+- `cli/flags.ts` — the shared config argument and `--drift`/`--on-drift`/`--force`/`--format` flags.
+- `cli/execute.ts` — the shared body: load, merge flags over the config's drift block, run, emit, step summary, then `GateError`/`DriftError` (both marked exit `1`).
 - `ConfigLoader` — discovery and `jiti` loading of the config, `defineConfig` validation (exit `2`).
 - `Runner` — the shared build/check walk over `SchemaPipeline`, drift table applied.
 - `Report` — human and JSON renderers.
