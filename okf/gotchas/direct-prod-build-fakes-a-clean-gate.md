@@ -3,15 +3,15 @@ type: Gotcha
 title: Running the bundler script directly fakes a clean build gate
 description: "node savvy.build.ts --target prod skips build:dev, emits no .d.ts, and leaves a truncated issues.json shaped exactly like a passing gate."
 status: stable
-resource: ../../CLAUDE.build-and-test.md
+resource: ../../turbo.json
 stale_after: 2027-03-13T00:00:00Z
 tags:
   - dx
   - ci
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: d00b4e5b5cc9f85bb28ffd6d358bb1ae9e4ff11c75f128b664669686d3f0ecb2
+  at: 2026-09-14T02:44:47Z
+  body_sha256: cf8e173e3ceb758ea49419d9c14af4986b0cdcd8d6d3ab108bcf56434a40926d
 ---
 
 # Running the bundler script directly fakes a clean build gate
@@ -21,7 +21,7 @@ generated:
 Running `node savvy.build.ts --target prod` inside a package directory
 completes without error and produces a `dist/prod/issues.json` — the same
 file turbo's `build:prod` task produces, with a `suppressed:` count that
-can read as zero, which is the shape of a genuinely clean gate.[^claude-build-and-test]
+can read as zero, which is the shape of a genuinely clean gate.[^turbo-json]
 
 ## What they wrongly conclude
 
@@ -47,5 +47,6 @@ bundler script by name. If `dist/prod` exists without a corresponding
 `dist/dev`, or without `.d.ts` files, the build did not go through the
 real pipeline regardless of what `issues.json` reports.
 
-[^claude-build-and-test]: `CLAUDE.build-and-test.md` — "Build pipeline":
-    the turbo task graph and the direct-invocation warning.
+[^turbo-json]: `turbo.json` — `build:prod`'s `dependsOn: ["types:check", "build:dev"]`
+    is the dependency chain a direct `savvy.build.ts --target prod`
+    invocation bypasses.

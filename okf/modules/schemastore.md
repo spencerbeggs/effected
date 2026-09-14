@@ -19,9 +19,9 @@ sources:
   - id: limits
     resource: ../../packages/schemastore/src/internal/limits.ts
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 77d02d7f79696693f980a74ecae0d47bacfe703837cbdd79f2a303f90d5aad35
+  by: "claude-code/opus-5"
+  at: 2026-09-14T01:29:52Z
+  body_sha256: 48594b01f69290a39e438229c9b543cbda796896a3211540eff10efd76ebebfe
 ---
 
 # @effected/schemastore
@@ -138,6 +138,10 @@ entrypoint.[^claude-md][^claude-modules] The load-bearing division:
 - **`SchemaPipeline`** — the emit verb, carrying the contract policy
   (`ContractChangePolicy`, `SchemaContractChangeError`); see
   [the pipeline](#the-pipeline-orchestration-as-a-shipped-surface).
+- **`DriftPolicy`** — the pure drift classifier over a published
+  target's `WriteChange`; see [the CLI contract](#the-cli-contract-defineconfig-drift-and-published).
+- **`SchemastoreConfig`** — `defineConfig`, the `schemastore.config.ts`
+  contract; see [the CLI contract](#the-cli-contract-defineconfig-drift-and-published).
 
 There is no annotation-carrier module. `AnnotationCarriers` existed to
 re-graft declared keys after the Draft-07 lowering dropped them; core
@@ -213,13 +217,18 @@ bug (Effect-TS/effect#8084, closed as such).
 The file-name convention stays the store's: `<name>-<version>.json`,
 hyphen-separated, matching its guide and its corpus.
 
-The label grammar narrows to full three-component SemVer, enforced
-through `@effected/semver`'s own parse rather than a parallel regex.
-The store's own labels are commonly two-part and unparseable as SemVer,
-but a partial label cannot be split back out of a file name or URL
-unambiguously, and that is the operation a consumer of these artifacts
-actually performs — requiring `major.minor.patch` makes it mechanical.
-Build metadata is rejected (SemVer precedence ignores it, so two labels
+The label grammar accepts one to three components — `major`,
+`major.minor` or `major.minor.patch`, with an optional prerelease —
+matched by a grammar regex first and then checked through
+`@effected/semver`'s own parse over the label padded to three components:
+the regex admits the shape, the parse settles validity and rejects build
+metadata. The store's own labels
+are commonly two-part, and a config author writing `okfit-1.2.json`
+should not have to spell `1.2.0`; a missing component reads as `0` for
+ordering, so `1`, `1.0` and `1.0.0` compare equal while each label
+round-trips verbatim into its file name. `defineConfig` refuses two
+spellings of one version under one name for exactly that reason. Build
+metadata is rejected (SemVer precedence ignores it, so two labels
 differing only in build would both claim to be latest), and surrounding
 whitespace is rejected since the underlying parse trims and an
 untrimmed label would round-trip verbatim into a file name.
@@ -229,14 +238,41 @@ both read, because they must never disagree: a label with no
 prerelease is "pinned" — a published, URL-pinned document — and both
 `SchemaPipeline`'s `"block-versioned"` policy and `SchemaVersioning.next`
 consume the exact same test. `next(current, change)` is pure and total
-with four arms: any non-`"contract"` classification is identity; a
-non-pinned (prerelease) `current` is identity; `major === 0` bumps
-MINOR, since MINOR is the axis 0.x consumers already treat as breaking;
-otherwise MAJOR. The bump's job is to be strictly greater and
-conspicuous, not to encode SemVer compatibility — `DocumentDiff` cannot
+with three arms: any non-`"contract"` classification is identity; a
+non-pinned (prerelease) `current` is identity; otherwise a MINOR bump
+that preserves the label's component count (`1` → `2`, major being
+the only axis a one-component label has; `1.2` → `1.3`; `1.2.3` →
+`1.3.0`). It is a suggestion the CLI surfaces, not a
+verdict — the drift policy decides whether a published document may
+change at all — so the bump's job is to be strictly greater and
+conspicuous, not to encode SemVer compatibility: `DocumentDiff` cannot
 distinguish an added optional property from a removed required one, so
 every contract change reads as breaking regardless of whether it
 actually is.
+
+## The CLI contract: defineConfig, drift and published
+
+The `schemastore-cli` companion consumes three additions that stay in
+this library so any caller can reason with them. `SchemaTarget.published`
+(always present, default `false`) is the lifecycle switch: an
+unpublished target is regenerated in place until someone depends on its
+label, a published one is held to a drift tolerance. `DriftPolicy`
+is the pure classifier over that switch — `classify({published,
+change}, policy)` answers `"write"` or `"drift"`, with `"semantic"` (only
+a `"contract"` change is drift) as the default, `"strict"` holding
+annotation changes too and `"allow"` holding nothing; `DriftPolicy.defaults`
+is `{ policy: "semantic", onDrift: "error" }`. `defineConfig` is the
+`schemastore.config.ts` contract: pure and IO-free, it validates the
+schema targets, decodes the catalog and drift blocks, merges a partial
+drift block over the defaults, derives each catalog entry through
+`CatalogEntry.assemble` from every versioned schema of its name
+(published or not — the entry is what gets submitted to become
+published), throws a plain `Error` the CLI wraps into its typed load
+error, and brands the result with a private symbol so
+`isSchemastoreConfig` recognises a loaded module's default export
+without the loader inspecting its shape. Together with the widened
+version grammar above, these are the whole surface the CLI needs from
+the library.
 
 ## The validation gate: ajv ships closed
 

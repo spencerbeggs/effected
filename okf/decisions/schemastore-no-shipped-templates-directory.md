@@ -7,7 +7,7 @@ sources:
   - id: package-json
     resource: ../../packages/schemastore/package.json
 generated:
-  by: "okfit/claude-code"
+  by: "claude-code/opus-5"
   at: 2026-09-13T05:33:04Z
   body_sha256: 43af0f80619fe7eceb0c6c868f6a54397f082c70b2ae7237e1aa172b7e57630a
 ---
@@ -45,4 +45,8 @@ material, rather than inside a runtime dependency's published files.
 A consumer scaffolding a new schema-publishing pipeline copies the
 reference script from the template repository or skill reference rather
 than importing anything from `@effected/schemastore`'s own package
-contents beyond its public modules.
+contents beyond its public modules. With the
+[`@effected/schemastore-cli`](../modules/schemastore-cli.md) companion
+there is no longer a canonical generator script to copy at all: the
+consumer writes a `schemastore.config.ts` and runs the `schemastore`
+bin, so the question this decision answered is moot for new consumers.

@@ -10,8 +10,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 03c4bcfddb3d36dce9cc1bdd9e43425e10cd328c7d473e466e13671bef857a6d
+  at: 2026-09-14T02:44:47Z
+  body_sha256: 74e7fca515c4afeec10b71168066cdc796974f90909fbfd18b993d943e42280d
 ---
 
 # workspace
@@ -72,4 +72,10 @@ The build-tooling versions (`typescript`, `@types/node`, the bundler's own stack
 
 ## Testing
 
-Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package's `__test__/` directory, never co-located in `src/`. Effect code is tested with `@effect/vitest`, asserting with `assert.*` rather than `expect`. A test needing `FileSystem` provides `memfs`, never a hand-rolled `FileSystem.layerNoop` double, because `layerNoop` is deny-by-default and a stub encodes only what its author remembered.
+Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package's `__test__/` directory, never co-located in `src/`. Effect code is tested with `@effect/vitest`, asserting with `assert.*` rather than `expect`. A test needing `FileSystem` provides `memfs`, never a hand-rolled `FileSystem.layerNoop` double, because `layerNoop` is deny-by-default and a stub encodes only what its author remembered. Full rules and riders → [testing standards](../conventions/testing-standards.md).
+
+The root `globalSetup` (`vitest.setup.ts`) runs `pnpm exec turbo run build:dev --output-logs=errors-only` via `AgentPlugin.runScript` before **every** vitest run — CLI and the MCP `run_tests` tool alike, whichever project — so tests always see fresh `dist/dev` artifacts; turbo's cache makes it a fast no-op when nothing changed. Prefer `vitest run --project @effected/<pkg>`, which resolves against the config root and works identically from any directory. A bare positional filter is different: it is matched as a substring against each test file's path as rendered from the invoking cwd, not as a path selector, so the same argument can select the whole repo, one package, or nothing depending on where it runs — see [a vitest positional filter is cwd-relative](../gotchas/vitest-positional-filter-is-cwd-relative.md) for the measured comparison and the `Tests: 0/0 passed` / exit 1 shape a miss produces.
+
+`pnpm ci:test` sets `CI=true`. The global coverage thresholds in `vitest.config.ts` apply only when `CI` is set or the run passes `--coverage`, because they measure the whole repository — a filtered run would otherwise fail them by construction with every selected test green. Locally, an unfiltered-threshold run's exit code is a real signal again; do not "restore" unconditional thresholds.
+
+Three of this repository's gates — the `suppressed:` count in `issues.json`, the `Tests:` line, and `packages.length`-style fixture assertions — work by asserting a number did not change unexpectedly; state which count moved and why whenever one does, per [state the reason when a gate count moves](../conventions/state-the-reason-when-a-gate-count-moves.md).

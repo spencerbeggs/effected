@@ -270,9 +270,10 @@ SchemaTarget.make({
 });
 ```
 
-Version labels are full three-component SemVer, ordered numerically
-(`1.10.0` above `1.9.0`); a bare-major label is rejected because it cannot
-round-trip out of a file name unambiguously. The directory carries the same
+Version labels are one to three components (`1`, `1.2`, `1.2.0`, optionally
+with a prerelease), ordered by SemVer precedence with missing components read
+as `0` (`1.10.0` above `1.9.0`; `1`, `1.0` and `1.0.0` compare equal), and
+each round-trips verbatim into its file name. The directory carries the same
 label as the file so a version's artifacts stay together while the file name
 remains the one SchemaStore resolves.
 

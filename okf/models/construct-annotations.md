@@ -12,7 +12,7 @@ sources:
   - id: generate-constructs-mts
     resource: ../../plugins/claude-code/scripts/generate-constructs.mts
 generated:
-  by: "okfit/claude-code"
+  by: "claude-code/sonnet-5"
   at: 2026-09-13T05:33:04Z
   body_sha256: 6d2cd6a67b4da145d9e653eaaf031d1531002bb9276eb970b281ee7e12f5c424
 ---
@@ -57,7 +57,9 @@ kind, release tag and TSDoc. The gitignored copies under
 read, since among other things they can carry stale directories for
 packages that no longer exist. The generator enumerates packages by
 reading the `packages/` directory on disk — subdirectories containing a
-`package.json` — never from a models directory. Rendering is
+`package.json` — never from a models directory, skipping any package whose
+`exports` map holds nothing but `./package.json` (a bin-only package, which
+has no import surface and so can never grow a doc model). Rendering is
 deterministic: facts from the doc model joined with the annotations.
 
 ## Coverage bar

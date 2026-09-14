@@ -97,4 +97,4 @@ pnpm build --filter @effected/lockfiles     # from the repo root
 
 Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. A clean `dist/prod/issues.json` carries **11** `_base` `suppressed` entries; `suppressed: 0` in the *prod* gate means the build did not run.
 
-**`suppressed: 11` in the log does not prove the build ran** — a turbo cache hit replays `FULL TURBO`, the same `✓ npm 21 files` and the same `suppressed 11` verbatim. Check that `dist/prod/issues.json`'s `generatedAt` postdates your last source edit; trust the timestamp, never the number (`@../../CLAUDE.build-and-test.md`).
+**`suppressed: 11` in the log does not prove the build ran** — a turbo cache hit replays `FULL TURBO`, the same `✓ npm 21 files` and the same `suppressed 11` verbatim. Check that `dist/prod/issues.json`'s `generatedAt` postdates your last source edit; trust the timestamp, never the number (`okf/gotchas/turbo-cache-hit-replays-clean-log.md`).

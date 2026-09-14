@@ -156,6 +156,10 @@ Available via the Skill tool (several also auto-load on trigger):
   format package (jsonc/yaml/toml/markdown): the module-per-concept surface,
   the own-the-engine policy, the cross-package parity contract, and the
   conformance-corpus harness.
+- building-schemastore-schemas — publishing JSON Schema documents from Effect
+  Schemas with @effected/schemastore and the schemastore CLI: the config file,
+  the published flag and drift policy, version labels, editor keyword
+  families, and the CI gate that retires a hand-rolled generator script.
 - effect-api-extractor-bases — inline class factories + the narrow _base
   suppression for a zero-warning API (no @public X_base const).
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the

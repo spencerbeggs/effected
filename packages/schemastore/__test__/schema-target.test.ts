@@ -84,3 +84,42 @@ describe("SchemaTarget", () => {
 		);
 	});
 });
+
+describe("published", () => {
+	it("defaults to false", () => {
+		const target = SchemaTarget.make({ schema: Config, $id: "https://x/a.json", path: "a.json" });
+		assert.strictEqual(target.published, false);
+	});
+
+	it("carries an explicit true", () => {
+		const target = SchemaTarget.make({
+			schema: Config,
+			$id: "https://x/a-1.2.json",
+			name: "a",
+			version: "1.2",
+			path: "a-1.2.json",
+			published: true,
+		});
+		assert.strictEqual(target.published, true);
+	});
+});
+
+describe("version as a string label", () => {
+	it("parses a valid label into a SchemaVersion", () => {
+		const target = SchemaTarget.make({
+			schema: Config,
+			$id: "https://x/a-1.2.json",
+			name: "a",
+			version: "1.2",
+			path: "a-1.2.json",
+		});
+		assert.strictEqual(target.version, "1.2");
+	});
+
+	it("throws on an invalid label, naming it", () => {
+		assert.throws(
+			() => SchemaTarget.make({ schema: Config, $id: "https://x/a.json", name: "a", version: "v1.2", path: "a.json" }),
+			/SchemaTarget\.make received an invalid version label "v1\.2"/,
+		);
+	});
+});

@@ -10,8 +10,8 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: ede38808a928bada067da5e98d23c2f02233bc4205834916c2a9fc1333cede41
+  at: 2026-09-14T02:44:47Z
+  body_sha256: 799fa69250a71cd8be2031eee03ab042b754c6418749a1483e7b632180b4b963
 ---
 
 # catalog:build is missing from pnpm-workspace.yaml because it is injected
@@ -20,7 +20,7 @@ generated:
 
 Every package's `devDependencies` names `typescript` as `catalog:build`.
 Grepping `pnpm-workspace.yaml` for `catalog:build` — or for `build:` under
-its `catalogs:` key — finds nothing.[^claude-build-and-test]
+its `catalogs:` key — finds nothing.[^pnpm-workspace]
 
 ## What they wrongly conclude
 
@@ -48,7 +48,6 @@ package itself) reflects what the plugin actually injected. Never add a
 `build:` entry to `pnpm-workspace.yaml`'s `catalogs:` block to "fix" the
 grep coming up empty.
 
-[^claude-build-and-test]: `CLAUDE.build-and-test.md` — "Typechecking":
-    "`catalog:build` is not declared in `pnpm-workspace.yaml` — grep for it
-    there and you find nothing. It is injected by the
-    `@savvy-web/pnpm-plugin-silk` configDependency."
+[^pnpm-workspace]: `pnpm-workspace.yaml:128` — the `configDependencies`
+    block names `@savvy-web/pnpm-plugin-silk` as the injector; no
+    `catalog:build` entry appears anywhere in the file's `catalogs:` key.

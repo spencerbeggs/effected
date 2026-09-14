@@ -10,12 +10,10 @@ tags:
 sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
-  - id: claude-dependencies
-    resource: ../../CLAUDE.dependencies.md
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 459f227534a2bf913070d91c4684d3dd87f19fad8ebeffe623f60b1b0a6e306b
+  by: "claude-code/opus-5"
+  at: 2026-09-14T02:44:47Z
+  body_sha256: 6948f741b25d4e455d0f170fc9ed1bf779250f94b969bd5377e8ee03f919f081
 ---
 
 # Peer-dependency discipline
@@ -26,7 +24,12 @@ is a defect — unfulfilled transitive peers escape to the consumer's
 importer, where pnpm's `autoInstallPeers` can bind an incompatible
 `effect` version (historically a v4 beta bound into a v3-wanting
 package, and on at least one prerelease advance, two different v4
-prereleases glued into a single decode pipeline).
+prereleases glued into a single decode pipeline). Because every
+published package's `effect` peer is an exact pin, an unsatisfiable one
+glues in anyway with no install-time error and surfaces later as a
+runtime failure far from its cause — see [an unsatisfiable exact effect
+peer installs clean and fails somewhere
+else](../gotchas/exact-effect-peer-silently-satisfiable.md).
 
 - Libraries keep `effect` as a peer dependency, never a regular one.
 - Tools and applications consuming libraries declare the full stack as
@@ -36,8 +39,9 @@ prereleases glued into a single decode pipeline).
 `pnpm peers check` has one known-issue slot and its occupant rotates,
 always somewhere in the toolchain graph rather than in this workspace,
 clearing when the offending tool republishes against the current
-`effect` prerelease. `CLAUDE.dependencies.md` is the live registry of who
-currently occupies that slot. Do not silence the occupant, and do not
+`effect` prerelease — see [the expected `pnpm peers check`
+occupant](../gotchas/expected-peers-check-occupant.md) for who currently
+holds it. Do not silence the occupant, and do not
 read its presence as license to tolerate a second one: any other warning
 from `pnpm peers check` is a genuine closure defect to fix upstream.
 
@@ -76,9 +80,21 @@ pnpm >= 11.12.0.
 ## Cross-@effected dependencies
 
 Every internal `@effected/*` edge — peer and regular dependency alike —
-uses `workspace:^`. The one exception is the paired `devDependency` that
-satisfies an auto-installed peer, which stays `workspace:*` and is never
-published. Patch-floating is the point: a sibling patch flows into an
+uses `workspace:^`. Two enumerated exceptions stay `workspace:*`:
+
+- the paired `devDependency` that satisfies an auto-installed peer, which
+  is never published;
+- `@effected/schemastore-cli`'s **peer** on `@effected/schemastore`. The
+  two release as a changesets fixed group at one version, and the CLI's
+  pipeline pattern-matches annotation symbols the consumer's config
+  created through the library — so there must be exactly one
+  `@effected/schemastore` instance, and it must be the very version the
+  bin was built against. An exact pin turns a second copy into an install
+  error rather than a silent runtime mismatch. This exception is a
+  property of a bin-only companion fronting one library; a library edge
+  never earns it.
+
+Patch-floating is the point everywhere else: a sibling patch flows into an
 existing release without forcing a coordinated re-release, while a minor
 bump still needs one. Whether an edge is a peer or a regular dependency
 is decided per edge at design time — that choice is about the
@@ -123,5 +139,15 @@ The consumer-side half of why internal edges float on `workspace:^` — the
 requirement that the same one-copy property this kit maintains for
 itself also holds in a consumer's own tree — is covered in
 [one resolved effect copy](one-resolved-effect-copy.md).
+
+## A CommonJS dependency's named exports are detected per-symbol, not all-or-nothing
+
+A dependency vendored or consumed as CommonJS does not uniformly support
+or reject named imports — Node's `cjs-module-lexer` detects some of its
+named exports and misses others in the same module, so one named import
+can work while its neighbour throws only at runtime. See [Node detects
+only some of a CommonJS dependency's named
+exports](../gotchas/cjs-named-import-detection-is-partial.md) for the
+measured example and the testing rule it implies.
 
 [^pnpm-workspace]: `pnpm-workspace.yaml:6` — `autoInstallPeers: true`.

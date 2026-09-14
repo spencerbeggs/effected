@@ -54,6 +54,7 @@ export {
 export { CatalogEntry, CatalogLintFinding } from "./CatalogEntry.js";
 export { DocumentDiff, type SchemaChange } from "./DocumentDiff.js";
 export { DocumentLint, DocumentLintFinding } from "./DocumentLint.js";
+export { type DriftOptions, DriftPolicy, type DriftTolerance, type DriftVerdict, type OnDrift } from "./DriftPolicy.js";
 export { KeywordFamilies } from "./KeywordFamilies.js";
 export {
 	type CheckResult,
@@ -78,6 +79,14 @@ export {
 	SchemaPipeline,
 	type SchemaPipelineOptions,
 } from "./SchemaPipeline.js";
+export {
+	type CatalogConfig,
+	type CatalogTarget,
+	type SchemastoreConfig,
+	type SchemastoreConfigInput,
+	defineConfig,
+	isSchemastoreConfig,
+} from "./SchemastoreConfig.js";
 export { SchemaTarget } from "./SchemaTarget.js";
 export {
 	SchemaValidator,

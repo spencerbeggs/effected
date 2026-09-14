@@ -1,11 +1,11 @@
 ---
 title: Packages
-description: The 31 packages of the effected kit — 30 Effect v4 libraries plus one pnpm companion — grouped by the runtime cost of depending on them.
+description: The 32 packages of the effected kit — 30 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
 ---
 
 # Packages
 
-The kit is **31 publishable packages**: 30 libraries and one companion. They are not a grab bag of
+The kit is **32 publishable packages**: 30 libraries and two companions. They are not a grab bag of
 utilities that happened to end up in the same repo. Scope is closed by five consuming applications, and a
 library earns its place by being something one of those five actually needs — which is why there is a TOML
 parser and a SPDX expression evaluator here, and no HTTP client or ORM.
@@ -123,14 +123,17 @@ building toward, and nothing else in the kit may depend on it.
 | Package | Description |
 | ------- | ----------- |
 | [@effected/pnpm-plugin-effect](/pnpm-plugin-effect) | The pnpm config dependency publishing the Effect catalogs every package here pins against, plus the `effected` catalogs naming the packages themselves |
+| `@effected/schemastore-cli` | The `schemastore` bin over [@effected/schemastore](/schemastore): builds and checks every schema and catalog entry a `schemastore.config.ts` declares under a per-schema published flag and a drift policy |
 
-Installing it holds your `effect` versions, your `@effected/*` versions and both sets of peer floors at
-exactly the values this kit was built and tested against, rather than leaving you to resolve your own.
+Installing the pnpm plugin holds your `effect` versions, your `@effected/*` versions and both sets of peer
+floors at exactly the values this kit was built and tested against, rather than leaving you to resolve your
+own. The CLI ships nothing importable — its documentation is `--help`, its README and the library's page —
+and releases as a fixed pair with `@effected/schemastore`.
 
 ## Versions and stability
 
-Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 31 packages are on npm except
-[@effected/schema-org](/schema-org), which is built and documented but has not cut its first release.
+Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 32 packages are on npm except
+`@effected/schemastore-cli`, which is built and documented but has not cut its first release.
 
 Releases are changeset-driven, so versions move per package rather than in lockstep — a release is
 sometimes the whole kit and sometimes a single package, and both are ordinary. Each package's npm page is

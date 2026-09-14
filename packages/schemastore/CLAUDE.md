@@ -117,8 +117,15 @@ validation gate, not a construction surface.
 - **`CanonicalJson` emits keys in insertion order — never sorted** (assembly
   owns ordering). Tab indent by default, LF, one trailing newline; non-JSON
   values fail typed instead of `JSON.stringify`'s silent drops.
-- **`SchemaVersion` is a full three-component SemVer label**, enforced by
-  `@effected/semver`'s parse, not a parallel regex. Build metadata is rejected
+- **`SchemaVersion` is a one-to-three-component label** — `major`,
+  `major.minor` or `major.minor.patch`, optionally with a prerelease —
+  matched by a grammar regex (`LABEL`) first, then checked by
+  `@effected/semver`'s parse over the label padded to three components —
+  the regex admits the shape, the parse settles validity and rejects build
+  metadata. Missing components read as `0` for
+  ordering, so `1`, `1.0` and `1.0.0` compare EQUAL under
+  `SchemaVersioning.Order` while each label round-trips verbatim (the file
+  name keeps the spelling the config wrote). Build metadata is rejected
   (URL-hostile, invisible to precedence); so is surrounding whitespace —
   `SemVer.parseResult` TRIMS, so guard with `SemVer.isValid` first or a padded
   label round-trips into `agripparc- 1.2.3 .json`. The **file-name convention
@@ -127,14 +134,16 @@ validation gate, not a construction surface.
 - **`SchemaVersioning.isPinned` is the ONE predicate shared by the contract
   guard and `next`** — a label with no prerelease. If the two read different
   tests, a caller could be refused a write AND told to keep the same label: a
-  deadlock. `next(current, change)` is pure and total, four arms: non-contract
-  change → identity (nothing to break); non-pinned `current` → identity (a
-  prerelease already declares its own instability); `major === 0` → MINOR
-  bump (0.x treats MINOR as the breaking axis); otherwise → MAJOR. It never
-  mints a prerelease from a stable input, and it encodes "strictly greater
-  and conspicuous," not SemVer compatibility — `DocumentDiff` cannot tell an
-  added optional property from a removed required one, so every contract
-  change reads as breaking.
+  deadlock. `next(current, change)` is pure and total, three arms:
+  non-contract change → identity (nothing to break); non-pinned `current` →
+  identity (a prerelease already declares its own instability); otherwise →
+  a MINOR bump that **preserves the component count** (`1` → `2`, since major
+  is the only axis a one-component label has; `1.2` → `1.3`; `1.2.3` →
+  `1.3.0`). It is a suggestion, not a verdict: the CLI's
+  drift policy decides whether a published document may change at all, and
+  `DocumentDiff` cannot tell an added optional property from a removed
+  required one, so the label only has to be strictly greater and
+  conspicuous. It never mints a prerelease from a stable input.
 - **`SchemaTarget` requires `name` whenever `version` is present**, enforced by
   an overload pair so version-without-name is a compile error (the runtime throw
   survives for untyped callers). Empty `$id`/`path` throw — wiring defect.

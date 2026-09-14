@@ -7,12 +7,12 @@ tags:
   - architecture
   - bundle
 sources:
-  - id: claude-packages
-    resource: ../../CLAUDE.packages.md
+  - id: project
+    resource: ../project.md
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 3d07c6956058e5cad4d074b2a903f7ab5e13754ecc721f9a47090822d8c27d3a
+  by: "claude-code/opus-5"
+  at: 2026-09-14T02:44:47Z
+  body_sha256: c763896639627b1512e33fc1361f2ccb7c52d71e1942669da64278a755a75f10
 ---
 
 # Library tier (pure / boundary / integrated)
@@ -67,12 +67,15 @@ pushed up a tier by that edge.
 
 ## How a package's tier is read
 
-Every package's tier is recorded as a parenthetical tag next to its
-one-line description in the package roster.[^claude-packages] The
-companion package, `pnpm-plugin-effect`, carries no tier at all — see
+Every package's tier is recorded in the `Tier` column of the packages
+table.[^project] The
+companion packages — `pnpm-plugin-effect` and `schemastore-cli` — carry
+no tier at all, even the one that runs code: tier measures what an
+importer pays, and a bin-only package has no importer. See
 [companion package](companion-package.md) for why tier does not apply to
-it.
+them.
 
-[^claude-packages]: `CLAUDE.packages.md` — the package roster records
-    each library's tier as a parenthetical tag, for example "`config-file`
-    — composable config file loading … (boundary)."
+[^project]: `project.md` — the packages table's `Tier` column, for
+    example the `config-file` row: "boundary | port of
+    `config-file-effect`; the four config codecs as free-standing named
+    exports."

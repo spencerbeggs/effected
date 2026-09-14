@@ -26,18 +26,16 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 - Consumers (the external applications that scope the kit) → `okf/consumers/` — Load when: reasoning about who a capability serves, or surveying what a consumer already exercises.
 - A specific package → `okf/modules/<pkg>.md` (one per `packages/*`) — Load when: working inside that package.
 
-### Child context files
+### Detail folded into the bundle
 
-Detail lifted out of this file. Load on demand:
-
-- Package roster → `@./CLAUDE.packages.md` — Load when: choosing which package owns a capability, or checking a package's tier or scope.
-- Build and test mechanics → `@./CLAUDE.build-and-test.md` — Load when: asking how the turbo/bundler pipeline, typechecking or the vitest setup actually works.
-- Dependency catalogs and peer closure → `@./CLAUDE.dependencies.md` — Load when: reading a `pnpm peers check` warning, or touching catalogs and peer declarations.
-- Vendored repos → `@./CLAUDE.vendored-effect.md` — Load when: consulting, syncing or re-pinning `.repos/effect` or a sibling vendored submodule.
+- Package roster with tiers and provenance → `okf/project.md` — Load when: choosing which package owns a capability, or checking a package's tier or scope.
+- Build and test mechanics (turbo/bundler pipeline, typechecking, vitest pre-build and gates) → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-only.md`, `okf/conventions/testing-standards.md`, `okf/conventions/evidence-ladder.md`, `okf/conventions/state-the-reason-when-a-gate-count-moves.md` — Load when: asking how the turbo/bundler pipeline, typechecking or the vitest setup actually works.
+- Dependency catalogs and peer closure → `okf/modules/workspace.md`, `okf/conventions/peer-dependency-discipline.md`, `okf/conventions/one-resolved-effect-copy.md`, `okf/gotchas/expected-peers-check-occupant.md` — Load when: reading a `pnpm peers check` warning, or touching catalogs and peer declarations.
+- Vendored repos → `okf/modules/workspace.md`, `okf/runbooks/sync-vendored-repos.md`, `okf/runbooks/advance-the-effect-pin.md` — Load when: consulting, syncing or re-pinning `.repos/effect` or a sibling vendored submodule.
 
 ### Kit composition
 
-The kit is **31 publishable packages**: 30 libraries plus the `pnpm-plugin-effect` companion, and all 31 have published (`schema-org`, the newest, on 2026-08-26). New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **32 publishable packages**: 30 libraries plus two companions (`pnpm-plugin-effect` and `schemastore-cli`); 31 have published (`schema-org`, the newest, on 2026-08-26) and `schemastore-cli` awaits its first release. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object**: it would drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `okf/modules/config-file.md` and `okf/decisions/codecs-are-free-standing-named-exports.md` before touching it.
 
@@ -49,17 +47,17 @@ The kit is **31 publishable packages**: 30 libraries plus the `pnpm-plugin-effec
 - `plugins/` — two agent plugins: `claude-code/` ("effected", skills and specialist agents) and the experimental `copilot/` port. Each has a private tracking package — `@effected/claude-code-plugin`, `@effected/copilot-plugin` — that versions and tags it but **never publishes to npm**; a plugin release is a git tag plus a GitHub release. Read `plugins/CLAUDE.md` before working there.
 - `website/` — RSPress docs site; per-package api-extractor models live in `website/lib/models/`.
 - `scratchpad/` — private agent-probe workspace: every kit package at `workspace:*`, three runners, never published, invisible to CI. Read `scratchpad/CLAUDE.md` before working there.
-- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. Sibling submodules vendor spec inputs for specific packages (the CommonMark/mdast set). **Never write to anything under `.repos/`** — silk's PreToolUse guards deny it. Detail → `@./CLAUDE.vendored-effect.md`.
+- `.repos/effect` — read-only vendored Effect v4 source; the authority on what v4 exports. Sibling submodules vendor spec inputs for specific packages (the CommonMark/mdast set). **Never write to anything under `.repos/`** — silk's PreToolUse guards deny it. Detail → `okf/modules/workspace.md`, `okf/conventions/no-writes-under-repos.md`.
 - **A generator's data input is a committed file, not a submodule.** `@effected/spdx` and `@effected/schema-org` each read one published document from their own `lib/data/`. Vendoring those as submodules cost every clone and every CI checkout the upstream repos' full history — 1.86 GB and 254 MB — to reach 332 KB and 1.5 MB of JSON, and roughly tripled CI checkout time. Submodule a source repo when the package needs to *read the repo*; commit the file when it needs one file.
 - `.claude/skills/improve` — project-level skill that maintains `plugins/claude-code/skills/`.
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 31 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `@./CLAUDE.packages.md`. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 32 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
 
 ## Build Pipeline
 
-Builds run through turbo and `@savvy-web/bundler`; mechanics → `@./CLAUDE.build-and-test.md`. The rules:
+Builds run through turbo and `@savvy-web/bundler`; mechanics → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-only.md`. The rules:
 
 **Never run `node savvy.build.ts --target prod` directly.** It skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. Build through `pnpm build --filter <pkg>`.
 
@@ -103,7 +101,7 @@ Biome, commitlint, lint-staged and markdownlint take their presets from `@savvy-
 
 ### Dependencies
 
-Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effect`. Catalog detail and the expected peer-warning class → `@./CLAUDE.dependencies.md`.
+Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effect`. Catalog detail and the expected peer-warning class → `okf/modules/pnpm-plugin-effect.md`, `okf/conventions/peer-dependency-discipline.md`, `okf/gotchas/expected-peers-check-occupant.md`.
 
 **`catalog:effect` uses the `lock` strategy: exact prerelease pins (`4.0.0-rc.112`), never a caret.** A caret on a prerelease floats across the release line and silently desynchronizes the installed `effect` from the `.repos/effect` submodule, the authority on what v4 exports.
 
@@ -117,6 +115,6 @@ Commit bodies allow dash bullets (the preferred shape) but no markdown headers, 
 
 ## Testing
 
-Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package's `__test__/` directory, never co-located in `src/`. Test Effect code with `@effect/vitest` and assert with `assert.*` — **never `expect`**. Setup detail → `@./CLAUDE.build-and-test.md`.
+Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package's `__test__/` directory, never co-located in `src/`. Test Effect code with `@effect/vitest` and assert with `assert.*` — **never `expect`**. Setup detail → `okf/modules/workspace.md`, `okf/conventions/testing-standards.md`.
 
 **A test needing `FileSystem` provides `@effected/memfs`, never a hand-rolled `FileSystem.layerNoop` double** — `layerNoop` is deny-by-default, so a stub encodes only what its author remembered. Inject misbehaviour as a fault handler, not a stub body; riders in `effect-standards.md`.
