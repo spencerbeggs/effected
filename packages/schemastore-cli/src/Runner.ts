@@ -21,7 +21,6 @@ import type {
 	SchemaFile,
 	SchemaFileReadError,
 	SchemaFileWriteError,
-	SchemaTarget,
 	SchemaValidator,
 	SchemaValidatorError,
 	SchemaVersion,
@@ -182,9 +181,9 @@ const parsesEqual = (existing: string, text: string): boolean => {
  * @remarks
  * **The frozen check runs first, before anything is generated.** A schema
  * whose {@link ResolvedSchema.frozen} names a label with no file on disk
- * fails typed with {@link FrozenVersionMissingError} — nothing is written,
- * total over targets would mislead here, since a catalog pointing a version
- * at a 404 is a worse failure than an early one.
+ * fails typed with {@link FrozenVersionMissingError} — nothing is written —
+ * a catalog that points a label at a 404 is a worse failure than an early
+ * refusal.
  *
  * **Drift is classified per schema, under that schema's own
  * {@link ResolvedSchema.drift} tolerance — unless `options.policy` is set,
@@ -243,14 +242,14 @@ export class Runner {
 
 		// `check` and `run` answer one result per target, in target order, so
 		// indexing `config.schemas` and the run results by the check index is
-		// total — the casts below assert that (the `SchemaPipeline.runOne`
+		// total — the cast below asserts that (the `SchemaPipeline.runOne`
 		// precedent), with no defensive re-check.
 		const targets = config.schemas.map((schema) => schema.target);
 		const checks = yield* SchemaPipeline.check(targets, pipelineOptions);
 		const gateFailed = checks.some((check) => check.blocked);
 		const classified = checks.map((check, i) => {
 			const schema = config.schemas[i] as ResolvedSchema;
-			const target = schema.target as SchemaTarget;
+			const target = schema.target;
 			const policy = options.policy ?? schema.drift;
 			const verdict = DriftPolicy.classify({ published: target.published, change: check.change }, policy);
 			// A prerelease label declares its own instability: `next` would answer

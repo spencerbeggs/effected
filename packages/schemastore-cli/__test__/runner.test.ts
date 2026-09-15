@@ -483,6 +483,7 @@ describe("Runner.run", () => {
 			);
 			assert.strictEqual(own.schemas[0]?.verdict, "write");
 			assert.strictEqual(own.schemas[0]?.policy, "allow");
+			assert.strictEqual(own.schemas[1]?.policy, "semantic");
 			const forced = yield* Runner.run(
 				twoSchemas({ drift: "allow" }),
 				options("check", { policy: "strict", source: "flag" }),
@@ -502,6 +503,26 @@ describe("Runner.run", () => {
 			assert.strictEqual(parsed[0]?.url, PINNED_ID);
 			assert.deepStrictEqual(report.schemas[0]?.frozen, [version("4.0.0")]);
 		}).pipe(Effect.provide(layers(frozenSeed))),
+	);
+
+	it.effect("wrote is true for a catalog-only write, with every schema unchanged", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(twoSchemas(), options("build"));
+			for (const schema of report.schemas) {
+				assert.strictEqual(schema.outcome, "unchanged");
+			}
+			assert.strictEqual(report.catalog?.outcome, "written");
+			assert.isTrue(report.wrote);
+		}).pipe(
+			Effect.provide(
+				layers({
+					...frozenSeed,
+					[PINNED_PATH]: emitted(Config, PINNED_ID),
+					[PLAIN_PATH]: emitted(Config, PLAIN_ID),
+					[CATALOG_PATH]: "[]\n",
+				}),
+			),
+		),
 	);
 
 	it.effect("omits the catalog report when no schema declares one", () =>
