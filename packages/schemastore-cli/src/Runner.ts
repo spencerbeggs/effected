@@ -164,6 +164,25 @@ const pipelineOptions = { contractChanges: "allow" } as const;
 // nothing it can be content-equal to: it differs, and a build repairs it.
 // Key order is a serialization detail (another tool may have sorted or
 // compacted the file); `CanonicalJson.equals` compares structurally.
+// The one place "absent" is a value rather than a failure: a NotFound from
+// the platform answers `none`, every other PlatformError stays typed.
+const orNone = <A, E extends PlatformError.PlatformError, R>(
+	read: Effect.Effect<A, E, R>,
+): Effect.Effect<Option.Option<A>, E, R> =>
+	read.pipe(
+		Effect.map(Option.some),
+		Effect.catchIf(
+			(error) => error.reason._tag === "NotFound",
+			() => Effect.succeed(Option.none<A>()),
+		),
+	);
+
+// What a not-written document reports: `held` when the run refused every
+// write, else what a build would do. Shared by schemas and the catalog so
+// the two never spell the rule differently.
+const pendingOutcome = (wouldWrite: boolean, refused: boolean): "held" | "would-write" | "unchanged" =>
+	!wouldWrite ? "unchanged" : refused ? "held" : "would-write";
+
 const parsesEqual = (existing: string, text: string): boolean => {
 	try {
 		return CanonicalJson.equals(JSON.parse(existing), JSON.parse(text));
@@ -232,13 +251,7 @@ export class Runner {
 		// a 404.
 		for (const schema of config.schemas) {
 			for (const frozen of schema.frozen) {
-				const info = yield* fs.stat(frozen.path).pipe(
-					Effect.map(Option.some),
-					Effect.catchIf(
-						(error) => error.reason._tag === "NotFound",
-						() => Effect.succeed(Option.none<FileSystem.File.Info>()),
-					),
-				);
+				const info = yield* orNone(fs.stat(frozen.path));
 				if (Option.isNone(info) || info.value.type !== "File") {
 					return yield* Effect.fail(
 						new FrozenVersionMissingError({ name: schema.name, version: frozen.version, path: frozen.path }),
@@ -289,11 +302,7 @@ export class Runner {
 					? (written[i] as PipelineResult).outcome
 					: verdict === "drift"
 						? "drift"
-						: refused && check.wouldWrite
-							? "held"
-							: check.wouldWrite
-								? "would-write"
-								: "unchanged";
+						: pendingOutcome(check.wouldWrite, refused);
 			return {
 				$id: target.$id,
 				path: target.path,
@@ -318,15 +327,9 @@ export class Runner {
 			const text = yield* CanonicalJson.serialize(entries.map((entry) => Schema.encodeSync(CatalogEntry)(entry)));
 			// One read; a missing file is "different" (a build creates it), and so
 			// is text that does not parse — nothing unparseable is content-equal.
-			const existing = yield* fs.readFileString(config.catalogPath).pipe(
-				Effect.map(Option.some),
-				Effect.catchIf(
-					(error) => error.reason._tag === "NotFound",
-					() => Effect.succeed(Option.none<string>()),
-				),
-			);
+			const existing = yield* orNone(fs.readFileString(config.catalogPath));
 			const same = Option.isSome(existing) && parsesEqual(existing.value, text);
-			const outcome = same ? "unchanged" : !writing ? (refused ? "held" : "would-write") : "written";
+			const outcome = writing && !same ? "written" : pendingOutcome(!same, refused);
 			if (outcome === "written") {
 				// Mirrors `SchemaFile.write`: create the parent, then write.
 				yield* fs.makeDirectory(path.dirname(config.catalogPath), { recursive: true });

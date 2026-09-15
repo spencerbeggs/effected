@@ -1,6 +1,6 @@
 import type { SchemastoreConfig } from "@effected/schemastore";
 import { isSchemastoreConfig } from "@effected/schemastore";
-import { Effect, FileSystem, Path, Schema } from "effect";
+import { Effect, FileSystem, Path, Predicate, Schema } from "effect";
 import { createJiti } from "jiti";
 
 /**
@@ -80,16 +80,12 @@ const describeCause = (cause: unknown): string =>
 // entirely. The loader re-checks the fields the pipeline and the drift
 // policy dereference. (A v4 Schema value is callable — `typeof` says
 // "function" — hence `isSchema`.)
-const isTargetShaped = (target: unknown): boolean => {
-	const record = typeof target === "object" && target !== null ? (target as Record<string, unknown>) : undefined;
-	return (
-		record !== undefined &&
-		Schema.isSchema(record.schema) &&
-		typeof record.$id === "string" &&
-		typeof record.path === "string" &&
-		typeof record.published === "boolean"
-	);
-};
+const isTargetShaped = (target: unknown): boolean =>
+	Predicate.isObject(target) &&
+	Schema.isSchema(target.schema) &&
+	typeof target.$id === "string" &&
+	typeof target.path === "string" &&
+	typeof target.published === "boolean";
 
 const describeMalformed = (config: SchemastoreConfig): string | undefined => {
 	if (typeof config.outputDir !== "string") {
@@ -102,21 +98,24 @@ const describeMalformed = (config: SchemastoreConfig): string | undefined => {
 		return "schemas is not an array";
 	}
 	for (const [index, schema] of (config.schemas as ReadonlyArray<unknown>).entries()) {
-		const record = typeof schema === "object" && schema !== null ? (schema as Record<string, unknown>) : undefined;
 		if (
-			record === undefined ||
-			typeof record.name !== "string" ||
-			!Array.isArray(record.frozen) ||
-			typeof record.drift !== "string"
+			!Predicate.isObject(schema) ||
+			typeof schema.name !== "string" ||
+			!Array.isArray(schema.frozen) ||
+			typeof schema.drift !== "string"
 		) {
 			return `schemas[${index}] is not a resolved schema (missing name/target/frozen/drift)`;
 		}
-		if (!isTargetShaped(record.target)) {
+		if (!isTargetShaped(schema.target)) {
 			return `schemas[${index}].target is not a SchemaTarget (missing schema/$id/path/published)`;
 		}
-		for (const [j, frozen] of (record.frozen as ReadonlyArray<unknown>).entries()) {
-			const f = typeof frozen === "object" && frozen !== null ? (frozen as Record<string, unknown>) : undefined;
-			if (f === undefined || typeof f.version !== "string" || typeof f.path !== "string" || typeof f.url !== "string") {
+		for (const [j, frozen] of (schema.frozen as ReadonlyArray<unknown>).entries()) {
+			if (
+				!Predicate.isObject(frozen) ||
+				typeof frozen.version !== "string" ||
+				typeof frozen.path !== "string" ||
+				typeof frozen.url !== "string"
+			) {
 				return `schemas[${index}].frozen[${j}] is not a frozen version (missing version/path/url)`;
 			}
 		}

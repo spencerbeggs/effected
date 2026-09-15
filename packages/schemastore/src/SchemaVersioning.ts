@@ -136,7 +136,7 @@ const bumpNext = (current: SchemaVersion, parsed: SemVer, components: 1 | 2 | 3)
 };
 
 const assertSimpleName = (name: string): void => {
-	if (name.length === 0 || /[/\\\s]/.test(name)) {
+	if (!SchemaVersioning.isSimpleName(name)) {
 		throw new Error(`Schema name must be a non-empty simple file base name, got "${name}"`);
 	}
 };
@@ -309,6 +309,16 @@ export class SchemaVersioning {
 			throw new Error(`SchemaVersion bump invariant violated: "${current}" bumped to "${label}"`);
 		}
 		return reparsed.success;
+	}
+
+	/**
+	 * Whether a name is a simple file base name — non-empty, no path
+	 * separators, no whitespace — the rule every schema name is held to
+	 * ({@link SchemaVersioning.fileName} throws on anything else; `defineConfig`
+	 * rejects a schema key the same way). One predicate so the two cannot drift.
+	 */
+	static isSimpleName(name: string): boolean {
+		return name.length > 0 && !/[/\\\s]/.test(name);
 	}
 
 	/**

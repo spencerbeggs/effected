@@ -1,9 +1,6 @@
-__test__/fixtures/*/schemas/
-# release-action/ commits ONE frozen document by hand (generated once, never
-# rewritten by a test — see __test__/fixtures/README.md); everything else
-# under its schemas/ tree stays ignored.
-!__test__/fixtures/release-action/schemas/
-__test__/fixtures/release-action/schemas/*
-!__test__/fixtures/release-action/schemas/4.0.0/
-__test__/fixtures/release-action/schemas/4.0.0/*
-!__test__/fixtures/release-action/schemas/4.0.0/release-action-4.0.0.json
+# The basic fixture's schemas/ is BUILD OUTPUT the integration test writes.
+# release-action/ is the opposite: its schemas/4.0.0/ document is committed
+# INPUT (a frozen label, generated once by hand — see __test__/fixtures/README.md)
+# and its test only ever runs `check`, so it is not ignored. A new fixture that
+# writes needs its own line here.
+__test__/fixtures/basic/schemas/

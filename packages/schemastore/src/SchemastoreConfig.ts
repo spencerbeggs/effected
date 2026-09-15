@@ -1,5 +1,5 @@
 import type { Schema } from "effect";
-import { Result } from "effect";
+import { Option, Predicate, Result } from "effect";
 import { CatalogEntry } from "./CatalogEntry.js";
 import type { DriftTolerance, OnDrift } from "./DriftPolicy.js";
 import { DriftPolicy } from "./DriftPolicy.js";
@@ -193,7 +193,6 @@ interface Hosting {
 	readonly idBase: string;
 	readonly catalogBase: string;
 	readonly layout: SchemaLayout;
-	readonly schemastore: boolean;
 }
 
 const resolveHosting = (name: string, baseUrl: string | undefined, layout: SchemaLayout | undefined): Hosting => {
@@ -209,12 +208,12 @@ const resolveHosting = (name: string, baseUrl: string | undefined, layout: Schem
 				`schema "${name}" declares layout "${layout}" under baseUrl "schemastore", which serves only the flat layout`,
 			);
 		}
-		return { idBase: SCHEMASTORE_ID_BASE, catalogBase: SCHEMASTORE_CATALOG_BASE, layout: "flat", schemastore: true };
+		return { idBase: SCHEMASTORE_ID_BASE, catalogBase: SCHEMASTORE_CATALOG_BASE, layout: "flat" };
 	}
 	if (!baseUrl.startsWith("https://") || baseUrl.length === "https://".length) {
 		return fail(`schema "${name}" has baseUrl "${baseUrl}"; expected "schemastore" or an https:// URL`);
 	}
-	return { idBase: baseUrl, catalogBase: baseUrl, layout: layout ?? "versioned", schemastore: false };
+	return { idBase: baseUrl, catalogBase: baseUrl, layout: layout ?? "versioned" };
 };
 
 const parseLabel = (name: string, label: string): SchemaVersion =>
@@ -247,7 +246,8 @@ const resolveVersions = (
 		}
 		versions.push(version);
 	}
-	const newest = [...versions].sort(SchemaVersioning.Order)[versions.length - 1] as SchemaVersion;
+	// Non-empty by the guard above, so `latest` is always `some`.
+	const newest = Option.getOrThrow(SchemaVersioning.latest(versions));
 	if (entry.current === undefined) {
 		return { versions, current: newest };
 	}
@@ -259,39 +259,46 @@ const resolveVersions = (
 	return { versions, current: match };
 };
 
-const resolveDrift = (name: string | undefined, value: unknown, fallback: DriftTolerance): DriftTolerance => {
+const isDriftTolerance = (value: unknown): value is DriftTolerance =>
+	DRIFT_TOLERANCES.includes(value as DriftTolerance);
+
+// The top-level default every schema inherits.
+const resolveConfigDrift = (value: unknown): DriftTolerance => {
+	if (value === undefined) {
+		return DriftPolicy.defaults.policy;
+	}
+	return isDriftTolerance(value) ? value : fail(`config has an invalid drift tolerance "${String(value)}"`);
+};
+
+// One schema's tolerance: its own override, else the config default.
+const resolveSchemaDrift = (name: string, value: unknown, fallback: DriftTolerance): DriftTolerance => {
 	if (value === undefined) {
 		return fallback;
 	}
-	if (!DRIFT_TOLERANCES.includes(value as DriftTolerance)) {
-		return fail(
-			`${name === undefined ? "config" : `schema "${name}"`} has an invalid drift tolerance "${String(value)}"`,
-		);
-	}
-	return value as DriftTolerance;
+	return isDriftTolerance(value) ? value : fail(`schema "${name}" has an invalid drift tolerance "${String(value)}"`);
 };
 
 const resolveEntry = (
 	name: string,
 	entry: SchemaEntryInput,
-	input: SchemastoreConfigInput,
+	defaults: { readonly baseUrl: string | undefined; readonly drift: DriftTolerance },
 	outputDir: string,
 ): ResolvedSchema => {
-	if (name.length === 0 || /[/\\\s]/.test(name)) {
+	if (!SchemaVersioning.isSimpleName(name)) {
 		return fail(`schema "${name}" must be keyed by a simple file base name (no separators, no whitespace)`);
 	}
-	if (typeof entry !== "object" || entry === null) {
+	if (!Predicate.isObject(entry)) {
 		return fail(`schema "${name}" must be an object`);
 	}
-	const hosting = resolveHosting(name, entry.baseUrl ?? input.baseUrl, entry.layout);
+	const baseUrl = entry.baseUrl ?? defaults.baseUrl;
+	const hosting = resolveHosting(name, baseUrl, entry.layout);
 	const versioned = resolveVersions(name, entry);
-	if (hosting.schemastore && entry.catalog === undefined) {
+	if (baseUrl === "schemastore" && entry.catalog === undefined) {
 		return fail(`schema "${name}" must declare a catalog block under baseUrl "schemastore"`);
 	}
 	if (
 		entry.catalog !== undefined &&
-		(typeof entry.catalog !== "object" ||
-			entry.catalog === null ||
+		(!Predicate.isObject(entry.catalog) ||
 			!Array.isArray(entry.catalog.fileMatch) ||
 			typeof entry.catalog.description !== "string")
 	) {
@@ -301,9 +308,10 @@ const resolveEntry = (
 		return fail(`schema "${name}" declares a catalog with an empty fileMatch`);
 	}
 	const file = (version?: SchemaVersion) => `${outputDir}/${SchemaVersioning.fileName(name, version, hosting.layout)}`;
-	const idOf = (version?: SchemaVersion) => SchemaVersioning.schemaUrl(hosting.idBase, name, version, hosting.layout);
-	const catalogUrlOf = (version: SchemaVersion) =>
-		SchemaVersioning.schemaUrl(hosting.catalogBase, name, version, hosting.layout);
+	const urlOf = (base: string) => (version?: SchemaVersion) =>
+		SchemaVersioning.schemaUrl(base, name, version, hosting.layout);
+	const idOf = urlOf(hosting.idBase);
+	const catalogUrlOf = urlOf(hosting.catalogBase);
 	const current = versioned?.current;
 	const target =
 		current === undefined
@@ -347,7 +355,7 @@ const resolveEntry = (
 		name,
 		target,
 		frozen,
-		drift: resolveDrift(name, entry.drift, resolveDrift(undefined, input.drift, DriftPolicy.defaults.policy)),
+		drift: resolveSchemaDrift(name, entry.drift, defaults.drift),
 		...(catalog !== undefined ? { catalog } : {}),
 	};
 };
@@ -427,7 +435,7 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 		return fail("outputDir is required");
 	}
 	const outputDir = trimSlashes(input.outputDir);
-	if (typeof input.schemas !== "object" || input.schemas === null || Object.keys(input.schemas).length === 0) {
+	if (!Predicate.isObject(input.schemas) || Object.keys(input.schemas).length === 0) {
 		return fail("at least one schema is required");
 	}
 	if (input.onDrift !== undefined && !ON_DRIFT.includes(input.onDrift)) {
@@ -436,7 +444,9 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 	if (input.catalogPath !== undefined && (typeof input.catalogPath !== "string" || input.catalogPath.length === 0)) {
 		return fail("catalogPath must be a non-empty string when given");
 	}
-	const schemas = Object.entries(input.schemas).map(([name, entry]) => resolveEntry(name, entry, input, outputDir));
+	// Validated once here, even when every entry overrides it.
+	const defaults = { baseUrl: input.baseUrl, drift: resolveConfigDrift(input.drift) };
+	const schemas = Object.entries(input.schemas).map(([name, entry]) => resolveEntry(name, entry, defaults, outputDir));
 	const catalogPath = input.catalogPath ?? `${outputDir}/catalog.json`;
 	assertUniquePaths([...schemas.flatMap((s) => [s.target.path, ...s.frozen.map((f) => f.path)]), catalogPath]);
 	return {
