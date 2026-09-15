@@ -13,8 +13,11 @@ import { Effect, Layer } from "effect";
 // hop lands on the plugin in either world, with its real types and no cast.
 const addFormats = ajvFormats.default;
 
-// Mirrors the library's nesting cap: the keyword walk below must terminate
-// on a document the library's own guards would already have refused.
+// Mirrors the library's `MAX_NESTING_DEPTH` (`internal/limits.ts`, not on
+// its public surface — that file cross-references this one). The two must
+// move together: a document the library admits at depth N whose declared
+// keywords this walk stopped collecting before N would fail strict mode as
+// unknown keywords, a false gate failure.
 const MAX_KEYWORD_WALK_DEPTH = 256;
 
 // ajv strict mode rejects any keyword it does not know, which would fail
@@ -34,14 +37,14 @@ const collectDeclaredKeywords = (node: unknown, into: Set<string>, depth: number
 	}
 	for (const [key, value] of Object.entries(node)) {
 		if (KeywordFamilies.isDeclared(key)) {
+			// The payload is opaque advice the library copied verbatim, and ajv
+			// never strict-checks inside a registered keyword's value — so a
+			// prefix-matching key INSIDE it (`x-ai-model.name`) is data, not a
+			// keyword. Registering it would make ajv's name grammar reject a
+			// document the library accepted. Stop at the declared key.
 			into.add(key);
+			continue;
 		}
-		// Deliberate: we descend into a declared key's OWN value too (e.g. an
-		// `x-ai-hint` payload), not just past it. Registering the OUTER keyword
-		// is already enough on its own — ajv does not strict-check inside a
-		// registered keyword's value — so a declared keyword found nested in a
-		// payload is harmless over-registration of a no-op ajv keyword, not
-		// load-bearing.
 		collectDeclaredKeywords(value, into, depth + 1);
 	}
 };

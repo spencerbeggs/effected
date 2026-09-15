@@ -68,7 +68,9 @@ exact peer pin on it.
 would read as internal-only tooling, inviting the (wrong) inference that
 it is not a real shipped package. `companion` instead names the
 package's relationship to the *consumer* — it ships alongside the kit,
-installation of it is optional, and it has no API — which makes that
+installation of it is optional, and its API is not why you install it —
+none at all (`pnpm-plugin-effect`) or one fronting layer over the library
+it accompanies (`schemastore-cli`'s `AjvValidator`) — which makes that
 wrong reading harder to fall into.
 
 [^project]: `project.md` — the packages table's `pnpm-plugin-effect` row:

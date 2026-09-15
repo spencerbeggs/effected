@@ -17,6 +17,34 @@ const trimSlashes = (url: string): string => {
 	return url.slice(0, end);
 };
 
+// A base must be a directory a file name can be joined under: an https URL
+// with no query, fragment or credentials — each of which would survive the
+// join and make `<base>/<file>` name something other than a child path.
+const describeDirectoryUrl = (raw: string): string | undefined => {
+	let url: URL;
+	try {
+		url = new URL(raw);
+	} catch {
+		return 'expected "schemastore" or an https:// URL';
+	}
+	if (url.protocol !== "https:" || url.host.length === 0) {
+		return 'expected "schemastore" or an https:// URL';
+	}
+	if (url.search.length > 0 || raw.endsWith("?")) {
+		return "a base URL cannot carry a query";
+	}
+	if (url.hash.length > 0 || raw.endsWith("#")) {
+		return "a base URL cannot carry a fragment";
+	}
+	if (url.username.length > 0 || url.password.length > 0) {
+		return "a base URL cannot carry credentials";
+	}
+	return undefined;
+};
+
+// `owner/repo`, exactly two non-empty path segments with no whitespace.
+const isOwnerRepo = (repo: string): boolean => /^[^/\s]+\/[^/\s]+$/.test(repo);
+
 // Where a document is hosted decides both of its bases and its layout.
 interface Hosting {
 	readonly idBase: string;
@@ -47,8 +75,9 @@ interface Fields {
 // One walk over the raw fields answering either the resolved identity or the
 // first reason it is invalid — the same walk backs the class check and every
 // derived getter, so what the check admits is exactly what the getters read.
-// Messages are predicates with no subject, so `defineConfig` can prefix them
-// with `schema "<name>"` verbatim.
+// Messages are predicates with no subject; the class check prefixes them
+// with `schema "<name>"`, the same subject `defineConfig` uses, so a
+// hand-spelled entry and a `hosted` one fail with one wording.
 const resolve = (fields: Fields): Result.Result<Resolved, string> => {
 	if (!SchemaVersioning.isSimpleName(fields.name)) {
 		return Result.fail(`must be keyed by a simple file base name (no separators, no whitespace)`);
@@ -61,9 +90,11 @@ const resolve = (fields: Fields): Result.Result<Resolved, string> => {
 			);
 		}
 		hosting = { idBase: SCHEMASTORE_ID_BASE, catalogBase: SCHEMASTORE_CATALOG_BASE, layout: "flat" };
-	} else if (!fields.baseUrl.startsWith("https://") || fields.baseUrl.length === "https://".length) {
-		return Result.fail(`has baseUrl "${fields.baseUrl}"; expected "schemastore" or an https:// URL`);
 	} else {
+		const problem = describeDirectoryUrl(fields.baseUrl);
+		if (problem !== undefined) {
+			return Result.fail(`has baseUrl "${fields.baseUrl}"; ${problem}`);
+		}
 		hosting = { idBase: fields.baseUrl, catalogBase: fields.baseUrl, layout: fields.layout ?? "versioned" };
 	}
 	if (fields.versions === undefined) {
@@ -114,7 +145,7 @@ const HostedSchemaFields = Schema.Struct({
 }).check(
 	Schema.makeFilter((fields) => {
 		const resolved = resolve(fields);
-		return Result.isFailure(resolved) ? `hosted schema "${fields.name}" ${resolved.failure}` : undefined;
+		return Result.isFailure(resolved) ? `schema "${fields.name}" ${resolved.failure}` : undefined;
 	}),
 );
 
@@ -196,6 +227,9 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 	/** A schema served raw from a GitHub repository. */
 	static github(input: GitHubHostedSchemaInput): HostedSchema {
 		const { repo, branch, path, ...rest } = input;
+		if (!isOwnerRepo(repo)) {
+			throw new Error(`schema "${input.name}" has repo "${repo}"; expected owner/repo`);
+		}
 		const segments = [RAW_GITHUB_BASE, repo, branch ?? "main", ...(path === undefined ? [] : [path])];
 		return construct({ ...rest, baseUrl: trimSlashes(segments.join("/")) });
 	}

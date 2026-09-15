@@ -63,6 +63,9 @@ and hand the same value to both sides:
 
 ```ts
 // src/schema/output.ts
+import { HostedSchema } from "@effected/schemastore";
+import { Schema } from "effect";
+
 export const OutputSchema = HostedSchema.github({
   repo: "o/r", path: "schemas", name: "okfit", versions: ["1.0", "1.1"],
 });

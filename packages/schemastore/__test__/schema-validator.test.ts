@@ -1,4 +1,4 @@
-import { assert, describe, it, layer } from "@effect/vitest";
+import { assert, describe, layer } from "@effect/vitest";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { SchemaValidator, SchemaValidatorError, ValidationFinding } from "../src/index.js";
 

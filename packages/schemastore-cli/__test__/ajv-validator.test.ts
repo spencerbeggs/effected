@@ -188,6 +188,32 @@ describe("AjvValidator.layer — the shipped ajv engine", () => {
 	// `x-ai-*` key is registered and the document passes clean. Without
 	// it the test above would also pass against an engine that rejected
 	// every `x-ai-*` key.
+	it("does not descend into a declared keyword's payload — a dotted key inside x-ai-hint is opaque data, not a keyword", () => {
+		// The payload of a declared key is copied verbatim by StoreDocument and
+		// never strict-checked by ajv, so a key ajv's own grammar would refuse
+		// is legal there; registering it would turn a valid document into a
+		// root finding.
+		assert.deepStrictEqual(
+			validate({
+				$schema: "http://json-schema.org/draft-07/schema#",
+				type: "object",
+				"x-ai-hint": { "x-ai-model.name": "gpt", nested: { "x-taplo": { "x-ai-@": 1 } } },
+			}),
+			[],
+		);
+	});
+
+	it("still finds a declared keyword on a nested schema node", () => {
+		assert.deepStrictEqual(
+			validate({
+				$schema: "http://json-schema.org/draft-07/schema#",
+				type: "object",
+				properties: { name: { type: "string", "x-taplo": { links: { key: "https://example.com" } } } },
+			}),
+			[],
+		);
+	});
+
 	it("accepts a declared keyword whose name ajv's grammar allows", () => {
 		assert.deepStrictEqual(
 			validate({

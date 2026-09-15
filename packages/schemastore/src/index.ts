@@ -11,9 +11,12 @@
  * vocabulary with both versioning modes, the structural and hygiene lints,
  * canonical JSON text, content-comparing write-if-changed file IO
  * (`SchemaFile`), change classification for the versioning decision
- * (`DocumentDiff`), real-engine validation over ajv (`SchemaValidator`,
- * which ships closed — no adapter to write), and the emit pipeline over all
- * of it (`SchemaPipeline`).
+ * (`DocumentDiff`), the validation contract and its doubles
+ * (`SchemaValidator` — the shipped ajv engine is `AjvValidator` in
+ * `@effected/schemastore-cli`, so this package installs no engine), the
+ * hosted identity an application derives its `$schema` from and
+ * `defineConfig` derives `$id` from (`HostedSchema`), and the emit pipeline
+ * over all of it (`SchemaPipeline`).
  *
  * @example
  * ```ts

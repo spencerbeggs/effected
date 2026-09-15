@@ -95,6 +95,26 @@ describe("HostedSchema", () => {
 			rejects({ baseUrl: "" }, /https:\/\//);
 		});
 
+		it("rejects an https base carrying a query, a fragment or credentials — a file cannot be joined under it", () => {
+			rejects({ baseUrl: "https://example.com/schemas?channel=stable" }, /query/);
+			rejects({ baseUrl: "https://example.com/schemas#v1" }, /fragment/);
+			rejects({ baseUrl: "https://user:pw@example.com/schemas" }, /credentials/);
+			rejects({ baseUrl: "https://not a url" }, /https:\/\//);
+		});
+
+		it("github requires repo as owner/repo", () => {
+			for (const repo of ["", "owner", "owner/", "/repo", "a/b/c", "owner/re po"]) {
+				assert.throws(() => HostedSchema.github({ repo, name: "cfg" }), /repo.*owner\/repo/);
+			}
+		});
+
+		it("names the offending schema without inventing a hosted field the caller never wrote", () => {
+			assert.throws(
+				() => HostedSchema.custom({ baseUrl: "https://example.com/s", name: "cfg", versions: ["nope!"] }),
+				/^schema "cfg" has an invalid version label "nope!"/,
+			);
+		});
+
 		it("rejects an empty versions array, an invalid label and two spellings of one label", () => {
 			rejects({ versions: [] }, /versions.*empty/);
 			rejects({ versions: ["nope!"] }, /invalid version label "nope!"/);

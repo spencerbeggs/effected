@@ -148,9 +148,11 @@ generator script of your own. The library owns the whole generate → lint →
 validate → gate → write loop — core's draft 2020-12 generation lowered to
 Draft-07 (the dialect every editor integration reads), the `#/definitions` →
 `#/$defs` `$ref` rewrite that lowering makes necessary, the structural lint,
-a content-comparing write through a deterministic serializer — and the
-command adds the ajv strict-mode gate, the drift policy, the frozen-label
-checks and the exit codes. An action repository writes three things: the
+a content-comparing write through a deterministic serializer, with the
+engine gate as a `SchemaValidator` requirement in `R` — and the command
+supplies that engine (`AjvValidator.layer`, ajv strict mode) and adds what
+the pipeline does not own: the drift policy, the frozen-label checks, the
+report and the exit codes. An action repository writes three things: the
 schema's **hosted identity** next to the schema, a `schemastore.config.ts`,
 and two scripts.
 

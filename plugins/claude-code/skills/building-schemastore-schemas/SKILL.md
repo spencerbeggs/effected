@@ -32,9 +32,12 @@ it; it covers the config, the document, the versioning and the gate.
 | `schemastore build` / `schemastore check` | `@effected/schemastore-cli` (bin) | the `schema:build` and `schema:check` scripts; `check` is the CI gate |
 | `KeywordFamilies.isDeclared` | `@effected/schemastore` | asking whether a non-standard keyword will survive the gate before annotating with it |
 
-Nothing is importable from `@effected/schemastore-cli`. Every type a config
-needs comes from `@effected/schemastore`, which the CLI declares as a peer —
-install both at the same version, with `effect`, as devDependencies.
+Every type a config needs comes from `@effected/schemastore`, which the CLI
+declares as a peer; the one thing importable from `@effected/schemastore-cli`
+is `AjvValidator.layer`, the shipped ajv engine, for a program driving
+`SchemaPipeline` itself. Install both at one version: the library as a
+dependency (the application reads its `HostedSchema` at runtime), the CLI as
+a devDependency.
 
 ## Standards
 

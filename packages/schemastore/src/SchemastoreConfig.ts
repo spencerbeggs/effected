@@ -239,6 +239,17 @@ const ConfigInput = Schema.Struct({
 // prefix.
 const DECODE_OPTIONS = { onExcessProperty: "error", errors: "all" } as const;
 
+// A config computes optionals conditionally (`versions: pinned ? [...] :
+// undefined`), and this repo's tsconfig does not set
+// exactOptionalPropertyTypes, so a present-but-undefined key typechecks; the
+// decode would reject it where the hand guards read it as absent. Dropping
+// those keys keeps "undefined means omitted" for user-authored input. One
+// level only: nested blocks are decoded on their own.
+const withoutUndefined = (input: unknown): unknown =>
+	Predicate.isObject(input) && !Array.isArray(input)
+		? Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined))
+		: input;
+
 const decodeOrThrow = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown, prefix: string) =>
 	Result.getOrThrowWith(
 		Schema.decodeUnknownResult(schema)(input, DECODE_OPTIONS),
@@ -267,13 +278,9 @@ const resolveIdentity = (name: string, entry: Entry, defaultBaseUrl: string | un
 	if (baseUrl === undefined) {
 		return fail(`schema "${name}" has no baseUrl and the config declares no default`);
 	}
-	const decoded = Schema.decodeUnknownResult(HostedSchema)({
-		name,
-		baseUrl,
-		...(entry.versions !== undefined ? { versions: entry.versions } : {}),
-		...(entry.current !== undefined ? { current: entry.current } : {}),
-		...(entry.layout !== undefined ? { layout: entry.layout } : {}),
-	});
+	const decoded = Schema.decodeUnknownResult(HostedSchema)(
+		withoutUndefined({ name, baseUrl, versions: entry.versions, current: entry.current, layout: entry.layout }),
+	);
 	return Result.getOrThrowWith(decoded, (error) => new Error(`defineConfig: ${error.message.replace(/\n\s*/g, " ")}`));
 };
 
@@ -286,7 +293,7 @@ const resolveEntry = (
 	if (!SchemaVersioning.isSimpleName(name)) {
 		return fail(`schema "${name}" must be keyed by a simple file base name (no separators, no whitespace)`);
 	}
-	const entry = decodeOrThrow(EntryInput, input, `schema "${name}" `);
+	const entry = decodeOrThrow(EntryInput, withoutUndefined(input), `schema "${name}" `);
 	const hosted = resolveIdentity(name, entry, defaults.baseUrl);
 	if (hosted.baseUrl === "schemastore" && entry.catalog === undefined) {
 		return fail(`schema "${name}" must declare a catalog block under baseUrl "schemastore"`);
@@ -414,10 +421,7 @@ const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
  * @public
  */
 export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig => {
-	if (!Predicate.isObject(input)) {
-		return fail("expected a config object");
-	}
-	const config = decodeOrThrow(ConfigInput, input, "");
+	const config = decodeOrThrow(ConfigInput, withoutUndefined(input), "");
 	const outputDir = trimSlashes(config.outputDir);
 	if (Object.keys(config.schemas).length === 0) {
 		return fail("at least one schema is required");

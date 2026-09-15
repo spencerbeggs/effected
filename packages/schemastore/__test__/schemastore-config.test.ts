@@ -344,7 +344,31 @@ describe("defineConfig validation", () => {
 	});
 
 	it("rejects a non-object defineConfig input", () => {
-		assert.throws(() => defineConfig(null as never), /expected a config object/);
+		assert.throws(() => defineConfig(null as never), /^defineConfig: Expected object/);
+	});
+
+	it("treats an explicitly undefined optional key as absent, at the top level and on an entry", () => {
+		// A plain-JS config (or one compiled without exactOptionalPropertyTypes)
+		// computes optionals conditionally; `x: cond ? v : undefined` must read
+		// as omitted, as the hand guards this decode replaced treated it.
+		const schema = only(
+			defineConfig({
+				outputDir: "schemas",
+				baseUrl: CUSTOM,
+				drift: undefined,
+				catalogPath: undefined,
+				schemas: {
+					okfit: { schema: Config, versions: undefined, current: undefined, published: undefined, catalog: undefined },
+				},
+			} as never),
+		);
+		assert.strictEqual(schema.target.$id, `${CUSTOM}/okfit.json`);
+		assert.isUndefined(schema.catalog);
+		assert.isFalse(schema.target.published);
+	});
+
+	it("names the offending schema for a hand-spelled entry with a bad label, not a hosted field it never wrote", () => {
+		rejects({ versions: ["nope!"] }, {}, /^defineConfig: schema "okfit" has an invalid version label "nope!"/);
 	});
 
 	it("never throws a raw TypeError on malformed input", () => {
