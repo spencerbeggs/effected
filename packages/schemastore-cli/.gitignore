@@ -3,5 +3,7 @@ __test__/fixtures/*/schemas/
 # rewritten by a test — see __test__/fixtures/README.md); everything else
 # under its schemas/ tree stays ignored.
 !__test__/fixtures/release-action/schemas/
+__test__/fixtures/release-action/schemas/*
 !__test__/fixtures/release-action/schemas/4.0.0/
+__test__/fixtures/release-action/schemas/4.0.0/*
 !__test__/fixtures/release-action/schemas/4.0.0/release-action-4.0.0.json
