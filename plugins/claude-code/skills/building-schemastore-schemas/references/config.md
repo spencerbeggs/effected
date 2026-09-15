@@ -21,121 +21,123 @@ library is exact.
 
 ## `defineConfig`
 
-The default export is a `defineConfig(...)` value. `defineConfig` is pure —
-no IO, no Effect — and identity-with-validation over its input: it validates
-the schema list, decodes the catalog and drift blocks, fills drift defaults,
-assembles every catalog entry, and brands the result so the loader recognises
-it. A malformed config fails typed at load (exit `2`) rather than as a
-`TypeError` deep in the pipeline.
+The default export is a `defineConfig(...)` value, keyed by schema name.
+`defineConfig` is pure — no IO, no Effect — and validates the whole input,
+derives every `$id`/`path`/catalog URL from ONE layout, fills drift
+defaults, assembles every catalog entry, and brands the result so the
+loader recognises it. A malformed config fails typed at load (exit `2`)
+rather than as a `TypeError` deep in the pipeline.
 
 ```ts
-import { defineConfig, SchemaTarget } from "@effected/schemastore";
-import { ReleaseOutput, SCHEMA_URL } from "./src/schema/release-output.js";
+import { defineConfig } from "@effected/schemastore";
+import { OkfitConfig } from "./src/config-schema.js";
 
 export default defineConfig({
-  schemas: [
-    SchemaTarget.make({
-      schema: ReleaseOutput,
-      $id: SCHEMA_URL,
-      name: "silk-release-action",
-      version: "5.0.0",
-      path: "schemas/silk-release-action-5.0.0.json",
+  outputDir: "schemas",
+  baseUrl: "schemastore",
+  schemas: {
+    okfit: {
+      schema: OkfitConfig,
+      versions: ["1.0", "1.1"],
       published: true,
-      jsonSchema: { onExcessProperty: "error" },
-    }),
-  ],
-  catalog: [
-    {
-      name: "silk-release-action",
-      description: "Structured output of the silk-release GitHub Action",
-      fileMatch: ["silk-release-output.json"],
-      baseUrl: "https://raw.githubusercontent.com/savvy-web/silk-release-action/main/schemas",
-      path: "schemas/catalog-entry.json",
+      catalog: { description: "okfit configuration", fileMatch: ["okfit.toml", ".okfit.toml"] },
     },
-  ],
-  drift: { policy: "semantic", onDrift: "error" },
+  },
 });
 ```
 
-### `schemas` — at least one `SchemaTarget`
+Self-hosted, the same entry takes
+`baseUrl: "https://raw.githubusercontent.com/o/r/main/schemas"` and derives
+`schemas/1.1/okfit-1.1.json` (the `"versioned"` layout) instead of the flat
+SchemaStore file.
 
-`SchemaTarget.make` takes:
+### `schemas` — a record keyed by file base name
+
+The key IS the schema's `name` — every derived `path`, `$id` and catalog
+URL is built from it, `outputDir`, `baseUrl` and `layout` via ONE
+`relativeFile(name, version, layout)`, so they cannot disagree with each
+other. **There is no `$id` override.** The key must be a simple file base
+name: non-empty, no separators, no whitespace.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `schema` | yes | the Effect Schema the document is generated from |
-| `$id` | yes | the canonical URL the document declares; non-empty |
-| `path` | yes | where the document is written; non-empty, relative to the config file's directory |
-| `name` | with `version` | the catalog/file base name; versioned naming is `<name>-<version>.json`, so a version without a name is a compile error (overload pair) and a runtime throw for untyped callers |
-| `version` | for a versioned document | a `SchemaVersion` or a plain string label (`"5.0.0"`, `"1.2"`, `"2"`); an invalid label throws naming it |
+| `versions` | no | every version label this schema advertises; omit for an unversioned schema. An empty array is rejected. Two labels that compare equal under `SchemaVersioning.Order` (`"1.2"` and `"1.2.0"`) are rejected as one version spelled twice |
+| `current` | no, requires `versions` | which label is generated at this entry's `path`/`$id`; the rest become frozen files. Defaults to the newest label |
 | `published` | no, default `false` | whether a consumer already depends on this document at this label |
+| `baseUrl` | with a top-level default | `"schemastore"` (expands `$id` to `json.schemastore.org`, the catalog URL to `www.schemastore.org`, forces the `"flat"` layout) or an `https://` URL used as one base for both |
+| `layout` | no | `"flat"` or `"versioned"`; defaults to `"versioned"` for a custom `baseUrl`, rejected under `baseUrl: "schemastore"` |
+| `drift` | no | overrides the config's top-level `drift` for this schema |
+| `catalog` | required under `baseUrl: "schemastore"` | `{ description, fileMatch }` — the catalog entry to assemble for this schema |
 | `jsonSchema` | no | core's `ToJsonSchemaOptions`, forwarded to generation for this target only |
+| `rootAnnotations` | no | forwarded to the target |
 
-Omit `version` for an unversioned document (a single plain-named file). The
-pipeline never reads `published`; the CLI does. Its generation options live
-on the target, not on the pipeline, so each document is self-describing.
+Every OTHER advertised version besides `current` becomes a **frozen**
+file — one that already exists on disk, advertised by the catalog and
+verified by the CLI before anything is generated, never regenerated. A
+schema that advertises a frozen label with no file on disk fails the
+build typed with `FrozenVersionMissingError`, and nothing is written for
+any schema.
 
 `defineConfig` rejects two spellings of one version under one name: `1.2`
 and `1.2.0` are the same version (missing components read as `0` for
 ordering), so declaring both is an error rather than two files.
 
-### `catalog` — zero or more entries
+### `catalog` — one file for every entry
 
-Each entry carries the SchemaStore `catalog.json` fields — `name`,
-`description`, `fileMatch`, `baseUrl` — plus `path`, where the assembled
-entry is written. `name` must match at least one **versioned** schema, or
-`defineConfig` throws.
+Each schema's `catalog` block carries `description` and `fileMatch`;
+`name`, `url` and `versions` are **derived** from the schema's own key,
+`baseUrl`, `layout` and `versions` — never written by hand, so a version
+bump on a schema and its catalog entry cannot disagree. Every schema's
+assembled entry lands in **one file** at `catalogPath` (default
+`<outputDir>/catalog.json`) — never one file per schema.
 
-Two fields are **derived**, never written by hand:
-
-- `versions` — from every versioned schema of that `name`, published or not.
-  The entry is what gets submitted to become published, so a draft label has
-  to be in it before its flag flips.
-- `url` and each `versions` value — as `<baseUrl>/<name>-<version>.json`,
-  through `SchemaVersioning.schemaUrl`.
-
-That derivation fixes the file layout: each versioned schema's `path` must
-sit **directly under the directory `baseUrl` names**, and its `$id` must be
-**that exact URL**. The CLI does not cross-check `$id` against the derived
-URL, so a mismatch ships a catalog entry whose `versions` point at files that
-do not exist. The convention is therefore a flat layout:
+That derivation fixes the file layout under a custom `baseUrl`: each
+versioned schema's `path` sits directly under the directory `baseUrl`
+names, and its `$id` is that exact URL by construction (there is no
+override to drift from it). The convention is therefore a flat layout:
 
 ```text
 schemas/
-  catalog-entry.json
+  catalog.json
   my-tool-1.0.json
   my-tool-1.1.json
 ```
 
 with `baseUrl: "https://…/main/schemas"` and each `$id` equal to
-`https://…/main/schemas/my-tool-1.1.json`. A `schemas/<version>/` subdirectory
-is not that convention: its `$id` sits under the subdirectory while the
-derived URL does not, and the catalog entry 404s.
+`https://…/main/schemas/my-tool-1.1.json`. Set `layout: "versioned"` (the
+default for a custom `baseUrl`) to nest each version under its own
+directory instead.
 
 `fileMatch` is written through as given. SchemaStore reviewers reject generic
 patterns (`*.json`, `config.toml`) and ask for complex globs to be expanded
 into simple ones; `CatalogEntry.lintFileMatch(patterns)` answers those
 findings as values, so a test can assert on them before a reviewer does.
 
-### `drift` — the default policy for published schemas
+### `drift` and `onDrift` — the default policy for published schemas
 
-`{ policy: "strict" | "semantic" | "allow", onDrift: "error" | "warn" }`,
-both optional, defaulting to `{ policy: "semantic", onDrift: "error" }`
-(`DriftPolicy.defaults`). Flags override it for one run; the report names the
-effective policy and whether it came from `config` or `flag`.
+`drift` (`"strict" | "semantic" | "allow"`) is a top-level default an entry
+may override; `onDrift` (`"error" | "warn"`) is top-level and run-wide,
+never overridable per schema. Together they default to
+`{ policy: "semantic", onDrift: "error" }` (`DriftPolicy.defaults`). Flags
+override the effective policy for one run; the report names it and whether
+it came from `config` or `flag`.
 
 ## Path resolution
 
-Relative `path` values, on schemas and catalog entries alike, resolve
-against the **config file's directory**, never the working directory. A
-root-level `schemastore build packages/x/schemastore.config.ts` and a
-`pnpm --filter x schema:build` must write identical files. Absolute paths pass
-through unchanged, so an existing `resolve(REPO_ROOT, …)` keeps working.
+Relative `outputDir`, `catalogPath`, and every derived schema/frozen `path`
+resolve against the **config file's directory**, never the working
+directory. A root-level `schemastore build packages/x/schemastore.config.ts`
+and a `pnpm --filter x schema:build` must write identical files. Absolute
+paths pass through unchanged, so an existing `resolve(REPO_ROOT, …)`
+`outputDir` keeps working.
 
 ## Reading a config back in code
 
 `isSchemastoreConfig(value)` recognises a `defineConfig` result — the check
 the loader runs on a module's default export. A test that wants the same
-targets the CLI sees imports the config module and reads `.schemas` and
-`.catalog` (each catalog item is `{ config, entry }`, the declared block and
-the assembled `CatalogEntry`).
+targets the CLI sees imports the config module and reads `.schemas`, an
+array of `ResolvedSchema` (`{ name, target, frozen, drift, catalog? }`).
+`SchemaTarget.make` survives unchanged as the library-level primitive for a
+caller driving `SchemaPipeline` directly; `defineConfig` lowers each config
+entry onto it.

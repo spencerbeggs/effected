@@ -68,6 +68,15 @@ A gate failure exits `1` under either `--on-drift` value and is not
 overridable by `--force`. When both a gate failure and drift occur, the gate
 failure is what the run reports as its error.
 
+Before anything is generated, every schema's frozen versions (every label
+in `versions` other than `current`) is checked for existence: a schema
+that advertises a label with no file on disk fails typed with
+`FrozenVersionMissingError` and nothing is written for ANY schema — exit
+`1`, reported before the gate or drift walk even runs. This is the guard
+against a catalog that points a frozen label at a 404; it fires on a
+config whose frozen file was deleted or never committed, not on a normal
+drift or gate finding.
+
 ## The JSON report
 
 `--format=json` writes one object with stable key order:
@@ -91,7 +100,7 @@ failure is what the run reports as its error.
       "findings": []
     }
   ],
-  "catalog": [{ "name": "my-tool", "path": "/abs/path/schemas/catalog-entry.json", "outcome": "held" }],
+  "catalog": { "path": "/abs/path/schemas/catalog.json", "entries": 1, "outcome": "held" },
   "drifted": true,
   "gateFailed": false,
   "wrote": false
@@ -107,7 +116,10 @@ failure is what the run reports as its error.
 - `nextVersion` — present only for a contract change on a versioned schema.
 - `findings` — every finding, blocking or not: `source`, `severity`,
   optional `check`, `path`, `message`.
-- Catalog outcomes are `written` | `unchanged` | `would-write` | `held`.
+- `catalog` — present only when at least one schema declared a `catalog`
+  block; `{ path, entries, outcome }` for the single catalog file, never one
+  entry per schema. Outcomes are `written` | `unchanged` | `would-write` |
+  `held`.
 
 ## The GitHub step summary
 

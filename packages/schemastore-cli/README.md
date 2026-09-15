@@ -38,37 +38,24 @@ pnpm add -D @effected/schemastore-cli @effected/schemastore effect
 Create `schemastore.config.ts` (also `.mts`, `.js`, `.mjs`). The CLI finds it by walking upward from the working directory, or takes its path as a positional argument. Relative `path` values resolve against the config file's directory.
 
 ```ts
-import { defineConfig, SchemaTarget } from "@effected/schemastore";
-import { ReleaseOutput, SCHEMA_URL } from "./src/schema/release-output.js";
+import { defineConfig } from "@effected/schemastore";
+import { OkfitConfig } from "./src/config-schema.js";
 
 export default defineConfig({
- schemas: [
-  SchemaTarget.make({
-   schema: ReleaseOutput,
-   $id: SCHEMA_URL,
-   name: "silk-release-action",
-   version: "5.0.0",
-   path: "schemas/silk-release-action-5.0.0.json",
+ outputDir: "schemas",
+ baseUrl: "schemastore",
+ schemas: {
+  okfit: {
+   schema: OkfitConfig,
+   versions: ["1.0", "1.1"],
    published: true,
-   jsonSchema: { onExcessProperty: "error" },
-  }),
- ],
- catalog: [
-  {
-   name: "silk-release-action",
-   description: "Structured output of the silk-release GitHub Action",
-   fileMatch: ["silk-release-output.json"],
-   baseUrl: "https://raw.githubusercontent.com/savvy-web/silk-release-action/main/schemas",
-   path: "schemas/catalog-entry.json",
+   catalog: { description: "okfit configuration", fileMatch: ["okfit.toml", ".okfit.toml"] },
   },
- ],
- drift: { policy: "semantic", onDrift: "error" },
+ },
 });
 ```
 
-- `schemas` — at least one `SchemaTarget`; `published` (default `false`) marks a version other people depend on.
-- `catalog` — zero or more SchemaStore catalog entries; `versions` is derived from every versioned schema of that name. The entry's `url` and each `versions` value are derived as `<baseUrl>/<name>-<version>.json`, so every schema's `path` must sit directly under the directory `baseUrl` names and its `$id` must be that exact URL — the CLI does not yet cross-check them.
-- `drift` — the default policy for published schemas (`strict`, `semantic` or `allow`) and what drift means (`error` or `warn`). Defaults to `{ policy: "semantic", onDrift: "error" }`.
+`schemas` is keyed by file base name — the key IS the schema's `name`, and `$id`, the write `path` and every catalog URL derive from it, `outputDir` and `baseUrl`; there is no `$id` override. `versions` lists every label the catalog advertises; `current` (default: the newest) is the one generated at `path`/`$id`, and every other label becomes a **frozen** file the CLI verifies still exists on disk but never regenerates — advertising a frozen label with nothing on disk fails the build before anything is written. `published` (default `false`) marks a version other people already depend on. `baseUrl: "schemastore"` expands `$id` to `https://json.schemastore.org/…` and the catalog URL to `https://www.schemastore.org/…`; any other value is one `https://` base for both. `outputDir` and `onDrift` are top-level only; `baseUrl` and `drift` are top-level defaults an entry may override. `catalog` is required under `baseUrl: "schemastore"` and optional under a custom host. Every schema's declared `catalog` entry lands in ONE file at `catalogPath` (default `<outputDir>/catalog.json`) — never one file per schema.
 
 Then add two scripts:
 
@@ -88,8 +75,9 @@ schemastore build [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|warn] [--force] [--format=human|json]
 ```
 
-- `build` generates every schema, runs the gates (structural lints and ajv strict mode), applies the drift policy, and writes what passes — content-compared, so unchanged files are untouched — along with each catalog entry.
-- `check` is the identical walk with no writes: it reports what `build` would do under the same flags and exits under the same conditions. It is the CI gate, so it also fails (exit `1`) whenever a build would write anything — a committed schema or catalog entry that differs from what the config generates, or is missing, is stale; run `schemastore build` and commit the result.
+- Before anything is generated, every advertised frozen version is checked for existence — a schema that advertises a label with nothing on disk fails with `FrozenVersionMissingError` (exit `1`) and nothing is written.
+- `build` generates every schema, runs the gates (structural lints and ajv strict mode), applies the drift policy, and writes what passes — content-compared, so unchanged files are untouched — along with the single `catalog.json` every declared catalog entry lands in.
+- `check` is the identical walk with no writes: it reports what `build` would do under the same flags and exits under the same conditions. It is the CI gate, so it also fails (exit `1`) whenever a build would write anything — a committed schema or catalog file that differs from what the config generates, or is missing, is stale; run `schemastore build` and commit the result.
 - `--drift` and `--on-drift` override the config's `drift` block for one run; `--force` is sugar for `--drift=allow` and nothing else — combined with an explicit non-`allow` `--drift` it is a usage error (exit 64), not a precedence question; `--force --drift=allow` is accepted.
 - `--format=json` emits one JSON document on stdout (config path, per-schema outcome, per-catalog-entry outcome, effective drift policy and its source); human text moves to stderr.
 - When `GITHUB_STEP_SUMMARY` is set, both commands append a markdown summary table.
@@ -101,7 +89,7 @@ An unpublished schema is never drift: a contract change at a pinned but unpublis
 | code | meaning |
 | ---- | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
-| 1 | drift under `onDrift: error` (the error lists one line per drifting schema: `$id`, change, current and next version), a gate failure, or — for `check` — any document `build` would write |
+| 1 | drift under `onDrift: error` (the error lists one line per drifting schema: `$id`, change, current and next version), a gate failure, a missing frozen version (`FrozenVersionMissingError`), or — for `check` — any document `build` would write |
 | 2 | config not found, failed to load, or failed `SchemastoreConfig` validation |
 | 3 | infrastructure failure |
 | 64 | usage error |

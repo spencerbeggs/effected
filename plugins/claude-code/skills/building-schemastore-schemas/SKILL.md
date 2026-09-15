@@ -1,7 +1,7 @@
 ---
 name: building-schemastore-schemas
 description: Use when publishing JSON Schema documents from Effect Schemas with @effected/schemastore and the schemastore CLI — writing or fixing a schemastore.config.ts, deciding whether a schema is published, reading a DRIFT or held line, choosing a version label, annotating a schema for VS Code / taplo / tombi / IntelliJ, wiring schema:build and schema:check into package scripts, turbo and CI, or retiring a hand-rolled generate-schema.ts.
-when_to_use: schemastore.config.ts, defineConfig, SchemaTarget.make, published flag, schemastore build, schemastore check, schema:build, schema:check, DRIFT contract, held (drift elsewhere), --on-drift, --force, --drift=allow, nextVersion, suggest 1.3, catalog-entry.json, fileMatch, baseUrl, markdownDescription, x-taplo, x-tombi-, x-intellij-, x-ai-hint, UndeclaredAnnotationKeyError, onExcessProperty, generate-schema.ts, SchemaStore submission, JSON Schema from Effect Schema
+when_to_use: schemastore.config.ts, defineConfig, SchemaTarget.make, published flag, schemastore build, schemastore check, schema:build, schema:check, DRIFT contract, held (drift elsewhere), --on-drift, --force, --drift=allow, nextVersion, suggest 1.3, catalog.json, FrozenVersionMissingError, fileMatch, baseUrl, markdownDescription, x-taplo, x-tombi-, x-intellij-, x-ai-hint, UndeclaredAnnotationKeyError, onExcessProperty, generate-schema.ts, SchemaStore submission, JSON Schema from Effect Schema
 ---
 
 # Building SchemaStore schemas
@@ -24,8 +24,8 @@ it; it covers the config, the document, the versioning and the gate.
 
 | Construct | Import | Reach for it when |
 | --- | --- | --- |
-| `defineConfig` | `@effected/schemastore` | the default export of `schemastore.config.ts` — validates, fills drift defaults, derives every catalog entry |
-| `SchemaTarget.make` | `@effected/schemastore` | one entry per emitted document: `schema`, `$id`, `path`, and for a versioned document `name` + `version` (+ `published`) |
+| `defineConfig` | `@effected/schemastore` | the default export of `schemastore.config.ts` — a record keyed by schema name; validates, derives every `$id`/`path`/catalog URL, fills drift defaults |
+| `SchemaTarget.make` | `@effected/schemastore` | the library-level primitive `defineConfig` lowers each entry onto; reach for it directly only when driving `SchemaPipeline` outside the CLI |
 | `DriftPolicy` | `@effected/schemastore` | reading the `strict` / `semantic` / `allow` table in code, or a test that classifies a change the way the CLI will |
 | `SchemaVersioning` | `@effected/schemastore` | parsing a label, ordering versions, `next(version, "contract")`, `fileName`/`schemaUrl` for a test asserting the derived layout |
 | `CatalogEntry.lintFileMatch` | `@effected/schemastore` | checking `fileMatch` patterns against SchemaStore's hygiene rules before a reviewer does |
@@ -44,15 +44,17 @@ install both at the same version, with `effect`, as devDependencies.
   flags and a drift test are the CLI's job, not a generator script's. See
   [references/config.md](references/config.md) and
   [references/ci-gate.md](references/ci-gate.md).
-- **Lay versioned files out flat under the catalog's `baseUrl`.** A catalog
-  entry's `url` and every `versions` value derive as
-  `<baseUrl>/<name>-<version>.json`; each versioned schema's `$id` must be that
-  exact URL and its `path` must sit directly under the directory `baseUrl`
-  names. See [references/config.md](references/config.md).
+- **A schema entry is keyed by its own name — never spell `$id` or `path` by
+  hand.** They, and every catalog URL, derive from the key, `outputDir`,
+  `baseUrl` and `layout`. `baseUrl: "schemastore"` forces the flat layout; a
+  custom `baseUrl` defaults to `"versioned"`. See
+  [references/config.md](references/config.md).
 - **Leave `published` at its default (`false`) until the catalog entry is
   accepted upstream, then flip it that day.** An unpublished schema
   regenerates in place through any change, contract included; a published
-  one is held to the drift policy. See
+  one is held to the drift policy. To change a published schema's contract,
+  append a new label to `versions` and make it `current` — never edit the
+  old file in place. See
   [references/drift-and-versioning.md](references/drift-and-versioning.md).
 - **Answer a `DRIFT contract` line by bumping the version in the config, not
   by forcing.** The CLI suggests a minor bump; bump major yourself when you
@@ -87,13 +89,15 @@ install both at the same version, with `effect`, as devDependencies.
 
 ## Footguns
 
-- A versioned `$id` under a `schemas/<version>/` subdirectory produces a
-  catalog entry that 404s: the derived URL is flat, and the CLI does not
-  cross-check `$id` against it. See
+- A `versions` label with no file on disk fails the build with
+  `FrozenVersionMissingError`, before anything is generated — either
+  generate it once as `current` and then freeze it, or drop it from
+  `versions`. See
+  [references/drift-and-versioning.md](references/drift-and-versioning.md).
+- Relative `outputDir`/`path` values resolve against the config file's
+  directory, never the working directory — a root-level run and a filtered
+  package run must write the same files. See
   [references/config.md](references/config.md).
-- Relative `path` values resolve against the config file's directory, never
-  the working directory — a root-level run and a filtered package run must
-  write the same files. See [references/config.md](references/config.md).
 - `check` reports `held (drift elsewhere)` for a clean schema when a sibling
   drifted under `onDrift: error`, because nothing is written on a refused
   run — fix the sibling, not the held one. See
@@ -128,10 +132,10 @@ install both at the same version, with `effect`, as devDependencies.
 
 ## Additional resources
 
-- [references/config.md](references/config.md) — `defineConfig` and its three
-  blocks, every `SchemaTarget.make` field, config discovery, path resolution,
-  the derived catalog `versions`/`url` and the `$id` rule. Load when: writing
-  or debugging a `schemastore.config.ts`, or a catalog entry looks wrong.
+- [references/config.md](references/config.md) — `defineConfig`'s keyed
+  shape, every schema-entry field, config discovery, path resolution, and
+  the derived `$id`/`path`/catalog `versions`/`url`. Load when: writing or
+  debugging a `schemastore.config.ts`, or a catalog entry looks wrong.
 - [references/drift-and-versioning.md](references/drift-and-versioning.md) —
   the published × policy × change table, `onDrift`, `--force`, why gate
   failures are never overridable, the one-to-three-component version grammar

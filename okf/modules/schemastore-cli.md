@@ -23,6 +23,10 @@ sources:
     resource: ../../packages/schemastore/src/SchemaPipeline.ts
   - id: versioning
     resource: ../../packages/schemastore/src/SchemaVersioning.ts
+  - id: config
+    resource: ../../packages/schemastore/src/SchemastoreConfig.ts
+  - id: runner
+    resource: ../../packages/schemastore-cli/src/Runner.ts
 generated:
   by: "okfit/claude-code"
   at: 2026-09-14T16:39:01Z
@@ -95,75 +99,106 @@ file's own path** (`createJiti(configPath, …)`), so its relative
 specifiers and its `effect` / `@effected/schemastore` imports resolve
 from the consumer's tree, never from the CLI's.
 
-The module's default export is a `defineConfig(...)` value. `defineConfig`
-lives in `@effected/schemastore` (module `SchemastoreConfig`), is pure,
-and is identity-with-validation over a `Schema.Struct`, so a malformed
-file fails typed at load rather than with a `TypeError` deep in the
-pipeline. The loader also re-checks the shapes a forged brand could
-carry past `defineConfig` — a malformed schema target, or a `catalog`
-that is not an array — and fails them as `ConfigLoadError` (exit `2`)
-before any path is resolved:
+The module's default export is a `defineConfig(...)` value, keyed by
+schema name. `defineConfig` lives in `@effected/schemastore` (module
+`SchemastoreConfig`), is pure, and validates the whole input before
+assembling it, so a malformed file fails typed at load rather than with a
+`TypeError` deep in the pipeline. The loader also re-checks the shapes a
+forged brand could carry past `defineConfig` — a malformed schema target,
+or a `frozen` entry missing `version`/`path`/`url` — and fails them as
+`ConfigLoadError` (exit `2`) before any path is resolved:
 
 ```ts
-import { defineConfig, SchemaTarget } from "@effected/schemastore";
-import { ReleaseOutput, SCHEMA_URL } from "./src/schema/release-output.js";
+import { defineConfig } from "@effected/schemastore";
+import { OkfitConfig } from "./src/config-schema.js";
 
 export default defineConfig({
- schemas: [
-  SchemaTarget.make({
-   schema: ReleaseOutput,
-   $id: SCHEMA_URL,
-   name: "silk-release-action",
-   version: "5.0.0",
-   path: "schemas/silk-release-action-5.0.0.json",
-   published: true,
-   jsonSchema: { onExcessProperty: "error" },
-  }),
- ],
- catalog: [
-  {
-   name: "silk-release-action",
-   description: "Structured output of the silk-release GitHub Action",
-   fileMatch: ["silk-release-output.json"],
-   baseUrl: "https://raw.githubusercontent.com/savvy-web/silk-release-action/main/schemas",
-   path: "schemas/catalog-entry.json",
+  outputDir: "schemas",
+  baseUrl: "schemastore",
+  schemas: {
+    okfit: {
+      schema: OkfitConfig,
+      versions: ["1.0", "1.1"],
+      published: true,
+      catalog: { description: "okfit configuration", fileMatch: ["okfit.toml", ".okfit.toml"] },
+    },
   },
- ],
- drift: { policy: "semantic", onDrift: "error" },
 });
 ```
 
-- `schemas` — at least one `SchemaTarget`. `SchemaTarget` gains one
-  field, `published` (optional on `make`, which defaults it to `false`;
-  required on the interface itself), and `version` accepts a
-  plain string label as well as a parsed `SchemaVersion`. The pipeline
-  does NOT read `published`: `SchemaPipeline`'s own `block-versioned`
-  contract guard is untouched, and the CLI's `Runner` runs
-  `SchemaPipeline.check(..., { contractChanges: "allow" })` and applies
-  `DriftPolicy.classify` over each result itself.[^pipeline]
-- `catalog` — zero or more entries. `name` must match at least one
-  versioned schema; `versions` is **derived** from every versioned schema
-  of that name, published or not — the entry is what gets submitted to
-  become published, so the draft label has to be in it before its flag
-  flips.[^owner] `defineConfig` assembles the entry through
-  `CatalogEntry.assemble`, so a version bump on a schema and its catalog
-  entry cannot disagree. The entry's `url` and every `versions` value are
-  **derived** as `<baseUrl>/<name>-<version>.json` for each versioned
-  schema of that name, so each schema's `path` must sit directly under
-  the directory `baseUrl` names and its `$id` must be that exact URL —
-  the CLI does not yet cross-check `$id` against the derived URL (a
-  follow-up), so a mismatch ships a catalog entry that 404s.
-- `drift` — the default policy for published schemas; defaults to
-  `{ policy: "semantic", onDrift: "error" }`. Command-line flags override
-  it for one run.
-- Relative `path` values, on schemas and catalog entries alike, resolve
-  against the **config file's directory**, never the working directory —
-  a root-level `schemastore build packages/x/schemastore.config.ts` and a
+Self-hosted, the same entry takes
+`baseUrl: "https://raw.githubusercontent.com/o/r/main/schemas"` and
+derives `schemas/1.1/okfit-1.1.json` (the `"versioned"` layout) instead
+of the flat SchemaStore file.
+
+- `schemas` — a record keyed by file base name; the key IS the schema's
+  `name`, and every derived `path`, `$id` and catalog URL is built from
+  it via one `relativeFile(name, version, layout)` — there is no `$id`
+  override by design. The key must be a simple file base name (no
+  separators, no whitespace).[^config]
+- `versions` — every label this schema advertises; omit for an
+  unversioned schema. `current` (default: the highest under
+  `SchemaVersioning.Order`) is the one label generated at this entry's
+  `path`/`$id`; every other label becomes a **frozen** file — one that
+  already exists on disk, advertised by the catalog and verified by the
+  CLI before anything is generated, never regenerated. A schema that
+  advertises a frozen label with no file on disk fails the build typed
+  with `FrozenVersionMissingError` — nothing is written for any
+  schema.[^runner] `defineConfig` rejects two spellings of one version
+  under one name (`1.2` and `1.2.0` are the same version — see the
+  grammar below).
+- `published` — whether a consumer already depends on this document at
+  this label, forwarded to `SchemaTarget`. Defaults to `false`. The
+  pipeline does NOT read `published`: `SchemaPipeline`'s own
+  `block-versioned` contract guard is switched off
+  (`contractChanges: "allow"`), and the CLI's `Runner` runs
+  `SchemaPipeline.check` and applies `DriftPolicy.classify` over each
+  result itself.[^pipeline]
+- `baseUrl` — either the literal `"schemastore"`, which expands `$id` to
+  `https://json.schemastore.org/<file>` and the catalog URL to
+  `https://www.schemastore.org/<file>` (two hosts, verified against
+  `clangd.json` and `agripparc-1.4.json`), and forces the `"flat"`
+  layout; or an `https://` URL used as one base for both. Falls back to
+  the top-level default; an entry with neither is rejected.
+- `layout` — how a versioned document's path/URL nests relative to its
+  base: `"flat"` or `"versioned"`. Defaults to `"versioned"` for a custom
+  `baseUrl`; rejected outright under `baseUrl: "schemastore"`, which
+  serves only the flat layout.
+- `catalog` — the catalog entry to assemble for this schema (`name` must
+  match at least one versioned schema is no longer a separate rule — the
+  key IS the name). Required under `baseUrl: "schemastore"` (hosting
+  there means being in its catalog); optional under a custom host, with
+  an empty `fileMatch` rejected. Every schema's declared `catalog` entry
+  lands in **one file** at `catalogPath` — never one file per
+  schema.[^runner]
+- `drift` — this schema's tolerance, overriding the config's top-level
+  default.
+- `outputDir` — top-level only, one destination per config; every
+  derived `path` is written under it.
+- `onDrift` — run-wide, top-level only, never overridable per schema.
+  Defaults to `{ policy: "semantic", onDrift: "error" }`
+  (`DriftPolicy.defaults`). Command-line flags override the effective
+  policy for one run.
+- `catalogPath` — where the single catalog file is written. Defaults to
+  `<outputDir>/catalog.json`.
+- Relative `outputDir`, `catalogPath`, and every derived schema/frozen
+  `path` resolve against the **config file's directory**, never the
+  working directory — a root-level
+  `schemastore build packages/x/schemastore.config.ts` and a
   `pnpm --filter x schema:build` must write identical files. Absolute
-  paths pass through, so existing `resolve(REPO_ROOT, …)` values keep
-  working.
-- `defineConfig` rejects two spellings of one version under one name
-  (`1.2` and `1.2.0` are the same version — see the grammar below).
+  paths pass through, so an existing `resolve(REPO_ROOT, …)` `outputDir`
+  keeps working.
+- `defineConfig` validates the whole input up front and throws a plain
+  `Error` prefixed `defineConfig:` naming the offending schema — never a
+  raw `TypeError` — on every malformed input: an empty `schemas` record;
+  a missing/empty `outputDir`; a schema key that fails the simple-name
+  rule; an empty `versions` array or an invalid/duplicate label; `current`
+  given without `versions`, or naming one not among them; `layout` under
+  `"schemastore"`; a missing `catalog` under `"schemastore"`, or one with
+  an empty `fileMatch`; an invalid `drift` or top-level `onDrift`; and an
+  output path (a target, a frozen file or the catalog path) declared
+  twice, compared after lexical normalisation. The CLI wraps the throw
+  into `ConfigLoadError` (exit `2`).
 
 ## Drift
 
@@ -210,13 +245,19 @@ schemastore build [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=human|json]
 ```
 
+- Before anything is generated, `Runner` checks every advertised frozen
+  version for existence: a schema whose `frozen` names a label with no
+  file on disk fails typed with `FrozenVersionMissingError` and nothing
+  is written for any schema (exit `1`) — a catalog must never point a
+  frozen label at a 404.[^runner]
 - `build` generates, gates, applies the drift table, writes what passes
-  (content-compared, so unchanged files are untouched) and writes each
-  catalog entry the same way: `Runner` reads the existing file once
-  (`NotFound` → absent, so a build creates it) and compares the parsed
-  content with the library's `CanonicalJson.equals`, so key order is a
-  serialization detail and unparseable text is simply different and
-  gets repaired.
+  (content-compared, so unchanged files are untouched) and writes the
+  single `catalog.json` the same way: `Runner` reads the existing file
+  once (`NotFound` → absent, so a build creates it) and compares the
+  parsed content with the library's `CanonicalJson.equals`, so key order
+  is a serialization detail and unparseable text is simply different and
+  gets repaired. Every schema's declared `catalog` entry lands in that
+  one file at `config.catalogPath` — never one file per schema.
 - `check` is the identical walk with **no writes**: it reports what
   `build` would do under the same flags and exits under the same
   conditions — and, because it is the CI drift gate, it ALSO exits `1`
@@ -249,7 +290,7 @@ Exit codes:
 | code | meaning |
 | ------ | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
-| 1 | drift under `onDrift: error`, a gate failure, or — for `check` — any document `build` would write |
+| 1 | drift under `onDrift: error`, a gate failure, a missing frozen version (`FrozenVersionMissingError`), or — for `check` — any document `build` would write |
 | 2 | config not found, failed to load, or failed `SchemastoreConfig` validation |
 | 3 | infrastructure failure (`CliRuntime.reportFailures` fallback) |
 | 64 | usage error — `ShowHelp` carrying parse errors, or `--force` combined with an explicit non-`allow` `--drift` (`ConflictingFlagsError`) |
@@ -262,7 +303,7 @@ Exit codes:
   elsewhere)` for a schema that passed but was not (or, under `check`,
   would not be) written because a sibling refused the run — with
   advisory findings indented beneath, one
-  line per catalog entry, and a summary line whose `drift` count is
+  line for the single catalog file, and a summary line whose `drift` count is
   verdict-based — the number of schemas classified `drift`, independent
   of `written`/`unchanged`, so under `onDrift: warn` a drifting schema
   is both written and counted as drift and the four counts need not sum
@@ -370,3 +411,5 @@ becomes moot: there is no longer a canonical generator script to copy.
 [^okfit-generator]: `lib/scripts/generate-schema.ts` in okfit — the `CATALOGUED = false` constant that `published` replaces, and the hand-written catalog-entry write the `catalog` block replaces.
 [^pipeline]: `SchemaPipeline.run` / `SchemaPipeline.check`, `ContractChangePolicy`, and the `change`, `blocked`, `contractBlocked`, `wouldWrite` result fields. The pipeline never reads `published`; the CLI's `Runner` classifies over `check` results with the contract guard set to `"allow"`.
 [^versioning]: `SchemaVersioning` — the widened one-to-three-component grammar, `parseResult`, and `next`'s minor-bump rule (identity on a prerelease label).
+[^config]: `SchemastoreConfig.ts` — `defineConfig`, `SchemastoreConfigInput`, `SchemaEntryInput`, `ResolvedSchema`, `FrozenVersion`; the keyed-by-name shape, the derivation of `$id`/`path`/catalog URL from one `relativeFile`, and the full validation list.
+[^runner]: `packages/schemastore-cli/src/Runner.ts` — `FrozenVersionMissingError`, the frozen-existence check that runs before generation, and the single-`catalog.json` write.

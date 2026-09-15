@@ -25,6 +25,31 @@ Two rules are fixed and never relitigated per call site:
    finding fails both commands regardless of `onDrift` and regardless of
    `--force`. A document the editors cannot load has no warn-and-write mode.
 
+## The lifecycle: iterate, publish, then freeze a new label to change the contract
+
+A schema entry's `versions` names every label the catalog advertises;
+`current` (default: the newest) is the ONE label `schemastore build`
+generates — every other label is a **frozen** file the CLI verifies still
+exists on disk but never regenerates:
+
+1. **Iterate on `current` under `published: false`.** Every change, contract
+   included, rewrites the file in place; there is nothing yet for a consumer
+   to pin against.
+2. **Flip `published: true` the day someone depends on the URL** — the
+   catalog entry is accepted upstream, or a consumer's `$ref` points at it.
+   From that day the drift table above governs `current`.
+3. **To change the contract of a published schema, append a new label to
+   `versions` and make it `current`** — never edit the published file in
+   place. The OLD label freezes exactly as it was on disk: it stays
+   advertised in the catalog and verified by the CLI, but is never
+   regenerated again.
+4. **The build refuses to advertise a frozen label with nothing on disk.**
+   Before anything is generated, the CLI checks every schema's frozen
+   versions for existence; a schema whose `versions` names a label with no
+   file fails typed with `FrozenVersionMissingError` and nothing is written
+   for ANY schema (exit `1`) — a catalog must never point a frozen label at
+   a 404.
+
 `DriftPolicy.classify({ published, change }, policy)` is the pure classifier
 behind the table, answering `"write"` or `"drift"`, if a test wants the same
 verdict the CLI reaches.
@@ -109,10 +134,10 @@ write and told to keep the same label.
 
 ## Bumping
 
-To cut a new version of a published document: change `version`, `$id` and
-`path` together in the config (the three spell the same label), leave the
-old target in place if its file should keep existing, and run `schema:build`.
-The catalog entry's `versions` map picks up the new label on the same run
-because it is derived from every versioned schema of the name. Two targets
-with the same name and the same version under different spellings are
-rejected by `defineConfig`.
+To cut a new version of a published document: append the new label to
+`versions` and set it as `current` in the config; `$id` and `path` for the
+new label derive automatically, and the OLD label's file stays on disk,
+frozen. Run `schema:build`. The catalog entry's `versions` map picks up the
+new label on the same run because it is derived from the schema's own
+`versions`. Two labels that compare equal under `SchemaVersioning.Order`
+are rejected by `defineConfig` as one version spelled twice.
