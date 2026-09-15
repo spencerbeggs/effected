@@ -70,9 +70,11 @@ versioned, at `schemas/<version>/<name>-<version>.json`, the directory
 carrying the same label as the file so a version's artifacts stay
 together while the file name is the one SchemaStore resolves. An input
 schema is unversioned at the repository root. A documentation-facing
-schema nobody pins may live under `docs/schema/`. One generator, one
-committed artifact, one drift test — the directory follows the pinning
-question, not the other way round.
+schema nobody pins may live under `docs/schema/`. One `HostedSchema`
+identity beside the schema, one `schemastore.config.ts` under
+`lib/scripts/`, one committed artifact, and `schemastore check` as the
+drift gate — the directory follows the pinning question, not the other way
+round.
 
 `lib/scripts/` holds non-compilable scripts, deliberately: changes there
 invalidate turbo's build cache, which is exactly the behavior a
@@ -169,13 +171,20 @@ mandatory baseline.
 ### B4 — JSON Schema publication is conditional canon
 
 Whenever a JSON contract crosses the action boundary, input or output,
-generate it through the kit's schema pipeline (Effect Schema → committed,
-ajv-validated, drift-tested files) rather than hand-rolling any part of
-the generate → lint → validate → gate → write sequence. Flat, line-list
-actions skip this entirely. Version labels in emitted file names are full
-three-component SemVer, and a versioned target's contract change is
-refused before any write — an unversioned or prerelease target rewrites in
-place because it has no consumer-pinning expectation to protect.
+generate it through the kit's schema pipeline — Effect Schema → committed,
+ajv-validated, drift-checked files — via the `schemastore` command over a
+`defineConfig` that receives the schema's `HostedSchema` identity as
+`hosted`, never through a generator script, a layer composed in the
+config, or a hand-rolled drift test. The identity is declared once beside
+the schema, and the payload's `$schema` and the committed document's `$id`
+both derive from it. `@effected/schemastore` is a runtime dependency (the
+identity is read at runtime); `@effected/schemastore-cli` is a
+devDependency and is where the ajv engine lives, so the bundle never
+carries one. Flat, line-list actions skip this entirely. Version labels in
+emitted file names are one-to-three-component labels ordered by SemVer
+precedence, and a `published` document's contract change is refused before
+any write — an unpublished target rewrites in place because it has no
+consumer-pinning expectation to protect.
 
 ### B5 — Line-list inputs first
 

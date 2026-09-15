@@ -78,9 +78,11 @@ install both at the same version, with `effect`, as devDependencies.
   Draft-07's taxonomy.** `default`, `examples`, `readOnly` and `writeOnly`
   are contract changes; `x-ai-*` and `markdownDescription` are annotations.
   See [references/document-authoring.md](references/document-authoring.md).
-- **Pin every target's generation options on the target** —
-  `jsonSchema: { onExcessProperty: "error" }` for a closed document — so the
-  document reproduces regardless of core's default. See
+- **Generated objects are closed by default (`additionalProperties:
+  false`); pin `jsonSchema: { onExcessProperty: "ignore" }` on the ONE
+  target that must stay open.** The package no longer follows core's open
+  default, so a config that used to pin `"error"` on every entry can drop
+  the pin. See
   [references/document-authoring.md](references/document-authoring.md).
 - **Run `schema:check` in CI and read its exit code.** `0` is clean (or drift
   under `--on-drift=warn`), `1` is drift, a gate failure, or a stale document
@@ -147,7 +149,7 @@ install both at the same version, with `effect`, as devDependencies.
   choosing a label, or deciding whether to bump.
 - [references/document-authoring.md](references/document-authoring.md) —
   annotation placement, the declared keyword families and the `x-ai-`
-  rules, contract-vs-annotation classification, the `onExcessProperty` pin,
+  rules, contract-vs-annotation classification, the closed-by-default objects,
   content-compared writes. Load when: annotating a schema for an editor,
   reading an `UndeclaredAnnotationKeyError`, or asking whether an edit costs
   a version.

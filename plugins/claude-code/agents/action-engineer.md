@@ -65,8 +65,9 @@ integrations on Effect v4 and the `@effected` kit. Six packages are your
 territory: `@effected/github-actions` (the runner), `@effected/github` (the
 API), `@effected/commands` (subprocesses and tool discovery),
 `@effected/npm` (registry reads and publishing), `@effected/sbom`
-(supply-chain artifacts) and `@effected/schemastore` (the published JSON
-Schema for any contract that crosses the action boundary).
+(supply-chain artifacts) and `@effected/schemastore` with its `schemastore`
+command (the published JSON Schema for any contract that crosses the action
+boundary, and the `$schema` identity the action writes from).
 
 All fifteen Actions skills are preloaded — the whole suite is your working
 set, not a core plus an on-demand tail, because a task in this territory
@@ -113,13 +114,16 @@ source wins and the concept is a finding to report.
    `GithubMarkdown` and a second existence check before a branch create were
    all hand-rolled by consumers who had the answer installed.
    1a. **Publishing a structured output?** One `Schema.Class` exported from
-       the action feeds both `ActionOutputs.setJson` and a `SchemaTarget`;
-       the generator lives in `lib/scripts/generate-schema.ts`, and the
-       drift test walks the exported `targets` through `SchemaPipeline.check`.
-       `run` gates itself — a pinned versioned target whose contract changed
-       fails `SchemaContractChangeError` before anything is written, so the
-       script needs no hand-rolled preflight. `actions-inputs-outputs`'
-       output-contracts reference is the recipe; never hand-roll the
+       the action feeds `ActionOutputs.setJson` and asserts `$schema` from a
+       `HostedSchema` declared beside it; `lib/scripts/schemastore.config.ts`
+       hands the same identity to `defineConfig` as `hosted`, and the
+       `schemastore` command (`schema:build` / `schema:check`, the CI gate)
+       does the rest — no generator script, no layer composition in the
+       config, no hand-rolled drift test. `@effected/schemastore` is a
+       runtime `dependency` (the identity is read at runtime) and
+       `@effected/schemastore-cli` a `devDependency` (it is where ajv
+       lives). `actions-inputs-outputs`' output-contracts reference is the
+       recipe; never hand-roll the
        lowering or a byte-comparing drift test.
 2. **Read the module you are extending**, and its `__test__/` directory. The
    tests encode invariants the types cannot: probe counts, mutation controls,

@@ -57,17 +57,40 @@ Self-hosted, the same entry takes
 `schemas/1.1/okfit-1.1.json` (the `"versioned"` layout) instead of the flat
 SchemaStore file.
 
+When the application also writes `$schema` into its own output, do not
+re-derive that URL in `src/`. Build the identity once with `HostedSchema`
+and hand the same value to both sides:
+
+```ts
+// src/schema/output.ts
+export const OutputSchema = HostedSchema.github({
+  repo: "o/r", path: "schemas", name: "okfit", versions: ["1.0", "1.1"],
+});
+export const Output = Schema.Struct({ $schema: Schema.Literal(OutputSchema.$id) });
+
+// schemastore.config.ts
+schemas: { [OutputSchema.name]: { schema: Output, hosted: OutputSchema } }
+```
+
+`HostedSchema.github({ repo, branch = "main", path?, ... })`,
+`HostedSchema.schemastore({ name, ... })` and
+`HostedSchema.custom({ baseUrl: string | URL, ... })` each validate the
+identity and throw a plain `Error` naming the reason; `$id`, `url` and
+`fileName` answer the current document, `idFor`/`urlFor`/`fileNameFor` any
+advertised version.
+
 ### `schemas` — a record keyed by file base name
 
 The key IS the schema's `name` — every derived `path`, `$id` and catalog
-URL is built from it, `outputDir`, `baseUrl` and `layout` via ONE
-`relativeFile(name, version, layout)`, so they cannot disagree with each
-other. **There is no `$id` override.** The key must be a simple file base
+URL is built from it, `outputDir`, `baseUrl` and `layout` through ONE
+`HostedSchema`, so they cannot disagree with each other. A typo'd key
+anywhere in the config is named and rejected, never ignored. **There is no `$id` override.** The key must be a simple file base
 name: non-empty, no separators, no whitespace.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `schema` | yes | the Effect Schema the document is generated from |
+| `hosted` | no | a `HostedSchema`; supplies `baseUrl`, `versions`, `current` and `layout`, which must then not be spelled here, and its `name` must equal the key |
 | `versions` | no | every version label this schema advertises; omit for an unversioned schema. An empty array is rejected. Two labels that compare equal under `SchemaVersioning.Order` (`"1.2"` and `"1.2.0"`) are rejected as one version spelled twice |
 | `current` | no, requires `versions` | which label is generated at this entry's `path`/`$id`; the rest become frozen files. Defaults to the newest label |
 | `published` | no, default `false` | whether a consumer already depends on this document at this label |
@@ -75,7 +98,7 @@ name: non-empty, no separators, no whitespace.
 | `layout` | no | `"flat"` or `"versioned"`; defaults to `"versioned"` for a custom `baseUrl`, rejected under `baseUrl: "schemastore"` |
 | `drift` | no | overrides the config's top-level `drift` for this schema |
 | `catalog` | required under `baseUrl: "schemastore"` | `{ description, fileMatch }` — the catalog entry to assemble for this schema |
-| `jsonSchema` | no | core's `ToJsonSchemaOptions`, forwarded to generation for this target only |
+| `jsonSchema` | no | core's `ToJsonSchemaOptions`, forwarded to generation for this target only; objects are closed by default, `{ onExcessProperty: "ignore" }` reopens this one document |
 | `rootAnnotations` | no | forwarded to the target |
 
 Every OTHER advertised version besides `current` becomes a **frozen**

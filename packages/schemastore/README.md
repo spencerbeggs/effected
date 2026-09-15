@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources. Core effect already owns the generation pipeline: `Schema.toJsonSchemaDocument` produces Draft 2020-12 and `JsonSchema.toDocumentDraft07` lowers it. This package owns what [SchemaStore](https://www.schemastore.org) expects around that output — the publication shape (`$schema` + `$id` + root + `$defs`, with the `#/definitions` → `#/$defs` ref rewrite the lowering makes necessary), the gate that holds a document's non-standard surface to the language-server keyword families it declares, catalog entries in both versioning modes, structural and hygiene lints, the validation contract (`SchemaValidator`, whose shipped ajv strict-mode engine is `AjvValidator` in `@effected/schemastore-cli`), canonical JSON text and content-comparing write-if-changed file IO. `SchemaPipeline` runs that whole emit loop over a list of targets, so a build script calls one function.
+Publish Effect Schemas as SchemaStore-shaped Draft-07 JSON Schema documents. Core `effect` already generates JSON Schema (`Schema.toJsonSchemaDocument`) and lowers it to Draft-07 (`JsonSchema.toDocumentDraft07`); this package owns what [SchemaStore](https://www.schemastore.org) and the editors expect around that output — the publication shape, the hosted identity a document is published under, the keyword-family gate, catalog entries, lints, versioning, canonical JSON and content-comparing file IO — and the [`schemastore`](https://www.npmjs.com/package/@effected/schemastore-cli) command runs all of it from one config file.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 prerelease. Packages graduate to
@@ -19,31 +19,73 @@ Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema docume
 > accident, and an exact pin turns that into a type-check error rather than a
 > runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
 
-## Why @effected/schemastore
-
-Generating a JSON Schema from an Effect Schema is a solved problem — core does it. Publishing that schema where editors find it is not. SchemaStore recommends Draft-07 because that is what the language servers actually support, and core's Draft-07 lowering has two consequences a publisher must deal with: it rewrites `$ref` pointers to the canonical `#/definitions/...` form while the published document keeps its pool under `$defs`, and it carries unknown and custom keywords through as opaque values — so `markdownDescription`, `x-taplo` and the other editor keywords survive, and the publisher's problem is not getting them through but keeping anything *else* out of a document SchemaStore's own gate would reject. Around the document itself sits SchemaStore's own contract: ajv strict mode as the validation gate, catalog entries whose `fileMatch` patterns must not be generic and versioned schemas as suffixed files plus a `versions` map whose `url` points at the latest. This package is that last mile, so a build script does not have to reinvent it.
-
-The scope is deliberately narrow. There is no schema construction here, no ref resolution beyond the document's own `$defs` pool and no dialect conversion — core's `JsonSchema` owns the generation pipeline, ajv provides the validation gate (shipped by the `schemastore` command, not by this package) and this package owns the SchemaStore shape in between.
-
 ## Install
 
-```bash
-npm install @effected/schemastore effect
-```
+Two packages, one version, two roles: this library is a regular dependency of the application that publishes a schema (its code reads the schema's identity at runtime), and the command is a devDependency that builds and checks the documents.
 
 ```bash
 pnpm add @effected/schemastore effect
+pnpm add -D @effected/schemastore-cli
 ```
 
-Requires Node.js >=24.11.0.
+Requires Node.js >=24.11.0. ESM-only. `effect` v4 is the only peer; `@effected/semver` (version ordering) is the only runtime dependency. There is no validation engine here — `SchemaValidator` is a contract, and the shipped ajv strict-mode engine is `AjvValidator` in the CLI — so importing this package at runtime never installs or bundles ajv.
 
-All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+## How the two packages fit together
 
-`effect` v4 is the only peer dependency, and `@effected/semver` — the version ordering inside `SchemaVersioning`, with no `SemVer` type surfacing in the public API — is the only regular dependency. There is no validation engine in this package: `SchemaValidator` is a contract, and the shipped ajv implementation is `AjvValidator` in [`@effected/schemastore-cli`](https://www.npmjs.com/package/@effected/schemastore-cli), so an application that imports this package at runtime (to derive a `$schema` URL from `HostedSchema`, say) never installs or bundles ajv. Install the CLI when you want the real engine; the validation example below assumes you have. Every module is pure except `SchemaFile`, whose layer requires core `FileSystem` and `Path`, supplied at the edge from `@effect/platform-node` or `@effect/platform-bun`.
+The pattern has three parts. The application declares each schema's **hosted identity** once, next to the schema, and reads the `$schema` URL it writes into its own output from it. The config file hands the same values to `defineConfig`. The command derives every path, `$id` and catalog URL from them, so nothing is spelled twice.
 
-## Quick start
+```ts
+// src/schema/output.ts — the application
+import { HostedSchema } from "@effected/schemastore";
+import { Schema } from "effect";
 
-Turn an Effect Schema into a publication-ready document:
+export const OUTPUT_SCHEMA_VERSION = "5.2";
+
+export const OutputSchemaIdentity = HostedSchema.github({
+  repo: "savvy-web/silk-release-action",
+  path: "schemas",
+  name: "silk-release-action.output",
+  versions: [OUTPUT_SCHEMA_VERSION],
+});
+
+// Every payload the application emits names the document it was written against.
+export const ReleaseOutput = Schema.Struct({
+  $schema: Schema.Literal(OutputSchemaIdentity.$id),
+  status: Schema.Literals(["released", "skipped"]),
+});
+```
+
+```ts
+// schemastore.config.ts — the config
+import { defineConfig } from "@effected/schemastore";
+import { OutputSchemaIdentity, ReleaseOutput } from "./src/schema/output.js";
+
+export default defineConfig({
+  outputDir: "schemas",
+  schemas: {
+    [OutputSchemaIdentity.name]: { schema: ReleaseOutput, hosted: OutputSchemaIdentity },
+  },
+});
+```
+
+```json
+{
+  "scripts": {
+    "schema:build": "schemastore build",
+    "schema:check": "schemastore check"
+  }
+}
+```
+
+`schemastore build` writes `schemas/5.2/silk-release-action.output-5.2.json` with `$id` equal to `OutputSchemaIdentity.$id`, closed objects (`additionalProperties: false`), and the `$schema` literal the application asserts. `schemastore check` is the CI gate: it fails when a build would write anything. Bumping the version is one constant. Everything the command does — the drift policy, the `published` flag, frozen labels, the catalog file, exit codes — is documented on the [CLI's page](https://www.npmjs.com/package/@effected/schemastore-cli).
+
+`HostedSchema.github({ repo, branch?, path?, ... })` serves files raw from a repository (`branch` defaults to `main`); `HostedSchema.schemastore({ name, ... })` publishes to SchemaStore (`$id` on `json.schemastore.org`, the catalog URL on `www.schemastore.org`, flat layout); `HostedSchema.custom({ baseUrl, ... })` takes any `https://` directory as a string or `URL`. Each validates the identity — `current` must be one of `versions`, two spellings of one label are refused — and throws a plain `Error` naming the reason. `$id`, `url` and `fileName` answer the current document; `idFor`, `urlFor` and `fileNameFor` answer any advertised version. A consumer test pins `target.path === \`${outputDir}/${identity.fileName}\`` to catch a swapped `hosted:` the CLI cannot see.
+
+## Using the library directly
+
+Everything the command composes is exported, for a program that needs one piece or wants to drive the pipeline itself.
+
+`StoreDocument.fromSchema` runs the assembly for one schema — 2020-12 generation, Draft-07 lowering, the `#/definitions` → `#/$defs` rewrite and the keyword-family gate — so every `$ref` in a built document resolves against its `$defs` pool:
 
 ```ts
 import { StoreDocument } from "@effected/schemastore";
@@ -57,219 +99,12 @@ const program = Effect.gen(function* () {
   });
   return yield* Effect.fromResult(document.serializeResult());
 });
-
-console.log(Effect.runSync(program));
-// {
-//   "$schema": "http://json-schema.org/draft-07/schema#",
-//   "$id": "https://example.com/config.schema.json",
-//   "type": "object",
-//   "properties": {
-//     "name": {
-//       "type": "string"
-//     }
-//   },
-//   "required": [
-//     "name"
-//   ],
-//   "additionalProperties": false
-// }
+// { "$schema": "http://json-schema.org/draft-07/schema#", "$id": "…", "type": "object", …, "additionalProperties": false }
 ```
 
-`additionalProperties: false` is this package's default for a struct, not core's: `Schema.toJsonSchemaDocument` has emitted open objects by default since rc.113, but a published document is a contract, so `fromSchema` generates under `onExcessProperty: "error"` unless told otherwise. `jsonSchema: { onExcessProperty: "ignore" }` in the options reopens one document; the same option lives on a pipeline target, below.
+Objects are closed by default — a published document is a contract, and this package does not follow core's open default. `jsonSchema: { onExcessProperty: "ignore" }` on one target (or one `defineConfig` entry) reopens that document.
 
-`fromSchema` runs the whole pipeline — 2020-12 generation, Draft-07 lowering, the `$ref` rewrite and the declared-family gate — so every `$ref` in a built document already resolves against its `$defs` pool. `toJson()` is the flat publication shape (`$defs` omitted when empty) and `serializeResult` routes through the owned canonical serializer, tab-indented with a single trailing newline. If core cannot convert a schema, the failure is typed as `SchemaConversionError` and carries the `$id` and the structured cause.
-
-## Annotate at the definition site
-
-One constraint bites consumers who do not know it, so it comes before the feature tour. An annotation applied at a hoisted schema's *usage* site (`Person.annotate({ ... })` inside a struct field) reaches neither the `$ref` node nor the `$defs` pool entry, even before the Draft-07 lowering. It silently carries nothing. Put the annotation where the schema is defined.
-
-## Carrying language-server annotations
-
-SchemaStore documents lean on non-standard keywords the editors read: the vscode-json-languageservice set (`markdownDescription`, `defaultSnippets`, `enumDescriptions`, `markdownEnumDescriptions`, `allowTrailingCommas`), taplo's `x-taplo` keys, tombi's `x-tombi-*` and IntelliJ's `x-intellij-*`. Effect Schema annotations accept arbitrary string keys, so `Schema.String.annotate({ "x-taplo": { ... } })` type-checks with no module augmentation, and core's Draft-07 lowering carries the key through as an opaque value — in place, on the node you attached it to. `StoreDocument.fromSchema` admits the declared families unconditionally, so the annotation you wrote is the keyword that ships:
-
-```ts
-import { StoreDocument } from "@effected/schemastore";
-import { Effect, Schema } from "effect";
-
-const Config = Schema.Struct({
-  name: Schema.String.annotate({ "x-taplo": { docs: { main: "The display name." } } }),
-});
-
-const program = Effect.gen(function* () {
-  const document = yield* StoreDocument.fromSchema(Config, {
-    $id: "https://example.com/config.schema.json",
-  });
-  return document.root.properties;
-});
-
-console.log(Effect.runSync(program));
-// => { name: { type: "string", "x-taplo": { docs: { main: "The display name." } } } }
-```
-
-The declared families are always admitted, whatever a caller-supplied `includeAnnotationKey` answers — `KeywordFamilies` is the one registry, consumed by both the gate and the lint, so the two cannot drift on what counts as declared. The predicate's only remaining effect is to fail the build: a key it admits outside the declared families raises `UndeclaredAnnotationKeyError`, naming every offending key. That is deliberate. This package emits SchemaStore-compatible documents only, and the families are the whole non-standard surface it will ship, so a predicate that reaches past them is a mistake worth hearing about rather than a preference worth honouring quietly.
-
-One thing the package does *not* do to a declared-family value is walk inside it. The `#/definitions` → `#/$defs` `$ref` rewrite skips those payloads entirely: they are opaque advice addressed to a language server, so a `$ref`-shaped string inside one means whatever that tool says it means and survives verbatim.
-
-`KeywordFamilies` splits into two groups. The upstream families above are mirrored from SchemaStore's own CONTRIBUTING guide — vocabularies the language servers already read. The `x-ai-` prefix (with the trailing dash — bare `x-ai` and a look-alike like `x-aida-foo` are not declared) is different: a house machine-annotation namespace this package owns rather than mirrors, meant for a machine reader rather than an editor. It is a namespace, not a fixed vocabulary — any key under the prefix is declared, and the one recommended (non-binding) key is `x-ai-hint`, a string instruction to a machine reader about the annotated value. A key under the prefix must be one ajv can register: after `x-ai-` only `[A-Za-z0-9_$:-]` (ajv holds a keyword name to `/^[a-z_$][a-z0-9_$:-]*$/i`), so a dot, a space, a slash, an `@`, a `+` or a non-ASCII character makes the engine gate reject the whole document as a finding. A declared-family value must itself be JSON, and must not contain an `$id` — or a repeated `$anchor` — at any depth, not merely as its own top-level key: ajv's reference collection walks unknown keywords looking for them, and a colliding one fails the compile. An empty-string `$id` resolves to the root id and collides too. No upstream tool sanctions `x-ai-` today, so it is intended for self-hosted publication rather than submission to schemastore.org without that repo's own validation-config entry. Because `x-ai-*` advises a reader rather than asserting anything, `DocumentDiff` classifies it as an annotation: adopting the family on an already-published versioned document rewrites that file in place, the same as any other prose change.
-
-## Catalog entries and versioning
-
-`CatalogEntry` is the `catalog.json` entry as a `Schema.Class`, so decoding an existing entry and encoding one for submission are the same artifact. `SchemaVersion` is a **one-to-three-component** label — `major`, `major.minor` or `major.minor.patch` with an optional prerelease, matched by a grammar regex and then validated by `@effected/semver` over the label padded to three components — so ordering is plain SemVer precedence (`1.10.0` above `1.9.0`; `1`, `1.0` and `1.0.0` compare equal) and the label round-trips verbatim. Build metadata is rejected (`1.0.0+build.5` does not parse): SemVer precedence ignores it, so two labels differing only in build would compare equal and both claim to be the latest. Surrounding whitespace is rejected for the same round-tripping reason. The file-name convention is SchemaStore's own `<name>-<version>.json`, and partial labels like `1.2` — common in the store's corpus — are accepted as written; `defineConfig` refuses two spellings of one version under one name so a file name always maps back to one label.
-
-`SchemaVersioning.isPinned(version)` answers whether a label names a published document rather than a prerelease — SemVer §9 makes a prerelease's own instability explicit, so a contract change inside one breaks nobody's pin. It is the one predicate the pipeline's contract gate and `SchemaVersioning.next` both read, so the two can never disagree about the same label. `next(current, change)` is the version a `WriteChange` classification calls for: identity for anything but a `"contract"` change on a pinned label, otherwise a MINOR bump on the 0.x line (0.x treats MINOR as the breaking axis) or MAJOR above it — always strictly greater, never a minted prerelease.
-
-`CatalogEntry.assemble` derives both catalog modes from the same inputs. Pass `versions` for the versioned mode — the `versions` map carries every label and `url` points at the latest version's file — or omit it for the unversioned single-file mode. An empty `versions` array is a contradiction and throws; pass `undefined` instead.
-
-```ts
-import { CatalogEntry, SchemaVersioning } from "@effected/schemastore";
-import { Effect } from "effect";
-
-const program = Effect.gen(function* () {
-  const versions = yield* Effect.forEach(["1.9.0", "1.10.0"], SchemaVersioning.parse);
-  return CatalogEntry.assemble({
-    name: "My Tool",
-    description: "Configuration for My Tool.",
-    fileMatch: ["mytool.config.json"],
-    baseUrl: "https://example.com/schemas",
-    fileBaseName: "mytool",
-    versions,
-  });
-});
-
-console.log(Effect.runSync(program).url);
-// => "https://example.com/schemas/mytool-1.10.0.json"
-```
-
-The `fileMatch` hygiene lint enforces the patterns SchemaStore's reviewers enforce, as pure shape analysis — it never matches a pattern against a path, so there is no glob engine behind it:
-
-```ts
-import { CatalogEntry } from "@effected/schemastore";
-
-const findings = CatalogEntry.lintFileMatch(["config.toml", "**/{a,b}.json"]);
-
-console.log(findings.map((finding) => finding.check));
-// => ["GenericFileMatch", "ComplexFileMatch"]
-```
-
-`GenericFileMatch` flags patterns matching generic names other tools also use (SchemaStore rejects them); `ComplexFileMatch` flags glob constructs like alternations that should be expanded into multiple simple patterns. `entry.lint()` runs the same checks over an assembled entry.
-
-## One identity for the application and the config
-
-An application that writes `$schema` into its own output needs the same URL the CLI writes as `$id`, and the two are easy to derive twice. `HostedSchema` holds that identity once — where the documents are served, the name, every advertised version and which one is current — and derives everything else. Build it in application code and hand the same value to `defineConfig`:
-
-```ts
-import { HostedSchema } from "@effected/schemastore";
-import { Schema } from "effect";
-
-export const OutputSchema = HostedSchema.github({
-  repo: "savvy-web/silk-release-action",
-  path: "schemas",
-  name: "silk-release-action.output",
-  versions: ["5.1", "5.2"],
-});
-
-console.log(OutputSchema.$id);
-// => "https://raw.githubusercontent.com/savvy-web/silk-release-action/main/schemas/5.2/silk-release-action.output-5.2.json"
-
-// Every payload the application emits names the document it was written against.
-export const Output = Schema.Struct({ $schema: Schema.Literal(OutputSchema.$id), version: Schema.String });
-```
-
-```ts
-// schemastore.config.ts
-import { defineConfig } from "@effected/schemastore";
-import { Output, OutputSchema } from "./src/output.js";
-
-export default defineConfig({
-  outputDir: "schemas",
-  schemas: { [OutputSchema.name]: { schema: Output, hosted: OutputSchema } },
-});
-```
-
-Three constructors cover the three hosts: `HostedSchema.github({ repo, branch?, path?, ... })` serves files raw from a repository (`branch` defaults to `main`), `HostedSchema.schemastore({ name, ... })` publishes to SchemaStore (`$id` on `json.schemastore.org`, the catalog URL on `www.schemastore.org`, the flat layout forced), and `HostedSchema.custom({ baseUrl, ... })` takes any `https://` directory as a string or `URL`. Each validates the identity the way `defineConfig` does — `current` must be one of `versions`, two spellings of one label are refused — and throws a plain `Error` naming the reason. `$id`, `url` and `fileName` answer the current document; `idFor`, `urlFor` and `fileNameFor` answer any advertised version. `fileName` is the test-side companion to `$id`: a consumer pins `target.path === \`${outputDir}/${identity.fileName}\`` to catch a swapped `hosted:` the CLI cannot see. An entry given `hosted` must be keyed by `hosted.name` and must not spell `baseUrl`,`versions`,`current` or `layout` beside it — the identity owns them.
-
-## Linting documents
-
-`DocumentLint.lint` is the owned, always-available half of the validation story: total structural checks returning findings as values, never an error — hostile nesting degrades to a finding too.
-
-| Check | Severity | Fires when |
-| ----- | -------- | ---------- |
-| `UnresolvedRef` | warning | a `$ref` does not resolve against the `$defs` pool — including a `#/definitions/...` pointer that survived where it should not |
-| `UnknownKeyword` | warning | a keyword sits outside Draft-07 plus the declared non-standard families, which ajv strict mode would reject |
-| `DescriptionWithoutUrl` | advisory | the root description's last line is not a documentation URL (SchemaStore's description convention) |
-| `DepthExceeded` | warning | nesting exceeds the depth cap; the walk stops there instead of failing |
-
-The keyword walk is position-aware: a *property* named `unevaluatedProperties` is data, not a keyword, and is not flagged; `enum`, `const`, `default` and `examples` values are never descended into.
-
-## Real-engine validation
-
-SchemaStore's own gate is ajv strict mode, and the kit ships it once — as `AjvValidator.layer` in `@effected/schemastore-cli`, the engine the `schemastore` command runs. This package ships the `SchemaValidator` contract the engine implements, and nothing of ajv: an application that depends on the library at runtime pays for no validator it never calls, and a program that drives `SchemaPipeline` itself imports the same layer the command composes, with no adapter to write.
-
-The channel convention holds: findings are values — a strict-mode rejection is a report, not an error — and the error channel is reserved for the engine failing as a mechanism (`SchemaValidatorError`). Meta-schema failures keep ajv's structured `instancePath` and `keyword`; a strict-mode rejection, which ajv raises by throwing, becomes a root-pathed finding. The declared language-server keyword families are registered before compiling, so ajv does not reject what `DocumentLint` deliberately allows — one `KeywordFamilies` predicate governs both verdicts.
-
-```ts
-import { SchemaValidator, StoreDocument } from "@effected/schemastore";
-import { AjvValidator } from "@effected/schemastore-cli";
-import { Effect, Schema } from "effect";
-
-const program = Effect.gen(function* () {
-  const validator = yield* SchemaValidator;
-  const document = yield* StoreDocument.fromSchema(Schema.Struct({ name: Schema.String }), {
-    $id: "https://example.com/config.schema.json",
-  });
-  return yield* validator.validate(document.toJson());
-});
-
-Effect.runPromise(Effect.provide(program, AjvValidator.layer)).then(console.log);
-// [] when the document compiles clean; the engine's findings otherwise
-```
-
-The service is an interface: `noop` switches validation off deliberately, `makeTest` / `layerTest` are the doubles (unstubbed members die naming themselves) and a consumer standardized on another engine substitutes its own layer. `DocumentLint` remains the engine-free structural half, answering SchemaStore hygiene questions ajv does not.
-
-`validate` takes the flat serialized record — `StoreDocument.toJson()`'s shape — so the seam stays engine-shaped and decoupled from this package's classes.
-
-## Writing schema files
-
-`SchemaFile` is the package's one IO surface: serialize through the canonical serializer, compare against what is on disk and write only on difference, creating parent directories as needed. The result is a value, never a log.
-
-The comparison is by **content**, not bytes, so a generated schema can share a file with a formatter that also owns it. If your repo's Biome or Prettier hook reflows the emitted JSON, the next run still reports `"unchanged"` and leaves the file alone, and you write no exclusion rule. Pass `compare: "bytes"` to opt back into byte-exactness when the emitted text is itself the artifact.
-
-`write` also says what the difference *meant*: `"annotations"` when only prose and editor affordances moved, so the document replaces its predecessor transparently and needs no new version, and `"contract"` when an assertion keyword moved and a consumer's valid document may now be invalid. `check` makes the same comparison without writing, which is what a CI drift job wants:
-
-```ts
-import { SchemaFile, StoreDocument } from "@effected/schemastore";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import { Effect, Layer, Schema } from "effect";
-
-const program = Effect.gen(function* () {
-  const files = yield* SchemaFile;
-  const document = yield* StoreDocument.fromSchema(Schema.Struct({ name: Schema.String }), {
-    $id: "https://example.com/config.schema.json",
-  });
-  const first = yield* files.write("schemas/config.schema.json", document);
-  const second = yield* files.write("schemas/config.schema.json", document);
-  const drift = yield* files.check("schemas/config.schema.json", document);
-  return [first, second, drift] as const;
-}).pipe(
-  Effect.provide(SchemaFile.layer),
-  Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
-);
-
-Effect.runPromise(program).then(console.log);
-// => [
-//      { outcome: "written", change: "created" },
-//      { outcome: "unchanged", change: "none" },
-//      { wouldWrite: false, change: "none" },
-//    ]
-```
-
-`outcome` and `wouldWrite` are the authoritative answers to whether the file was or would be touched. Never infer that from `change`, which reports content and reads `"none"` on a `compare: "bytes"` write that did rewrite the file.
-
-Failures stay typed and apart: `SchemaFileNotFoundError` for a missing file on `read`, `SchemaFileReadError` when the comparison read fails for any other reason (the write fails rather than silently overwriting), `SchemaFileWriteError` for the filesystem write and `CanonicalJsonError` when the document does not serialize.
-
-## The emit pipeline
-
-`SchemaPipeline` is the loop around everything above: generate each target's document, lint it, validate it with the engine, gate on the findings, write it. It is a plain function requiring `SchemaFile` and `SchemaValidator`, not another service to wire; the `schemastore` command is the packaged form of this loop, and its `AjvValidator` is the engine to provide when you run it yourself.
+`SchemaPipeline.run(targets)` is the emit loop over a target manifest — generate, lint, validate, gate, write — requiring `SchemaFile` and `SchemaValidator` in `R`. Provide the file service and an engine at the edge; the engine is the CLI's:
 
 ```ts
 import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
@@ -282,104 +117,32 @@ const targets = [
     schema: Schema.Struct({ name: Schema.String }),
     $id: "https://example.com/config.schema.json",
     path: "schemas/config.schema.json",
-    jsonSchema: { onExcessProperty: "ignore" },
   }),
 ];
 
-// One named layer, composed once, provided at the boundary.
-const AppLayer = Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
-  Layer.provide(NodeServices.layer),
-);
-
-const program = SchemaPipeline.run(targets).pipe(Effect.provide(AppLayer));
-
-Effect.runPromise(program).then(console.log);
-// => [{ $id, path, outcome: "written", change: "created", findings: [] }]
-```
-
-`NodeServices` is composed **into** the layer with `Layer.provide` rather than
-stacked onto the program with a second `Effect.provide`. Both run correctly
-here — `SchemaFile` holds no state, so nothing observes the difference — but
-the composed form is the shape to copy. Stacking `Effect.provide` calls at the
-call site is how a layer ends up built more than once, and the first stateful
-service you add is where that starts to matter. Binding the composition to a
-named `const` also makes it reusable: a drift test and the generator that
-provide the same value cannot disagree about what the layer contains.
-
-A target names its schema, its `$id` and where the file goes. `name` is optional and only catalog naming reads it, so a file-only target like the one above does not repeat its path's basename; supply it when you also pass a `version`, since versioned naming is `<name>-<version>.json`.
-
-`jsonSchema` is optional too, and carries core's `Schema.ToJsonSchemaOptions` for that one target. Set it when the document's shape must not follow this package's defaults: `onExcessProperty: "ignore"` keeps a published open-object document open, where the closed-by-default generator would otherwise flip every struct's `additionalProperties` and the contract gate would refuse the rewrite. Living on the target rather than in the pipeline options keeps each document's generation contract self-describing.
-
-Both gates' findings normalize into one `PipelineFinding` shape, so a single predicate judges them. Gating is **policy, not mechanism**: `blocking` defaults to `severity === "warning"`, which is what `UnresolvedRef`, `UnknownKeyword` and `DepthExceeded` are. Replace the predicate rather than the loop when you disagree.
-
-```ts
-SchemaPipeline.run(targets, { blocking: (finding) => finding.source === "validator" });
-```
-
-Worth knowing which gate actually stops you here. A target carries a `Schema`, so pipeline documents come from `fromSchema`, which never admits an undeclared keyword in the first place: `UnknownKeyword` is effectively unreachable through this entry point and **the engine gate is what blocks in practice**. The lint's warning checks earn their keep on depth and on documents the pipeline did not build, such as a hand-assembled `StoreDocument.draft07` or one read back off disk.
-
-Findings come back as values and are never logged, so the wording of your build output stays yours. A blocking finding fails with `SchemaGateError` carrying every finding that blocked. `run` is **two-phase and all-or-nothing across targets**: every target is generated, gated, and — for a target the contract policy guards — classified against its predecessor before any file is touched, and only then are the held documents written, in order. A gate or contract failure on the third target therefore leaves the first two unwritten too, not merely the third; nothing is written unless every target passes both gates.
-
-### The contract gate
-
-A schema with a pinned `version` — `SchemaVersioning.isPinned`'s name for a label with no prerelease — is a published document: consumers pin its URL. `SchemaPipeline.run` will not silently rewrite one in place when the new document's validation contract has moved out from under it: by default (`contractChanges: "block-versioned"`), a `"contract"` change on such a target fails the whole run with `SchemaContractChangeError` before anything is written, carrying every affected target's `$id`, `path`, `version` and the `nextVersion` it should publish under instead (`SchemaVersioning.next`). A target with no `version`, or with a prerelease label, declares its own instability and is rewritten in place as before.
-
-```ts
-import { SchemaContractChangeError, SchemaPipeline } from "@effected/schemastore";
-import { Effect } from "effect";
-
-declare const targets: Parameters<typeof SchemaPipeline.run>[0];
-
 const program = SchemaPipeline.run(targets).pipe(
-  Effect.catchTag("SchemaContractChangeError", (error: SchemaContractChangeError) =>
-    Effect.succeed(
-      error.targets.map((target) => `${target.$id}: ${target.version} -> ${target.nextVersion}`),
-    ),
-  ),
+  Effect.provide(Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(Layer.provide(NodeServices.layer))),
 );
 ```
 
-Pass `contractChanges: "allow"` to classify and report only, never refuse — the same behavior the pipeline had before this gate existed. That is also the sanctioned repair path for a published file whose on-disk text no longer parses: `SchemaFile` classifies unparseable text as `"contract"` so a corrupted generated file stays regenerable, and the default policy would otherwise refuse that exact repair.
+`run` is two-phase and all-or-nothing across targets: every target is generated, gated and — for a pinned version — classified against its predecessor before any file is written. A blocking finding fails with `SchemaGateError`; a contract change on a pinned, published version fails with `SchemaContractChangeError` carrying the `nextVersion` to publish under instead (`contractChanges: "allow"` classifies and reports only). `check` is the same walk with no writes. Findings are values, never logs, and the gating predicate (`blocking`) is yours to replace.
 
-The contract gate is only coherent when `version` participates in a target's `path` (`schemas/<version>/<name>-<version>.json`) — a target at a fixed path compares the same file forever, so bumping `version` alone does not move where the next write lands.
+## What the library owns
 
-`SchemaPipeline.check(targets)` is the same walk with no writes, answering `wouldWrite`, `change`, `blocked` and `contractBlocked` per target. Where `run` enforces, `check` reports: it is total over the targets and never stops at a failing gate or a blocked contract, so a repo with several broken documents learns about all of them in one run rather than one per run. `blocked` and `contractBlocked` answer different questions side by side — the first, whether findings would block under `blocking`; the second, whether the contract policy would refuse the write under `contractChanges` — so a drift job can print the right remedy instead of telling a refused target to "just regenerate."
-
-`runOne` and `checkOne` take a single target and answer its one result directly, so a one-target caller need not prove element zero exists.
-
-## Comparing two documents
-
-`DocumentDiff.classify` is the pure form of the comparison `SchemaFile` makes internally: hand it two emitted documents and it answers `"none"`, `"annotations"` or `"contract"`. That is the signal for whether a change needs a new schema version — `"annotations"` replaces its predecessor transparently, `"contract"` does not. `DocumentDiff.isClean` is the predicate for the clean case, so consumers do not spell `"none"` themselves; `"created"` is deliberately not clean.
-
-The classification is key-order insensitive and keyword-position aware, like the lint. `default`, `examples`, `readOnly` and `writeOnly` count as contract rather than documentation, because consumers act on them: reporting a contract change as annotations ships a silent break, while the reverse only costs a version bump.
-
-## Canonical JSON
-
-`CanonicalJson` is the deterministic serializer behind `serializeResult` and `SchemaFile.write`: insertion-order keys (assembly owns ordering — nothing is sorted), tab indentation by default, LF line endings and a single trailing newline, so equal documents serialize to equal bytes. Where `JSON.stringify` silently drops or rewrites `undefined`, `NaN` and non-plain objects, it fails typed instead — `NonJsonValueError` carries a JSON pointer to the offending value, and `JsonDepthExceededError` catches hostile nesting and cycles.
-
-`CanonicalJson.equals` is content equality under the same semantics: two values are equal when they would parse to the same JSON document — object key order is ignored, arrays compare positionally, and a non-plain object (a class instance, a `Date`) compares by reference. It is the comparison `SchemaFile`'s write-if-changed and `DocumentDiff`'s leaf checks already make, exported so a consumer writing its own JSON artifact can decide "unchanged" by the same rule.
-
-## Root annotations
-
-Some annotations cannot be expressed on the source schema — a `Schema.Class` root's `title`, or a description on a field the generator filtered. `rootAnnotations` (on `StoreDocumentOptions`, and forwarded from `SchemaTarget.rootAnnotations` by the pipeline) merges them onto the emitted root after assembly. The gate is up front: only the standard annotation keywords (`title`, `description`, `$comment`, `default`, `examples`, `readOnly`, `writeOnly`, `contentMediaType`, `contentEncoding`) and the declared keyword families are admitted; anything else fails with `UndeclaredAnnotationKeyError` before generation, so the override cannot become a back door for assertion keywords.
-
-Placement follows the assembled root: an inline root takes the annotations directly; a bare local `$ref` root whose `$defs` entry nothing else references takes them on that entry (Draft-07 validators ignore `$ref` siblings); a bare `$ref` root whose entry is shared — a recursive class — becomes `{ ...annotations, allOf: [{ $ref }] }`, so the document is annotated without every occurrence of the type inheriting its title.
-
-## Features
-
-- `StoreDocument` — the assembly pipeline: `fromSchema` / `fromSchemaResult`, the `draft07` constructor for hand-built documents, the flat `toJson()` publication shape, `serializeResult()`, the `DRAFT_07_META_SCHEMA` constant and `SchemaConversionError`.
-- `KeywordFamilies` — the one registry of declared keyword families (upstream language-server families plus the house `x-ai-` machine-annotation namespace), consumed by both the `fromSchema` gate and the lint so they cannot disagree.
-- `SchemaVersioning` / `SchemaVersion` — full-SemVer version labels with `parseResult` / `parse`, the `Order` instance and `latest`, `isPinned` and `next` for the contract-change version bump, plus `fileName`, `schemaUrl` and `catalogUrls` deriving both catalog modes.
-- `CatalogEntry` — the `catalog.json` entry as a `Schema.Class`, `assemble` and the `fileMatch` hygiene lint (`CatalogLintFinding`).
-- `HostedSchema` — a schema's hosted identity as a `Schema.Class` (`github`, `schemastore` and `custom` constructors) deriving `$id`, the catalog `url` and the file name for the current or any advertised version, shared between application code and `defineConfig`'s `hosted` field.
-- `DocumentLint` — the total structural lint returning `DocumentLintFinding` values, never an error.
-- `SchemaValidator` — the validation contract: `ValidationFinding`, `SchemaValidatorError`, `noop` to switch validation off and the `makeTest` / `layerTest` doubles. The shipped engine, ajv strict mode closed by default, is `AjvValidator.layer` from `@effected/schemastore-cli`.
-- `DocumentDiff` — `classify` puts two documents in `"none"` / `"annotations"` / `"contract"`, the signal for whether a change needs a new schema version, plus `isClean` for the clean case.
-- `SchemaPipeline` — the emit loop over a target manifest, two-phase and all-or-nothing across targets: `run` and `check`, the single-target `runOne` and `checkOne`, `PipelineFinding`, `SchemaGateError` and an overridable gating predicate, plus the contract gate (`ContractChangePolicy`, `ContractChangeTarget`, `SchemaContractChangeError`, `PipelineCheckResult.contractBlocked`) that refuses to rewrite a published document's validation contract in place.
-- `SchemaFile` — write-if-changed IO over core `FileSystem` / `Path`, comparing by content and answering what changed as a value; `check` is the non-writing drift half, answering `wouldWrite` alongside `change`.
-- `SchemaTarget` — the target manifest vocabulary: schema, `$id`, destination path, an optional name, an optional version that requires one, optional per-target `jsonSchema` generation options and `rootAnnotations` merged onto the emitted root.
-- `CanonicalJson` — the deterministic serializer with typed failures (`NonJsonValueError`, `JsonDepthExceededError`) and `equals`, content equality under the same semantics.
+- `HostedSchema` — a schema's hosted identity (`github`, `schemastore`, `custom`), deriving `$id`, the catalog URL and the file name for the current or any advertised version.
+- `defineConfig` — the `schemastore.config.ts` contract: validated with one `Schema.Struct` per level (a typo'd key is named, every issue on an entry reported at once), every path and URL derived from the entry key and its identity, frozen labels resolved, a branded result the CLI recognises.
+- `StoreDocument` — assembly: `fromSchema` / `fromSchemaResult`, the `draft07` constructor for hand-built documents, the flat `toJson()` publication shape, `serializeResult()`, `DRAFT_07_META_SCHEMA`.
+- `KeywordFamilies` — the one registry of declared non-standard keyword families (the vscode five, `x-taplo`, `x-tombi-`, `x-intellij-`, and the house `x-ai-` machine-annotation namespace). Anything outside it fails `fromSchema` with `UndeclaredAnnotationKeyError`; nothing is silently dropped.
+- `SchemaVersioning` / `SchemaVersion` — one-to-three-component version labels, `Order`, `latest`, `isPinned`, `next`, and the `fileName` / `schemaUrl` / `catalogUrls` derivations.
+- `CatalogEntry` — the `catalog.json` entry as a `Schema.Class`, `assemble` for both catalog modes, and the `fileMatch` hygiene lint.
+- `DocumentLint` — the total structural lint (`UnresolvedRef`, `UnknownKeyword`, `DepthExceeded`, `DescriptionWithoutUrl`, …), findings as values.
+- `SchemaValidator` — the validation contract: `noop` switches it off, `makeTest` / `layerTest` are the doubles; `ValidationFinding` and `SchemaValidatorError` are its values. The engine is `AjvValidator` in `@effected/schemastore-cli`.
+- `DocumentDiff` — `classify` two documents as `"none"` / `"annotations"` / `"contract"`, the signal for whether a change needs a new version.
+- `DriftPolicy` — the lifecycle rule the CLI applies: `published` documents are held to a tolerance (`strict` / `semantic` / `allow`), unpublished ones regenerate in place.
+- `SchemaPipeline` — the emit loop: `run` / `check`, `runOne` / `checkOne`, the gate and the contract guard.
+- `SchemaFile` — write-if-changed IO over core `FileSystem` / `Path`, comparing by parsed content so a formatter that owns the file's text does not churn it; `check` is the non-writing half.
+- `CanonicalJson` — the deterministic serializer (insertion order, tabs, one trailing newline, typed failures) and `equals`, the one content-equality rule.
 
 ## License
 
-[MIT](LICENSE)
+MIT

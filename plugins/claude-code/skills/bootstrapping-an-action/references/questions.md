@@ -30,7 +30,7 @@ Adds: `INPUT_NAMES` tuple and count; defaults mirrored from `action.yml`; cross-
 
 > List the outputs. Is any of them a structured document that a downstream job, a bot or an LLM will parse? **Default: scalars only.**
 
-Adds: `OUTPUT_NAMES` tuple and count; the all-disabled baseline values; for a structured `result`: one exported `Schema.Class`, `ActionOutputs.setJson` through it, a versioned schema under `schemas/<version>/`, the generator at `lib/scripts/generate-schema.ts` — whose `SchemaPipeline.run` refuses a pinned target's contract change itself, no hand-rolled preflight needed — `schema:generate` / `schema:check` scripts, the drift test, and `@effected/schemastore` in `devDependencies`.
+Adds: `OUTPUT_NAMES` tuple and count; the all-disabled baseline values; for a structured `result`: one exported `Schema.Class` asserting `$schema` from a `HostedSchema` declared beside it, `ActionOutputs.setJson` through it, a versioned schema under `schemas/<version>/`, `lib/scripts/schemastore.config.ts` handing that identity to `defineConfig` as `hosted`, `schema:build` / `schema:check` scripts over the `schemastore` command (`schema:check` in `ci:test` is the drift gate — no drift test to write), `@effected/schemastore` in `dependencies` and `@effected/schemastore-cli` in `devDependencies`.
 
 ## 6. Runner capabilities
 

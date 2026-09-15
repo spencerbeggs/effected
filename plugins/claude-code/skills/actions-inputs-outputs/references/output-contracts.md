@@ -141,185 +141,146 @@ not a runtime failure discovered by a downstream consumer.
 
 ### Generating the committed JSON Schema
 
-The committed document is produced by `@effected/schemastore`, never by
-hand-assembling `Schema.toJsonSchemaDocument`'s output. The package owns the
-whole generate → lint → validate → gate → write loop: core's draft 2020-12
-generation lowered to Draft-07 (the dialect SchemaStore and every editor
-integration read), the `#/definitions` → `#/$defs` `$ref` rewrite that
-lowering makes necessary, the structural lint, a real ajv strict-mode gate,
-and a content-comparing write through a deterministic serializer. An action
-repository writes the *target manifest* and the log wording, nothing else.
+The committed document is produced by the `schemastore` command
+(`@effected/schemastore-cli`) over `@effected/schemastore`, never by
+hand-assembling `Schema.toJsonSchemaDocument`'s output and never by a
+generator script of your own. The library owns the whole generate → lint →
+validate → gate → write loop — core's draft 2020-12 generation lowered to
+Draft-07 (the dialect every editor integration reads), the `#/definitions` →
+`#/$defs` `$ref` rewrite that lowering makes necessary, the structural lint,
+a content-comparing write through a deterministic serializer — and the
+command adds the ajv strict-mode gate, the drift policy, the frozen-label
+checks and the exit codes. An action repository writes three things: the
+schema's **hosted identity** next to the schema, a `schemastore.config.ts`,
+and two scripts.
 
-**The generated document is open by default since effect rc.113.** Core's
-`Schema.toJsonSchemaDocument` option `additionalProperties` became
-`onExcessProperty: "ignore" | "error"`, defaulting to `"ignore"` to mirror
-the decoder — so every object node in the emitted contract carries
-`additionalProperties: true` unless `"error"` is passed (probed at rc.115).
-`SchemaPipeline` passes only `$id` through to `StoreDocument.fromSchema`, so
-a pipeline-built output contract is open and a consumer validating a payload
-against it will not reject an extra key. That matches what `setJson`'s
-decoder accepts by default; if the contract must be closed, build the
-document with `StoreDocument.fromSchema(schema, { $id, jsonSchema: { onExcessProperty: "error" } })`
-and decode with the same option — the two must not disagree.
+**Two packages, two roles.** `@effected/schemastore` is a regular
+`dependency` — the action's own code reads the identity from it at runtime
+to write `$schema`. `@effected/schemastore-cli` is a `devDependency` — it
+builds and checks the documents, and it is where `ajv` lives, so the
+action's bundle never carries an engine (silk-release-action measured this:
+ajv absent from the prod install and from `dist/`).
 
 ```ts
-// lib/scripts/generate-schema.ts
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { NodeServices } from "@effect/platform-node";
-import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
-import { AjvValidator } from "@effected/schemastore-cli";
-import { Effect, Layer } from "effect";
-import { SCAN_RESULT_SCHEMA_URL, ScanResult } from "../../src/schema/scan-result.js";
+// src/schema/scan-result.ts — the identity lives beside the schema it names
+import { HostedSchema } from "@effected/schemastore";
+import { Schema } from "effect";
 
-const REPO_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
+export const SCAN_RESULT_SCHEMA_VERSION = "1.0";
 
-// Exported so the drift test checks exactly the wiring the generator writes.
-export const targets: ReadonlyArray<SchemaTarget> = [
-  SchemaTarget.make({
-    schema: ScanResult, // the SAME value setJson encodes through
-    $id: SCAN_RESULT_SCHEMA_URL,
-    path: resolve(REPO_ROOT, "docs/schema/scan-result.schema.json"),
-  }),
-];
-
-export const AppLayer = Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
-  Layer.provide(NodeServices.layer),
-);
-
-const generate = Effect.gen(function* () {
-  for (const result of yield* SchemaPipeline.run(targets)) {
-    for (const finding of result.findings) {
-      yield* Effect.logInfo(`${result.$id}: ${finding.label} at "${finding.path}" — ${finding.message}`);
-    }
-    yield* Effect.log(
-      result.outcome === "written" ? `Written (${result.change}): ${result.path}` : `Unchanged: ${result.path}`,
-    );
-  }
+export const ScanResultIdentity = HostedSchema.github({
+  repo: "your-org/scan-action",
+  path: "schemas",
+  name: "scan-action.output",
+  versions: [SCAN_RESULT_SCHEMA_VERSION],
 });
 
-const invokedDirectly =
-  process.argv[1] !== undefined && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+export class ScanResult extends Schema.Class<ScanResult>("ScanResult")({
+  // Every payload names the document it was written against.
+  $schema: Schema.Literal(ScanResultIdentity.$id),
+  findingsCount: Schema.Number.annotate({ description: "Total findings across all severities." }),
+  severity: Schema.Literals(["none", "low", "medium", "high", "critical"]),
+  reportUrl: Schema.String.annotate({ description: "Fully-qualified URL to the human-readable report." }),
+}) {}
+```
 
-if (invokedDirectly) {
-  await Effect.runPromise(generate.pipe(Effect.provide(AppLayer)));
+```ts
+// lib/scripts/schemastore.config.ts — `src/` is action source only, so the
+// config lives under lib/scripts/ and the scripts pass its path explicitly
+import { defineConfig } from "@effected/schemastore";
+import { ScanResult, ScanResultIdentity } from "../../src/schema/scan-result.js";
+
+export default defineConfig({
+  // Relative paths resolve against this file's directory, not the repo root.
+  outputDir: "../../schemas",
+  schemas: {
+    [ScanResultIdentity.name]: { schema: ScanResult, hosted: ScanResultIdentity, published: false },
+  },
+});
+```
+
+```json
+{
+  "scripts": {
+    "schema:build": "schemastore build lib/scripts/schemastore.config.ts",
+    "schema:check": "schemastore check lib/scripts/schemastore.config.ts"
+  }
 }
 ```
 
-Three things in that script are load-bearing:
+Four things in that shape are load-bearing:
 
-- **The `$id` is exported next to the schema**, in `src/schema/scan-result.ts`,
-  and the emitted payload carries it as `$schema`, so a consumer reading the
-  output can fetch the document that validates it.
-- **`targets` and `AppLayer` are exported** so the drift test provides the
-  same layer and walks the same targets. A drift test that rebuilds either
-  one can pass while the generator emits something else.
-- **The script lives in `lib/scripts/`**, the cache-invalidating location, and
-  guards its run behind an `invokedDirectly` check so a test can import
-  `targets` without generating. Wire it as `"schema:generate": "tsx lib/scripts/generate-schema.ts"`,
-  and the drift test below as `"schema:check": "vitest run __test__/unit/generate-schema.test.ts"` —
-  the test file lives under `__test__/unit/` per canon B1.
-- **The run is all-or-nothing.** `SchemaPipeline.run` is two-phase: every
-  target is generated and gated before any file is touched, so a failure on
-  the last target leaves the first ones unwritten. A pinned versioned target
-  whose contract would change refuses the whole run itself (see "Versioning
-  the contract" below) — the script does not need its own preflight for that.
-  The guarantee is a preflight, not a transaction: phase 2 writes the held
-  documents one at a time with no rollback, so a filesystem failure on a
-  later write leaves the earlier targets already on disk.
+- **The identity is declared once and read twice.** `ScanResultIdentity.$id`
+  is what the payload asserts as `$schema`; the config hands the same value
+  to `defineConfig` as `hosted`, so `$id`, the write path
+  (`schemas/1.0/scan-action.output-1.0.json`) and every URL derive from it.
+  Nothing is spelled by hand, so nothing can disagree — the test that used
+  to pin `SCHEMA_URL === target.$id` has nothing left to pin.
+- **The config composes no layers.** It declares schemas; the command
+  provides `SchemaFile`, the engine and the platform. A layer in a config
+  file is a sign the pre-CLI generator-script pattern is being rebuilt.
+- **`schema:check` is the CI gate.** It is the same walk as `build` with no
+  writes, and it fails (exit `1`) whenever a build would write anything —
+  wire it into `ci:test` ahead of the test run. Stale document: run
+  `schema:build`, review the diff, commit. Never hand-edit the committed
+  file.
+- **Objects are closed.** The library emits `additionalProperties: false`
+  by default (a published document is a contract; it does not follow core's
+  open default). The action's decoders can keep tolerating excess keys — the
+  published document is deliberately the stricter of the two. `jsonSchema:
+  { onExcessProperty: "ignore" }` on one entry reopens that one document.
 
-The gate is policy, not mechanism: the default blocks `warning` findings
-(`UnresolvedRef`, `UnknownKeyword`, `DepthExceeded`, and every engine
-finding) and lets `advisory` through. Replace the predicate when you disagree,
-never the loop:
-
-```ts
-SchemaPipeline.run(targets, { blocking: (finding) => finding.source === "validator" });
-```
-
-Findings come back as values and the package never logs, so the wording of
-your build output stays yours. A blocking finding fails with `SchemaGateError`
-carrying every finding that blocked, and nothing after it is written.
+The gate is policy, not mechanism: warning findings (`UnresolvedRef`,
+`UnknownKeyword`, `DepthExceeded`, every engine finding) block; advisory ones
+report. Findings are values in the command's report (`--format=json`) and the
+step summary (`GITHUB_STEP_SUMMARY`), never logs you have to parse.
 
 ### Versioning the contract
 
 A structured output that payloads reference by `$schema` is a **versioned**
-document: its URL has to keep resolving after the shape moves on. Give the
-target a `name` and a `version` — `name` becomes required the moment
-`version` is present, enforced by an overload pair — and let
-`SchemaVersioning.fileName` spell the file:
+document: its URL has to keep resolving after the shape moves on. The
+identity's `versions` list is the whole mechanism. `current` (default: the
+newest label) is the one generated; every other label is **frozen** — the
+command verifies the file exists and still declares the `$id` the identity
+derives for it, and never regenerates it. Bumping is one edit:
 
 ```ts
-import { SchemaVersioning } from "@effected/schemastore";
-import { Result } from "effect";
+export const SCAN_RESULT_SCHEMA_VERSION = "1.1";
 
-const CATALOG_NAME = "scan-action";
-const SCHEMA_BASE_URL = "https://raw.githubusercontent.com/your-org/scan-action/main/schemas";
-const SCHEMA_SEMVER = SchemaVersioning.parseResult("1.0.0").pipe(
-  Result.getOrThrowWith((e) => new Error(`invalid schema version: ${e.message}`)),
-);
-
-SchemaTarget.make({
-  schema: ScanResult,
-  // The $id carries the same version as the path: SchemaTarget publishes
-  // it unchanged, so a versioned file needs a versioned identity.
-  $id: SchemaVersioning.schemaUrl(SCHEMA_BASE_URL, CATALOG_NAME, SCHEMA_SEMVER),
-  name: CATALOG_NAME,
-  version: SCHEMA_SEMVER,
-  path: resolve(REPO_ROOT, "schemas", SCHEMA_SEMVER, SchemaVersioning.fileName(CATALOG_NAME, SCHEMA_SEMVER)),
+export const ScanResultIdentity = HostedSchema.github({
+  repo: "your-org/scan-action",
+  path: "schemas",
+  name: "scan-action.output",
+  versions: ["1.0", SCAN_RESULT_SCHEMA_VERSION], // 1.0 stays on disk, frozen
 });
 ```
 
 Version labels are one to three components (`1`, `1.2`, `1.2.0`, optionally
 with a prerelease), ordered by SemVer precedence with missing components read
-as `0` (`1.10.0` above `1.9.0`; `1`, `1.0` and `1.0.0` compare equal), and
-each round-trips verbatim into its file name. The directory carries the same
-label as the file so a version's artifacts stay together while the file name
-remains the one SchemaStore resolves.
+as `0`, each round-tripping verbatim into its file name. A first-run config
+declares a single label; append the next only once the first has shipped and
+its file exists on disk, or the build fails typed before writing anything
+(`FrozenVersionMissingError`). A `repo`, `branch` or `path` change is a
+re-publish event for every frozen label: the frozen files still carry the
+old host in `$id`, and the command refuses them (`FrozenVersionIdMismatchError`)
+rather than advertising documents that self-identify elsewhere.
 
-**The pipeline refuses the write itself — do not hand-roll a preflight.**
-Under the default `contractChanges: "block-versioned"`, a target carrying a
-PINNED `version` (`SchemaVersioning.isPinned`: no prerelease) whose
-document classifies as a `"contract"` change fails the whole run with
-`SchemaContractChangeError` *before any target is written* — not just that
-target, every target in the same call. The error's `message` and its
-`targets` array already name what to do: each `ContractChangeTarget` carries
-`$id`, `path`, the pinned `version`, and `nextVersion` —
-`SchemaVersioning.next(version, "contract")`, the label to bump to.
-
-```ts
-import { SchemaContractChangeError, SchemaPipeline } from "@effected/schemastore";
-import { Effect } from "effect";
-
-const generate = SchemaPipeline.run(targets).pipe(
-  Effect.catchTag("SchemaContractChangeError", (error: SchemaContractChangeError) =>
-    Effect.logError(error.message).pipe(Effect.zipRight(Effect.fail(error))),
-  ),
-);
-```
-
-`DocumentDiff` classifies `default`, `examples`, `readOnly` and `writeOnly`
-as contract changes — consumers act on them — so a change there costs a
-bump rather than shipping a silent break. `"created"` is not a contract
-change: a version's first write has no predecessor. An **unversioned**
-target, or one whose `version` is a prerelease label, is not guarded at all:
-it is rewritten in place, same as before.
-
-`contractChanges: "allow"` is the escape hatch — classify and report only,
-never refuse. It is also the sanctioned **repair path** for a published file
-whose on-disk text no longer parses (`SchemaFile` classifies unparseable
-text as `"contract"` so it stays regenerable, and the default refuses
-exactly that classification): pass `"allow"` once to let the corrupted file
-be rewritten, then drop back to the default.
+**`published` is the lifecycle switch, and the command holds the write.**
+Leave it at the default `false` until a consumer pins the document — an
+unpublished schema regenerates in place through any change, contract
+included. Flip it to `true` the day the document is depended on: from then a
+`contract` change at the current label (`DocumentDiff` counts `default`,
+`examples`, `readOnly` and `writeOnly` as contract — consumers act on them)
+is **drift**, and under the config's `onDrift: "error"` default the command
+refuses every write and names the label to bump to (`nextVersion`, from
+`SchemaVersioning.next`). `--on-drift=warn` writes and shouts;
+`--force` (`--drift=allow`) is the escape hatch and the sanctioned repair
+path for a committed file whose text no longer parses.
 
 An unversioned document at a fixed path — an input schema, or a
-documentation-facing output nobody pins — skips the version and name and
-replaces its predecessor in place. `change: "annotations"` is then a free
-signal that nothing a consumer acts on moved. `change: "contract"` on such a
-target still deserves a deliberate look — the pipeline reports it but does
-not refuse the in-place write — and the moment a consumer starts pinning the
-document, move it onto the versioned path above instead of replacing it.
+documentation-facing output nobody pins — omits `versions` and replaces its
+predecessor in place; the moment a consumer starts pinning it, give it a
+label.
 
 ### Annotations for LLM and workflow consumers
 
@@ -364,50 +325,54 @@ artifact rather than trusting it blindly.
 
 ### The drift test
 
-Import the generator's own `targets` and `AppLayer` and run the same walk
-with no writes. Assert **all three** signals: a document the gate would
-never write also reports no pending write, so `wouldWrite: false` alone
-proves nothing, and a `contractBlocked` target needs a different remedy
-than a plain drift finding — "run `schema:generate`" is wrong advice for a
-target the generator itself will refuse.
+There is none to write. `schema:check` *is* the drift test — the same walk
+as `build` with no writes, exit `1` on anything a build would write, a gate
+failure, or drift on a published document — and it runs the command's own
+loader, engine and policy, so it cannot pass against wiring the build never
+uses (the failure a hand-rolled vitest drift test over an exported `targets`
+array was always one refactor away from). Put it in `ci:test`:
+
+```json
+{
+  "scripts": {
+    "ci:test": "schemastore check lib/scripts/schemastore.config.ts && vitest run --coverage"
+  }
+}
+```
+
+What a unit test *can* still pin is the one thing the command cannot see —
+that the config wired each schema to the right identity:
 
 ```ts
 import { assert, describe, it } from "@effect/vitest";
-import { DocumentDiff, SchemaPipeline } from "@effected/schemastore";
-import { Effect } from "effect";
-import { AppLayer, targets } from "../../lib/scripts/generate-schema.js";
+import { StoreDocument } from "@effected/schemastore";
+import { Result } from "effect";
+import config from "../../lib/scripts/schemastore.config.js";
+import { ScanResultIdentity } from "../../src/schema/scan-result.js";
 
-describe("generated JSON Schema", () => {
-  it("has a target for every document the action publishes", () => {
-    // `check([])` trivially reports no drift; guard the degenerate case.
-    assert.isAbove(targets.length, 0);
+describe("schemastore config", () => {
+  it("derives each target from the identity the action writes as $schema", () => {
+    const [target] = config.schemas;
+    assert.isDefined(target);
+    assert.strictEqual(target.target.$id, ScanResultIdentity.$id);
+    assert.strictEqual(target.target.path, `../../schemas/${ScanResultIdentity.fileName}`);
   });
 
-  it.effect("matches its Effect Schema source and would pass the gate", () =>
-    Effect.gen(function* () {
-      for (const result of yield* SchemaPipeline.check(targets)) {
-        assert.isFalse(result.blocked, `${result.path} would fail the gate: ${result.findings.map((f) => f.label).join(", ")}`);
-        if (result.contractBlocked) {
-          assert.fail(`${result.path} changed its contract and is pinned — bump its version, do not just re-run schema:generate`);
-        }
-        assert.isTrue(DocumentDiff.isClean(result.change), `${result.path} is out of date (${result.change}); run schema:generate and commit`);
-        // `change` is content-classified; under `write.compare: "bytes"` a
-        // `"none"` change can still be a pending write, so ask directly.
-        assert.isFalse(result.wouldWrite, `${result.path} would be rewritten; run schema:generate and commit`);
-      }
-    }).pipe(Effect.provide(AppLayer)),
-  );
+  it("emits every object closed", () => {
+    // What the command writes for an entry with no jsonSchema is exactly
+    // fromSchemaResult with no jsonSchema — the documented reproduction contract.
+    const [target] = config.schemas;
+    assert.isDefined(target);
+    const document = Result.getOrThrow(StoreDocument.fromSchemaResult(target.target.schema, { $id: target.target.$id }));
+    assert.strictEqual(document.root.additionalProperties, false);
+  });
 });
 ```
 
-The comparison is by **parsed content, not bytes**. A formatter that owns
-the committed JSON can reflow it freely; a text comparison would report
-drift forever in such a repository, and `outcome` / `wouldWrite` — never
-`change` — are the authoritative answers to whether a file was or would be
-touched.
-
-A failing drift test means one of two things, and the fix differs: the
-schema changed on purpose (regenerate and commit; bump the version if the
-change was a contract change), or the schema changed by accident (a field
-renamed in a refactor — revert it). The test cannot tell these apart; a
-human reviewing the diff can. Never hand-edit the committed schema file.
+The comparison the command makes is by **parsed content, not bytes**: a
+formatter that owns the committed JSON can reflow it freely. A failing
+`schema:check` means one of two things, and the fix differs: the schema
+changed on purpose (run `schema:build`, review, commit; bump the label if the
+command reports drift on a published document), or the schema changed by
+accident (a field renamed in a refactor — revert it). The command cannot tell
+these apart; a human reviewing the diff can.

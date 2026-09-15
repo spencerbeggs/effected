@@ -10,7 +10,7 @@ The routing map for the five `@effected` packages an action-shaped program uses:
 
 **The design boundary that matters most**: `@effected/github` talks to the GitHub API; `@effected/github-actions` talks to the runner it executes inside. Nothing in `github-actions` reads `process.env.GITHUB_REPOSITORY` on `github`'s behalf, and nothing in `github` imports a workflow command. The two meet at exactly two seams, both living in `github-actions`: the token bridge (`GitHubToken`) and the `Logger` that maps `Effect.log*` onto workflow commands (`ActionLogger.logger`).
 
-A sixth package sits beside them at build time rather than runtime: `@effected/schemastore` publishes and drift-tests the JSON Schema for any contract that crosses the action boundary, and belongs in `devDependencies`. For a capability outside these six — globs, semver, lockfiles, JSONC/YAML/TOML, XDG paths, git introspection, managed file sections — consult `effected-packages` before hand-writing it.
+A sixth package and its command sit beside them: `@effected/schemastore` (a runtime `dependency` — the action reads its output contract's `HostedSchema` identity from it to write `$schema`) and `@effected/schemastore-cli` (a `devDependency`; `schema:build` / `schema:check` publish and drift-test the JSON Schema, and it is where ajv lives so the bundle never carries an engine). For a capability outside these six — globs, semver, lockfiles, JSONC/YAML/TOML, XDG paths, git introspection, managed file sections — consult `effected-packages` before hand-writing it.
 
 ## Designing or structuring a new action? Start elsewhere first
 
@@ -26,7 +26,7 @@ This table routes a capability to the package and skill that own it; it does not
 | read an input, validate it, apply a default | `ActionInput` + Effect `Config` | `actions-inputs-outputs` |
 | set an output, export a variable, add to PATH | `ActionOutputs` | `actions-inputs-outputs` |
 | emit a machine-readable output contract | `ActionOutputs.setJson` + the same `Schema` codec | `actions-inputs-outputs` |
-| publish and drift-test that contract's JSON Schema | `@effected/schemastore`: `SchemaTarget`, `SchemaPipeline.run` / `.check` | `actions-inputs-outputs` |
+| publish and drift-test that contract's JSON Schema | `HostedSchema` beside the schema, `defineConfig` in `lib/scripts/schemastore.config.ts`, `schemastore build` / `check` | `actions-inputs-outputs` |
 | make the run log readable | `ActionLogger` (`group`, `withBuffer`, `notice`, `annotated`) | `actions-reporting` |
 | write the job summary | `ActionOutputs.summary` | `actions-reporting` |
 | read a published package's contents before installing it | `PackageTarball.extract` (scoped) + `resolveEntryPoint` | `release-and-publish` |
