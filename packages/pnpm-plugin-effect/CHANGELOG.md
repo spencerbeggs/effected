@@ -1,5 +1,20 @@
 # @effected/pnpm-plugin-effect
 
+## 0.8.9
+
+### Maintenance
+
+#### Updates 2 catalog:effected versions
+
+- `@effected/schemastore` ^0.11.0 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/schemastore-cli` ^0.11.0 -> ^0.12.0 (peer ^0.12.0) [#746][#746]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#746]: https://github.com/spencerbeggs/effected/pull/746
+
 ## 0.8.8
 
 ### Maintenance
