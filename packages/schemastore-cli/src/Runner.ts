@@ -33,26 +33,33 @@ import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
 
 /**
- * Indicates that a schema advertises a version label (via
+ * Indicates that one or more schemas advertise a version label (via
  * {@link ResolvedSchema.frozen}) whose file is missing on disk. Raised by
  * {@link Runner.run} before anything is generated — a build must never
- * publish a catalog pointing a frozen label at a 404.
+ * publish a catalog pointing a frozen label at a 404. Every miss is
+ * collected and reported at once, not just the first.
  *
  * @public
  */
 export class FrozenVersionMissingError extends Schema.TaggedError<FrozenVersionMissingError>()(
 	"FrozenVersionMissingError",
 	{
-		/** The schema's key in the config. */
-		name: Schema.String,
-		/** The missing frozen version label. */
-		version: Schema.String,
-		/** The path that does not exist. */
-		path: Schema.String,
+		/** One entry per schema/version whose frozen file is missing or not a file. */
+		missing: Schema.Array(
+			Schema.Struct({
+				/** The schema's key in the config. */
+				name: Schema.String,
+				/** The missing frozen version label. */
+				version: Schema.String,
+				/** The path that does not exist. */
+				path: Schema.String,
+			}),
+		),
 	},
 ) {
 	override get message(): string {
-		return `schema "${this.name}" advertises frozen version ${this.version} but ${this.path} does not exist; nothing was written`;
+		const lines = this.missing.map((entry) => `  schema "${entry.name}" version ${entry.version}: ${entry.path}`);
+		return `${this.missing.length} frozen version(s) advertised but not on disk; nothing was written.\n${lines.join("\n")}`;
 	}
 }
 
@@ -128,8 +135,6 @@ export interface RunOptions {
 	readonly onDrift: OnDrift;
 	/** Present only when a flag forced one tolerance over every schema's own. */
 	readonly policy?: DriftTolerance;
-	/** Whether `onDrift`/`policy` came from the config or a flag override. */
-	readonly source: "config" | "flag";
 }
 
 /**
@@ -143,7 +148,6 @@ export interface RunReport {
 	readonly configPath: string;
 	readonly onDrift: OnDrift;
 	readonly policy?: DriftTolerance;
-	readonly source: "config" | "flag";
 	/** One per config schema, in config order. */
 	readonly schemas: ReadonlyArray<SchemaReport>;
 	/** Absent when no schema declared a catalog entry. */
@@ -198,11 +202,12 @@ const parsesEqual = (existing: string, text: string): boolean => {
  * nothing is refused.
  *
  * @remarks
- * **The frozen check runs first, before anything is generated.** A schema
- * whose {@link ResolvedSchema.frozen} names a label with no file on disk
- * fails typed with {@link FrozenVersionMissingError} — nothing is written —
- * a catalog that points a label at a 404 is a worse failure than an early
- * refusal.
+ * **The frozen check runs first, before anything is generated.** Every
+ * schema's {@link ResolvedSchema.frozen} versions are walked, and every miss
+ * is reported at once: a build fails typed with
+ * {@link FrozenVersionMissingError} listing every label with no file on disk
+ * — nothing is written — a catalog that points a label at a 404 is a worse
+ * failure than an early refusal.
  *
  * **Drift is classified per schema, under that schema's own
  * {@link ResolvedSchema.drift} tolerance — unless `options.policy` is set,
@@ -248,16 +253,18 @@ export class Runner {
 
 		// Before anything is generated: every advertised frozen version must
 		// exist, or nothing is written — a catalog must never point a label at
-		// a 404.
+		// a 404. Every miss is collected so one run reports them all.
+		const missing: Array<{ name: string; version: string; path: string }> = [];
 		for (const schema of config.schemas) {
 			for (const frozen of schema.frozen) {
 				const info = yield* orNone(fs.stat(frozen.path));
 				if (Option.isNone(info) || info.value.type !== "File") {
-					return yield* Effect.fail(
-						new FrozenVersionMissingError({ name: schema.name, version: frozen.version, path: frozen.path }),
-					);
+					missing.push({ name: schema.name, version: frozen.version, path: frozen.path });
 				}
 			}
+		}
+		if (missing.length > 0) {
+			return yield* Effect.fail(new FrozenVersionMissingError({ missing }));
 		}
 
 		// `check` and `run` answer one result per target, in target order, so
@@ -342,7 +349,6 @@ export class Runner {
 			mode: options.mode,
 			configPath: options.configPath,
 			onDrift: options.onDrift,
-			source: options.source,
 			...(options.policy !== undefined ? { policy: options.policy } : {}),
 			schemas,
 			...(catalog !== undefined ? { catalog } : {}),

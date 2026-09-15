@@ -73,7 +73,6 @@ const options = (mode: RunOptions["mode"], overrides: Partial<RunOptions> = {}):
 	mode,
 	configPath: "/repo/schemastore.config.ts",
 	onDrift: "error",
-	source: "config",
 	...overrides,
 });
 
@@ -122,7 +121,6 @@ describe("Runner.run", () => {
 			assert.strictEqual(report.mode, "check");
 			assert.strictEqual(report.configPath, "/repo/schemastore.config.ts");
 			assert.strictEqual(report.onDrift, "error");
-			assert.strictEqual(report.source, "config");
 			assert.isUndefined(report.policy);
 			assert.strictEqual(report.schemas.length, 2);
 			for (const schema of report.schemas) {
@@ -260,14 +258,13 @@ describe("Runner.run", () => {
 	it.effect("published + policy allow (--force) + contract predecessor: write, not drift", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
-			const report = yield* Runner.run(twoSchemas(), options("build", { policy: "allow", source: "flag" }));
+			const report = yield* Runner.run(twoSchemas(), options("build", { policy: "allow" }));
 			const schema = byId(report, PINNED_ID);
 			assert.strictEqual(schema.change, "contract");
 			assert.strictEqual(schema.verdict, "write");
 			assert.strictEqual(schema.policy, "allow");
 			assert.strictEqual(schema.outcome, "written");
 			assert.strictEqual(schema.nextVersion, version("5.1.0"), "the bump is still reported for the reader");
-			assert.strictEqual(report.source, "flag");
 			assert.strictEqual(report.policy, "allow");
 			assert.isFalse(report.drifted);
 			assert.isTrue(report.wrote);
@@ -466,9 +463,7 @@ describe("Runner.run", () => {
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(Runner.run(twoSchemas(), options("build")));
 			assert.instanceOf(error, FrozenVersionMissingError);
-			assert.strictEqual(error.name, "pinned");
-			assert.strictEqual(error.version, "4.0.0");
-			assert.strictEqual(error.path, FROZEN_PATH);
+			assert.deepStrictEqual(error.missing, [{ name: "pinned", version: "4.0.0", path: FROZEN_PATH }]);
 			const fs = yield* FileSystem.FileSystem;
 			assert.isFalse(yield* fs.exists(PINNED_PATH));
 			assert.isFalse(yield* fs.exists(CATALOG_PATH));
@@ -479,10 +474,33 @@ describe("Runner.run", () => {
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(Runner.run(twoSchemas(), options("build")));
 			assert.instanceOf(error, FrozenVersionMissingError);
-			assert.strictEqual(error.name, "pinned");
-			assert.strictEqual(error.version, "4.0.0");
-			assert.strictEqual(error.path, FROZEN_PATH);
+			assert.deepStrictEqual(error.missing, [{ name: "pinned", version: "4.0.0", path: FROZEN_PATH }]);
 		}).pipe(Effect.provide(layers({ [`${FROZEN_PATH}/x`]: "" }))),
+	);
+
+	it.effect("reports every missing frozen version, not just the first", () =>
+		Effect.gen(function* () {
+			const config = defineConfig({
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: {
+					pinned: {
+						schema: Config,
+						versions: ["3.0.0", "4.0.0", "5.0.0"],
+						published: true,
+					},
+				},
+			});
+			const error = yield* Effect.flip(Runner.run(config, options("build")));
+			assert.instanceOf(error, FrozenVersionMissingError);
+			assert.deepStrictEqual(error.missing, [
+				{ name: "pinned", version: "3.0.0", path: "/repo/schemas/3.0.0/pinned-3.0.0.json" },
+				{ name: "pinned", version: "4.0.0", path: "/repo/schemas/4.0.0/pinned-4.0.0.json" },
+			]);
+			const fs = yield* FileSystem.FileSystem;
+			assert.isFalse(yield* fs.exists(PINNED_PATH));
+			assert.isFalse(yield* fs.exists(CATALOG_PATH));
+		}).pipe(Effect.provide(layers({}))),
 	);
 
 	it.effect("classifies each schema under its own drift tolerance unless a flag forces one", () =>
@@ -494,10 +512,9 @@ describe("Runner.run", () => {
 			assert.strictEqual(own.schemas[0]?.verdict, "write");
 			assert.strictEqual(own.schemas[0]?.policy, "allow");
 			assert.strictEqual(own.schemas[1]?.policy, "semantic");
-			const forced = yield* Runner.run(
-				twoSchemas({ drift: "allow" }),
-				options("check", { policy: "strict", source: "flag" }),
-			).pipe(Effect.provide(layers(seed)));
+			const forced = yield* Runner.run(twoSchemas({ drift: "allow" }), options("check", { policy: "strict" })).pipe(
+				Effect.provide(layers(seed)),
+			);
 			assert.strictEqual(forced.schemas[0]?.verdict, "drift");
 			assert.strictEqual(forced.schemas[0]?.policy, "strict");
 		}),

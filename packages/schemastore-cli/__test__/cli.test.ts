@@ -446,9 +446,8 @@ describe("schemastore CLI", () => {
 				yield* tolerateStale(program(["check", "--format=json", "--force"], deps(basicConfig())));
 				const out = yield* stdout;
 				assert.strictEqual(out.length, 1, out.join("\n"));
-				const doc = JSON.parse(out[0] as string) as { drift: { policy?: string; source: string } };
+				const doc = JSON.parse(out[0] as string) as { drift: { policy?: string } };
 				assert.strictEqual(doc.drift.policy, "allow");
-				assert.strictEqual(doc.drift.source, "flag");
 				const err = yield* stderr;
 				assert.isTrue(
 					err.some((line) => line.includes("--force") && line.includes("would be rewritten")),
@@ -496,9 +495,9 @@ describe("schemastore CLI", () => {
 				const error = yield* Effect.flip(program(["build"], deps(basicConfig({ versions: ["0.9", "1.0"] }))));
 				assert.instanceOf(error, FrozenVersionMissingError);
 				assert.strictEqual(exitCodeOf(error), 1);
-				assert.strictEqual(error.name, "basic");
-				assert.strictEqual(error.version, "0.9");
-				assert.strictEqual(error.path, "/repo/schemas/basic-0.9.json");
+				assert.strictEqual(error.missing[0]?.name, "basic");
+				assert.strictEqual(error.missing[0]?.version, "0.9");
+				assert.strictEqual(error.missing[0]?.path, "/repo/schemas/basic-0.9.json");
 				assert.include(error.message, "/repo/schemas/basic-0.9.json");
 				const fs = yield* FileSystem.FileSystem;
 				assert.isFalse(yield* fs.exists(BASIC_PATH), "nothing is written before the frozen check clears");

@@ -45,7 +45,6 @@ const cleanBuild: RunReport = {
 	mode: "build",
 	configPath: "/repo/schemastore.config.ts",
 	onDrift: "error",
-	source: "config",
 	schemas: [writtenSchema, unchangedSchema],
 	catalog: writtenCatalog,
 	drifted: false,
@@ -121,7 +120,6 @@ const driftAndGate: RunReport = {
 	configPath: "/repo/schemastore.config.ts",
 	policy: "strict",
 	onDrift: "error",
-	source: "flag",
 	schemas: [driftSchema, heldSchema, gateFailedSchema],
 	catalog: heldCatalog,
 	drifted: true,
@@ -150,7 +148,6 @@ const warnBuild: RunReport = {
 	mode: "build",
 	configPath: "/repo/schemastore.config.ts",
 	onDrift: "warn",
-	source: "config",
 	schemas: [warnDriftSchema],
 	drifted: true,
 	gateFailed: false,
@@ -178,7 +175,6 @@ const prereleaseDriftBuild: RunReport = {
 	mode: "build",
 	configPath: "/repo/schemastore.config.ts",
 	onDrift: "error",
-	source: "config",
 	schemas: [prereleaseDriftSchema],
 	drifted: true,
 	gateFailed: false,
@@ -206,7 +202,6 @@ const frozenBuild: RunReport = {
 	mode: "build",
 	configPath: "/repo/schemastore.config.ts",
 	onDrift: "error",
-	source: "config",
 	schemas: [frozenSchema],
 	drifted: false,
 	gateFailed: false,
@@ -293,7 +288,7 @@ describe("Report.json", () => {
 		const doc = JSON.parse(Report.json(cleanBuild)) as Record<string, unknown>;
 		assert.strictEqual(doc.mode, "build");
 		assert.strictEqual(doc.configPath, "/repo/schemastore.config.ts");
-		assert.deepStrictEqual(doc.drift, { onDrift: "error", source: "config" });
+		assert.deepStrictEqual(doc.drift, { onDrift: "error" });
 		assert.strictEqual(Array.isArray(doc.schemas), true);
 		const schemas = doc.schemas as ReadonlyArray<Record<string, unknown>>;
 		assert.strictEqual(schemas.length, 2);
@@ -320,7 +315,7 @@ describe("Report.json", () => {
 			drift: Record<string, unknown>;
 			schemas: ReadonlyArray<Record<string, unknown>>;
 		};
-		assert.deepStrictEqual(doc.drift, { onDrift: "error", source: "flag", policy: "strict" });
+		assert.deepStrictEqual(doc.drift, { onDrift: "error", policy: "strict" });
 		assert.deepStrictEqual(doc.schemas[0], {
 			$id: "https://example.com/schemas/1.2/okfit-1.2.json",
 			path: "schemas/1.2/okfit-1.2.json",

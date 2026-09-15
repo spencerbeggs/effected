@@ -45,7 +45,6 @@ describe("ConfigLoader through jiti (integration)", () => {
 				mode: "check",
 				configPath: loaded.path,
 				onDrift: "error",
-				source: "config",
 			}).pipe(Effect.provide(SchemaFile.layer), Effect.provide(SchemaValidator.layer));
 			assert.strictEqual(report.schemas[0]?.outcome, "would-write");
 			assert.strictEqual(report.catalog?.outcome, "would-write");

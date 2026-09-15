@@ -115,17 +115,10 @@ export interface ExecuteDeps {
 // `--force` is sugar for `--drift=allow` over every schema at once; absent
 // both, drift is classified per schema under its own tolerance (`policy` is
 // omitted so `Runner.run` falls back to each `ResolvedSchema.drift`).
-// `source` reads "flag" even when only `--on-drift` was given — the CLI
-// renderers must read the effective policy's presence, not `source`, when
-// they need to know whether every schema was forced to one tolerance.
-const effectiveDrift = (
-	config: SchemastoreConfig,
-	input: ExecuteInput,
-): Pick<RunOptions, "onDrift" | "policy" | "source"> => {
+const effectiveDrift = (config: SchemastoreConfig, input: ExecuteInput): Pick<RunOptions, "onDrift" | "policy"> => {
 	const forced = input.force ? "allow" : Option.getOrUndefined(input.drift);
 	const onDrift = Option.getOrElse(input.onDrift, () => config.onDrift);
-	const overridden = forced !== undefined || Option.isSome(input.onDrift);
-	return { onDrift, source: overridden ? "flag" : "config", ...(forced !== undefined ? { policy: forced } : {}) };
+	return { onDrift, ...(forced !== undefined ? { policy: forced } : {}) };
 };
 
 // stdout is `Console.log` and nothing else; every line meant for a person

@@ -71,9 +71,8 @@ const catalogLine = (entry: CatalogReport): string => {
 };
 
 // A flag-forced policy overrides every schema's own for this run; absent one,
-// drift is classified per schema under its own tolerance. `report.source` is
-// not the right read here — it says "flag" even when only `--on-drift` was
-// given — so this renders from `policy`'s presence, not `source`.
+// drift is classified per schema under its own tolerance. This renders from
+// `policy`'s presence.
 const driftClause = (report: RunReport): string =>
 	`drift ${report.policy !== undefined ? `${report.policy} (flag)` : "per schema (config)"}, on-drift ${report.onDrift}`;
 
@@ -143,7 +142,6 @@ export class Report {
 			configPath: report.configPath,
 			drift: {
 				onDrift: report.onDrift,
-				source: report.source,
 				...(report.policy !== undefined ? { policy: report.policy } : {}),
 			},
 			schemas: report.schemas.map((schema) => ({
