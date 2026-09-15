@@ -34,8 +34,8 @@
 | `PipelineFinding` | Class | One problem found while emitting a target, from either gate, normalized so a single policy predicate can judge both. | normalized lint or validator finding surfaced by the schema pipeline |
 | `PipelineResult` | Interface | What the pipeline did with one target. | |
 | `ResolvedSchema` | Interface | One `defineConfig` schema entry, resolved: the `(SchemaTarget:interface)` to generate, its frozen predecessor versions, its effective drift tolerance, and its assembled catalog entry, if any. | |
-| `SCHEMASTORE_CATALOG_BASE` | Variable | The host SchemaStore's `catalog.json` points `url` at. | <www.schemastore.org> host constant that a schemastore catalog.json entry's url points at |
-| `SCHEMASTORE_ID_BASE` | Variable | The host SchemaStore-hosted documents declare in `$id`. | json.schemastore.org host constant that a schemastore-hosted document declares in $id |
+| `SCHEMASTORE_CATALOG_BASE` | Variable | The host SchemaStore's `catalog.json` points `url` at. | the www host constant a schemastore catalog.json entry url points at |
+| `SCHEMASTORE_ID_BASE` | Variable | The host SchemaStore-hosted documents declare in `$id`. | the json host constant a schemastore-hosted document declares in $id |
 | `SchemaChange` | TypeAlias | What differs between two schema documents: | |
 | `SchemaContractChangeError` | Class | Indicates that at least one published target's contract changed under the active `ContractChangePolicy`. Raised BEFORE any target is written and total over the targets, so two broken documents surface in one run. | handle a pipeline run refusing to rewrite a pinned published schema in place, block-versioned contract change |
 | `SchemaConversionError` | Class | Indicates that an Effect Schema could not be converted into a SchemaStore document — core's JSON Schema generation rejected the schema, or the generated document nested past the hardening cap. | handle failure converting an effect schema into a schemastore document |
