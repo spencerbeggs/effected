@@ -229,6 +229,70 @@ describe("defineConfig validation", () => {
 			/output path "s\/okfit-1\.0\.json" is declared twice/,
 		);
 	});
+
+	it("rejects a baseUrl that is not a string", () => {
+		assert.throws(
+			() =>
+				defineConfig({
+					outputDir: "s",
+					baseUrl: null as never,
+					schemas: { okfit: { schema: Config, catalog } },
+				}),
+			/"okfit".*baseUrl that is not a string/,
+		);
+		rejects({ baseUrl: 5 as never }, {}, /"okfit".*baseUrl that is not a string/);
+	});
+
+	it("rejects a versions that is not an array", () => {
+		rejects({ versions: "1.0" as never }, {}, /"okfit".*versions that is not an array/);
+	});
+
+	it("rejects a version label that is not a string", () => {
+		rejects({ versions: [1.0] as never }, {}, /"okfit".*version label that is not a string/);
+	});
+
+	it("rejects a current that is not a string", () => {
+		rejects({ versions: ["1.0"], current: 1 as never }, {}, /"okfit".*version label that is not a string/);
+	});
+
+	it("rejects a published that is not a boolean", () => {
+		rejects({ published: "yes" as never }, {}, /"okfit".*published that is not a boolean/);
+	});
+
+	it("rejects a schema that is not an Effect Schema", () => {
+		rejects({ schema: {} as never }, {}, /"okfit".*schema that is not an Effect Schema/);
+	});
+
+	it("rejects a non-object defineConfig input", () => {
+		assert.throws(() => defineConfig(null as never), /expected a config object/);
+	});
+
+	it("never throws a raw TypeError on malformed input", () => {
+		const cases: ReadonlyArray<() => unknown> = [
+			() =>
+				defineConfig({
+					outputDir: "s",
+					baseUrl: null as never,
+					schemas: { okfit: { schema: Config, catalog } },
+				}),
+			() => one({ baseUrl: 5 as never }),
+			() => one({ versions: "1.0" as never }),
+			() => one({ versions: [1.0] as never }),
+			() => one({ versions: ["1.0"], current: 1 as never }),
+			() => one({ published: "yes" as never }),
+			() => one({ schema: {} as never }),
+			() => defineConfig(null as never),
+		];
+		for (const run of cases) {
+			assert.throws(run, Error, /^defineConfig: /);
+			try {
+				run();
+				assert.fail("expected a throw");
+			} catch (error) {
+				assert.notInstanceOf(error, TypeError);
+			}
+		}
+	});
 });
 
 describe("isSchemastoreConfig", () => {

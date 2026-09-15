@@ -1,5 +1,4 @@
-import type { Schema } from "effect";
-import { Option, Predicate, Result } from "effect";
+import { Option, Predicate, Result, Schema } from "effect";
 import { CatalogEntry } from "./CatalogEntry.js";
 import type { DriftTolerance, OnDrift } from "./DriftPolicy.js";
 import { DriftPolicy } from "./DriftPolicy.js";
@@ -196,7 +195,13 @@ interface Hosting {
 }
 
 const resolveHosting = (name: string, baseUrl: string | undefined, layout: SchemaLayout | undefined): Hosting => {
-	if (baseUrl === undefined || baseUrl.length === 0) {
+	if (baseUrl === undefined) {
+		return fail(`schema "${name}" has no baseUrl and the config declares no default`);
+	}
+	if (typeof baseUrl !== "string") {
+		return fail(`schema "${name}" has a baseUrl that is not a string`);
+	}
+	if (baseUrl.length === 0) {
 		return fail(`schema "${name}" has no baseUrl and the config declares no default`);
 	}
 	if (layout !== undefined && !LAYOUTS.includes(layout)) {
@@ -216,11 +221,15 @@ const resolveHosting = (name: string, baseUrl: string | undefined, layout: Schem
 	return { idBase: baseUrl, catalogBase: baseUrl, layout: layout ?? "versioned" };
 };
 
-const parseLabel = (name: string, label: string): SchemaVersion =>
-	Result.getOrThrowWith(
+const parseLabel = (name: string, label: unknown): SchemaVersion => {
+	if (typeof label !== "string") {
+		return fail(`schema "${name}" has a version label that is not a string: ${String(label)}`);
+	}
+	return Result.getOrThrowWith(
 		SchemaVersioning.parseResult(label),
 		(error) => new Error(`defineConfig: schema "${name}" has an invalid version label "${label}": ${error.message}`),
 	);
+};
 
 // Every label, deduplicated under Order (`1.2` / `1.2.0` are one label), plus
 // which one is current: the explicit label, else the newest.
@@ -233,6 +242,9 @@ const resolveVersions = (
 			return fail(`schema "${name}" declares current "${entry.current}" without versions`);
 		}
 		return undefined;
+	}
+	if (!Array.isArray(entry.versions)) {
+		return fail(`schema "${name}" declares versions that is not an array`);
 	}
 	if (entry.versions.length === 0) {
 		return fail(`schema "${name}" declares versions as an empty array; omit versions for an unversioned schema`);
@@ -289,6 +301,12 @@ const resolveEntry = (
 	}
 	if (!Predicate.isObject(entry)) {
 		return fail(`schema "${name}" must be an object`);
+	}
+	if (!Schema.isSchema(entry.schema)) {
+		return fail(`schema "${name}" has a schema that is not an Effect Schema`);
+	}
+	if (entry.published !== undefined && typeof entry.published !== "boolean") {
+		return fail(`schema "${name}" has a published that is not a boolean`);
 	}
 	const baseUrl = entry.baseUrl ?? defaults.baseUrl;
 	const hosting = resolveHosting(name, baseUrl, entry.layout);
@@ -414,23 +432,29 @@ const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
  * used as one base for both, defaulting to the `"versioned"` layout.
  *
  * Throws a plain `Error` (never a raw `TypeError`) naming the offending
- * schema on: an empty `schemas` record; a missing/empty `outputDir`; a
- * schema key that is not a simple file base name; a schema with no `baseUrl`
- * anywhere; a `baseUrl` that is neither `"schemastore"` nor an `https://`
- * URL; an empty `versions` array; an invalid version label; two labels
+ * schema on: a non-object `input`; an empty `schemas` record; a
+ * missing/empty `outputDir`; a schema key that is not a simple file base
+ * name; a schema whose `schema` is not an Effect Schema; a schema with no
+ * `baseUrl` anywhere, or a `baseUrl` that is not a string; a `baseUrl` that
+ * is neither `"schemastore"` nor an `https://` URL; a `versions` that is not
+ * an array, or an empty `versions` array; a version label (or `current`)
+ * that is not a string, or an otherwise invalid version label; two labels
  * spelling the same version; `current` given without `versions`, or naming
- * one not among them; `layout` declared under `baseUrl: "schemastore"`; a
- * missing `catalog` under `baseUrl: "schemastore"`, or one with an empty
- * `fileMatch`; an invalid `drift` or top-level `onDrift`; and an output path
- * (a target, a frozen file, or the catalog path) declared twice, compared
- * after a lexical normalisation (`./`, `..`, trailing `/`) — the CLI's loader
- * re-checks on the resolved absolute paths. Branding the result lets a
- * loader recognise a config module's default export via
- * {@link isSchemastoreConfig}.
+ * one not among them; a non-boolean `published`; `layout` declared under
+ * `baseUrl: "schemastore"`; a missing `catalog` under
+ * `baseUrl: "schemastore"`, or one with an empty `fileMatch`; an invalid
+ * `drift` or top-level `onDrift`; and an output path (a target, a frozen
+ * file, or the catalog path) declared twice, compared after a lexical
+ * normalisation (`./`, `..`, trailing `/`) — the CLI's loader re-checks on
+ * the resolved absolute paths. Branding the result lets a loader recognise a
+ * config module's default export via {@link isSchemastoreConfig}.
  *
  * @public
  */
 export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig => {
+	if (!Predicate.isObject(input)) {
+		return fail("expected a config object");
+	}
 	if (typeof input.outputDir !== "string" || input.outputDir.length === 0) {
 		return fail("outputDir is required");
 	}

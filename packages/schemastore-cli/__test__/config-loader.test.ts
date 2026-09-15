@@ -208,6 +208,46 @@ describe("ConfigLoader.load", () => {
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
+	it.effect("fails typed when a schemas element's catalog is not a catalog entry (forged null)", () =>
+		Effect.gen(function* () {
+			const forged = Object.assign({}, config, {
+				schemas: [{ ...config.schemas[0], catalog: null }],
+			}) as unknown as typeof config;
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.js",
+					cwd: "/repo",
+					importModule: () => Promise.resolve({ default: forged }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(
+				error.reason,
+				"schemas[0].catalog is not a catalog entry (missing name/description/fileMatch/url)",
+			);
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when a schemas element's catalog is missing fields (forged brand)", () =>
+		Effect.gen(function* () {
+			const forged = Object.assign({}, config, {
+				schemas: [{ ...config.schemas[0], catalog: { name: "a" } }],
+			}) as unknown as typeof config;
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.js",
+					cwd: "/repo",
+					importModule: () => Promise.resolve({ default: forged }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(
+				error.reason,
+				"schemas[0].catalog is not a catalog entry (missing name/description/fileMatch/url)",
+			);
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
 	it.effect("keeps the defineConfig brand after resolvePaths", () =>
 		Effect.gen(function* () {
 			const loaded = yield* ConfigLoader.load({

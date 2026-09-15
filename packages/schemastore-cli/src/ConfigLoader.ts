@@ -22,8 +22,8 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
  * The config file exists but could not be turned into a `SchemastoreConfig`:
  * the module threw on import, its default export is not a `defineConfig(...)`
  * value, `outputDir`/`catalogPath` is not a string, a `schemas` element is
- * not resolved-schema-shaped (or its `target`/a `frozen` entry is not
- * shaped), or two outputs resolve to one absolute path.
+ * not resolved-schema-shaped (or its `target`, `catalog`, or a `frozen`
+ * entry is not shaped), or two outputs resolve to one absolute path.
  *
  * @public
  */
@@ -87,6 +87,13 @@ const isTargetShaped = (target: unknown): boolean =>
 	typeof target.path === "string" &&
 	typeof target.published === "boolean";
 
+const isCatalogEntryShaped = (catalog: unknown): boolean =>
+	Predicate.isObject(catalog) &&
+	typeof catalog.name === "string" &&
+	typeof catalog.description === "string" &&
+	Array.isArray(catalog.fileMatch) &&
+	typeof catalog.url === "string";
+
 const describeMalformed = (config: SchemastoreConfig): string | undefined => {
 	if (typeof config.outputDir !== "string") {
 		return "outputDir is not a string";
@@ -108,6 +115,9 @@ const describeMalformed = (config: SchemastoreConfig): string | undefined => {
 		}
 		if (!isTargetShaped(schema.target)) {
 			return `schemas[${index}].target is not a SchemaTarget (missing schema/$id/path/published)`;
+		}
+		if (schema.catalog !== undefined && !isCatalogEntryShaped(schema.catalog)) {
+			return `schemas[${index}].catalog is not a catalog entry (missing name/description/fileMatch/url)`;
 		}
 		for (const [j, frozen] of (schema.frozen as ReadonlyArray<unknown>).entries()) {
 			if (
