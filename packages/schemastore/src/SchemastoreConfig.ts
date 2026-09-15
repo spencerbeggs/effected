@@ -121,9 +121,9 @@ export interface SchemastoreConfigInput {
 
 /**
  * One version of a schema that is advertised (via `versions`) but not the
- * one currently generated — a file the CLI verifies exists on disk before
- * any write (existence only — content is never compared), never
- * regenerates.
+ * one currently generated — a file the CLI verifies before any write (it
+ * exists, and its own `$id` is the derived one — the rest of its content is
+ * never compared), never regenerates.
  *
  * @public
  */
@@ -132,6 +132,8 @@ export interface FrozenVersion {
 	readonly version: SchemaVersion;
 	/** The path the frozen file lives at. */
 	readonly path: string;
+	/** The `$id` the frozen document must declare; differs from `url` only under `baseUrl: "schemastore"`. */
+	readonly $id: string;
 	/** The catalog URL the frozen file is hosted at. */
 	readonly url: string;
 }
@@ -317,7 +319,7 @@ const resolveEntry = (
 				});
 	const frozen: ReadonlyArray<FrozenVersion> = versions
 		.filter((v) => v !== current)
-		.map((version) => ({ version, path: file(version), url: hosted.urlFor(version) }));
+		.map((version) => ({ version, path: file(version), $id: hosted.idFor(version), url: hosted.urlFor(version) }));
 	const catalog =
 		entry.catalog === undefined
 			? undefined

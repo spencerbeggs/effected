@@ -124,9 +124,10 @@ const describeMalformed = (config: SchemastoreConfig): string | undefined => {
 				!Predicate.isObject(frozen) ||
 				typeof frozen.version !== "string" ||
 				typeof frozen.path !== "string" ||
+				typeof frozen.$id !== "string" ||
 				typeof frozen.url !== "string"
 			) {
-				return `schemas[${index}].frozen[${j}] is not a frozen version (missing version/path/url)`;
+				return `schemas[${index}].frozen[${j}] is not a frozen version (missing version/path/$id/url)`;
 			}
 		}
 	}

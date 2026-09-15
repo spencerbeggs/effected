@@ -65,6 +65,8 @@ const catalogLine = (entry: CatalogReport): string => {
 			return `would write catalog ${entry.path} (${entry.entries} entries)`;
 		case "held":
 			return `held catalog ${entry.path} (${entry.entries} entries)`;
+		case "orphaned":
+			return `orphaned catalog ${entry.path} (no schema declares a catalog)`;
 		default:
 			return entry.outcome satisfies never;
 	}

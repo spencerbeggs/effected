@@ -12,7 +12,7 @@ import { ConfigLoadError, ConfigNotFoundError } from "../src/ConfigLoader.js";
 import { ConflictingFlagsError, DriftError, GateError, StaleError } from "../src/cli/execute.js";
 import type { ProgramDeps } from "../src/cli/program.js";
 import { loggerLayer, program } from "../src/cli/program.js";
-import { FrozenVersionMissingError } from "../src/Runner.js";
+import { FrozenVersionIdMismatchError, FrozenVersionMissingError } from "../src/Runner.js";
 
 // ── Environment ───────────────────────────────────────────────────────────
 //
@@ -503,6 +503,41 @@ describe("schemastore CLI", () => {
 				assert.isFalse(yield* fs.exists(BASIC_PATH), "nothing is written before the frozen check clears");
 			}),
 			{ [CONFIG_PATH]: "" },
+		),
+	);
+
+	it.effect("a frozen file whose $id disagrees with its URL fails with FrozenVersionIdMismatchError at exit 1", () =>
+		run(
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(program(["build"], deps(basicConfig({ versions: ["0.9", "1.0"] }))));
+				assert.instanceOf(error, FrozenVersionIdMismatchError);
+				assert.strictEqual(exitCodeOf(error), 1);
+				assert.include(error.message, "/repo/schemas/basic-0.9.json");
+				assert.include(error.message, "https://old.example.com/basic-0.9.json");
+				const fs = yield* FileSystem.FileSystem;
+				assert.isFalse(yield* fs.exists(BASIC_PATH), "nothing is written before the frozen check clears");
+			}),
+			{ [CONFIG_PATH]: "", "/repo/schemas/basic-0.9.json": emitted(Config, "https://old.example.com/basic-0.9.json") },
+		),
+	);
+
+	it.effect("an orphaned catalog file is stale under check and reported but kept under build", () =>
+		run(
+			Effect.gen(function* () {
+				const uncataloged = defineConfig({
+					outputDir: "/repo/schemas",
+					baseUrl: "https://example.com/schemas",
+					schemas: { basic: { schema: Config, layout: "flat", published: true, versions: ["1.0"] } },
+				});
+				const error = yield* Effect.flip(program(["check"], deps(uncataloged)));
+				assert.instanceOf(error, StaleError);
+				assert.strictEqual(error.count, 1, "the orphan alone");
+				assert.include(yield* stdout, `orphaned catalog ${CATALOG_PATH} (no schema declares a catalog)`);
+				yield* program(["build"], deps(uncataloged));
+				const fs = yield* FileSystem.FileSystem;
+				assert.isTrue(yield* fs.exists(CATALOG_PATH), "build reports the orphan but never deletes it");
+			}),
+			builtSeed,
 		),
 	);
 

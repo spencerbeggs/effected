@@ -1,6 +1,7 @@
 // The shared build/check walk: first, every advertised frozen version is
-// checked for existence — a schema that advertises a label with nothing on
-// disk is refused before anything is generated. Then `SchemaPipeline.check`
+// checked — it must exist, and the `$id` it declares must be the derived one
+// — so a schema that advertises a label with nothing on disk, or a file that
+// self-identifies elsewhere, is refused before anything is generated. Then `SchemaPipeline.check`
 // classifies every current target, `DriftPolicy` applies the lifecycle rule
 // the library lacks (per schema, or forced by a flag over every schema at
 // once), and only when nothing is refused does `SchemaPipeline.run` write.
@@ -64,6 +65,53 @@ export class FrozenVersionMissingError extends Schema.TaggedError<FrozenVersionM
 }
 
 /**
+ * Indicates that one or more frozen files exist but do not declare the
+ * `$id` their {@link ResolvedSchema.frozen} entry derives — the file is
+ * absent an `$id`, declares a different one, or does not parse. Raised by
+ * {@link Runner.run} before anything is generated: a frozen document is
+ * the one file the derivation does not own, so it is the one place `$id`
+ * and the advertised URL can still disagree (a `baseUrl` change leaves
+ * every frozen file carrying the old host). Every mismatch is collected.
+ *
+ * @public
+ */
+export class FrozenVersionIdMismatchError extends Schema.TaggedError<FrozenVersionIdMismatchError>()(
+	"FrozenVersionIdMismatchError",
+	{
+		/** One entry per frozen file whose `$id` is not the derived one. */
+		mismatched: Schema.Array(
+			Schema.Struct({
+				/** The schema's key in the config. */
+				name: Schema.String,
+				/** The frozen version label. */
+				version: Schema.String,
+				/** The frozen file. */
+				path: Schema.String,
+				/** The `$id` the config derives for this label. */
+				expected: Schema.String,
+				/** The `$id` the file declares; absent when it declares none or does not parse. */
+				actual: Schema.optionalKey(Schema.String),
+				/** Why the file fails: a different `$id`, no `$id` at all, or text that is not JSON. */
+				reason: Schema.Literals(["mismatch", "absent", "unparseable"]),
+			}),
+		),
+	},
+) {
+	override get message(): string {
+		const lines = this.mismatched.map((entry) => {
+			const detail =
+				entry.reason === "mismatch"
+					? `declares $id ${entry.actual}, expected ${entry.expected}`
+					: entry.reason === "absent"
+						? `declares no $id, expected ${entry.expected}`
+						: `does not parse as JSON, expected $id ${entry.expected}`;
+			return `  schema "${entry.name}" version ${entry.version}: ${entry.path} ${detail}`;
+		});
+		return `${this.mismatched.length} frozen version(s) on disk do not carry their derived $id; nothing was written.\n${lines.join("\n")}`;
+	}
+}
+
+/**
  * What the run did with one schema.
  *
  * - `written` / `unchanged` — the `build` outcomes when the run wrote.
@@ -108,18 +156,24 @@ export interface SchemaReport {
 }
 
 /**
- * The single catalog file's line in the {@link RunReport} — present only
- * when at least one schema declared a catalog entry.
+ * The single catalog file's line in the {@link RunReport} — present when at
+ * least one schema declared a catalog entry, or when none does but a file
+ * still sits at `config.catalogPath` (`orphaned`).
  *
  * @public
  */
 export interface CatalogReport {
 	/** Where the catalog is written (`config.catalogPath`). */
 	readonly path: string;
-	/** How many entries the file holds. */
+	/** How many entries the file holds; `0` for an orphan. */
 	readonly entries: number;
-	/** `held` mirrors {@link SchemaOutcome}: the run refused every write. */
-	readonly outcome: "written" | "unchanged" | "would-write" | "held";
+	/**
+	 * `held` mirrors {@link SchemaOutcome}: the run refused every write.
+	 * `orphaned`: no schema declares a catalog but the file exists — stale
+	 * under `check`, reported and left in place under `build` (the CLI may
+	 * not have written it).
+	 */
+	readonly outcome: "written" | "unchanged" | "would-write" | "held" | "orphaned";
 }
 
 /**
@@ -150,7 +204,7 @@ export interface RunReport {
 	readonly policy?: DriftTolerance;
 	/** One per config schema, in config order. */
 	readonly schemas: ReadonlyArray<SchemaReport>;
-	/** Absent when no schema declared a catalog entry. */
+	/** Absent when no schema declared a catalog entry and no file sits at `catalogPath`. */
 	readonly catalog?: CatalogReport;
 	/** At least one schema's verdict is `"drift"`. */
 	readonly drifted: boolean;
@@ -187,6 +241,19 @@ const orNone = <A, E extends PlatformError.PlatformError, R>(
 const pendingOutcome = (wouldWrite: boolean, refused: boolean): "held" | "would-write" | "unchanged" =>
 	!wouldWrite ? "unchanged" : refused ? "held" : "would-write";
 
+// The `$id` a frozen file declares, or why it cannot be read: a document
+// with no string `$id` (or that is not an object) declares none.
+const declaredId = (text: string): { reason: "ok"; $id: string } | { reason: "absent" | "unparseable" } => {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch {
+		return { reason: "unparseable" };
+	}
+	const $id = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>).$id : undefined;
+	return typeof $id === "string" ? { reason: "ok", $id } : { reason: "absent" };
+};
+
 const parsesEqual = (existing: string, text: string): boolean => {
 	try {
 		return CanonicalJson.equals(JSON.parse(existing), JSON.parse(text));
@@ -207,7 +274,11 @@ const parsesEqual = (existing: string, text: string): boolean => {
  * is reported at once: a build fails typed with
  * {@link FrozenVersionMissingError} listing every label with no file on disk
  * — nothing is written — a catalog that points a label at a 404 is a worse
- * failure than an early refusal.
+ * failure than an early refusal. A file that is there is read, and must
+ * declare the `$id` its entry derives, else the run fails typed with
+ * {@link FrozenVersionIdMismatchError} (a different `$id`, none, or text
+ * that is not JSON) — a `baseUrl` change is a re-publish event for every
+ * frozen label, not a silent re-advertisement.
  *
  * **Drift is classified per schema, under that schema's own
  * {@link ResolvedSchema.drift} tolerance — unless `options.policy` is set,
@@ -225,8 +296,10 @@ const parsesEqual = (existing: string, text: string): boolean => {
  * **Every catalog entry the config declares lands in ONE file** at
  * `config.catalogPath` — never one file per schema — serialized canonically
  * and compared by parsed content against the file on disk, written only
- * when different and only when the run is writing. The report omits
- * `catalog` entirely when no schema declared one.
+ * when different and only when the run is writing. When no schema declares
+ * one, nothing is written; a file still at `catalogPath` is reported
+ * `orphaned` (stale under `check`) and left in place, and the report omits
+ * `catalog` entirely only when there is no such file either.
  *
  * @public
  */
@@ -239,6 +312,7 @@ export class Runner {
 	) => Effect.Effect<
 		RunReport,
 		| FrozenVersionMissingError
+		| FrozenVersionIdMismatchError
 		| SchemaConversionError
 		| UndeclaredAnnotationKeyError
 		| SchemaValidatorError
@@ -254,17 +328,45 @@ export class Runner {
 		// Before anything is generated: every advertised frozen version must
 		// exist, or nothing is written — a catalog must never point a label at
 		// a 404. Every miss is collected so one run reports them all.
+		// A file that IS there is then read, because it is the one document the
+		// derivation does not own: its `$id` must be the derived one, or the
+		// catalog would advertise a document that self-identifies elsewhere.
 		const missing: Array<{ name: string; version: string; path: string }> = [];
+		const mismatched: Array<FrozenVersionIdMismatchError["mismatched"][number]> = [];
 		for (const schema of config.schemas) {
 			for (const frozen of schema.frozen) {
 				const info = yield* orNone(fs.stat(frozen.path));
 				if (Option.isNone(info) || info.value.type !== "File") {
 					missing.push({ name: schema.name, version: frozen.version, path: frozen.path });
+					continue;
+				}
+				const text = yield* fs.readFileString(frozen.path);
+				const declared = declaredId(text);
+				if (declared.reason !== "ok") {
+					mismatched.push({
+						name: schema.name,
+						version: frozen.version,
+						path: frozen.path,
+						expected: frozen.$id,
+						reason: declared.reason,
+					});
+				} else if (declared.$id !== frozen.$id) {
+					mismatched.push({
+						name: schema.name,
+						version: frozen.version,
+						path: frozen.path,
+						expected: frozen.$id,
+						actual: declared.$id,
+						reason: "mismatch",
+					});
 				}
 			}
 		}
 		if (missing.length > 0) {
 			return yield* Effect.fail(new FrozenVersionMissingError({ missing }));
+		}
+		if (mismatched.length > 0) {
+			return yield* Effect.fail(new FrozenVersionIdMismatchError({ mismatched }));
 		}
 
 		// `check` and `run` answer one result per target, in target order, so
@@ -330,7 +432,15 @@ export class Runner {
 			schema.catalog !== undefined ? [schema.catalog] : [],
 		);
 		let catalog: CatalogReport | undefined;
-		if (entries.length > 0) {
+		if (entries.length === 0) {
+			// No schema declares a catalog, so nothing is written — but a file
+			// left at the path (the last catalog block was removed) would
+			// otherwise be invisible to `check`. Reported, never deleted.
+			const info = yield* orNone(fs.stat(config.catalogPath));
+			if (Option.isSome(info)) {
+				catalog = { path: config.catalogPath, entries: 0, outcome: "orphaned" };
+			}
+		} else {
 			const text = yield* CanonicalJson.serialize(entries.map((entry) => Schema.encodeSync(CatalogEntry)(entry)));
 			// One read; a missing file is "different" (a build creates it), and so
 			// is text that does not parse — nothing unparseable is content-equal.

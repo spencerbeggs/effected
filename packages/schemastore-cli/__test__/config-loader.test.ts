@@ -204,7 +204,7 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, "schemas[0].frozen[0] is not a frozen version (missing version/path/url)");
+			assert.strictEqual(error.reason, "schemas[0].frozen[0] is not a frozen version (missing version/path/$id/url)");
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 

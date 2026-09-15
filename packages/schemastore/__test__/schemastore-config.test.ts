@@ -31,8 +31,15 @@ describe("defineConfig derivation", () => {
 		assert.strictEqual(schema.target.$id, "https://json.schemastore.org/okfit-1.1.json");
 		assert.strictEqual(schema.target.version, "1.1");
 		assert.strictEqual(schema.target.name, "okfit");
+		// Under SchemaStore the frozen file's own `$id` and its catalog URL
+		// sit on different hosts, so a FrozenVersion carries both.
 		assert.deepStrictEqual(schema.frozen, [
-			{ version: version("1.0"), path: "schemas/okfit-1.0.json", url: "https://www.schemastore.org/okfit-1.0.json" },
+			{
+				version: version("1.0"),
+				path: "schemas/okfit-1.0.json",
+				$id: "https://json.schemastore.org/okfit-1.0.json",
+				url: "https://www.schemastore.org/okfit-1.0.json",
+			},
 		]);
 		assert.strictEqual(schema.catalog?.url, "https://www.schemastore.org/okfit-1.1.json");
 		assert.deepStrictEqual(schema.catalog?.versions, {
@@ -141,7 +148,12 @@ describe("defineConfig with a HostedSchema", () => {
 		assert.strictEqual(schema.target.path, `schemas/${hosted.fileName}`);
 		assert.strictEqual(schema.target.version, "1.1");
 		assert.deepStrictEqual(schema.frozen, [
-			{ version: version("1.0"), path: "schemas/1.0/okfit-1.0.json", url: hosted.urlFor("1.0") },
+			{
+				version: version("1.0"),
+				path: "schemas/1.0/okfit-1.0.json",
+				$id: hosted.idFor("1.0"),
+				url: hosted.urlFor("1.0"),
+			},
 		]);
 		assert.strictEqual(schema.catalog?.url, hosted.url);
 	});

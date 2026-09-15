@@ -13,7 +13,7 @@ import {
 } from "@effected/schemastore";
 import { Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
 import type { RunOptions, RunReport } from "../src/Runner.js";
-import { FrozenVersionMissingError, Runner } from "../src/Runner.js";
+import { FrozenVersionIdMismatchError, FrozenVersionMissingError, Runner } from "../src/Runner.js";
 
 // ── Layers ────────────────────────────────────────────────────────────────
 //
@@ -476,6 +476,97 @@ describe("Runner.run", () => {
 			assert.instanceOf(error, FrozenVersionMissingError);
 			assert.deepStrictEqual(error.missing, [{ name: "pinned", version: "4.0.0", path: FROZEN_PATH }]);
 		}).pipe(Effect.provide(layers({ [`${FROZEN_PATH}/x`]: "" }))),
+	);
+
+	// #742 — a frozen file is the one document the derivation does not own,
+	// so it is the one place its `$id` can disagree with the URL the catalog
+	// advertises: the pre-flight reads it and refuses on a mismatch.
+	it.effect("fails typed before any write when a frozen file's $id differs from its derived URL", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(Runner.run(twoSchemas(), options("build")));
+			assert.instanceOf(error, FrozenVersionIdMismatchError);
+			assert.deepStrictEqual(error.mismatched, [
+				{
+					name: "pinned",
+					version: "4.0.0",
+					path: FROZEN_PATH,
+					expected: `${BASE}/4.0.0/pinned-4.0.0.json`,
+					actual: "https://old.example.com/schemas/4.0.0/pinned-4.0.0.json",
+					reason: "mismatch",
+				},
+			]);
+			const fs = yield* FileSystem.FileSystem;
+			assert.isFalse(yield* fs.exists(PINNED_PATH));
+			assert.isFalse(yield* fs.exists(CATALOG_PATH));
+		}).pipe(
+			Effect.provide(
+				layers({ [FROZEN_PATH]: emitted(Config, "https://old.example.com/schemas/4.0.0/pinned-4.0.0.json") }),
+			),
+		),
+	);
+
+	it.effect("a frozen file with no $id, or one that does not parse, is a mismatch with its own reason", () =>
+		Effect.gen(function* () {
+			const config = defineConfig({
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: { pinned: { schema: Config, versions: ["3.0.0", "4.0.0", "5.0.0"], published: true } },
+			});
+			const error = yield* Effect.flip(Runner.run(config, options("check")));
+			assert.instanceOf(error, FrozenVersionIdMismatchError);
+			assert.deepStrictEqual(
+				error.mismatched.map((entry) => [entry.version, entry.reason, entry.actual]),
+				[
+					["3.0.0", "unparseable", undefined],
+					["4.0.0", "absent", undefined],
+				],
+			);
+		}).pipe(
+			Effect.provide(
+				layers({
+					"/repo/schemas/3.0.0/pinned-3.0.0.json": "{ not json",
+					[FROZEN_PATH]: '{\n\t"type": "object"\n}\n',
+				}),
+			),
+		),
+	);
+
+	it.effect("a missing frozen file is reported as missing, never as an $id mismatch", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(Runner.run(twoSchemas(), options("build")));
+			assert.instanceOf(error, FrozenVersionMissingError);
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	// #743 — removing the last catalog block must not leave a stale
+	// catalog.json invisible to check: it is reported as orphaned, never
+	// deleted (the CLI may not have written it).
+	it.effect("an orphaned catalog file is reported when no schema declares a catalog", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const config = defineConfig({
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: { plain: { schema: Config } },
+			});
+			const checked = yield* Runner.run(config, options("check"));
+			assert.deepStrictEqual(checked.catalog, { path: CATALOG_PATH, entries: 0, outcome: "orphaned" });
+			const built = yield* Runner.run(config, options("build"));
+			assert.deepStrictEqual(built.catalog, { path: CATALOG_PATH, entries: 0, outcome: "orphaned" });
+			assert.strictEqual(yield* fs.readFileString(CATALOG_PATH), "[]\n", "the orphan is left for the user to delete");
+		}).pipe(Effect.provide(layers({ [CATALOG_PATH]: "[]\n" }))),
+	);
+
+	it.effect("no catalog block and no catalog file reports no catalog at all", () =>
+		Effect.gen(function* () {
+			const config = defineConfig({
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: { plain: { schema: Config } },
+			});
+			const report = yield* Runner.run(config, options("check"));
+			assert.isUndefined(report.catalog);
+		}).pipe(Effect.provide(layers({}))),
 	);
 
 	it.effect("reports every missing frozen version, not just the first", () =>

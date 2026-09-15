@@ -71,11 +71,11 @@ console.log(Effect.runSync(program));
 //   "required": [
 //     "name"
 //   ],
-//   "additionalProperties": true
+//   "additionalProperties": false
 // }
 ```
 
-`additionalProperties: true` is core's default for a struct: `Schema.toJsonSchemaDocument` emits open objects unless told otherwise. A config schema usually wants the closed form, and `jsonSchema: { onExcessProperty: "error" }` in the options produces it; the same option lives on a pipeline target, below.
+`additionalProperties: false` is this package's default for a struct, not core's: `Schema.toJsonSchemaDocument` has emitted open objects by default since rc.113, but a published document is a contract, so `fromSchema` generates under `onExcessProperty: "error"` unless told otherwise. `jsonSchema: { onExcessProperty: "ignore" }` in the options reopens one document; the same option lives on a pipeline target, below.
 
 `fromSchema` runs the whole pipeline — 2020-12 generation, Draft-07 lowering, the `$ref` rewrite and the declared-family gate — so every `$ref` in a built document already resolves against its `$defs` pool. `toJson()` is the flat publication shape (`$defs` omitted when empty) and `serializeResult` routes through the owned canonical serializer, tab-indented with a single trailing newline. If core cannot convert a schema, the failure is typed as `SchemaConversionError` and carries the `$id` and the structured cause.
 
@@ -152,6 +152,41 @@ console.log(findings.map((finding) => finding.check));
 ```
 
 `GenericFileMatch` flags patterns matching generic names other tools also use (SchemaStore rejects them); `ComplexFileMatch` flags glob constructs like alternations that should be expanded into multiple simple patterns. `entry.lint()` runs the same checks over an assembled entry.
+
+## One identity for the application and the config
+
+An application that writes `$schema` into its own output needs the same URL the CLI writes as `$id`, and the two are easy to derive twice. `HostedSchema` holds that identity once — where the documents are served, the name, every advertised version and which one is current — and derives everything else. Build it in application code and hand the same value to `defineConfig`:
+
+```ts
+import { HostedSchema } from "@effected/schemastore";
+import { Schema } from "effect";
+
+export const OutputSchema = HostedSchema.github({
+  repo: "savvy-web/silk-release-action",
+  path: "schemas",
+  name: "silk-release-action.output",
+  versions: ["5.1", "5.2"],
+});
+
+console.log(OutputSchema.$id);
+// => "https://raw.githubusercontent.com/savvy-web/silk-release-action/main/schemas/5.2/silk-release-action.output-5.2.json"
+
+// Every payload the application emits names the document it was written against.
+export const Output = Schema.Struct({ $schema: Schema.Literal(OutputSchema.$id), version: Schema.String });
+```
+
+```ts
+// schemastore.config.ts
+import { defineConfig } from "@effected/schemastore";
+import { Output, OutputSchema } from "./src/output.js";
+
+export default defineConfig({
+  outputDir: "schemas",
+  schemas: { [OutputSchema.name]: { schema: Output, hosted: OutputSchema } },
+});
+```
+
+Three constructors cover the three hosts: `HostedSchema.github({ repo, branch?, path?, ... })` serves files raw from a repository (`branch` defaults to `main`), `HostedSchema.schemastore({ name, ... })` publishes to SchemaStore (`$id` on `json.schemastore.org`, the catalog URL on `www.schemastore.org`, the flat layout forced), and `HostedSchema.custom({ baseUrl, ... })` takes any `https://` directory as a string or `URL`. Each validates the identity the way `defineConfig` does — `current` must be one of `versions`, two spellings of one label are refused — and throws a plain `Error` naming the reason. `$id`, `url` and `fileName` answer the current document; `idFor`, `urlFor` and `fileNameFor` answer any advertised version. An entry given `hosted` must be keyed by `hosted.name` and must not spell `baseUrl`, `versions`, `current` or `layout` beside it — the identity owns them.
 
 ## Linting documents
 
@@ -245,7 +280,7 @@ const targets = [
     schema: Schema.Struct({ name: Schema.String }),
     $id: "https://example.com/config.schema.json",
     path: "schemas/config.schema.json",
-    jsonSchema: { onExcessProperty: "error" },
+    jsonSchema: { onExcessProperty: "ignore" },
   }),
 ];
 
@@ -271,7 +306,7 @@ provide the same value cannot disagree about what the layer contains.
 
 A target names its schema, its `$id` and where the file goes. `name` is optional and only catalog naming reads it, so a file-only target like the one above does not repeat its path's basename; supply it when you also pass a `version`, since versioned naming is `<name>-<version>.json`.
 
-`jsonSchema` is optional too, and carries core's `Schema.ToJsonSchemaOptions` for that one target. Set it when the document's shape must not follow core's defaults: `onExcessProperty: "error"` keeps a published closed-object document closed, where the open-by-default generator would otherwise flip every struct's `additionalProperties` and the contract gate would refuse the rewrite. Living on the target rather than in the pipeline options keeps each document's generation contract self-describing.
+`jsonSchema` is optional too, and carries core's `Schema.ToJsonSchemaOptions` for that one target. Set it when the document's shape must not follow this package's defaults: `onExcessProperty: "ignore"` keeps a published open-object document open, where the closed-by-default generator would otherwise flip every struct's `additionalProperties` and the contract gate would refuse the rewrite. Living on the target rather than in the pipeline options keeps each document's generation contract self-describing.
 
 Both gates' findings normalize into one `PipelineFinding` shape, so a single predicate judges them. Gating is **policy, not mechanism**: `blocking` defaults to `severity === "warning"`, which is what `UnresolvedRef`, `UnknownKeyword` and `DepthExceeded` are. Replace the predicate rather than the loop when you disagree.
 
@@ -334,6 +369,7 @@ Placement follows the assembled root: an inline root takes the annotations direc
 - `KeywordFamilies` — the one registry of declared keyword families (upstream language-server families plus the house `x-ai-` machine-annotation namespace), consumed by both the `fromSchema` gate and the lint so they cannot disagree.
 - `SchemaVersioning` / `SchemaVersion` — full-SemVer version labels with `parseResult` / `parse`, the `Order` instance and `latest`, `isPinned` and `next` for the contract-change version bump, plus `fileName`, `schemaUrl` and `catalogUrls` deriving both catalog modes.
 - `CatalogEntry` — the `catalog.json` entry as a `Schema.Class`, `assemble` and the `fileMatch` hygiene lint (`CatalogLintFinding`).
+- `HostedSchema` — a schema's hosted identity as a `Schema.Class` (`github`, `schemastore` and `custom` constructors) deriving `$id`, the catalog `url` and the file name for the current or any advertised version, shared between application code and `defineConfig`'s `hosted` field.
 - `DocumentLint` — the total structural lint returning `DocumentLintFinding` values, never an error.
 - `SchemaValidator` — real-engine validation, closed by default over ajv: provide `SchemaValidator.layer` and it works. `ValidationFinding`, `SchemaValidatorError`, `noop` to switch validation off and the `makeTest` / `layerTest` doubles.
 - `DocumentDiff` — `classify` puts two documents in `"none"` / `"annotations"` / `"contract"`, the signal for whether a change needs a new schema version, plus `isClean` for the clean case.
