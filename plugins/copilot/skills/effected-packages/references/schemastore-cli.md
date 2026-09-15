@@ -15,38 +15,30 @@ pnpm add -D @effected/schemastore @effected/schemastore-cli
 ## The config module
 
 ```ts
-import { defineConfig, SchemaTarget } from "@effected/schemastore";
+import { defineConfig } from "@effected/schemastore";
 import { MyConfig } from "./src/schema/my-config.js";
 
 export default defineConfig({
- schemas: [
-  SchemaTarget.make({
+ outputDir: "schemas",
+ baseUrl: "https://example.com/schemas",
+ schemas: {
+  "my-config": {
    schema: MyConfig,
-   $id: "https://example.com/schemas/my-config-1.0.json",
-   name: "my-config",
-   version: "1.0",
-   path: "schemas/my-config-1.0.json",
+   versions: ["1.0"],
    published: false,
    jsonSchema: { onExcessProperty: "error" },
-  }),
- ],
- catalog: [
-  {
-   name: "my-config",
-   description: "Configuration for my tool",
-   fileMatch: ["my-config.json", ".config/my-config.json"],
-   baseUrl: "https://example.com/schemas",
-   path: "schemas/catalog-entry.json",
+   catalog: { description: "Configuration for my tool", fileMatch: ["my-config.json", ".config/my-config.json"] },
   },
- ],
- drift: { policy: "semantic", onDrift: "error" },
+ },
+ drift: "semantic",
+ onDrift: "error",
 });
 ```
 
 - Discovered as `schemastore.config.{ts,mts,js,mjs}` walking upward from the working directory, or named by the optional positional argument. Loaded through `jiti` **relative to the config file**, so `./x.js` specifiers resolve to `.ts` sources and `effect` resolves from the consumer's own `node_modules`.
-- Relative `path` values — on schemas and catalog entries alike — resolve against the **config file's directory**, never the working directory.
-- `catalog[].versions` is derived from every versioned schema of that name, published or not, as `<baseUrl>/<name>-<version>.json`. **Each versioned schema's `$id` must equal that derived URL** — the CLI does not cross-check them, and a `$id` under a versioned subdirectory yields a catalog entry whose URLs resolve to nothing.
-- `drift` is the default for published schemas; the flags below override it for one run.
+- `schemas` is keyed by file base name — the key IS the schema's `name`. Relative `outputDir`, `catalogPath` and every derived schema/frozen `path` resolve against the **config file's directory**, never the working directory.
+- `$id`, the write `path` and every catalog URL are derived from ONE layout (`outputDir`/`baseUrl`, this entry's or the config's default `baseUrl`, and `layout`), so they cannot disagree with each other — there is no `$id` override. A first-run config declares a single `versions` label; a second is appended only once the first is published and its file already exists on disk.
+- `drift` is a top-level default an entry may override; `onDrift` is top-level and run-wide, never overridable per schema. Together they default to `{ policy: "semantic", onDrift: "error" }`; the flags below override the effective policy for one run.
 
 ## Commands
 
@@ -58,7 +50,7 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
 - **`build`** generates, gates (structural lint + ajv strict mode), applies the drift table, and writes what passes — content-compared, so an unchanged or merely reformatted file is untouched — then the catalog entries the same way. When any schema fails the gate, or drifts under `onDrift: "error"`, **nothing is written** and every otherwise-writable schema reports `held`.
 - **`check`** is the identical walk with no writes: it reports exactly what `build` would do under the same flags (`would write`, `unchanged`, `DRIFT`, `held`, `GATE FAILED`) and exits under the same conditions — and, as the CI gate, it also exits `1` whenever a build would write anything (`StaleError`: ``N document(s) are stale; run `schemastore build` and commit the result.``), evaluated after the gate and drift verdicts. It replaces a hand-written drift test.
 - **`--force`** is `--drift=allow` for one run, announced loudly; it never overrides a gate failure. Combined with an explicit non-`allow` `--drift` (`strict` or `semantic`) it is refused as a usage error (`ConflictingFlagsError`, exit `64`) before the config loads — a contradiction, not a precedence question; `--force --drift=allow` is redundant and accepted.
-- **`--format=json`** emits one document on stdout — config path, effective drift policy with its `source` (`config` | `flag`), per-schema `{ $id, path, name?, version?, published, change, verdict, outcome, nextVersion?, findings }`, per-catalog-entry outcome, `drifted`, `gateFailed`, `wrote` — and moves every human line to stderr.
+- **`--format=json`** emits one document on stdout — `mode`, `configPath`, `drift: { onDrift, policy? }` (`policy` present only when a flag forced one tolerance over every schema's own), per-schema `{ $id, path, name, version?, published, change, verdict, policy, outcome, nextVersion?, frozen?, findings }`, one optional `catalog: { path, entries, outcome }` for the single catalog file, `drifted`, `gateFailed`, `wrote` — and moves every human line to stderr.
 - When `GITHUB_STEP_SUMMARY` is set (read through Effect `Config`), both commands append a markdown table and the drift verdict; a failure to write it is logged, never fatal.
 
 ## Drift

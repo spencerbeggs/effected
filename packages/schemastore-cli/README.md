@@ -47,13 +47,19 @@ export default defineConfig({
  schemas: {
   okfit: {
    schema: OkfitConfig,
-   versions: ["1.0", "1.1"],
+   versions: ["1.0"],
    published: true,
    catalog: { description: "okfit configuration", fileMatch: ["okfit.toml", ".okfit.toml"] },
   },
  },
 });
 ```
+
+A second label is appended to `versions` only once the first is published
+and its file already exists on disk — see "The lifecycle" in the
+`building-schemastore-schemas` skill's `drift-and-versioning.md` reference.
+A first-run config should declare a single label; naming an extra one before
+its file exists fails the build with `FrozenVersionMissingError`.
 
 `schemas` is keyed by file base name — the key IS the schema's `name`, and `$id`, the write `path` and every catalog URL derive from it, `outputDir` and `baseUrl`; there is no `$id` override. `versions` lists every label the catalog advertises; `current` (default: the newest) is the one generated at `path`/`$id`, and every other label becomes a **frozen** file the CLI verifies still exists on disk but never regenerates — advertising a frozen label with nothing on disk fails the build before anything is written. `published` (default `false`) marks a version other people already depend on. `baseUrl: "schemastore"` expands `$id` to `https://json.schemastore.org/…` and the catalog URL to `https://www.schemastore.org/…`; any other value is one `https://` base for both. `outputDir` and `onDrift` are top-level only; `baseUrl` and `drift` are top-level defaults an entry may override. `catalog` is required under `baseUrl: "schemastore"` and optional under a custom host. Every schema's declared `catalog` entry lands in ONE file at `catalogPath` (default `<outputDir>/catalog.json`) — never one file per schema.
 
@@ -79,7 +85,7 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 - `build` generates every schema, runs the gates (structural lints and ajv strict mode), applies the drift policy, and writes what passes — content-compared, so unchanged files are untouched — along with the single `catalog.json` every declared catalog entry lands in.
 - `check` is the identical walk with no writes: it reports what `build` would do under the same flags and exits under the same conditions. It is the CI gate, so it also fails (exit `1`) whenever a build would write anything — a committed schema or catalog file that differs from what the config generates, or is missing, is stale; run `schemastore build` and commit the result.
 - `--drift` and `--on-drift` override the config's `drift` block for one run; `--force` is sugar for `--drift=allow` and nothing else — combined with an explicit non-`allow` `--drift` it is a usage error (exit 64), not a precedence question; `--force --drift=allow` is accepted.
-- `--format=json` emits one JSON document on stdout (config path, per-schema outcome, per-catalog-entry outcome, effective drift policy and its source); human text moves to stderr.
+- `--format=json` emits one JSON document on stdout (config path, per-schema outcome and effective drift tolerance, the single catalog entry's outcome, and `drift: { onDrift, policy? }` — `policy` present only when a flag forced one tolerance over every schema's own); human text moves to stderr.
 - When `GITHUB_STEP_SUMMARY` is set, both commands append a markdown summary table.
 
 An unpublished schema is never drift: a contract change at a pinned but unpublished version rewrites the file in place.

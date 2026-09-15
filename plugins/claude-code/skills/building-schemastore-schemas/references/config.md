@@ -38,13 +38,19 @@ export default defineConfig({
   schemas: {
     okfit: {
       schema: OkfitConfig,
-      versions: ["1.0", "1.1"],
+      versions: ["1.0"],
       published: true,
       catalog: { description: "okfit configuration", fileMatch: ["okfit.toml", ".okfit.toml"] },
     },
   },
 });
 ```
+
+A first-run config declares a single label. A second label is appended to
+`versions` only once the first is published and its file already exists on
+disk — see "The lifecycle" in `drift-and-versioning.md`; naming an extra
+label before its file exists fails the build with
+`FrozenVersionMissingError`.
 
 Self-hosted, the same entry takes
 `baseUrl: "https://raw.githubusercontent.com/o/r/main/schemas"` and derives
@@ -119,9 +125,11 @@ findings as values, so a test can assert on them before a reviewer does.
 `drift` (`"strict" | "semantic" | "allow"`) is a top-level default an entry
 may override; `onDrift` (`"error" | "warn"`) is top-level and run-wide,
 never overridable per schema. Together they default to
-`{ policy: "semantic", onDrift: "error" }` (`DriftPolicy.defaults`). Flags
-override the effective policy for one run; the report names it and whether
-it came from `config` or `flag`.
+`{ policy: "semantic", onDrift: "error" }` (`DriftPolicy.defaults`).
+`--drift` overrides every schema's own tolerance for one run; `--on-drift`
+overrides the config's top-level `onDrift`. The report gives every schema
+its own effective `policy` regardless; a report-level `policy` field
+appears only when a flag forced one tolerance over every schema's own.
 
 ## Path resolution
 

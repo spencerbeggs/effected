@@ -306,13 +306,19 @@ export default defineConfig({
   schemas: {
     okfit: {
       schema: OkfitConfig,
-      versions: ["1.0", "1.1"],
+      versions: ["1.0"],
       published: true,
       catalog: { description: "okfit configuration", fileMatch: ["okfit.toml", ".okfit.toml"] },
     },
   },
 });
 ```
+
+A first-run config declares a single label; a second label is appended to
+`versions` only once the first is published and its file already exists on
+disk — see `schemastore-cli.md`'s drift table and the
+`building-schemastore-schemas` skill's `drift-and-versioning.md` reference
+for the lifecycle.
 
 Self-hosted, the same entry takes
 `baseUrl: "https://raw.githubusercontent.com/o/r/main/schemas"` and derives

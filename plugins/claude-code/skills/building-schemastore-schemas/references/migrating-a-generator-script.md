@@ -71,7 +71,11 @@ program. What varies between them is exactly the config it takes.
 
 - The Effect Schemas and their annotations stay where they are; the config
   imports them.
-- The `$id` constants (`SCHEMA_URL`) stay exported from the schema module so
-  the runtime payloads and the config agree on one string.
+- A runtime payload that still needs to stamp its own `$schema` field (an
+  exported `SCHEMA_URL`-style constant, say `TSCONFIG_SCHEMA_URL`) keeps
+  that exported identifier — the config no longer spells `$id` by hand, so
+  derive both the constant and the config's implicit `$id` from the same
+  name, base URL, version and layout through `SchemaVersioning.schemaUrl`,
+  never by writing the URL out twice.
 - Any test that imported `targets` from the script now imports the config's
   default export and reads `.schemas`.

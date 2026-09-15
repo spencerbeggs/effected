@@ -14,15 +14,16 @@ program. What varies between them is exactly the config it takes.
 
 | In the script | In the config / CLI |
 | --- | --- |
-| `export const targets: ReadonlyArray<SchemaTarget> = [ … ]` | `defineConfig({ schemas: [ … ] })` — the same `SchemaTarget.make` calls |
-| `resolve(REPO_ROOT, "schemas", …)` paths | relative paths, resolved against the config file's directory (absolute paths still pass through) |
-| `SchemaVersioning.parseResult("5.0.0")` + `Result.getOrThrowWith` | `version: "5.0.0"` — `make` parses a string label and throws naming an invalid one |
-| `SchemaVersioning.fileName(name, version)` in `path` | spell the file name: `path: "schemas/<name>-<version>.json"` |
-| `const JSON_SCHEMA_OPTIONS = { onExcessProperty: "error" }` shared across targets | `jsonSchema: { onExcessProperty: "error" }` on each target |
+| `export const targets: ReadonlyArray<SchemaTarget> = [ … ]` | `defineConfig({ outputDir, schemas: { <name>: { schema, … } } })` — one entry per schema, keyed by its file base name |
+| `resolve(REPO_ROOT, "schemas", …)` paths | `outputDir` plus paths resolved against the config file's directory (absolute paths still pass through) |
+| `SchemaVersioning.parseResult("5.0.0")` + `Result.getOrThrowWith` | `versions: ["5.0.0"]` (and `current`, if not the newest) — `defineConfig` parses each label and throws naming an invalid one |
+| `SchemaVersioning.fileName(name, version)` in `path` | derived — `$id`, `path` and every catalog URL come from the schema's key, `outputDir`, `baseUrl` and `layout`; there is no `path` or `$id` to spell by hand |
+| `const JSON_SCHEMA_OPTIONS = { onExcessProperty: "error" }` shared across targets | `jsonSchema: { onExcessProperty: "error" }` on each schema entry |
 | `--check` / `--dry-run` → `SchemaPipeline.check` | `schemastore check` |
 | `--force` / `--allow-contract-change` → `contractChanges: "allow"` | `--force` (sugar for `--drift=allow`) |
-| `const CATALOGUED = false` selecting `"allow"` vs `"block-versioned"` | `published: false` on the target; flip to `true` when the entry is accepted |
-| `CatalogEntry.assemble({ name, description, fileMatch, baseUrl, versions })` + `Schema.encodeSync` + a file write | the `catalog: [{ name, description, fileMatch, baseUrl, path }]` block — `versions` and `url` derive from the schemas |
+| `const CATALOGUED = false` selecting `"allow"` vs `"block-versioned"` | `published: false` on the schema entry; flip to `true` when the entry is accepted |
+| `CatalogEntry.assemble({ name, description, fileMatch, baseUrl, versions })` + `Schema.encodeSync` + a file write | the `catalog: { description, fileMatch }` block on each schema entry — `name`, `url` and `versions` derive from the schema's own key and `versions`, and every entry lands in the single `catalogPath` file |
+| a previous published label kept as a second `SchemaTarget` in the array | append the new label to `versions` and set `current`; the old label freezes and is verified, not regenerated |
 | the `SchemaContractChangeError` handler printing `version → nextVersion` | the `DRIFT contract at published X → suggest Y` line and `nextVersion` in the JSON report |
 | per-result `Effect.logInfo` of advisory findings | the indented finding lines under each schema |
 | `NodeServices.layer` + `SchemaFile.layer` + `SchemaValidator.layer` wiring | the CLI's own runtime |
@@ -34,25 +35,32 @@ program. What varies between them is exactly the config it takes.
 1. Add `@effected/schemastore-cli` as a devDependency at the same version as
    `@effected/schemastore`. Keep `effect` and `@effected/schemastore`.
 2. Write `schemastore.config.ts` beside the script (or at the repository
-   root, where upward discovery finds it). Move each `SchemaTarget.make` call
-   across verbatim, then convert absolute `path` values to paths relative to
-   the config file.
-3. Decide `published` per versioned target. A label that is already in the
+   root, where upward discovery finds it). Set `outputDir` to the directory
+   the script wrote into, and for each target turn the `SchemaTarget.make`
+   call into a keyed `schemas.<name>` entry: `name` becomes the key, `$id`
+   and `path` are dropped (they are now derived), and `version` becomes
+   `versions: [version]`.
+3. Decide `published` per schema entry. A label that is already in the
    SchemaStore catalog is `published: true`; one still being iterated on is
    not.
 4. If the script wrote a catalog entry, replace the assembled call with a
-   `catalog` block. Check that every versioned schema's `path` sits directly
-   under the directory `baseUrl` names and its `$id` equals
-   `<baseUrl>/<name>-<version>.json` — a `schemas/<version>/` subdirectory
-   layout has to be flattened here, since the derived URL is flat and the CLI
-   does not cross-check `$id`. Flattening moves a file consumers may pin;
-   treat the move as the version bump it is.
+   `catalog: { description, fileMatch }` block on the matching schema entry —
+   `name`, `url` and `versions` are now derived, never written. Set
+   `baseUrl`/`layout` so the derived layout matches where the script actually
+   wrote files: `baseUrl: "schemastore"` for a flat SchemaStore-hosted layout,
+   or a custom `https://` `baseUrl` with `layout: "flat"` or `"versioned"`
+   otherwise. A layout the config derives that does not match the script's
+   old file locations means renaming files on disk — treat that move as the
+   version bump it is, since it changes a URL a consumer may pin.
 5. Replace the `generate-schema` script with `schema:build` and
    `schema:check`; point turbo's `build` at `schema:build`.
 6. Run `pnpm schema:check`. `unchanged` on every line (exit `0`) proves the
    config reproduces the committed documents; `would write` (exit `1`,
    stale) means a target moved in translation — diff the generated file
-   before trusting the config.
+   before trusting the config. `FrozenVersionMissingError` (exit `1`) means
+   a `versions` label the config now advertises has no file on disk yet —
+   either the file needs to be generated once as `current` and then frozen,
+   or the label does not belong in `versions`.
 7. Delete the script, its drift test, the `CATALOGUED` constant, the
    hand-written catalog-entry write, and `tsx` if nothing else used it. The
    remaining `__test__` files that assert on the *documents* (decoding a
@@ -63,7 +71,11 @@ program. What varies between them is exactly the config it takes.
 
 - The Effect Schemas and their annotations stay where they are; the config
   imports them.
-- The `$id` constants (`SCHEMA_URL`) stay exported from the schema module so
-  the runtime payloads and the config agree on one string.
+- A runtime payload that still needs to stamp its own `$schema` field (an
+  exported `SCHEMA_URL`-style constant, say `TSCONFIG_SCHEMA_URL`) keeps
+  that exported identifier — the config no longer spells `$id` by hand, so
+  derive both the constant and the config's implicit `$id` from the same
+  name, base URL, version and layout through `SchemaVersioning.schemaUrl`,
+  never by writing the URL out twice.
 - Any test that imported `targets` from the script now imports the config's
   default export and reads `.schemas`.

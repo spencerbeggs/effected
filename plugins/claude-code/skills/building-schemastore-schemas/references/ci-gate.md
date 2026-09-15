@@ -46,9 +46,12 @@ schemastore build [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|warn] [--force] [--format=human|json]
 ```
 
-- `--drift` and `--on-drift` override the config's `drift` block for one
-  run; the report names the effective policy and its source (`config` or
-  `flag`).
+- `--drift` and `--on-drift` are separate overrides: `--drift` replaces
+  every schema's own tolerance for one run, `--on-drift` replaces the
+  config's top-level `onDrift`. The report's `drift` block carries the
+  effective `onDrift` always, and `policy` only when a flag forced one
+  tolerance over every schema's own — its absence means each schema kept
+  its own (config) tolerance.
 - `--force` is sugar for `--drift=allow`.
 - `--format=json` emits one JSON document on stdout and moves human text to
   stderr, so stdout stays parseable.
@@ -59,7 +62,7 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 | code | meaning |
 | --- | --- |
 | `0` | success, including drift under `--on-drift=warn` |
-| `1` | drift under `--on-drift=error`, a gate failure (lint warning, ajv strict finding), or — for `check` — any document `build` would write |
+| `1` | drift under `--on-drift=error`, a gate failure (lint warning, ajv strict finding), a missing frozen version (`FrozenVersionMissingError`), or — for `check` — any document `build` would write |
 | `2` | config not found, failed to load, or failed `defineConfig` validation |
 | `3` | infrastructure failure |
 | `64` | usage error (an unknown flag, a bad literal) |
@@ -85,7 +88,7 @@ drift or gate finding.
 {
   "mode": "check",
   "configPath": "/abs/path/schemastore.config.ts",
-  "drift": { "policy": "semantic", "onDrift": "error", "source": "config" },
+  "drift": { "onDrift": "error" },
   "schemas": [
     {
       "$id": "https://…/my-tool-1.2.json",
@@ -95,6 +98,7 @@ drift or gate finding.
       "published": true,
       "change": "contract",
       "verdict": "drift",
+      "policy": "semantic",
       "outcome": "drift",
       "nextVersion": "1.3",
       "findings": []
@@ -107,24 +111,36 @@ drift or gate finding.
 }
 ```
 
+- `drift` — `{ onDrift, policy? }`, never `source`. `onDrift` is always
+  present; `policy` appears only when a flag forced one tolerance over
+  every schema's own for this run.
 - `change` — `none` | `created` | `annotations` | `contract`.
 - `verdict` — `write` | `drift`; a schema written under `--on-drift=warn`
   keeps `drift`.
+- `policy` — every schema line carries its own effective drift tolerance
+  (its own override, or the config default), regardless of whether the
+  report-level `drift.policy` is present.
 - `outcome` — `written` | `unchanged` | `would-write` | `drift` | `held` |
   `gate-failed`. `outcome` is the authoritative "was/would the file be
   touched" answer; never infer it from `change`.
-- `nextVersion` — present only for a contract change on a versioned schema.
+- `nextVersion` — present only for a `contract` change on a PINNED
+  (non-prerelease) versioned schema; a prerelease label already declares
+  its own instability, so there is nothing to suggest.
+- `frozen` — present, and non-empty, only when the schema declares
+  `versions` besides `current`: the other advertised labels the run
+  verified exist on disk.
 - `findings` — every finding, blocking or not: `source`, `severity`,
   optional `check`, `path`, `message`.
-- `catalog` — present only when at least one schema declared a `catalog`
-  block; `{ path, entries, outcome }` for the single catalog file, never one
-  entry per schema. Outcomes are `written` | `unchanged` | `would-write` |
-  `held`.
+- `catalog` — a single optional object, present only when at least one
+  schema declared a `catalog` block: `{ path, entries, outcome }` for the
+  one catalog file, never one entry per schema. Outcomes are `written` |
+  `unchanged` | `would-write` | `held`.
 
 ## The GitHub step summary
 
 When `GITHUB_STEP_SUMMARY` is set, both commands append a markdown table
-(schema · version · published · change · outcome) and the drift verdict. It is
+(schema · version · frozen · published · change · outcome) and the drift
+verdict. It is
 read through Effect `Config`, so an empty value counts as unset. A failure to
 write the summary is logged and never fatal. Nothing in the consumer has to
 opt in; a `schema:check` step on a GitHub runner gets the table for free.

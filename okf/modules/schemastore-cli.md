@@ -118,13 +118,18 @@ export default defineConfig({
   schemas: {
     okfit: {
       schema: OkfitConfig,
-      versions: ["1.0", "1.1"],
+      versions: ["1.0"],
       published: true,
       catalog: { description: "okfit configuration", fileMatch: ["okfit.toml", ".okfit.toml"] },
     },
   },
 });
 ```
+
+A first-run config declares a single label like the one above; a second
+label is appended to `versions` only once the first is published and its
+file already exists on disk — see "The lifecycle" in the
+`building-schemastore-schemas` skill's `drift-and-versioning.md` reference.
 
 Self-hosted, the same entry takes
 `baseUrl: "https://raw.githubusercontent.com/o/r/main/schemas"` and
@@ -276,11 +281,14 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
   refused before the config loads as `ConflictingFlagsError` at exit
   `64` (a usage error, not a run outcome) rather than silently resolving
   to `allow`.
-- `--format=json` emits one document on stdout — config path, per-schema
-  `{ $id, path, version, published, change, outcome, findings, nextVersion? }`,
-  per-catalog-entry outcome, and the effective drift policy with its
-  source (`config` or `flag`). Human text moves to stderr in this mode so
-  stdout stays parseable.
+- `--format=json` emits one document on stdout — `mode`, `configPath`,
+  `drift: { onDrift, policy? }` (`policy` present only when a flag forced
+  one tolerance over every schema's own, never a `source` field),
+  per-schema `{ $id, path, name, version?, published, change, verdict,
+  policy, outcome, nextVersion?, frozen?, findings }`, one optional
+  `catalog: { path, entries, outcome }` for the single catalog file, and
+  `drifted`/`gateFailed`/`wrote`. Human text moves to stderr in this mode
+  so stdout stays parseable.
 - A bare `schemastore` or `--help` prints help and exits `0`; a no-match
   must not fail.
 
@@ -307,8 +315,9 @@ Exit codes:
   of `written`/`unchanged`, so under `onDrift: warn` a drifting schema
   is both written and counted as drift and the four counts need not sum
   to the schema total. A prerelease label's
-  contract change has `nextVersion === version` (the label is not
-  pinned) and renders no suggestion. Warnings and errors go through
+  contract change carries no `nextVersion` at all (the label is not
+  pinned, and already declares its own instability) and renders no
+  suggestion. Warnings and errors go through
   `CliLogger` on stderr; the logger is built with `stderrFrom: "All"` so
   a `--format=json` stdout stays parseable.
 - **JSON**: the document above, stable key order.
@@ -316,8 +325,8 @@ Exit codes:
   `Config` (`Config.String(...).pipe(Config.option)` under the default
   `fromEnv` provider — tests substitute `ConfigProvider.fromMap`), never
   `process.env`; `__PACKAGE_VERSION__` stays the bundler's compile-time
-  substitution.[^owner] When it is set, both commands append a markdown table (schema · version · published · change
-  · outcome) and the drift verdict. This is a short append in the CLI, not
+  substitution.[^owner] When it is set, both commands append a markdown table (schema · version · frozen · published
+  · change · outcome) and the drift verdict. This is a short append in the CLI, not
   a dependency on `@effected/github-actions`, whose weight is wrong for a
   bin that appends one file. A failure to write the summary is logged and
   never fatal.
