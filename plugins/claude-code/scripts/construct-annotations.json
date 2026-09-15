@@ -653,6 +653,8 @@
 		"KeywordFamilies": "recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint",
 		"NonJsonValueError": "handle a non-json value (undefined, bigint, function, NaN) during canonical serialize",
 		"PipelineFinding": "normalized lint or validator finding surfaced by the schema pipeline",
+		"SCHEMASTORE_CATALOG_BASE": "www.schemastore.org host constant that a schemastore catalog.json entry's url points at",
+		"SCHEMASTORE_ID_BASE": "json.schemastore.org host constant that a schemastore-hosted document declares in $id",
 		"SchemaContractChangeError": "handle a pipeline run refusing to rewrite a pinned published schema in place, block-versioned contract change",
 		"SchemaConversionError": "handle failure converting an effect schema into a schemastore document",
 		"SchemaFile": "read and write emitted schema documents to disk, drift check for ci",
