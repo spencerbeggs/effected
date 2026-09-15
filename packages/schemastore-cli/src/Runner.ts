@@ -232,7 +232,14 @@ export class Runner {
 		// a 404.
 		for (const schema of config.schemas) {
 			for (const frozen of schema.frozen) {
-				if (!(yield* fs.exists(frozen.path))) {
+				const info = yield* fs.stat(frozen.path).pipe(
+					Effect.map(Option.some),
+					Effect.catchIf(
+						(error) => error.reason._tag === "NotFound",
+						() => Effect.succeed(Option.none<FileSystem.File.Info>()),
+					),
+				);
+				if (Option.isNone(info) || info.value.type !== "File") {
 					return yield* Effect.fail(
 						new FrozenVersionMissingError({ name: schema.name, version: frozen.version, path: frozen.path }),
 					);

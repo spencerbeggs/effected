@@ -475,6 +475,16 @@ describe("Runner.run", () => {
 		}).pipe(Effect.provide(layers({}))),
 	);
 
+	it.effect("fails typed when a frozen path is a directory, not a file", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(Runner.run(twoSchemas(), options("build")));
+			assert.instanceOf(error, FrozenVersionMissingError);
+			assert.strictEqual(error.name, "pinned");
+			assert.strictEqual(error.version, "4.0.0");
+			assert.strictEqual(error.path, FROZEN_PATH);
+		}).pipe(Effect.provide(layers({ [`${FROZEN_PATH}/x`]: "" }))),
+	);
+
 	it.effect("classifies each schema under its own drift tolerance unless a flag forces one", () =>
 		Effect.gen(function* () {
 			const seed = { ...frozenSeed, [PINNED_PATH]: emitted(Wider, PINNED_ID) };

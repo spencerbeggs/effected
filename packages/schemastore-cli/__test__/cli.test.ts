@@ -139,7 +139,7 @@ describe("schemastore CLI", () => {
 				assert.strictEqual(error.count, 2, "one schema plus one catalog entry");
 				assert.include(error.message, "2 document(s) are stale");
 				const out = yield* stdout;
-				assert.include(out, `would write (created) ${BASIC_PATH}`);
+				assert.include(out, `would write (created) ${BASIC_PATH} [policy semantic]`);
 				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
 				assert.include(
 					out,
@@ -157,7 +157,7 @@ describe("schemastore CLI", () => {
 			Effect.gen(function* () {
 				yield* program(["check"], deps(basicConfig()));
 				const out = yield* stdout;
-				assert.include(out, `unchanged ${BASIC_PATH}`);
+				assert.include(out, `unchanged ${BASIC_PATH} [policy semantic]`);
 				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries)`);
 			}),
 			builtSeed,
@@ -172,7 +172,7 @@ describe("schemastore CLI", () => {
 				assert.strictEqual(exitCodeOf(error), 1);
 				assert.strictEqual(error.count, 1);
 				const out = yield* stdout;
-				assert.include(out, `unchanged ${BASIC_PATH}`);
+				assert.include(out, `unchanged ${BASIC_PATH} [policy semantic]`);
 				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
 			}),
 			{ ...builtSeed, [CATALOG_PATH]: '{"name":"basic","description":"old"}\n' },
@@ -184,7 +184,7 @@ describe("schemastore CLI", () => {
 			Effect.gen(function* () {
 				yield* program(["build"], deps(basicConfig()));
 				const out = yield* stdout;
-				assert.include(out, `unchanged ${BASIC_PATH}`);
+				assert.include(out, `unchanged ${BASIC_PATH} [policy semantic]`);
 				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries)`);
 			}),
 			builtSeed,
@@ -214,7 +214,7 @@ describe("schemastore CLI", () => {
 				assert.isTrue(yield* fs.exists("/repo/lib/schemas/basic-1.0.json"));
 				assert.isTrue(yield* fs.exists("/repo/lib/schemas/catalog.json"));
 				const out = yield* stdout;
-				assert.include(out, "written (created) /repo/lib/schemas/basic-1.0.json");
+				assert.include(out, "written (created) /repo/lib/schemas/basic-1.0.json [policy semantic]");
 			}),
 			{ "/repo/lib/schemastore.config.ts": "" },
 		),
@@ -281,7 +281,7 @@ describe("schemastore CLI", () => {
 				const fs = yield* FileSystem.FileSystem;
 				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Config, BASIC_ID));
 				const out = yield* stdout;
-				assert.include(out, `written (contract) ${BASIC_PATH}`);
+				assert.include(out, `written (contract) ${BASIC_PATH} [policy semantic]`);
 				assert.include(
 					out,
 					"1 schema(s): 1 written, 0 unchanged, 1 drift, 0 gate failed — drift per schema (config), on-drift warn",
@@ -411,7 +411,7 @@ describe("schemastore CLI", () => {
 				assert.strictEqual(doc.mode, "check");
 				assert.strictEqual(doc.schemas[0]?.outcome, "would-write");
 				const err = yield* stderr;
-				assert.include(err, `would write (created) ${BASIC_PATH}`);
+				assert.include(err, `would write (created) ${BASIC_PATH} [policy semantic]`);
 			}),
 			{ [CONFIG_PATH]: "" },
 		),

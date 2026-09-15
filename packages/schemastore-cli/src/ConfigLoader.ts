@@ -75,11 +75,11 @@ const jitiImport = (path: string): Promise<unknown> => createJiti(path, { intero
 const describeCause = (cause: unknown): string =>
 	cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
 
-// `defineConfig` validates the catalog block with a schema but takes `schemas`
-// on trust (they carry live Schema values), and a hand-rolled module can
-// forge the brand directly, skipping `defineConfig` entirely. The loader
-// checks the fields the pipeline and the drift policy dereference. (A v4
-// Schema value is callable — `typeof` says "function" — hence `isSchema`.)
+// `defineConfig` validates every field it can check by shape, but a
+// hand-rolled module can forge the brand directly, skipping `defineConfig`
+// entirely. The loader re-checks the fields the pipeline and the drift
+// policy dereference. (A v4 Schema value is callable — `typeof` says
+// "function" — hence `isSchema`.)
 const isTargetShaped = (target: unknown): boolean => {
 	const record = typeof target === "object" && target !== null ? (target as Record<string, unknown>) : undefined;
 	return (

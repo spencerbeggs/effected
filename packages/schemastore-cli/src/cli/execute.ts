@@ -1,7 +1,8 @@
 // The shared body of `build` and `check`: load the config, merge the flags
-// over its drift block, run, report, and turn the report's verdicts into the
-// exit-code contract. Process globals (cwd, the module loader) arrive
-// through `ExecuteDeps` so the command tree never reads them itself.
+// over its onDrift and per-schema drift, run, report, and turn the report's
+// verdicts into the exit-code contract. Process globals (cwd, the module
+// loader) arrive through `ExecuteDeps` so the command tree never reads them
+// itself.
 
 import { CliRuntime } from "@effected/cli";
 import type { DriftTolerance, OnDrift, SchemastoreConfig } from "@effected/schemastore";

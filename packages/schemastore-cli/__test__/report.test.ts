@@ -185,13 +185,48 @@ const prereleaseDriftBuild: RunReport = {
 	wrote: false,
 };
 
+// ── Fixture E: a schema carrying a policy and frozen labels, under a
+// per-schema (no flag-forced) report ────────────────────────────────────────
+
+const frozenSchema: SchemaReport = {
+	$id: "https://example.com/schemas/pinned-4.1.0.json",
+	path: "schemas/pinned-4.1.0.json",
+	name: "pinned",
+	version: version("4.1.0"),
+	published: true,
+	change: "none",
+	verdict: "write",
+	policy: "allow",
+	outcome: "unchanged",
+	findings: [],
+	frozen: [version("4.0.0"), version("4.1.0")],
+};
+
+const frozenBuild: RunReport = {
+	mode: "build",
+	configPath: "/repo/schemastore.config.ts",
+	onDrift: "error",
+	source: "config",
+	schemas: [frozenSchema],
+	drifted: false,
+	gateFailed: false,
+	wrote: false,
+};
+
 describe("Report.human", () => {
 	it("renders a clean build", () => {
 		assert.deepStrictEqual(Report.human(cleanBuild), [
-			"written (created) schemas/1.2/okfit-1.2.json",
-			"unchanged schemas/plain.json",
+			"written (created) schemas/1.2/okfit-1.2.json [policy semantic]",
+			"unchanged schemas/plain.json [policy semantic]",
 			"written catalog schemas/catalog.json (1 entries)",
 			"2 schema(s): 1 written, 1 unchanged, 0 drift, 0 gate failed — drift per schema (config), on-drift error",
+		]);
+	});
+
+	it("appends the policy and frozen suffixes in per-schema mode", () => {
+		assert.deepStrictEqual(Report.human(frozenBuild), [
+			"unchanged schemas/pinned-4.1.0.json [policy allow] (frozen: 4.0.0, 4.1.0)",
+			"1 schema(s): 0 written, 1 unchanged, 0 drift, 0 gate failed — drift per schema (config), on-drift error",
 		]);
 	});
 
@@ -209,7 +244,7 @@ describe("Report.human", () => {
 
 	it("renders a prerelease contract drift with no suggest clause", () => {
 		assert.deepStrictEqual(Report.human(prereleaseDriftBuild), [
-			"DRIFT contract at published 2.0.0-beta.1 — schemas/pre-2.0.0-beta.1.json",
+			"DRIFT contract at published 2.0.0-beta.1 — schemas/pre-2.0.0-beta.1.json [policy semantic]",
 			"1 schema(s): 0 written, 0 unchanged, 1 drift, 0 gate failed — drift per schema (config), on-drift error",
 		]);
 	});
@@ -270,6 +305,7 @@ describe("Report.json", () => {
 			published: true,
 			change: "created",
 			verdict: "write",
+			policy: "semantic",
 			outcome: "written",
 			findings: [],
 		});
@@ -293,6 +329,7 @@ describe("Report.json", () => {
 			published: true,
 			change: "contract",
 			verdict: "drift",
+			policy: "strict",
 			outcome: "drift",
 			nextVersion: "1.3",
 			findings: [],
@@ -307,14 +344,39 @@ describe("Report.json", () => {
 		const doc = JSON.parse(Report.json(warnBuild)) as Record<string, unknown>;
 		assert.isFalse(Object.hasOwn(doc, "catalog"));
 	});
+
+	it("carries policy on every schema and frozen only when non-empty", () => {
+		const doc = JSON.parse(Report.json(frozenBuild)) as { schemas: ReadonlyArray<Record<string, unknown>> };
+		assert.deepStrictEqual(doc.schemas[0], {
+			$id: "https://example.com/schemas/pinned-4.1.0.json",
+			path: "schemas/pinned-4.1.0.json",
+			name: "pinned",
+			version: "4.1.0",
+			published: true,
+			change: "none",
+			verdict: "write",
+			policy: "allow",
+			outcome: "unchanged",
+			frozen: ["4.0.0", "4.1.0"],
+			findings: [],
+		});
+		const clean = JSON.parse(Report.json(cleanBuild)) as { schemas: ReadonlyArray<Record<string, unknown>> };
+		assert.isFalse(Object.hasOwn(clean.schemas[0] as object, "frozen"));
+	});
 });
 
 describe("Report.markdown", () => {
 	it("carries the header, the schema table and a clean verdict line", () => {
 		const markdown = Report.markdown(cleanBuild);
 		assert.include(markdown, "### schemastore build");
-		assert.include(markdown, "| schema | version | published | change | outcome |");
+		assert.include(markdown, "| schema | version | frozen | published | change | outcome |");
 		assert.include(markdown, "**Drift:** none");
+	});
+
+	it("renders the frozen column, comma-joined when populated and empty when not", () => {
+		const markdown = Report.markdown(frozenBuild);
+		assert.include(markdown, "| pinned | 4.1.0 | 4.0.0, 4.1.0 | yes | none | unchanged |");
+		assert.include(Report.markdown(cleanBuild), "| okfit | 1.2 |  | yes | created | written |");
 	});
 
 	it("ends with exactly one newline so a later append starts on its own line", () => {

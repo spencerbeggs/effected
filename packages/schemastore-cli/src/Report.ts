@@ -23,21 +23,31 @@ const publishedClause = (schema: SchemaReport): string =>
 // report only ever holds a schema for ONE reason, but which reason it was
 // is not on the `SchemaReport` itself, so this reads `report.gateFailed`
 // rather than the schema.
+// A per-schema line names its own effective policy only when the report
+// carries no flag-forced one — `report.policy` present means every schema
+// shares it, which the summary's `driftClause` already says once.
+const policyClause = (schema: SchemaReport, report: RunReport): string =>
+	report.policy === undefined ? ` [policy ${schema.policy}]` : "";
+
+const frozenClause = (schema: SchemaReport): string =>
+	schema.frozen.length > 0 ? ` (frozen: ${schema.frozen.join(", ")})` : "";
+
 const schemaLines = (schema: SchemaReport, report: RunReport): ReadonlyArray<string> => {
+	const suffix = `${policyClause(schema, report)}${frozenClause(schema)}`;
 	switch (schema.outcome) {
 		case "written":
-			return [`written (${schema.change}) ${schema.path}`];
+			return [`written (${schema.change}) ${schema.path}${suffix}`];
 		case "unchanged":
-			return [`unchanged ${schema.path}`];
+			return [`unchanged ${schema.path}${suffix}`];
 		case "would-write":
-			return [`would write (${schema.change}) ${schema.path}`];
+			return [`would write (${schema.change}) ${schema.path}${suffix}`];
 		case "drift":
-			return [`DRIFT ${schema.change}${publishedClause(schema)}${suggestionClause(schema)} — ${schema.path}`];
+			return [`DRIFT ${schema.change}${publishedClause(schema)}${suggestionClause(schema)} — ${schema.path}${suffix}`];
 		case "held":
-			return [`held (${report.gateFailed ? "gate failed elsewhere" : "drift elsewhere"}) ${schema.path}`];
+			return [`held (${report.gateFailed ? "gate failed elsewhere" : "drift elsewhere"}) ${schema.path}${suffix}`];
 		case "gate-failed":
 			return [
-				`GATE FAILED ${schema.path} (${blockingCount(schema.findings)} blocking finding(s))`,
+				`GATE FAILED ${schema.path}${suffix} (${blockingCount(schema.findings)} blocking finding(s))`,
 				...schema.findings.map(findingLine),
 			];
 		default:
@@ -144,8 +154,10 @@ export class Report {
 				published: schema.published,
 				change: schema.change,
 				verdict: schema.verdict,
+				policy: schema.policy,
 				outcome: schema.outcome,
 				...(schema.nextVersion !== undefined ? { nextVersion: schema.nextVersion } : {}),
+				...(schema.frozen.length > 0 ? { frozen: schema.frozen } : {}),
 				findings: schema.findings.map((finding) => ({
 					source: finding.source,
 					severity: finding.severity,
@@ -168,12 +180,19 @@ export class Report {
 	static markdown(report: RunReport): string {
 		const lines: Array<string> = [`### schemastore ${report.mode}`, ""];
 		lines.push(
-			tableRow(["schema", "version", "published", "change", "outcome"]),
-			tableRow(["---", "---", "---", "---", "---"]),
+			tableRow(["schema", "version", "frozen", "published", "change", "outcome"]),
+			tableRow(["---", "---", "---", "---", "---", "---"]),
 		);
 		for (const schema of report.schemas) {
 			lines.push(
-				tableRow([schema.name, schema.version ?? "", schema.published ? "yes" : "no", schema.change, schema.outcome]),
+				tableRow([
+					schema.name,
+					schema.version ?? "",
+					schema.frozen.join(", "),
+					schema.published ? "yes" : "no",
+					schema.change,
+					schema.outcome,
+				]),
 			);
 		}
 		if (report.catalog !== undefined) {
