@@ -659,12 +659,6 @@ importers:
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver/dist/dev/pkg
-      ajv:
-        specifier: ^8.20.0
-        version: 8.20.0
-      ajv-formats:
-        specifier: ^3.0.1
-        version: 3.0.1(ajv@8.20.0)
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
@@ -697,6 +691,12 @@ importers:
       '@effected/cli':
         specifier: workspace:^
         version: link:../cli/dist/dev/pkg
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: ^3.0.1
+        version: 3.0.1(ajv@8.20.0)
       jiti:
         specifier: ^2.6.0
         version: 2.7.0

@@ -22,6 +22,7 @@
 	"sideEffects": false,
 	"type": "module",
 	"exports": {
+		".": "./src/index.ts",
 		"./package.json": "./package.json"
 	},
 	"bin": {
@@ -36,6 +37,8 @@
 	"dependencies": {
 		"@effect/platform-node": "catalog:effect",
 		"@effected/cli": "workspace:^",
+		"ajv": "^8.20.0",
+		"ajv-formats": "^3.0.1",
 		"jiti": "^2.6.0"
 	},
 	"devDependencies": {

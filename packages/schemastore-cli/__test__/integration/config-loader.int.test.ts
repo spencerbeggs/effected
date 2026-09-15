@@ -1,8 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { SchemaFile, SchemaValidator } from "@effected/schemastore";
+import { SchemaFile } from "@effected/schemastore";
 import { Effect, Layer } from "effect";
+import { AjvValidator } from "../../src/AjvValidator.js";
 import { ConfigLoader } from "../../src/ConfigLoader.js";
 import { Runner } from "../../src/Runner.js";
 
@@ -45,7 +46,7 @@ describe("ConfigLoader through jiti (integration)", () => {
 				mode: "check",
 				configPath: loaded.path,
 				onDrift: "error",
-			}).pipe(Effect.provide(SchemaFile.layer), Effect.provide(SchemaValidator.layer));
+			}).pipe(Effect.provide(SchemaFile.layer), Effect.provide(AjvValidator.layer));
 			assert.strictEqual(report.schemas[0]?.outcome, "would-write");
 			assert.strictEqual(report.catalog?.outcome, "would-write");
 		}).pipe(Effect.provide(Platform)),

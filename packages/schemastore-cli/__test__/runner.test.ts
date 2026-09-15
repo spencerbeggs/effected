@@ -12,6 +12,7 @@ import {
 	defineConfig,
 } from "@effected/schemastore";
 import { Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
+import { AjvValidator } from "../src/AjvValidator.js";
 import type { RunOptions, RunReport } from "../src/Runner.js";
 import { FrozenVersionIdMismatchError, FrozenVersionMissingError, Runner } from "../src/Runner.js";
 
@@ -23,7 +24,7 @@ import { FrozenVersionIdMismatchError, FrozenVersionMissingError, Runner } from 
 // read the volume back afterwards. Every `Effect.provide` of a memfs layer
 // builds a fresh volume, so each test resolves the file system inside the
 // one program it provides.
-const layers = (seed: MemoryFileSystemSeed = {}, validator: Layer.Layer<SchemaValidator> = SchemaValidator.layer) =>
+const layers = (seed: MemoryFileSystemSeed = {}, validator: Layer.Layer<SchemaValidator> = AjvValidator.layer) =>
 	Layer.mergeAll(SchemaFile.layer, validator).pipe(
 		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith(seed), Path.layer)),
 	);

@@ -5,10 +5,11 @@
 // itself.
 
 import { CliRuntime } from "@effected/cli";
-import type { DriftTolerance, OnDrift, SchemastoreConfig } from "@effected/schemastore";
-import { SchemaFile, SchemaValidator } from "@effected/schemastore";
+import type { DriftTolerance, OnDrift, SchemaValidator, SchemastoreConfig } from "@effected/schemastore";
+import { SchemaFile } from "@effected/schemastore";
 import type { Layer } from "effect";
 import { Console, Effect, Option, Schema } from "effect";
+import { AjvValidator } from "../AjvValidator.js";
 import { ConfigLoader } from "../ConfigLoader.js";
 import { Report } from "../Report.js";
 import type { RunOptions, RunReport } from "../Runner.js";
@@ -177,7 +178,7 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 	}
 	const report = yield* Runner.run(loaded.config, { mode, configPath: loaded.path, ...drift }).pipe(
 		Effect.provide(SchemaFile.layer),
-		Effect.provide(deps.validator ?? SchemaValidator.layer),
+		Effect.provide(deps.validator ?? AjvValidator.layer),
 		Effect.catchTags({
 			FrozenVersionMissingError: (error) => Effect.fail(CliRuntime.reported(error, 1)),
 			FrozenVersionIdMismatchError: (error) => Effect.fail(CliRuntime.reported(error, 1)),

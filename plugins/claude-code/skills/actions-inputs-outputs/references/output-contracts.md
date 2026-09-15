@@ -168,7 +168,8 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NodeServices } from "@effect/platform-node";
-import { SchemaFile, SchemaPipeline, SchemaTarget, SchemaValidator } from "@effected/schemastore";
+import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
+import { AjvValidator } from "@effected/schemastore-cli";
 import { Effect, Layer } from "effect";
 import { SCAN_RESULT_SCHEMA_URL, ScanResult } from "../../src/schema/scan-result.js";
 
@@ -183,7 +184,7 @@ export const targets: ReadonlyArray<SchemaTarget> = [
   }),
 ];
 
-export const AppLayer = Layer.mergeAll(SchemaFile.layer, SchemaValidator.layer).pipe(
+export const AppLayer = Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
   Layer.provide(NodeServices.layer),
 );
 

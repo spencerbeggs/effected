@@ -41,7 +41,10 @@ the rules that follow from it live in the parent.
   the constant.
 
 `ajv`/`ajv-formats` probes (`ajv@8.20.0`, `ajv-formats@3.0.1`, plain Node ESM
-against the BUILT `dist/prod` artifact, not only vitest):
+against the BUILT `dist/prod` artifact, not only vitest — the engine and
+its suite now live in `@effected/schemastore-cli` as `AjvValidator` /
+`__test__/ajv-validator.test.ts`; the facts stay recorded here because
+`KeywordFamilies` and `DocumentLint` are the other half of each):
 
 - Without the plugin, `format: "date-time"` under `strict: true` throws
   `unknown format "date-time" ignored in schema at path "#"` — the #657 report.
@@ -104,7 +107,8 @@ Discriminating pins:
 - Non-declared keys are not carried even when the caller admits them.
 - `"unchanged"` means the filesystem was not touched — a write-recording stub
   plus a pinned-mtime integration test.
-- Format registration is pinned on both sides: the standard vocabulary
+- Format registration is pinned on both sides (in the CLI's engine suite
+  since the move): the standard vocabulary
   (`date-time`, `uri`, `email`, `uuid`) compiles clean under strict mode, an
   unknown format string still answers ONE root-pathed finding naming it, and
   each of `formatMaximum` / `formatMinimum` / their exclusive variants is

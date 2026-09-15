@@ -7,7 +7,7 @@
 
 The `schemastore` command: build and check SchemaStore-shaped JSON Schema documents from a `schemastore.config.ts`. It is the command-line companion to [`@effected/schemastore`](https://www.npmjs.com/package/@effected/schemastore), which owns the pipeline; this package ships the plumbing every consumer used to write by hand — flag parsing, the contract gate, the drift test — once, as a `bin`.
 
-It is not a library: nothing is importable from it. Every type a config file needs comes from `@effected/schemastore`, which the CLI declares as a peer so your config and the pipeline share one `effect` and one `@effected/schemastore` instance.
+It is not a library, though it has one export: `AjvValidator`, the ajv strict-mode engine behind the command's validation gate, exported as a `SchemaValidator` layer so a program that drives `@effected/schemastore`'s `SchemaPipeline` itself can run the same engine. The engine lives here rather than in the library so ajv is a cost only the command pays — an application importing `@effected/schemastore` at runtime never installs it. Every type a config file needs comes from `@effected/schemastore`, which the CLI declares as a peer so your config and the pipeline share one `effect` and one `@effected/schemastore` instance.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 prerelease. Packages graduate to
@@ -89,6 +89,23 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 - When `GITHUB_STEP_SUMMARY` is set, both commands append a markdown summary table.
 
 An unpublished schema is never drift: a contract change at a pinned but unpublished version rewrites the file in place.
+
+## The engine, as a library export
+
+The command validates with ajv in strict mode — SchemaStore's own gate — over the Draft-07 meta-schema, registering the language-server keyword families `@effected/schemastore` declares and the standard `ajv-formats` vocabulary (formats only, never the `formatMaximum` family). The same layer is the package's one export, for a program composing the pipeline directly:
+
+```ts
+import { SchemaFile, SchemaPipeline } from "@effected/schemastore";
+import { AjvValidator } from "@effected/schemastore-cli";
+import { NodeServices } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+
+const AppLayer = Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(Layer.provide(NodeServices.layer));
+
+const program = SchemaPipeline.run(targets).pipe(Effect.provide(AppLayer));
+```
+
+Findings come back as values; the error channel carries `SchemaValidatorError` only when the engine fails as a mechanism.
 
 ## Exit codes
 

@@ -307,15 +307,18 @@ const gate = (
  * write — the loop every consumer of this package was writing by hand.
  *
  * Requires `SchemaFile` and `SchemaValidator` in `R`; provide
- * `SchemaFile.layer` and `SchemaValidator.layer` (plus a platform
- * `FileSystem` / `Path`) at the edge. Findings come back as **values**, so
+ * `SchemaFile.layer` and an engine — `AjvValidator.layer` from
+ * `@effected/schemastore-cli`, which is what the `schemastore` command
+ * composes, or `SchemaValidator.noop` to skip validation — plus a platform
+ * `FileSystem` / `Path` at the edge. Findings come back as **values**, so
  * the package never chooses your log wording — but the gating decision,
  * which is the part that must not silently differ between consumers, has
  * one default and one override point.
  *
  * @example
  * ```ts
- * import { SchemaFile, SchemaPipeline, SchemaTarget, SchemaValidator } from "@effected/schemastore";
+ * import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
+ * import { AjvValidator } from "@effected/schemastore-cli";
  * import { NodeServices } from "@effect/platform-node";
  * import { Effect, Layer, Schema } from "effect";
  *
@@ -328,7 +331,7 @@ const gate = (
  * ];
  *
  * const program = SchemaPipeline.run(targets).pipe(
- *   Effect.provide(Layer.mergeAll(SchemaFile.layer, SchemaValidator.layer)),
+ *   Effect.provide(Layer.mergeAll(SchemaFile.layer, AjvValidator.layer)),
  *   Effect.provide(NodeServices.layer),
  * );
  * ```

@@ -51,33 +51,35 @@ This package stays the narrow publication, catalog, versioning and lint
 layer, and must not grow into a general JSON Schema package: schema
 construction, `$ref` resolution beyond the document's own `$defs` pool,
 and dialect conversion all belong to core's `JsonSchema`, never here.
-This is an explicit non-goal, not a deferral, and the `ajv` dependency
-does not widen it — ajv is the validation gate, not a construction or
-conversion surface. Also out of scope: generating positive and negative
+This is an explicit non-goal, not a deferral, and the CLI's `ajv`
+dependency does not widen it — ajv is the validation gate the command
+runs, not a construction or conversion surface. Also out of scope: generating positive and negative
 test fixtures, submitting PRs to SchemaStore (the package produces
 artifacts; humans submit), and presentation formatting beyond canonical
 JSON.
 
-`packages/schemastore-cli/` on disk holds only `dist/` and
-`node_modules/` — build residue with no `package.json` — and is not a
-package; do not treat it as one.
+## Tier and dependencies: boundary (integrated 2026-08-04 → 2026-09-15)
 
-## Tier and dependencies: integrated (was boundary)
+`@effected/semver` is the only runtime dependency — regular, not peer —
+backing version ordering and label validation, with no `SemVer` type
+surfacing in the public API; `effect` is the peer.[^package-json] No
+third-party runtime dependency remains: `ajv` and `ajv-formats` moved
+to [`@effected/schemastore-cli`](schemastore-cli.md) with the engine,
+so an application that imports this package at runtime — for
+`HostedSchema`, say — never pulls a validator into its install or its
+bundle. All IO lives in `SchemaFile` over core `FileSystem`/`Path`
+required in `R`; every other module is pure. There is deliberately no
+`@effected/glob` edge: the `fileMatch` hygiene lint is pattern-*shape*
+analysis and never matches a pattern against a path, so structural
+checks suffice.
 
-`ajv` and `ajv-formats` are regular dependencies, and `@effected/semver`
-is a regular (not peer) dependency backing version ordering and label
-validation — no `SemVer` type surfaces in the public API.[^package-json]
-`ajv` is the only third-party runtime dependency and the sole reason the
-package is integrated, which is also the guardrail: a second one is a
-fresh decision, not a free ride on this one. All IO lives in
-`SchemaFile` over core `FileSystem`/`Path` required in `R`; every other
-module is pure, so the tier reflects the engine in the graph rather than
-leaked IO. There is deliberately no `@effected/glob` edge: the
-`fileMatch` hygiene lint is pattern-*shape* analysis and never matches a
-pattern against a path, so structural checks suffice.
-
-See [the schemastore retier decision](../decisions/schemastore-retier-to-integrated.md)
-for why moving an already-published package's tier was admissible here.
+The package was integrated between 2026-08-04, when it took `ajv`
+directly ([the retier decision](../decisions/schemastore-retier-to-integrated.md),
+now superseded), and 2026-09-15, when the CLI became the only
+real-engine consumer and the adapter moved there
+([the engine lives in the CLI](../decisions/schemastore-engine-lives-in-the-cli.md)).
+A second retier is a fresh decision held to the same two facts, not a
+free ride on either.
 
 ## What SchemaStore's contract requires
 
@@ -143,7 +145,8 @@ entrypoint.[^claude-md][^claude-modules] The load-bearing division:
   and the house `x-ai-` machine-annotation namespace. The assembly, the
   lint and the validator all consume its single predicate, so they
   cannot drift on what counts as declared.
-- **`SchemaValidator`** — real-engine validation; see
+- **`SchemaValidator`** — the validation contract and its doubles; the
+  engine is the CLI's `AjvValidator`. See
   [the validation gate](#the-validation-gate-ajv-ships-closed).
 - **`DocumentDiff`** — pure change classification; see
   [change classification](#change-classification-annotations-versus-contract).
@@ -451,6 +454,16 @@ from the library.
 
 ## The validation gate: ajv ships closed
 
+This package ships the contract — the `SchemaValidator` service,
+`SchemaValidatorShape`, `SchemaValidatorOptions`, `SchemaValidatorError`,
+`ValidationFinding`, `noop`, `makeTest` and `layerTest` — and no engine.
+The one shipped implementation is `AjvValidator.layer`, exported from
+[`@effected/schemastore-cli`](schemastore-cli.md), which the command
+composes at its edge and a program driving `SchemaPipeline` itself can
+import ([the engine lives in the CLI](../decisions/schemastore-engine-lives-in-the-cli.md)).
+The channel convention is the library's: findings are values, and the
+error channel is reserved for the engine failing as a mechanism.
+
 See [ajv ships closed](../decisions/schemastore-ajv-ships-closed.md) for
 the full reasoning and the alternatives it overturned. The shipped layer
 registers every declared keyword family found in the document before
@@ -570,9 +583,9 @@ a house `biome-ignore lint/suspicious/noUnsafeDeclarationMerging` under
 the statics-only justification recorded in
 [no barrel re-exports](../conventions/no-barrel-re-exports.md#a-sanctioned-grouped-statics-container-is-a-class-not-an-as-const-object).
 
-[^package-json]: `packages/schemastore/package.json` — `ajv`,
-    `ajv-formats` and `@effected/semver` as regular dependencies;
-    `@effect/platform-node` as a devDependency.
+[^package-json]: `packages/schemastore/package.json` —
+    `@effected/semver` as the only regular dependency, `effect` as the
+    peer; `@effect/platform-node` as a devDependency.
 [^claude-md]: `packages/schemastore/CLAUDE.md` — tier, scope fence, and
     the rules index.
 [^claude-modules]: `packages/schemastore/CLAUDE.modules.md` — per-module

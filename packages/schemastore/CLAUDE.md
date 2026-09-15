@@ -5,7 +5,8 @@ documents from Effect Schema sources: assembly over core's
 `Schema.toJsonSchemaDocument` + `JsonSchema.toDocumentDraft07`, annotation
 carrying for the language-server keyword families, the catalog vocabulary in
 both versioning modes, structural and hygiene lints, canonical JSON text,
-write-if-changed IO with change classification, and validation over ajv.
+write-if-changed IO with change classification, and the validation contract
+whose one shipped engine is the CLI's `AjvValidator`.
 
 **For the full design:** → `@./okf/modules/schemastore.md`
 
@@ -18,24 +19,34 @@ Children carry surfaces and evidence; **every rule is here**.
 - Modules → `@./CLAUDE.modules.md` — Load when: changing or extending a module, or asking what one exposes.
 - Verification → `@./CLAUDE.verification.md` — Load when: touching the suite, or before re-litigating a "does core do X?" question — the beta-probed facts, hardening budget and test pins live there.
 
-## Tier: integrated (since 2026-08-04)
+## Tier: boundary (integrated 2026-08-04 → 2026-09-15)
 
-**Flipped from boundary by owner decision (dogfood round 1, item 3).** `ajv` is
-a **direct runtime dependency**: `SchemaValidator.layer` is a shipped
-real-engine implementation, not a contract-only seam. The flip overturns a
-stated principle knowingly: this is build-time tooling installed as a
-devDependency, SchemaStore's own gate IS ajv strict mode, and purity here only
-made every consumer write the same adapter, worse (one collapsed ajv's
-structured errors into a single `path: ""` finding). **The seam survives as an
-interface** (`noop`, `makeTest`/`layerTest`, a substitutable engine), not as a
-requirement.
+**No ajv here.** `SchemaValidator` is the contract and its doubles only —
+`SchemaValidatorShape`, `SchemaValidatorOptions`, `SchemaValidatorError`,
+`ValidationFinding`, `noop`, `makeTest`/`layerTest`. The one shipped engine is
+`AjvValidator.layer` in `@effected/schemastore-cli` (`src/AjvValidator.ts`
+there), which the command composes and exports; `ajv`/`ajv-formats` are the
+CLI's dependencies. Never re-add an engine or an ajv import to this package:
+an application that imports the library at runtime (for `HostedSchema`, say —
+silk-release-action holds it in `dependencies`) must never pull an engine into
+its install or bundle.
+
+The history: the package flipped boundary → integrated on 2026-08-04 by owner
+decision (dogfood round 1, item 3) to ship `SchemaValidator.layer` as a real
+engine, on the premise that this was devDependency-only build tooling and
+purity only made every consumer write the same adapter, worse. Once the CLI
+became the only real-engine consumer and applications imported the library at
+runtime, that premise failed, the adapter moved to the CLI (once, there), and
+the tier flipped back — `okf/decisions/schemastore-engine-lives-in-the-cli.md`.
+The seam is still an interface with a substitutable engine.
 
 All IO lives in `src/SchemaFile.ts` — one module, one `Context.Service`, over
 core `FileSystem`/`Path` required in `R` (the `PackageJsonFile` pattern: no
 platform package, the consumer provides one at the edge). **Every other module
 is pure; keep it that way.** Peers on `effect`; one regular `workspace:^` edge
 on `@effected/semver` (version ordering only — no `SemVer` type surfaces
-publicly); `@effect/platform-node` is a devDependency for the integration tests.
+publicly), the only runtime dependency; `@effect/platform-node` is a
+devDependency for the integration tests.
 
 ## Scope fence
 
@@ -43,8 +54,8 @@ publicly); `@effect/platform-node` is a devDependency for the integration tests.
 redundant. Core owns the generation pipeline; this package owns the SchemaStore
 shape around it and **must not grow into a general JSON Schema package**: no
 schema construction, no ref resolution beyond the document's own `$defs` pool,
-no dialect conversion. Depending on ajv does not widen the fence — ajv is the
-validation gate, not a construction surface.
+no dialect conversion. The CLI's dependency on ajv does not widen the fence —
+ajv is the validation gate the command runs, not a construction surface.
 
 ## Rules
 
@@ -92,8 +103,8 @@ validation gate, not a construction surface.
   key set, any value must be JSON, and the one recommended (non-binding) key
   is `x-ai-hint`. After the prefix a key may use only `[A-Za-z0-9_$:-]` (ajv
   holds a keyword name to `/^[a-z_$][a-z0-9_$:-]*$/i`) — a dot, space, slash,
-  `@`, `+` or non-ASCII character makes the engine gate reject the document
-  as a finding. A declared-family value must not contain an `$id` (or a
+  `@`, `+` or non-ASCII character makes the CLI's engine gate reject the
+  document as a finding. A declared-family value must not contain an `$id` (or a
   repeated `$anchor`) at ANY depth, not merely as a top-level key — ajv's
   reference collection walks unknown keywords for them — and an empty-string
   `$id` resolves to the root id and collides too; a collision fails the
@@ -275,10 +286,13 @@ validation gate, not a construction surface.
   conclusion held for a different reason — the lowering dropped undeclared
   keywords — so do not restate the mechanism from memory.
 - **A validator's error channel is for the mechanism failing**, never for
-  findings (the `CatalogResolver` convention). `SchemaValidator.layer` registers
-  the declared families before compiling, so ajv cannot reject what
-  `DocumentLint` allows, and uses a fresh instance per call so shared `$id`s
-  never collide.
+  findings (the `CatalogResolver` convention). The contract lives here; the
+  engine that honours it is the CLI's `AjvValidator.layer`, which registers
+  the declared families (through this package's `KeywordFamilies.isDeclared`)
+  before compiling, so ajv cannot reject what `DocumentLint` allows, and uses
+  a fresh instance per call so shared `$id`s never collide. The three rules
+  below describe that engine — they are recorded here because
+  `KeywordFamilies` and `DocumentLint` are the other half of each one.
 - **The engine gate registers the standard `ajv-formats` vocabulary, and ONLY
   the vocabulary — `addFormats(ajv, { keywords: false })`.** Without it, strict
   mode rejects every document using `format` (`date-time`, `uri`, `email`, …)
@@ -292,8 +306,8 @@ validation gate, not a construction surface.
   registering them would drift the engine verdict from the lint verdict.
   Registration does NOT move the meta-schema (`validateSchema`) verdict —
   probed on `ajv@8.20.0` / `ajv-formats@3.0.1`.
-- **`ajv-formats` is bound with ONE hop and no cast:
-  `const addFormats = ajvFormats.default`.** The package does
+- **`ajv-formats` is bound with ONE hop and no cast (in the CLI's
+  `AjvValidator.ts`): `const addFormats = ajvFormats.default`.** The package does
   `module.exports = exports = formatsPlugin` and then
   `exports.default = formatsPlugin`, so the plugin points at itself and
   `.default` is the callable in BOTH worlds — Node's ESM interop (default

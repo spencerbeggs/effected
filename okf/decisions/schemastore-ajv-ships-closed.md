@@ -69,3 +69,10 @@ input decoupled from the package's own classes, and the service as an
 interface with a `noop` layer and a test layer, so a consumer that
 genuinely needs to swap the engine still can. Not-writing-an-adapter is
 simply the default now, rather than the only option.
+
+Since 2026-09-15 the engine's home is `@effected/schemastore-cli`, as
+`AjvValidator.layer` — see
+[the engine lives in the CLI](schemastore-engine-lives-in-the-cli.md).
+Every registration rule above holds unchanged there; what moved is the
+package that pays for `ajv`, and the "companion package" alternative
+was declined a second time in favour of the CLI that already existed.

@@ -27,7 +27,7 @@ program. What varies between them is exactly the config it takes.
 | a previous published label kept as a second `SchemaTarget` in the array | append the new label to `versions` and set `current`; the old label freezes and is verified, not regenerated |
 | the `SchemaContractChangeError` handler printing `version → nextVersion` | the `DRIFT contract at published X → suggest Y` line and `nextVersion` in the JSON report |
 | per-result `Effect.logInfo` of advisory findings | the indented finding lines under each schema |
-| `NodeServices.layer` + `SchemaFile.layer` + `SchemaValidator.layer` wiring | the CLI's own runtime |
+| `NodeServices.layer` + `SchemaFile.layer` + `SchemaValidator.layer` wiring | the CLI's own runtime (the engine is now the CLI's `AjvValidator.layer`; the library ships only the contract) |
 | `__test__/generate-schema.test.ts` asserting nothing would be written | `schema:check` in CI |
 | `"generate-schema": "tsx lib/scripts/generate-schema.ts"` | `"schema:build": "schemastore build"`, `"schema:check": "schemastore check"` |
 

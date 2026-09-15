@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/schemastore-cli"
-description: "A bin-only companion to @effected/schemastore: loads a schemastore.config.ts, builds or checks every declared schema and catalog entry under a per-schema published flag and a drift policy, and reports to a terminal, JSON or a GitHub step summary."
+description: "The companion command to @effected/schemastore: loads a schemastore.config.ts, builds or checks every declared schema and catalog entry under a per-schema published flag and a drift policy, and reports to a terminal, JSON or a GitHub step summary; also the home of AjvValidator, the one shipped SchemaValidator engine."
 status: draft
 kind: package
 resource: ../../packages/schemastore-cli
@@ -27,6 +27,10 @@ sources:
     resource: ../../packages/schemastore/src/SchemastoreConfig.ts
   - id: runner
     resource: ../../packages/schemastore-cli/src/Runner.ts
+  - id: ajv-validator
+    resource: ../../packages/schemastore-cli/src/AjvValidator.ts
+  - id: cli-package-json
+    resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
   at: 2026-09-14T16:39:01Z
@@ -44,9 +48,13 @@ CLI ships that plumbing once, as a `bin`, so a consumer's whole schema
 setup collapses to one TypeScript config file and two `package.json`
 scripts.
 
-It is **not a library**. Its published surface is the `schemastore`
-executable and `./package.json`; nothing is importable from it. Every
-type a config file needs — `defineConfig`, `SchemaTarget`, the
+It is **not a library**, though it has one export. Its published
+surface is the `schemastore` executable, `./package.json` and a single
+`.` entry exporting `AjvValidator` — the one shipped `SchemaValidator`
+engine, which the command composes at its edge and which exists as an
+export so a program driving `SchemaPipeline` itself can compose the
+same engine the command runs; nothing is hidden.[^ajv-validator][^cli-package-json]
+Every type a config file needs — `defineConfig`, `SchemaTarget`, the
 versioning helpers — is imported from `@effected/schemastore`, which the
 CLI declares as a peer. This is what keeps the consumer's config and the
 CLI's pipeline on ONE `effect` and ONE `@effected/schemastore` instance:
@@ -62,12 +70,37 @@ and the CLI's peer range on the library is that exact version.
 Tier: **none — a companion package**, like `pnpm-plugin-effect`. It runs
 under `Command.Environment`, loads consumer TypeScript through `jiti`,
 and touches the real filesystem — which would make a *library* integrated
-tier — but tier measures what an importer pays, and nothing can import
-this package: its published surface is the bin and `./package.json`. The
+tier — but tier measures what an importer pays, and the one thing an
+importer can reach, `AjvValidator`, is a layer over the library's own
+contract rather than a surface of its own: the command is the canonical
+use, the export a courtesy. The
 [companion package](../glossary/companion-package.md) glossary rules,
 and the `pnpm-plugin-effect` precedent (a companion with no tier) is the
 one this follows rather than arguing a running-code companion into a
 tier.
+
+## AjvValidator: the engine lives here
+
+`AjvValidator.layer` is the `SchemaValidator` implementation the library
+shipped as `SchemaValidator.layer` until 2026-09-15, moved rather than
+rewritten: ajv strict mode over the Draft-07 meta-schema, every
+declared `KeywordFamilies` keyword found in the document registered
+before compiling (so the engine cannot reject what `DocumentLint`
+allows — one predicate, two verdicts), the standard `ajv-formats`
+vocabulary and only the vocabulary (`addFormats(ajv, { keywords: false })`),
+a fresh instance per call so shared `$id`s never collide, findings as
+`ValidationFinding` values and mechanism failures as
+`SchemaValidatorError`.[^ajv-validator] `cli/execute.ts` composes it
+where it composed the library's layer, and the CLI's own tests own the
+engine suite (`__test__/ajv-validator.test.ts`).
+
+It lives here so `ajv` is a cost only the command pays: the library keeps
+the contract and its doubles, and an application that imports
+`@effected/schemastore` at runtime — for `HostedSchema` — never installs
+or bundles an engine. The reasoning is
+[the engine lives in the CLI](../decisions/schemastore-engine-lives-in-the-cli.md);
+the registration rules it inherits are
+[ajv ships closed](../decisions/schemastore-ajv-ships-closed.md).
 
 ## Motivation: the six generators
 
@@ -389,16 +422,17 @@ recorded as a Gotcha rather than fought.
 
 ## Package shape
 
-- `packages/schemastore-cli`: `bin: { schemastore: "./src/bin.ts" }`,
-  `exports` limited to `./package.json`, no `index.ts`, no api-extractor
-  model and no website page — the documentation is `--help`, the README,
-  and the library's page. The bundler runs with `emitDts: false` — the
-  prod meta pass refuses a package with zero entry points — so there is
-  no dts pass, no `_base` suppression and no `tsdoc.json`; it is the one
-  package that departs from the scaffold convention there.
-- `dependencies`: `jiti`, `@effect/platform-node`, `@effected/cli`.
-  `peerDependencies`: `effect`, `@effected/schemastore` (exact fixed
-  version).
+- `packages/schemastore-cli`: `bin: { schemastore: "./src/bin.ts" }`
+  and `exports` of exactly `.` (`src/index.ts`, re-exporting
+  `AjvValidator` and nothing else) plus `./package.json`. The one entry
+  earns a declaration bundle and an api-extractor model like any other
+  kit package (`savvy.build.ts` sets
+  `localPaths: ["../../website/lib/models/schemastore-cli"]`); the
+  command's documentation is still `--help`, the README and the
+  library's page.[^cli-package-json]
+- `dependencies`: `jiti`, `@effect/platform-node`, `@effected/cli`,
+  `ajv`, `ajv-formats`. `peerDependencies`: `effect`,
+  `@effected/schemastore` (exact fixed version).
 - A consumer installs `@effected/schemastore`, `@effected/schemastore-cli`
   and `effect` as devDependencies and adds
   `"schema:build": "schemastore build lib/scripts/schemastore.config.ts"`
@@ -451,4 +485,6 @@ becomes moot: there is no longer a canonical generator script to copy.
 [^pipeline]: `SchemaPipeline.run` / `SchemaPipeline.check`, `ContractChangePolicy`, and the `change`, `blocked`, `contractBlocked`, `wouldWrite` result fields. The pipeline never reads `published`; the CLI's `Runner` classifies over `check` results with the contract guard set to `"allow"`.
 [^versioning]: `SchemaVersioning` — the widened one-to-three-component grammar, `parseResult`, and `next`'s minor-bump rule (identity on a prerelease label).
 [^config]: `SchemastoreConfig.ts` — `defineConfig`, `SchemastoreConfigInput`, `SchemaEntryInput` (including `hosted`), `ResolvedSchema`, `FrozenVersion` (`version`/`path`/`$id`/`url`); the keyed-by-name shape, the per-level `Schema.Struct` decode, and the delegation of hosting and version rules to `HostedSchema`.
+[^ajv-validator]: `packages/schemastore-cli/src/AjvValidator.ts` — `AjvValidator.layer`: strict mode, `KeywordFamilies` registration, `addFormats(ajv, { keywords: false })`, a fresh `Ajv` per call.
+[^cli-package-json]: `packages/schemastore-cli/package.json` — the `.` export to `src/index.ts`, `ajv` and `ajv-formats` as regular dependencies, `effect` and `@effected/schemastore` as peers.
 [^runner]: `packages/schemastore-cli/src/Runner.ts` — `FrozenVersionMissingError`, `FrozenVersionIdMismatchError`, the frozen pre-flight (existence, then declared `$id`) that runs before generation, the single-`catalog.json` write, and the `orphaned` `CatalogReport` outcome.

@@ -675,6 +675,9 @@
 		"defineConfig": "validate and assemble a schemastore.config.ts value, fill drift defaults, derive catalog versions",
 		"isSchemastoreConfig": "recognize a config module's default export as one defineConfig produced"
 	},
+	"schemastore-cli": {
+		"AjvValidator": "the shipped ajv strict-mode SchemaValidator engine layer, the one real implementation the schemastore command composes, provide it to drive SchemaPipeline yourself"
+	},
 	"semver": {
 		"Comparator": "check if a version satisfies an operator constraint, single comparator like >=1.2.3",
 		"EmptyCacheError": "handle empty version cache, no versions loaded, latest or oldest with nothing cached",

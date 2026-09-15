@@ -32,9 +32,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/semver": "workspace:^",
-		"ajv": "^8.20.0",
-		"ajv-formats": "^3.0.1"
+		"@effected/semver": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",

@@ -34,7 +34,7 @@ const advisoryTarget = SchemaTarget.make({
 
 const layers = (
 	fs: Layer.Layer<FileSystem.FileSystem>,
-	validator: Layer.Layer<SchemaValidator> = SchemaValidator.layer,
+	validator: Layer.Layer<SchemaValidator> = SchemaValidator.noop,
 ) => Layer.mergeAll(SchemaFile.layer.pipe(Layer.provide(Layer.mergeAll(fs, Path.layer))), validator);
 
 // ── Contract-gate fixtures (#556) ─────────────────────────────────────────
@@ -127,7 +127,7 @@ const annotatedTarget = SchemaTarget.make({
 // Every test below therefore resolves the volume INSIDE the one program it
 // provides. (Caught by the corrupted-file repair case, whose read-back is the
 // only assertion here that a fresh volume cannot satisfy.)
-const memLayers = (seed: MemoryFileSystemSeed, validator: Layer.Layer<SchemaValidator> = SchemaValidator.layer) => {
+const memLayers = (seed: MemoryFileSystemSeed, validator: Layer.Layer<SchemaValidator> = SchemaValidator.noop) => {
 	const memory = MemoryFileSystem.layerInspectableWith(seed);
 	const base = Layer.mergeAll(memory, Path.layer);
 	return Layer.mergeAll(SchemaFile.layer.pipe(Layer.provide(base)), base, validator);

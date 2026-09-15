@@ -36,14 +36,18 @@ typechecks as one thing — but that default is tier-scoped, not global.
 > a default.
 
 `@effected/schemastore` is the one package in the kit retiered after
-publishing[^schemastore-build] — boundary to integrated, to take `ajv`
-as a devDependency for build-time schema validation. What made the
-retier admissible: nothing in
-the kit depends on `schemastore`, so R2 propagates the tier to nobody,
-and `ajv` is build-time tooling a consumer installs as a devDependency,
-so the runtime-graph weight R1 guards against was never on anyone's bill.
-A retier candidate should be checked against those same two facts before
-being accepted.
+publishing[^schemastore-build] — boundary to integrated on 2026-08-04,
+to take `ajv` directly for build-time schema validation. What made the
+retier admissible: nothing in the kit depends on `schemastore`, so R2
+propagates the tier to nobody, and `ajv` is build-time tooling a
+consumer installs as a devDependency, so the runtime-graph weight R1
+guards against was never on anyone's bill. The second fact stopped
+holding once applications imported the library at runtime for
+`HostedSchema`, and on 2026-09-15 the engine moved to the
+`schemastore-cli` companion and the package returned to boundary
+([the engine lives in the CLI](../decisions/schemastore-engine-lives-in-the-cli.md)).
+A retier candidate should be checked against those same two facts
+before being accepted — and re-checked when a consumer's use changes.
 
 R1 does not mean "parsing has no IO, so a format package is pure, so it
 may not take a runtime dependency." Tier 3 is defined by dependencies
@@ -106,8 +110,8 @@ core logic is tier 2 should be split so the tier-2 half's consumers do
 not pay for a tier-3 install they never asked for.
 
 [^schemastore-build]: `packages/schemastore/savvy.build.ts` — the build
-    configuration for the one package retiered from boundary to
-    integrated after publishing.
+    configuration for the one package retiered after publishing, first
+    to integrated and then back to boundary.
 [^config-file-package-json]: `packages/config-file/package.json` —
     declares no runtime dependency outside `effect` and `@effected/*`
     peers.

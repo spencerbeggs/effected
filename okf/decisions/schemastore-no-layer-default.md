@@ -38,6 +38,9 @@ unambiguous from the two names alone.
 
 ## Consequences
 
-A consumer names `SchemaValidator.layer` or `SchemaFile.layer` directly
+A consumer names `SchemaFile.layer`, or `AjvValidator.layer` from
+`@effected/schemastore-cli` for the validator (the real engine moved
+there on 2026-09-15 — see
+[the engine lives in the CLI](schemastore-engine-lives-in-the-cli.md)),
 for production wiring, and `makeTest`/`layerTest` for tests, with no
 third name to learn or keep in sync with the other two.

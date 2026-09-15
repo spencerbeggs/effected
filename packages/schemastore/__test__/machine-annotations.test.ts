@@ -1,14 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
-import { DocumentLint, NonJsonValueError, SchemaValidator, StoreDocument } from "../src/index.js";
+import { DocumentLint, NonJsonValueError, StoreDocument } from "../src/index.js";
 
 const $id = "https://example.com/x-ai.schema.json";
 
-// End-to-end through StoreDocument.fromSchema + the real ajv-backed
-// SchemaValidator.layer + DocumentLint — no SchemaPipeline. Proves the
-// x-ai- family reaches the emitted document exactly like any other
-// declared family, and that the whole document still passes both gates
-// once it is adopted.
+// End-to-end through StoreDocument.fromSchema + DocumentLint — no
+// SchemaPipeline, no engine. Proves the x-ai- family reaches the emitted
+// document exactly like any other declared family and passes the lint; the
+// real-engine half lives in schemastore-cli's ajv-validator suite.
 describe("the x-ai- machine-annotation family, end to end", () => {
 	// Field-level annotation at the DEFINITION site. Root-level "x-ai" (no
 	// dash) is the negative control: it is not a declared family (bare
@@ -37,20 +36,6 @@ describe("the x-ai- machine-annotation family, end to end", () => {
 		Effect.gen(function* () {
 			const document = yield* StoreDocument.fromSchema(Annotated, { $id });
 			assert.deepStrictEqual(DocumentLint.lint(document), []);
-		}),
-	);
-
-	it.effect("the real ajv validator reports no findings for the adopted family", () =>
-		Effect.gen(function* () {
-			const document = yield* StoreDocument.fromSchema(Annotated, { $id });
-			const findings = yield* Effect.provide(
-				Effect.gen(function* () {
-					const validator = yield* SchemaValidator;
-					return yield* validator.validate(document.toJson());
-				}),
-				SchemaValidator.layer,
-			);
-			assert.deepStrictEqual(findings, []);
 		}),
 	);
 

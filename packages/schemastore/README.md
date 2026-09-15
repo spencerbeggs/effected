@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources. Core effect already owns the generation pipeline: `Schema.toJsonSchemaDocument` produces Draft 2020-12 and `JsonSchema.toDocumentDraft07` lowers it. This package owns what [SchemaStore](https://www.schemastore.org) expects around that output — the publication shape (`$schema` + `$id` + root + `$defs`, with the `#/definitions` → `#/$defs` ref rewrite the lowering makes necessary), the gate that holds a document's non-standard surface to the language-server keyword families it declares, catalog entries in both versioning modes, structural and hygiene lints, ajv strict-mode validation, canonical JSON text and content-comparing write-if-changed file IO. `SchemaPipeline` runs that whole emit loop over a list of targets, so a build script calls one function.
+Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources. Core effect already owns the generation pipeline: `Schema.toJsonSchemaDocument` produces Draft 2020-12 and `JsonSchema.toDocumentDraft07` lowers it. This package owns what [SchemaStore](https://www.schemastore.org) expects around that output — the publication shape (`$schema` + `$id` + root + `$defs`, with the `#/definitions` → `#/$defs` ref rewrite the lowering makes necessary), the gate that holds a document's non-standard surface to the language-server keyword families it declares, catalog entries in both versioning modes, structural and hygiene lints, the validation contract (`SchemaValidator`, whose shipped ajv strict-mode engine is `AjvValidator` in `@effected/schemastore-cli`), canonical JSON text and content-comparing write-if-changed file IO. `SchemaPipeline` runs that whole emit loop over a list of targets, so a build script calls one function.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 prerelease. Packages graduate to
@@ -23,7 +23,7 @@ Build, version, validate and lint SchemaStore-shaped Draft-07 JSON Schema docume
 
 Generating a JSON Schema from an Effect Schema is a solved problem — core does it. Publishing that schema where editors find it is not. SchemaStore recommends Draft-07 because that is what the language servers actually support, and core's Draft-07 lowering has two consequences a publisher must deal with: it rewrites `$ref` pointers to the canonical `#/definitions/...` form while the published document keeps its pool under `$defs`, and it carries unknown and custom keywords through as opaque values — so `markdownDescription`, `x-taplo` and the other editor keywords survive, and the publisher's problem is not getting them through but keeping anything *else* out of a document SchemaStore's own gate would reject. Around the document itself sits SchemaStore's own contract: ajv strict mode as the validation gate, catalog entries whose `fileMatch` patterns must not be generic and versioned schemas as suffixed files plus a `versions` map whose `url` points at the latest. This package is that last mile, so a build script does not have to reinvent it.
 
-The scope is deliberately narrow. There is no schema construction here, no ref resolution beyond the document's own `$defs` pool and no dialect conversion — core's `JsonSchema` owns the generation pipeline, ajv provides the validation gate and this package owns the SchemaStore shape in between.
+The scope is deliberately narrow. There is no schema construction here, no ref resolution beyond the document's own `$defs` pool and no dialect conversion — core's `JsonSchema` owns the generation pipeline, ajv provides the validation gate (shipped by the `schemastore` command, not by this package) and this package owns the SchemaStore shape in between.
 
 ## Install
 
@@ -39,7 +39,7 @@ Requires Node.js >=24.11.0.
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-`effect` v4 is the only peer dependency. Two regular dependencies ride along: `@effected/semver` does the version ordering inside `SchemaVersioning`, with no `SemVer` type surfacing in the public API, and `ajv` is the engine behind `SchemaValidator.layer`. ajv therefore arrives with this package and the validation examples below need no extra install; if your own code imports ajv directly, depend on it directly rather than relying on this one's copy. Every module is pure except `SchemaFile`, whose layer requires core `FileSystem` and `Path`, supplied at the edge from `@effect/platform-node` or `@effect/platform-bun`.
+`effect` v4 is the only peer dependency, and `@effected/semver` — the version ordering inside `SchemaVersioning`, with no `SemVer` type surfacing in the public API — is the only regular dependency. There is no validation engine in this package: `SchemaValidator` is a contract, and the shipped ajv implementation is `AjvValidator` in [`@effected/schemastore-cli`](https://www.npmjs.com/package/@effected/schemastore-cli), so an application that imports this package at runtime (to derive a `$schema` URL from `HostedSchema`, say) never installs or bundles ajv. Install the CLI when you want the real engine; the validation example below assumes you have. Every module is pure except `SchemaFile`, whose layer requires core `FileSystem` and `Path`, supplied at the edge from `@effect/platform-node` or `@effect/platform-bun`.
 
 ## Quick start
 
@@ -203,12 +203,13 @@ The keyword walk is position-aware: a *property* named `unevaluatedProperties` i
 
 ## Real-engine validation
 
-SchemaStore's own gate is ajv strict mode, and this package ships it. `SchemaValidator.layer` is a real ajv implementation: provide it and validation works, with no adapter to write. ajv is a direct dependency because SchemaStore's gate *is* ajv, and this package is build-time tooling for emitting documents that clear that gate. Keeping the engine out of the graph bought nothing and left every consumer writing the same adapter.
+SchemaStore's own gate is ajv strict mode, and the kit ships it once — as `AjvValidator.layer` in `@effected/schemastore-cli`, the engine the `schemastore` command runs. This package ships the `SchemaValidator` contract the engine implements, and nothing of ajv: an application that depends on the library at runtime pays for no validator it never calls, and a program that drives `SchemaPipeline` itself imports the same layer the command composes, with no adapter to write.
 
 The channel convention holds: findings are values — a strict-mode rejection is a report, not an error — and the error channel is reserved for the engine failing as a mechanism (`SchemaValidatorError`). Meta-schema failures keep ajv's structured `instancePath` and `keyword`; a strict-mode rejection, which ajv raises by throwing, becomes a root-pathed finding. The declared language-server keyword families are registered before compiling, so ajv does not reject what `DocumentLint` deliberately allows — one `KeywordFamilies` predicate governs both verdicts.
 
 ```ts
 import { SchemaValidator, StoreDocument } from "@effected/schemastore";
+import { AjvValidator } from "@effected/schemastore-cli";
 import { Effect, Schema } from "effect";
 
 const program = Effect.gen(function* () {
@@ -219,11 +220,11 @@ const program = Effect.gen(function* () {
   return yield* validator.validate(document.toJson());
 });
 
-Effect.runPromise(Effect.provide(program, SchemaValidator.layer)).then(console.log);
+Effect.runPromise(Effect.provide(program, AjvValidator.layer)).then(console.log);
 // [] when the document compiles clean; the engine's findings otherwise
 ```
 
-The service stays an interface: `noop` switches validation off deliberately, `makeTest` / `layerTest` are the doubles (unstubbed members die naming themselves) and a consumer standardized on another engine can substitute one. `DocumentLint` remains the engine-free structural half, answering SchemaStore hygiene questions ajv does not.
+The service is an interface: `noop` switches validation off deliberately, `makeTest` / `layerTest` are the doubles (unstubbed members die naming themselves) and a consumer standardized on another engine substitutes its own layer. `DocumentLint` remains the engine-free structural half, answering SchemaStore hygiene questions ajv does not.
 
 `validate` takes the flat serialized record — `StoreDocument.toJson()`'s shape — so the seam stays engine-shaped and decoupled from this package's classes.
 
@@ -268,10 +269,11 @@ Failures stay typed and apart: `SchemaFileNotFoundError` for a missing file on `
 
 ## The emit pipeline
 
-`SchemaPipeline` is the loop around everything above: generate each target's document, lint it, validate it with the engine, gate on the findings, write it. It is a plain function requiring `SchemaFile` and `SchemaValidator`, not another service to wire.
+`SchemaPipeline` is the loop around everything above: generate each target's document, lint it, validate it with the engine, gate on the findings, write it. It is a plain function requiring `SchemaFile` and `SchemaValidator`, not another service to wire; the `schemastore` command is the packaged form of this loop, and its `AjvValidator` is the engine to provide when you run it yourself.
 
 ```ts
-import { SchemaFile, SchemaPipeline, SchemaTarget, SchemaValidator } from "@effected/schemastore";
+import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
+import { AjvValidator } from "@effected/schemastore-cli";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
@@ -285,7 +287,7 @@ const targets = [
 ];
 
 // One named layer, composed once, provided at the boundary.
-const AppLayer = Layer.mergeAll(SchemaFile.layer, SchemaValidator.layer).pipe(
+const AppLayer = Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
   Layer.provide(NodeServices.layer),
 );
 
@@ -371,7 +373,7 @@ Placement follows the assembled root: an inline root takes the annotations direc
 - `CatalogEntry` — the `catalog.json` entry as a `Schema.Class`, `assemble` and the `fileMatch` hygiene lint (`CatalogLintFinding`).
 - `HostedSchema` — a schema's hosted identity as a `Schema.Class` (`github`, `schemastore` and `custom` constructors) deriving `$id`, the catalog `url` and the file name for the current or any advertised version, shared between application code and `defineConfig`'s `hosted` field.
 - `DocumentLint` — the total structural lint returning `DocumentLintFinding` values, never an error.
-- `SchemaValidator` — real-engine validation, closed by default over ajv: provide `SchemaValidator.layer` and it works. `ValidationFinding`, `SchemaValidatorError`, `noop` to switch validation off and the `makeTest` / `layerTest` doubles.
+- `SchemaValidator` — the validation contract: `ValidationFinding`, `SchemaValidatorError`, `noop` to switch validation off and the `makeTest` / `layerTest` doubles. The shipped engine, ajv strict mode closed by default, is `AjvValidator.layer` from `@effected/schemastore-cli`.
 - `DocumentDiff` — `classify` puts two documents in `"none"` / `"annotations"` / `"contract"`, the signal for whether a change needs a new schema version, plus `isClean` for the clean case.
 - `SchemaPipeline` — the emit loop over a target manifest, two-phase and all-or-nothing across targets: `run` and `check`, the single-target `runOne` and `checkOne`, `PipelineFinding`, `SchemaGateError` and an overridable gating predicate, plus the contract gate (`ContractChangePolicy`, `ContractChangeTarget`, `SchemaContractChangeError`, `PipelineCheckResult.contractBlocked`) that refuses to rewrite a published document's validation contract in place.
 - `SchemaFile` — write-if-changed IO over core `FileSystem` / `Path`, comparing by content and answering what changed as a value; `check` is the non-writing drift half, answering `wouldWrite` alongside `change`.

@@ -54,7 +54,7 @@
 | `SchemaPipeline` | Class | The emit pipeline over a target manifest: generate, lint, validate, gate, write — the loop every consumer of this package was writing by hand. | generate lint validate gate and write schema targets, run the pipeline |
 | `SchemaPipelineOptions` | Interface | Options for `SchemaPipeline.run` and `SchemaPipeline.check`. | |
 | `SchemaTarget` | Class + Interface | Constructors for `SchemaTarget` values. | declare one schema publication target with its $id, path and optional version |
-| `SchemaValidator` | Class | Real-engine JSON Schema document validation, closed by default over ajv — the engine SchemaStore's own gate is defined in terms of. | validate a json schema document with a real engine, ajv strict mode gate |
+| `SchemaValidator` | Class | The JSON Schema document validation contract — the engine SchemaStore's own gate is defined in terms of, as a service the pipeline requires in `R` and never owns. | validate a json schema document with a real engine, ajv strict mode gate |
 | `SchemaValidatorError` | Class | Indicates that the validation engine behind the `SchemaValidator` contract failed as a *mechanism* — it could not run at all. | handle the validation engine failing as a mechanism rather than a rejection |
 | `SchemaValidatorOptions` | Interface | Options for `SchemaValidatorShape.validate`. | |
 | `SchemaValidatorShape` | Interface | The shape of the `SchemaValidator` service — what an implementation provides. | |

@@ -51,14 +51,17 @@ parent.
 
 ## Validation, lint and diff
 
-- `SchemaValidator` — real-engine validation, closed by default:
-  `SchemaValidator.layer` runs ajv (a meta-schema check keeping ajv's structured
-  `instancePath`/`keyword`, then a compile whose strict-mode throw becomes a
-  root-pathed finding). `validate(document, {strict?})` answers
-  `ValidationFinding` values — empty means a clean pass — and the error channel
-  carries `SchemaValidatorError` (`cause: Schema.Defect()`). Also ships `noop`
-  (validation off) and `makeTest`/`layerTest` (unstubbed members die naming the
-  member).
+- `SchemaValidator` — the validation contract, no engine: the
+  `Context.Service`, `SchemaValidatorShape`, `SchemaValidatorOptions`,
+  `ValidationFinding` and `SchemaValidatorError` (`cause: Schema.Defect()`).
+  `validate(document, {strict?})` answers `ValidationFinding` values — empty
+  means a clean pass — and the error channel is for the mechanism failing.
+  Ships `noop` (validation off) and `makeTest`/`layerTest` (unstubbed members
+  die naming the member). The one real implementation is
+  `@effected/schemastore-cli`'s `AjvValidator.layer` (a meta-schema check
+  keeping ajv's structured `instancePath`/`keyword`, then a compile whose
+  strict-mode throw becomes a root-pathed finding); the engine suite lives in
+  the CLI's `__test__/ajv-validator.test.ts`.
 - `DocumentLint` — a total structural lint returning `DocumentLintFinding`
   values, never an error channel: `UnresolvedRef` (every `$ref` resolves against
   `$defs`; `#` self-refs are fine; a surviving `#/definitions/...` pointer

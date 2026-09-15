@@ -16,6 +16,12 @@ generated:
 
 # Schemastore retiers from boundary to integrated for a direct ajv dependency
 
+> Superseded on 2026-09-15 by
+> [the engine lives in the CLI](schemastore-engine-lives-in-the-cli.md):
+> the ajv engine moved to `@effected/schemastore-cli` and the library
+> returned to boundary tier. Kept as the record of why the retier was
+> admissible when it was made.
+
 ## Context
 
 `@effected/schemastore` shipped first at boundary tier: a validation
