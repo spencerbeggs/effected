@@ -2,16 +2,12 @@ import { Option, Predicate, Result, Schema } from "effect";
 import { CatalogEntry } from "./CatalogEntry.js";
 import type { DriftTolerance, OnDrift } from "./DriftPolicy.js";
 import { DriftPolicy } from "./DriftPolicy.js";
+import { SCHEMASTORE_CATALOG_BASE, SCHEMASTORE_ID_BASE } from "./HostedSchema.js";
 import { SchemaTarget } from "./SchemaTarget.js";
 import type { SchemaLayout, SchemaVersion } from "./SchemaVersioning.js";
 import { SchemaVersioning } from "./SchemaVersioning.js";
 
 const ConfigBrand: unique symbol = Symbol.for("@effected/schemastore/SchemastoreConfig");
-
-/** The host SchemaStore-hosted documents declare in `$id`. @public */
-export const SCHEMASTORE_ID_BASE = "https://json.schemastore.org";
-/** The host SchemaStore's `catalog.json` points `url` at. @public */
-export const SCHEMASTORE_CATALOG_BASE = "https://www.schemastore.org";
 
 /**
  * The SchemaStore `catalog.json` fields a schema entry declares, minus

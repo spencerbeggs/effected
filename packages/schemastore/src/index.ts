@@ -55,6 +55,14 @@ export { CatalogEntry, CatalogLintFinding } from "./CatalogEntry.js";
 export { DocumentDiff, type SchemaChange } from "./DocumentDiff.js";
 export { DocumentLint, DocumentLintFinding } from "./DocumentLint.js";
 export { type DriftOptions, DriftPolicy, type DriftTolerance, type DriftVerdict, type OnDrift } from "./DriftPolicy.js";
+export {
+	type CustomHostedSchemaInput,
+	type GitHubHostedSchemaInput,
+	HostedSchema,
+	type HostedSchemaVersionsInput,
+	SCHEMASTORE_CATALOG_BASE,
+	SCHEMASTORE_ID_BASE,
+} from "./HostedSchema.js";
 export { KeywordFamilies } from "./KeywordFamilies.js";
 export {
 	type CheckResult,
@@ -83,8 +91,6 @@ export {
 	type CatalogInput,
 	type FrozenVersion,
 	type ResolvedSchema,
-	SCHEMASTORE_CATALOG_BASE,
-	SCHEMASTORE_ID_BASE,
 	type SchemaEntryInput,
 	type SchemastoreConfig,
 	type SchemastoreConfigInput,
