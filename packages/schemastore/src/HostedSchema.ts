@@ -134,7 +134,7 @@ export interface HostedSchemaVersionsInput {
 	readonly current?: string;
 }
 
-/** Input to {@link (HostedSchema:class).github}. @public */
+/** Input to {@link HostedSchema.github}. @public */
 export interface GitHubHostedSchemaInput extends HostedSchemaVersionsInput {
 	/** The repository, as `owner/repo`. */
 	readonly repo: string;
@@ -146,7 +146,7 @@ export interface GitHubHostedSchemaInput extends HostedSchemaVersionsInput {
 	readonly layout?: SchemaLayout;
 }
 
-/** Input to {@link (HostedSchema:class).custom}. @public */
+/** Input to {@link HostedSchema.custom}. @public */
 export interface CustomHostedSchemaInput extends HostedSchemaVersionsInput {
 	/** The `https://` directory URL the files are served under; a trailing slash is trimmed. */
 	readonly baseUrl: string | URL;
@@ -161,9 +161,9 @@ export interface CustomHostedSchemaInput extends HostedSchemaVersionsInput {
  * cannot disagree.
  *
  * @remarks
- * Build one with {@link (HostedSchema:class).github},
- * {@link (HostedSchema:class).schemastore} or
- * {@link (HostedSchema:class).custom}; each validates the identity and
+ * Build one with {@link HostedSchema.github},
+ * {@link HostedSchema.schemastore} or
+ * {@link HostedSchema.custom}; each validates the identity and
  * throws a plain `Error` naming the reason. The derivation is
  * {@link SchemaVersioning.schemaUrl}'s: `<base>/<name>.json` unversioned,
  * `<base>/<name>-<version>.json` under the `"flat"` layout and
@@ -246,7 +246,7 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 		return this.idFor(this.resolvedCurrent);
 	}
 
-	/** The catalog URL of the current document; equals {@link (HostedSchema:class).$id} except under SchemaStore. */
+	/** The catalog URL of the current document; equals {@link HostedSchema.$id} except under SchemaStore. */
 	get url(): string {
 		return this.urlFor(this.resolvedCurrent);
 	}

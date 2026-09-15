@@ -647,6 +647,7 @@
 		"DocumentDiff": "diff two schema documents, classify annotation-only vs contract change, decide new version",
 		"DocumentLint": "structural lint over an assembled schema document, unresolved $ref check, unknown keyword check",
 		"DocumentLintFinding": "lint finding value for a schema document structural check",
+		"HostedSchema": "a schema's hosted identity, derive the $schema url an application writes and the $id defineConfig emits from one value, github schemastore or custom host constructors",
 		"DriftPolicy": "classify a published target's change as write or drift against its configured tolerance",
 		"InvalidSchemaVersionError": "handle a version label that is not full major.minor.patch semver",
 		"JsonDepthExceededError": "handle json value nesting past the hardening cap during canonical serialize",
