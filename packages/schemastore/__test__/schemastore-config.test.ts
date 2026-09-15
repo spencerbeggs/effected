@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Result, Schema } from "effect";
 import type { SchemaVersion } from "../src/index.js";
-import { SchemaVersioning, defineConfig, isSchemastoreConfig } from "../src/index.js";
+import { HostedSchema, SchemaVersioning, defineConfig, isSchemastoreConfig } from "../src/index.js";
 
 const version = (label: string): SchemaVersion => Result.getOrThrow(SchemaVersioning.parseResult(label));
 
@@ -129,6 +129,55 @@ describe("defineConfig derivation", () => {
 	});
 });
 
+describe("defineConfig with a HostedSchema", () => {
+	const hosted = HostedSchema.github({ repo: "o/r", path: "schemas", name: "okfit", versions: ["1.0", "1.1"] });
+
+	it("derives target, frozen and catalog from the hosted identity, so $id equals hosted.$id", () => {
+		const schema = only(
+			defineConfig({ outputDir: "schemas", schemas: { okfit: { schema: Config, hosted, catalog } } }),
+		);
+		assert.strictEqual(schema.target.$id, hosted.$id);
+		assert.strictEqual(schema.target.$id, `${CUSTOM}/1.1/okfit-1.1.json`);
+		assert.strictEqual(schema.target.path, `schemas/${hosted.fileName}`);
+		assert.strictEqual(schema.target.version, "1.1");
+		assert.deepStrictEqual(schema.frozen, [
+			{ version: version("1.0"), path: "schemas/1.0/okfit-1.0.json", url: hosted.urlFor("1.0") },
+		]);
+		assert.strictEqual(schema.catalog?.url, hosted.url);
+	});
+
+	it("ignores the config-level baseUrl default when hosted is given", () => {
+		const schema = only(
+			defineConfig({ outputDir: "s", baseUrl: "schemastore", schemas: { okfit: { schema: Config, hosted } } }),
+		);
+		assert.strictEqual(schema.target.$id, hosted.$id);
+	});
+
+	it("rejects a key that differs from hosted.name", () => {
+		assert.throws(
+			() => defineConfig({ outputDir: "s", schemas: { other: { schema: Config, hosted } } }),
+			/schema "other".*hosted.*"okfit"/,
+		);
+	});
+
+	it("rejects an entry that spells baseUrl, versions, current or layout beside hosted", () => {
+		for (const extra of [{ baseUrl: CUSTOM }, { versions: ["1.0"] }, { current: "1.0" }, { layout: "flat" as const }]) {
+			assert.throws(
+				() => defineConfig({ outputDir: "s", schemas: { okfit: { schema: Config, hosted, ...extra } } }),
+				/schema "okfit".*hosted/,
+			);
+		}
+	});
+
+	it("rejects a hosted that is not a HostedSchema", () => {
+		assert.throws(
+			() =>
+				defineConfig({ outputDir: "s", schemas: { okfit: { schema: Config, hosted: { name: "okfit" } as never } } }),
+			/schema "okfit".*hosted/,
+		);
+	});
+});
+
 describe("defineConfig validation", () => {
 	const rejects = (entry: Record<string, unknown>, top: Record<string, unknown>, pattern: RegExp) =>
 		assert.throws(() => one(entry, top), pattern);
@@ -189,11 +238,18 @@ describe("defineConfig validation", () => {
 	});
 
 	it("rejects an invalid top-level drift tolerance", () => {
-		assert.throws(() => one({}, { drift: "loose" as never }), /config has an invalid drift tolerance "loose"/);
+		assert.throws(
+			() => one({}, { drift: "loose" as never }),
+			/^defineConfig: Expected "strict" \| "semantic" \| "allow" at \["drift"\]/,
+		);
 	});
 
 	it("rejects an invalid layout", () => {
-		rejects({ baseUrl: CUSTOM, layout: "nested" as never }, {}, /"okfit".*invalid layout "nested"/);
+		rejects(
+			{ baseUrl: CUSTOM, layout: "nested" as never },
+			{},
+			/"okfit".*Expected "flat" \| "versioned" at \["layout"\]/,
+		);
 	});
 
 	it("rejects an empty catalogPath", () => {
@@ -203,12 +259,12 @@ describe("defineConfig validation", () => {
 	it("rejects an untyped schema entry", () => {
 		assert.throws(
 			() => defineConfig({ outputDir: "s", baseUrl: CUSTOM, schemas: { okfit: null as never } }),
-			/"okfit".*must be an object/,
+			/"okfit" Expected object/,
 		);
 	});
 
 	it("rejects an invalid catalog block", () => {
-		rejects({ catalog: { description: "d" } as never }, {}, /"okfit".*invalid catalog block/);
+		rejects({ catalog: { description: "d" } as never }, {}, /"okfit".*Missing key at \["catalog"\]\["fileMatch"\]/);
 	});
 
 	it("rejects a catalogPath colliding with a derived file, after lexical normalisation", () => {
@@ -238,29 +294,41 @@ describe("defineConfig validation", () => {
 					baseUrl: null as never,
 					schemas: { okfit: { schema: Config, catalog } },
 				}),
-			/"okfit".*baseUrl that is not a string/,
+			/^defineConfig: Expected string at \["baseUrl"\]/,
 		);
-		rejects({ baseUrl: 5 as never }, {}, /"okfit".*baseUrl that is not a string/);
+		rejects({ baseUrl: 5 as never }, {}, /"okfit".*Expected string at \["baseUrl"\]/);
 	});
 
 	it("rejects a versions that is not an array", () => {
-		rejects({ versions: "1.0" as never }, {}, /"okfit".*versions that is not an array/);
+		rejects({ versions: "1.0" as never }, {}, /"okfit".*Expected array at \["versions"\]/);
 	});
 
 	it("rejects a version label that is not a string", () => {
-		rejects({ versions: [1.0] as never }, {}, /"okfit".*version label that is not a string/);
+		rejects({ versions: [1.0] as never }, {}, /"okfit".*Expected string at \["versions"\]\[0\]/);
 	});
 
 	it("rejects a current that is not a string", () => {
-		rejects({ versions: ["1.0"], current: 1 as never }, {}, /"okfit".*version label that is not a string/);
+		rejects({ versions: ["1.0"], current: 1 as never }, {}, /"okfit".*Expected string at \["current"\]/);
 	});
 
 	it("rejects a published that is not a boolean", () => {
-		rejects({ published: "yes" as never }, {}, /"okfit".*published that is not a boolean/);
+		rejects({ published: "yes" as never }, {}, /"okfit".*Expected boolean at \["published"\]/);
 	});
 
 	it("rejects a schema that is not an Effect Schema", () => {
-		rejects({ schema: {} as never }, {}, /"okfit".*schema that is not an Effect Schema/);
+		rejects({ schema: {} as never }, {}, /"okfit".*Expected an Effect Schema at \["schema"\]/);
+	});
+
+	it("rejects an unknown key at the top level and on an entry, naming it", () => {
+		assert.throws(
+			() => one({}, { outputDirectory: "x" }),
+			/^defineConfig: Expected no excess property at \["outputDirectory"\]/,
+		);
+		rejects({ versons: ["1.0"] }, {}, /"okfit".*Expected no excess property at \["versons"\]/);
+	});
+
+	it("reports every issue on an entry at once", () => {
+		rejects({ published: "yes" as never, layout: "nested" as never }, {}, /\["published"\].*\["layout"\]/);
 	});
 
 	it("rejects a non-object defineConfig input", () => {

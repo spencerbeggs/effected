@@ -1,8 +1,8 @@
-import { Option, Predicate, Result, Schema } from "effect";
+import { Predicate, Result, Schema } from "effect";
 import { CatalogEntry } from "./CatalogEntry.js";
 import type { DriftTolerance, OnDrift } from "./DriftPolicy.js";
 import { DriftPolicy } from "./DriftPolicy.js";
-import { SCHEMASTORE_CATALOG_BASE, SCHEMASTORE_ID_BASE } from "./HostedSchema.js";
+import { HostedSchema, SCHEMASTORE_CATALOG_BASE, SCHEMASTORE_ID_BASE } from "./HostedSchema.js";
 import { SchemaTarget } from "./SchemaTarget.js";
 import type { SchemaLayout, SchemaVersion } from "./SchemaVersioning.js";
 import { SchemaVersioning } from "./SchemaVersioning.js";
@@ -35,6 +35,13 @@ export interface CatalogInput {
 export interface SchemaEntryInput {
 	/** The Effect Schema source the document is generated from. */
 	readonly schema: Schema.Constraint;
+	/**
+	 * The schema's hosted identity, when the application already holds one
+	 * (to derive its `$schema` URL from). Supplies `baseUrl`, `versions`,
+	 * `current` and `layout`, which must then not be spelled here, and its
+	 * `name` must equal this entry's key.
+	 */
+	readonly hosted?: HostedSchema;
 	/**
 	 * Every version label this schema advertises. Omit for an unversioned
 	 * schema (`<name>.json`). An empty array is rejected — omit the field
@@ -167,10 +174,6 @@ export interface SchemastoreConfig {
 	readonly schemas: ReadonlyArray<ResolvedSchema>;
 }
 
-const DRIFT_TOLERANCES: ReadonlyArray<DriftTolerance> = ["strict", "semantic", "allow"];
-const ON_DRIFT: ReadonlyArray<OnDrift> = ["error", "warn"];
-const LAYOUTS: ReadonlyArray<SchemaLayout> = ["flat", "versioned"];
-
 const fail = (message: string): never => {
 	throw new Error(`defineConfig: ${message}`);
 };
@@ -183,177 +186,138 @@ const trimSlashes = (dir: string): string => {
 	return dir.slice(0, end);
 };
 
-// Where a document is hosted decides both of its bases and its layout.
-interface Hosting {
-	readonly idBase: string;
-	readonly catalogBase: string;
-	readonly layout: SchemaLayout;
-}
+// Exhaustive over the union by construction: a member missing from the record
+// is a compile error, so the literal list cannot drift from the exported type.
+const members = <K extends string>(record: Record<K, null>): ReadonlyArray<K> => Object.keys(record) as Array<K>;
 
-const resolveHosting = (name: string, baseUrl: string | undefined, layout: SchemaLayout | undefined): Hosting => {
+const DriftToleranceInput = Schema.Literals(members<DriftTolerance>({ strict: null, semantic: null, allow: null }));
+const OnDriftInput = Schema.Literals(members<OnDrift>({ error: null, warn: null }));
+const LayoutInput = Schema.Literals(members<SchemaLayout>({ flat: null, versioned: null }));
+
+// Passed through by reference (a declaration validates but never rebuilds):
+// the schema is a function at runtime, and the two option bags carry keys
+// this module has no business enumerating.
+const EffectSchemaInput = Schema.declare((u): u is Schema.Constraint => Schema.isSchema(u), {
+	expected: "an Effect Schema",
+});
+const OptionsInput = Schema.declare((u): u is Readonly<Record<string, unknown>> => Predicate.isObject(u), {
+	expected: "an object",
+});
+
+const CatalogBlockInput = Schema.Struct({
+	description: Schema.String,
+	fileMatch: Schema.NonEmptyArray(Schema.String),
+});
+
+const EntryInput = Schema.Struct({
+	schema: EffectSchemaInput,
+	hosted: Schema.optionalKey(Schema.instanceOf(HostedSchema, { expected: "a HostedSchema" })),
+	versions: Schema.optionalKey(Schema.Array(Schema.String)),
+	current: Schema.optionalKey(Schema.String),
+	published: Schema.optionalKey(Schema.Boolean),
+	baseUrl: Schema.optionalKey(Schema.String),
+	layout: Schema.optionalKey(LayoutInput),
+	drift: Schema.optionalKey(DriftToleranceInput),
+	catalog: Schema.optionalKey(CatalogBlockInput),
+	jsonSchema: Schema.optionalKey(OptionsInput),
+	rootAnnotations: Schema.optionalKey(OptionsInput),
+});
+
+const ConfigInput = Schema.Struct({
+	outputDir: Schema.NonEmptyString,
+	baseUrl: Schema.optionalKey(Schema.String),
+	drift: Schema.optionalKey(DriftToleranceInput),
+	onDrift: Schema.optionalKey(OnDriftInput),
+	catalogPath: Schema.optionalKey(Schema.NonEmptyString),
+	schemas: Schema.Record(Schema.String, Schema.Unknown),
+});
+
+// A config is typed by a human, so an unknown key is a typo to report, not
+// noise to drop; every issue is reported, on one line, under the caller's
+// prefix.
+const DECODE_OPTIONS = { onExcessProperty: "error", errors: "all" } as const;
+
+const decodeOrThrow = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, input: unknown, prefix: string) =>
+	Result.getOrThrowWith(
+		Schema.decodeUnknownResult(schema)(input, DECODE_OPTIONS),
+		(error) => new Error(`defineConfig: ${prefix}${error.message.replace(/\n\s*/g, " ")}`),
+	);
+
+type Entry = typeof EntryInput.Type;
+
+// The identity an entry resolves to: its `hosted` value, else one built from
+// the hand-spelled fields and the config default. Either way HostedSchema
+// owns the hosting and version rules, so the two spellings cannot diverge.
+const resolveIdentity = (name: string, entry: Entry, defaultBaseUrl: string | undefined): HostedSchema => {
+	if (entry.hosted !== undefined) {
+		if (entry.hosted.name !== name) {
+			return fail(`schema "${name}" is keyed differently from its hosted identity "${entry.hosted.name}"`);
+		}
+		const spelled = (["baseUrl", "versions", "current", "layout"] as const).filter((key) => entry[key] !== undefined);
+		if (spelled.length > 0) {
+			return fail(
+				`schema "${name}" declares ${spelled.map((key) => `"${key}"`).join(", ")} beside hosted; the hosted identity owns them`,
+			);
+		}
+		return entry.hosted;
+	}
+	const baseUrl = entry.baseUrl ?? defaultBaseUrl;
 	if (baseUrl === undefined) {
 		return fail(`schema "${name}" has no baseUrl and the config declares no default`);
 	}
-	if (typeof baseUrl !== "string") {
-		return fail(`schema "${name}" has a baseUrl that is not a string`);
-	}
-	if (baseUrl.length === 0) {
-		return fail(`schema "${name}" has no baseUrl and the config declares no default`);
-	}
-	if (layout !== undefined && !LAYOUTS.includes(layout)) {
-		return fail(`schema "${name}" has an invalid layout "${String(layout)}"; expected "flat" or "versioned"`);
-	}
-	if (baseUrl === "schemastore") {
-		if (layout !== undefined) {
-			return fail(
-				`schema "${name}" declares layout "${layout}" under baseUrl "schemastore", which serves only the flat layout`,
-			);
-		}
-		return { idBase: SCHEMASTORE_ID_BASE, catalogBase: SCHEMASTORE_CATALOG_BASE, layout: "flat" };
-	}
-	if (!baseUrl.startsWith("https://") || baseUrl.length === "https://".length) {
-		return fail(`schema "${name}" has baseUrl "${baseUrl}"; expected "schemastore" or an https:// URL`);
-	}
-	return { idBase: baseUrl, catalogBase: baseUrl, layout: layout ?? "versioned" };
-};
-
-const parseLabel = (name: string, label: unknown): SchemaVersion => {
-	if (typeof label !== "string") {
-		return fail(`schema "${name}" has a version label that is not a string: ${String(label)}`);
-	}
-	return Result.getOrThrowWith(
-		SchemaVersioning.parseResult(label),
-		(error) => new Error(`defineConfig: schema "${name}" has an invalid version label "${label}": ${error.message}`),
-	);
-};
-
-// Every label, deduplicated under Order (`1.2` / `1.2.0` are one label), plus
-// which one is current: the explicit label, else the newest.
-const resolveVersions = (
-	name: string,
-	entry: SchemaEntryInput,
-): { readonly versions: ReadonlyArray<SchemaVersion>; readonly current: SchemaVersion } | undefined => {
-	if (entry.versions === undefined) {
-		if (entry.current !== undefined) {
-			return fail(`schema "${name}" declares current "${entry.current}" without versions`);
-		}
-		return undefined;
-	}
-	if (!Array.isArray(entry.versions)) {
-		return fail(`schema "${name}" declares versions that is not an array`);
-	}
-	if (entry.versions.length === 0) {
-		return fail(`schema "${name}" declares versions as an empty array; omit versions for an unversioned schema`);
-	}
-	const versions: Array<SchemaVersion> = [];
-	for (const label of entry.versions) {
-		const version = parseLabel(name, label);
-		const duplicate = versions.find((v) => SchemaVersioning.Order(v, version) === 0);
-		if (duplicate !== undefined) {
-			return fail(`schema "${name}" declares the same version twice, as "${duplicate}" and "${version}"`);
-		}
-		versions.push(version);
-	}
-	// Non-empty by the guard above, so `latest` is always `some`.
-	const newest = Option.getOrThrow(SchemaVersioning.latest(versions));
-	if (entry.current === undefined) {
-		return { versions, current: newest };
-	}
-	const current = parseLabel(name, entry.current);
-	const match = versions.find((v) => SchemaVersioning.Order(v, current) === 0);
-	if (match === undefined) {
-		return fail(`schema "${name}" declares current "${entry.current}" which is not one of its versions`);
-	}
-	return { versions, current: match };
-};
-
-const isDriftTolerance = (value: unknown): value is DriftTolerance =>
-	DRIFT_TOLERANCES.includes(value as DriftTolerance);
-
-// The top-level default every schema inherits.
-const resolveConfigDrift = (value: unknown): DriftTolerance => {
-	if (value === undefined) {
-		return DriftPolicy.defaults.policy;
-	}
-	return isDriftTolerance(value) ? value : fail(`config has an invalid drift tolerance "${String(value)}"`);
-};
-
-// One schema's tolerance: its own override, else the config default.
-const resolveSchemaDrift = (name: string, value: unknown, fallback: DriftTolerance): DriftTolerance => {
-	if (value === undefined) {
-		return fallback;
-	}
-	return isDriftTolerance(value) ? value : fail(`schema "${name}" has an invalid drift tolerance "${String(value)}"`);
+	const decoded = Schema.decodeUnknownResult(HostedSchema)({
+		name,
+		baseUrl,
+		...(entry.versions !== undefined ? { versions: entry.versions } : {}),
+		...(entry.current !== undefined ? { current: entry.current } : {}),
+		...(entry.layout !== undefined ? { layout: entry.layout } : {}),
+	});
+	return Result.getOrThrowWith(decoded, (error) => new Error(`defineConfig: ${error.message.replace(/\n\s*/g, " ")}`));
 };
 
 const resolveEntry = (
 	name: string,
-	entry: SchemaEntryInput,
+	input: unknown,
 	defaults: { readonly baseUrl: string | undefined; readonly drift: DriftTolerance },
 	outputDir: string,
 ): ResolvedSchema => {
 	if (!SchemaVersioning.isSimpleName(name)) {
 		return fail(`schema "${name}" must be keyed by a simple file base name (no separators, no whitespace)`);
 	}
-	if (!Predicate.isObject(entry)) {
-		return fail(`schema "${name}" must be an object`);
-	}
-	if (!Schema.isSchema(entry.schema)) {
-		return fail(`schema "${name}" has a schema that is not an Effect Schema`);
-	}
-	if (entry.published !== undefined && typeof entry.published !== "boolean") {
-		return fail(`schema "${name}" has a published that is not a boolean`);
-	}
-	const baseUrl = entry.baseUrl ?? defaults.baseUrl;
-	const hosting = resolveHosting(name, baseUrl, entry.layout);
-	const versioned = resolveVersions(name, entry);
-	if (baseUrl === "schemastore" && entry.catalog === undefined) {
+	const entry = decodeOrThrow(EntryInput, input, `schema "${name}" `);
+	const hosted = resolveIdentity(name, entry, defaults.baseUrl);
+	if (hosted.baseUrl === "schemastore" && entry.catalog === undefined) {
 		return fail(`schema "${name}" must declare a catalog block under baseUrl "schemastore"`);
 	}
-	if (
-		entry.catalog !== undefined &&
-		(!Predicate.isObject(entry.catalog) ||
-			!Array.isArray(entry.catalog.fileMatch) ||
-			typeof entry.catalog.description !== "string")
-	) {
-		return fail(`schema "${name}" declares an invalid catalog block (expected { description, fileMatch[] })`);
-	}
-	if (entry.catalog !== undefined && entry.catalog.fileMatch.length === 0) {
-		return fail(`schema "${name}" declares a catalog with an empty fileMatch`);
-	}
-	const file = (version?: SchemaVersion) => `${outputDir}/${SchemaVersioning.fileName(name, version, hosting.layout)}`;
-	const urlOf = (base: string) => (version?: SchemaVersion) =>
-		SchemaVersioning.schemaUrl(base, name, version, hosting.layout);
-	const idOf = urlOf(hosting.idBase);
-	const catalogUrlOf = urlOf(hosting.catalogBase);
-	const current = versioned?.current;
+	const versions = hosted.resolvedVersions;
+	const current = hosted.resolvedCurrent;
+	const file = (version?: SchemaVersion) => `${outputDir}/${hosted.fileNameFor(version)}`;
+	const generation = {
+		...(entry.jsonSchema !== undefined ? { jsonSchema: entry.jsonSchema as Schema.ToJsonSchemaOptions } : {}),
+		...(entry.rootAnnotations !== undefined ? { rootAnnotations: entry.rootAnnotations } : {}),
+	};
 	const target =
 		current === undefined
 			? SchemaTarget.make({
 					schema: entry.schema,
-					$id: idOf(current),
+					$id: hosted.idFor(current),
 					name,
 					path: file(current),
 					published: entry.published ?? false,
-					...(entry.jsonSchema !== undefined ? { jsonSchema: entry.jsonSchema } : {}),
-					...(entry.rootAnnotations !== undefined ? { rootAnnotations: entry.rootAnnotations } : {}),
+					...generation,
 				})
 			: SchemaTarget.make({
 					schema: entry.schema,
-					$id: idOf(current),
+					$id: hosted.idFor(current),
 					name,
 					path: file(current),
 					version: current,
 					published: entry.published ?? false,
-					...(entry.jsonSchema !== undefined ? { jsonSchema: entry.jsonSchema } : {}),
-					...(entry.rootAnnotations !== undefined ? { rootAnnotations: entry.rootAnnotations } : {}),
+					...generation,
 				});
-	const frozen: ReadonlyArray<FrozenVersion> =
-		versioned === undefined
-			? []
-			: versioned.versions
-					.filter((v) => v !== versioned.current)
-					.map((version) => ({ version, path: file(version), url: catalogUrlOf(version) }));
+	const frozen: ReadonlyArray<FrozenVersion> = versions
+		.filter((v) => v !== current)
+		.map((version) => ({ version, path: file(version), url: hosted.urlFor(version) }));
 	const catalog =
 		entry.catalog === undefined
 			? undefined
@@ -361,15 +325,15 @@ const resolveEntry = (
 					name,
 					description: entry.catalog.description,
 					fileMatch: entry.catalog.fileMatch,
-					baseUrl: hosting.catalogBase,
-					layout: hosting.layout,
-					...(versioned !== undefined ? { versions: versioned.versions, current: versioned.current } : {}),
+					baseUrl: hosted.catalogBase,
+					layout: hosted.resolvedLayout,
+					...(current !== undefined ? { versions, current } : {}),
 				});
 	return {
 		name,
 		target,
 		frozen,
-		drift: resolveSchemaDrift(name, entry.drift, defaults.drift),
+		drift: entry.drift ?? defaults.drift,
 		...(catalog !== undefined ? { catalog } : {}),
 	};
 };
@@ -427,23 +391,23 @@ const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
  * for the catalog URL, forcing the `"flat"` layout; any other `baseUrl` is
  * used as one base for both, defaulting to the `"versioned"` layout.
  *
- * Throws a plain `Error` (never a raw `TypeError`) naming the offending
- * schema on: a non-object `input`; an empty `schemas` record; a
- * missing/empty `outputDir`; a schema key that is not a simple file base
- * name; a schema whose `schema` is not an Effect Schema; a schema with no
- * `baseUrl` anywhere, or a `baseUrl` that is not a string; a `baseUrl` that
- * is neither `"schemastore"` nor an `https://` URL; a `versions` that is not
- * an array, or an empty `versions` array; a version label (or `current`)
- * that is not a string, or an otherwise invalid version label; two labels
- * spelling the same version; `current` given without `versions`, or naming
- * one not among them; a non-boolean `published`; `layout` declared under
- * `baseUrl: "schemastore"`; a missing `catalog` under
- * `baseUrl: "schemastore"`, or one with an empty `fileMatch`; an invalid
- * `drift` or top-level `onDrift`; and an output path (a target, a frozen
- * file, or the catalog path) declared twice, compared after a lexical
- * normalisation (`./`, `..`, trailing `/`) — the CLI's loader re-checks on
- * the resolved absolute paths. Branding the result lets a loader recognise a
- * config module's default export via {@link isSchemastoreConfig}.
+ * Throws a plain `Error` (never a raw `TypeError`) on every malformed
+ * input. The shape is decoded once per level with a `Schema.Struct`
+ * (`errors: "all"`, so every issue on an entry is reported at once, and
+ * `onExcessProperty: "error"`, so a typo'd key is named rather than
+ * dropped); the message is `defineConfig: schema "<name>" ` followed by the
+ * decode issues (`Expected string at ["baseUrl"]`). After a shape-clean
+ * decode the cross-field rules run: the entry's identity — its
+ * {@link HostedSchema}, or one built from `baseUrl`/`versions`/`current`/
+ * `layout` and the config default — is validated by `HostedSchema` itself
+ * (a `hosted` entry must be keyed by `hosted.name` and must not spell those
+ * four fields beside it); a schema key must be a simple file base name; a
+ * `catalog` is required under `baseUrl: "schemastore"`; an empty `schemas`
+ * record is rejected; and an output path (a target, a frozen file, or the
+ * catalog path) declared twice is rejected after a lexical normalisation
+ * (`./`, `..`, trailing `/`) — the CLI's loader re-checks on the resolved
+ * absolute paths. Branding the result lets a loader recognise a config
+ * module's default export via {@link isSchemastoreConfig}.
  *
  * @public
  */
@@ -451,28 +415,20 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 	if (!Predicate.isObject(input)) {
 		return fail("expected a config object");
 	}
-	if (typeof input.outputDir !== "string" || input.outputDir.length === 0) {
-		return fail("outputDir is required");
-	}
-	const outputDir = trimSlashes(input.outputDir);
-	if (!Predicate.isObject(input.schemas) || Object.keys(input.schemas).length === 0) {
+	const config = decodeOrThrow(ConfigInput, input, "");
+	const outputDir = trimSlashes(config.outputDir);
+	if (Object.keys(config.schemas).length === 0) {
 		return fail("at least one schema is required");
 	}
-	if (input.onDrift !== undefined && !ON_DRIFT.includes(input.onDrift)) {
-		return fail(`invalid onDrift "${String(input.onDrift)}"`);
-	}
-	if (input.catalogPath !== undefined && (typeof input.catalogPath !== "string" || input.catalogPath.length === 0)) {
-		return fail("catalogPath must be a non-empty string when given");
-	}
 	// Validated once here, even when every entry overrides it.
-	const defaults = { baseUrl: input.baseUrl, drift: resolveConfigDrift(input.drift) };
-	const schemas = Object.entries(input.schemas).map(([name, entry]) => resolveEntry(name, entry, defaults, outputDir));
-	const catalogPath = input.catalogPath ?? `${outputDir}/catalog.json`;
+	const defaults = { baseUrl: config.baseUrl, drift: config.drift ?? DriftPolicy.defaults.policy };
+	const schemas = Object.entries(config.schemas).map(([name, entry]) => resolveEntry(name, entry, defaults, outputDir));
+	const catalogPath = config.catalogPath ?? `${outputDir}/catalog.json`;
 	assertUniquePaths([...schemas.flatMap((s) => [s.target.path, ...s.frozen.map((f) => f.path)]), catalogPath]);
 	return {
 		[ConfigBrand]: true,
 		outputDir,
-		onDrift: input.onDrift ?? DriftPolicy.defaults.onDrift,
+		onDrift: config.onDrift ?? DriftPolicy.defaults.onDrift,
 		catalogPath,
 		schemas,
 	};
