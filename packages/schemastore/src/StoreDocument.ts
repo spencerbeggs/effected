@@ -90,7 +90,9 @@ export interface StoreDocumentOptions {
 	 * emitted closed (`additionalProperties: false`) because a published
 	 * document is a contract — where core's own default has been `"ignore"`
 	 * (open) since rc.113. Pass `{ onExcessProperty: "ignore" }` to reopen
-	 * one document's objects.
+	 * one document's objects. Omitting `jsonSchema` altogether reproduces
+	 * byte-for-byte what the CLI writes for a target that declares none — a
+	 * consumer test may call `fromSchemaResult(schema, { $id })` and compare.
 	 *
 	 * The declared non-standard keyword families ({@link KeywordFamilies})
 	 * are **always admitted**, regardless of what a supplied
