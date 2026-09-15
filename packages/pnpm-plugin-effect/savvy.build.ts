@@ -289,14 +289,14 @@ await build({
 							source: "workspace",
 						},
 						"@effected/schemastore": {
-							range: "^0.11.0",
-							peer: "^0.11.0",
+							range: "^0.12.0",
+							peer: "^0.12.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
 						"@effected/schemastore-cli": {
-							range: "^0.11.0",
-							peer: "^0.11.0",
+							range: "^0.12.0",
+							peer: "^0.12.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
