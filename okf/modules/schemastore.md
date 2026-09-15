@@ -18,6 +18,10 @@ sources:
     resource: ../../packages/schemastore/CLAUDE.modules.md
   - id: limits
     resource: ../../packages/schemastore/src/internal/limits.ts
+  - id: hosted-schema
+    resource: ../../packages/schemastore/src/HostedSchema.ts
+  - id: store-document
+    resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
   at: 2026-09-14T16:39:01Z
@@ -105,14 +109,18 @@ entrypoint.[^claude-md][^claude-modules] The load-bearing division:
 - **`StoreDocument`** — the assembly. Owns the `#/definitions` →
   `#/$defs` `$ref` rewrite the Draft-07 lowering makes necessary, the
   annotation-key admission gate (`UndeclaredAnnotationKeyError`), the
-  `rootAnnotations` override merged onto the root after assembly, and
+  `rootAnnotations` override merged onto the root after assembly, the
+  closed-objects default (`onExcessProperty: "error"`; see
+  [closed by default](#generated-objects-are-closed-by-default)), and
   the publication shape itself. The package owns assembly, not a JSON
   Schema engine.
 - **`SchemaTarget`** — the target manifest vocabulary: schema, identity,
   destination path, optional name and version, and two optional
   generation options the pipeline forwards to `StoreDocument.fromSchema`
   so each target states its own generation contract: `jsonSchema`
-  (`Schema.ToJsonSchemaOptions`) and `rootAnnotations`.
+  (`Schema.ToJsonSchemaOptions` — `{ onExcessProperty: "ignore" }` is
+  how one target reopens a document the default closes) and
+  `rootAnnotations`.
 - **`SchemaVersioning`** — both catalog modes and the version grammar,
   plus `isPinned` and `next`; see [Versioning](#versioning-schemastores-file-convention-semvers-label-grammar).
 - **`CatalogEntry`** — the catalog entry shape plus the `fileMatch`
@@ -146,6 +154,12 @@ entrypoint.[^claude-md][^claude-modules] The load-bearing division:
   [the pipeline](#the-pipeline-orchestration-as-a-shipped-surface).
 - **`DriftPolicy`** — the pure drift classifier over a published
   target's `WriteChange`; see [the CLI contract](#the-cli-contract-defineconfig-drift-and-published).
+- **`HostedSchema`** — a `Schema.Class` over `{ name, baseUrl, versions?,
+  current?, layout? }`: where a document is hosted and which version is
+  current, the one value an application derives its `$schema` URL from
+  and hands to `defineConfig`; see
+  [hosted identity](#hosted-identity-one-value-for-schema-and-id). Also
+  the home of `SCHEMASTORE_ID_BASE` and `SCHEMASTORE_CATALOG_BASE`.
 - **`SchemastoreConfig`** — `defineConfig`, the keyed `schemastore.config.ts`
   contract; see [the CLI contract](#the-cli-contract-defineconfig-drift-and-published).
 
@@ -242,6 +256,22 @@ percent-encoded name resolves — rather than on a root that would carry
 the keys nowhere. Override values are shared by reference exactly like
 `.annotate()` payloads, and the `$ref` rewrite never walks them.
 
+## Generated objects are closed by default
+
+`StoreDocument.fromSchema` generates with `onExcessProperty: "error"`
+unless the caller's `jsonSchema` says otherwise,[^store-document] so every object in an
+emitted document carries `additionalProperties: false`. Core's own
+`Schema.toJsonSchemaDocument` default flipped to `"ignore"` (open) at
+rc.113, and the package deliberately does not follow it: a published
+document is a contract, and an open object lets an editor accept a
+typo'd key with no complaint, which is exactly the class of mistake a
+config schema exists to catch. `jsonSchema: { onExcessProperty: "ignore" }`
+on a target (or a `defineConfig` entry) reopens that one document; the
+option lives on the target rather than on the pipeline so the document
+stays self-describing (#688). The change was breaking for any consumer
+that relied on the open default — see
+[closed objects by default](../decisions/schemastore-closed-objects-by-default.md).
+
 ## Versioning: SchemaStore's file convention, SemVer's label grammar
 
 The file-name convention stays the store's: `<name>-<version>.json`,
@@ -329,14 +359,16 @@ The record key IS the schema's `name` — every derived `path`, `$id` and
 catalog URL is built from it, so it must satisfy the existing simple-name
 rule (non-empty, no separators, no whitespace). **Identity is derived, never
 cross-checked: `$id`, the file path and every catalog URL come from one
-`relativeFile(name, version, layout)`; there is no `$id` override by
+`HostedSchema` (`idFor`, `urlFor`, `fileNameFor` over one resolved
+hosting); there is no `$id` override by
 design (#715)** — `layout` covers the one known divergence, and an override
 would reopen exactly the disagreement #715 is about. `versions` lists every
 label the catalog advertises; exactly one of them, `current` (default: the
 highest under `SchemaVersioning.Order`), is generated from `schema`, and the
-rest become **frozen** `FrozenVersion` entries — files that already exist on
-disk, advertised by the catalog and verified on disk by the CLI, never
-regenerated. `outputDir` is top-level only, one destination per config;
+rest become **frozen** `FrozenVersion` entries (`version`, `path`, `$id`,
+`url` — `$id` and `url` differ only under `"schemastore"`) — files that
+already exist on disk, advertised by the catalog and verified on disk by
+the CLI (existence and the declared `$id`), never regenerated. `outputDir` is top-level only, one destination per config;
 `baseUrl` and `drift` are top-level defaults an entry may override; `onDrift`
 is run-wide and not overridable. `catalog` is opt-in on any host but
 **required** under `baseUrl: "schemastore"` — hosting there means being in
@@ -349,19 +381,66 @@ hosted documents carry `$id: https://json.schemastore.org/<file>` while
 (checked against `clangd.json` and `agripparc-1.4.json` on 2026-09-14). A
 custom `baseUrl` is one base for both `$id` and the catalog URL instead.
 
-`defineConfig` validates the whole input and throws a plain `Error`
-prefixed `defineConfig:` naming the offending schema — never a raw
-`TypeError` — on an empty `schemas` record or a missing/empty `outputDir`;
-a key that fails the simple-name rule; an empty `versions` array or a label
-that fails to parse or duplicates another under
-`SchemaVersioning.Order`; `current` given without `versions`, or naming one
-not among them; `layout` under `"schemastore"`; a missing `catalog` under
-`"schemastore"`, or one with an empty `fileMatch`; an invalid `drift` or
-top-level `onDrift`; and an output path (a target, a frozen file or the
-catalog path) declared twice, compared after lexical normalisation. The CLI
-wraps the throw into its typed load error (exit `2`). The result is branded
-with a private symbol so `isSchemastoreConfig` recognises a loaded module's
-default export without the loader inspecting its shape.
+### Hosted identity: one value for `$schema` and `$id`
+
+An application that writes `$schema` into its own output has to spell the
+URL the CLI will emit as `$id`, and two hand-derivations of one URL drift.
+`HostedSchema` is the one value both read.[^hosted-schema] It is a `Schema.Class` over the
+raw fields `defineConfig` accepts by hand — `{ name, baseUrl, versions?,
+current?, layout? }` — with three named constructors, each validating
+through a decode and throwing a plain `Error` naming the reason (the
+class's `make` buries the same message in `cause`, so the named
+constructors are the documented path):
+
+- `HostedSchema.github({ repo, branch = "main", path?, name, versions?,
+  current?, layout? })` derives
+  `https://raw.githubusercontent.com/<repo>/<branch>[/<path>]`;
+- `HostedSchema.schemastore({ name, versions?, current? })` sets
+  `baseUrl: "schemastore"` and forces the flat layout;
+- `HostedSchema.custom({ baseUrl: string | URL, name, versions?, current?,
+  layout? })` takes any `https://` directory, trailing slash trimmed.
+
+The getters are the resolved identity — `$id`, `url`, `fileName` for the
+current document, `idBase`, `catalogBase`, `resolvedLayout`,
+`resolvedVersions`, `resolvedCurrent` — and `idFor(v)`, `urlFor(v)`,
+`fileNameFor(v)` answer the same for any advertised label. `$id` and `url`
+differ only under `"schemastore"`. One private `resolve` walk backs both
+the class check and every getter, so what the check admits is exactly what
+the getters read.
+
+A `defineConfig` entry hands the value in as the optional `hosted` field.
+Such an entry must be keyed by `hosted.name` and must not spell `baseUrl`,
+`versions`, `current` or `layout` beside it — the hosted identity owns
+them — and the config-level `baseUrl` default is ignored for it. An entry
+without `hosted` is lowered onto a `HostedSchema` internally from its own
+fields and the config default, so `defineConfig` delegates every hosting
+and version rule to the class: the two spellings cannot diverge.
+
+### Validation: one decode per level, then the cross-field rules
+
+`defineConfig` decodes its input with one `Schema.Struct` per level (the
+config, then each entry) under `errors: "all"` — every issue on an entry
+is reported at once — and `onExcessProperty: "error"`, so a typo'd key is
+named and rejected rather than silently dropped. A decode failure throws a
+plain `Error` shaped `defineConfig: schema "<name>" Expected string at
+["baseUrl"]` (the decode issues, newlines collapsed onto one line); the
+literal unions for `drift`, `onDrift` and `layout` are derived from the
+exported types through an exhaustive-`Record` helper, so the accepted
+lists cannot drift from the types. The rules a decode cannot express stay
+hand-written after it: an empty `schemas` record; a key that fails the
+simple-name rule; a `hosted` entry keyed differently from `hosted.name`,
+or spelling a hosting field beside it; an entry with no `baseUrl` and no
+config default; a missing `catalog` under `"schemastore"`; and an output
+path (a target, a frozen file or the catalog path) declared twice,
+compared after lexical normalisation. The version and hosting rules — an
+empty `versions` array, an unparseable or duplicate label, `current`
+without `versions` or not among them, `layout` under `"schemastore"`, a
+`baseUrl` that is neither `"schemastore"` nor `https://` — are
+`HostedSchema`'s, surfaced under the same prefix. Every failure is a plain
+`Error`, never a raw `TypeError`; the CLI wraps the throw into its typed
+load error (exit `2`). The result is branded with a private symbol so
+`isSchemastoreConfig` recognises a loaded module's default export without
+the loader inspecting its shape.
 
 `SchemaTarget.make` survives unchanged as the library-level primitive for a
 caller driving `SchemaPipeline` directly; `defineConfig` lowers each entry
@@ -500,3 +579,9 @@ the statics-only justification recorded in
     surface listing.
 [^limits]: `packages/schemastore/src/internal/limits.ts:11` —
     `MAX_NESTING_DEPTH = 256`.
+[^hosted-schema]: `packages/schemastore/src/HostedSchema.ts` — the class,
+    its three named constructors, the private `resolve` walk and the
+    getters.
+[^store-document]: `packages/schemastore/src/StoreDocument.ts` — the
+    `onExcessProperty: "error"` spread ahead of `options.jsonSchema` in
+    `fromSchemaResult`.

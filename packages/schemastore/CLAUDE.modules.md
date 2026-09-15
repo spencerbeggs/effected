@@ -12,7 +12,11 @@ parent.
   (`$schema`/`$id`/`root`/`defs`); `draft07({$id, root, defs?})` fills `$schema`
   for hand-built values, and `$schema` stays a real field rather than a
   defaulted one because it declares the document's dialect.
-  `fromSchemaResult`/`fromSchema` run core's 2020-12 generation, the Draft-07
+  `fromSchemaResult`/`fromSchema` run core's 2020-12 generation (with
+  `onExcessProperty: "error"` spread ahead of the caller's `jsonSchema`, so
+  every object is emitted closed — `additionalProperties: false` — unless
+  a caller passes `"ignore"` to reopen one document; core's own default
+  has been open since rc.113), the Draft-07
   lowering, the `#/definitions` → `#/$defs` `$ref` rewrite (only `$ref` string
   values are rewritten; prose survives, and a declared-family value is passed
   through verbatim rather than descended into) — the declared families are
@@ -124,8 +128,9 @@ parent.
   change — only coherent when `version` participates in `path`. `jsonSchema?`
   (`Schema.ToJsonSchemaOptions`) is forwarded by `SchemaPipeline` to
   `StoreDocument.fromSchema`, so a target reproduces its document regardless
-  of core's `toJsonSchemaDocument` default (e.g. `onExcessProperty: "error"`
-  for closed objects post-rc.113; #688). `rootAnnotations?` is forwarded the
+  of core's `toJsonSchemaDocument` default (#688) — `fromSchema` closes
+  objects by default, so `{ onExcessProperty: "ignore" }` here is what
+  reopens one document. `rootAnnotations?` is forwarded the
   same way to `StoreDocumentOptions.rootAnnotations`.
 - `SchemaVersioning` — `SchemaVersion` (a branded string) with
   `parseResult`/`parse` and `InvalidSchemaVersionError`; `Order`/`latest` are
@@ -152,42 +157,68 @@ parent.
   `"strict"` holds `"annotations"` too. `DriftPolicy.defaults` is
   `{ policy: "semantic", onDrift: "error" }`; `DriftOptions`/`DriftTolerance`/
   `OnDrift` are the option types a config declares and a CLI flag overrides.
+- `HostedSchema` — a `Schema.Class` over `{name, baseUrl, versions?,
+  current?, layout?}`: where a document is hosted and which version is
+  current, the one value an application derives its `$schema` URL from and
+  hands to `defineConfig` as `hosted`. Three named constructors, each
+  validating through a decode and throwing a plain `Error` naming the
+  reason (`make` buries it in `cause`): `github({repo, branch = "main",
+  path?, name, versions?, current?, layout?})` derives
+  `https://raw.githubusercontent.com/<repo>/<branch>[/<path>]`;
+  `schemastore({name, versions?, current?})` sets `baseUrl: "schemastore"`
+  (flat forced); `custom({baseUrl: string | URL, name, versions?, current?,
+  layout?})` takes any `https://` directory, trailing slash trimmed.
+  Getters: `$id`, `url`, `fileName` (the current document), `idBase`,
+  `catalogBase`, `resolvedLayout`, `resolvedVersions`, `resolvedCurrent`;
+  methods `idFor(v)`, `urlFor(v)`, `fileNameFor(v)` for any label. One
+  private `resolve` walk backs the class check and every getter. Also
+  exports `SCHEMASTORE_ID_BASE` and `SCHEMASTORE_CATALOG_BASE`, plus the
+  input shapes `HostedSchemaVersionsInput`, `GitHubHostedSchemaInput`,
+  `CustomHostedSchemaInput`.
 - `SchemastoreConfig` — the `schemastore.config.ts` contract, pure and
   IO-free. `defineConfig({outputDir, baseUrl?, drift?, onDrift?,
   catalogPath?, schemas})` takes `schemas` **keyed by file base name** — the
-  key IS the `name` every derived path and URL is built from (`assertSimpleName`
-  rule: non-empty, no separators, no whitespace). Each entry
-  (`{schema, versions?, current?, published?, baseUrl?, layout?, drift?,
-  catalog?, jsonSchema?, rootAnnotations?}`) resolves through ONE
-  `relativeFile(name, version, layout)`-style derivation that decides `$id`,
-  the write `path` and every catalog URL — there are no `$id`/`path`/`name`/
-  `version` fields on an entry, all four are derived, and there is
-  deliberately **no `$id` override**. `baseUrl: "schemastore"` expands to
+  key IS the `name` every derived path and URL is built from
+  (`SchemaVersioning.isSimpleName`: non-empty, no separators, no
+  whitespace). Each entry (`{schema, hosted?, versions?, current?,
+  published?, baseUrl?, layout?, drift?, catalog?, jsonSchema?,
+  rootAnnotations?}`) resolves to ONE `HostedSchema` — the `hosted` value
+  when given (keyed by `hosted.name`, with `baseUrl`/`versions`/`current`/
+  `layout` not spelled beside it and the config default ignored), else one
+  built from the entry's own fields and the config default — whose
+  `idFor`/`urlFor`/`fileNameFor` decide `$id`, the write `path` and every
+  catalog URL. There are no `$id`/`path`/`name`/`version` fields on an
+  entry, all four are derived, and there is deliberately **no `$id`
+  override**. `baseUrl: "schemastore"` expands to
   `SCHEMASTORE_ID_BASE`/`SCHEMASTORE_CATALOG_BASE` and forces the `"flat"`
   layout (`layout` under it is an error); a custom `https://` `baseUrl` is
   one base for both `$id` and the catalog URL, defaulting to the
   `"versioned"` layout. `versions` lists every advertised label; `current`
   (default: highest under `SchemaVersioning.Order`) is the one generated,
-  the rest become `FrozenVersion` entries the CLI verifies but never
-  regenerates. `catalog` (`{description, fileMatch}`) is required under
-  `baseUrl: "schemastore"`, optional under a custom host. Validation refuses
-  an empty `schemas` record or `outputDir`, a key that fails the simple-name
-  rule, an empty/invalid `versions` entry, `current` not among `versions`,
-  an invalid `baseUrl`/`layout` combination, a missing/empty-`fileMatch`
-  `catalog` where required, an invalid `drift`/`onDrift`, and a duplicate
-  output path (target, frozen file or `catalogPath`), after lexical path
-  normalisation — every failure is a plain `Error` prefixed
-  `defineConfig:` naming the offending schema, never a raw `TypeError`, the
-  same shape the CLI wraps into its typed load error. Brands the result with
-  a private symbol so `isSchemastoreConfig(value)` recognises a loaded
-  module's default export. `CatalogInput`, `SchemaEntryInput`,
-  `SchemastoreConfigInput`, `FrozenVersion`, `ResolvedSchema` and
-  `SchemastoreConfig` are the input and resolved-output shapes;
-  the array-of-targets `catalog`/entry-pair types from the pre-keyed shape
-  no longer exist.
-  `SchemaTarget.make` survives unchanged as the library-level primitive for
-  a caller driving `SchemaPipeline` directly; `defineConfig` lowers each
-  entry onto it.
+  the rest become `FrozenVersion` entries (`version`, `path`, `$id`, `url`)
+  the CLI verifies but never regenerates. `catalog` (`{description,
+  fileMatch}`) is required under `baseUrl: "schemastore"`, optional under a
+  custom host. The input is decoded with one `Schema.Struct` per level
+  (`ConfigInput`, `EntryInput`; `errors: "all"`, `onExcessProperty:
+  "error"`), so every issue on an entry is reported at once and an unknown
+  key is named and rejected; the literal unions for `drift`/`onDrift`/
+  `layout` are derived from the exported types through an
+  exhaustive-`Record` helper. After the decode the cross-field rules run:
+  an empty `schemas` record, a key that fails the simple-name rule, a
+  `hosted` key/field mismatch, no `baseUrl` and no default, a missing
+  `catalog` where required, and a duplicate output path (target, frozen
+  file or `catalogPath`) after lexical path normalisation; the hosting and
+  version rules are `HostedSchema`'s. Every failure is a plain `Error`
+  prefixed `defineConfig:` naming the offending schema (a decode failure
+  reads `defineConfig: schema "<name>" Expected string at ["baseUrl"]`),
+  never a raw `TypeError`, the same shape the CLI wraps into its typed
+  load error. Brands the result with a private symbol so
+  `isSchemastoreConfig(value)` recognises a loaded module's default
+  export. `CatalogInput`, `SchemaEntryInput`, `SchemastoreConfigInput`,
+  `FrozenVersion`, `ResolvedSchema` and `SchemastoreConfig` are the input
+  and resolved-output shapes. `SchemaTarget.make` survives unchanged as the
+  library-level primitive for a caller driving `SchemaPipeline` directly;
+  `defineConfig` lowers each entry onto it.
 - `CatalogEntry` — the `Schema.Class` of a catalog.json entry (`versions` is
   `optionalKey`); `assemble` composes `SchemaVersioning.catalogUrls`;
   `lint`/`lintFileMatch` are the fileMatch hygiene checks (`CatalogLintFinding`:

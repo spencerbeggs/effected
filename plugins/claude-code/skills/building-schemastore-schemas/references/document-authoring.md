@@ -136,14 +136,16 @@ Consequences:
   already exists and classifies as contract, so the two would be two example
   channels with opposite version semantics.
 
-## Pin the generation options on the target
+## Objects are closed by default; pin the exception on the target
 
-`jsonSchema` on a `SchemaTarget` is forwarded to generation for that target.
-Pin `{ onExcessProperty: "error" }` for a closed document
-(`additionalProperties: false` on every object); the default emits open
-objects, and reopening a published document is a contract change. Keeping the
-option on the target makes the document self-describing: a core default
-moving cannot silently rewrite what consumers validate against. Your
+`StoreDocument.fromSchema` generates under `onExcessProperty: "error"`, so
+every object is emitted `additionalProperties: false` — a published document
+is a contract, and the package does not follow core's open default (which
+flipped at rc.113). `jsonSchema` on a `SchemaTarget` (or a `defineConfig`
+entry) is forwarded to generation for that target: pin
+`{ onExcessProperty: "ignore" }` on the one document that was published
+open, because closing it is a contract change the drift policy refuses.
+Keeping the option on the target makes the document self-describing. Your
 decoders can keep tolerating excess keys — the published document is the
 stricter of the two, and that is the contract consumers hold.
 

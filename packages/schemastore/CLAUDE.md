@@ -184,22 +184,63 @@ validation gate, not a construction surface.
   live ON the target and are forwarded to `fromSchema` by the pipeline — never
   add a pipeline-wide equivalent: a document that only reproduces under
   options held elsewhere is not self-describing (#688; the rc.113
-  `onExcessProperty` default flip is the motivating case).
-- **`defineConfig` fails with a clear `Error` on every malformed input, never
-  with a raw `TypeError`.** A missing/empty `outputDir`, an empty `schemas`
-  record, a schema key that is not a simple file base name, an invalid
-  `baseUrl`/`layout`/`versions`/`current`/`drift`/`onDrift`, a missing or
-  empty-`fileMatch` `catalog` under `baseUrl: "schemastore"`, or a duplicate
-  output path — every one is a `defineConfig: …` `Error` naming the offending
-  schema, before anything is written, the same shape as the CLI's load-error
-  wrap (exit `2`). Keep every guard ahead of the dereference it protects.
+  `onExcessProperty` default flip is the motivating case, and the target
+  option is what REOPENS a document that was published open, never what
+  closes one).
+- **Generated objects are closed by default — `fromSchema` spreads
+  `onExcessProperty: "error"` ahead of the caller's `jsonSchema`.** Core's
+  own default flipped to `"ignore"` (open) at rc.113 and this package does
+  not follow it: a published document is a contract, and an open object
+  accepts a typo'd key without complaint. `jsonSchema: { onExcessProperty:
+  "ignore" }` on a target (or a `defineConfig` entry) reopens that ONE
+  document. Breaking for anyone who relied on open objects — the
+  reasoning is `okf/decisions/schemastore-closed-objects-by-default.md`;
+  never restore core's default silently.
+- **`defineConfig` decodes its input with one `Schema.Struct` per level —
+  `errors: "all"`, `onExcessProperty: "error"` — and fails with a clear
+  `Error` on every malformed input, never with a raw `TypeError`.** The
+  decode is the guard: it runs before any dereference, reports every issue
+  on an entry at once, and NAMES a typo'd key rather than dropping it
+  (`defineConfig: schema "<name>" Expected string at ["baseUrl"]`, decode
+  issues collapsed onto one line). The literal unions (`drift`, `onDrift`,
+  `layout`) are derived from the exported types through an
+  exhaustive-`Record` helper, so the accepted lists cannot drift from the
+  types — extend the type and the compiler demands the record entry. Only
+  the rules a decode cannot express stay hand-written, AFTER it: an empty
+  `schemas` record, a key that is not a simple file base name, a `hosted`
+  entry keyed differently from `hosted.name` or spelling a hosting field
+  beside it, an entry with no `baseUrl` and no config default, a missing
+  `catalog` under `baseUrl: "schemastore"`, and a duplicate output path after
+  lexical normalisation. Every failure is a `defineConfig: …` `Error` naming
+  the offending schema, the same shape as the CLI's load-error wrap
+  (exit `2`). Never add a hand guard for something the struct could decode.
+- **Hosting and version rules belong to `HostedSchema`, and `defineConfig`
+  delegates to it — never re-implement one in the config.** `HostedSchema`
+  is a `Schema.Class` over `{ name, baseUrl, versions?, current?, layout? }`
+  whose ONE private `resolve` walk backs both the class check and every
+  getter, so what the check admits is exactly what `$id`/`url`/`fileName`
+  (and `idFor`/`urlFor`/`fileNameFor`) read. Build one through the named
+  constructors — `github({ repo, branch = "main", path?, … })`,
+  `schemastore({ … })`, `custom({ baseUrl: string | URL, … })` — which
+  validate via a decode and throw a plain `Error` naming the reason; the
+  class's `make` buries the same message in `cause`, so it is not the
+  documented path. An entry hands the value in as `hosted`: it must be
+  keyed by `hosted.name`, must not spell `baseUrl`/`versions`/`current`/
+  `layout` beside it, and ignores the config-level `baseUrl` default. An
+  entry without `hosted` is lowered onto a `HostedSchema` from its own
+  fields and the default, so the two spellings cannot diverge. The point:
+  an application derives its `$schema` URL from the same value it hands
+  to `defineConfig`, so the URL it writes and the `$id` the CLI emits
+  cannot disagree.
 - **Identity is derived, never cross-checked: `$id`, the file path and every
-  catalog URL come from one `relativeFile(name, version, layout)`; there is
-  no `$id` override by design (#715).** Frozen labels (`versions` other than
-  `current`) are advertised by the catalog and verified on disk by the CLI,
-  never regenerated. `baseUrl: "schemastore"` means two hosts —
-  `json.schemastore.org` in `$id`, `www.schemastore.org` in the catalog —
-  verified 2026-09-14.
+  catalog URL come from one `HostedSchema` (`idFor`, `urlFor`,
+  `fileNameFor`); there is no `$id` override by design (#715).** Frozen
+  labels (`versions` other than `current`) are advertised by the catalog and
+  verified on disk by the CLI — existence AND the declared `$id`
+  (`FrozenVersion.$id`, which differs from `url` only under
+  `"schemastore"`) — never regenerated. `baseUrl: "schemastore"` means two
+  hosts — `json.schemastore.org` in `$id`, `www.schemastore.org` in the
+  catalog — verified 2026-09-14.
 - **`SchemaPipeline` is a plain function, deliberately not a `Context.Service`**
   — it needs `SchemaFile | SchemaValidator` in `R`, which compose for free.
   `run` is **two-phase and all-or-nothing across targets**: phase 1 generates,

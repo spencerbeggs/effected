@@ -1,7 +1,7 @@
 ---
 name: building-schemastore-schemas
 description: Use when publishing JSON Schema documents from Effect Schemas with @effected/schemastore and the schemastore CLI — writing or fixing a schemastore.config.ts, deciding whether a schema is published, reading a DRIFT or held line, choosing a version label, annotating a schema for VS Code / taplo / tombi / IntelliJ, wiring schema:build and schema:check into package scripts, turbo and CI, or retiring a hand-rolled generate-schema.ts.
-when_to_use: schemastore.config.ts, defineConfig, SchemaTarget.make, published flag, schemastore build, schemastore check, schema:build, schema:check, DRIFT contract, held (drift elsewhere), --on-drift, --force, --drift=allow, nextVersion, suggest 1.3, catalog.json, FrozenVersionMissingError, fileMatch, baseUrl, markdownDescription, x-taplo, x-tombi-, x-intellij-, x-ai-hint, UndeclaredAnnotationKeyError, onExcessProperty, generate-schema.ts, SchemaStore submission, JSON Schema from Effect Schema
+when_to_use: schemastore.config.ts, defineConfig, SchemaTarget.make, published flag, schemastore build, schemastore check, schema:build, schema:check, DRIFT contract, held (drift elsewhere), --on-drift, --force, --drift=allow, nextVersion, suggest 1.3, catalog.json, FrozenVersionMissingError, FrozenVersionIdMismatchError, orphaned catalog, HostedSchema, hosted, fileMatch, baseUrl, markdownDescription, x-taplo, x-tombi-, x-intellij-, x-ai-hint, UndeclaredAnnotationKeyError, onExcessProperty, generate-schema.ts, SchemaStore submission, JSON Schema from Effect Schema
 ---
 
 # Building SchemaStore schemas
@@ -74,10 +74,18 @@ install both at the same version, with `effect`, as devDependencies.
   Draft-07's taxonomy.** `default`, `examples`, `readOnly` and `writeOnly`
   are contract changes; `x-ai-*` and `markdownDescription` are annotations.
   See [references/document-authoring.md](references/document-authoring.md).
-- **Pin every target's generation options on the target** —
-  `jsonSchema: { onExcessProperty: "error" }` for a closed document — so the
-  document reproduces regardless of core's default. See
+- **Generated objects are closed by default (`additionalProperties:
+  false`); pin `jsonSchema: { onExcessProperty: "ignore" }` on the ONE
+  target that must stay open.** The package no longer follows core's open
+  default, so a config that used to pin `"error"` on every entry can drop
+  the pin. See
   [references/document-authoring.md](references/document-authoring.md).
+- **When the application writes `$schema` itself, build a `HostedSchema`
+  once and hand it to both.** `HostedSchema.github({ repo, path, name,
+  versions })` (or `.schemastore(...)` / `.custom(...)`) derives `$id`,
+  the catalog URL and the file name; `Schema.Literal(hosted.$id)` in the
+  app and `{ schema, hosted }` in the config, keyed by `hosted.name`, so the
+  two cannot disagree. See [references/config.md](references/config.md).
 - **Run `schema:check` in CI and read its exit code.** `0` is clean (or drift
   under `--on-drift=warn`), `1` is drift, a gate failure, or a stale document
   a build would write, `2` is a config problem, `64` is a usage error. See
@@ -143,7 +151,7 @@ install both at the same version, with `effect`, as devDependencies.
   choosing a label, or deciding whether to bump.
 - [references/document-authoring.md](references/document-authoring.md) —
   annotation placement, the declared keyword families and the `x-ai-`
-  rules, contract-vs-annotation classification, the `onExcessProperty` pin,
+  rules, contract-vs-annotation classification, the closed-by-default objects,
   content-compared writes. Load when: annotating a schema for an editor,
   reading an `UndeclaredAnnotationKeyError`, or asking whether an edit costs
   a version.

@@ -18,7 +18,8 @@ program. What varies between them is exactly the config it takes.
 | `resolve(REPO_ROOT, "schemas", …)` paths | `outputDir` plus paths resolved against the config file's directory (absolute paths still pass through) |
 | `SchemaVersioning.parseResult("5.0.0")` + `Result.getOrThrowWith` | `versions: ["5.0.0"]` (and `current`, if not the newest) — `defineConfig` parses each label and throws naming an invalid one |
 | `SchemaVersioning.fileName(name, version)` in `path` | derived — `$id`, `path` and every catalog URL come from the schema's key, `outputDir`, `baseUrl` and `layout`; there is no `path` or `$id` to spell by hand |
-| `const JSON_SCHEMA_OPTIONS = { onExcessProperty: "error" }` shared across targets | `jsonSchema: { onExcessProperty: "error" }` on each schema entry |
+| `const JSON_SCHEMA_OPTIONS = { onExcessProperty: "error" }` shared across targets | nothing — closed objects are the default; `jsonSchema: { onExcessProperty: "ignore" }` only on an entry that must stay open |
+| `const SCHEMA_URL = \`${BASE}/${VERSION}/${name}-${VERSION}.json\`` re-derived in `src/` for `Schema.Literal` | `HostedSchema.github({ repo, path, name, versions })` built once in `src/`; `Schema.Literal(hosted.$id)` there and `{ schema, hosted }` in the config |
 | `--check` / `--dry-run` → `SchemaPipeline.check` | `schemastore check` |
 | `--force` / `--allow-contract-change` → `contractChanges: "allow"` | `--force` (sugar for `--drift=allow`) |
 | `const CATALOGUED = false` selecting `"allow"` vs `"block-versioned"` | `published: false` on the schema entry; flip to `true` when the entry is accepted |
