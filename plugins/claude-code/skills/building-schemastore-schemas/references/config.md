@@ -75,7 +75,7 @@ export const Output = Schema.Struct({ $schema: Schema.Literal(OutputSchema.$id) 
 schemas: { [OutputSchema.name]: { schema: Output, hosted: OutputSchema } }
 ```
 
-`HostedSchema.github({ repo, branch = "main", path?, ... })`,
+`HostedSchema.github({ repo, branch = "main", path?, appendVersion?, ... })`,
 `HostedSchema.schemastore({ name, ... })` and
 `HostedSchema.custom({ baseUrl: string | URL, ... })` each validate the
 identity and throw a plain `Error` naming the reason; `$id`, `url` and
@@ -99,6 +99,7 @@ name: non-empty, no separators, no whitespace.
 | `published` | no, default `false` | whether a consumer already depends on this document at this label |
 | `baseUrl` | with a top-level default | `"schemastore"` (expands `$id` to `json.schemastore.org`, the catalog URL to `www.schemastore.org`, forces the `"flat"` layout) or an `https://` URL used as one base for both |
 | `layout` | no | `"flat"` or `"versioned"`; defaults to `"versioned"` for a custom `baseUrl`, rejected under `baseUrl: "schemastore"` |
+| `appendVersion` | no, default `true` | whether a versioned file carries the `-<version>` suffix; `false` gives `<version>/<name>.json` and requires the `"versioned"` layout. Owned by `hosted` when given |
 | `drift` | no | overrides the config's top-level `drift` for this schema |
 | `catalog` | required under `baseUrl: "schemastore"` | `{ description, fileMatch }` — the catalog entry to assemble for this schema |
 | `jsonSchema` | no | core's `ToJsonSchemaOptions`, forwarded to generation for this target only; objects are closed by default, `{ onExcessProperty: "ignore" }` reopens this one document |

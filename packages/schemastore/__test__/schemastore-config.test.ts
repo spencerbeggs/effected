@@ -165,6 +165,40 @@ describe("defineConfig with a HostedSchema", () => {
 		assert.strictEqual(schema.target.$id, hosted.$id);
 	});
 
+	it("appendVersion: false flows from the identity into the target, the frozen files and the catalog", () => {
+		const bare = HostedSchema.github({
+			repo: "o/r",
+			path: "schemas",
+			name: "output",
+			versions: ["5.2", "6.0"],
+			appendVersion: false,
+		});
+		const schema = only(
+			defineConfig({ outputDir: "schemas", schemas: { output: { schema: Config, hosted: bare, catalog } } }),
+		);
+		assert.strictEqual(schema.target.path, "schemas/6.0/output.json");
+		assert.strictEqual(schema.target.$id, `${CUSTOM}/6.0/output.json`);
+		assert.strictEqual(schema.frozen[0]?.path, "schemas/5.2/output.json");
+		assert.strictEqual(schema.frozen[0]?.$id, `${CUSTOM}/5.2/output.json`);
+		assert.deepStrictEqual(schema.catalog?.versions, {
+			"5.2": `${CUSTOM}/5.2/output.json`,
+			"6.0": `${CUSTOM}/6.0/output.json`,
+		});
+	});
+
+	it("appendVersion is a hand-spelled entry field too, and is rejected beside hosted", () => {
+		const schema = only(one({ baseUrl: CUSTOM, versions: ["1.0"], appendVersion: false }));
+		assert.strictEqual(schema.target.path, "schemas/1.0/okfit.json");
+		assert.throws(
+			() => one({ appendVersion: false, layout: "flat", versions: ["1.0"], baseUrl: CUSTOM }),
+			/"okfit".*appendVersion.*flat/,
+		);
+		assert.throws(
+			() => defineConfig({ outputDir: "s", schemas: { okfit: { schema: Config, hosted, appendVersion: false } } }),
+			/schema "okfit".*"appendVersion".*hosted/,
+		);
+	});
+
 	it("rejects a key that differs from hosted.name", () => {
 		assert.throws(
 			() => defineConfig({ outputDir: "s", schemas: { other: { schema: Config, hosted } } }),

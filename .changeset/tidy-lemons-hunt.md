@@ -24,7 +24,9 @@ OutputSchema.url; // its catalog URL
 
 Three constructors cover every hosting shape: `HostedSchema.github({ repo, branch?, path?, name, versions?, current?, layout? })`, `HostedSchema.schemastore({ name, versions?, current? })` for documents published to SchemaStore itself, and `HostedSchema.custom({ baseUrl, name, versions?, current?, layout? })` for any other `https://` directory. Each validates the identity and throws a descriptive `Error` when it does not resolve — an unversioned `current`, a duplicate version label, or a `name` that is not a simple file base name.
 
-`defineConfig`'s schema entries accept an optional `hosted` field carrying one of these values; when set, it owns `baseUrl`, `versions`, `current` and `layout` for that entry, and spelling those keys beside `hosted` is rejected.
+`defineConfig`'s schema entries accept an optional `hosted` field carrying one of these values; when set, it owns `baseUrl`, `versions`, `current`, `layout` and `appendVersion` for that entry, and spelling those keys beside `hosted` is rejected.
+
+`appendVersion` (default `true`, on every constructor and as a hand-spelled entry field) decides whether a versioned file carries SchemaStore's `-<version>` suffix. With `false` the version directory names the file alone — `schemas/6.0/output.json` with `$id` to match — which reads better when the repository already names the tool; it requires the `"versioned"` layout, since under `"flat"` every version would share one file name. `SchemaVersioning.fileName` / `schemaUrl` / `catalogUrls` and `CatalogEntry.assemble` take the same option.
 
 `SCHEMASTORE_ID_BASE` and `SCHEMASTORE_CATALOG_BASE` now live in this module (still re-exported from the package root, so no import changes).
 

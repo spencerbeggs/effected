@@ -79,6 +79,13 @@ export interface SchemaEntryInput {
 	 * only the flat layout.
 	 */
 	readonly layout?: SchemaLayout;
+	/**
+	 * Whether a versioned file name carries the `-<version>` suffix
+	 * (`<version>/<name>-<version>.json`, the default) or the version
+	 * directory alone names it (`<version>/<name>.json`). `false` requires
+	 * the `"versioned"` layout. Owned by `hosted` when that is given.
+	 */
+	readonly appendVersion?: boolean;
 	/** Overrides {@link SchemastoreConfigInput.drift} for this schema. */
 	readonly drift?: DriftTolerance;
 	/**
@@ -219,6 +226,7 @@ const EntryInput = Schema.Struct({
 	published: Schema.optionalKey(Schema.Boolean),
 	baseUrl: Schema.optionalKey(Schema.String),
 	layout: Schema.optionalKey(LayoutInput),
+	appendVersion: Schema.optionalKey(Schema.Boolean),
 	drift: Schema.optionalKey(DriftToleranceInput),
 	catalog: Schema.optionalKey(CatalogBlockInput),
 	jsonSchema: Schema.optionalKey(OptionsInput),
@@ -266,7 +274,9 @@ const resolveIdentity = (name: string, entry: Entry, defaultBaseUrl: string | un
 		if (entry.hosted.name !== name) {
 			return fail(`schema "${name}" is keyed differently from its hosted identity "${entry.hosted.name}"`);
 		}
-		const spelled = (["baseUrl", "versions", "current", "layout"] as const).filter((key) => entry[key] !== undefined);
+		const spelled = (["baseUrl", "versions", "current", "layout", "appendVersion"] as const).filter(
+			(key) => entry[key] !== undefined,
+		);
 		if (spelled.length > 0) {
 			return fail(
 				`schema "${name}" declares ${spelled.map((key) => `"${key}"`).join(", ")} beside hosted; the hosted identity owns them`,
@@ -279,7 +289,14 @@ const resolveIdentity = (name: string, entry: Entry, defaultBaseUrl: string | un
 		return fail(`schema "${name}" has no baseUrl and the config declares no default`);
 	}
 	const decoded = Schema.decodeUnknownResult(HostedSchema)(
-		withoutUndefined({ name, baseUrl, versions: entry.versions, current: entry.current, layout: entry.layout }),
+		withoutUndefined({
+			name,
+			baseUrl,
+			versions: entry.versions,
+			current: entry.current,
+			layout: entry.layout,
+			appendVersion: entry.appendVersion,
+		}),
 	);
 	return Result.getOrThrowWith(decoded, (error) => new Error(`defineConfig: ${error.message.replace(/\n\s*/g, " ")}`));
 };
@@ -336,6 +353,7 @@ const resolveEntry = (
 					fileMatch: entry.catalog.fileMatch,
 					baseUrl: hosted.catalogBase,
 					layout: hosted.resolvedLayout,
+					appendVersion: hosted.resolvedAppendVersion,
 					...(current !== undefined ? { versions, current } : {}),
 				});
 	return {

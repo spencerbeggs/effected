@@ -155,8 +155,9 @@ const joinUrl = (baseUrl: string, file: string): string => {
 /**
  * Where a versioned document sits relative to its base: `flat` is
  * `<name>-<version>.json` (the only shape SchemaStore serves), `versioned`
- * nests it as `<version>/<name>-<version>.json`. An unversioned document is
- * `<name>.json` under either.
+ * nests it as `<version>/<name>-<version>.json` — or, with `appendVersion`
+ * off, `<version>/<name>.json`, the directory alone carrying the label. An
+ * unversioned document is `<name>.json` under either.
  *
  * @public
  */
@@ -325,17 +326,25 @@ export class SchemaVersioning {
 	 * Derives the schema file name for a catalog name: `name.json`
 	 * unversioned, `name-<version>.json` versioned under the `"flat"`
 	 * layout (the default and the only shape SchemaStore serves), or
-	 * `<version>/name-<version>.json` under `"versioned"`.
+	 * `<version>/name-<version>.json` under `"versioned"` — `<version>/name.json`
+	 * when `appendVersion` is `false`, which only the versioned layout can
+	 * carry (under `"flat"` two versions would share one file name, so that
+	 * combination throws).
 	 *
 	 * The name must be a simple file base name (no separators, no
 	 * whitespace); anything else is a wiring mistake and throws.
 	 */
-	static fileName(name: string, version?: SchemaVersion, layout: SchemaLayout = "flat"): string {
+	static fileName(name: string, version?: SchemaVersion, layout: SchemaLayout = "flat", appendVersion = true): string {
 		assertSimpleName(name);
+		if (!appendVersion && layout !== "versioned") {
+			throw new Error(
+				`appendVersion: false requires the "versioned" layout; under "${layout}" every version of "${name}" would share one file name`,
+			);
+		}
 		if (version === undefined) {
 			return `${name}.json`;
 		}
-		const file = `${name}-${version}.json`;
+		const file = appendVersion ? `${name}-${version}.json` : `${name}.json`;
 		return layout === "versioned" ? `${version}/${file}` : file;
 	}
 
@@ -343,8 +352,14 @@ export class SchemaVersioning {
 	 * The canonical URL a schema file is hosted at: `baseUrl` joined with
 	 * {@link SchemaVersioning.fileName}.
 	 */
-	static schemaUrl(baseUrl: string, name: string, version?: SchemaVersion, layout: SchemaLayout = "flat"): string {
-		return joinUrl(baseUrl, SchemaVersioning.fileName(name, version, layout));
+	static schemaUrl(
+		baseUrl: string,
+		name: string,
+		version?: SchemaVersion,
+		layout: SchemaLayout = "flat",
+		appendVersion = true,
+	): string {
+		return joinUrl(baseUrl, SchemaVersioning.fileName(name, version, layout, appendVersion));
 	}
 
 	/**
@@ -363,9 +378,10 @@ export class SchemaVersioning {
 	 * verbatim — so a differently-spelled equivalent (`"1.2"` matching a
 	 * `"1.2.0"` member) still points `url` at the same file the map does.
 	 *
-	 * `layout` (default `"flat"`) is forwarded to every URL derivation, so
-	 * `"versioned"` nests every map value and `url` under its own version
-	 * directory.
+	 * `layout` (default `"flat"`) and `appendVersion` (default `true`) are
+	 * forwarded to every URL derivation, so `"versioned"` nests every map
+	 * value and `url` under its own version directory, with or without the
+	 * `-<version>` file suffix.
 	 *
 	 * Labels are inserted in ascending {@link SchemaVersioning.Order}; see
 	 * {@link CatalogUrls.versions} for why a bare-major key's serialized
@@ -376,12 +392,14 @@ export class SchemaVersioning {
 		readonly name: string;
 		readonly versions?: ReadonlyArray<SchemaVersion>;
 		readonly layout?: SchemaLayout;
+		readonly appendVersion?: boolean;
 		readonly current?: SchemaVersion;
 	}): CatalogUrls {
 		const { baseUrl, name, versions } = options;
 		const layout = options.layout ?? "flat";
+		const appendVersion = options.appendVersion ?? true;
 		if (versions === undefined) {
-			return { url: SchemaVersioning.schemaUrl(baseUrl, name, undefined, layout) };
+			return { url: SchemaVersioning.schemaUrl(baseUrl, name, undefined, layout, appendVersion) };
 		}
 		if (versions.length === 0) {
 			throw new Error(
@@ -391,7 +409,7 @@ export class SchemaVersioning {
 		const ascending = [...versions].sort(SchemaVersioning.Order);
 		const map: Record<string, string> = {};
 		for (const version of ascending) {
-			map[version] = SchemaVersioning.schemaUrl(baseUrl, name, version, layout);
+			map[version] = SchemaVersioning.schemaUrl(baseUrl, name, version, layout, appendVersion);
 		}
 		const newest = ascending[ascending.length - 1] as SchemaVersion;
 		const requested = options.current ?? newest;
@@ -399,6 +417,6 @@ export class SchemaVersioning {
 		if (current === undefined) {
 			throw new Error(`catalogUrls: current "${requested}" is not one of the versions of "${name}"`);
 		}
-		return { url: SchemaVersioning.schemaUrl(baseUrl, name, current, layout), versions: map };
+		return { url: SchemaVersioning.schemaUrl(baseUrl, name, current, layout, appendVersion), versions: map };
 	}
 }

@@ -50,6 +50,7 @@ interface Hosting {
 	readonly idBase: string;
 	readonly catalogBase: string;
 	readonly layout: SchemaLayout;
+	readonly appendVersion: boolean;
 }
 
 // Every label, deduplicated under Order (`1.2` / `1.2.0` are one label), plus
@@ -70,6 +71,7 @@ interface Fields {
 	readonly versions?: ReadonlyArray<string>;
 	readonly current?: string;
 	readonly layout?: SchemaLayout;
+	readonly appendVersion?: boolean;
 }
 
 // One walk over the raw fields answering either the resolved identity or the
@@ -82,6 +84,7 @@ const resolve = (fields: Fields): Result.Result<Resolved, string> => {
 	if (!SchemaVersioning.isSimpleName(fields.name)) {
 		return Result.fail(`must be keyed by a simple file base name (no separators, no whitespace)`);
 	}
+	const appendVersion = fields.appendVersion ?? true;
 	let hosting: Hosting;
 	if (fields.baseUrl === "schemastore") {
 		if (fields.layout !== undefined) {
@@ -89,13 +92,23 @@ const resolve = (fields: Fields): Result.Result<Resolved, string> => {
 				`declares layout "${fields.layout}" under baseUrl "schemastore", which serves only the flat layout`,
 			);
 		}
-		hosting = { idBase: SCHEMASTORE_ID_BASE, catalogBase: SCHEMASTORE_CATALOG_BASE, layout: "flat" };
+		hosting = { idBase: SCHEMASTORE_ID_BASE, catalogBase: SCHEMASTORE_CATALOG_BASE, layout: "flat", appendVersion };
 	} else {
 		const problem = describeDirectoryUrl(fields.baseUrl);
 		if (problem !== undefined) {
 			return Result.fail(`has baseUrl "${fields.baseUrl}"; ${problem}`);
 		}
-		hosting = { idBase: fields.baseUrl, catalogBase: fields.baseUrl, layout: fields.layout ?? "versioned" };
+		hosting = {
+			idBase: fields.baseUrl,
+			catalogBase: fields.baseUrl,
+			layout: fields.layout ?? "versioned",
+			appendVersion,
+		};
+	}
+	if (!appendVersion && hosting.layout !== "versioned") {
+		return Result.fail(
+			`declares appendVersion: false under the "${hosting.layout}" layout, where every version would share one file name; only the "versioned" layout can drop the suffix`,
+		);
 	}
 	if (fields.versions === undefined) {
 		if (fields.current !== undefined) {
@@ -142,6 +155,7 @@ const HostedSchemaFields = Schema.Struct({
 	versions: Schema.optionalKey(Schema.Array(Schema.String)),
 	current: Schema.optionalKey(Schema.String),
 	layout: Schema.optionalKey(Schema.Literals(["flat", "versioned"])),
+	appendVersion: Schema.optionalKey(Schema.Boolean),
 }).check(
 	Schema.makeFilter((fields) => {
 		const resolved = resolve(fields);
@@ -163,6 +177,14 @@ export interface HostedSchemaVersionsInput {
 	readonly versions?: ReadonlyArray<string>;
 	/** Which of `versions` is current. Defaults to the newest under {@link SchemaVersioning.Order}. */
 	readonly current?: string;
+	/**
+	 * Whether a versioned file name carries the `-<version>` suffix
+	 * (`<version>/<name>-<version>.json`, SchemaStore's own convention, the
+	 * default) or the version directory alone names it
+	 * (`<version>/<name>.json`). `false` requires the `"versioned"` layout
+	 * and is rejected under `"flat"`, including SchemaStore hosting.
+	 */
+	readonly appendVersion?: boolean;
 }
 
 /** Input to {@link HostedSchema.github}. @public */
@@ -198,9 +220,11 @@ export interface CustomHostedSchemaInput extends HostedSchemaVersionsInput {
  * throws a plain `Error` naming the reason. The derivation is
  * {@link SchemaVersioning.schemaUrl}'s: `<base>/<name>.json` unversioned,
  * `<base>/<name>-<version>.json` under the `"flat"` layout and
- * `<base>/<version>/<name>-<version>.json` under `"versioned"`. The raw
- * fields are what `defineConfig` accepts by hand (`baseUrl`, `versions`,
- * `current`, `layout`); the getters are the resolved identity.
+ * `<base>/<version>/<name>-<version>.json` under `"versioned"` (or
+ * `<base>/<version>/<name>.json` with `appendVersion: false`, when the
+ * version directory alone should name the file). The raw fields are what
+ * `defineConfig` accepts by hand (`baseUrl`, `versions`, `current`,
+ * `layout`, `appendVersion`); the getters are the resolved identity.
  *
  * @example
  * ```ts
@@ -265,6 +289,11 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 		return this.resolved.hosting.layout;
 	}
 
+	/** Whether versioned file names carry the `-<version>` suffix: `appendVersion` defaulting to `true`. */
+	get resolvedAppendVersion(): boolean {
+		return this.resolved.hosting.appendVersion;
+	}
+
 	/** Every advertised version, parsed; empty for an unversioned schema. */
 	get resolvedVersions(): ReadonlyArray<SchemaVersion> {
 		return this.resolved.versions.versions;
@@ -292,17 +321,34 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 
 	/** The `$id` of the document at `version` (or the unversioned document). */
 	idFor(version?: string): string {
-		return SchemaVersioning.schemaUrl(this.idBase, this.name, this.parseLabel(version), this.resolvedLayout);
+		return SchemaVersioning.schemaUrl(
+			this.idBase,
+			this.name,
+			this.parseLabel(version),
+			this.resolvedLayout,
+			this.resolvedAppendVersion,
+		);
 	}
 
 	/** The catalog URL of the document at `version` (or the unversioned document). */
 	urlFor(version?: string): string {
-		return SchemaVersioning.schemaUrl(this.catalogBase, this.name, this.parseLabel(version), this.resolvedLayout);
+		return SchemaVersioning.schemaUrl(
+			this.catalogBase,
+			this.name,
+			this.parseLabel(version),
+			this.resolvedLayout,
+			this.resolvedAppendVersion,
+		);
 	}
 
 	/** The file name of the document at `version` (or the unversioned document), relative to the output directory. */
 	fileNameFor(version?: string): string {
-		return SchemaVersioning.fileName(this.name, this.parseLabel(version), this.resolvedLayout);
+		return SchemaVersioning.fileName(
+			this.name,
+			this.parseLabel(version),
+			this.resolvedLayout,
+			this.resolvedAppendVersion,
+		);
 	}
 
 	private parseLabel(version: string | undefined): SchemaVersion | undefined {

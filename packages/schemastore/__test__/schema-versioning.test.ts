@@ -15,6 +15,31 @@ const version = (label: string): SchemaVersion => Result.getOrThrow(SchemaVersio
 const changesOf = <K extends WriteChange>(members: Record<K, null>): ReadonlyArray<K> =>
 	Object.keys(members) as Array<K>;
 
+describe("SchemaVersioning appendVersion", () => {
+	it("fileName and schemaUrl drop the suffix only under the versioned layout", () => {
+		assert.strictEqual(SchemaVersioning.fileName("cfg", version("1.2"), "versioned", false), "1.2/cfg.json");
+		assert.strictEqual(SchemaVersioning.fileName("cfg", version("1.2"), "versioned", true), "1.2/cfg-1.2.json");
+		assert.strictEqual(SchemaVersioning.fileName("cfg", undefined, "versioned", false), "cfg.json");
+		assert.strictEqual(
+			SchemaVersioning.schemaUrl("https://x/s", "cfg", version("1.2"), "versioned", false),
+			"https://x/s/1.2/cfg.json",
+		);
+		assert.throws(() => SchemaVersioning.fileName("cfg", version("1.2"), "flat", false), /appendVersion.*flat/);
+	});
+
+	it("catalogUrls forwards appendVersion to every URL", () => {
+		const urls = SchemaVersioning.catalogUrls({
+			baseUrl: "https://x/s",
+			name: "cfg",
+			versions: [version("1"), version("2")],
+			layout: "versioned",
+			appendVersion: false,
+		});
+		assert.strictEqual(urls.url, "https://x/s/2/cfg.json");
+		assert.deepStrictEqual(urls.versions, { "1": "https://x/s/1/cfg.json", "2": "https://x/s/2/cfg.json" });
+	});
+});
+
 describe("SchemaVersioning", () => {
 	describe("parse", () => {
 		it("accepts full three-component SemVer labels with optional prerelease", () => {

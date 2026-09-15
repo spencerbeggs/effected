@@ -41,6 +41,52 @@ describe("HostedSchema", () => {
 		});
 	});
 
+	describe("appendVersion", () => {
+		it("appendVersion: false drops the -<version> suffix under the versioned layout, so the directory carries the version alone", () => {
+			const hosted = HostedSchema.github({
+				repo: "savvy-web/silk-release-action",
+				path: "schemas",
+				name: "output",
+				versions: ["5.2", "6.0"],
+				appendVersion: false,
+			});
+			assert.isFalse(hosted.appendVersion);
+			assert.strictEqual(hosted.$id, `${RAW}/6.0/output.json`);
+			assert.strictEqual(hosted.fileName, "6.0/output.json");
+			assert.strictEqual(hosted.idFor("5.2"), `${RAW}/5.2/output.json`);
+			assert.strictEqual(hosted.fileNameFor("5.2"), "5.2/output.json");
+		});
+
+		it("defaults to true, mimicking the flat suffix convention inside the version directory", () => {
+			const hosted = HostedSchema.custom({ baseUrl: "https://example.com/s", name: "cfg", versions: ["1"] });
+			assert.isUndefined(hosted.appendVersion);
+			assert.strictEqual(hosted.fileName, "1/cfg-1.json");
+		});
+
+		it("is rejected under the flat layout, where two versions would share one file name", () => {
+			assert.throws(
+				() =>
+					HostedSchema.custom({
+						baseUrl: "https://example.com/s",
+						name: "cfg",
+						versions: ["1"],
+						layout: "flat",
+						appendVersion: false,
+					}),
+				/appendVersion.*flat/,
+			);
+			assert.throws(
+				() => HostedSchema.schemastore({ name: "cfg", versions: ["1"], appendVersion: false } as never),
+				/appendVersion.*flat/,
+			);
+		});
+
+		it("leaves an unversioned schema untouched", () => {
+			const hosted = HostedSchema.custom({ baseUrl: "https://example.com/s", name: "cfg", appendVersion: false });
+			assert.strictEqual(hosted.fileName, "cfg.json");
+		});
+	});
+
 	describe("schemastore", () => {
 		it("splits $id and url across the two SchemaStore hosts and forces the flat layout", () => {
 			const hosted = HostedSchema.schemastore({ name: "okfit", versions: ["1.0"] });
