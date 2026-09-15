@@ -73,19 +73,19 @@ describe("StoreDocument", () => {
 			}),
 		);
 
-		it.effect("passes jsonSchema options through to core generation", () =>
+		it.effect("generates closed objects by default and lets jsonSchema reopen them", () =>
 			Effect.gen(function* () {
 				// additionalProperties survives the Draft-07 lowering, so it is
-				// the observable passthrough: core's default (`onExcessProperty`
-				// "ignore") leaves the object open, and "error" closes it.
-				// (Non-standard annotation keys do NOT survive the lowering —
-				// the recorded phase-2 hazard.)
+				// the observable passthrough. Core's own default has been
+				// `onExcessProperty: "ignore"` (an open object) since rc.113; a
+				// published document is a contract, so this package defaults to
+				// "error" and a caller opts back out per target.
 				const Flat = Schema.Struct({ name: Schema.String });
-				const closed = yield* StoreDocument.fromSchema(Flat, {
+				const closed = yield* StoreDocument.fromSchema(Flat, { $id });
+				const open = yield* StoreDocument.fromSchema(Flat, {
 					$id,
-					jsonSchema: { onExcessProperty: "error" },
+					jsonSchema: { onExcessProperty: "ignore" },
 				});
-				const open = yield* StoreDocument.fromSchema(Flat, { $id });
 				assert.strictEqual(closed.root.additionalProperties, false);
 				assert.strictEqual(open.root.additionalProperties, true);
 			}),

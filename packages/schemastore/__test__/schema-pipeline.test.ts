@@ -247,35 +247,31 @@ describe("SchemaPipeline", () => {
 		);
 
 		// #688 — a target-level jsonSchema option threads through to
-		// StoreDocument.fromSchema, so a consumer can reproduce a closed-object
-		// document regardless of core's rc.113+ open-by-default.
-		it.effect(
-			'passes target.jsonSchema through so the written document is closed under onExcessProperty: "error"',
-			() =>
-				Effect.gen(function* () {
-					const closedTarget = SchemaTarget.make({
-						schema: Config,
-						$id: "https://example.com/closed.schema.json",
-						path: "schemas/closed.schema.json",
-						jsonSchema: { onExcessProperty: "error" },
-					});
-					const layersUnderTest = memLayers({});
-					const document = yield* Effect.provide(
-						Effect.gen(function* () {
-							yield* SchemaPipeline.run([closedTarget]);
-							const volume = yield* MemoryFileSystem.Volume;
-							const text = volume.text("schemas/closed.schema.json");
-							assert.isDefined(text);
-							return JSON.parse(text) as Record<string, unknown>;
-						}),
-						layersUnderTest,
-					);
-					assert.strictEqual(document.additionalProperties, false);
-				}),
+		// StoreDocument.fromSchema, so a consumer can reproduce a document
+		// generated under an option other than the package default.
+		it.effect('passes target.jsonSchema through so the written document is open under onExcessProperty: "ignore"', () =>
+			Effect.gen(function* () {
+				const openTarget = SchemaTarget.make({
+					schema: Config,
+					$id: "https://example.com/open.schema.json",
+					path: "schemas/open.schema.json",
+					jsonSchema: { onExcessProperty: "ignore" },
+				});
+				const layersUnderTest = memLayers({});
+				const document = yield* Effect.provide(
+					Effect.gen(function* () {
+						yield* SchemaPipeline.run([openTarget]);
+						const volume = yield* MemoryFileSystem.Volume;
+						const text = volume.text("schemas/open.schema.json");
+						assert.isDefined(text);
+						return JSON.parse(text) as Record<string, unknown>;
+					}),
+					layersUnderTest,
+				);
+				assert.strictEqual(document.additionalProperties, true);
+			}),
 		);
 
-		// #624 — a target-level rootAnnotations override threads through to
-		// StoreDocument.fromSchema the same way jsonSchema does.
 		it.effect("passes target.rootAnnotations through so the written document carries the override", () =>
 			Effect.gen(function* () {
 				const annotatedTarget = SchemaTarget.make({
@@ -299,7 +295,7 @@ describe("SchemaPipeline", () => {
 			}),
 		);
 
-		it.effect("without jsonSchema, the written document keeps core's open-object default", () =>
+		it.effect("without jsonSchema, the written document is closed — the package default, not core's", () =>
 			Effect.gen(function* () {
 				const layersUnderTest = memLayers({});
 				const document = yield* Effect.provide(
@@ -312,7 +308,7 @@ describe("SchemaPipeline", () => {
 					}),
 					layersUnderTest,
 				);
-				assert.strictEqual(document.additionalProperties, true);
+				assert.strictEqual(document.additionalProperties, false);
 			}),
 		);
 	});
@@ -655,40 +651,40 @@ describe("SchemaPipeline", () => {
 				}),
 			);
 
-			// #688 — the pinned document was generated CLOSED
-			// (onExcessProperty: "error"). Reproducing that generation contract
-			// is the target's job now: omitting jsonSchema drifts back to core's
-			// open default and reads as a contract change; supplying the same
-			// jsonSchema reproduces the document byte-for-contract and reads
-			// unchanged.
-			describe("reproducing a closed-object contract (#688)", () => {
-				const CLOSED_ID = "https://example.com/schemas/closed-1.0.0.json";
-				const CLOSED_PATH = "/schemas/1.0.0/closed-1.0.0.json";
-				const closedPredecessor = Result.getOrThrow(
+			// #688 — the pinned document was generated OPEN (onExcessProperty:
+			// "ignore", core's default), while this package now closes objects
+			// by default. Reproducing that generation contract is the target's
+			// job: omitting jsonSchema drifts to closed and reads as a contract
+			// change; supplying the same jsonSchema reproduces the document
+			// byte-for-contract and reads unchanged.
+			describe("reproducing an open-object contract (#688)", () => {
+				const OPEN_ID = "https://example.com/schemas/open-1.0.0.json";
+				const OPEN_PATH = "/schemas/1.0.0/open-1.0.0.json";
+				const openPredecessor = Result.getOrThrow(
 					Result.getOrThrow(
-						StoreDocument.fromSchemaResult(Config, { $id: CLOSED_ID, jsonSchema: { onExcessProperty: "error" } }),
+						StoreDocument.fromSchemaResult(Config, { $id: OPEN_ID, jsonSchema: { onExcessProperty: "ignore" } }),
 					).serializeResult(),
 				);
-				const closedPinnedTargetWithoutOption = SchemaTarget.make({
+				const openPinnedTargetWithoutOption = SchemaTarget.make({
 					schema: Config,
-					$id: CLOSED_ID,
-					name: "closed",
-					path: CLOSED_PATH,
+					$id: OPEN_ID,
+					name: "open",
+					path: OPEN_PATH,
 					version: version("1.0.0"),
 				});
-				const closedPinnedTargetWithOption = SchemaTarget.make({
+				const openPinnedTargetWithOption = SchemaTarget.make({
 					schema: Config,
-					$id: CLOSED_ID,
-					name: "closed",
-					path: CLOSED_PATH,
+					$id: OPEN_ID,
+					name: "open",
+					path: OPEN_PATH,
 					version: version("1.0.0"),
-					jsonSchema: { onExcessProperty: "error" },
+					jsonSchema: { onExcessProperty: "ignore" },
 				});
 
-				it.effect("without jsonSchema, drifts back open and reads as a contract change", () =>
+				it.effect("without jsonSchema, drifts to closed and reads as a contract change", () =>
 					Effect.gen(function* () {
-						const layers = memLayers({ [CLOSED_PATH]: closedPredecessor });
-						const result = yield* Effect.provide(SchemaPipeline.checkOne(closedPinnedTargetWithoutOption), layers);
+						const layers = memLayers({ [OPEN_PATH]: openPredecessor });
+						const result = yield* Effect.provide(SchemaPipeline.checkOne(openPinnedTargetWithoutOption), layers);
 						assert.strictEqual(result.change, "contract");
 						assert.isTrue(result.contractBlocked);
 					}),
@@ -696,8 +692,8 @@ describe("SchemaPipeline", () => {
 
 				it.effect("with the matching jsonSchema, reproduces the document as unchanged", () =>
 					Effect.gen(function* () {
-						const layers = memLayers({ [CLOSED_PATH]: closedPredecessor });
-						const result = yield* Effect.provide(SchemaPipeline.checkOne(closedPinnedTargetWithOption), layers);
+						const layers = memLayers({ [OPEN_PATH]: openPredecessor });
+						const result = yield* Effect.provide(SchemaPipeline.checkOne(openPinnedTargetWithOption), layers);
 						assert.strictEqual(result.change, "none");
 						assert.isFalse(result.contractBlocked);
 					}),

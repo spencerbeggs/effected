@@ -86,6 +86,12 @@ export interface StoreDocumentOptions {
 	 * (`onExcessProperty`, `generateDescriptions`,
 	 * `includeAnnotationKey`).
 	 *
+	 * `onExcessProperty` defaults to `"error"` here — every object is
+	 * emitted closed (`additionalProperties: false`) because a published
+	 * document is a contract — where core's own default has been `"ignore"`
+	 * (open) since rc.113. Pass `{ onExcessProperty: "ignore" }` to reopen
+	 * one document's objects.
+	 *
 	 * The declared non-standard keyword families ({@link KeywordFamilies})
 	 * are **always admitted**, regardless of what a supplied
 	 * `includeAnnotationKey` answers — annotate a schema node
@@ -373,7 +379,11 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 			// generated document — the build fails, so admitting them could only
 			// let core's own lowering throw first and bury the real cause.
 			const undeclared = new Set<string>();
+			// A published document is a contract, so objects are closed unless a
+			// caller reopens them: core's own default flipped to "ignore" (open)
+			// at rc.113, and this package does not follow it.
 			const document = Schema.toJsonSchemaDocument(source, {
+				onExcessProperty: "error",
 				...options.jsonSchema,
 				includeAnnotationKey: (key) => {
 					if (KeywordFamilies.isDeclared(key)) {

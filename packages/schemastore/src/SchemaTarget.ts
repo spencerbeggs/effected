@@ -65,8 +65,9 @@ export interface SchemaTarget {
 	 * document's generation contract self-describing, so
 	 * {@link SchemaPipeline} reproduces a document deterministically
 	 * regardless of core's own default — for example, an `onExcessProperty`
-	 * setting of `error` restores closed objects after rc.113 flipped that
-	 * default open. See {@link StoreDocumentOptions.jsonSchema} for the
+	 * setting of `"ignore"` reopens a document's objects, which
+	 * {@link StoreDocument.fromSchema} closes by default. See
+	 * {@link StoreDocumentOptions.jsonSchema} for that default and the
 	 * `includeAnnotationKey` gate this option is also subject to.
 	 */
 	readonly jsonSchema?: Schema.ToJsonSchemaOptions;
