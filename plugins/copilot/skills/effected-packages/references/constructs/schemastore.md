@@ -16,6 +16,7 @@
 | `ConfigBrand` | Variable | | the private symbol key isSchemastoreConfig checks and defineConfig sets, not itself importable |
 | `ContractChangePolicy` | TypeAlias | How `SchemaPipeline.run` treats a target whose document would change its validation contract. | |
 | `ContractChangeTarget` | Class | One published document whose validation contract would change. | one published schema target whose contract changed, pair its pinned version with the next bumped label |
+| `CustomHostedSchemaInput` | Interface | Input to `HostedSchema.custom`. | |
 | `DRAFT_07_META_SCHEMA` | Variable | The Draft-07 meta-schema URL SchemaStore documents declare as `$schema`. | draft-07 meta-schema url constant for $schema |
 | `DocumentDiff` | Class | Classifies the difference between two emitted schema documents by meaning: identical, documentation-only, or a change to the validation contract. | diff two schema documents, classify annotation-only vs contract change, decide new version |
 | `DocumentLint` | Class | Owned structural checks over an assembled `StoreDocument` — the always-available half of the validation story (a real-engine gate like ajv strict mode stays at the consumer's edge): | structural lint over an assembled schema document, unresolved $ref check, unknown keyword check |
@@ -24,7 +25,10 @@
 | `DriftPolicy` | Class | Classifies one target's change against a drift tolerance. | classify a published target's change as write or drift against its configured tolerance |
 | `DriftTolerance` | TypeAlias | How much change a PUBLISHED schema document may absorb before a build is refused. | |
 | `DriftVerdict` | TypeAlias | The verdict for one target: write it, or hold it as drift. | |
-| `FrozenVersion` | Interface | One version of a schema that is advertised (via `versions`) but not the one currently generated — a file the CLI verifies exists on disk before any write (existence only — content is never compared), never regenerates. | |
+| `FrozenVersion` | Interface | One version of a schema that is advertised (via `versions`) but not the one currently generated — a file the CLI verifies before any write (it exists, and its own `$id` is the derived one — the rest of its content is never compared), never regenerates. | |
+| `GitHubHostedSchemaInput` | Interface | Input to `HostedSchema.github`. | |
+| `HostedSchema` | Class | Where a JSON Schema document is hosted and which version of it is current — the one value an application derives its `$schema` URL from and hands to `defineConfig`, so the URL the code emits and the `$id` the CLI writes cannot disagree. | a schema's hosted identity, derive the $schema url an application writes and the $id defineConfig emits from one value, github schemastore or custom host constructors |
+| `HostedSchemaVersionsInput` | Interface | The identity every hosted document derives from: `versions` and `current` as `defineConfig` accepts them, minus the host, which each constructor supplies. | |
 | `InvalidSchemaVersionError` | Class | Indicates that a string is not a valid SchemaStore version label. | handle a version label that is not full major.minor.patch semver |
 | `JsonDepthExceededError` | Class | Indicates that the serialization input nests deeper than the package's hardening cap (256 levels), which also intercepts cyclic values before they can recurse forever. | handle json value nesting past the hardening cap during canonical serialize |
 | `KeywordFamilies` | Class | The declared non-standard keyword families as one predicate: the vscode-json-languageservice set by exact name, plus the `x-taplo`, `x-tombi-`, `x-intellij-` and `x-ai-` prefixes. | recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint |
@@ -50,7 +54,7 @@
 | `SchemaPipeline` | Class | The emit pipeline over a target manifest: generate, lint, validate, gate, write — the loop every consumer of this package was writing by hand. | generate lint validate gate and write schema targets, run the pipeline |
 | `SchemaPipelineOptions` | Interface | Options for `SchemaPipeline.run` and `SchemaPipeline.check`. | |
 | `SchemaTarget` | Class + Interface | Constructors for `SchemaTarget` values. | declare one schema publication target with its $id, path and optional version |
-| `SchemaValidator` | Class | Real-engine JSON Schema document validation, closed by default over ajv — the engine SchemaStore's own gate is defined in terms of. | validate a json schema document with a real engine, ajv strict mode gate |
+| `SchemaValidator` | Class | The JSON Schema document validation contract — the engine SchemaStore's own gate is defined in terms of, as a service the pipeline requires in `R` and never owns. | validate a json schema document with a real engine, ajv strict mode gate |
 | `SchemaValidatorError` | Class | Indicates that the validation engine behind the `SchemaValidator` contract failed as a *mechanism* — it could not run at all. | handle the validation engine failing as a mechanism rather than a rejection |
 | `SchemaValidatorOptions` | Interface | Options for `SchemaValidatorShape.validate`. | |
 | `SchemaValidatorShape` | Interface | The shape of the `SchemaValidator` service — what an implementation provides. | |
