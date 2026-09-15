@@ -23,7 +23,7 @@ export const configArgument = Argument.String("config").pipe(
  * @public
  */
 export const driftFlag = Flag.Literals("drift", ["strict", "semantic", "allow"]).pipe(
-	Flag.withDescription("Drift tolerance for published schemas; overrides the config's drift.policy"),
+	Flag.withDescription("Drift tolerance for published schemas; overrides every schema's drift"),
 	Flag.optional,
 );
 
@@ -33,7 +33,7 @@ export const driftFlag = Flag.Literals("drift", ["strict", "semantic", "allow"])
  * @public
  */
 export const onDriftFlag = Flag.Literals("on-drift", ["error", "warn"]).pipe(
-	Flag.withDescription("What drift does: refuse every write (error) or write and warn; overrides drift.onDrift"),
+	Flag.withDescription("What drift does: refuse every write (error) or write and warn; overrides the config's onDrift"),
 	Flag.optional,
 );
 

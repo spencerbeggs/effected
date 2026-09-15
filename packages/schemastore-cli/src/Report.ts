@@ -48,17 +48,24 @@ const schemaLines = (schema: SchemaReport, report: RunReport): ReadonlyArray<str
 const catalogLine = (entry: CatalogReport): string => {
 	switch (entry.outcome) {
 		case "written":
-			return `written catalog ${entry.path}`;
+			return `written catalog ${entry.path} (${entry.entries} entries)`;
 		case "unchanged":
-			return `unchanged catalog ${entry.path}`;
+			return `unchanged catalog ${entry.path} (${entry.entries} entries)`;
 		case "would-write":
-			return `would write catalog ${entry.path}`;
+			return `would write catalog ${entry.path} (${entry.entries} entries)`;
 		case "held":
-			return `held catalog ${entry.path}`;
+			return `held catalog ${entry.path} (${entry.entries} entries)`;
 		default:
 			return entry.outcome satisfies never;
 	}
 };
+
+// A flag-forced policy overrides every schema's own for this run; absent one,
+// drift is classified per schema under its own tolerance. `report.source` is
+// not the right read here — it says "flag" even when only `--on-drift` was
+// given — so this renders from `policy`'s presence, not `source`.
+const driftClause = (report: RunReport): string =>
+	`drift ${report.policy !== undefined ? `${report.policy} (flag)` : "per schema (config)"}, on-drift ${report.onDrift}`;
 
 const summaryLine = (report: RunReport): string => {
 	const written = report.schemas.filter((schema) => schema.outcome === "written").length;
@@ -67,7 +74,7 @@ const summaryLine = (report: RunReport): string => {
 	const gateFailed = report.schemas.filter((schema) => schema.outcome === "gate-failed").length;
 	return (
 		`${report.schemas.length} schema(s): ${written} written, ${unchanged} unchanged, ${drift} drift, ` +
-		`${gateFailed} gate failed — drift policy ${report.drift.policy}/${report.drift.onDrift} (${report.drift.source})`
+		`${gateFailed} gate failed — ${driftClause(report)}`
 	);
 };
 
@@ -100,8 +107,8 @@ export class Report {
 		for (const schema of report.schemas) {
 			lines.push(...schemaLines(schema, report));
 		}
-		for (const entry of report.catalog) {
-			lines.push(catalogLine(entry));
+		if (report.catalog !== undefined) {
+			lines.push(catalogLine(report.catalog));
 		}
 		lines.push(summaryLine(report));
 		return lines;
@@ -113,7 +120,7 @@ export class Report {
 	 * would be) written, so there is no drift to warn about.
 	 */
 	static warnings(report: RunReport): ReadonlyArray<string> {
-		if (report.drift.onDrift !== "warn" || report.gateFailed) {
+		if (report.onDrift !== "warn" || report.gateFailed) {
 			return [];
 		}
 		return report.schemas.filter((schema) => schema.verdict === "drift").map((schema) => warningLine(schema, report));
@@ -124,11 +131,15 @@ export class Report {
 		const doc = {
 			mode: report.mode,
 			configPath: report.configPath,
-			drift: { policy: report.drift.policy, onDrift: report.drift.onDrift, source: report.drift.source },
+			drift: {
+				onDrift: report.onDrift,
+				source: report.source,
+				...(report.policy !== undefined ? { policy: report.policy } : {}),
+			},
 			schemas: report.schemas.map((schema) => ({
 				$id: schema.$id,
 				path: schema.path,
-				...(schema.name !== undefined ? { name: schema.name } : {}),
+				name: schema.name,
 				...(schema.version !== undefined ? { version: schema.version } : {}),
 				published: schema.published,
 				change: schema.change,
@@ -143,7 +154,9 @@ export class Report {
 					message: finding.message,
 				})),
 			})),
-			catalog: report.catalog.map((entry) => ({ name: entry.name, path: entry.path, outcome: entry.outcome })),
+			...(report.catalog !== undefined
+				? { catalog: { path: report.catalog.path, entries: report.catalog.entries, outcome: report.catalog.outcome } }
+				: {}),
 			drifted: report.drifted,
 			gateFailed: report.gateFailed,
 			wrote: report.wrote,
@@ -160,20 +173,16 @@ export class Report {
 		);
 		for (const schema of report.schemas) {
 			lines.push(
-				tableRow([
-					schema.name ?? schema.$id,
-					schema.version ?? "",
-					schema.published ? "yes" : "no",
-					schema.change,
-					schema.outcome,
-				]),
+				tableRow([schema.name, schema.version ?? "", schema.published ? "yes" : "no", schema.change, schema.outcome]),
 			);
 		}
-		if (report.catalog.length > 0) {
-			lines.push("", tableRow(["catalog", "outcome"]), tableRow(["---", "---"]));
-			for (const entry of report.catalog) {
-				lines.push(tableRow([entry.name, entry.outcome]));
-			}
+		if (report.catalog !== undefined) {
+			lines.push(
+				"",
+				tableRow(["catalog", "entries", "outcome"]),
+				tableRow(["---", "---", "---"]),
+				tableRow([report.catalog.path, String(report.catalog.entries), report.catalog.outcome]),
+			);
 		}
 		lines.push("");
 		if (report.gateFailed) {
@@ -181,7 +190,7 @@ export class Report {
 			lines.push(`**Gate:** ${failed} schema(s) failed`);
 		} else if (report.drifted) {
 			const drifted = report.schemas.filter((schema) => schema.verdict === "drift").length;
-			lines.push(`**Drift:** ${drifted} schema(s) drifted under ${report.drift.policy}/${report.drift.onDrift}`);
+			lines.push(`**Drift:** ${drifted} schema(s) drifted — ${driftClause(report)}`);
 		} else {
 			lines.push("**Drift:** none");
 		}

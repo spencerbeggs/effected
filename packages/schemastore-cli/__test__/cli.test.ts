@@ -1,16 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import type { SchemastoreConfig } from "@effected/schemastore";
-import {
-	CatalogEntry,
-	SchemaTarget,
-	SchemaValidator,
-	SchemaVersioning,
-	StoreDocument,
-	ValidationFinding,
-	defineConfig,
-} from "@effected/schemastore";
+import type { OnDrift, SchemastoreConfig } from "@effected/schemastore";
+import { CatalogEntry, SchemaValidator, StoreDocument, ValidationFinding, defineConfig } from "@effected/schemastore";
 import { ConfigProvider, Effect, FileSystem, Layer, Path, Result, Runtime, Schema, Stdio, Terminal } from "effect";
 import { TestConsole } from "effect/testing";
 import type { Command } from "effect/unstable/cli";
@@ -20,6 +12,7 @@ import { ConfigLoadError, ConfigNotFoundError } from "../src/ConfigLoader.js";
 import { ConflictingFlagsError, DriftError, GateError, StaleError } from "../src/cli/execute.js";
 import type { ProgramDeps } from "../src/cli/program.js";
 import { loggerLayer, program } from "../src/cli/program.js";
+import { FrozenVersionMissingError } from "../src/Runner.js";
 
 // ── Environment ───────────────────────────────────────────────────────────
 //
@@ -61,32 +54,24 @@ const emitted = (schema: Schema.Constraint, $id: string): string =>
 
 const BASIC_ID = "https://example.com/schemas/basic-1.0.json";
 const BASIC_PATH = "/repo/schemas/basic-1.0.json";
-const CATALOG_PATH = "/repo/schemas/catalog-entry.json";
+const CATALOG_PATH = "/repo/schemas/catalog.json";
 const CONFIG_PATH = "/repo/schemastore.config.ts";
 
-const basicConfig = (options: { readonly drift?: Partial<SchemastoreConfig["drift"]> } = {}) =>
+const basicConfig = (options: { readonly onDrift?: OnDrift; readonly versions?: ReadonlyArray<string> } = {}) =>
 	defineConfig({
-		schemas: [
-			SchemaTarget.make({
+		outputDir: "/repo/schemas",
+		baseUrl: "https://example.com/schemas",
+		...(options.onDrift !== undefined ? { onDrift: options.onDrift } : {}),
+		schemas: {
+			basic: {
 				schema: Config,
-				$id: BASIC_ID,
-				name: "basic",
-				version: Result.getOrThrow(SchemaVersioning.parseResult("1.0")),
-				path: "schemas/basic-1.0.json",
+				layout: "flat",
 				// Published: the drift policy holds it to its version.
 				published: true,
-			}),
-		],
-		catalog: [
-			{
-				name: "basic",
-				description: "basic fixture",
-				fileMatch: ["basic.json"],
-				baseUrl: "https://example.com/schemas",
-				path: "schemas/catalog-entry.json",
+				versions: options.versions ?? ["1.0"],
+				catalog: { description: "basic fixture", fileMatch: ["basic.json"] },
 			},
-		],
-		...(options.drift !== undefined ? { drift: options.drift } : {}),
+		},
 	});
 
 const deps = (config: SchemastoreConfig, overrides: Partial<ProgramDeps> = {}): ProgramDeps => ({
@@ -132,10 +117,16 @@ const tolerateStale = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 // The fresh-volume seed plus the exact documents a `build` writes, so a
 // `check` over it is clean.
+const catalogEntryOf = (config: SchemastoreConfig): CatalogEntry => {
+	const entry = config.schemas[0]?.catalog;
+	assert.isDefined(entry, "the basic config always declares a catalog entry");
+	return entry;
+};
+
 const builtSeed: MemoryFileSystemSeed = {
 	[CONFIG_PATH]: "",
 	[BASIC_PATH]: emitted(Config, BASIC_ID),
-	[CATALOG_PATH]: `${JSON.stringify(Schema.encodeSync(CatalogEntry)(basicConfig().catalog[0]?.entry as CatalogEntry))}\n`,
+	[CATALOG_PATH]: `${JSON.stringify([Schema.encodeSync(CatalogEntry)(catalogEntryOf(basicConfig()))])}\n`,
 };
 
 describe("schemastore CLI", () => {
@@ -149,10 +140,10 @@ describe("schemastore CLI", () => {
 				assert.include(error.message, "2 document(s) are stale");
 				const out = yield* stdout;
 				assert.include(out, `would write (created) ${BASIC_PATH}`);
-				assert.include(out, `would write catalog ${CATALOG_PATH}`);
+				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
 				assert.include(
 					out,
-					"1 schema(s): 0 written, 0 unchanged, 0 drift, 0 gate failed — drift policy semantic/error (config)",
+					"1 schema(s): 0 written, 0 unchanged, 0 drift, 0 gate failed — drift per schema (config), on-drift error",
 				);
 				const fs = yield* FileSystem.FileSystem;
 				assert.isFalse(yield* fs.exists(BASIC_PATH), "check never writes");
@@ -167,7 +158,7 @@ describe("schemastore CLI", () => {
 				yield* program(["check"], deps(basicConfig()));
 				const out = yield* stdout;
 				assert.include(out, `unchanged ${BASIC_PATH}`);
-				assert.include(out, `unchanged catalog ${CATALOG_PATH}`);
+				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries)`);
 			}),
 			builtSeed,
 		),
@@ -182,7 +173,7 @@ describe("schemastore CLI", () => {
 				assert.strictEqual(error.count, 1);
 				const out = yield* stdout;
 				assert.include(out, `unchanged ${BASIC_PATH}`);
-				assert.include(out, `would write catalog ${CATALOG_PATH}`);
+				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
 			}),
 			{ ...builtSeed, [CATALOG_PATH]: '{"name":"basic","description":"old"}\n' },
 		),
@@ -194,7 +185,7 @@ describe("schemastore CLI", () => {
 				yield* program(["build"], deps(basicConfig()));
 				const out = yield* stdout;
 				assert.include(out, `unchanged ${BASIC_PATH}`);
-				assert.include(out, `unchanged catalog ${CATALOG_PATH}`);
+				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries)`);
 			}),
 			builtSeed,
 		),
@@ -203,10 +194,25 @@ describe("schemastore CLI", () => {
 	it.effect("build with an explicit config path writes the schema and the catalog entry", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["build", "lib/schemastore.config.ts"], deps(basicConfig()));
+				// A relative `outputDir` resolves against the CONFIG's directory, not
+				// `cwd` — the point of this test.
+				const config = defineConfig({
+					outputDir: "schemas",
+					baseUrl: "https://example.com/schemas",
+					schemas: {
+						basic: {
+							schema: Config,
+							layout: "flat",
+							published: true,
+							versions: ["1.0"],
+							catalog: { description: "basic fixture", fileMatch: ["basic.json"] },
+						},
+					},
+				});
+				yield* program(["build", "lib/schemastore.config.ts"], deps(config));
 				const fs = yield* FileSystem.FileSystem;
 				assert.isTrue(yield* fs.exists("/repo/lib/schemas/basic-1.0.json"));
-				assert.isTrue(yield* fs.exists("/repo/lib/schemas/catalog-entry.json"));
+				assert.isTrue(yield* fs.exists("/repo/lib/schemas/catalog.json"));
 				const out = yield* stdout;
 				assert.include(out, "written (created) /repo/lib/schemas/basic-1.0.json");
 			}),
@@ -278,7 +284,7 @@ describe("schemastore CLI", () => {
 				assert.include(out, `written (contract) ${BASIC_PATH}`);
 				assert.include(
 					out,
-					"1 schema(s): 1 written, 0 unchanged, 1 drift, 0 gate failed — drift policy semantic/warn (flag)",
+					"1 schema(s): 1 written, 0 unchanged, 1 drift, 0 gate failed — drift per schema (config), on-drift warn",
 				);
 				const err = yield* stderr;
 				assert.isTrue(
@@ -300,8 +306,8 @@ describe("schemastore CLI", () => {
 				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID));
 				assert.isFalse(yield* fs.exists(CATALOG_PATH), "check never writes");
 				const out = yield* stdout;
-				assert.include(out, `held catalog ${CATALOG_PATH}`);
-				assert.notInclude(out, `would write catalog ${CATALOG_PATH}`);
+				assert.include(out, `held catalog ${CATALOG_PATH} (1 entries)`);
+				assert.notInclude(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
 			}),
 			driftedSeed,
 		),
@@ -315,7 +321,7 @@ describe("schemastore CLI", () => {
 				const fs = yield* FileSystem.FileSystem;
 				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID), "check never writes");
 				const out = yield* stdout;
-				assert.include(out, `would write catalog ${CATALOG_PATH}`);
+				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
 				const err = yield* stderr;
 				assert.isTrue(
 					err.some((line) =>
@@ -337,7 +343,7 @@ describe("schemastore CLI", () => {
 				const out = yield* stdout;
 				assert.include(
 					out,
-					"1 schema(s): 1 written, 0 unchanged, 0 drift, 0 gate failed — drift policy allow/error (flag)",
+					"1 schema(s): 1 written, 0 unchanged, 0 drift, 0 gate failed — drift allow (flag), on-drift error",
 				);
 				const err = yield* stderr;
 				assert.isTrue(
@@ -440,7 +446,7 @@ describe("schemastore CLI", () => {
 				yield* tolerateStale(program(["check", "--format=json", "--force"], deps(basicConfig())));
 				const out = yield* stdout;
 				assert.strictEqual(out.length, 1, out.join("\n"));
-				const doc = JSON.parse(out[0] as string) as { drift: { policy: string; source: string } };
+				const doc = JSON.parse(out[0] as string) as { drift: { policy?: string; source: string } };
 				assert.strictEqual(doc.drift.policy, "allow");
 				assert.strictEqual(doc.drift.source, "flag");
 				const err = yield* stderr;
@@ -467,17 +473,37 @@ describe("schemastore CLI", () => {
 		),
 	);
 
-	it.effect("the config's own drift block is honoured when no flag overrides it", () =>
+	it.effect("the config's own onDrift is honoured when no flag overrides it", () =>
 		run(
 			Effect.gen(function* () {
-				yield* program(["build"], deps(basicConfig({ drift: { onDrift: "warn" } })));
+				yield* program(["build"], deps(basicConfig({ onDrift: "warn" })));
 				const out = yield* stdout;
 				assert.include(
 					out,
-					"1 schema(s): 1 written, 0 unchanged, 1 drift, 0 gate failed — drift policy semantic/warn (config)",
+					"1 schema(s): 1 written, 0 unchanged, 1 drift, 0 gate failed — drift per schema (config), on-drift warn",
 				);
 			}),
 			driftedSeed,
+		),
+	);
+
+	it.effect("a missing frozen version fails with FrozenVersionMissingError at exit 1", () =>
+		run(
+			Effect.gen(function* () {
+				// `versions: ["0.9", "1.0"]` picks "1.0" as current (newest); "0.9"
+				// becomes a frozen predecessor at the flat layout's own file name —
+				// which the volume below does not carry.
+				const error = yield* Effect.flip(program(["build"], deps(basicConfig({ versions: ["0.9", "1.0"] }))));
+				assert.instanceOf(error, FrozenVersionMissingError);
+				assert.strictEqual(exitCodeOf(error), 1);
+				assert.strictEqual(error.name, "basic");
+				assert.strictEqual(error.version, "0.9");
+				assert.strictEqual(error.path, "/repo/schemas/basic-0.9.json");
+				assert.include(error.message, "/repo/schemas/basic-0.9.json");
+				const fs = yield* FileSystem.FileSystem;
+				assert.isFalse(yield* fs.exists(BASIC_PATH), "nothing is written before the frozen check clears");
+			}),
+			{ [CONFIG_PATH]: "" },
 		),
 	);
 

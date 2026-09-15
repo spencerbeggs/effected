@@ -4,13 +4,13 @@
 // through `ExecuteDeps` so the command tree never reads them itself.
 
 import { CliRuntime } from "@effected/cli";
-import type { DriftOptions } from "@effected/schemastore";
+import type { DriftTolerance, OnDrift, SchemastoreConfig } from "@effected/schemastore";
 import { SchemaFile, SchemaValidator } from "@effected/schemastore";
 import type { Layer } from "effect";
 import { Console, Effect, Option, Schema } from "effect";
 import { ConfigLoader } from "../ConfigLoader.js";
 import { Report } from "../Report.js";
-import type { RunReport } from "../Runner.js";
+import type { RunOptions, RunReport } from "../Runner.js";
 import { Runner } from "../Runner.js";
 import { StepSummary } from "../StepSummary.js";
 
@@ -88,8 +88,8 @@ export class ConflictingFlagsError extends Schema.TaggedError<ConflictingFlagsEr
  */
 export interface ExecuteInput {
 	readonly config: Option.Option<string>;
-	readonly drift: Option.Option<DriftOptions["policy"]>;
-	readonly onDrift: Option.Option<DriftOptions["onDrift"]>;
+	readonly drift: Option.Option<DriftTolerance>;
+	readonly onDrift: Option.Option<OnDrift>;
 	readonly force: boolean;
 	readonly format: "human" | "json";
 }
@@ -111,11 +111,20 @@ export interface ExecuteDeps {
 	readonly validator?: Layer.Layer<SchemaValidator>;
 }
 
-const effectiveDrift = (configured: DriftOptions, input: ExecuteInput): RunReport["drift"] => {
-	const policy = input.force ? "allow" : Option.getOrElse(input.drift, () => configured.policy);
-	const onDrift = Option.getOrElse(input.onDrift, () => configured.onDrift);
-	const overridden = input.force || Option.isSome(input.drift) || Option.isSome(input.onDrift);
-	return { policy, onDrift, source: overridden ? "flag" : "config" };
+// `--force` is sugar for `--drift=allow` over every schema at once; absent
+// both, drift is classified per schema under its own tolerance (`policy` is
+// omitted so `Runner.run` falls back to each `ResolvedSchema.drift`).
+// `source` reads "flag" even when only `--on-drift` was given — the CLI
+// renderers must read the effective policy's presence, not `source`, when
+// they need to know whether every schema was forced to one tolerance.
+const effectiveDrift = (
+	config: SchemastoreConfig,
+	input: ExecuteInput,
+): Pick<RunOptions, "onDrift" | "policy" | "source"> => {
+	const forced = input.force ? "allow" : Option.getOrUndefined(input.drift);
+	const onDrift = Option.getOrElse(input.onDrift, () => config.onDrift);
+	const overridden = forced !== undefined || Option.isSome(input.onDrift);
+	return { onDrift, source: overridden ? "flag" : "config", ...(forced !== undefined ? { policy: forced } : {}) };
 };
 
 // stdout is `Console.log` and nothing else; every line meant for a person
@@ -166,15 +175,16 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 		...(Option.isSome(input.config) ? { explicit: input.config.value } : {}),
 		...(deps.importModule !== undefined ? { importModule: deps.importModule } : {}),
 	});
-	const drift = effectiveDrift(loaded.config.drift, input);
+	const drift = effectiveDrift(loaded.config, input);
 	if (input.force) {
 		yield* Effect.logWarning(
 			`--force: drift policy is allow for this run; a published document ${mode === "check" ? "would be" : "may be"} rewritten in place, which breaks every consumer pinned to its URL.`,
 		);
 	}
-	const report = yield* Runner.run(loaded.config, { mode, configPath: loaded.path, drift }).pipe(
+	const report = yield* Runner.run(loaded.config, { mode, configPath: loaded.path, ...drift }).pipe(
 		Effect.provide(SchemaFile.layer),
 		Effect.provide(deps.validator ?? SchemaValidator.layer),
+		Effect.catchTag("FrozenVersionMissingError", (error) => Effect.fail(CliRuntime.reported(error, 1))),
 	);
 	yield* emit(report, input.format);
 	yield* StepSummary.append(Report.markdown(report));
@@ -196,7 +206,7 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 	if (mode === "check") {
 		const count =
 			report.schemas.filter((schema) => schema.outcome === "would-write").length +
-			report.catalog.filter((entry) => entry.outcome === "would-write").length;
+			(report.catalog?.outcome === "would-write" ? 1 : 0);
 		if (count > 0) {
 			return yield* Effect.fail(CliRuntime.reported(new StaleError({ count }), 1));
 		}
