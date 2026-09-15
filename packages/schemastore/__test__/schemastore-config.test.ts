@@ -54,6 +54,21 @@ describe("defineConfig derivation", () => {
 		const schema = only(one({ versions: ["1.0"], baseUrl: CUSTOM, layout: "flat" }));
 		assert.strictEqual(schema.target.path, "schemas/okfit-1.0.json");
 		assert.strictEqual(schema.target.$id, `${CUSTOM}/okfit-1.0.json`);
+		assert.strictEqual(schema.catalog?.url, `${CUSTOM}/okfit-1.0.json`);
+	});
+
+	it("defaults current to the newest label under Order", () => {
+		const schema = only(one({ versions: ["1.1", "1.0"] }));
+		assert.strictEqual(schema.target.version, "1.1");
+		assert.deepStrictEqual(
+			schema.frozen.map((f) => f.version),
+			["1.0"],
+		);
+	});
+
+	it("orders current numerically, not lexically", () => {
+		const schema = only(one({ versions: ["1.2", "1.10"] }));
+		assert.strictEqual(schema.target.version, "1.10");
 	});
 
 	it("unversioned: name.json, url only, no frozen, no version on the target", () => {
@@ -171,6 +186,29 @@ describe("defineConfig validation", () => {
 	it("rejects an invalid drift tolerance and onDrift", () => {
 		rejects({ drift: "loose" as never }, {}, /"okfit".*drift/);
 		assert.throws(() => one({}, { onDrift: "ignore" as never }), /onDrift/);
+	});
+
+	it("rejects an invalid top-level drift tolerance", () => {
+		assert.throws(() => one({}, { drift: "loose" as never }), /config has an invalid drift tolerance "loose"/);
+	});
+
+	it("rejects an invalid layout", () => {
+		rejects({ baseUrl: CUSTOM, layout: "nested" as never }, {}, /"okfit".*invalid layout "nested"/);
+	});
+
+	it("rejects an empty catalogPath", () => {
+		assert.throws(() => one({}, { catalogPath: "" }), /catalogPath/);
+	});
+
+	it("rejects an untyped schema entry", () => {
+		assert.throws(
+			() => defineConfig({ outputDir: "s", baseUrl: CUSTOM, schemas: { okfit: null as never } }),
+			/"okfit".*must be an object/,
+		);
+	});
+
+	it("rejects an invalid catalog block", () => {
+		rejects({ catalog: { description: "d" } as never }, {}, /"okfit".*invalid catalog block/);
 	});
 
 	it("rejects a catalogPath colliding with a derived file, after lexical normalisation", () => {

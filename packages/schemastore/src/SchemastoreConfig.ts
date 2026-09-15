@@ -119,8 +119,9 @@ export interface SchemastoreConfigInput {
 
 /**
  * One version of a schema that is advertised (via `versions`) but not the
- * one currently generated — a file the CLI verifies still matches its
- * frozen content, never regenerates.
+ * one currently generated — a file the CLI verifies exists on disk before
+ * any write (existence only — content is never compared), never
+ * regenerates.
  *
  * @public
  */
@@ -173,6 +174,7 @@ export interface SchemastoreConfig {
 
 const DRIFT_TOLERANCES: ReadonlyArray<DriftTolerance> = ["strict", "semantic", "allow"];
 const ON_DRIFT: ReadonlyArray<OnDrift> = ["error", "warn"];
+const LAYOUTS: ReadonlyArray<SchemaLayout> = ["flat", "versioned"];
 
 const fail = (message: string): never => {
 	throw new Error(`defineConfig: ${message}`);
@@ -197,6 +199,9 @@ interface Hosting {
 const resolveHosting = (name: string, baseUrl: string | undefined, layout: SchemaLayout | undefined): Hosting => {
 	if (baseUrl === undefined || baseUrl.length === 0) {
 		return fail(`schema "${name}" has no baseUrl and the config declares no default`);
+	}
+	if (layout !== undefined && !LAYOUTS.includes(layout)) {
+		return fail(`schema "${name}" has an invalid layout "${String(layout)}"; expected "flat" or "versioned"`);
 	}
 	if (baseUrl === "schemastore") {
 		if (layout !== undefined) {
@@ -275,10 +280,22 @@ const resolveEntry = (
 	if (name.length === 0 || /[/\\\s]/.test(name)) {
 		return fail(`schema "${name}" must be keyed by a simple file base name (no separators, no whitespace)`);
 	}
+	if (typeof entry !== "object" || entry === null) {
+		return fail(`schema "${name}" must be an object`);
+	}
 	const hosting = resolveHosting(name, entry.baseUrl ?? input.baseUrl, entry.layout);
 	const versioned = resolveVersions(name, entry);
 	if (hosting.schemastore && entry.catalog === undefined) {
 		return fail(`schema "${name}" must declare a catalog block under baseUrl "schemastore"`);
+	}
+	if (
+		entry.catalog !== undefined &&
+		(typeof entry.catalog !== "object" ||
+			entry.catalog === null ||
+			!Array.isArray(entry.catalog.fileMatch) ||
+			typeof entry.catalog.description !== "string")
+	) {
+		return fail(`schema "${name}" declares an invalid catalog block (expected { description, fileMatch[] })`);
 	}
 	if (entry.catalog !== undefined && entry.catalog.fileMatch.length === 0) {
 		return fail(`schema "${name}" declares a catalog with an empty fileMatch`);
@@ -415,6 +432,9 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 	}
 	if (input.onDrift !== undefined && !ON_DRIFT.includes(input.onDrift)) {
 		return fail(`invalid onDrift "${String(input.onDrift)}"`);
+	}
+	if (input.catalogPath !== undefined && (typeof input.catalogPath !== "string" || input.catalogPath.length === 0)) {
+		return fail("catalogPath must be a non-empty string when given");
 	}
 	const schemas = Object.entries(input.schemas).map(([name, entry]) => resolveEntry(name, entry, input, outputDir));
 	const catalogPath = input.catalogPath ?? `${outputDir}/catalog.json`;
