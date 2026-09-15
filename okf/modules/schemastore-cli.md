@@ -172,13 +172,12 @@ of the flat SchemaStore file.
   lands in **one file** at `catalogPath` — never one file per
   schema.[^runner]
 - `drift` — this schema's tolerance, overriding the config's top-level
-  default.
+  default, which itself defaults to `"semantic"` (`DriftPolicy.defaults.policy`).
 - `outputDir` — top-level only, one destination per config; every
   derived `path` is written under it.
 - `onDrift` — run-wide, top-level only, never overridable per schema.
-  Defaults to `{ policy: "semantic", onDrift: "error" }`
-  (`DriftPolicy.defaults`). Command-line flags override the effective
-  policy for one run.
+  Defaults to `"error"` (`DriftPolicy.defaults.onDrift`). Command-line
+  flags override the effective policy for one run.
 - `catalogPath` — where the single catalog file is written. Defaults to
   `<outputDir>/catalog.json`.
 - Relative `outputDir`, `catalogPath`, and every derived schema/frozen
