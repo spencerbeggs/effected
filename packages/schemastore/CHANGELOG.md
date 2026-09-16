@@ -1,5 +1,11 @@
 # @effected/schemastore
 
+## 0.13.0
+
+### Maintenance
+
+- Released in lockstep with `@effected/schemastore-cli@0.13.0` (fixed version group).
+
 ## 0.12.0
 
 ### Breaking Changes

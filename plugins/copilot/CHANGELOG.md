@@ -1,5 +1,17 @@
 # @effected/copilot-plugin
 
+## 0.7.3
+
+### Other
+
+- Skill references now document `check`'s orphaned-document failure: a file left at a sibling shape of a derived path that no target, frozen version, or catalog path claims (an `appendVersion` flip or a `layout` change moved it; nothing else in `outputDir` is inspected) fails `check`, and its remedy is deleting the file by hand — `build` reports orphans and never deletes them. [#753][#753]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) for their contributions!
+
+[#753]: https://github.com/spencerbeggs/effected/pull/753
+
 ## 0.7.2
 
 ### Other
