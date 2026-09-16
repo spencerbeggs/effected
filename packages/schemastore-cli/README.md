@@ -140,7 +140,7 @@ Findings come back as values; the error channel carries `SchemaValidatorError` o
 | code | meaning |
 | ---- | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
-| 1 | drift under `onDrift: error` (one line per drifting schema: `$id`, change, current and next version), a gate failure, a missing or mis-identified frozen version, or — for `check` — anything `build` would write |
+| 1 | drift under `onDrift: error` (one line per drifting schema: `$id`, change, current and next version), a gate failure, a missing or mis-identified frozen version, or — for `check` — anything `build` would write or an orphaned catalog file (which `build` never deletes: remove it by hand, or restore a `catalog` block) |
 | 2 | config not found, failed to load, or failed `defineConfig` validation |
 | 3 | infrastructure failure |
 | 64 | usage error |
