@@ -32,3 +32,15 @@ pm_exec() {
 # --- BEGIN SAVVY-LINT MANAGED SECTION ---
 in_ci || pm_exec lint-staged --config "$ROOT/lib/configs/lint-staged.config.ts"
 # --- END SAVVY-LINT MANAGED SECTION ---
+
+# --- BEGIN SAVVY-OKF MANAGED SECTION ---
+if ! in_ci && [ -d "$ROOT/okf" ] && [ -x "$ROOT/node_modules/.bin/okfit" ]; then
+  # Index mode reads concepts from disk, so skip it while okf/ carries untracked or
+  # unstaged work: a commit must never link a concept it does not contain.
+  if git -C "$ROOT" status --porcelain --untracked-files=all -- okf | grep -q '^.[^ ]'; then
+    pm_exec okfit sync --staged --only generated "$ROOT" || exit 1
+  else
+    pm_exec okfit sync --staged "$ROOT" || exit 1
+  fi
+fi
+# --- END SAVVY-OKF MANAGED SECTION ---
