@@ -13,7 +13,6 @@
 | `CatalogLintFinding` | Class | A fileMatch hygiene finding: a value in a lint report, not an error — SchemaStore reviewers reject entries over these, so surfacing them locally is the point, but a warned entry is still a valid entry. | catalog fileMatch hygiene warning, generic pattern or complex glob rejection |
 | `CatalogUrls` | Interface | The `url`/`versions` half of a catalog entry, as assembled by `SchemaVersioning.catalogUrls`. | |
 | `CheckResult` | Interface | The result of `SchemaFileShape.check`: the same two answers `WriteResult` carries, for a call that touched nothing. | |
-| `ConfigBrand` | Variable | | the private symbol key isSchemastoreConfig checks and defineConfig sets, not itself importable |
 | `ContractChangePolicy` | TypeAlias | How `SchemaPipeline.run` treats a target whose document would change its validation contract. | |
 | `ContractChangeTarget` | Class | One published document whose validation contract would change. | one published schema target whose contract changed, pair its pinned version with the next bumped label |
 | `CustomHostedSchemaInput` | Interface | Input to `HostedSchema.custom`. | |
