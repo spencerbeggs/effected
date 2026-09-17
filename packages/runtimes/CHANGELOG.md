@@ -1,5 +1,17 @@
 # @effected/runtimes
 
+## 0.6.1
+
+### Maintenance
+
+- Refreshed the bundled Node.js, Bun and Deno version defaults from the upstream release feeds [#759][#759]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/apps/spencerbeggs) for their contributions!
+
+[#759]: https://github.com/spencerbeggs/effected/pull/759
+
 ## 0.6.0
 
 ### Breaking Changes
