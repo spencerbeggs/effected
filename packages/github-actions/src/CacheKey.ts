@@ -405,20 +405,30 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	 *
 	 * @remarks
 	 * Discovery and matching are **two different jobs**, and separating them is
-	 * what makes this testable and correct. The walk is core
-	 * `FileSystem.readDirectory(recursive)`; the matching is `@effected/glob`'s
-	 * full minimatch dialect — the same dialect `@actions/glob` uses, so a workflow
-	 * author's `!**\/node_modules/**` behaves here exactly as it does in every
-	 * other cache step in the same workflow. `node:fs.globSync` would have welded
-	 * the two together behind one non-stubbable call *and* changed the dialect,
-	 * and a dialect divergence surfaces as a silent cache-key difference — the
-	 * worst failure mode a cache key has.
+	 * what makes this testable and correct. The walk is `@effected/walker`'s
+	 * `descend`, run once per include from that include's own literal prefix
+	 * (a literal include is one `stat`, never a walk) with nothing pruned
+	 * implicitly; the matching is `@effected/glob`'s full minimatch dialect —
+	 * the same dialect `@actions/glob` uses, so a workflow author's
+	 * `!**\/node_modules/**` behaves here exactly as it does in every other
+	 * cache step in the same workflow. `node:fs.globSync` would have welded the
+	 * two together behind one non-stubbable call *and* changed the dialect, and
+	 * a dialect divergence surfaces as a silent cache-key difference — the worst
+	 * failure mode a cache key has.
 	 *
-	 * Candidates are matched by their path **relative to the workspace**, which
-	 * is what makes "never hash a file outside the workspace" structural rather
-	 * than a rule someone has to remember. Directories are excluded: a directory
+	 * Candidates are matched by their path **relative to the workspace**, and a
+	 * literal that climbs above it (`../lockfile`) is dropped, which is what
+	 * makes "never hash a file outside the workspace" structural rather than a
+	 * rule someone has to remember. Directories are excluded: a directory
 	 * called `notes.txt` matches `**\/*.txt` and is not a file, and hashing it
-	 * would fail rather than being ignored.
+	 * would fail rather than being ignored. An absent literal is a miss; any
+	 * other failure to read one is a typed `CacheKeyReadError`, because a key
+	 * derived from an incomplete file set is wrong in a way nothing reports.
+	 *
+	 * **One knowing divergence from the runner's `hashFiles()`:** `descend`
+	 * never enters a symlinked directory (cycle safety), where `@actions/glob`
+	 * follows links by default. A file reachable only through a symlinked
+	 * directory does not contribute to the key.
 	 *
 	 * The answer is sorted, so a caller cannot make its key depend on the order
 	 * the filesystem happened to report.
@@ -448,7 +458,24 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 		// below because each include is expanded alone.
 		const candidates = new Set<string>();
 		for (const literal of set.literals) {
-			const info = yield* Effect.option(fs.stat(path.join(workspace, literal)));
+			const target = path.join(workspace, literal);
+			// A literal that climbs above the workspace is not this workspace's
+			// file, whatever is there; the walk below cannot reach outside either.
+			const relative = path.relative(workspace, target);
+			if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+				continue;
+			}
+			// Absent is a miss, as the old whole-workspace walk read it; unreadable
+			// is not, because a key computed without a file the caller asked for
+			// silently restores the wrong cache.
+			const info = yield* fs.stat(target).pipe(
+				Effect.map(Option.some),
+				Effect.catchIf(
+					(error) => error.reason._tag === "NotFound",
+					() => Effect.succeedNone,
+				),
+				Effect.mapError((cause) => new CacheKeyReadError({ path: target, cause })),
+			);
 			if (Option.isSome(info) && info.value.type === "File") {
 				candidates.add(literal);
 			}

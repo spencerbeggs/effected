@@ -315,10 +315,10 @@ export class GitHubMarkdown {
 			const field = schema.fields[key] as Schema.Constraint;
 			const column = overrides[key];
 			// The caller's `format` wins; otherwise the field's own encoder renders
-			// the cell (an encoder yielding nothing is an empty cell).
-			const project: (value: unknown) => string =
-				column?.format ??
-				((value) => Schema.encodeSync(field as Schema.ConstraintEncoder<string | undefined>)(value) ?? "");
+			// the cell (an encoder yielding nothing is an empty cell). Built once
+			// per column, not per cell — this is the one path that renders in a loop.
+			const encode = Schema.encodeSync(field as Schema.ConstraintEncoder<string | undefined>);
+			const project: (value: unknown) => string = column?.format ?? ((value) => encode(value) ?? "");
 			return {
 				key,
 				header: column?.header ?? SchemaAST.resolveTitle(field.ast) ?? key,

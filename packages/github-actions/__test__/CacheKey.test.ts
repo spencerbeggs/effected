@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { Path } from "effect";
@@ -440,6 +440,56 @@ describe("CacheKey", () => {
 					const error = yield* Effect.flip(CacheKey.matchingFiles({ workspace: root, patterns: [hostile] }));
 					assert.instanceOf(error, CacheKeyBadPatternError);
 					assert.strictEqual(error.pattern, hostile);
+				}),
+			),
+		);
+
+		it.effect("drops a literal that climbs above the workspace, even when the file exists", () =>
+			walking((root) =>
+				Effect.gen(function* () {
+					// The old whole-workspace walk could never surface a file above the
+					// workspace; a per-literal stat could, so the containment is explicit.
+					// The sibling lives BESIDE the workspace, under the same temp parent.
+					const outside = join(root, "..", `${basename(root)}-outside.lock`);
+					writeFileSync(outside, "outside\n");
+					try {
+						const matched = yield* CacheKey.matchingFiles({
+							workspace: root,
+							patterns: [`../${basename(outside)}`, "pnpm-lock.yaml"],
+						});
+						assert.deepStrictEqual(
+							matched.map((file) => file.slice(root.length + 1)),
+							["pnpm-lock.yaml"],
+						);
+					} finally {
+						rmSync(outside, { force: true });
+					}
+				}),
+			),
+		);
+
+		it.effect("reads an absent literal as a miss but an unreadable one as a typed failure", () =>
+			walking((root) =>
+				Effect.gen(function* () {
+					// Absent: parity with the walk, which never reported it.
+					const absent = yield* CacheKey.matchingFiles({ workspace: root, patterns: ["not-here.lock"] });
+					assert.deepStrictEqual(absent, []);
+					// Unreadable: the file the caller asked for exists and cannot be
+					// stat'ed — a key computed without it would restore the wrong cache,
+					// so this MUST fail rather than quietly narrow the set.
+					const sealed = join(root, "sealed");
+					mkdirSync(sealed);
+					writeFileSync(join(sealed, "pnpm-lock.yaml"), "hidden\n");
+					chmodSync(sealed, 0o000);
+					try {
+						const error = yield* Effect.flip(
+							CacheKey.matchingFiles({ workspace: root, patterns: ["sealed/pnpm-lock.yaml"] }),
+						);
+						assert.instanceOf(error, CacheKeyReadError);
+						assert.strictEqual(error.path, join(sealed, "pnpm-lock.yaml"));
+					} finally {
+						chmodSync(sealed, 0o755);
+					}
 				}),
 			),
 		);
