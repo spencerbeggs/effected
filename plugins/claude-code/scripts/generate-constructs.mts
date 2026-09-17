@@ -20,6 +20,7 @@ const KIND_ORDER = ["Class", "Variable", "Function", "Enum", "Namespace", "Inter
 interface ApiMember {
 	readonly kind: string;
 	readonly name: string;
+	readonly canonicalReference?: string;
 	readonly docComment?: string;
 	readonly members?: readonly ApiMember[];
 }
@@ -118,12 +119,22 @@ const summaryOf = (doc: string | undefined): string => {
 		.replace(/\|/g, "\\|");
 };
 
+// api-extractor writes a symbol the entry point never exports — a private
+// brand symbol used as a computed key on a public interface, say — into the
+// doc model as a "forgotten export", marked with `~` after the `!` in its
+// canonical reference (`@scope/pkg!~Name:var`). Nobody can import such a
+// symbol, so it is not a construct and must not be asked for an intent. The
+// hand-built fixture models carry no canonicalReference; an absent one is
+// exported.
+const isForgottenExport = (member: ApiMember): boolean => /!~/.test(member.canonicalReference ?? "");
+
 const rowsOf = (modelPath: string, npmName: string): Row[] => {
 	const model = JSON.parse(readFileSync(modelPath, "utf8")) as { members: readonly ApiMember[] };
 	const entryPoints = model.members ?? [];
 	const byName = new Map<string, { kinds: Set<string>; doc: string | undefined; entries: Set<string> }>();
 	for (const entryPoint of entryPoints) {
 		for (const member of entryPoint.members ?? []) {
+			if (isForgottenExport(member)) continue;
 			const slot = byName.get(member.name) ?? { kinds: new Set<string>(), doc: undefined, entries: new Set<string>() };
 			slot.kinds.add(member.kind);
 			if (slot.doc === undefined && member.docComment) slot.doc = member.docComment;
@@ -131,6 +142,10 @@ const rowsOf = (modelPath: string, npmName: string): Row[] => {
 			byName.set(member.name, slot);
 		}
 	}
+	// A class factory's synthesized base (`X_base` beside an exported `X`) is
+	// an implementation detail nobody imports, whether or not this doc model's
+	// api-extractor vintage marked it forgotten — drop it on the name too, so
+	// the index never teaches an agent a heritage symbol exists.
 	for (const name of [...byName.keys()]) {
 		if (name.endsWith("_base") && byName.has(name.slice(0, -5))) byName.delete(name);
 	}

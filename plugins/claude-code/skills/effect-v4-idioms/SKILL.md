@@ -1,6 +1,6 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, and structural equality. Teaches the idiomatic v4 spelling. Every identifier and source citation re-verified against effect@4.0.0-rc.109.
+description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, structural equality, Config.schema inputs (a JSON-string input is Config.schema(Schema.fromJsonString(S)), and what withDefault does and does not swallow), and polling with Effect.repeat options instead of a recursive Effect.sleep. Teaches the idiomatic v4 spelling. Every identifier and source citation re-verified against effect@4.0.0-rc.109.
 ---
 
 # Effect v4 core idioms
@@ -287,6 +287,22 @@ probed on beta.94 and re-verified at beta.107:
   into `Option.none()`, but a **provider-source failure survives** — a present,
   unparseable value still fails. It is not `Effect<Option<A>, never>`, and a test
   that only exercises the absent-key path will "prove" that it is.
+- **A structured input is `Config.schema(codec, "NAME")` (`Config.ts:877`), and a
+  JSON-string input is `Config.schema(Schema.fromJsonString(S), "NAME")`** — not
+  `Config.String` + `JSON.parse` + `decodeUnknown*`, which re-derives the codec by
+  hand and puts a throwing host call in the seam. `withDefault` covers **absent
+  data only**: it replaces an `Absent` resolution and leaves every other error in
+  the channel (`Config.ts:528`). Probed rc.115 under `ConfigProvider.fromEnv`
+  with `Config.schema(Schema.fromJsonString(Struct({ a: Number })), "INPUT_PAYLOAD")
+  .pipe(Config.withDefault({ a: -1 }))`: an unset variable **and `""`** both
+  resolve to the default; `"{nope"` and `'{"a":"str"}'` both fail with a
+  typed `ConfigError` the default does **not** swallow. The `""` case is the
+  provider's doing, not the schema's — `fromEnv` / `fromEnvRecord` /
+  `fromUnknown` map an empty string to *missing* unless
+  `{ preserveEmptyStrings: true }` (`ConfigProvider.ts:832`), and with that flag
+  set the same `""` is present-but-malformed and fails. That is exactly the
+  contract a GitHub Actions input needs — the runner exports an unset input as
+  `INPUT_NAME=""` — and a hand-rolled parse has to re-invent it.
 
 ## Yieldable errors — schema-backed error classes
 
@@ -416,6 +432,38 @@ service's error contract**: `@effected/git`'s `runClassified` owns a fixed
 30s ceiling internally and maps expiry to its own `GitCommandError`, so
 `Cause.TimeoutError` never escapes its methods — the ceiling is absorbed
 into the taxonomy, not exposed as a parameter.
+
+## Polling and repetition — `Effect.repeat` with options, not a recursive `Effect.sleep`
+
+A poll loop written as `const go = Effect.gen(function*() { ...; yield* Effect.sleep(d); return yield* go })`
+re-derives a schedule by hand and hides the stop condition in control flow.
+`Effect.repeat` (`Effect.ts:7651`) takes either a `Schedule` or an **options
+object** — `{ schedule?, times?, while?, until? }` — that
+`internal/schedule.ts:223` (`buildFromOptions`) folds into one schedule; `while`
+and `until` may return a `boolean` or an `Effect<boolean>`, and they see the
+effect's **result**. `Effect.retry` takes the same option shape keyed on the
+failure instead.
+
+```ts
+const status = yield* Effect.repeat(pollOnce, {
+  schedule: Schedule.spaced("2 seconds"),
+  until: (s): s is "done" => s === "done",   // a refinement NARROWS the result type
+  times: 30,
+})
+```
+
+Three facts probed at rc.115, each a trap for a hand-rolled loop:
+
+- **The effect runs once before the schedule is consulted**, so `times: 2`
+  produces **three** runs (the doc's own gotcha, confirmed: a counter read 3);
+  `times` counts repetitions, not executions.
+- **The value is the last result**, and an `until` written as a type guard
+  narrows it — `Repeat.Return` (`Effect.ts:7503`) picks the refined type, so the
+  example above types as `"done"`, not `"pending" | "done"`. `while` with a
+  refinement narrows to the *excluded* branch.
+- **`until` alone with no `schedule` spins with no delay** (`passthroughForever`
+  is the default schedule) — a poll against a remote must always pass
+  `schedule: Schedule.spaced(...)` or it is a busy loop.
 
 ## `Predicate` helpers — never hand-write `isString` / record guards
 

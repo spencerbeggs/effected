@@ -56,6 +56,28 @@ setup_file() {
 	grep -qF 'from `@effected/demo/sub`' "$out/demo.md"
 }
 
+@test "fixture: a forgotten export (~ in canonicalReference) or a class-factory _base is neither rendered nor demanded an intent" {
+	out="$BATS_TEST_TMPDIR/constructs"
+	run node "$GEN" generate \
+		--packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" \
+		--out "$out"
+	[ "$status" -eq 0 ]
+	# the private brand symbol carries `@effected/demo!~HiddenBrand:var`; the
+	# class-factory base is dropped on its name even when this doc-model
+	# vintage did not mark it forgotten. Neither is importable, so neither is a row
+	! grep -qF 'NtiaReport_base' "$out/demo.md"
+	! grep -qF 'HiddenBrand' "$out/demo.md"
+	# an exported symbol carrying a plain reference still renders
+	grep -qF '| `renderReport` |' "$out/demo.md"
+	# and the strict check does not name either forgotten symbol
+	run node "$GEN" check --require-intent \
+		--packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json"
+	[[ "$output" != *"NtiaReport_base"* ]]
+	[[ "$output" != *"HiddenBrand"* ]]
+}
+
 @test "fixture: generate exits 2 naming the package when a doc model is missing" {
 	broken="$BATS_TEST_TMPDIR/broken"
 	mkdir -p "$broken/packages/ghost"

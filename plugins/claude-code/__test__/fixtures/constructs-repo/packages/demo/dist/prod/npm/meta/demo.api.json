@@ -36,7 +36,22 @@
 					"kind": "Function",
 					"name": "renderReport",
 					"releaseTag": "Public",
-					"docComment": "/**\n * Render a report to markdown.\n *\n * @public\n */\n"
+					"docComment": "/**\n * Render a report to markdown.\n *\n * @public\n */\n",
+					"canonicalReference": "@effected/demo!renderReport:function"
+				},
+				{
+					"kind": "Variable",
+					"name": "NtiaReport_base",
+					"canonicalReference": "@effected/demo!NtiaReport_base:var",
+					"releaseTag": "Public",
+					"docComment": ""
+				},
+				{
+					"kind": "Variable",
+					"name": "HiddenBrand",
+					"canonicalReference": "@effected/demo!~HiddenBrand:var",
+					"releaseTag": "None",
+					"docComment": "/**\n * A private symbol used as a computed key; never exported.\n */\n"
 				}
 			]
 		},

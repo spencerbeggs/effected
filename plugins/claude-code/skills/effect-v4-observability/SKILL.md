@@ -1,6 +1,6 @@
 ---
 name: effect-v4-observability
-description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry to Effect v4 code — covers Effect.fn named spans, the Effect.log* family, Metric counters/gauges/histograms with Metric.withAttributes (NOT the removed Metric.tagged), and wiring @effect/opentelemetry at the app edge. Encodes the house rule that pure-tier libraries instrument public fallible boundaries only and stay telemetry-agnostic, while apps compose OTel at the infrastructure layer.
+description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry to Effect v4 code — covers Effect.fn named spans, the Effect.log* family, custom loggers (Logger.make for the format, Logger.withConsoleLog/withConsoleError for the route — never a hand-written Console.log call), Metric counters/gauges/histograms with Metric.withAttributes (NOT the removed Metric.tagged), and wiring @effect/opentelemetry at the app edge. Encodes the house rule that pure-tier libraries instrument public fallible boundaries only and stay telemetry-agnostic, while apps compose OTel at the infrastructure layer.
 ---
 
 # Effect v4 observability
@@ -120,6 +120,35 @@ Guide rules: log at business boundaries, not every helper; structured values ove
 concatenated strings; high-signal only; no duplicate logs at every layer. Rely on
 spans plus a few well-placed logs. For libraries this means: don't scatter logs
 through the engine — a public boundary may log, the hot path does not.
+
+### Custom loggers — format with `Logger.make`, route with `withConsoleLog`
+
+A `Logger<Message, Output>` is one method, `log(options): Output` (`Logger.ts:66`).
+Keep **formatting** and **routing** as two loggers, because core already ships
+the routing half:
+
+```ts
+const format = Logger.make((o) => `${o.logLevel}: ${String(o.message)}`)   // Logger<unknown, string>
+const toStdout = Logger.withConsoleLog(format)                            // Logger<unknown, void>
+const toStderr = Logger.withConsoleError(format)
+program.pipe(Effect.provide(Logger.layer([toStdout])))
+```
+
+`Logger.withConsoleLog` / `withConsoleError` (`Logger.ts:265,305`) read the
+`Console` service off the fiber and call `console.log` / `console.error` with
+`self.log(options)` — which is also how you **reuse a logger inside another**:
+call `inner.log(options)`, never re-render. The trap is writing that routing
+line by hand — `Logger.make((o) => o.fiber.getRef(Console.Console).log(render(o)))`
+— which duplicates core and drifts from it (two such sites had accreted in
+`github-actions` before #769). The built-ins are the same composition:
+`consoleLogFmt` / `consoleStructured` / `consoleJson` are
+`withConsoleLog(formatLogFmt | formatStructured | formatJson)` (`Logger.ts:917-965`),
+and `Logger.map(logger, f)` post-processes an output. Because the route goes
+through the `Console` service, `TestConsole` captures it: probed rc.115,
+`Effect.logInfo("hello")` under `Logger.layer([withConsoleLog(format)])` lands
+in `TestConsole.logLines` as `["Info: hello"]` and the `withConsoleError` twin in
+`errorLines` — the `ConsoleRef` coupling `effect-v4-testing` warns about is the
+same mechanism, and here it works for you.
 
 ## Metrics
 
