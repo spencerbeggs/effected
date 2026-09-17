@@ -5,6 +5,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { digestFileHex } from "./internal/digest.js";
 import { typeAt } from "./internal/fsProbe.js";
+import { PNPM_EXE_PREFIX, detectMusl, isNodeScript, pnpmExeTarget, strongestSri } from "./internal/pnpmExe.js";
 import { isWindowsRunner, toolCacheRoot } from "./internal/runner.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import type { ToolInstallerError } from "./ToolInstaller.js";
@@ -150,10 +151,14 @@ export class AmbientPackageManager extends Schema.Class<AmbientPackageManager>("
  * on Windows); for bun it is the entry directory itself, because the cached
  * `bun` binary is directly executable and a shim would add nothing but a
  * fork. `bins` still maps each published bin name to the underlying entry —
- * a Node script to run with `node` for npm/pnpm/yarn, the native binary for
- * bun. Calling `addPath` remains deliberately the consumer's move, and note
- * that `addPath` targets *subsequent* steps: a same-process probe must use
- * the absolute paths in `bins` or `binDir`.
+ * a Node script to run with `node` for npm, yarn and pnpm 11 and earlier; an
+ * executable to run directly for bun and for pnpm 12+, whose `pnpm` is the
+ * host's native binary (overlaid onto the cached wrapper the way pnpm's own
+ * install script does) and whose `pn`/`pnpx`/`pnx` are shell aliases of it.
+ * Each shim already applies that distinction. Calling `addPath` remains
+ * deliberately the consumer's move, and note that `addPath` targets
+ * *subsequent* steps: a same-process probe must use the absolute paths in
+ * `bins` or `binDir`.
  *
  * @public
  */
@@ -220,13 +225,22 @@ export interface PackageManagerInstallerShape {
 const SHIM_DIR = ".bin";
 
 /**
- * The POSIX shim body: an `exec` wrapper so the shim's process *becomes*
- * node, and `"$@"` so arguments survive quoting intact.
+ * The POSIX shim body: an `exec` wrapper so the shim's process *becomes* the
+ * target, and `"$@"` so arguments survive quoting intact. A Node script
+ * (`.js`/`.mjs`/`.cjs`) runs under `node`; anything else — pnpm 12's native
+ * binary, its `#!/bin/sh` alias scripts — is exec'd directly, because handing
+ * a shell script or a Mach-O to node is exactly the "Invalid or unexpected
+ * token" failure this rule exists to prevent.
  */
-const posixShim = (target: string): string => `#!/bin/sh\nexec node "${target}" "$@"\n`;
+const posixShim = (target: string): string =>
+	isNodeScript(target) ? `#!/bin/sh\nexec node "${target}" "$@"\n` : `#!/bin/sh\nexec "${target}" "$@"\n`;
 
-/** The Windows shim body, CRLF-terminated as cmd expects. */
-const cmdShim = (target: string): string => `@echo off\r\nnode "${target}" %*\r\n`;
+/** The Windows shim body, CRLF-terminated as cmd expects; same node-vs-direct rule. */
+const cmdShim = (target: string): string =>
+	isNodeScript(target) ? `@echo off\r\nnode "${target}" %*\r\n` : `@echo off\r\n"${target}" %*\r\n`;
+
+/** The bin names pnpm's wrapper publishes, every one of which becomes the native binary on Windows. */
+const PNPM_NATIVE_BIN_NAMES: ReadonlyArray<string> = ["pnpm", "pn", "pnpx", "pnx"];
 
 /**
  * The bun release asset name for a runner platform, or `None` when bun
@@ -298,6 +312,9 @@ const make = Effect.gen(function* () {
 		Option.match(found, { onNone: () => process.arch as string, onSome: archFromRunner }),
 	);
 	const windows = yield* isWindowsRunner(env);
+	// The host libc, read once here beside the platform: it decides between
+	// pnpm's glibc and musl native binaries on linux and nothing else.
+	const musl = detectMusl();
 	const bunBinaryName = windows ? "bun.exe" : "bun";
 	const shimFileName = (name: string): string => (windows ? `${name}.cmd` : name);
 	const shimBody = windows ? cmdShim : posixShim;
@@ -399,16 +416,24 @@ const make = Effect.gen(function* () {
 		});
 
 	/**
-	 * The bin entries a package directory publishes, from its own manifest.
+	 * What a package directory's own manifest says about its entry points: the
+	 * `bin` map, plus the `@pnpm/exe.*` optional dependencies that mark the
+	 * pnpm 12 native-binary layout (empty for every other manager and version).
 	 *
 	 * Read from the artifact rather than hardcoded per manager, because the
 	 * layouts genuinely move — corepack's own table has pnpm's entry at
-	 * `bin/pnpm.cjs` through v10 and `bin/pnpm.mjs` from v11.
+	 * `bin/pnpm.cjs` through v10 and `bin/pnpm.mjs` from v11, and from v12 the
+	 * `pnpm` bin is a placeholder for a native binary shipped as a separate
+	 * package. Both maps are attacker-supplied bytes and are normalized to
+	 * string → string before anything downstream reads them.
 	 */
-	const readPackageBins = (
+	const readPackageManifest = (
 		pin: PackageManagerPin,
 		packageDir: string,
-	): Effect.Effect<Record<string, string>, PackageManagerInstallerError> =>
+	): Effect.Effect<
+		{ readonly bins: Record<string, string>; readonly nativePackages: Record<string, string> },
+		PackageManagerInstallerError
+	> =>
 		Effect.gen(function* () {
 			const manifestPath = path.join(packageDir, "package.json");
 			const raw = yield* fs
@@ -417,7 +442,7 @@ const make = Effect.gen(function* () {
 					Effect.mapError((cause) => errorFor(pin)({ reason: "layoutUnexpected", subject: "no package.json", cause })),
 				);
 			const manifest = yield* Effect.try({
-				try: () => JSON.parse(raw) as { readonly bin?: unknown },
+				try: () => JSON.parse(raw) as { readonly bin?: unknown; readonly optionalDependencies?: unknown },
 				catch: (cause) => errorFor(pin)({ reason: "layoutUnexpected", subject: "unparseable package.json", cause }),
 			});
 			const bins = Option.getOrUndefined(normalizeBins(manifest.bin, pin.name));
@@ -443,8 +468,58 @@ const make = Effect.gen(function* () {
 				}
 				yield* assertFile(pin, target, `bin ${name} (${relative}) is missing`);
 			}
-			return bins;
+			return { bins, nativePackages: nativePackagesOf(manifest.optionalDependencies) };
 		});
+
+	/**
+	 * The `@pnpm/exe.<target>` → version entries of an `optionalDependencies`
+	 * value, and nothing else: only well-formed string pairs under that prefix
+	 * survive, so a hostile or malformed map cannot smuggle a package name
+	 * into a registry url.
+	 */
+	const nativePackagesOf = (optionalDependencies: unknown): Record<string, string> => {
+		if (typeof optionalDependencies !== "object" || optionalDependencies === null) {
+			return {};
+		}
+		const entries: Record<string, string> = {};
+		for (const [name, version] of Object.entries(optionalDependencies)) {
+			if (name.startsWith(PNPM_EXE_PREFIX) && typeof version === "string") {
+				entries[name] = version;
+			}
+		}
+		return entries;
+	};
+
+	/**
+	 * pnpm's Windows overlay places the native binary as `<name>.exe` for every
+	 * wrapper bin and repoints `bin` at those; this is that repoint, applied to
+	 * the in-memory map (the shims and the record) rather than the manifest.
+	 */
+	const nativeWindowsBins = (bins: Record<string, string>): Record<string, string> =>
+		Object.fromEntries(
+			Object.entries(bins).map(([name, relative]) =>
+				PNPM_NATIVE_BIN_NAMES.includes(name) ? [name, `${relative}.exe`] : [name, relative],
+			),
+		);
+
+	/**
+	 * Whether a file is still pnpm's shebang-less placeholder (a `#`-led text
+	 * file that is not a `#!` script) rather than the native binary meant to
+	 * overlay it — the mark of an entry written by a version of this module
+	 * that predates the overlay, or by a foreign writer that ran no lifecycle
+	 * scripts. Anything else (a shebang, an executable's magic, an unreadable
+	 * or empty file) is left to the ordinary layout checks.
+	 */
+	const isPlaceholder = (file: string): Effect.Effect<boolean> =>
+		Effect.scoped(Effect.flatMap(fs.open(file), (handle) => handle.readAlloc(2))).pipe(
+			Effect.map((head) =>
+				Option.match(head, {
+					onNone: () => false,
+					onSome: (bytes) => bytes.length >= 1 && bytes[0] === 0x23 && bytes[1] !== 0x21,
+				}),
+			),
+			Effect.orElseSucceed(() => false),
+		);
 
 	const rootBins = (bins: Record<string, string>, directory: string): Record<string, string> =>
 		Object.fromEntries(Object.entries(bins).map(([name, relative]) => [name, path.join(directory, relative)]));
@@ -490,39 +565,191 @@ const make = Effect.gen(function* () {
 			}
 		});
 
-	/** The record for a directory already in the cache, regenerating absent shims. */
+	/**
+	 * The record for a directory already in the cache, regenerating absent
+	 * shims — or `None` when the entry is a pnpm 12 wrapper whose `pnpm` bin is
+	 * still the placeholder, which no shim can make runnable: the caller then
+	 * reinstalls over it through the ordinary install path (ToolInstaller's
+	 * swap removes the old entry and renames the complete new one into place).
+	 */
 	const cachedRecord = (
 		pin: PackageManagerPin,
 		directory: string,
-	): Effect.Effect<InstalledPackageManager, PackageManagerInstallerError> =>
+	): Effect.Effect<Option.Option<InstalledPackageManager>, PackageManagerInstallerError> =>
 		Effect.gen(function* () {
 			if (pin.name === "bun") {
 				const binary = path.join(directory, bunBinaryName);
 				yield* assertFile(pin, binary, `cached bun binary (${bunBinaryName}) is missing`);
-				return CachedPackageManager.make({
-					name: pin.name,
-					version: pin.version.toString(),
-					directory,
-					// The binary itself is executable; the entry directory IS the
-					// addPath target and no shim is written for bun anywhere.
-					binDir: directory,
-					bins: { bun: binary },
-				});
+				return Option.some(
+					CachedPackageManager.make({
+						name: pin.name,
+						version: pin.version.toString(),
+						directory,
+						// The binary itself is executable; the entry directory IS the
+						// addPath target and no shim is written for bun anywhere.
+						binDir: directory,
+						bins: { bun: binary },
+					}),
+				);
 			}
-			const bins = yield* readPackageBins(pin, directory);
+			const manifest = yield* readPackageManifest(pin, directory);
+			let bins = manifest.bins;
+			if (Object.keys(manifest.nativePackages).length > 0) {
+				// A native-binary wrapper cached by an older version of this module
+				// (which shimmed the placeholder as a Node script) or by a foreign
+				// writer that ran no lifecycle scripts still holds the placeholder.
+				// A stale `exec node` shim beside it would survive `skipExisting`,
+				// so the whole entry is reinstalled over rather than patched in
+				// place — the install path rewrites every shim.
+				const entry = bins[pin.name];
+				if (entry !== undefined && (yield* isPlaceholder(path.join(directory, entry)))) {
+					yield* Effect.logInfo(
+						`The cached ${pin.name}@${pin.version.toString()} still holds pnpm's placeholder bin; reinstalling it over.`,
+					);
+					return Option.none();
+				}
+				if (windows) {
+					bins = nativeWindowsBins(bins);
+				}
+			}
 			// The tool cache is shared: this entry may have been written by the
 			// runner image, a setup-* action, or a previous version of this module,
 			// none of which write shims. Regenerate what is missing — best-effort,
 			// but a failure to write is a typed cacheFailed, not a silent hole in
 			// the PATH contract.
 			yield* writeShims(pin, directory, directory, bins, { skipExisting: true });
-			return CachedPackageManager.make({
-				name: pin.name,
-				version: pin.version.toString(),
-				directory,
-				binDir: path.join(directory, SHIM_DIR),
-				bins: rootBins(bins, directory),
-			});
+			return Option.some(
+				CachedPackageManager.make({
+					name: pin.name,
+					version: pin.version.toString(),
+					directory,
+					binDir: path.join(directory, SHIM_DIR),
+					bins: rootBins(bins, directory),
+				}),
+			);
+		});
+
+	/**
+	 * pnpm 12's native overlay, done here because the installer never runs the
+	 * lifecycle script that does it upstream: pick the host's `@pnpm/exe.*`
+	 * package from the wrapper's optional dependencies, fetch its tarball from
+	 * the SAME registry the wrapper came from, verify it against the registry's
+	 * own `dist.integrity` (fail-closed — this is a second artifact the pin
+	 * never named, so there is no integrity-less posture to honor), and copy
+	 * the executable over the placeholder in the STAGED wrapper, where `dist/`
+	 * sits beside it as the binary expects. Answers the bins as they should be
+	 * shimmed and recorded — retargeted to `.exe` on Windows, as upstream does.
+	 */
+	const overlayNativeBinary = (
+		pin: PackageManagerPin,
+		packageDir: string,
+		bins: Record<string, string>,
+		nativePackages: Record<string, string>,
+		registry: string,
+	): Effect.Effect<Record<string, string>, PackageManagerInstallerError> =>
+		Effect.gen(function* () {
+			const target = Option.getOrUndefined(pnpmExeTarget(runnerOs, arch, musl));
+			const packageName = target === undefined ? undefined : `${PNPM_EXE_PREFIX}${target}`;
+			const nativeVersion = packageName === undefined ? undefined : nativePackages[packageName];
+			if (target === undefined || packageName === undefined || nativeVersion === undefined) {
+				return yield* Effect.fail(
+					errorFor(pin)({ reason: "unsupportedPlatform", subject: `${runnerOs || "unknown"}/${arch}` }),
+				);
+			}
+			// The wrapper's own release pins its native package to the wrapper's
+			// version, so anything else is a malformed manifest — and this string
+			// is about to be spliced into two registry urls, so it is the pin's
+			// version (already validated by the pin grammar) that goes there, never
+			// the manifest's bytes.
+			if (nativeVersion !== pin.version.toString()) {
+				return yield* Effect.fail(
+					errorFor(pin)({
+						reason: "layoutUnexpected",
+						subject: `${packageName} is pinned at ${nativeVersion}, not the wrapper's ${pin.version.toString()}`,
+					}),
+				);
+			}
+			const placeholder = bins[pin.name];
+			if (placeholder === undefined) {
+				return yield* Effect.fail(
+					errorFor(pin)({ reason: "layoutUnexpected", subject: `package.json names no ${pin.name} bin to overlay` }),
+				);
+			}
+
+			// The registry's integrity for the exact version, before the 36 MB
+			// tarball: a packument that cannot vouch for the bytes ends the install
+			// before they are fetched.
+			const packumentUrl = `${registry}/${packageName}/${nativeVersion}`;
+			const packumentFile = yield* installer.download(packumentUrl).pipe(Effect.mapError(fromInstaller(pin)));
+			const unverifiable = (cause?: unknown) =>
+				errorFor(pin)({
+					reason: "integrityMismatch",
+					subject: packumentUrl,
+					...(cause === undefined ? {} : { cause }),
+				});
+			const packument = yield* fs.readFileString(packumentFile).pipe(
+				Effect.mapError((cause) => unverifiable(cause)),
+				Effect.flatMap((raw) =>
+					Effect.try({
+						try: () => JSON.parse(raw) as { readonly dist?: { readonly integrity?: unknown } },
+						catch: (cause) => unverifiable(cause),
+					}),
+				),
+			);
+			const declared = packument.dist?.integrity;
+			const expected = typeof declared === "string" ? Option.getOrUndefined(strongestSri(declared)) : undefined;
+			if (expected === undefined) {
+				return yield* Effect.fail(unverifiable());
+			}
+
+			const tarballUrl = `${registry}/${packageName}/-/exe.${target}-${nativeVersion}.tgz`;
+			const archive = yield* installer.download(tarballUrl).pipe(Effect.mapError(fromInstaller(pin)));
+			const actualHex = yield* hashFile(pin, archive, expected.algorithm);
+			if (actualHex !== expected.hex) {
+				return yield* Effect.fail(
+					errorFor(pin)({
+						reason: "integrityMismatch",
+						subject: tarballUrl,
+						expected: `${expected.algorithm}.${expected.hex}`,
+						actual: `${expected.algorithm}.${actualHex}`,
+					}),
+				);
+			}
+			const extracted = yield* installer.extractTar(archive).pipe(Effect.mapError(fromInstaller(pin)));
+			const nativeName = windows ? "pnpm.exe" : "pnpm";
+			const native = path.join(extracted, "package", nativeName);
+			yield* assertFile(pin, native, `package/${nativeName} is missing from the ${packageName} tarball`);
+
+			const cacheError = (subject: string) => (cause: unknown) =>
+				errorFor(pin)({ reason: "cacheFailed", subject, cause });
+			if (windows) {
+				// Mirrors the wrapper's own install script: the binary lands as
+				// `<name>.exe` AND over the extensionless placeholder for each bin
+				// (a pre-existing shim may still name the latter), and `bin` is
+				// repointed at the `.exe` twins.
+				for (const name of PNPM_NATIVE_BIN_NAMES) {
+					const relative = bins[name];
+					if (relative === undefined) {
+						continue;
+					}
+					for (const destination of [path.join(packageDir, relative), path.join(packageDir, `${relative}.exe`)]) {
+						yield* fs.copyFile(native, destination).pipe(Effect.mapError(cacheError(destination)));
+					}
+				}
+				return nativeWindowsBins(bins);
+			}
+			const destination = path.join(packageDir, placeholder);
+			yield* fs.copyFile(native, destination).pipe(Effect.mapError(cacheError(destination)));
+			// The overlaid binary and the `#!/bin/sh` alias bins are exec'd
+			// directly by their shims, so every non-Node bin needs the executable
+			// bit — which tar extraction does not reliably carry (the bun rule).
+			for (const relative of Object.values(bins)) {
+				if (!isNodeScript(relative)) {
+					const file = path.join(packageDir, relative);
+					yield* fs.chmod(file, 0o755).pipe(Effect.mapError(cacheError(file)));
+				}
+			}
+			return bins;
 		});
 
 	/** Download bun's per-platform zip from GitHub releases and cache the binary. */
@@ -589,7 +816,14 @@ const make = Effect.gen(function* () {
 					errorFor(pin)({ reason: "layoutUnexpected", subject: "tarball has no package/ root" }),
 				);
 			}
-			const bins = yield* readPackageBins(pin, packageDir);
+			const manifest = yield* readPackageManifest(pin, packageDir);
+			// pnpm 12's layout, detected by what the manifest declares rather than
+			// by major: the `pnpm` bin is a placeholder for a native binary that
+			// ships as an `@pnpm/exe.*` optional dependency and is overlaid here.
+			const bins =
+				Object.keys(manifest.nativePackages).length > 0
+					? yield* overlayNativeBinary(pin, packageDir, manifest.bins, manifest.nativePackages, registry)
+					: manifest.bins;
 			if (berry) {
 				const cli = path.join(packageDir, "bin/yarn.js");
 				yield* assertFile(pin, cli, "bin/yarn.js is missing from the cli-dist tarball");
@@ -637,7 +871,12 @@ const make = Effect.gen(function* () {
 
 		const cached = yield* installer.find(pin.name, version);
 		if (Option.isSome(cached)) {
-			return yield* cachedRecord(pin, cached.value);
+			const record = yield* cachedRecord(pin, cached.value);
+			if (Option.isSome(record)) {
+				return record.value;
+			}
+			// A hit that cannot be answered as-is (a pnpm 12 wrapper still holding
+			// its placeholder) falls through and is reinstalled over.
 		}
 
 		// Every Node toolchain ships npm; when the ambient one is already the

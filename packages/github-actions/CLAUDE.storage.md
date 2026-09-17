@@ -37,6 +37,24 @@ every tool-cache answer carries an `addPath`-able `binDir` — shims written int
 the **staged** entry for the npm-registry managers (never a post-swap mutation;
 regenerated best-effort on a foreign cache hit), bun's own directory for bun.
 
+**A shim's body follows its target, not its manager** (2026-09-17): a
+`.js`/`.mjs`/`.cjs` target runs under `node`, anything else is exec'd directly.
+pnpm 12 made that necessary — its registry package is a wrapper whose `pnpm`
+bin is a shebang-less placeholder that pnpm's own install script overwrites
+with the host's native binary, fetched as an `@pnpm/exe.<os>-<arch>[-musl]`
+optional dependency. The installer runs no lifecycle scripts, so it performs
+that overlay itself (`overlayNativeBinary`), **detected by layout** — the
+manifest naming an `@pnpm/exe.*` optional dependency — never by major. The exe
+tarball comes from the same registry as the wrapper and is verified fail-closed
+against the packument's `dist.integrity` (a second artifact the pin never
+named, so there is no integrity-less posture to honor); the binary is copied
+over the placeholder in the *staged* wrapper so `dist/` sits beside it as it
+expects. A cache hit still holding the placeholder (an older kit version's
+entry, or a foreign writer's) is reinstalled over, because a stale
+`exec node` shim beside it would survive `skipExisting`. The pure pieces —
+the published target table, musl detection, SRI parsing — live in
+`internal/pnpmExe.ts`.
+
 ## Cache keys and save resolution
 
 `ActionCache.save` (2026-08-02) resolves its `paths` as glob patterns before
