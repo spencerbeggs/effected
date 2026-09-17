@@ -10,8 +10,8 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: d1e5ebb85489aacc0f48dd702f5997cd35f7f9cdabffdd0598dc661677dd1b3c
+  at: 2026-09-17T21:24:06Z
+  body_sha256: f0b5926d037ed3a24c2059769f31ea6416d176515bef2188bd3deaf51d75d745
 ---
 
 # actions-storage
@@ -128,6 +128,37 @@ lives under the cache root because a rename across filesystems is not
 atomic. Tool installation takes no edge to [`runtimes`](../modules/runtimes.md):
 that package resolves versions and answers with a download URL, this one
 takes a URL and installs files.
+
+`PackageManagerInstaller` provisions the majors
+[the support policy](../conventions/package-manager-support-policy.md)
+names, and decides how by **artifact layout**, never by major. pnpm 12's
+registry package is a wrapper whose `pnpm` bin is a shebang-less
+placeholder that pnpm's own install script would overwrite with a native
+binary shipped as an `@pnpm/exe.<os>-<arch>[-musl]` optional dependency;
+since the installer runs no lifecycle scripts, it performs that overlay
+itself when the wrapper manifest's `optionalDependencies` names an
+`@pnpm/exe.*` package. The host's `@pnpm/exe.<target>` tarball comes from
+the same registry as the wrapper and is verified **fail-closed** against
+the packument's `dist.integrity` — it is a second artifact the pin never
+named, so there is no integrity-less posture to honor — and its executable
+is copied over the placeholder in the **staged** entry, where the wrapper's
+`dist/` sits beside it as the binary expects. The manifest's `@pnpm/exe.*`
+version must equal the pin's; anything else is `layoutUnexpected`.
+
+Shims follow their target, not their manager: a `.js`/`.mjs`/`.cjs` target
+runs under `node`, anything else is exec'd directly. For pnpm 12 that
+makes `bins.pnpm` the native executable and `pn`/`pnpx`/`pnx` its
+`#!/bin/sh` aliases. A cache hit whose entry still holds the placeholder —
+written by a kit at or below 0.13.1, or by a foreign writer that ran no
+lifecycle scripts — is not trusted: it is reinstalled over through the
+same remove-then-rename swap, because a stale `exec node` shim beside it
+would otherwise survive. The error union is unchanged at seven reasons;
+`unsupportedPlatform` now also names a host pnpm publishes no `@pnpm/exe.*`
+build for. Corepack's `bin/pnpm.mjs` route is deliberately not used: it
+downloads the binary on first invocation, mutating the cached entry after
+the swap. See
+[the placeholder gotcha](../gotchas/pnpm-12-placeholder-bin-runs-under-node.md)
+for what the un-overlaid layout looks like from a runner.
 
 ## Stability
 

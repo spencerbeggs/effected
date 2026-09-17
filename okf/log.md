@@ -10,6 +10,7 @@
 * Updated Regenerate the GitHub Action template repository
 * Updated app
 * Updated store
+* Updated github-actions
 
 ## 2026-09-16
 
