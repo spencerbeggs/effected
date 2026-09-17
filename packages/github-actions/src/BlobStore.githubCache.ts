@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import type { Schema } from "effect";
 import { Effect, Layer, Option } from "effect";
@@ -9,12 +8,11 @@ import type { BlobStoreShape, StoredBlob } from "./BlobStore.js";
 import { BlobStore, BlobStoreError } from "./BlobStore.js";
 import type { DataBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";
-import { resultsBackend } from "./internal/actionsResults.js";
-import type { TwirpFailure } from "./internal/twirp.js";
-import { CONFLICT, isOk, stringField, twirpCall } from "./internal/twirp.js";
-
-/** The Twirp service the Actions cache protocol lives under. */
-const SERVICE = "github.actions.results.api.v1.CacheService";
+import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
+import type { CacheServiceClient } from "./internal/cacheService.js";
+import { CACHE_SERVICE, finalizeUpload, lookupDownload, reserveUpload } from "./internal/cacheService.js";
+import { sha256Hex } from "./internal/digest.js";
+import { twirpCall, twirpFailureFields } from "./internal/twirp.js";
 
 /**
  * The `version` every entry is filed under.
@@ -29,7 +27,7 @@ const SERVICE = "github.actions.results.api.v1.CacheService";
  * inside the blob, so a framing change is a clean miss rather than a key change
  * that strands every existing entry.
  */
-const VERSION = createHash("sha256").update("blobstore|1.0").digest("hex");
+const VERSION = sha256Hex("blobstore|1.0");
 
 /**
  * The Azure half, ~15 lines and duplicated on purpose.
@@ -54,20 +52,6 @@ const azure: DataBlobTransfer = {
 		}).pipe(Effect.map((buffer) => new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength))),
 };
 
-const fromTwirp = (failure: TwirpFailure, key: string): BlobStoreError =>
-	failure.kind === "status"
-		? new BlobStoreError({
-				reason: "refused",
-				key,
-				...(failure.status === undefined ? {} : { status: failure.status }),
-			})
-		: new BlobStoreError({
-				reason: "unreachable",
-				key,
-				detail: `${failure.method} answered with something that is not a Twirp body`,
-				...(failure.cause === undefined ? {} : { cause: failure.cause }),
-			});
-
 const make = (
 	transfer: DataBlobTransfer,
 ): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionEnvironment> =>
@@ -80,27 +64,27 @@ const make = (
 		const backend = resultsBackend(env).pipe(
 			Effect.mapError(
 				(name) =>
-					new BlobStoreError({
-						reason: "misconfigured",
-						detail: `${name} is not set — the Actions results backend is only reachable from a \`uses:\` step, never from \`run:\``,
-					}),
+					new BlobStoreError({ reason: "misconfigured", detail: misconfiguredDetail(name, "Actions results backend") }),
 			),
 		);
 
-		const call = (method: string, body: Record<string, unknown>, key: string) =>
-			Effect.gen(function* () {
-				const { baseUrl, token } = yield* backend;
-				return yield* twirpCall<unknown>({ http, baseUrl, service: SERVICE, token, method, body }).pipe(
-					Effect.mapError((failure) => fromTwirp(failure, key)),
-				);
-			});
+		/** The cache service, for one key: every failure names it. */
+		const cacheService = (key: string): CacheServiceClient<BlobStoreError> => ({
+			call: (method, body) =>
+				Effect.gen(function* () {
+					const { baseUrl, token } = yield* backend;
+					return yield* twirpCall({ http, baseUrl, service: CACHE_SERVICE, token, method, body }).pipe(
+						Effect.mapError((failure) => new BlobStoreError({ ...twirpFailureFields(failure), key })),
+					);
+				}),
+			refused: (detail) => new BlobStoreError({ reason: "refused", key, detail }),
+		});
 
 		/** The signed download url for a key, or nothing — a miss is not a failure. */
 		const download = (key: string) =>
-			Effect.map(call("GetCacheEntryDownloadURL", { key, restore_keys: [], version: VERSION }, key), (answer) =>
-				answer === CONFLICT || !isOk(answer)
-					? Option.none<string>()
-					: Option.fromNullishOr(stringField(answer, "signedDownloadUrl")),
+			Effect.map(
+				lookupDownload(cacheService(key), key, [], VERSION),
+				Option.map((hit) => hit.url),
 			);
 
 		const moved = (key: string) =>
@@ -120,37 +104,16 @@ const make = (
 			put: <A, I>(key: string, blob: StoredBlob<A>, schema: Schema.Codec<A, I>) =>
 				Effect.gen(function* () {
 					const framed = yield* Effect.fromResult(BlobEnvelope.encodeResult(blob.metadata, blob.body, schema));
-					const created = yield* call("CreateCacheEntry", { key, version: VERSION }, key);
-					// A conflict means another job wrote this key first. The entry is
-					// immutable, so the write has already happened and the caller got
-					// what it asked for.
-					if (created === CONFLICT) {
+					const service = cacheService(key);
+					// None: another job wrote this key first. The entry is immutable,
+					// so the write has already happened and the caller got what it
+					// asked for.
+					const url = yield* reserveUpload(service, key, VERSION);
+					if (Option.isNone(url)) {
 						return;
 					}
-					const url = stringField(created, "signedUploadUrl");
-					if (!isOk(created) || url === undefined) {
-						return yield* Effect.fail(
-							new BlobStoreError({ reason: "refused", key, detail: "CreateCacheEntry returned no upload url" }),
-						);
-					}
-					yield* transfer.uploadData(url, framed).pipe(moved(key));
-					const finalized = yield* call(
-						"FinalizeCacheEntryUpload",
-						{ key, version: VERSION, size_bytes: String(framed.byteLength) },
-						key,
-					);
-					// Not folded in with the create: an unfinalized upload leaves bytes
-					// in Azure that no lookup will ever find, so it is a failure even
-					// though every byte arrived.
-					if (finalized === CONFLICT || !isOk(finalized)) {
-						return yield* Effect.fail(
-							new BlobStoreError({
-								reason: "refused",
-								key,
-								detail: "FinalizeCacheEntryUpload did not confirm the upload",
-							}),
-						);
-					}
+					yield* transfer.uploadData(url.value, framed).pipe(moved(key));
+					yield* finalizeUpload(service, key, VERSION, framed.byteLength);
 				}),
 
 			has: (key: string) => Effect.map(download(key), Option.isSome),

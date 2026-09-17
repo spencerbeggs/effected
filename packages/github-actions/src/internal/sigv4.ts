@@ -1,4 +1,5 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHmac } from "node:crypto";
+import { sha256Hex } from "./digest.js";
 
 /**
  * AWS Signature Version 4, for S3-compatible object stores.
@@ -18,8 +19,6 @@ import { createHash, createHmac } from "node:crypto";
  */
 
 const ALGORITHM = "AWS4-HMAC-SHA256";
-
-const sha256Hex = (value: string | Uint8Array): string => createHash("sha256").update(value).digest("hex");
 
 const hmac = (key: Uint8Array | string, value: string): Uint8Array =>
 	new Uint8Array(createHmac("sha256", key).update(value).digest());
@@ -162,4 +161,4 @@ export const sign = (request: SigV4Request, credentials: SigV4Credentials): Reco
 };
 
 /** The hex SHA-256 of a string, for tests that pin an intermediate. */
-export const digestHex = sha256Hex;
+export { sha256Hex as digestHex };

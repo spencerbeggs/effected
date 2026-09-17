@@ -59,19 +59,6 @@ const make = (enabled: boolean): DryRunShape => ({
  */
 export class DryRun extends Context.Service<DryRun, DryRunShape>()("@effected/github-actions/DryRun") {
 	/**
-	 * Driven by the `dry-run` action input, defaulting to a real run.
-	 *
-	 * @remarks
-	 * Fails with a `ConfigError` when the input is present but is not a YAML 1.2
-	 * core-schema boolean — a workflow that writes `dry-run: yes` should stop,
-	 * not quietly perform the mutations it meant to rehearse.
-	 */
-	static readonly layer: Layer.Layer<DryRun, Config.ConfigError> = Layer.effect(
-		this,
-		Effect.map(ActionInput.boolean(DEFAULT_INPUT).pipe(Config.withDefault(false)), make),
-	);
-
-	/**
 	 * Driven by a named input.
 	 *
 	 * @remarks
@@ -81,6 +68,16 @@ export class DryRun extends Context.Service<DryRun, DryRunShape>()("@effected/gi
 	 */
 	static readonly layerFromInput = (name: string): Layer.Layer<DryRun, Config.ConfigError> =>
 		Layer.effect(DryRun, Effect.map(ActionInput.boolean(name).pipe(Config.withDefault(false)), make));
+
+	/**
+	 * Driven by the `dry-run` action input, defaulting to a real run.
+	 *
+	 * @remarks
+	 * Fails with a `ConfigError` when the input is present but is not a YAML 1.2
+	 * core-schema boolean — a workflow that writes `dry-run: yes` should stop,
+	 * not quietly perform the mutations it meant to rehearse.
+	 */
+	static readonly layer: Layer.Layer<DryRun, Config.ConfigError> = DryRun.layerFromInput(DEFAULT_INPUT);
 
 	/** Driven by an explicit decision the caller has already made. */
 	static readonly layerFrom = (enabled: boolean): Layer.Layer<DryRun> => Layer.succeed(DryRun, make(enabled));

@@ -1,6 +1,8 @@
 import { Context, Effect, FileSystem, Layer, Option, Schema } from "effect";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { ActionOutputs } from "./ActionOutputs.js";
+import { heredocBlock, isUsableName } from "./internal/runnerFile.js";
+import { unstubbed } from "./internal/unstubbed.js";
 
 /**
  * Raised when state cannot cross the phase boundary.
@@ -88,18 +90,14 @@ const make = Effect.gen(function* () {
 
 	const write = (key: string, serialized: string): Effect.Effect<void, ActionStateError> =>
 		Effect.gen(function* () {
-			const path = yield* env
-				.get("GITHUB_STATE")
-				.pipe(Effect.mapError((cause) => new ActionStateError({ reason: "writeFailed", key, cause })));
-			// Same derived-delimiter discipline as ActionOutputs: a value that
-			// contains the delimiter would terminate its block early.
-			let delimiter = "EFFECTED_EOF";
-			while (serialized.includes(delimiter)) {
-				delimiter = `${delimiter}_`;
+			const writeFailed = (cause: unknown) => new ActionStateError({ reason: "writeFailed", key, cause });
+			// The same heredoc protocol as ActionOutputs (`internal/runnerFile.ts`):
+			// a key that cannot head a block would corrupt every entry after it.
+			if (!isUsableName(key)) {
+				return yield* Effect.fail(writeFailed(new Error(`"${key}" cannot name a GITHUB_STATE entry`)));
 			}
-			yield* fs
-				.writeFileString(path, `${key}<<${delimiter}\n${serialized}\n${delimiter}\n`, { flag: "a" })
-				.pipe(Effect.mapError((cause) => new ActionStateError({ reason: "writeFailed", key, cause })));
+			const path = yield* env.get("GITHUB_STATE").pipe(Effect.mapError(writeFailed));
+			yield* fs.writeFileString(path, heredocBlock(key, serialized), { flag: "a" }).pipe(Effect.mapError(writeFailed));
 		});
 
 	const read = <A, I>(key: string, schema: Schema.Codec<A, I>): Effect.Effect<Option.Option<A>, ActionStateError> =>
@@ -108,11 +106,7 @@ const make = Effect.gen(function* () {
 			if (Option.isNone(raw)) {
 				return Option.none<A>();
 			}
-			const parsed = yield* Effect.try({
-				try: () => JSON.parse(raw.value) as unknown,
-				catch: (cause) => new ActionStateError({ reason: "malformed", key, cause }),
-			});
-			const decoded = yield* Schema.decodeUnknownEffect(schema)(parsed).pipe(
+			const decoded = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(raw.value).pipe(
 				Effect.mapError((cause) => new ActionStateError({ reason: "malformed", key, cause })),
 			);
 			return Option.some(decoded);
@@ -158,9 +152,7 @@ const make = Effect.gen(function* () {
 	} satisfies ActionStateShape;
 });
 
-const unimplemented = (member: string): never => {
-	throw new Error(`ActionState.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`);
-};
+const dies = unstubbed("ActionState.makeTest");
 
 /**
  * State that survives the `pre` → `main` → `post` phase boundary.
@@ -182,10 +174,10 @@ export class ActionState extends Context.Service<ActionState, ActionStateShape>(
 
 	/** A test double. Unstubbed members die rather than answering wrongly. */
 	static readonly makeTest = (overrides: Partial<ActionStateShape> = {}): ActionStateShape => ({
-		save: () => Effect.sync(() => unimplemented("save")),
-		get: () => Effect.sync(() => unimplemented("get")),
-		getOptional: () => Effect.sync(() => unimplemented("getOptional")),
-		saveSecret: () => Effect.sync(() => unimplemented("saveSecret")),
+		save: () => dies("save"),
+		get: () => dies("get"),
+		getOptional: () => dies("getOptional"),
+		saveSecret: () => dies("saveSecret"),
 		...overrides,
 	});
 

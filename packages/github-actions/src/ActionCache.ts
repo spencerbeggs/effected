@@ -1,16 +1,20 @@
-import { createHash } from "node:crypto";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { GlobPattern, GlobSet } from "@effected/glob";
-import { Context, Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import type { FileBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";
 import type { CacheKey } from "./CacheKey.js";
-import { resultsBackend } from "./internal/actionsResults.js";
-import type { TwirpFailure } from "./internal/twirp.js";
-import { CONFLICT, isOk, stringField, twirpCall } from "./internal/twirp.js";
+import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
+import type { CacheServiceClient } from "./internal/cacheService.js";
+import { CACHE_SERVICE, finalizeUpload, lookupDownload, reserveUpload } from "./internal/cacheService.js";
+import { sha256Hex } from "./internal/digest.js";
+import { isWindowsRunner } from "./internal/runner.js";
+import { spawnOnce } from "./internal/spawn.js";
+import { twirpCall, twirpFailureFields } from "./internal/twirp.js";
+import { unstubbed } from "./internal/unstubbed.js";
 
 /**
  * Raised when the runner's cache cannot be read or written.
@@ -112,9 +116,6 @@ export interface ActionCacheShape {
 	) => Effect.Effect<Option.Option<string>, ActionCacheError>;
 }
 
-/** The Twirp service the Actions cache protocol lives under. */
-const SERVICE = "github.actions.results.api.v1.CacheService";
-
 /**
  * The entry version, byte-compatible with `actions/cache`.
  *
@@ -134,10 +135,7 @@ const SERVICE = "github.actions.results.api.v1.CacheService";
  * version the restore side cannot reproduce, and every save would be an entry
  * no restore ever finds.
  */
-const versionOf = (paths: ReadonlyArray<string>): string =>
-	createHash("sha256")
-		.update([...paths, "gzip", "1.0"].join("|"))
-		.digest("hex");
+const versionOf = (paths: ReadonlyArray<string>): string => sha256Hex([...paths, "gzip", "1.0"].join("|"));
 
 /**
  * The Azure half, duplicated on purpose.
@@ -170,21 +168,6 @@ const azure: FileBlobTransfer = {
 		}).pipe(Effect.asVoid),
 };
 
-const fromTwirp = (failure: TwirpFailure, key: string): ActionCacheError =>
-	failure.kind === "status"
-		? new ActionCacheError({
-				reason: "refused",
-				key,
-				detail: failure.method,
-				...(failure.status === undefined ? {} : { status: failure.status }),
-			})
-		: new ActionCacheError({
-				reason: "unreachable",
-				key,
-				detail: `${failure.method} did not answer with a Twirp body`,
-				...(failure.cause === undefined ? {} : { cause: failure.cause }),
-			});
-
 /** The primary key and the ladder to fall back through. */
 const ladder = (key: string | CacheKey, restoreKeys: ReadonlyArray<string> | undefined) =>
 	typeof key === "string"
@@ -209,27 +192,29 @@ const make = (
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 		// Resolved once, at construction, so every member's `R` is `never`.
 		const env = yield* ActionEnvironment;
-		const windows = yield* Effect.map(env.getOptional("RUNNER_OS"), (found) =>
-			Option.match(found, { onNone: () => false, onSome: (os) => os.toLowerCase() === "windows" }),
-		);
+		const windows = yield* isWindowsRunner(env);
+
+		/** A filesystem or subprocess failure on the way to or from the archive. */
+		const archiveFailed = (key: string) => (cause: unknown) =>
+			new ActionCacheError({ reason: "archiveFailed", key, cause });
 
 		const backend = resultsBackend(env).pipe(
 			Effect.mapError(
-				(name) =>
-					new ActionCacheError({
-						reason: "misconfigured",
-						detail: `${name} is not set — the Actions cache is only reachable from a \`uses:\` step, never from \`run:\``,
-					}),
+				(name) => new ActionCacheError({ reason: "misconfigured", detail: misconfiguredDetail(name, "Actions cache") }),
 			),
 		);
 
-		const call = (method: string, body: Record<string, unknown>, key: string) =>
-			Effect.gen(function* () {
-				const { baseUrl, token } = yield* backend;
-				return yield* twirpCall<unknown>({ http, baseUrl, service: SERVICE, token, method, body }).pipe(
-					Effect.mapError((failure) => fromTwirp(failure, key)),
-				);
-			});
+		/** The cache service, for one key: every failure names it. */
+		const cacheService = (key: string): CacheServiceClient<ActionCacheError> => ({
+			call: (method, body) =>
+				Effect.gen(function* () {
+					const { baseUrl, token } = yield* backend;
+					return yield* twirpCall({ http, baseUrl, service: CACHE_SERVICE, token, method, body }).pipe(
+						Effect.mapError((failure) => new ActionCacheError({ ...twirpFailureFields(failure), key })),
+					);
+				}),
+			refused: (detail) => new ActionCacheError({ reason: "refused", key, detail }),
+		});
 
 		/**
 		 * Run `tar` ONCE, keeping its stderr.
@@ -240,29 +225,20 @@ const make = (
 		 * exits 1 to say so, which is a warning rather than an error. Exit 2 and
 		 * above stays a failure on every platform.
 		 *
-		 * Output and exit code come from the SAME `spawn` handle: the spawner's
-		 * `string` and `exitCode` convenience members each spawn independently
-		 * (core derives both from `spawn`), so calling them back-to-back
-		 * double-executed every archive operation — and on a failure reported the
-		 * FIRST run's output as the second run's complaint. `tar` being idempotent
-		 * kept this latent here; the same shape failed loudly in
-		 * `ToolInstaller.extractZip` on Windows.
+		 * Output and exit code come from the SAME `spawn` handle
+		 * (`internal/spawn.ts` — the spawner's convenience members each spawn
+		 * independently, and the double run failed loudly in
+		 * `ToolInstaller.extractZip` on Windows).
 		 */
 		const tar = (args: ReadonlyArray<string>, key: string, tolerateWarnings: boolean) =>
-			Effect.scoped(
-				Effect.gen(function* () {
-					const command = ChildProcess.make("tar", [...args]);
-					const archiveError = (cause: unknown) => new ActionCacheError({ reason: "archiveFailed", key, cause });
-					const handle = yield* spawner.spawn(command).pipe(Effect.mapError(archiveError));
-					// Drain stdout+stderr BEFORE awaiting the exit code, so a chatty
-					// tar cannot deadlock on a full pipe; the stream ends at exit.
-					const output = yield* Stream.mkString(Stream.decodeText(handle.all)).pipe(Effect.mapError(archiveError));
-					const code = yield* handle.exitCode.pipe(Effect.mapError(archiveError));
-					if (code !== 0 && !(tolerateWarnings && code === 1)) {
-						return yield* Effect.fail(new ActionCacheError({ reason: "archiveFailed", key, stderr: output.trim() }));
-					}
-				}),
-			);
+			Effect.gen(function* () {
+				const { output, code } = yield* spawnOnce(spawner, ChildProcess.make("tar", [...args])).pipe(
+					Effect.mapError(archiveFailed(key)),
+				);
+				if (code !== 0 && !(tolerateWarnings && code === 1)) {
+					return yield* Effect.fail(new ActionCacheError({ reason: "archiveFailed", key, stderr: output.trim() }));
+				}
+			});
 
 		/**
 		 * A scratch archive path — plus the scratch directory itself, where the
@@ -273,9 +249,7 @@ const make = (
 			use: (archive: string, scratch: string) => Effect.Effect<A, ActionCacheError>,
 		): Effect.Effect<A, ActionCacheError> =>
 			Effect.acquireUseRelease(
-				fs
-					.makeTempDirectory({ prefix: "effected-cache-" })
-					.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key, cause }))),
+				fs.makeTempDirectory({ prefix: "effected-cache-" }).pipe(Effect.mapError(archiveFailed(key))),
 				(directory) => use(path.join(directory, "cache.tar.gz"), directory),
 				(directory) => Effect.ignore(fs.remove(directory, { recursive: true, force: true })),
 			);
@@ -430,13 +404,13 @@ const make = (
 			save: Effect.fn("ActionCache.save")(function* (paths: ReadonlyArray<string>, key: string | CacheKey) {
 				const { primary } = ladder(key, undefined);
 				yield* Effect.annotateCurrentSpan({ key: primary });
-				// The LITERAL list, before resolution — see `versionOf` for why.
-				const version = versionOf(paths);
 				if (paths.length === 0) {
 					return yield* Effect.fail(
 						new ActionCacheError({ reason: "archiveFailed", key: primary, detail: "no paths were given to cache" }),
 					);
 				}
+				// The LITERAL list, before resolution — see `versionOf` for why.
+				const version = versionOf(paths);
 				const resolved = yield* resolvePaths(paths, primary);
 				yield* withArchive(primary, (archive, scratch) =>
 					Effect.gen(function* () {
@@ -458,49 +432,22 @@ const make = (
 						const manifest = path.join(scratch, "manifest.txt");
 						yield* fs
 							.writeFileString(manifest, `${resolved.join("\n")}\n`)
-							.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key: primary, cause })));
+							.pipe(Effect.mapError(archiveFailed(primary)));
 						// `-P` keeps leading separators, so an absolute path is stored
 						// verbatim and restored where it came from rather than under the
 						// working directory of whichever step happens to restore it.
 						yield* tar(["czPf", archive, "-T", manifest], primary, false);
-						const size = yield* fs
-							.stat(archive)
-							.pipe(Effect.mapError((cause) => new ActionCacheError({ reason: "archiveFailed", key: primary, cause })));
+						const size = yield* fs.stat(archive).pipe(Effect.mapError(archiveFailed(primary)));
 
-						const created = yield* call("CreateCacheEntry", { key: primary, version }, primary);
-						// A conflict means another job saved this key first. Entries are
-						// immutable, so the cache holds what the caller wanted.
-						if (created === CONFLICT) {
+						const service = cacheService(primary);
+						// None: another job saved this key first, and the cache already
+						// holds what the caller wanted.
+						const url = yield* reserveUpload(service, primary, version);
+						if (Option.isNone(url)) {
 							return;
 						}
-						const url = stringField(created, "signedUploadUrl");
-						if (!isOk(created) || url === undefined) {
-							return yield* Effect.fail(
-								new ActionCacheError({
-									reason: "refused",
-									key: primary,
-									detail: "CreateCacheEntry returned no upload url",
-								}),
-							);
-						}
-						yield* transfer.uploadFile(url, archive).pipe(moved(primary));
-
-						const finalized = yield* call(
-							"FinalizeCacheEntryUpload",
-							{ key: primary, version, size_bytes: String(size.size) },
-							primary,
-						);
-						// An unfinalized upload leaves an archive in Azure that no lookup
-						// can reach — a silent no-op that reads as a successful save.
-						if (finalized === CONFLICT || !isOk(finalized)) {
-							return yield* Effect.fail(
-								new ActionCacheError({
-									reason: "refused",
-									key: primary,
-									detail: "FinalizeCacheEntryUpload did not confirm the upload",
-								}),
-							);
-						}
+						yield* transfer.uploadFile(url.value, archive).pipe(moved(primary));
+						yield* finalizeUpload(service, primary, version, size.size);
 					}),
 				);
 			}),
@@ -512,36 +459,25 @@ const make = (
 			) {
 				const { primary, fallbacks } = ladder(key, restoreKeys);
 				yield* Effect.annotateCurrentSpan({ key: primary });
-				const version = versionOf(paths);
-				const found = yield* call(
-					"GetCacheEntryDownloadURL",
-					{ key: primary, restore_keys: [...fallbacks], version },
-					primary,
-				);
-				if (found === CONFLICT || !isOk(found)) {
-					return Option.none<string>();
-				}
-				const url = stringField(found, "signedDownloadUrl");
-				if (url === undefined) {
+				const hit = yield* lookupDownload(cacheService(primary), primary, fallbacks, versionOf(paths));
+				if (Option.isNone(hit)) {
 					return Option.none<string>();
 				}
 				yield* withArchive(primary, (archive) =>
 					Effect.gen(function* () {
-						yield* transfer.downloadToFile(url, archive).pipe(moved(primary));
+						yield* transfer.downloadToFile(hit.value.url, archive).pipe(moved(primary));
 						yield* tar([windows ? "xzPkf" : "xzPf", archive], primary, windows);
 					}),
 				);
 				// The matched key is what the caller branches on: a hit on a restore
 				// key is a partial hit, and re-saving under the primary key is the
 				// whole point of knowing the difference.
-				return Option.some(stringField(found, "matchedKey") ?? primary);
+				return Option.some(hit.value.matchedKey ?? primary);
 			}),
 		} satisfies ActionCacheShape;
 	});
 
-const unimplemented = (member: string): never => {
-	throw new Error(`ActionCache.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`);
-};
+const dies = unstubbed("ActionCache.makeTest");
 
 /**
  * The runner's own cache: archive a set of paths under a key, and get them back
@@ -618,8 +554,8 @@ export class ActionCache extends Context.Service<ActionCache, ActionCacheShape>(
 
 	/** A test double. Unstubbed members die rather than reporting a miss. */
 	static readonly makeTest = (overrides: Partial<ActionCacheShape> = {}): ActionCacheShape => ({
-		save: () => Effect.sync(() => unimplemented("save")),
-		restore: () => Effect.sync(() => unimplemented("restore")),
+		save: () => dies("save"),
+		restore: () => dies("restore"),
 		...overrides,
 	});
 

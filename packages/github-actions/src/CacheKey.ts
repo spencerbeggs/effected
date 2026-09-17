@@ -1,6 +1,7 @@
-import { createHash } from "node:crypto";
 import { GlobSet } from "@effected/glob";
+import { descend } from "@effected/walker";
 import { Effect, FileSystem, Option, Path, Schema } from "effect";
+import { sha256, sha256Hex } from "./internal/digest.js";
 
 /**
  * Raised when a file or directory that was going to be hashed could not be
@@ -302,15 +303,12 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 		/** The content hash, e.g. from {@link CacheKey.hashFiles}. Included last when given. */
 		readonly hash?: string;
 	}): CacheKey {
-		const segments: Array<string> = [];
-		if (options.os !== undefined) {
-			segments.push(options.os);
-		}
-		segments.push(options.scope, options.branch);
+		const segments: [string, ...Array<string>] =
+			options.os === undefined ? [options.scope, options.branch] : [options.os, options.scope, options.branch];
 		if (options.hash !== undefined) {
 			segments.push(options.hash);
 		}
-		return CacheKey.make({ segments: segments as [string, ...Array<string>] });
+		return CacheKey.make({ segments });
 	}
 
 	/**
@@ -354,7 +352,7 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 		if (!Number.isInteger(length) || length < 1 || length > 64) {
 			throw new RangeError(`A digest length must be an integer between 1 and 64, got ${length}`);
 		}
-		return createHash("sha256").update(input).digest("hex").slice(0, length);
+		return sha256Hex(input).slice(0, length);
 	}
 
 	/**
@@ -386,7 +384,7 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 			ordered.map((path) =>
 				fs.readFile(path).pipe(
 					Effect.mapError((cause) => new CacheKeyReadError({ path, cause })),
-					Effect.map((bytes) => createHash("sha256").update(bytes).digest()),
+					Effect.map(sha256),
 				),
 			),
 			// The `concurrency` option is load-bearing, not a tuning knob: `Effect.all`
@@ -398,11 +396,8 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 			// already use for their own IO fan-out.
 			{ concurrency: 8 },
 		);
-		const accumulator = createHash("sha256");
-		for (const digest of digests) {
-			accumulator.update(digest);
-		}
-		return Option.some(accumulator.digest("hex"));
+		// The digest of the concatenated raw digests — the runner's own `hashFiles()` shape.
+		return Option.some(sha256Hex(Uint8Array.from(digests.flatMap((digest) => [...digest]))));
 	});
 
 	/**
@@ -436,29 +431,44 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	}) {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
+		const { workspace } = options;
 		const set = yield* GlobSet.compile(options.patterns).pipe(
 			Effect.mapError((cause) => new CacheKeyBadPatternError({ pattern: cause.pattern, cause })),
 		);
-		const entries = yield* fs
-			.readDirectory(options.workspace, { recursive: true })
-			.pipe(Effect.mapError((cause) => new CacheKeyReadError({ path: options.workspace, cause })));
+		// An absent workspace is a failure naming it, never an empty answer:
+		// `descend` reads a missing base as zero matches, which here would fold
+		// into a key that silently caches against a constant.
+		yield* fs.stat(workspace).pipe(Effect.mapError((cause) => new CacheKeyReadError({ path: workspace, cause })));
 
-		const matched: Array<string> = [];
-		for (const entry of entries) {
-			// The walk reports platform separators; the dialect is posix. A Windows
-			// runner would otherwise match nothing at all.
-			if (!set.matches(entry.replaceAll("\\", "/"))) {
-				continue;
-			}
-			const absolute = path.join(options.workspace, entry);
-			const info = yield* fs
-				.stat(absolute)
-				.pipe(Effect.mapError((cause) => new CacheKeyReadError({ path: absolute, cause })));
-			if (info.type === "File") {
-				matched.push(absolute);
+		// The walk is `@effected/walker`'s: each include is expanded from its own
+		// literal prefix (a literal include is one stat, never a walk), files
+		// only, `cwd`-relative posix paths — so a Windows runner matches too.
+		// Nothing is pruned implicitly, matching the runner's own `hashFiles()`;
+		// an exclusion is the caller's `!pattern`, re-applied over the union
+		// below because each include is expanded alone.
+		const candidates = new Set<string>();
+		for (const literal of set.literals) {
+			const info = yield* Effect.option(fs.stat(path.join(workspace, literal)));
+			if (Option.isSome(info) && info.value.type === "File") {
+				candidates.add(literal);
 			}
 		}
-		return matched.sort() as ReadonlyArray<string>;
+		for (const wildcard of set.wildcards) {
+			// A whole-pattern negation only filters; it expands nothing.
+			if (wildcard.negated) {
+				continue;
+			}
+			const found = yield* descend(wildcard, { cwd: workspace, prune: [] }).pipe(
+				Effect.mapError((cause) => new CacheKeyReadError({ path: path.join(workspace, cause.path), cause })),
+			);
+			for (const match of found) {
+				candidates.add(match);
+			}
+		}
+		return [...candidates]
+			.filter((candidate) => set.matches(candidate))
+			.sort()
+			.map((candidate) => path.join(workspace, candidate)) as ReadonlyArray<string>;
 	});
 
 	/**

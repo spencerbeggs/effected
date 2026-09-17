@@ -5,6 +5,7 @@ import type { ActionOutputs } from "./ActionOutputs.js";
 import type { BlobEnvelopeError } from "./BlobEnvelope.js";
 import { BlobEnvelope } from "./BlobEnvelope.js";
 import { sign } from "./internal/sigv4.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { Secret } from "./Secret.js";
 
 /**
@@ -150,9 +151,9 @@ export class BlobStore extends Context.Service<BlobStore, BlobStoreShape>()("@ef
 
 	/** A test double. Unstubbed members die rather than reporting a miss. */
 	static readonly makeTest = (overrides: Partial<BlobStoreShape> = {}): BlobStoreShape => ({
-		get: () => Effect.sync(() => unimplemented("get")),
-		put: () => Effect.sync(() => unimplemented("put")),
-		has: () => Effect.sync(() => unimplemented("has")),
+		get: () => dies("get"),
+		put: () => dies("put"),
+		has: () => dies("has"),
 		...overrides,
 	});
 
@@ -190,9 +191,7 @@ export class BlobStore extends Context.Service<BlobStore, BlobStoreShape>()("@ef
 	});
 }
 
-const unimplemented = (member: string): never => {
-	throw new Error(`BlobStore.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`);
-};
+const dies = unstubbed("BlobStore.makeTest");
 
 const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionOutputs> =>
 	Effect.gen(function* () {
@@ -241,6 +240,10 @@ const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClie
 					.pipe(Effect.mapError((cause) => new BlobStoreError({ reason: "unreachable", key, cause })));
 			});
 
+		/** Anything outside 2xx is the store refusing; a caller reads `404` first where a miss is an answer. */
+		const accepted = (key: string, status: number): Effect.Effect<void, BlobStoreError> =>
+			status < 200 || status >= 300 ? Effect.fail(new BlobStoreError({ reason: "refused", key, status })) : Effect.void;
+
 		return {
 			get: <A, I>(key: string, schema: Schema.Codec<A, I>) =>
 				Effect.gen(function* () {
@@ -249,9 +252,7 @@ const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClie
 					if (response.status === 404) {
 						return Option.none<StoredBlob<A>>();
 					}
-					if (response.status < 200 || response.status >= 300) {
-						return yield* Effect.fail(new BlobStoreError({ reason: "refused", key, status: response.status }));
-					}
+					yield* accepted(key, response.status);
 					const buffer = yield* response.arrayBuffer.pipe(
 						Effect.mapError((cause) => new BlobStoreError({ reason: "unreachable", key, cause })),
 					);
@@ -262,9 +263,7 @@ const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClie
 				Effect.gen(function* () {
 					const framed = yield* Effect.fromResult(BlobEnvelope.encodeResult(blob.metadata, blob.body, schema));
 					const response = yield* send("PUT", key, framed);
-					if (response.status < 200 || response.status >= 300) {
-						return yield* Effect.fail(new BlobStoreError({ reason: "refused", key, status: response.status }));
-					}
+					yield* accepted(key, response.status);
 				}),
 
 			has: (key: string) =>
@@ -273,9 +272,7 @@ const makeS3 = (config: S3Config): Effect.Effect<BlobStoreShape, never, HttpClie
 					if (response.status === 404) {
 						return false;
 					}
-					if (response.status < 200 || response.status >= 300) {
-						return yield* Effect.fail(new BlobStoreError({ reason: "refused", key, status: response.status }));
-					}
+					yield* accepted(key, response.status);
 					return true;
 				}),
 		} satisfies BlobStoreShape;

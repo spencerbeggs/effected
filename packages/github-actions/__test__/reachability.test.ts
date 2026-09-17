@@ -100,8 +100,16 @@ const LIGHT_MODULES = [
 	"ToolInstaller.ts",
 	"WorkflowCommand.ts",
 	"internal/actionsResults.ts",
-	"internal/twirp.ts",
+	"internal/cacheService.ts",
+	"internal/digest.ts",
+	"internal/fsProbe.ts",
+	"internal/jwt.ts",
+	"internal/runner.ts",
+	"internal/runnerFile.ts",
 	"internal/sigv4.ts",
+	"internal/spawn.ts",
+	"internal/twirp.ts",
+	"internal/unstubbed.ts",
 ];
 
 describe("bundle reachability", () => {
@@ -151,8 +159,11 @@ describe("bundle reachability", () => {
 		assert.deepStrictEqual([...reachableBareImports("BlobEnvelope.ts")].sort(), ["effect"]);
 		// `node:crypto` is the sanctioned import, and it is here because core
 		// `Crypto` is RNG-only at beta.101 — no digest, no HMAC.
+		// `@effected/walker` is the file walker under `matchingFiles`; its own
+		// graph is `effect` and `@effected/glob`, both already here.
 		assert.deepStrictEqual([...reachableBareImports("CacheKey.ts")].sort(), [
 			"@effected/glob",
+			"@effected/walker",
 			"effect",
 			"node:crypto",
 		]);
@@ -243,6 +254,22 @@ describe("bundle reachability", () => {
 			["effect", "effect/unstable/http"],
 			"the Twirp client speaks HTTP and nothing heavier",
 		);
+		// The cache-entry choreography shared by `ActionCache` and
+		// `BlobStore.githubCache` owns the three RPCs and NOT the Azure transfer
+		// between them — that is the whole point of it being an internal.
+		assert.deepStrictEqual([...reachableBareImports("internal/cacheService.ts")].sort(), [
+			"effect",
+			"effect/unstable/http",
+		]);
+		// `effect/unstable/process` is a type-only import there: the spawner
+		// arrives as a value from the caller.
+		assert.deepStrictEqual([...reachableBareImports("internal/spawn.ts")].sort(), ["effect"]);
+		assert.deepStrictEqual([...reachableBareImports("internal/digest.ts")].sort(), ["effect", "node:crypto"]);
+		assert.deepStrictEqual([...reachableBareImports("internal/fsProbe.ts")].sort(), ["effect"]);
+		assert.deepStrictEqual([...reachableBareImports("internal/jwt.ts")].sort(), ["effect"]);
+		assert.deepStrictEqual([...reachableBareImports("internal/runner.ts")].sort(), ["effect"]);
+		assert.deepStrictEqual([...reachableBareImports("internal/runnerFile.ts")], []);
+		assert.deepStrictEqual([...reachableBareImports("internal/unstubbed.ts")].sort(), ["effect"]);
 	});
 
 	it("the entry point reaches Azure, and that is correct", () => {

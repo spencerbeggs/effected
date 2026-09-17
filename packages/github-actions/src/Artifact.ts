@@ -1,15 +1,17 @@
-import { createHash } from "node:crypto";
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
-import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema, Stream } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import type { FileBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";
 import type { BackendIds } from "./internal/actionsResults.js";
-import { resultsBackend } from "./internal/actionsResults.js";
-import type { TwirpFailure } from "./internal/twirp.js";
-import { CONFLICT, field, isOk, stringField, twirpCall } from "./internal/twirp.js";
+import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
+import { digestFileHex } from "./internal/digest.js";
+import { isWindowsRunner } from "./internal/runner.js";
+import { spawnOnce } from "./internal/spawn.js";
+import { CONFLICT, field, isOk, stringField, twirpCall, twirpFailureFields } from "./internal/twirp.js";
+import { unstubbed } from "./internal/unstubbed.js";
 
 /**
  * Raised when an artifact cannot be uploaded, listed, downloaded or deleted.
@@ -223,21 +225,6 @@ const azure: FileBlobTransfer = {
 		}).pipe(Effect.asVoid),
 };
 
-const fromTwirp = (failure: TwirpFailure, artifact: string): ArtifactError =>
-	failure.kind === "status"
-		? new ArtifactError({
-				reason: "refused",
-				artifact,
-				detail: failure.method,
-				...(failure.status === undefined ? {} : { status: failure.status }),
-			})
-		: new ArtifactError({
-				reason: "unreachable",
-				artifact,
-				detail: `${failure.method} did not answer with a Twirp body`,
-				...(failure.cause === undefined ? {} : { cause: failure.cause }),
-			});
-
 /** One row of a `ListArtifacts` answer, read under either field spelling. */
 const toItem = (row: unknown): ArtifactItem => {
 	const createdAt = stringField(row, "createdAt");
@@ -267,9 +254,7 @@ const make = (
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 		// Resolved once, at construction, so every member's `R` is `never`.
 		const env = yield* ActionEnvironment;
-		const windows = yield* Effect.map(env.getOptional("RUNNER_OS"), (found) =>
-			Option.match(found, { onNone: () => false, onSome: (os) => os.toLowerCase() === "windows" }),
-		);
+		const windows = yield* isWindowsRunner(env);
 
 		const backend = (artifact: string) =>
 			resultsBackend(env).pipe(
@@ -278,7 +263,7 @@ const make = (
 						new ArtifactError({
 							reason: "misconfigured",
 							artifact,
-							detail: `${name} is not set — the artifact service is only reachable from a \`uses:\` step, never from \`run:\``,
+							detail: misconfiguredDetail(name, "artifact service"),
 						}),
 				),
 				Effect.flatMap((resolved) =>
@@ -299,14 +284,14 @@ const make = (
 		const call = (method: string, body: (ids: BackendIds) => Record<string, unknown>, artifact: string) =>
 			Effect.gen(function* () {
 				const { baseUrl, ids, token } = yield* backend(artifact);
-				return yield* twirpCall<unknown>({
+				return yield* twirpCall({
 					http,
 					baseUrl,
 					service: SERVICE,
 					token,
 					method,
 					body: { ...ids, ...body(ids) },
-				}).pipe(Effect.mapError((failure) => fromTwirp(failure, artifact)));
+				}).pipe(Effect.mapError((failure) => new ArtifactError({ ...twirpFailureFields(failure), artifact })));
 			});
 
 		const listAll = (artifact: string) =>
@@ -321,15 +306,12 @@ const make = (
 				},
 			);
 
-		/** Run an archiving command, keeping its stderr. */
+		/** Run an archiving command ONCE (`internal/spawn.ts`), keeping its stderr. */
 		const archive = (command: ChildProcess.Command, artifact: string) =>
 			Effect.gen(function* () {
-				const output = yield* spawner
-					.string(command, { includeStderr: true })
-					.pipe(Effect.mapError((cause) => new ArtifactError({ reason: "archiveFailed", artifact, cause })));
-				const code = yield* spawner
-					.exitCode(command)
-					.pipe(Effect.mapError((cause) => new ArtifactError({ reason: "archiveFailed", artifact, cause })));
+				const { output, code } = yield* spawnOnce(spawner, command).pipe(
+					Effect.mapError((cause) => new ArtifactError({ reason: "archiveFailed", artifact, cause })),
+				);
 				if (code !== 0) {
 					return yield* Effect.fail(new ArtifactError({ reason: "archiveFailed", artifact, stderr: output.trim() }));
 				}
@@ -356,15 +338,9 @@ const make = (
 		 * roughly seven gigabytes of memory for everything.
 		 */
 		const digestOf = (file: string, artifact: string) =>
-			Effect.gen(function* () {
-				const accumulator = createHash("sha256");
-				yield* Stream.runForEach(fs.stream(file), (chunk) =>
-					Effect.sync(() => {
-						accumulator.update(chunk);
-					}),
-				).pipe(Effect.mapError((cause) => new ArtifactError({ reason: "archiveFailed", artifact, cause })));
-				return accumulator.digest("hex");
-			});
+			digestFileHex(fs, file, "sha256").pipe(
+				Effect.mapError((cause) => new ArtifactError({ reason: "archiveFailed", artifact, cause })),
+			);
 
 		const moved = (artifact: string) =>
 			Effect.mapError((cause: BlobTransferError) => new ArtifactError({ reason: "transferFailed", artifact, cause }));
@@ -574,9 +550,7 @@ const make = (
 		} satisfies ArtifactShape;
 	});
 
-const unimplemented = (member: string): never => {
-	throw new Error(`Artifact.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`);
-};
+const dies = unstubbed("Artifact.makeTest");
 
 /**
  * Upload, list, download and delete GitHub Actions artifacts.
@@ -652,11 +626,11 @@ export class Artifact extends Context.Service<Artifact, ArtifactShape>()("@effec
 
 	/** A test double. Unstubbed members die rather than reporting an empty run. */
 	static readonly makeTest = (overrides: Partial<ArtifactShape> = {}): ArtifactShape => ({
-		upload: () => Effect.sync(() => unimplemented("upload")),
-		list: () => Effect.sync(() => unimplemented("list")),
-		get: () => Effect.sync(() => unimplemented("get")),
-		download: () => Effect.sync(() => unimplemented("download")),
-		delete: () => Effect.sync(() => unimplemented("delete")),
+		upload: () => dies("upload"),
+		list: () => dies("list"),
+		get: () => dies("get"),
+		download: () => dies("download"),
+		delete: () => dies("delete"),
 		...overrides,
 	});
 

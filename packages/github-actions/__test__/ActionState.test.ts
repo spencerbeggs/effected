@@ -46,6 +46,22 @@ describe("ActionState", () => {
 		});
 	});
 
+	it.effect("refuses a key that cannot head a block, and writes nothing", () => {
+		// The same heredoc protocol as ActionOutputs: a key carrying a line break
+		// would end its block early and corrupt every entry after it, so it is
+		// a typed `writeFailed` naming the key — never a silent corruption.
+		const { files, run } = live(
+			Effect.gen(function* () {
+				const error = yield* Effect.flip((yield* ActionState).save("to\nken", { value: "abc", expires: 1 }, Token));
+				assert.strictEqual(error.reason, "writeFailed");
+				assert.strictEqual(error.key, "to\nken");
+			}),
+		);
+		return Effect.map(run, () => {
+			assert.isUndefined(files.written.text("/rf/state"));
+		});
+	});
+
 	it.effect(
 		"reads a value back from the STATE_ variable the runner republishes",
 		() =>

@@ -13,6 +13,7 @@
 
 import { Effect, Option, Redacted, Result } from "effect";
 import type { ActionEnvironmentShape } from "../ActionEnvironment.js";
+import { payloadOf } from "./jwt.js";
 
 /**
  * The run/job identifiers the artifact protocol scopes every call to.
@@ -60,25 +61,14 @@ export const RESULTS_URL = "ACTIONS_RESULTS_URL";
 export const RUNTIME_TOKEN = "ACTIONS_RUNTIME_TOKEN";
 
 /**
- * Decode a JWT payload segment.
+ * The `misconfigured` detail every results-backend consumer reports when
+ * {@link resultsBackend} fails: names the missing variable, and says why it is
+ * missing — the single most common misuse of these services.
  *
- * @remarks
- * No signature verification, deliberately and for the same reason
- * `OidcTokenIssuer` gives: the token was handed to this process by the runner
- * that started it, and the claim read here scopes a request rather than
- * authorizing one.
+ * @internal
  */
-const payloadOf = (token: string): Record<string, unknown> => {
-	const segments = token.split(".");
-	if (segments.length !== 3) {
-		throw new Error(`expected a three-segment JWT, got ${segments.length}`);
-	}
-	// Node's base64 decoder accepts the base64url alphabet and unpadded input,
-	// but the strict spelling is kept because nothing guarantees the next reader
-	// of this line is Node's decoder.
-	const json = Buffer.from(segments[1] ?? "", "base64url").toString("utf8");
-	return JSON.parse(json) as Record<string, unknown>;
-};
+export const misconfiguredDetail = (variable: string, service: string): string =>
+	`${variable} is not set — the ${service} is only reachable from a \`uses:\` step, never from \`run:\``;
 
 /**
  * The run and job ids the artifact protocol needs, from the runtime token's
@@ -92,13 +82,13 @@ const payloadOf = (token: string): Record<string, unknown> => {
  * @internal
  */
 export const backendIdsFrom = (token: string): Result.Result<BackendIds, string> => {
-	let payload: Record<string, unknown>;
-	try {
-		payload = payloadOf(token);
-	} catch (cause) {
-		return Result.fail(`the runtime token is not a readable JWT: ${cause instanceof Error ? cause.message : cause}`);
+	// No signature verification (`internal/jwt.ts` says why): the claim read
+	// here scopes a request rather than authorizing one.
+	const payload = payloadOf(token);
+	if (Result.isFailure(payload)) {
+		return Result.fail(`the runtime token is not a readable JWT: ${payload.failure.detail}`);
 	}
-	const scope = payload.scp;
+	const scope = (payload.success as Record<string, unknown> | null)?.scp;
 	if (typeof scope !== "string") {
 		return Result.fail("the runtime token carries no `scp` claim");
 	}

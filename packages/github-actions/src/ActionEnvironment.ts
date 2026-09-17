@@ -190,61 +190,40 @@ const make = (
 			getOptional: lookup,
 			isDebug: Effect.map(lookup("RUNNER_DEBUG"), (value) => Option.isSome(value) && value.value === "1"),
 
-			github: Effect.gen(function* () {
-				const [repository, repositoryOwner, ref, refName, sha, workflow, job] = yield* Effect.all([
-					get("GITHUB_REPOSITORY"),
-					get("GITHUB_REPOSITORY_OWNER"),
-					get("GITHUB_REF"),
-					get("GITHUB_REF_NAME"),
-					get("GITHUB_SHA"),
-					get("GITHUB_WORKFLOW"),
-					get("GITHUB_JOB"),
-				]);
-				const runId = yield* Effect.flatMap(get("GITHUB_RUN_ID"), (raw) => numeric("GITHUB_RUN_ID", raw));
-				const runAttempt = yield* Effect.flatMap(get("GITHUB_RUN_ATTEMPT"), (raw) =>
-					numeric("GITHUB_RUN_ATTEMPT", raw),
-				);
-				// GITHUB_HEAD_REF is absent outside pull requests — and the runner may
-				// write it as the empty string, which `lookup` already reads as absent.
-				const headRef = yield* lookup("GITHUB_HEAD_REF");
-				const [eventName, actor, serverUrl, apiUrl, graphqlUrl, workspace] = yield* Effect.all([
-					get("GITHUB_EVENT_NAME"),
-					get("GITHUB_ACTOR"),
-					get("GITHUB_SERVER_URL"),
-					get("GITHUB_API_URL"),
-					get("GITHUB_GRAPHQL_URL"),
-					get("GITHUB_WORKSPACE"),
-				]);
-				return GitHubContext.make({
-					repository,
-					repositoryOwner,
-					ref,
-					refName,
-					headRef,
-					sha,
-					workflow,
-					job,
-					runId,
-					runAttempt,
-					eventName,
-					actor,
-					serverUrl,
-					apiUrl,
-					graphqlUrl,
-					workspace,
-				});
-			}),
+			github: Effect.map(
+				Effect.all({
+					repository: get("GITHUB_REPOSITORY"),
+					repositoryOwner: get("GITHUB_REPOSITORY_OWNER"),
+					ref: get("GITHUB_REF"),
+					refName: get("GITHUB_REF_NAME"),
+					// GITHUB_HEAD_REF is absent outside pull requests — and the runner may
+					// write it as the empty string, which `lookup` already reads as absent.
+					headRef: lookup("GITHUB_HEAD_REF"),
+					sha: get("GITHUB_SHA"),
+					workflow: get("GITHUB_WORKFLOW"),
+					job: get("GITHUB_JOB"),
+					runId: Effect.flatMap(get("GITHUB_RUN_ID"), (raw) => numeric("GITHUB_RUN_ID", raw)),
+					runAttempt: Effect.flatMap(get("GITHUB_RUN_ATTEMPT"), (raw) => numeric("GITHUB_RUN_ATTEMPT", raw)),
+					eventName: get("GITHUB_EVENT_NAME"),
+					actor: get("GITHUB_ACTOR"),
+					serverUrl: get("GITHUB_SERVER_URL"),
+					apiUrl: get("GITHUB_API_URL"),
+					graphqlUrl: get("GITHUB_GRAPHQL_URL"),
+					workspace: get("GITHUB_WORKSPACE"),
+				}),
+				(fields) => GitHubContext.make(fields),
+			),
 
-			runner: Effect.gen(function* () {
-				const [os, arch, name, temp, toolCache] = yield* Effect.all([
-					get("RUNNER_OS"),
-					get("RUNNER_ARCH"),
-					get("RUNNER_NAME"),
-					get("RUNNER_TEMP"),
-					get("RUNNER_TOOL_CACHE"),
-				]);
-				return RunnerContext.make({ os, arch, name, temp, toolCache });
-			}),
+			runner: Effect.map(
+				Effect.all({
+					os: get("RUNNER_OS"),
+					arch: get("RUNNER_ARCH"),
+					name: get("RUNNER_NAME"),
+					temp: get("RUNNER_TEMP"),
+					toolCache: get("RUNNER_TOOL_CACHE"),
+				}),
+				(fields) => RunnerContext.make(fields),
+			),
 
 			payload: Effect.gen(function* () {
 				const path = yield* get("GITHUB_EVENT_PATH");

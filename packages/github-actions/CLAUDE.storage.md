@@ -47,7 +47,11 @@ both save and restore — as the toolkit's `getCacheVersion` does — so restore
 resolves nothing and the versions agree for free. Resolved paths stay absolute
 for the `-P` posture (a documented divergence from the toolkit's
 workspace-relative entries). The engine is `@effected/glob`, never
-`@actions/glob`.
+`@actions/glob`. `CacheKey.matchingFiles` walks through `@effected/walker`'s
+`descend` (files only, per-include roots, `prune: []` so nothing is skipped
+implicitly — the runner's `hashFiles()` does not prune either); `ActionCache`'s
+own resolution stays hand-rolled because cache paths are usually directories,
+which `descend` never matches.
 
 `CacheKey.withRestoreDepths` (2026-08-02) lets a key carry an explicit
 restore-key ladder — each depth is the number of leading segments a rung keeps,

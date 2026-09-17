@@ -1,9 +1,10 @@
 import { spawn as spawnChild } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 import type { Duration } from "effect";
-import { Effect, Schema } from "effect";
+import { Effect, Schedule, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
+import { unstubbed } from "./internal/unstubbed.js";
 
 /**
  * Raised when a detached child cannot be started, waited for, or reaped.
@@ -242,11 +243,7 @@ const isErrno = (cause: unknown, code: string): boolean =>
 	typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === code;
 
 /** See {@link DetachedProcess.makeTestOps}: an unstubbed member dies naming itself. */
-const unimplemented = (member: string): never => {
-	throw new Error(
-		`DetachedProcess.makeTestOps: ${member}() was called but not stubbed — pass a \`${member}\` override.`,
-	);
-};
+const dies = unstubbed("DetachedProcess.makeTestOps");
 
 /**
  * A long-lived child that outlives the phase that started it.
@@ -349,19 +346,17 @@ export class DetachedProcess {
 		probe: Effect.Effect<boolean, E, R>,
 		options?: ReadinessOptions,
 	) {
-		const interval = options?.interval ?? "150 millis";
-		const attempts = options?.attempts ?? 40;
-		const poll = (remaining: number): Effect.Effect<void, E | DetachedProcessError, R> =>
-			Effect.flatMap(probe, (ready) => {
-				if (ready) {
-					return Effect.void;
-				}
-				if (remaining <= 0) {
-					return Effect.fail(new DetachedNotReadyError({}));
-				}
-				return Effect.flatMap(Effect.sleep(interval), () => poll(remaining - 1));
-			});
-		return yield* poll(attempts);
+		// One initial probe plus `attempts` spaced retries, stopping early the
+		// moment one answers ready; the last answer is what remains when the
+		// budget runs out.
+		const ready = yield* Effect.repeat(probe, {
+			schedule: Schedule.spaced(options?.interval ?? "150 millis"),
+			times: options?.attempts ?? 40,
+			until: (answer) => answer,
+		});
+		if (!ready) {
+			return yield* Effect.fail(new DetachedNotReadyError({}));
+		}
 	});
 
 	/**
@@ -462,9 +457,9 @@ export class DetachedProcess {
 	 * production form signals a real pid.
 	 */
 	static readonly makeTestOps = (overrides: Partial<DetachedProcessOps> = {}): DetachedProcessOps => ({
-		spawn: () => Effect.sync(() => unimplemented("spawn")),
-		awaitReady: () => Effect.sync(() => unimplemented("awaitReady")),
-		reap: () => Effect.sync(() => unimplemented("reap")),
+		spawn: () => dies("spawn"),
+		awaitReady: () => dies("awaitReady"),
+		reap: () => dies("reap"),
 		...overrides,
 	});
 }

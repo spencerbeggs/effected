@@ -147,11 +147,11 @@ export class BlobEnvelope {
 		body: Uint8Array,
 		schema: Schema.Codec<A, I>,
 	): Result.Result<Uint8Array, BlobEnvelopeError> {
-		const encoded = Schema.encodeUnknownResult(schema)(metadata);
+		const encoded = Schema.encodeUnknownResult(Schema.fromJsonString(schema))(metadata);
 		if (Result.isFailure(encoded)) {
 			return Result.fail(new BlobMetadataEncodeError({ cause: encoded.failure }));
 		}
-		const metaBytes = new TextEncoder().encode(JSON.stringify(encoded.success));
+		const metaBytes = new TextEncoder().encode(encoded.success);
 		const out = new Uint8Array(HEADER_BYTES + metaBytes.length + body.length);
 		out.set(MAGIC, 0);
 		out[MAGIC.length] = VERSION;
@@ -181,13 +181,7 @@ export class BlobEnvelope {
 			return Result.fail(new TruncatedBlobEnvelopeError({}));
 		}
 		const metaText = new TextDecoder().decode(bytes.subarray(HEADER_BYTES, HEADER_BYTES + metaLength));
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(metaText);
-		} catch (cause) {
-			return Result.fail(new BlobMetadataDecodeError({ cause }));
-		}
-		const decoded = Schema.decodeUnknownResult(schema)(parsed);
+		const decoded = Schema.decodeUnknownResult(Schema.fromJsonString(schema))(metaText);
 		if (Result.isFailure(decoded)) {
 			return Result.fail(new BlobMetadataDecodeError({ cause: decoded.failure }));
 		}

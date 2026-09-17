@@ -1,5 +1,7 @@
 import { Console, Context, Effect, FileSystem, Layer, Schema } from "effect";
 import { ActionEnvironment } from "./ActionEnvironment.js";
+import { heredocBlock, isUsableName } from "./internal/runnerFile.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import { WorkflowCommand } from "./WorkflowCommand.js";
 
 /**
@@ -108,30 +110,30 @@ export type ActionOutputError =
 	| OutputEncodeError
 	| DetachedOutputError;
 
-/** The base delimiter for a heredoc block. */
-const BASE_DELIMITER = "EFFECTED_EOF";
+/**
+ * The runner file each member appends to — spelled once, so the real layer,
+ * the detached layer and the recording double cannot disagree about which
+ * file a member's failure names.
+ */
+const RUNNER_FILE = {
+	set: "GITHUB_OUTPUT",
+	setJson: "GITHUB_OUTPUT",
+	exportVariable: "GITHUB_ENV",
+	summary: "GITHUB_STEP_SUMMARY",
+	addPath: "GITHUB_PATH",
+} as const;
 
 /**
- * A delimiter guaranteed absent from `value`.
- *
- * @remarks
- * GitHub's own toolkit uses a random UUID here and accepts the (tiny) chance
- * of collision. Deriving the delimiter instead makes collision **impossible**
- * rather than improbable, needs no randomness — so no `Crypto` in `R` and no
- * unreproducible output — and is trivially testable. A value that contains a
- * delimiter would terminate its block early and corrupt every entry after it,
- * which is a value-controlled injection into the runner's own file.
+ * Run `effect` only if `name` can head a heredoc block; otherwise fail typed,
+ * naming the file. The one name check every construction of the service
+ * applies before a named write.
  */
-const delimiterFor = (value: string): string => {
-	let delimiter = BASE_DELIMITER;
-	while (value.includes(delimiter)) {
-		delimiter = `${delimiter}_`;
-	}
-	return delimiter;
-};
-
-/** A name that would break the block structure it lives in. */
-const isUsableName = (name: string): boolean => name !== "" && !/[\r\n]/.test(name);
+const withUsableName = <A, E, R>(
+	file: string,
+	name: string,
+	effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | InvalidOutputNameError, R> =>
+	isUsableName(name) ? effect : Effect.fail(new InvalidOutputNameError({ file, name }));
 
 /**
  * The JSON text `setJson` publishes for `value`: encoded through `schema`,
@@ -143,9 +145,8 @@ const encodeJson = <A, I>(
 	value: A,
 	schema: Schema.Codec<A, I>,
 ): Effect.Effect<string, OutputEncodeError> =>
-	Schema.encodeUnknownEffect(schema)(value).pipe(
+	Schema.encodeUnknownEffect(Schema.fromJsonString(schema))(value).pipe(
 		Effect.mapError((cause) => new OutputEncodeError({ name, cause })),
-		Effect.map((encoded) => JSON.stringify(encoded)),
 	);
 
 /**
@@ -238,31 +239,24 @@ const make = Effect.gen(function* () {
 				.pipe(Effect.mapError((cause) => new RunnerFileWriteError({ file, cause })));
 		});
 
-	const appendBlock = (file: string, name: string, value: string): Effect.Effect<void, ActionOutputError> => {
-		if (!isUsableName(name)) {
-			return Effect.fail(new InvalidOutputNameError({ file, name }));
-		}
-		const delimiter = delimiterFor(value);
-		return append(file, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
-	};
+	const appendBlock = (file: string, name: string, value: string): Effect.Effect<void, ActionOutputError> =>
+		withUsableName(file, name, append(file, heredocBlock(name, value)));
 
-	const set = (name: string, value: string) => appendBlock("GITHUB_OUTPUT", name, value);
+	const set = (name: string, value: string) => appendBlock(RUNNER_FILE.set, name, value);
 
 	return {
 		set,
 		setJson: <A, I>(name: string, value: A, schema: Schema.Codec<A, I>) =>
 			encodeJson(name, value, schema).pipe(Effect.flatMap((json) => set(name, json))),
-		summary: (content: string) => append("GITHUB_STEP_SUMMARY", content),
-		exportVariable: (name: string, value: string) => appendBlock("GITHUB_ENV", name, value),
-		addPath: (path: string) => append("GITHUB_PATH", `${path}\n`),
+		summary: (content: string) => append(RUNNER_FILE.summary, content),
+		exportVariable: (name: string, value: string) => appendBlock(RUNNER_FILE.exportVariable, name, value),
+		addPath: (path: string) => append(RUNNER_FILE.addPath, `${path}\n`),
 		setFailed: (message: string) => Console.log(WorkflowCommand.error(message)),
 		setSecret: (value: string) => Console.log(WorkflowCommand.addMask(value)),
 	} satisfies ActionOutputsShape;
 });
 
-const unimplemented = (member: string): never => {
-	throw new Error(`ActionOutputs.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`);
-};
+const dies = unstubbed("ActionOutputs.makeTest");
 
 /**
  * Everything an action publishes: step outputs, exported variables, `PATH`
@@ -326,11 +320,11 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 	 *   channel to fail through.
 	 */
 	static readonly layerDetached: Layer.Layer<ActionOutputs> = Layer.succeed(this, {
-		set: (name) => Effect.fail(new DetachedOutputError({ file: "GITHUB_OUTPUT", name })),
-		setJson: (name) => Effect.fail(new DetachedOutputError({ file: "GITHUB_OUTPUT", name })),
-		summary: () => Effect.fail(new DetachedOutputError({ file: "GITHUB_STEP_SUMMARY" })),
-		exportVariable: (name) => Effect.fail(new DetachedOutputError({ file: "GITHUB_ENV", name })),
-		addPath: () => Effect.fail(new DetachedOutputError({ file: "GITHUB_PATH" })),
+		set: (name) => Effect.fail(new DetachedOutputError({ file: RUNNER_FILE.set, name })),
+		setJson: (name) => Effect.fail(new DetachedOutputError({ file: RUNNER_FILE.setJson, name })),
+		summary: () => Effect.fail(new DetachedOutputError({ file: RUNNER_FILE.summary })),
+		exportVariable: (name) => Effect.fail(new DetachedOutputError({ file: RUNNER_FILE.exportVariable, name })),
+		addPath: () => Effect.fail(new DetachedOutputError({ file: RUNNER_FILE.addPath })),
 		setFailed: (message) => Console.error(message),
 		setSecret: () => Effect.void,
 	} satisfies ActionOutputsShape);
@@ -351,15 +345,14 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 	 * {@link ActionOutputs.recording} instead.
 	 */
 	static readonly makeTest = (overrides: Partial<ActionOutputsShape> = {}): ActionOutputsShape => {
-		const setJson: ActionOutputsShape["setJson"] =
-			overrides.setJson ?? (() => Effect.sync(() => unimplemented("setJson")));
+		const setJson: ActionOutputsShape["setJson"] = overrides.setJson ?? (() => dies("setJson"));
 		return {
-			set: () => Effect.sync(() => unimplemented("set")),
-			summary: () => Effect.sync(() => unimplemented("summary")),
-			exportVariable: () => Effect.sync(() => unimplemented("exportVariable")),
-			addPath: () => Effect.sync(() => unimplemented("addPath")),
-			setFailed: () => Effect.sync(() => unimplemented("setFailed")),
-			setSecret: () => Effect.sync(() => unimplemented("setSecret")),
+			set: () => dies("set"),
+			summary: () => dies("summary"),
+			exportVariable: () => dies("exportVariable"),
+			addPath: () => dies("addPath"),
+			setFailed: () => dies("setFailed"),
+			setSecret: () => dies("setSecret"),
 			...overrides,
 			setJson: <A, I>(name: string, value: A, schema: Schema.Codec<A, I>) =>
 				encodeJson(name, value, schema).pipe(Effect.flatMap(() => setJson(name, value, schema))),
@@ -400,21 +393,17 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 			Effect.sync(() => {
 				entries.push(RecordedOutput.make({ member, value, ...(name === undefined ? {} : { name }) }));
 			});
-		const recordNamed = (
-			member: RecordedOutputMember,
-			file: string,
-			name: string,
-			value: string,
-		): Effect.Effect<void, InvalidOutputNameError> =>
-			isUsableName(name) ? record(member, value, name) : Effect.fail(new InvalidOutputNameError({ file, name }));
 		const layer = Layer.succeed(ActionOutputs, {
-			set: (name, value) => recordNamed("set", "GITHUB_OUTPUT", name, value),
+			set: (name, value) => withUsableName(RUNNER_FILE.set, name, record("set", value, name)),
 			setJson: <A, I>(name: string, value: A, schema: Schema.Codec<A, I>) =>
-				isUsableName(name)
-					? encodeJson(name, value, schema).pipe(Effect.flatMap((json) => record("setJson", json, name)))
-					: Effect.fail(new InvalidOutputNameError({ file: "GITHUB_OUTPUT", name })),
+				withUsableName(
+					RUNNER_FILE.setJson,
+					name,
+					encodeJson(name, value, schema).pipe(Effect.flatMap((json) => record("setJson", json, name))),
+				),
 			summary: (content) => record("summary", content),
-			exportVariable: (name, value) => recordNamed("exportVariable", "GITHUB_ENV", name, value),
+			exportVariable: (name, value) =>
+				withUsableName(RUNNER_FILE.exportVariable, name, record("exportVariable", value, name)),
 			addPath: (path) => record("addPath", path),
 			setFailed: (message) => record("setFailed", message),
 			setSecret: (value) => record("setSecret", value),

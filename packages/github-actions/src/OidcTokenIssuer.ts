@@ -1,7 +1,9 @@
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import { ActionEnvironment } from "./ActionEnvironment.js";
+import { payloadOf, unsignedJwt } from "./internal/jwt.js";
+import { unstubbed } from "./internal/unstubbed.js";
 
 /**
  * Raised when an OIDC token cannot be issued or read.
@@ -91,19 +93,6 @@ const REQUEST_TOKEN = "ACTIONS_ID_TOKEN_REQUEST_TOKEN";
 const REQUEST_URL = "ACTIONS_ID_TOKEN_REQUEST_URL";
 
 /**
- * Decode a JWT payload segment.
- *
- * @remarks
- * `base64url` states the intent, though it is not what makes this work: Node's
- * plain `base64` decoder happens to accept the url alphabet and unpadded input
- * too (probed at beta.101), so the two are interchangeable *here*. They are not
- * interchangeable everywhere — `atob` is not forgiving — which is why the
- * declaration is the strict one and there is a test whose payload actually
- * contains `-` and `_`.
- */
-const decodeSegment = (segment: string): unknown => JSON.parse(Buffer.from(segment, "base64url").toString("utf8"));
-
-/**
  * Read the claims out of a JWT **without verifying its signature**.
  *
  * @remarks
@@ -112,18 +101,13 @@ const decodeSegment = (segment: string): unknown => JSON.parse(Buffer.from(segme
  */
 const readClaims = (token: string): Effect.Effect<OidcClaims, OidcTokenError> =>
 	Effect.gen(function* () {
-		const parts = token.split(".");
-		const payload = parts[1];
-		if (parts.length !== 3 || payload === undefined || payload === "") {
-			return yield* Effect.fail(
-				new OidcTokenError({ reason: "malformedToken", detail: `expected three segments, got ${parts.length}` }),
-			);
-		}
-		const decoded = yield* Effect.try({
-			try: () => decodeSegment(payload),
-			catch: (cause) =>
-				new OidcTokenError({ reason: "malformedToken", detail: "the payload is not base64url JSON", cause }),
-		});
+		const decoded = yield* Effect.fromResult(payloadOf(token)).pipe(
+			Effect.mapError((failure) =>
+				failure.kind === "segments"
+					? new OidcTokenError({ reason: "malformedToken", detail: failure.detail })
+					: new OidcTokenError({ reason: "malformedToken", detail: failure.detail, cause: failure.cause }),
+			),
+		);
 		return yield* Schema.decodeUnknownEffect(OidcClaims)(decoded).pipe(
 			Effect.mapError((cause) => new OidcTokenError({ reason: "missingClaims", cause })),
 		);
@@ -200,7 +184,7 @@ const make = Effect.gen(function* () {
 		const url = audience === undefined ? base : `${base}&audience=${encodeURIComponent(audience)}`;
 
 		const response = yield* http
-			.get(url, { headers: { authorization: `Bearer ${bearer}`, accept: "application/json" } })
+			.execute(HttpClientRequest.get(url).pipe(HttpClientRequest.bearerToken(bearer), HttpClientRequest.acceptJson))
 			.pipe(Effect.mapError((cause) => new OidcTokenError({ reason: "requestFailed", cause })));
 
 		if (response.status < 200 || response.status >= 300) {
@@ -221,9 +205,7 @@ const make = Effect.gen(function* () {
 	} satisfies OidcTokenIssuerShape;
 });
 
-const unimplemented = (member: string): never => {
-	throw new Error(`OidcTokenIssuer.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`);
-};
+const dies = unstubbed("OidcTokenIssuer.makeTest");
 
 /**
  * The runner's OIDC token service.
@@ -266,17 +248,13 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 	 * provenance path structurally unreachable in the source package, drawing
 	 * four separate apologetic comments from one consumer.
 	 */
-	static readonly unsignedTokenFor = (claims: OidcClaims): Redacted.Redacted<string> => {
-		const segment = (value: unknown): string => Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
-		return Redacted.make(
-			`${segment({ alg: "RS256", typ: "JWT" })}.${segment(Schema.encodeUnknownSync(OidcClaims)(claims))}.unsigned`,
-		);
-	};
+	static readonly unsignedTokenFor = (claims: OidcClaims): Redacted.Redacted<string> =>
+		Redacted.make(unsignedJwt({ alg: "RS256", typ: "JWT" }, Schema.encodeUnknownSync(OidcClaims)(claims)));
 
 	/** A test double. Unstubbed members die rather than answering with a non-token. */
 	static readonly makeTest = (overrides: Partial<OidcTokenIssuerShape> = {}): OidcTokenIssuerShape => ({
-		token: () => Effect.sync(() => unimplemented("token")),
-		claims: () => Effect.sync(() => unimplemented("claims")),
+		token: () => dies("token"),
+		claims: () => dies("claims"),
 		...overrides,
 	});
 

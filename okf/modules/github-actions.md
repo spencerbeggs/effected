@@ -10,8 +10,8 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 311117f702a9cf2c15f7f8684e818b78b97d3ab169d77c6260ba059d8119142a
+  at: 2026-09-17T05:27:44Z
+  body_sha256: b1dbbccafe0c6a6b6ba99d3049c19b4168c2e6e11ab542dfd6a3a005ed61b9d3
 ---
 
 # github-actions
@@ -52,7 +52,8 @@ directly against their HTTP APIs, because the official cache client alone
 drags a dependency tree larger than this package.
 
 Kit edges: [`github`](github.md), [`glob`](glob.md), [`markdown`](markdown.md),
-[`npm`](npm.md), [`sbom`](sbom.md) and [`templates`](templates.md), plus one
+[`npm`](npm.md), [`sbom`](sbom.md), [`templates`](templates.md) and
+[`walker`](walker.md), plus one
 heavy external dependency, the Azure blob client
 (`@azure/storage-blob`).
 

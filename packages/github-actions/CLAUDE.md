@@ -6,7 +6,7 @@ store, OIDC, artifacts, tool install, the reporting suite and the
 `@effected/sbom` adapters.
 
 **Tier: integrated. Status: complete** (2026-07-25; `sbom` adapters and reporting
-suite 2026-07-26). Peers: `effect` and `@effect/platform-node`. Six `@effected/*`
+suite 2026-07-26). Peers: `effect` and `@effect/platform-node`. Seven `@effected/*`
 dependencies, every arrow inward.
 
 **Design doc:** `@./okf/modules/github-actions.md` — the
@@ -42,7 +42,9 @@ workflow command. They meet at exactly two seams, both living here:
 
 The only in-kit consumer of `templates`, `markdown` and `sbom`.
 
-- `github` — the token bridge's vocabulary. `glob` — `CacheKey` matching.
+- `github` — the token bridge's vocabulary. `glob` — `CacheKey` matching, and
+  `walker` — its file walk (`Walker.descend` under `CacheKey.matchingFiles`,
+  with `prune: []` for `hashFiles()` parity).
 - `npm` — `PackageManagerPin`, **confined to `PackageManagerInstaller.ts`** and
   unreachable from `ActionRuntime.layer`, so taking it costs one layer line.
 - `templates` — the region engine under `ManagedDocument` / `CheckDocument`. **Not

@@ -1,9 +1,12 @@
-import { createHash } from "node:crypto";
 import type { PackageManagerPin } from "@effected/npm";
-import { PackageManagerPinName } from "@effected/npm";
-import { Context, Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
+import { DEFAULT_REGISTRY, PackageManagerPinName } from "@effected/npm";
+import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
+import { digestFileHex } from "./internal/digest.js";
+import { typeAt } from "./internal/fsProbe.js";
+import { isWindowsRunner, toolCacheRoot } from "./internal/runner.js";
+import { unstubbed } from "./internal/unstubbed.js";
 import type { ToolInstallerError } from "./ToolInstaller.js";
 import { ToolInstaller } from "./ToolInstaller.js";
 
@@ -213,8 +216,6 @@ export interface PackageManagerInstallerShape {
 	) => Effect.Effect<InstalledPackageManager, PackageManagerInstallerError>;
 }
 
-const DEFAULT_REGISTRY = "https://registry.npmjs.org";
-
 /** The shim directory name inside a cached npm-registry-manager entry. */
 const SHIM_DIR = ".bin";
 
@@ -236,16 +237,11 @@ const cmdShim = (target: string): string => `@echo off\r\nnode "${target}" %*\r\
  * bun's spelling (`macOS` → `darwin`) and the Node arch spelling to bun's
  * (`arm64` → `aarch64`).
  */
+const BUN_OS: Readonly<Record<string, string>> = { linux: "linux", macos: "darwin", windows: "windows" };
+const BUN_CPU: Readonly<Record<string, string>> = { x64: "x64", arm64: "aarch64" };
 const bunTarget = (runnerOs: string, arch: string): Option.Option<string> => {
-	const os =
-		runnerOs.toLowerCase() === "linux"
-			? "linux"
-			: runnerOs.toLowerCase() === "macos"
-				? "darwin"
-				: runnerOs.toLowerCase() === "windows"
-					? "windows"
-					: undefined;
-	const cpu = arch === "x64" ? "x64" : arch === "arm64" ? "aarch64" : undefined;
+	const os = BUN_OS[runnerOs.toLowerCase()];
+	const cpu = BUN_CPU[arch];
 	return os === undefined || cpu === undefined ? Option.none() : Option.some(`bun-${os}-${cpu}`);
 };
 
@@ -280,8 +276,10 @@ const normalizeBins = (bin: unknown, fallbackName: string): Option.Option<Record
 };
 
 /** Map a `RUNNER_ARCH` value (`X64`, `ARM64`) onto the Node arch spelling. */
-const archFromRunner = (runnerArch: string): string =>
-	runnerArch.toLowerCase() === "x64" ? "x64" : runnerArch.toLowerCase() === "arm64" ? "arm64" : runnerArch;
+const archFromRunner = (runnerArch: string): string => {
+	const lowered = runnerArch.toLowerCase();
+	return lowered === "x64" || lowered === "arm64" ? lowered : runnerArch;
+};
 
 const make = Effect.gen(function* () {
 	const env = yield* ActionEnvironment;
@@ -299,20 +297,18 @@ const make = Effect.gen(function* () {
 	const arch = yield* Effect.map(env.getOptional("RUNNER_ARCH"), (found) =>
 		Option.match(found, { onNone: () => process.arch as string, onSome: archFromRunner }),
 	);
-	const windows = runnerOs.toLowerCase() === "windows";
+	const windows = yield* isWindowsRunner(env);
 	const bunBinaryName = windows ? "bun.exe" : "bun";
 	const shimFileName = (name: string): string => (windows ? `${name}.cmd` : name);
 	const shimBody = windows ? cmdShim : posixShim;
 
-	// The cache-root rule mirrors ToolInstaller's exactly, because the shims
-	// written into a staged entry must name the FINAL cache path. The arch
-	// segment is `process.arch` — that is the tool-cache layout's own contract
-	// (ToolInstaller.cachePath) — and the post-swap equality check below turns
-	// any divergence between the two resolutions into a typed failure instead
-	// of shims that point at nothing.
-	const cacheRoot = yield* Effect.map(env.getOptional("RUNNER_TOOL_CACHE"), (found) =>
-		Option.getOrElse(found, () => path.join("/tmp", "runner-tool-cache")),
-	);
+	// The cache root is ToolInstaller's own resolution (`internal/runner.ts`),
+	// because the shims written into a staged entry must name the FINAL cache
+	// path. The arch segment is `process.arch` — that is the tool-cache layout's
+	// own contract (ToolInstaller.cachePath) — and the post-swap equality check
+	// below turns any divergence into a typed failure instead of shims that
+	// point at nothing.
+	const cacheRoot = yield* toolCacheRoot(env, path);
 	const finalCachePath = (tool: string, version: string): string =>
 		ToolInstaller.cachePath({ root: cacheRoot, tool, version, arch: process.arch });
 
@@ -343,20 +339,11 @@ const make = Effect.gen(function* () {
 		file: string,
 		algorithm: string,
 	): Effect.Effect<string, PackageManagerInstallerError> =>
-		Effect.suspend(() => {
-			// The pin grammar admits sha1/sha256/sha384/sha512 only, all of which
-			// `node:crypto` supports — `createHash` cannot throw here.
-			const digest = createHash(algorithm);
-			return fs.stream(file).pipe(
-				Stream.runForEach((chunk) =>
-					Effect.sync(() => {
-						digest.update(chunk);
-					}),
-				),
-				Effect.map(() => digest.digest("hex")),
-				Effect.mapError((cause) => errorFor(pin)({ reason: "integrityMismatch", subject: file, cause })),
-			);
-		});
+		// The pin grammar admits sha1/sha256/sha384/sha512 only, all of which
+		// `node:crypto` supports.
+		digestFileHex(fs, file, algorithm).pipe(
+			Effect.mapError((cause) => errorFor(pin)({ reason: "integrityMismatch", subject: file, cause })),
+		);
 
 	/**
 	 * Verify a downloaded artifact against the pin's integrity, fail-closed.
@@ -406,8 +393,7 @@ const make = Effect.gen(function* () {
 		subject: string,
 	): Effect.Effect<void, PackageManagerInstallerError> =>
 		Effect.gen(function* () {
-			const stat = yield* Effect.result(fs.stat(file));
-			if (stat._tag !== "Success" || stat.success.type !== "File") {
+			if ((yield* typeAt(fs, file)) !== "File") {
 				return yield* Effect.fail(errorFor(pin)({ reason: "layoutUnexpected", subject }));
 			}
 		});
@@ -491,8 +477,7 @@ const make = Effect.gen(function* () {
 			for (const [name, relative] of Object.entries(bins)) {
 				const shim = path.join(shimDir, shimFileName(name));
 				if (options.skipExisting) {
-					const present = yield* Effect.result(fs.stat(shim));
-					if (present._tag === "Success" && present.success.type === "File") {
+					if ((yield* typeAt(fs, shim)) === "File") {
 						continue;
 					}
 				}
@@ -599,8 +584,7 @@ const make = Effect.gen(function* () {
 			}
 			const extracted = yield* installer.extractTar(archive).pipe(Effect.mapError(fromInstaller(pin)));
 			const packageDir = path.join(extracted, "package");
-			const stat = yield* Effect.result(fs.stat(packageDir));
-			if (stat._tag !== "Success" || stat.success.type !== "Directory") {
+			if ((yield* typeAt(fs, packageDir)) !== "Directory") {
 				return yield* Effect.fail(
 					errorFor(pin)({ reason: "layoutUnexpected", subject: "tarball has no package/ root" }),
 				);
@@ -683,11 +667,7 @@ const make = Effect.gen(function* () {
 	return { install } satisfies PackageManagerInstallerShape;
 });
 
-const unimplemented = (member: string): never => {
-	throw new Error(
-		`PackageManagerInstaller.makeTest: ${member}() was called but not stubbed — pass a \`${member}\` override.`,
-	);
-};
+const dies = unstubbed("PackageManagerInstaller.makeTest");
 
 /**
  * First-class exact-version package-manager provisioning on a GitHub runner.
@@ -739,7 +719,7 @@ export class PackageManagerInstaller extends Context.Service<PackageManagerInsta
 
 	/** A test double. The unstubbed member dies rather than reporting an install that did not happen. */
 	static readonly makeTest = (overrides: Partial<PackageManagerInstallerShape> = {}): PackageManagerInstallerShape => ({
-		install: () => Effect.sync(() => unimplemented("install")),
+		install: () => dies("install"),
 		...overrides,
 	});
 

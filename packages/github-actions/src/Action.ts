@@ -200,7 +200,7 @@ export class Action {
 					// the environment snapshot is taken once rather than twice.
 					Layer.mergeAll(ActionRuntime.layer, Layer.provide(extra, ActionRuntime.layer));
 
-		const runnable = (program as Effect.Effect<void, E, ActionServices | R>).pipe(
+		const runnable = program.pipe(
 			Effect.provide(composed as Layer.Layer<ActionServices | R>),
 			Effect.exit,
 			Effect.flatMap((exit) =>

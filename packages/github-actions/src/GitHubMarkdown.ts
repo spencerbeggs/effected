@@ -314,18 +314,15 @@ export class GitHubMarkdown {
 		const columns: ReadonlyArray<ColumnRuntime> = Object.keys(schema.fields).map((key) => {
 			const field = schema.fields[key] as Schema.Constraint;
 			const column = overrides[key];
-			const format = column?.format;
-			const encode =
-				format === undefined
-					? (Schema.encodeSync(field as Schema.ConstraintEncoder<string | undefined>) as (
-							value: unknown,
-						) => string | undefined)
-					: undefined;
+			// The caller's `format` wins; otherwise the field's own encoder renders
+			// the cell (an encoder yielding nothing is an empty cell).
+			const project: (value: unknown) => string =
+				column?.format ??
+				((value) => Schema.encodeSync(field as Schema.ConstraintEncoder<string | undefined>)(value) ?? "");
 			return {
 				key,
 				header: column?.header ?? SchemaAST.resolveTitle(field.ast) ?? key,
-				cell: (value: unknown): string =>
-					value === undefined ? "" : format !== undefined ? format(value) : (encode?.(value) ?? ""),
+				cell: (value: unknown): string => (value === undefined ? "" : project(value)),
 			};
 		});
 		const headers = columns.map((column) => column.header);

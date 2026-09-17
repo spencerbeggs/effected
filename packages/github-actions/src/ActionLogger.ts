@@ -62,15 +62,13 @@ const readAnnotations = (record: Readonly<Record<string, unknown>>): AnnotationP
 	};
 };
 
-/** The inverse: annotation fields as a record `Effect.annotateLogs` accepts. */
-const annotationRecord = (properties: AnnotationProperties): Record<string, unknown> => ({
-	...(properties.title === undefined ? {} : { title: properties.title }),
-	...(properties.file === undefined ? {} : { file: properties.file }),
-	...(properties.startLine === undefined ? {} : { startLine: properties.startLine }),
-	...(properties.endLine === undefined ? {} : { endLine: properties.endLine }),
-	...(properties.startColumn === undefined ? {} : { startColumn: properties.startColumn }),
-	...(properties.endColumn === undefined ? {} : { endColumn: properties.endColumn }),
-});
+/**
+ * The inverse: annotation fields as a record `Effect.annotateLogs` accepts.
+ * A plain copy: `exactOptionalPropertyTypes` keeps an absent field absent
+ * rather than present-and-`undefined`, and {@link readAnnotations} drops
+ * anything that is not a string or number on the way back out.
+ */
+const annotationRecord = (properties: AnnotationProperties): Record<string, unknown> => ({ ...properties });
 
 /**
  * Map one log entry onto the line the runner should see.
@@ -94,6 +92,14 @@ const renderEntry = (
 	}
 	return LogLevel.isGreaterThanOrEqualTo(level, "Info") ? text : WorkflowCommand.debug(text);
 };
+
+/** The line the runner should see for one log event, with the fiber's annotations. */
+const renderLogger: Logger.Logger<unknown, string> = Logger.make((options) =>
+	renderEntry(options.logLevel, options.message, options.fiber.getRef(References.CurrentLogAnnotations)),
+);
+
+/** {@link renderLogger} written through core `Console`. */
+const commandLogger: Logger.Logger<unknown, void> = Logger.withConsoleLog(renderLogger);
 
 /** A step's captured transcript. Mutable by design — a logger callback is synchronous. */
 interface BufferState {
@@ -279,8 +285,7 @@ const make = Effect.gen(function* () {
 			const state: BufferState = { label, entries: [] };
 			const buffering = Logger.make<unknown, void>((options) => {
 				if (LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Warn")) {
-					const annotations = options.fiber.getRef(References.CurrentLogAnnotations);
-					options.fiber.getRef(Console.Console).log(renderEntry(options.logLevel, options.message, annotations));
+					commandLogger.log(options);
 					return;
 				}
 				state.entries.push(formatMessage(options.message));
@@ -377,10 +382,7 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 * It writes through core `Console`, which is what makes its output
 	 * observable in a test without a runner.
 	 */
-	static readonly logger: Logger.Logger<unknown, void> = Logger.make((options) => {
-		const annotations = options.fiber.getRef(References.CurrentLogAnnotations);
-		options.fiber.getRef(Console.Console).log(renderEntry(options.logLevel, options.message, annotations));
-	});
+	static readonly logger: Logger.Logger<unknown, void> = commandLogger;
 
 	/** {@link ActionLogger.logger} installed as the only logger. */
 	static readonly layerLogger: Layer.Layer<never> = Logger.layer([ActionLogger.logger]);

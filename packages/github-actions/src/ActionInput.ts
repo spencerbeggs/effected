@@ -444,23 +444,21 @@ export class ActionInput {
 		/** Unset, and the `""` the runner writes for an unsupplied input, are both absent. */
 		const present = (value: string | undefined): value is string => value !== undefined && value !== "";
 		/**
-		 * Resolve one runner-variable name: the verbatim entry wins; an
-		 * `INPUT_`-prefixed miss then consults the input-name entries through the
-		 * one spelling of the derivation (`inputVariable`).
+		 * The input-name entries, keyed by the runner variable they would be
+		 * (`inputVariable`, the one spelling of the derivation) — built once,
+		 * so an `INPUT_`-prefixed miss is a map read rather than a scan of the
+		 * whole environment per `Config` read.
 		 */
+		const byInputName = new Map<string, string>();
+		for (const [key, value] of Object.entries(env)) {
+			if (!key.startsWith("INPUT_") && present(value) && !byInputName.has(inputVariable(key))) {
+				byInputName.set(inputVariable(key), value);
+			}
+		}
+		/** Resolve one runner-variable name: the verbatim entry wins, then the input-name entry. */
 		const lookup = (name: string): string | undefined => {
 			const direct = env[name];
-			if (present(direct)) {
-				return direct;
-			}
-			if (name.startsWith("INPUT_")) {
-				for (const [key, value] of Object.entries(env)) {
-					if (!key.startsWith("INPUT_") && inputVariable(key) === name && present(value)) {
-						return value;
-					}
-				}
-			}
-			return undefined;
+			return present(direct) ? direct : byInputName.get(name);
 		};
 		return ConfigProvider.make((path) => {
 			const single = path.length === 1 && typeof path[0] === "string" ? path[0] : undefined;
