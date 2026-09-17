@@ -26,9 +26,11 @@ export class PackageManagerInstallerError extends Schema.TaggedError<PackageMana
 		 * entry). `integrityMismatch` — the downloaded artifact does not hash to
 		 * what the pin declares; nothing was cached. `integrityMissing` — the pin
 		 * carries no integrity and the caller asked for `requireIntegrity`.
-		 * `unsupportedPlatform` — bun publishes no build for this runner's
-		 * OS/architecture pair. `layoutUnexpected` — the artifact extracted, but
-		 * its contents are not shaped like the package manager it claims to be.
+		 * `unsupportedPlatform` — no build exists for this runner's
+		 * OS/architecture pair: bun publishes none, or pnpm 12 ships no
+		 * `@pnpm/exe.*` native binary for it. `layoutUnexpected` — the artifact
+		 * extracted, but its contents are not shaped like the package manager it
+		 * claims to be.
 		 */
 		reason: Schema.Literals([
 			"downloadFailed",
@@ -94,10 +96,14 @@ export interface PackageManagerInstallOptions {
 	readonly requireIntegrity?: boolean | undefined;
 	/**
 	 * The npm registry host the npm, pnpm and yarn tarballs download from.
-	 * Defaults to `https://registry.npmjs.org`; a corporate mirror that serves
-	 * the standard `/<name>/-/<basename>-<version>.tgz` tarball routes works
-	 * unchanged. bun does not ship through a registry — its per-platform zip
-	 * always comes from GitHub releases.
+	 * Defaults to `https://registry.npmjs.org`. A corporate mirror qualifies
+	 * when it serves the standard `/<name>/-/<basename>-<version>.tgz` tarball
+	 * route and — for pnpm 12 and later, whose native binary is a second
+	 * artifact verified against the registry's own integrity — the
+	 * `/<name>/<version>` packument route as JSON carrying `dist.integrity`.
+	 * A tarball-only proxy fails a pnpm 12 pin with `downloadFailed` naming
+	 * that packument url. bun does not ship through a registry — its
+	 * per-platform zip always comes from GitHub releases.
 	 */
 	readonly registry?: string | undefined;
 	/**
