@@ -1,6 +1,6 @@
 {
 	"name": "@effected/copilot-plugin",
-	"version": "0.7.3",
+	"version": "0.7.4",
 	"private": true,
 	"description": "This package does not publish to npm. It just exists to provide changeset versioning for the copilot plugin."
 }
