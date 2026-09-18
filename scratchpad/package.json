@@ -31,6 +31,7 @@
 		"@effected/sbom": "workspace:*",
 		"@effected/schema-org": "workspace:*",
 		"@effected/schemastore": "workspace:*",
+		"@effected/schemastore-cli": "workspace:*",
 		"@effected/semver": "workspace:*",
 		"@effected/spdx": "workspace:*",
 		"@effected/store": "workspace:*",

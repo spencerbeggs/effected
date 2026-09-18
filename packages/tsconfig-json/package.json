@@ -33,10 +33,11 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
+		"@effected/glob": "workspace:*",
 		"@effected/jsonc": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@effected/walker": "workspace:*",
-		"@savvy-web/bundler": "^2.3.10",
+		"@savvy-web/bundler": "^2.4.1",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"

@@ -369,6 +369,5 @@ await build({
 	bundleNodeModules: true,
 	looseFiles: {
 		"pnpmfile.mjs": "./src/pnpmfile.ts",
-		"pnpmfile.cjs": "./src/pnpmfile.ts",
 	},
 });

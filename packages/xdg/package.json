@@ -34,9 +34,13 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@effected/config-file": "workspace:*",
+		"@effected/glob": "workspace:*",
+		"@effected/jsonc": "workspace:*",
 		"@effected/memfs": "workspace:*",
+		"@effected/toml": "workspace:*",
 		"@effected/walker": "workspace:*",
-		"@savvy-web/bundler": "^2.3.10",
+		"@effected/yaml": "workspace:*",
+		"@savvy-web/bundler": "^2.4.1",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
