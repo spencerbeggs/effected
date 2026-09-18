@@ -1,5 +1,28 @@
 # @effected/github-actions
 
+## 0.13.3
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.10.1 | 0.10.2 |
+| @effected/glob | dependency | updated | 0.6.0 | 0.6.1 |
+| @effected/markdown | dependency | updated | 0.10.0 | 0.10.1 |
+| @effected/npm | dependency | updated | 0.14.0 | 0.14.1 |
+| @effected/sbom | dependency | updated | 0.6.1 | 0.6.2 |
+| @effected/semver | dependency | updated | 0.7.0 | 0.7.1 |
+| @effected/templates | dependency | updated | 0.6.0 | 0.6.1 |
+| @effected/walker | dependency | updated | 0.9.0 | 0.9.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.13.2
 
 ### Bug Fixes

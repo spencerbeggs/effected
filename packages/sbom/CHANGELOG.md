@@ -1,5 +1,22 @@
 # @effected/sbom
 
+## 0.6.2
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/package-json | dependency | updated | 0.15.0 | 0.15.1 |
+| @effected/spdx | dependency | updated | 0.7.0 | 0.7.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.6.1
 
 ### Bug Fixes

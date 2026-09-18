@@ -1,5 +1,15 @@
 # @effected/yaml
 
+## 0.15.2
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.15.1
 
 ### Bug Fixes

@@ -1,5 +1,24 @@
 # @effected/package-json
 
+## 0.15.1
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.11.0 | 0.11.1 |
+| @effected/npm | dependency | updated | 0.14.0 | 0.14.1 |
+| @effected/semver | dependency | updated | 0.7.0 | 0.7.1 |
+| @effected/spdx | dependency | updated | 0.7.0 | 0.7.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.15.0
 
 ### Breaking Changes
