@@ -425,10 +425,11 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 	 * other failure to read one is a typed `CacheKeyReadError`, because a key
 	 * derived from an incomplete file set is wrong in a way nothing reports.
 	 *
-	 * **One knowing divergence from the runner's `hashFiles()`:** `descend`
-	 * never enters a symlinked directory (cycle safety), where `@actions/glob`
-	 * follows links by default. A file reachable only through a symlinked
-	 * directory does not contribute to the key.
+	 * Symlinked directories are followed (`descend` under
+	 * `followSymlinks: true`), matching `@actions/glob`'s default
+	 * `followSymbolicLinks: true` — a file reachable only through a symlinked
+	 * directory contributes to the key, and `descend`'s real-path cycle guard
+	 * keeps link loops finite.
 	 *
 	 * The answer is sorted, so a caller cannot make its key depend on the order
 	 * the filesystem happened to report.
@@ -485,7 +486,7 @@ export class CacheKey extends Schema.Class<CacheKey>("CacheKey")(
 			if (wildcard.negated) {
 				continue;
 			}
-			const found = yield* descend(wildcard, { cwd: workspace, prune: [] }).pipe(
+			const found = yield* descend(wildcard, { cwd: workspace, prune: [], followSymlinks: true }).pipe(
 				Effect.mapError((cause) => new CacheKeyReadError({ path: path.join(workspace, cause.path), cause })),
 			);
 			for (const match of found) {

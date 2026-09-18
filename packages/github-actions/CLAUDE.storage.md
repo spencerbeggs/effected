@@ -69,10 +69,11 @@ workspace-relative entries). The engine is `@effected/glob`, never
 `descend` (files only, per-include roots, `prune: []` so nothing is skipped
 implicitly — the runner's `hashFiles()` does not prune either); `ActionCache`'s
 own resolution stays hand-rolled because cache paths are usually directories,
-which `descend` never matches. Knowing divergence from the runner's
-`hashFiles()`: `descend` never enters a symlinked directory, `@actions/glob`
-does — probed 2026-09-17 (Node's recursive `readdir`, which the old walk
-used, followed them).
+which `descend` never matches. Symlinked directories are followed
+(`followSymlinks: true`, walker issue #761) for `hashFiles()` parity with
+`@actions/glob`'s default `followSymbolicLinks: true`; `descend`'s real-path
+cycle guard keeps link loops finite (Node's recursive `readdir`, which the old
+walk used, followed them too — probed 2026-09-17).
 
 `CacheKey.withRestoreDepths` (2026-08-02) lets a key carry an explicit
 restore-key ladder — each depth is the number of leading segments a rung keeps,

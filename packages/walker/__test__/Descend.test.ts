@@ -189,6 +189,105 @@ layer(platform(symlinkTree, symlinkOptions))("descend, symlinks", (it) => {
 	);
 });
 
+// followSymlinks: the opt-in that gives descend Node's recursive-readdir and
+// @actions/glob's default followSymbolicLinks behaviour — links to directories
+// are entered, and the cycle guard becomes real-path deduplication instead of
+// the blanket refusal.
+const followTree = {
+	"/proj/real/file.ts": "",
+	"/proj/real/dir/inner.ts": "",
+	"/proj/src/a.ts": "",
+};
+const followOptions = {
+	symlinks: {
+		"/proj/src/link.ts": "/proj/real/file.ts",
+		"/proj/src/linkdir": "/proj/real/dir",
+		"/proj/src/ghost.ts": "/proj/real/gone.ts",
+	},
+};
+
+layer(platform(followTree, followOptions))("descend, followSymlinks", (it) => {
+	it.effect("descends into a symlinked directory under followSymlinks: true", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("src/**/*.ts");
+			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj", followSymlinks: true }), [
+				"src/a.ts",
+				"src/link.ts",
+				"src/linkdir/inner.ts",
+			]);
+		}),
+	);
+
+	it.effect("explicit followSymlinks: false keeps the never-descend default", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("src/**/*.ts");
+			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj", followSymlinks: false }), [
+				"src/a.ts",
+				"src/link.ts",
+			]);
+		}),
+	);
+
+	it.effect("a dangling link is still no match under followSymlinks: true", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("src/*.ts");
+			const found = yield* descend(pattern, { cwd: "/proj", followSymlinks: true });
+			assert.notInclude(found, "src/ghost.ts");
+		}),
+	);
+});
+
+// A link back to the walk base: the guard seeds the base's real path, so the
+// link is skipped instead of revisiting the whole tree through it.
+const baseCycleTree = {
+	"/proj/real/file.ts": "",
+	"/proj/src/a.ts": "",
+};
+const baseCycleOptions = {
+	symlinks: {
+		"/proj/src/up": "/proj",
+	},
+};
+
+layer(platform(baseCycleTree, baseCycleOptions))("descend, followSymlinks base cycle", (it) => {
+	it.effect("a link to the walk base is skipped and the walk terminates", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("**/*.ts");
+			const found = yield* descend(pattern, { cwd: "/proj", followSymlinks: true });
+			assert.deepStrictEqual(found, ["real/file.ts", "src/a.ts"]);
+			assert.isFalse(found.some((entry) => entry.startsWith("src/up/")));
+		}),
+	);
+});
+
+// A mutual link cycle between two real directories: each real path is entered
+// at most once through a link, so the walk terminates and every file is
+// matched through both of its link-reachable paths.
+const mutualCycleTree = {
+	"/proj/a/x.ts": "",
+	"/proj/b/y.ts": "",
+};
+const mutualCycleOptions = {
+	symlinks: {
+		"/proj/a/to-b": "/proj/b",
+		"/proj/b/to-a": "/proj/a",
+	},
+};
+
+layer(platform(mutualCycleTree, mutualCycleOptions))("descend, followSymlinks mutual cycle", (it) => {
+	it.effect("terminates on a two-directory link cycle, matching files through both link paths", () =>
+		Effect.gen(function* () {
+			const pattern = yield* GlobPattern.compile("**/*.ts");
+			assert.deepStrictEqual(yield* descend(pattern, { cwd: "/proj", followSymlinks: true }), [
+				"a/to-b/y.ts",
+				"a/x.ts",
+				"b/to-a/x.ts",
+				"b/y.ts",
+			]);
+		}),
+	);
+});
+
 // An unreadable directory inside the walked subtree.
 const unreadableTree = {
 	"/proj/src/a.ts": "",

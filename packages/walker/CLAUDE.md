@@ -69,7 +69,11 @@ hands in — never re-derived here.
   outside its documented root.
 - Only files match. A symlink counts when it stat-resolves to a file (`stat`
   follows links, as node's does); a symlinked **directory is never descended**
-  (cycle safety, detected by a `readLink` success-probe); dangling = no match.
+  by default (cycle safety, detected by a `readLink` success-probe), unless
+  `followSymlinks: true` opts in — then links are entered under a real-path
+  (`FileSystem.realPath`) cycle guard: a link resolving to an already-visited
+  real path (the base, an ancestor, or an earlier link's target) is skipped,
+  so link loops terminate. Dangling = no match either way.
 - Unreadable directory mid-walk: `onUnreadable: "fail"` (default) fails typed
   as `DescendError` — the OPPOSITE of the upward per-probe absorption, because
   a swallowed subtree in a downward enumeration is silently missing

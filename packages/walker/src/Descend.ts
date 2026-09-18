@@ -36,6 +36,16 @@ export interface DescendOptions {
 	 * returns a bare match array.
 	 */
 	readonly onUnreadable?: "fail" | "skip";
+	/**
+	 * Whether to descend into symlinked directories. Defaults to `false`: a
+	 * symlinked directory is never entered (cycle safety). Under `true` links
+	 * are followed with the cycle guard kept underneath — every link descent
+	 * records the target's real path (`FileSystem.realPath`) and a link
+	 * resolving to an already-visited real path is skipped, so link cycles
+	 * terminate. This is Node's `fs.promises.readdir(path, { recursive: true })`
+	 * behaviour and `@actions/glob`'s default `followSymbolicLinks: true`.
+	 */
+	readonly followSymlinks?: boolean;
 }
 
 /**
@@ -179,6 +189,15 @@ const descendImpl: (
 	}
 	const prune = new Set(options.prune ?? DEFAULT_PRUNE);
 	const onUnreadable = options.onUnreadable ?? "fail";
+	const followSymlinks = options.followSymlinks ?? false;
+	// Real paths already descended into, seeded with the walk base and added to
+	// on every link descent; populated only under followSymlinks. A link whose
+	// target real path is already here closes a cycle (to the base, an ancestor,
+	// or an earlier link's target) and is skipped, so the walk terminates even
+	// when links form loops. Real (non-link) directories are never recorded:
+	// reaching one later through a link is duplicate enumeration — exactly what
+	// Node's recursive readdir does — not a cycle.
+	const visitedReal = new Set<string>();
 	// Populated only under "record"; the wrapper decides the return shape.
 	const unreadable: Array<UnreadableDirectory> = [];
 
@@ -195,6 +214,14 @@ const descendImpl: (
 			Effect.map(() => true),
 			Effect.orElseSucceed(() => false),
 		);
+
+	/**
+	 * The real path of `absolute`, falling back to `absolute` itself when
+	 * resolution fails — a directory that stat-resolved moments ago can still
+	 * vanish before the resolve, and a benign race must not fail the walk.
+	 */
+	const realOf = (absolute: string): Effect.Effect<string> =>
+		fs.realPath(absolute).pipe(Effect.orElseSucceed(() => absolute));
 
 	/** Wrap the walk's success value per `onUnreadable`: a plain array unless "record" asked for the pair. */
 	const finish = (matches: ReadonlyArray<string>): ReadonlyArray<string> | DescendResult =>
@@ -218,6 +245,7 @@ const descendImpl: (
 	if (escapesCwd(base)) return finish([]);
 	const absoluteBase = base === "" ? options.cwd : path.join(options.cwd, base);
 	if ((yield* typeOf(absoluteBase)) !== "Directory") return finish([]);
+	if (followSymlinks) visitedReal.add(yield* realOf(absoluteBase));
 
 	// Only a pattern that can match below one level earns a descent; a negated
 	// pattern matches everything its inner pattern does NOT, so it can match
@@ -267,8 +295,17 @@ const descendImpl: (
 			// Prune suppresses DIRECTORIES only, per the option's contract — a
 			// FILE named `.git` (a submodule or worktree gitlink) stays matchable.
 			if (prune.has(entry)) continue;
-			// Never descend into a symlinked directory (cycle safety).
-			if (yield* isSymbolicLink(absolute)) continue;
+			// A symlinked directory is skipped unless followSymlinks asked for it;
+			// when it does, the cycle guard is real-path deduplication rather than
+			// the blanket refusal: a link resolving to an already-visited real path
+			// closes a cycle, and every other link descent records its target's real
+			// path before queuing the frame.
+			if (yield* isSymbolicLink(absolute)) {
+				if (!followSymlinks) continue;
+				const real = yield* realOf(absolute);
+				if (visitedReal.has(real)) continue;
+				visitedReal.add(real);
+			}
 			// Depth exhaustion is a typed failure, not a truncation.
 			if (frame.depth + 1 > maxDepth) {
 				return yield* new DescendError({
@@ -320,8 +357,12 @@ export function descend(
  *
  * Only files match. A symlink counts when it stat-resolves to a file
  * (`FileSystem.stat` follows links, as node's does); a symlinked directory is
- * never descended into (cycle safety — detected by a `readLink` probe); a
- * dangling symlink is not a match. A directory that vanishes between its
+ * never descended into by default (cycle safety — detected by a `readLink`
+ * probe), unless `followSymlinks: true` asks for it, which follows links under
+ * a real-path (`FileSystem.realPath`) cycle guard: a link whose target real
+ * path was already descended into — the base, an ancestor, or an earlier
+ * link's target — is skipped, so link loops terminate. A dangling symlink is
+ * not a match. A directory that vanishes between its
  * parent's listing and its own read is a benign race and reads as empty. A
  * pattern that cannot match below one level (no globstar, no mid-pattern
  * magic segment) reads a single level and never descends.
