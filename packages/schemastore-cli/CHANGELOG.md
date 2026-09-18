@@ -1,5 +1,22 @@
 # @effected/schemastore-cli
 
+## 0.13.1
+
+### Bug Fixes
+
+- patching all packages to redeploy to deal with pnpm v12 peer closures
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.5.1 | 0.5.2 |
+| @effected/schemastore | dependency | updated | 0.13.0 | 0.13.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.13.0
 
 ### Dependencies

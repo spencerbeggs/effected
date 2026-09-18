@@ -1,5 +1,22 @@
 # @effected/tsconfig-json
 
+## 0.9.2
+
+### Bug Fixes
+
+- patching all packages to redeploy to deal with pnpm v12 peer closures
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.11.0 | 0.11.1 |
+| @effected/walker | dependency | updated | 0.9.0 | 0.9.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.9.1
 
 ### Dependencies

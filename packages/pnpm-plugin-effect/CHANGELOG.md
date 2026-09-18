@@ -1,5 +1,15 @@
 # @effected/pnpm-plugin-effect
 
+## 0.8.14
+
+### Bug Fixes
+
+- patching all packages to redeploy to deal with pnpm v12 peer closures
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.8.13
 
 ### Maintenance

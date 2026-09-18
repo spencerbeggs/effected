@@ -1,5 +1,22 @@
 # @effected/xdg
 
+## 0.5.3
+
+### Bug Fixes
+
+- patching all packages to redeploy to deal with pnpm v12 peer closures
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.10.0 | 0.10.1 |
+| @effected/walker | dependency | updated | 0.9.0 | 0.9.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.5.2
 
 ### Dependencies

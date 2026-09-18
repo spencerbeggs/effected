@@ -1,5 +1,22 @@
 # @effected/npm
 
+## 0.14.1
+
+### Bug Fixes
+
+- patching all packages to redeploy to deal with pnpm v12 peer closures
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.7.1 | 0.7.2 |
+| @effected/semver | dependency | updated | 0.7.0 | 0.7.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.14.0
 
 ### Breaking Changes

@@ -1,5 +1,15 @@
 # @effected/github-references
 
+## 0.3.1
+
+### Bug Fixes
+
+- patching all packages to redeploy to deal with pnpm v12 peer closures
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.3.0
 
 ### Breaking Changes
