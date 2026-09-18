@@ -1,5 +1,15 @@
 # @effected/memfs
 
+## 0.7.1
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.7.0
 
 ### Breaking Changes

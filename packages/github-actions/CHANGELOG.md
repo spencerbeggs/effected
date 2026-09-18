@@ -1,5 +1,32 @@
 # @effected/github-actions
 
+## 0.13.3
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+#### Runner-file names may no longer carry the parser separators `=` and `<<` or end in `<`
+
+- `isUsableName` now refuses a name containing `=` or `<<`, or ending in `<`, so `ActionOutputs.set` / `exportVariable` / `setJson` fail typed with `InvalidOutputNameError` and `ActionState.save` fails typed with `writeFailed` instead of appending a block the runner would misparse. The runner's file-command parser reads each line up to its first `=` or `<<`, whichever comes first: a name carrying `=` parses as a `key=value` property before the block ever opens, and a name carrying `<<` splits at the wrong delimiter — either way every entry after the malformed block is corrupted. A name ending in `<` corrupts the composed header the same way (`a<` writes `a<<<DELIM`, whose first `<<` matches one character early, leaving a delimiter the terminating line can never match); an interior `<` remains accepted.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.10.1 | 0.10.2 |
+| @effected/glob | dependency | updated | 0.6.0 | 0.6.1 |
+| @effected/markdown | dependency | updated | 0.10.0 | 0.10.1 |
+| @effected/npm | dependency | updated | 0.14.0 | 0.14.1 |
+| @effected/sbom | dependency | updated | 0.6.1 | 0.6.2 |
+| @effected/semver | dependency | updated | 0.7.0 | 0.7.1 |
+| @effected/templates | dependency | updated | 0.6.0 | 0.6.1 |
+| @effected/walker | dependency | updated | 0.9.0 | 0.9.1 |
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) and [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.13.2
 
 ### Bug Fixes

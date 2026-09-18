@@ -1,5 +1,21 @@
 # @effected/cli
 
+## 0.5.2
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.10.0 | 0.10.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.5.1
 
 ### Dependencies

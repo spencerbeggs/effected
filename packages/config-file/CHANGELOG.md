@@ -1,5 +1,24 @@
 # @effected/config-file
 
+## 0.10.1
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.11.0 | 0.11.1 |
+| @effected/toml | dependency | updated | 0.7.0 | 0.7.1 |
+| @effected/walker | dependency | updated | 0.9.0 | 0.9.1 |
+| @effected/yaml | dependency | updated | 0.15.1 | 0.15.2 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.10.0
 
 ### Breaking Changes

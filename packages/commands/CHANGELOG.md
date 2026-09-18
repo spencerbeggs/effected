@@ -1,5 +1,15 @@
 # @effected/commands
 
+## 0.7.2
+
+### Bug Fixes
+
+- Fixes closure issues in all packages.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.7.1
 
 ### Other
