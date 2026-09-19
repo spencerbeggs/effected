@@ -1,5 +1,86 @@
 # @effected/pnpm-plugin-effect
 
+## 0.9.0
+
+### Breaking Changes
+
+#### The whole kit tracks Effect `4.0.0-rc.116`
+
+- Every package's `effect` peer moves from `4.0.0-rc.115` to `4.0.0-rc.116`. The kit uses exact prerelease pins rather than a caret, so a consumer must move with it. No `@effected` API changes shape on this advance; the kit itself needed one edit (`Stream.scan` now takes a lazy initial state, met once in `@effected/jsonl`'s `Journal.projection`). A consumer that upgrades meets the rc.116 renames on its own code:
+
+- `SchemaTransformation.make` is `makeTransformation`, and `Transformation#compose` is the dual standalone `SchemaTransformation.composeTransformation`.
+
+- `SchemaGetter.Getter` is a tagged union exposing only `pipe`: `new SchemaGetter.Getter`, `onSome` and `onNone` are gone in favour of `SchemaGetter.map` / `compose` / `run` and `transformEffect` / `transformOptionalEffect`.
+
+- `Stream.scan` and `Stream.scanEffect` take `() => initial`; `Stream.partition` returns `[passes, fails]`; `Stream.mapBoth` takes `onElement` / `onError`.
+
+- `Effect.orElseSucceed` passes the error to its fallback and `Effect.isEffect` narrows to `Effect<unknown, unknown, unknown>`.
+
+- `ByteSize.Input` string literals are checked at compile time; parse external strings with `ByteSize.fromString`.
+
+- Arbitrary shrinking changed, so property-test replay tokens recorded at rc.115 no longer reproduce.
+
+### Documentation
+
+#### The Claude Code and Copilot plugins teach the rc.116 surface
+
+- The `effect-v4-schema` transformation reference composes transformations with `SchemaTransformation.composeTransformation` and describes the `Getter` surface rc.116 left behind; the source-lookup and testing skills report rc.116 as the kit's pin and the two-copy lockfile shape the bridge now produces (`rc.115` for the toolchain, `rc.116` for the kit); the session-start briefing reports rc.116.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effect/platform-node | devDependency | updated | 4.0.0-rc.115 | 4.0.0-rc.116 |
+| @effect/vitest | devDependency | updated | 4.0.0-rc.115 | 4.0.0-rc.116 |
+| effect | devDependency | updated | 4.0.0-rc.115 | 4.0.0-rc.116 |
+| effect | peerDependency | updated | 4.0.0-rc.115 | 4.0.0-rc.116 |
+
+### Maintenance
+
+#### The rc.115 `packageExtensions` bridge is retired
+
+- The toolchain (`@savvy-web/tsdown-plugins`, `rolldown-pnpm-config`, `@vitest-agent/*`) has republished declaring `effect` and its `@effected/*` inputs as regular dependencies, so the workspace no longer needs the `packageExtensions` block that pinned them by hand. Its ten keys named versions no longer installed and the lockfile diff on removal was the checksum line alone. Nothing published changes; this is the workspace's own install shape. [#792][#792]
+
+#### Updates 31 catalog:effected versions
+
+- `@effected/app` ^0.16.3 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/cli` ^0.5.2 -> ^0.6.0 (peer ^0.6.0)
+- `@effected/commands` ^0.7.2 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/config-file` ^0.10.1 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/git` ^0.15.2 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/github` ^0.10.2 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/github-actions` ^0.13.4 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/github-references` ^0.3.1 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/glob` ^0.6.1 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/jsonc` ^0.11.1 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/jsonl` ^0.5.1 -> ^0.6.0 (peer ^0.6.0)
+- `@effected/lockfiles` ^0.9.1 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/markdown` ^0.10.1 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/memfs` ^0.7.1 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/npm` ^0.14.2 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/package-json` ^0.15.1 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/runtimes` ^0.6.2 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/sbom` ^0.6.2 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/schema-org` ^0.3.1 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/schemastore` ^0.13.1 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/schemastore-cli` ^0.13.1 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/semver` ^0.7.1 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/spdx` ^0.7.1 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/store` ^0.8.1 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/templates` ^0.6.1 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/toml` ^0.7.1 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/tsconfig-json` ^0.9.2 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/walker` ^0.9.1 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/workspaces` ^0.22.1 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/xdg` ^0.5.3 -> ^0.6.0 (peer ^0.6.0)
+- `@effected/yaml` ^0.15.2 -> ^0.16.0 (peer ^0.16.0) [#792][#792]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#792]: https://github.com/spencerbeggs/effected/pull/792
+
 ## 0.8.15
 
 ### Maintenance
