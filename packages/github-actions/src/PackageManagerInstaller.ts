@@ -934,6 +934,16 @@ const dies = unstubbed("PackageManagerInstaller.makeTest");
  * stage-then-swap invariant holds here for free — shims included, the tool
  * cache only ever contains complete package managers.
  *
+ * The pin is the whole contract: the installer provisions exactly the named
+ * version and does not read the artifact's `engines.node` against the
+ * runner's node. A pin whose engines the runner does not satisfy (npm 12 on
+ * a node below `^22.22.2 || ^24.15.0 || >=26.0.0`) still installs and still
+ * runs — npm itself warns (`npm warn cli npm v12.0.2 does not support ...`)
+ * on every invocation and carries on (`lib/cli/entry.js`), so the
+ * mismatch is visible in the job log but is not a typed failure here.
+ * Keeping node and the manager pins coherent is the consumer's call, made
+ * where it pins node.
+ *
  * @example
  * ```ts
  * import { ActionOutputs, PackageManagerInstaller } from "@effected/github-actions";

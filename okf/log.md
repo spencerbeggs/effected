@@ -11,6 +11,8 @@
 * Updated app
 * Updated store
 * Updated github-actions
+* Updated actions-storage
+* Added pnpm 12's placeholder bin dies as a SyntaxError when shimmed under node
 
 ## 2026-09-16
 

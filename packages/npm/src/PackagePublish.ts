@@ -39,8 +39,15 @@ const PackJsonEntry = Schema.Struct({
 	entryCount: Schema.optionalKey(Schema.Number),
 });
 
-/** npm emits an array, one entry per packed package. */
-const PackJson = Schema.Array(PackJsonEntry);
+/**
+ * What `npm pack --json` prints, on both supported majors: npm 11 emits an
+ * array of entries, one per packed package; npm 12 emits an object keyed by
+ * package name — the 12.0.0 breaking change that made `pack` and `publish`
+ * share one `--json` shape (`lib/commands/pack.js` hands `logTar` the
+ * tarball's `name` as the key, where 11 handed it the array index). A
+ * single-package pack is one entry either way.
+ */
+const PackJson = Schema.Union([Schema.Array(PackJsonEntry), Schema.Record(Schema.String, PackJsonEntry)]);
 
 /**
  * A packed tarball and the two digests that describe it.
@@ -251,7 +258,8 @@ const make = Effect.fnUntraced(function* () {
 					Effect.catch((cause) => Effect.fail(new PublishError({ kind: "output", subject, cause }))),
 				),
 			),
-			Effect.flatMap((entries) => {
+			Effect.flatMap((decoded) => {
+				const entries = Array.isArray(decoded) ? decoded : Object.values(decoded);
 				const entry = entries[0];
 				return entry === undefined
 					? Effect.fail(new PublishError({ kind: "output", subject, output: stdout }))

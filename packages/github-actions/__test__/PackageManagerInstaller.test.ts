@@ -453,6 +453,54 @@ describe("PackageManagerInstaller", () => {
 			),
 		);
 
+		it.live("a same-major near miss (ambient 12.0.1 for a 12.0.2 pin) goes to the tool cache", () =>
+			// The match is exact-string, never "close enough": a Node 26 runner
+			// whose bundled npm is 12.0.1 must not answer a 12.0.2 pin, or the
+			// consumer's pin bump would be a silent no-op. The scripted probe
+			// answers the near miss; the dist path must run.
+			Effect.gen(function* () {
+				const root = scratch();
+				const extracted = join(root, "extracted", "package");
+				mkdirSync(join(extracted, "bin"), { recursive: true });
+				writeFileSync(
+					join(extracted, "package.json"),
+					JSON.stringify({ bin: { npm: "bin/npm-cli.js", npx: "bin/npx-cli.js" } }),
+				);
+				writeFileSync(join(extracted, "bin", "npm-cli.js"), "console.log('npm')");
+				writeFileSync(join(extracted, "bin", "npx-cli.js"), "console.log('npx')");
+				const destination = ToolInstaller.cachePath({ root, tool: "npm", version: "12.0.2", arch: process.arch });
+
+				const probes: Array<string> = [];
+				const installed = cachedOf(
+					yield* install("npm@12.0.2").pipe(
+						Effect.provide(
+							stubbed({
+								env: { RUNNER_TOOL_CACHE: root },
+								spawner: scriptedSpawner(() =>
+									Effect.suspend(() => {
+										probes.push("npm --version");
+										return Effect.succeed("12.0.1\n");
+									}),
+								),
+								installer: {
+									find: () => Effect.succeed(Option.none()),
+									download: () => Effect.succeed(join(root, "unused-archive")),
+									extractTar: () => Effect.succeed(join(root, "extracted")),
+									cacheDir: () => Effect.succeed(destination),
+								},
+							}),
+						),
+						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+					),
+				);
+				assert.deepStrictEqual(probes, ["npm --version"], "the ambient probe ran and was rejected");
+				assert.strictEqual(installed.source, "tool-cache");
+				assert.strictEqual(installed.version, "12.0.2");
+				assert.strictEqual(installed.bins.npm, join(destination, "bin", "npm-cli.js"));
+				assert.strictEqual(installed.bins.npx, join(destination, "bin", "npx-cli.js"));
+			}),
+		);
+
 		it.live("falls through to the dist path when the probe answers a different version", () =>
 			Effect.gen(function* () {
 				const root = scratch();

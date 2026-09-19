@@ -12,19 +12,27 @@ const NPMRC = "/home/runner/.npmrc";
 const TOKEN = Redacted.make("s3cr3t-token");
 const TOKEN_CREDENTIAL = { kind: "token", token: TOKEN } as const;
 
-/** `npm pack --json` output, as npm emits it (an array of one entry). */
-const packJson = JSON.stringify([
-	{
-		id: "pkg@1.1.0",
-		name: "pkg",
-		version: "1.1.0",
-		filename: "pkg-1.1.0.tgz",
-		integrity: "sha512-abc123==",
-		size: 2048,
-		unpackedSize: 8192,
-		entryCount: 12,
-	},
-]);
+/** One packed tarball, as both npm majors describe it. */
+const packEntry = {
+	id: "pkg@1.1.0",
+	name: "pkg",
+	version: "1.1.0",
+	filename: "pkg-1.1.0.tgz",
+	integrity: "sha512-abc123==",
+	size: 2048,
+	unpackedSize: 8192,
+	entryCount: 12,
+};
+
+/** `npm pack --json` output as npm 11 emits it: an array of one entry. */
+const packJson = JSON.stringify([packEntry]);
+
+/**
+ * `npm pack --json` output as npm 12 emits it: an object keyed by package
+ * name — verified against `npm@12.0.2`'s `lib/commands/pack.js`, which hands
+ * `logTar` the tarball's `name` as the key where 11 handed it the index.
+ */
+const packJsonNpm12 = JSON.stringify({ [packEntry.name]: packEntry });
 
 interface Harness {
 	readonly run: <A, E>(program: Effect.Effect<A, E, PackagePublish>) => Effect.Effect<A, E>;
@@ -202,6 +210,44 @@ describe("PackagePublish.pack", () => {
 			assert.strictEqual(packed.unpackedSize, 8192);
 			assert.strictEqual(packed.fileCount, 12);
 			assert.include(packed.tarballPath, "pkg-1.1.0.tgz");
+		}),
+	);
+
+	it.effect("parses npm 12's name-keyed pack --json to the same PackedTarball", () =>
+		// The 12.0.0 breaking change: `pack --json` and `publish --json` share
+		// one shape, an object keyed by package name. Both majors are in the
+		// support window, so the keyed form decodes to the identical record.
+		Effect.gen(function* () {
+			const h = harness({
+				script: () => ({ stdout: packJsonNpm12, exit: 0 }),
+				files: { "/repo/pkg/pkg-1.1.0.tgz": "bytes" },
+			});
+			const packed = yield* h.run(Effect.flatMap(publisher, (p) => p.pack("/repo/pkg")));
+			assert.strictEqual(packed.name, "pkg");
+			assert.strictEqual(packed.version, "1.1.0");
+			assert.strictEqual(packed.integrity, "sha512-abc123==");
+			assert.strictEqual(packed.packedSize, 2048);
+			assert.strictEqual(packed.fileCount, 12);
+			assert.include(packed.tarballPath, "pkg-1.1.0.tgz");
+		}),
+	);
+
+	it.effect("a keyed object whose entry is malformed still fails with kind 'output'", () =>
+		// The keyed branch is not a lenient catch-all: an entry missing its
+		// filename is rejected the same way the array form rejects it.
+		Effect.gen(function* () {
+			const { filename: _dropped, ...noFilename } = packEntry;
+			const h = harness({ script: () => ({ stdout: JSON.stringify({ pkg: noFilename }), exit: 0 }) });
+			const error = yield* Effect.flip(h.run(Effect.flatMap(publisher, (p) => p.pack("/repo/pkg"))));
+			assert.strictEqual(error.kind, "output");
+		}),
+	);
+
+	it.effect("an empty keyed object fails with kind 'output', like an empty array", () =>
+		Effect.gen(function* () {
+			const h = harness({ script: () => ({ stdout: "{}", exit: 0 }) });
+			const error = yield* Effect.flip(h.run(Effect.flatMap(publisher, (p) => p.pack("/repo/pkg"))));
+			assert.strictEqual(error.kind, "output");
 		}),
 	);
 
@@ -398,6 +444,17 @@ describe("PackagePublish.dryRun", () => {
 			const outcome = yield* h.run(Effect.flatMap(publisher, (p) => p.dryRun("/repo/pkg")));
 			assert.isTrue(outcome.ok);
 			assert.strictEqual(outcome.packedSize, 2048);
+			assert.strictEqual(outcome.fileCount, 12);
+		}),
+	);
+
+	it.effect("reads the sizing from npm 12's keyed shape too", () =>
+		Effect.gen(function* () {
+			const h = harness({ script: () => ({ stdout: packJsonNpm12, exit: 0 }) });
+			const outcome = yield* h.run(Effect.flatMap(publisher, (p) => p.dryRun("/repo/pkg")));
+			assert.isTrue(outcome.ok);
+			assert.strictEqual(outcome.packedSize, 2048);
+			assert.strictEqual(outcome.unpackedSize, 8192);
 			assert.strictEqual(outcome.fileCount, 12);
 		}),
 	);
