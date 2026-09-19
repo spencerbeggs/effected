@@ -259,9 +259,10 @@ const make = Effect.fnUntraced(function* () {
 				),
 			),
 			Effect.flatMap((decoded) => {
-				// Annotated on purpose: `Object.values` on a readonly index signature
-				// falls through to its `any[]` overload, which would turn every
-				// field read off the entry into an unchecked `any`.
+				// Annotated on purpose: `Array.isArray`'s `arg is any[]` cannot narrow
+				// the union's `ReadonlyArray` member, so the true branch degrades to
+				// `any[]` and would turn every field read off the entry into an
+				// unchecked `any`.
 				const entries: ReadonlyArray<typeof PackJsonEntry.Type> = Array.isArray(decoded)
 					? decoded
 					: Object.values(decoded);
