@@ -34,14 +34,15 @@ REFERENCES="$PLUGIN_ROOT/skills/effected-packages/references"
 # _public_packages — every workspace package that actually publishes, by name.
 # publishConfig.access === "public" is the repo's definition of publishable;
 # the source manifests are all "private": true, so `private` says nothing.
+# One node process reads every manifest: a process per manifest was 32 spawns
+# per call, and the row-by-row test below calls this once per row.
 _public_packages() {
-	local manifest
-	for manifest in "$REPO_ROOT"/packages/*/package.json; do
-		node -e '
-			const d = require(process.argv[1]);
+	node -e '
+		for (const p of process.argv.slice(1)) {
+			const d = require(p);
 			if (d.publishConfig && d.publishConfig.access === "public") console.log(d.name);
-		' "$manifest"
-	done | sort
+		}
+	' "$REPO_ROOT"/packages/*/package.json | sort
 }
 
 # _router_rows — the package name from each row of the Index table, i.e. every
@@ -102,10 +103,11 @@ _router_rows() {
 }
 
 @test "every router row names a package that exists and publishes" {
-	local orphan=0 pkg
+	local orphan=0 pkg public
+	public="$(_public_packages)"
 	while read -r pkg; do
 		[ -n "$pkg" ] || continue
-		_public_packages | grep -qxF "$pkg" || {
+		grep -qxF "$pkg" <<<"$public" || {
 			echo "router row names a package that does not publish (or does not exist): $pkg" >&2
 			orphan=1
 		}
