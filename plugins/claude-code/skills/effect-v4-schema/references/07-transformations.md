@@ -100,31 +100,30 @@ In this case:
 
 ## Composing Transformations
 
-You can combine transformations using the `.compose` method. The resulting transformation applies the `decode` and `encode` logic of both transformations in sequence.
+You can combine transformations using `SchemaTransformation.composeTransformation` (a dual standalone function since rc.116 — the `Transformation#compose` method is gone). The resulting transformation applies the `decode` and `encode` logic of both transformations in sequence.
 
 **Example** (Trim and lowercase a string)
 
 ```ts
-import { Option, SchemaTransformation } from "effect"
+import { Schema, SchemaTransformation } from "effect"
 
 // Compose two transformations: trim followed by toLowerCase
-const trimToLowerCase = SchemaTransformation.trim().compose(SchemaTransformation.toLowerCase())
+const trimToLowerCase = SchemaTransformation.composeTransformation(
+  SchemaTransformation.trim(),
+  SchemaTransformation.toLowerCase()
+)
+const schema = Schema.String.pipe(Schema.decode(trimToLowerCase))
 
-// Run the decode logic manually to inspect the result
-console.log(trimToLowerCase.decode.run(Option.some("  Abc"), {}))
-/*
-{
-  _id: 'Exit',
-  _tag: 'Success',
-  value: { _id: 'Option', _tag: 'Some', value: 'abc' }
-}
-*/
+Schema.decodeUnknownSync(schema)("  Abc")
+// "abc"
 ```
 
 In this example:
 
-- The `decode` logic applies `Getter.trim()` followed by `Getter.toLowerCase()`, producing a string that is trimmed and lowercased.
-- The `encode` logic is `Getter.passthrough()`, which simply returns the input as-is.
+- The `decode` logic applies `SchemaGetter.trim()` followed by `SchemaGetter.toLowerCase()`, producing a string that is trimmed and lowercased.
+- The `encode` logic is `SchemaGetter.passthrough()`, which returns the input unchanged.
+
+A `Getter` value exposes only `pipe` since rc.116: run one with the standalone `SchemaGetter.run`, and build one with `SchemaGetter.map` / `SchemaGetter.compose` or the `transform*` constructors — `new SchemaGetter.Getter`, `onSome` and `onNone` no longer exist.
 
 ## Transforming One Schema into Another
 

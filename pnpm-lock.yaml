@@ -205,23 +205,21 @@ catalogs:
       version: 1.0.3
   effect:
     '@effect/platform-node':
-      specifier: 4.0.0-rc.115
-      version: 4.0.0-rc.115
+      specifier: 4.0.0-rc.116
+      version: 4.0.0-rc.116
     '@effect/sql-sqlite-node':
-      specifier: 4.0.0-rc.115
-      version: 4.0.0-rc.115
+      specifier: 4.0.0-rc.116
+      version: 4.0.0-rc.116
     '@effect/vitest':
-      specifier: 4.0.0-rc.115
-      version: 4.0.0-rc.115
+      specifier: 4.0.0-rc.116
+      version: 4.0.0-rc.116
     effect:
-      specifier: 4.0.0-rc.115
-      version: 4.0.0-rc.115
+      specifier: 4.0.0-rc.116
+      version: 4.0.0-rc.116
 
 overrides:
   '@effect/vitest>vitest': ^5.0.1
   '@microsoft/api-extractor>typescript': ^6.0.3
-
-packageExtensionsChecksum: sha256-TYNrB0bGbj3hzCmLkx9vbj5ODqAgH8uRevdRDARWoTo=
 
 importers:
 
@@ -241,10 +239,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
@@ -280,7 +278,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -290,7 +288,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
@@ -317,7 +315,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -327,10 +325,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -339,7 +337,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -349,10 +347,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
@@ -379,7 +377,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -389,10 +387,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -401,7 +399,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -436,10 +434,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -448,7 +446,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -486,10 +484,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -501,7 +499,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -511,7 +509,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -520,7 +518,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -530,7 +528,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -539,7 +537,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       minimatch:
         specifier: 10.2.6
         version: 10.2.6
@@ -552,7 +550,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -561,7 +559,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -571,10 +569,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -583,7 +581,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -593,7 +591,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
@@ -614,7 +612,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -624,7 +622,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
@@ -645,7 +643,7 @@ importers:
         version: 0.31.2
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -655,10 +653,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -667,7 +665,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -681,7 +679,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -696,7 +694,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -719,10 +717,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -731,7 +729,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -761,7 +759,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -770,7 +768,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       oxc-parser:
         specifier: ^0.150.0
         version: 0.150.0
@@ -796,10 +794,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -808,7 +806,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -818,7 +816,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -827,7 +825,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       oxc-parser:
         specifier: ^0.150.0
         version: 0.150.0
@@ -844,10 +842,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -859,7 +857,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -869,7 +867,7 @@ importers:
     dependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effected/cli':
         specifier: workspace:^
         version: link:../cli/dist/dev/pkg
@@ -885,7 +883,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -900,7 +898,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -910,7 +908,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -919,7 +917,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -929,7 +927,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -938,7 +936,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       oxc-parser:
         specifier: ^0.150.0
         version: 0.150.0
@@ -960,11 +958,11 @@ importers:
     dependencies:
       '@effect/sql-sqlite-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -973,7 +971,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -983,10 +981,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -998,7 +996,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1008,7 +1006,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -1017,7 +1015,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       smol-toml:
         specifier: 1.8.0
         version: 1.8.0
@@ -1030,7 +1028,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
@@ -1051,7 +1049,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1061,7 +1059,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
@@ -1076,7 +1074,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1129,10 +1127,10 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -1144,7 +1142,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1154,7 +1152,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
@@ -1184,7 +1182,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1194,7 +1192,7 @@ importers:
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@savvy-web/bundler':
         specifier: ^2.4.4
         version: 2.4.4(@types/node@26.6.1)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.13)(typescript@7.0.2)
@@ -1203,7 +1201,7 @@ importers:
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       typescript:
         specifier: catalog:build
         version: 7.0.2
@@ -1311,16 +1309,16 @@ importers:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
-        version: 4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)
+        version: 4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)
       '@types/node':
         specifier: catalog:build
         version: 26.6.1
       effect:
         specifier: catalog:effect
-        version: 4.0.0-rc.115
+        version: 4.0.0-rc.116
       tsx:
         specifier: ^4.23.12
         version: 4.23.13
@@ -1679,15 +1677,27 @@ packages:
       effect: ^4.0.0-rc.115
       redis: '>=5.0.0 <7.0.0'
 
+  '@effect/platform-node@4.0.0-rc.116':
+    resolution: {integrity: sha512-uA66Nh998OcChBVX83tQDkBDvQQcVaMXodP9gNGWVeIwWWquy7bzIkAq/fMZGKs/BVFhFQ0XCp3VIqYjnXu5ng==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      effect: ^4.0.0-rc.116
+      redis: '>=5.0.0 <7.0.0'
+
   '@effect/sql-sqlite-node@4.0.0-rc.115':
     resolution: {integrity: sha512-53n3Kbwush7K/8/G1CDz638ClEoMvnUOT5BltCxMZ8TqcxeNoMv+nty08ZdrJ7P6m1q1RIeWlqdy5J9ZDICpbw==}
     peerDependencies:
       effect: ^4.0.0-rc.115
 
-  '@effect/vitest@4.0.0-rc.115':
-    resolution: {integrity: sha512-DJR0hfdr3HNXAkzW8AzfvUz6VmrNFLrKk9tZGDURi33faMyxkc7ZewxELMMZwGpOTGN4mfqYVbX2CXgI+ZJBeQ==}
+  '@effect/sql-sqlite-node@4.0.0-rc.116':
+    resolution: {integrity: sha512-nh7k7lXUPtEXBJpS5RHP01l6rtBFHsZq8Q3l+eV+lhO5qbvApt8Xb+Jb9j8LmXT4CcEagKe2Ix/bbipWpRXXnA==}
     peerDependencies:
-      effect: ^4.0.0-rc.115
+      effect: ^4.0.0-rc.116
+
+  '@effect/vitest@4.0.0-rc.116':
+    resolution: {integrity: sha512-q42ue4hAa5AcPBwqi8rvMvR1Jstr+JjsyyxEBUoBk+WWm8otnqFxQ+XbWslW1QSwdg5+2Fdgd7z59IValt9Oiw==}
+    peerDependencies:
+      effect: ^4.0.0-rc.116
       vitest: ^5.0.1
 
   '@effected/app@0.16.3':
@@ -3930,6 +3940,9 @@ packages:
   effect@4.0.0-rc.115:
     resolution: {integrity: sha512-ogYulZ5ffeOzrJqQrG0XOkDO5lKn2s9KNHhoxJy/6wKUkF0i12dlVXWA9TgsgQ+zV/JzizyG0+XMPepZEQX6vw==}
 
+  effect@4.0.0-rc.116:
+    resolution: {integrity: sha512-nawqJHSjHV8XIBRZNZ+D7cLZpN3kkSjzy6aiT9ofKENsl7xAMFKEoDa0itN5JFl3GUQ1PIN1T1HNlva5+xyO/A==}
+
   electron-to-chromium@1.5.433:
     resolution: {integrity: sha512-5lCAbyZBjtmUt/RAGHRqrL2q0oEFRThDAsZHHDn9XHa89Qw7gMYOeSicBTy+AHfvo0r6vwsZvqNJTQIQy1BLzA==}
 
@@ -3939,8 +3952,8 @@ packages:
   emoji-regex@10.6.0:
     resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
 
-  empathic@2.0.1:
-    resolution: {integrity: sha512-YGRs8knHhKHVShLkFET/rWAU8kmHbOV5LwN938RHI0pljAJ1Gf6SzXsSmRaEzcXTtOOmVqJ5+WtQPL5uigY50Q==}
+  empathic@2.1.0:
+    resolution: {integrity: sha512-AnfC1ATldl49/cvZdLPDjBfrRNwbDO05aibiOtzQu3qtlbJtomNLhF30HEtn/7iBz50dlMECqATo3fG0LrdEgw==}
     engines: {node: '>=14'}
 
   entities@3.0.1:
@@ -5973,7 +5986,7 @@ snapshots:
       '@babel/types': 8.0.6
       '@types/gensync': 1.0.5
       convert-source-map: 2.0.0
-      empathic: 2.0.1
+      empathic: 2.1.0
       gensync: 1.0.0-beta.2
       import-meta-resolve: 4.2.0
       json5: 2.2.3
@@ -6309,6 +6322,15 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@effect/platform-node-shared@4.0.0-rc.116(effect@4.0.0-rc.116)':
+    dependencies:
+      '@types/ws': 8.18.1
+      effect: 4.0.0-rc.116
+      ws: 8.21.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@effect/platform-node@4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1)':
     dependencies:
       '@effect/platform-node-shared': 4.0.0-rc.116(effect@4.0.0-rc.115)
@@ -6319,13 +6341,27 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@effect/platform-node@4.0.0-rc.116(effect@4.0.0-rc.116)(redis@6.2.1)':
+    dependencies:
+      '@effect/platform-node-shared': 4.0.0-rc.116(effect@4.0.0-rc.116)
+      effect: 4.0.0-rc.116
+      redis: 6.2.1
+      undici: 8.10.2
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   '@effect/sql-sqlite-node@4.0.0-rc.115(effect@4.0.0-rc.115)':
     dependencies:
       effect: 4.0.0-rc.115
 
-  '@effect/vitest@4.0.0-rc.115(effect@4.0.0-rc.115)(vitest@5.0.1)':
+  '@effect/sql-sqlite-node@4.0.0-rc.116(effect@4.0.0-rc.116)':
     dependencies:
-      effect: 4.0.0-rc.115
+      effect: 4.0.0-rc.116
+
+  '@effect/vitest@4.0.0-rc.116(effect@4.0.0-rc.116)(vitest@5.0.1)':
+    dependencies:
+      effect: 4.0.0-rc.116
       vitest: 5.0.1(@types/node@26.6.1)(@vitest/coverage-istanbul@5.0.1)(@vitest/coverage-v8@5.0.1)(vite@8.3.0(@types/node@26.6.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
 
   '@effected/app@0.16.3(@effected/config-file@0.10.1(@effected/jsonc@0.11.1(effect@4.0.0-rc.115))(@effected/toml@0.7.1(effect@4.0.0-rc.115))(@effected/walker@0.9.1(@effected/glob@0.6.1(effect@4.0.0-rc.115))(effect@4.0.0-rc.115))(@effected/yaml@0.15.2(effect@4.0.0-rc.115))(effect@4.0.0-rc.115))(@effected/store@0.8.1(effect@4.0.0-rc.115))(@effected/xdg@0.5.3(@effected/config-file@0.10.1(@effected/jsonc@0.11.1(effect@4.0.0-rc.115))(@effected/toml@0.7.1(effect@4.0.0-rc.115))(@effected/walker@0.9.1(@effected/glob@0.6.1(effect@4.0.0-rc.115))(effect@4.0.0-rc.115))(@effected/yaml@0.15.2(effect@4.0.0-rc.115))(effect@4.0.0-rc.115))(@effected/walker@0.9.1(@effected/glob@0.6.1(effect@4.0.0-rc.115))(effect@4.0.0-rc.115))(effect@4.0.0-rc.115))(effect@4.0.0-rc.115)':
@@ -8515,13 +8551,15 @@ snapshots:
 
   effect@4.0.0-rc.115: {}
 
+  effect@4.0.0-rc.116: {}
+
   electron-to-chromium@1.5.433: {}
 
   elkjs@0.9.3: {}
 
   emoji-regex@10.6.0: {}
 
-  empathic@2.0.1: {}
+  empathic@2.1.0: {}
 
   entities@3.0.1: {}
 
@@ -10704,7 +10742,7 @@ snapshots:
     dependencies:
       cac: 7.0.0
       defu: 6.1.7
-      empathic: 2.0.1
+      empathic: 2.1.0
       hookable: 6.1.2
       import-without-cache: 0.4.1
       obug: 2.2.1
@@ -10731,7 +10769,7 @@ snapshots:
     dependencies:
       cac: 7.0.0
       defu: 6.1.7
-      empathic: 2.0.1
+      empathic: 2.1.0
       hookable: 6.1.2
       import-without-cache: 0.4.1
       obug: 2.2.1

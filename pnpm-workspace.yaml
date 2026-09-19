@@ -6,198 +6,158 @@ packages:
 autoInstallPeers: true
 catalogs:
   effect:
-    "@effect/ai-anthropic": 4.0.0-rc.115
-    "@effect/ai-openai": 4.0.0-rc.115
-    "@effect/ai-openai-compat": 4.0.0-rc.115
-    "@effect/ai-openrouter": 4.0.0-rc.115
-    "@effect/atom-react": 4.0.0-rc.115
-    "@effect/atom-solid": 4.0.0-rc.115
-    "@effect/atom-vue": 4.0.0-rc.115
-    "@effect/openapi-generator": 4.0.0-rc.115
-    "@effect/opentelemetry": 4.0.0-rc.115
-    "@effect/platform-browser": 4.0.0-rc.115
-    "@effect/platform-bun": 4.0.0-rc.115
-    "@effect/platform-node": 4.0.0-rc.115
-    "@effect/platform-node-shared": 4.0.0-rc.115
-    "@effect/sql-clickhouse": 4.0.0-rc.115
-    "@effect/sql-d1": 4.0.0-rc.115
-    "@effect/sql-libsql": 4.0.0-rc.115
-    "@effect/sql-mssql": 4.0.0-rc.115
-    "@effect/sql-mysql2": 4.0.0-rc.115
-    "@effect/sql-pg": 4.0.0-rc.115
-    "@effect/sql-pglite": 4.0.0-rc.115
-    "@effect/sql-sqlite-bun": 4.0.0-rc.115
-    "@effect/sql-sqlite-do": 4.0.0-rc.115
-    "@effect/sql-sqlite-node": 4.0.0-rc.115
-    "@effect/sql-sqlite-react-native": 4.0.0-rc.115
-    "@effect/sql-sqlite-wasm": 4.0.0-rc.115
+    "@effect/ai-anthropic": 4.0.0-rc.116
+    "@effect/ai-openai": 4.0.0-rc.116
+    "@effect/ai-openai-compat": 4.0.0-rc.116
+    "@effect/ai-openrouter": 4.0.0-rc.116
+    "@effect/atom-react": 4.0.0-rc.116
+    "@effect/atom-solid": 4.0.0-rc.116
+    "@effect/atom-vue": 4.0.0-rc.116
+    "@effect/openapi-generator": 4.0.0-rc.116
+    "@effect/opentelemetry": 4.0.0-rc.116
+    "@effect/platform-browser": 4.0.0-rc.116
+    "@effect/platform-bun": 4.0.0-rc.116
+    "@effect/platform-node": 4.0.0-rc.116
+    "@effect/platform-node-shared": 4.0.0-rc.116
+    "@effect/sql-clickhouse": 4.0.0-rc.116
+    "@effect/sql-d1": 4.0.0-rc.116
+    "@effect/sql-libsql": 4.0.0-rc.116
+    "@effect/sql-mssql": 4.0.0-rc.116
+    "@effect/sql-mysql2": 4.0.0-rc.116
+    "@effect/sql-pg": 4.0.0-rc.116
+    "@effect/sql-pglite": 4.0.0-rc.116
+    "@effect/sql-sqlite-bun": 4.0.0-rc.116
+    "@effect/sql-sqlite-do": 4.0.0-rc.116
+    "@effect/sql-sqlite-node": 4.0.0-rc.116
+    "@effect/sql-sqlite-react-native": 4.0.0-rc.116
+    "@effect/sql-sqlite-wasm": 4.0.0-rc.116
     "@effect/tsgo": 0.45.0
-    "@effect/vitest": 4.0.0-rc.115
-    effect: 4.0.0-rc.115
+    "@effect/vitest": 4.0.0-rc.116
+    effect: 4.0.0-rc.116
   effect:peers:
-    "@effect/ai-anthropic": 4.0.0-rc.115
-    "@effect/ai-openai": 4.0.0-rc.115
-    "@effect/ai-openai-compat": 4.0.0-rc.115
-    "@effect/ai-openrouter": 4.0.0-rc.115
-    "@effect/atom-react": 4.0.0-rc.115
-    "@effect/atom-solid": 4.0.0-rc.115
-    "@effect/atom-vue": 4.0.0-rc.115
-    "@effect/openapi-generator": 4.0.0-rc.115
-    "@effect/opentelemetry": 4.0.0-rc.115
-    "@effect/platform-browser": 4.0.0-rc.115
-    "@effect/platform-bun": 4.0.0-rc.115
-    "@effect/platform-node": 4.0.0-rc.115
-    "@effect/platform-node-shared": 4.0.0-rc.115
-    "@effect/sql-clickhouse": 4.0.0-rc.115
-    "@effect/sql-d1": 4.0.0-rc.115
-    "@effect/sql-libsql": 4.0.0-rc.115
-    "@effect/sql-mssql": 4.0.0-rc.115
-    "@effect/sql-mysql2": 4.0.0-rc.115
-    "@effect/sql-pg": 4.0.0-rc.115
-    "@effect/sql-pglite": 4.0.0-rc.115
-    "@effect/sql-sqlite-bun": 4.0.0-rc.115
-    "@effect/sql-sqlite-do": 4.0.0-rc.115
-    "@effect/sql-sqlite-node": 4.0.0-rc.115
-    "@effect/sql-sqlite-react-native": 4.0.0-rc.115
-    "@effect/sql-sqlite-wasm": 4.0.0-rc.115
+    "@effect/ai-anthropic": 4.0.0-rc.116
+    "@effect/ai-openai": 4.0.0-rc.116
+    "@effect/ai-openai-compat": 4.0.0-rc.116
+    "@effect/ai-openrouter": 4.0.0-rc.116
+    "@effect/atom-react": 4.0.0-rc.116
+    "@effect/atom-solid": 4.0.0-rc.116
+    "@effect/atom-vue": 4.0.0-rc.116
+    "@effect/openapi-generator": 4.0.0-rc.116
+    "@effect/opentelemetry": 4.0.0-rc.116
+    "@effect/platform-browser": 4.0.0-rc.116
+    "@effect/platform-bun": 4.0.0-rc.116
+    "@effect/platform-node": 4.0.0-rc.116
+    "@effect/platform-node-shared": 4.0.0-rc.116
+    "@effect/sql-clickhouse": 4.0.0-rc.116
+    "@effect/sql-d1": 4.0.0-rc.116
+    "@effect/sql-libsql": 4.0.0-rc.116
+    "@effect/sql-mssql": 4.0.0-rc.116
+    "@effect/sql-mysql2": 4.0.0-rc.116
+    "@effect/sql-pg": 4.0.0-rc.116
+    "@effect/sql-pglite": 4.0.0-rc.116
+    "@effect/sql-sqlite-bun": 4.0.0-rc.116
+    "@effect/sql-sqlite-do": 4.0.0-rc.116
+    "@effect/sql-sqlite-node": 4.0.0-rc.116
+    "@effect/sql-sqlite-react-native": 4.0.0-rc.116
+    "@effect/sql-sqlite-wasm": 4.0.0-rc.116
     "@effect/tsgo": 0.45.0
-    "@effect/vitest": 4.0.0-rc.115
-    effect: 4.0.0-rc.115
+    "@effect/vitest": 4.0.0-rc.116
+    effect: 4.0.0-rc.116
   effected:
-    "@effected/app": ^0.15.0
-    "@effected/cli": ^0.3.1
-    "@effected/commands": ^0.6.1
-    "@effected/config-file": ^0.7.1
-    "@effected/git": ^0.14.0
-    "@effected/github": ^0.9.0
-    "@effected/github-actions": ^0.11.0
-    "@effected/github-references": ^0.2.0
-    "@effected/glob": ^0.5.0
-    "@effected/jsonc": ^0.10.0
-    "@effected/jsonl": ^0.4.0
-    "@effected/lockfiles": ^0.8.2
-    "@effected/markdown": ^0.9.2
-    "@effected/memfs": ^0.6.0
-    "@effected/npm": ^0.13.0
-    "@effected/package-json": ^0.14.1
-    "@effected/runtimes": ^0.5.2
-    "@effected/sbom": ^0.5.0
-    "@effected/schema-org": ^0.2.0
-    "@effected/schemastore": ^0.6.1
-    "@effected/semver": ^0.6.0
-    "@effected/spdx": ^0.6.0
-    "@effected/store": ^0.7.0
-    "@effected/templates": ^0.5.0
-    "@effected/toml": ^0.6.0
-    "@effected/tsconfig-json": ^0.8.2
-    "@effected/walker": ^0.7.0
-    "@effected/workspaces": ^0.20.3
-    "@effected/xdg": ^0.4.1
-    "@effected/yaml": ^0.14.0
+    "@effected/app": ^0.17.0
+    "@effected/cli": ^0.6.0
+    "@effected/commands": ^0.8.0
+    "@effected/config-file": ^0.11.0
+    "@effected/git": ^0.16.0
+    "@effected/github": ^0.11.0
+    "@effected/github-actions": ^0.14.0
+    "@effected/github-references": ^0.4.0
+    "@effected/glob": ^0.7.0
+    "@effected/jsonc": ^0.12.0
+    "@effected/jsonl": ^0.6.0
+    "@effected/lockfiles": ^0.10.0
+    "@effected/markdown": ^0.11.0
+    "@effected/memfs": ^0.8.0
+    "@effected/npm": ^0.15.0
+    "@effected/package-json": ^0.16.0
+    "@effected/runtimes": ^0.7.0
+    "@effected/sbom": ^0.7.0
+    "@effected/schema-org": ^0.4.0
+    "@effected/schemastore": ^0.14.0
+    "@effected/schemastore-cli": ^0.14.0
+    "@effected/semver": ^0.8.0
+    "@effected/spdx": ^0.8.0
+    "@effected/store": ^0.9.0
+    "@effected/templates": ^0.7.0
+    "@effected/toml": ^0.8.0
+    "@effected/tsconfig-json": ^0.10.0
+    "@effected/walker": ^0.10.0
+    "@effected/workspaces": ^0.23.0
+    "@effected/xdg": ^0.6.0
+    "@effected/yaml": ^0.16.0
   effected:peers:
-    "@effected/app": ^0.15.0
-    "@effected/cli": ^0.3.0
-    "@effected/commands": ^0.6.0
-    "@effected/config-file": ^0.7.0
-    "@effected/git": ^0.14.0
-    "@effected/github": ^0.9.0
-    "@effected/github-actions": ^0.11.0
-    "@effected/github-references": ^0.2.0
-    "@effected/glob": ^0.5.0
-    "@effected/jsonc": ^0.10.0
-    "@effected/jsonl": ^0.4.0
-    "@effected/lockfiles": ^0.8.0
-    "@effected/markdown": ^0.9.0
-    "@effected/memfs": ^0.6.0
-    "@effected/npm": ^0.13.0
-    "@effected/package-json": ^0.14.0
-    "@effected/runtimes": ^0.5.0
-    "@effected/sbom": ^0.5.0
-    "@effected/schema-org": ^0.2.0
-    "@effected/schemastore": ^0.6.0
-    "@effected/semver": ^0.6.0
-    "@effected/spdx": ^0.6.0
-    "@effected/store": ^0.7.0
-    "@effected/templates": ^0.5.0
-    "@effected/toml": ^0.6.0
-    "@effected/tsconfig-json": ^0.8.0
-    "@effected/walker": ^0.7.0
-    "@effected/workspaces": ^0.20.0
-    "@effected/xdg": ^0.4.0
-    "@effected/yaml": ^0.14.0
+    "@effected/app": ^0.17.0
+    "@effected/cli": ^0.6.0
+    "@effected/commands": ^0.8.0
+    "@effected/config-file": ^0.11.0
+    "@effected/git": ^0.16.0
+    "@effected/github": ^0.11.0
+    "@effected/github-actions": ^0.14.0
+    "@effected/github-references": ^0.4.0
+    "@effected/glob": ^0.7.0
+    "@effected/jsonc": ^0.12.0
+    "@effected/jsonl": ^0.6.0
+    "@effected/lockfiles": ^0.10.0
+    "@effected/markdown": ^0.11.0
+    "@effected/memfs": ^0.8.0
+    "@effected/npm": ^0.15.0
+    "@effected/package-json": ^0.16.0
+    "@effected/runtimes": ^0.7.0
+    "@effected/sbom": ^0.7.0
+    "@effected/schema-org": ^0.4.0
+    "@effected/schemastore": ^0.14.0
+    "@effected/schemastore-cli": ^0.14.0
+    "@effected/semver": ^0.8.0
+    "@effected/spdx": ^0.8.0
+    "@effected/store": ^0.9.0
+    "@effected/templates": ^0.7.0
+    "@effected/toml": ^0.8.0
+    "@effected/tsconfig-json": ^0.10.0
+    "@effected/walker": ^0.10.0
+    "@effected/workspaces": ^0.23.0
+    "@effected/xdg": ^0.6.0
+    "@effected/yaml": ^0.16.0
 configDependencies:
   "@savvy-web/pnpm-plugin-silk": 0.41.0+sha512-94fD7aw32YFMvrqn82EhvyGrf6i7jGo8zYfxf0B9XtTZcJBHSec6u27WT/5MW8AaF3BlJMP6eAtp4NzN50Pjdg==
 loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/tsgo-*"
-  - "@effect/platform-node-shared@4.0.0-rc.115"
-  - "@effect/platform-node@4.0.0-rc.115"
-  - "@effect/sql-sqlite-node@4.0.0-rc.115"
-  - "@effect/vitest@4.0.0-rc.115"
-  - effect@4.0.0-rc.115
-packageExtensions:
-  "@savvy-web/tsdown-plugins@2.7.3":
-    dependencies:
-      "@effected/jsonc": 0.9.0
-      "@effected/semver": 0.6.0
-      "@effected/walker": 0.7.0
-      "@effected/glob": 0.5.0
-  rolldown-pnpm-config@0.7.13:
-    dependencies:
-      "@effected/jsonc": 0.9.0
-  "@effected/lockfiles@0.8.1":
-    dependencies:
-      "@effected/jsonc": 0.9.0
-  "@effected/tsconfig-json@0.8.1":
-    dependencies:
-      "@effected/jsonc": 0.9.0
-      "@effected/walker": 0.7.0
-  "@vitest-agent/plugin@3.0.2":
-    dependencies:
-      "@effected/glob": 0.5.0
-      "@effected/jsonc": 0.9.0
-  "@vitest-agent/cli@2.2.18":
-    dependencies:
-      "@effected/glob": 0.5.0
-      "@effected/jsonc": 0.9.0
-  "@vitest-agent/mcp@3.0.2":
-    dependencies:
-      "@effected/glob": 0.5.0
-  "@vitest-agent/reporter@3.0.2":
-    dependencies:
-      "@effected/glob": 0.5.0
-  "@vitest-agent/sdk@3.1.1":
-    dependencies:
-      "@effected/glob": 0.5.0
-  "@vitest-agent/ui@2.4.2":
-    dependencies:
-      "@effected/glob": 0.5.0
 peerDependencyRules:
   allowedVersions:
-    "@effect/ai-anthropic@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/ai-openai-compat@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/ai-openai@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/ai-openrouter@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/atom-react@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/atom-solid@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/atom-vue@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/openapi-generator@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/opentelemetry@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/platform-browser@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/platform-bun@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/platform-node-shared@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/platform-node@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-clickhouse@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-d1@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-libsql@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-mssql@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-mysql2@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-pg@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-pglite@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-sqlite-bun@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-sqlite-do@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-sqlite-node@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-sqlite-react-native@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/sql-sqlite-wasm@4.0.0-rc.115>effect": 4.0.0-rc.115
-    "@effect/tsgo@0.45.0>effect": 4.0.0-rc.115
-    "@effect/vitest@4.0.0-rc.115>effect": 4.0.0-rc.115
+    "@effect/ai-anthropic@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/ai-openai-compat@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/ai-openai@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/ai-openrouter@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/atom-react@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/atom-solid@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/atom-vue@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/openapi-generator@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/opentelemetry@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/platform-browser@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/platform-bun@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/platform-node-shared@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/platform-node@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-clickhouse@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-d1@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-libsql@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-mssql@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-mysql2@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-pg@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-pglite@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-sqlite-bun@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-sqlite-do@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-sqlite-node@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-sqlite-react-native@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/sql-sqlite-wasm@4.0.0-rc.116>effect": 4.0.0-rc.116
+    "@effect/tsgo@0.45.0>effect": 4.0.0-rc.116
+    "@effect/vitest@4.0.0-rc.116>effect": 4.0.0-rc.116

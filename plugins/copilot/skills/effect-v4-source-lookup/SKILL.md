@@ -119,10 +119,13 @@ reader skims past it. Refuse, and the trap cannot spring.
 **Do not read that history as "the root gives you v3" today.** In *this* repo the
 workspace root resolves **nothing**: a bare `effect` import there dies with
 `ERR_MODULE_NOT_FOUND` (re-checked 2026-09-05). The lockfile carried exactly one
-`effect` at the rc.112 pin; on the rc.115 advance it carries **two by intent** —
-`4.0.0-rc.112` for the toolchain's `packageExtensions` bridge and `4.0.0-rc.115` for
-the kit (`okf/conventions/one-resolved-effect-copy.md` explains why this advance needed the reversed
-bridge). Neither copy is v3, and neither resolves from the root; which one a probe
+`effect` at the rc.112 pin; since the rc.115 advance it carries **two by intent** —
+the toolchain's own pin (`4.0.0-rc.115` at the rc.116 advance: `@savvy-web/tsdown-plugins`,
+`rolldown-pnpm-config` and `@vitest-agent/*` declare `effect` and their `@effected/*` inputs as
+regular dependencies, so the published kit binds to the toolchain's copy) and the current pin
+(`4.0.0-rc.116`) for the kit. The `packageExtensions` bridge that first produced that shape was
+retired on the rc.116 advance (`okf/conventions/one-resolved-effect-copy.md` keeps both bridge
+shapes for the next runtime-incompatible advance). Neither copy is v3, and neither resolves from the root; which one a probe
 links against is decided by where the probe file lives — which is the point of the rule. Which failure you get depends on what a given repo has
 installed, so the gate must key on the *resolved version*, never on a remembered
 answer for a particular directory.
@@ -415,7 +418,7 @@ has no `await`.
 
 ```ts
 import pkg from "effect/package.json" with { type: "json" };
-console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.115 today
+console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.116 today
 ```
 
 ## Portability
