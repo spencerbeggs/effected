@@ -24,8 +24,8 @@ sources:
     resource: ../../packages/npm/src/PackagePublish.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-19T02:28:19Z
-  body_sha256: 7704cfe3b9345f7cd49e55d870566e107d2e303489a22439f233a00bdc54dc2e
+  at: 2026-09-19T02:46:28Z
+  body_sha256: b9c198fd6cdf454ec365f654401600105568e75edac67bb338dbef4cfe331015
 ---
 
 # Support the current major and one back of every package manager
@@ -80,6 +80,16 @@ cache and answering `npm --version` through their shims, with the
 same-major near miss (ambient `12.0.1` for a `12.0.2` pin) going to the
 tool cache rather than being accepted as close enough.[^npm-12]
 
+The third surface, the manifest fields, was swept for npm 12 and found
+nothing to model. npm 12 adds three root-only fields — `allowScripts`,
+`packageExtensions` and `patchedDependencies` — and each is project policy
+with no kit behaviour attached, so each rides through `PackageManifest`'s
+`rest` untyped, exactly as `overrides` and `workspaces` do; no typed field
+was deprecated (`man` is retained), and `npm-shrinkwrap.json`, which 12 no
+longer honours, is referenced nowhere in the kit. The rule that decided
+it: a root-only field the kit never reads stays in `rest`; a field is
+typed when a kit surface consumes it.
+
 The installer does not read an artifact's `engines.node` against the
 runner's node. `npm@12.0.2` declares `^22.22.2 || ^24.15.0 || >=26.0.0`;
 pinned under a node outside that set (24.9.0, say) it installs, runs, and
@@ -101,8 +111,11 @@ probe rather than trusting "bin shape unchanged" as the whole story.
 [^pnpm-exe]: `internal/pnpmExe.ts` — the module comment: detection is by
     layout, never by major version.
 [^npm-12]: The `npm@12.0.2` packument: `dist-tags.latest`, `engines.node`
-    and `bin`; runtime probe 2026-09-18 (`scratchpad/probes/npm12.ts`, macOS
-    arm64, node 26.9.0 / 24.9.0 / 22.23.2).
+    and `bin`. Runtime probe 2026-09-18 on macOS arm64 against the real
+    registry: `npm@12.0.2` and `npm@11.19.1` provisioned to a tool cache
+    with integrity, shims answering `12.0.2` / `11.19.1`; under node
+    24.9.0 the 12.0.2 cli ran and printed npm's own unsupported-node
+    warning, under 22.23.2 and 26.9.0 it did not.
 [^npm-pack-json]: The gotcha recording the `pack --json` shape change and
     the tell in `PublishError`.
 [^publish]: `PackagePublish.ts` — the `PackJson` codec accepting both the

@@ -17,8 +17,8 @@ sources:
     resource: https://github.com/npm/cli/releases/tag/v12.0.0
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-19T02:28:19Z
-  body_sha256: 1f43e2a170b01249797aee37274ae4e505e7df11e89b1be32efd97e8fb30f243
+  at: 2026-09-19T02:46:28Z
+  body_sha256: 7ba215d12f3da92c3ca5f77b61b220b26754fa650aadf08b4de6fbac52005fd0
 ---
 
 # npm 12's pack --json is an object keyed by name, not an array
@@ -39,12 +39,20 @@ package or in npm's log for the corruption. There is none.
 
 ## What is actually true
 
-npm 12.0.0 made `npm pack --json` and `npm publish --json` print one shape:
-an object keyed by the packed package's name, where npm 11 printed an
-array. The change is one line in npm's own `pack` command — it hands the
-tarball logger the package `name` as the key where 11 handed it the array
-index — and it is listed in 12.0.0's breaking changes as "the --json output
-of npm pack and npm publish have changed".[^npm-pack][^npm-12-notes]
+npm 12.0.0 made `npm pack --json` print the shape `npm publish --json`
+already had: an object keyed by the packed package's name. On npm 11 only
+`pack` printed an array — `publish --json` was keyed by name there too —
+so the breaking change listed in 12.0.0's notes as "the --json output of
+npm pack and npm publish have changed" is, for a `pack` consumer, `pack`
+moving to match `publish`.[^npm-pack][^npm-12-notes]
+
+The mechanism is one line in npm's `pack` command handing the tarball
+logger the package `name` as the key where 11 handed it the array index,
+plus npm's JSON output merging each `{ [key]: tarball }` item into an array
+only when every key is positional (`lib/utils/display.js`,
+`getArrayOrObject`). Name keys fail that test, hence the object — a package
+literally named `0` would still merge to an array on npm 12, which is one
+more reason to accept both containers rather than switch on the major.
 
 ```json
 // npm 11.19.1
@@ -71,5 +79,6 @@ direct registry calls — so nothing here reads that output.
 [^publish]: `PackagePublish.ts` — `PackJson` and `parsePackJson`, which
     take the first entry of either container.
 [^npm-pack]: `lib/commands/pack.js` at v12.0.2 — `logTar(tar, { ..., key: tar.name })`;
-    at v11 the key was the array index and `logTar` emitted the bare array.
+    at v11.19.1 the key was the array index, while `publish.js` passed
+    `key: pkgContents.name` on both majors.
 [^npm-12-notes]: The v12.0.0 release notes, "⚠️ BREAKING CHANGES".

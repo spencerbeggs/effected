@@ -259,7 +259,12 @@ const make = Effect.fnUntraced(function* () {
 				),
 			),
 			Effect.flatMap((decoded) => {
-				const entries = Array.isArray(decoded) ? decoded : Object.values(decoded);
+				// Annotated on purpose: `Object.values` on a readonly index signature
+				// falls through to its `any[]` overload, which would turn every
+				// field read off the entry into an unchecked `any`.
+				const entries: ReadonlyArray<typeof PackJsonEntry.Type> = Array.isArray(decoded)
+					? decoded
+					: Object.values(decoded);
 				const entry = entries[0];
 				return entry === undefined
 					? Effect.fail(new PublishError({ kind: "output", subject, output: stdout }))
