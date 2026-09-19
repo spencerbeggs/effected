@@ -37,7 +37,7 @@
 		"@effected/jsonc": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@effected/walker": "workspace:*",
-		"@savvy-web/bundler": "^2.4.3",
+		"@savvy-web/bundler": "^2.4.4",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
