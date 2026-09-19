@@ -1,5 +1,17 @@
 # @effected/npm
 
+## 0.14.2
+
+### Bug Fixes
+
+- Fixed `PackagePublish.pack` and `dryRun` rejecting every `npm pack --json` result on npm 12, where `pack --json` emits an object keyed by package name instead of npm 11's array of entries. Both shapes now decode correctly. [#785][#785]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#785]: https://github.com/spencerbeggs/effected/pull/785
+
 ## 0.14.1
 
 ### Bug Fixes

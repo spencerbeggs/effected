@@ -1,5 +1,18 @@
 # @effected/pnpm-plugin-effect
 
+## 0.8.15
+
+### Maintenance
+
+#### Updates 2 catalog:effected versions
+
+- `@effected/github-actions` ^0.13.3 -> ^0.13.4 (peer ^0.13.0)
+- `@effected/npm` ^0.14.1 -> ^0.14.2 (peer ^0.14.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.8.14
 
 ### Bug Fixes

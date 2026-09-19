@@ -1,5 +1,23 @@
 # @effected/github-actions
 
+## 0.13.4
+
+### Documentation
+
+- Verified `PackageManagerInstaller` support for npm 12 (12.0.2) and npm 11 (11.19.1) provisioning, and documented that the installer provisions exactly the pinned version without checking the artifact's `engines.node` against the runner's node — an incompatible pin still installs and runs, with npm itself warning on invocation. [#785][#785]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.14.1 | 0.14.2 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#785]: https://github.com/spencerbeggs/effected/pull/785
+
 ## 0.13.3
 
 ### Bug Fixes
