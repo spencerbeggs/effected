@@ -27,7 +27,7 @@ const KitLayer = Workspaces.layerWithGitAndHooks(hooks);
 - `WorkspaceCatalogs.layerWithHooks(hooks, options)` and `Workspaces.layerWithGitAndHooks(hooks, options)` — build the catalogs/snapshots graph over a caller-chosen `ConfigDependencyHooks` layer instead of one of the fixed `layerNoop` / `layerLive` / `layerSubprocess` policies.
 - `WorkspaceCatalogs.hookReplays()` — which version each declared config dependency was actually replayed from, off the same memoized assemble pass as `set()`.
 - An optional `hookReplays` field (`name → declared version`) on `WorkspaceStateSnapshot`, set on every fresh read (`{}` under the no-op layer) and absent only when decoding a snapshot serialized before the field existed.
-- `HookReplay` and `HookReplaySource` (`"installed" | "store" | "supplied"`) — the types recording which resolution rung answered, exported alongside the new `HookInjection.replays` field.
+- `HookReplay` and `HookReplaySource` (`"installed" | "store" | "supplied"`) — the types recording which resolution rung answered, exported alongside the new `HookInjection.replays` field. `replays` is a **required** field of `HookInjection`, so a consumer implementing the `ConfigDependencyHooks` contract itself (a hand-rolled `Layer.succeed`) must now return it — `{}` when nothing was replayed.
 
 ## Bug Fixes
 

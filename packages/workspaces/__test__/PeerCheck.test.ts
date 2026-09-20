@@ -623,6 +623,12 @@ describe("PeerCheck.run — ignoreMissing and allowAny", () => {
 	it.effect("allowAny with a parent>peer key suppresses nothing — the grammar has no parent", () =>
 		agrees("allowany", withAllowAny(["react-dom>react"]), "peers-check-parent-key.json"),
 	);
+	it.effect("allowAny `!redux` then `*`: the later `*` re-includes redux, so both rows clear", () =>
+		agrees("allowany", withAllowAny(["!redux", "*"]), "peers-check-negation-then-star.json"),
+	);
+	it.effect("allowAny with a lone `!` (negating the empty name) matches every peer and clears both rows", () =>
+		agrees("allowany", withAllowAny(["!"]), "peers-check-lone-negation.json"),
+	);
 	it.effect("ignoreMissing never rescues a row where something resolved at the wrong version", () =>
 		agrees("allowany", withIgnoreMissing(["react", "redux"]), "peers-check-ignoremissing-react-redux.json"),
 	);
@@ -774,7 +780,15 @@ describe("peerNameMatcher — @pnpm/matcher semantics", () => {
 	it("a mixed list is walked in order: a later negation resets an earlier include", () => {
 		assert.isFalse(peerNameMatcher(["*", "!redux"])("redux"));
 		assert.isTrue(peerNameMatcher(["*", "!redux"])("react"));
-		// The other order: the negation runs first, then `*` includes redux again.
+		// The other order: the negation runs first, then `*` includes redux again
+		// (oracle: allowany/peers-check-negation-then-star.json).
 		assert.isTrue(peerNameMatcher(["!redux", "*"])("redux"));
+	});
+
+	it("a lone `!` negates the empty name, which nothing has, so it matches everything", () => {
+		// Oracle: allowany/peers-check-lone-negation.json clears both bad rows.
+		const m = peerNameMatcher(["!"]);
+		assert.isTrue(m("react"));
+		assert.isTrue(m("redux"));
 	});
 });

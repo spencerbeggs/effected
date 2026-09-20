@@ -44,6 +44,10 @@ const NO_MANIFEST = "cfg-nomanifest";
 const JS_ONLY = "cfg-js";
 // A scoped name, only in the store.
 const SCOPED = "@scope/cfg-scoped";
+// In the store TWICE at one version, under two hash directories, both honest.
+const AMBIGUOUS = "cfg-ambiguous";
+// Only in a store reachable through `$PNPM_HOME/store` — rung 3 of discovery.
+const ENV_ONLY = "cfg-env";
 
 let root: string;
 let store: string;
@@ -51,6 +55,8 @@ let store: string;
 let linkedRoot: string;
 /** A third root with nothing under node_modules at all. */
 let bareRoot: string;
+/** A fake `$PNPM_HOME` whose `store/v11` holds ENV_ONLY and nothing else. */
+let envHome: string;
 
 const Spawner = NodeChildProcessSpawner.layer.pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
 const HooksSubprocess = ConfigDependencyHooks.layerSubprocess.pipe(Layer.provide(Spawner));
@@ -80,13 +86,26 @@ beforeAll(() => {
 	storeConfigDependency(store, JS_ONLY, "1.0.0", "c".repeat(64), ["pnpmfile.js", pnpmfileInjectingCjs("^7.0.0")]);
 	storeConfigDependency(store, SCOPED, "1.0.0", "d".repeat(64), ["pnpmfile.mjs", pnpmfileInjecting("^5.0.0")]);
 
+	// Two HONEST copies of one version: neither manifest lies, so the version
+	// check cannot separate them — only an integrity the store does not record
+	// could, and the ladder must refuse to guess.
+	storeConfigDependency(store, AMBIGUOUS, "1.0.0", "e".repeat(64), ["pnpmfile.mjs", pnpmfileInjecting("^1.0.0")]);
+	storeConfigDependency(store, AMBIGUOUS, "1.0.0", "f".repeat(64), ["pnpmfile.mjs", pnpmfileInjecting("^1.0.1")]);
+
 	// The linked root: `.pnpm-config/cfg-ladder -> <store>/links/cfg-ladder/2.0.0/…`,
 	// the way pnpm installs, and no `.modules.yaml` to name the store.
 	linkConfigDependency(linkedRoot, NAME, stored);
+
+	// Rung 3: a store that ONLY `$PNPM_HOME/store` can name.
+	envHome = mkdtempSync(join(tmpdir(), "effected-ladder-pnpmhome-"));
+	storeConfigDependency(join(envHome, "store", "v11"), ENV_ONLY, "1.0.0", "1".repeat(64), [
+		"pnpmfile.mjs",
+		pnpmfileInjecting("^8.0.0"),
+	]);
 });
 
 afterAll(() => {
-	for (const dir of [root, dirname(store), linkedRoot, bareRoot]) {
+	for (const dir of [root, dirname(store), linkedRoot, bareRoot, envHome]) {
 		if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -240,6 +259,49 @@ const ladderCases = (label: string, hooksLayer: Layer.Layer<ConfigDependencyHook
 				const reverse = yield* hooks.inject(root, { [JS_ONLY]: "1.0.0", [NAME]: "1.0.0" }, SEED);
 				assert.strictEqual(hooked(forward), "^7.0.0");
 				assert.strictEqual(hooked(reverse), "^1.0.0");
+			}).pipe(Effect.provide(hooksLayer)),
+		);
+
+		it.effect("two honest store copies of one version are AMBIGUOUS → typed, naming both, replaying neither", () =>
+			Effect.gen(function* () {
+				const hooks = yield* ConfigDependencyHooks;
+				const error = yield* Effect.flip(hooks.inject(root, { [AMBIGUOUS]: "1.0.0+sha512-pinned" }, SEED));
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.strictEqual(error.source, "hooks");
+				assert.strictEqual(error.path, AMBIGUOUS);
+				const message = (error.cause as Error).message;
+				assert.include(message, "ambiguous");
+				assert.include(message, "2 copies");
+				assert.include(message, "e".repeat(64));
+				assert.include(message, "f".repeat(64));
+				// The control that makes this discriminating: the SAME two-hash shape
+				// with one manifest lying (NAME@2.0.0) resolves fine — ambiguity is
+				// about two HONEST copies, not about a second directory existing.
+				const fine = yield* hooks.inject(root, { [NAME]: "2.0.0" }, SEED);
+				assert.strictEqual(hooked(fine), "^2.0.0");
+			}).pipe(Effect.provide(hooksLayer)),
+		);
+
+		it.effect("rung 3: a store named only by $PNPM_HOME is found when .modules.yaml and .pnpm-config say nothing", () =>
+			Effect.gen(function* () {
+				const hooks = yield* ConfigDependencyHooks;
+				const previous = process.env.PNPM_HOME;
+				process.env.PNPM_HOME = envHome;
+				try {
+					// bareRoot has no node_modules at all, so rungs 1 and 2 contribute
+					// no store; only the environment rung can answer.
+					const result = yield* hooks.inject(bareRoot, { [ENV_ONLY]: "1.0.0" }, SEED);
+					assert.strictEqual(hooked(result), "^8.0.0");
+					assert.deepStrictEqual(result.replays, { [ENV_ONLY]: { version: "1.0.0", source: "store" } });
+				} finally {
+					if (previous === undefined) delete process.env.PNPM_HOME;
+					else process.env.PNPM_HOME = previous;
+				}
+				// The control: without the variable the same declaration fails closed
+				// and the message shows the env store was NOT among those searched.
+				const error = yield* Effect.flip(hooks.inject(bareRoot, { [ENV_ONLY]: "1.0.0" }, SEED));
+				assert.instanceOf(error, CatalogAssemblyError);
+				assert.notInclude((error.cause as Error).message, envHome);
 			}).pipe(Effect.provide(hooksLayer)),
 		);
 

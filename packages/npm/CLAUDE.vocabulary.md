@@ -117,7 +117,10 @@ manifests are arbitrary user records.
   minimum-release-age gate vocabulary. `ReleaseAgeGate` is a `Schema.Class` (an
   `ageMinutes` value plus an `exclude` set); statics `combine` and
   `matchesExclude` (flat-`*` @pnpm/matcher parity, deliberately **not**
-  `@effected/glob`'s dialect); instance `isExcluded` / `filterVersions` are pure
+  `@effected/glob`'s dialect — and a second consumer rides on it:
+  `@effected/workspaces`' `PeerCheck` resolves `ignoreMissing` / `allowAny`
+  peer-name patterns through it, so a change tracking a pnpm
+  `minimumReleaseAgeExclude` tweak moves peer verdicts too); instance `isExcluded` / `filterVersions` are pure
   and take the caller's clock, **dropping** versions with a missing or
   unparseable timestamp. `PartialReleaseAgeGate` is the permissive
   `Schema.Struct` inbound form (hook/manifest contributions).

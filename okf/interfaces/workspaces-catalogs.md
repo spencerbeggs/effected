@@ -19,8 +19,8 @@ sources:
     resource: ../../packages/workspaces/src/internal/configDependencyResolution.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-20T05:03:32Z
-  body_sha256: f7db62db9b27ef1baf6bde409db07acb5f3eeb25d04207d7fd57a4c4271d6bbc
+  at: 2026-09-20T16:10:17Z
+  body_sha256: b0f4b60a03e8521eee147ce6e271fed2eb60f3d76f7be0b18968d62364bc20d6
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
@@ -108,7 +108,11 @@ manifest verified rather than the path trusted, the store located from
 conventional environment and platform locations; otherwise a typed,
 fail-closed `hooks` assembly error naming the package, the declared
 version, what is installed, the stores searched and the remediation
-(`pnpm add --config <name>@<version>` in a throwaway workspace). In the
+(`pnpm add --config <name>@<version>` in a throwaway workspace). Two
+honest store copies of one version fail closed too, as ambiguous: the
+hash directory is not derivable from the declared integrity and the store
+records none, so the ladder names both copies rather than guessing which
+code to execute. In the
 resolved directory the first of `pnpmfile.mjs`, `pnpmfile.cjs`,
 `pnpmfile.js` present in one directory listing is loaded; a listed but
 unreadable file fails typed at import time, never as "ships no hook", and

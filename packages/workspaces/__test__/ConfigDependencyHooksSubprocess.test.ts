@@ -215,9 +215,14 @@ describe("ConfigDependencyHooks.layerSubprocess — transport failures are typed
 			// The parent resolves the declared version over REAL async fs before it
 			// spawns, and the virtual clock cannot advance that — so let the event
 			// loop turn until the spawn has happened, THEN jump past the ceiling.
-			while (spawner.spawns.length === 0) {
+			// Bounded: if the ladder ever stops resolving `dep@1.0.0`, inject fails
+			// typed BEFORE any spawn and an unbounded loop would spin until vitest's
+			// timeout killed the file; this instead fails on the assertion that
+			// names the real cause.
+			for (let turn = 0; spawner.spawns.length === 0 && turn < 1_000; turn++) {
 				yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
 			}
+			assert.strictEqual(spawner.spawns.length, 1, "the replay child was never spawned — did resolution fail first?");
 			yield* TestClock.adjust("31 seconds");
 			const error = yield* Fiber.join(fiber);
 			assert.instanceOf(error, CatalogAssemblyError);

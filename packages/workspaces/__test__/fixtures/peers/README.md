@@ -200,7 +200,12 @@ What the verdicts establish, one axis at a time:
   every missing `react` (`ignoremissing/peers-check-star-negation.json`). A
   list holding **only** negations matches everything not excluded — `["!redux"]`
   alone clears every missing `react` (`peers-check-negation-only.json`), which
-  is `@pnpm/matcher`'s "no include patterns" branch, not a typo.
+  is `@pnpm/matcher`'s "no include patterns" branch, not a typo. Order matters
+  in a mixed list: `["!redux", "*"]` clears BOTH bad rows because the trailing
+  `*` re-includes what the leading negation excluded
+  (`allowany/peers-check-negation-then-star.json`), the mirror of the
+  star-then-negation case above. A lone `"!"` negates the empty name, which no
+  peer has, so it matches everything (`allowany/peers-check-lone-negation.json`).
 - **The axes do not cross.** `allowAny: ["react"]` leaves every **missing**
   `react` in place (`ignoremissing/peers-check-allowany-react.json`), and
   `ignoreMissing: ["react", "redux"]` leaves both **bad** rows in place

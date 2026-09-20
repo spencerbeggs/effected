@@ -247,27 +247,44 @@ const discoverStores = (root: string): Effect.Effect<ReadonlyArray<string>, Cata
 	);
 
 /**
- * The `<store>/links/<name>/<declared>/<hash>/node_modules/<name>` directory
- * whose manifest carries exactly `declared`, searching every store in order.
- * The `<hash>` segment is not derivable from the integrity, so each is
- * enumerated and its manifest checked.
+ * Every `<store>/links/<name>/<declared>/<hash>/node_modules/<name>` directory
+ * whose manifest carries exactly `declared`, across every store, in order.
+ *
+ * @remarks
+ * The `<hash>` segment is pnpm's, and it is NOT derivable from the declared
+ * integrity (sha256/sha512 of the integrity string, its decoded bytes, the
+ * `name@version` dep path and the tarball URL were all tried and none match),
+ * and the store keeps no integrity metadata beside the entry — so the
+ * manifest version is the only identity this rung can check. Every candidate
+ * is collected rather than the first taken, because the CALLER must fail
+ * closed when more than one matches: two store copies of one version (a
+ * same-version re-publish, a private mirror, a hand-populated store) cannot be
+ * told apart here, and importing whichever `readdir` listed first would
+ * execute code the ref's own integrity pin was written to exclude.
  */
 const findInStores = (
 	name: string,
 	declared: string,
 	stores: ReadonlyArray<string>,
-): Effect.Effect<Option.Option<string>, CatalogAssemblyError> =>
+): Effect.Effect<ReadonlyArray<string>, CatalogAssemblyError> =>
 	Effect.gen(function* () {
+		const matches: Array<string> = [];
 		for (const store of stores) {
 			const versionDir = join(store, "links", name, declared);
 			for (const hash of yield* entriesOf(name, versionDir)) {
 				const dir = join(versionDir, hash, "node_modules", name);
 				const version = yield* manifestVersion(name, dir);
-				if (Option.isSome(version) && version.value === declared) return Option.some(dir);
+				if (Option.isSome(version) && version.value === declared) matches.push(dir);
 			}
 		}
-		return Option.none<string>();
+		return matches;
 	});
+
+/** The fail-closed message for a version the store holds MORE than once: which copies, and how to disambiguate. */
+const ambiguousMessage = (name: string, declared: string, matches: ReadonlyArray<string>): string =>
+	`config dependency ${name}@${declared} is ambiguous: the pnpm store holds ${matches.length} copies of that version ` +
+	`(${matches.join(", ")}) and the store records no integrity to tell them apart, so none is replayed. ` +
+	`Remove the stale copies, or install ${name}@${declared} in this workspace so node_modules/.pnpm-config answers instead.`;
 
 /** The fail-closed message: what was declared, what is installed, where we looked, and how to fix it. */
 const notInstalledMessage = (
@@ -324,7 +341,13 @@ const resolveDirectory = (
 		if (Option.isSome(installed) && installed.value === declared) return { dir: installedDir, source: "installed" };
 		const searched = yield* stores;
 		const fromStore = yield* findInStores(name, declared, searched);
-		if (Option.isSome(fromStore)) return { dir: fromStore.value, source: "store" };
+		const [only, ...rest] = fromStore;
+		if (only !== undefined && rest.length === 0) return { dir: only, source: "store" };
+		// Two or more store copies of one version: nothing here can say which one
+		// the ref's integrity pinned, so replaying either would be a guess about
+		// which code to execute. Fail closed and say why.
+		if (only !== undefined)
+			return yield* Effect.fail(hooksError(name, new Error(ambiguousMessage(name, declared, fromStore))));
 		return yield* Effect.fail(hooksError(name, new Error(notInstalledMessage(name, declared, installed, searched))));
 	});
 
