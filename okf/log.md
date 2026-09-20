@@ -1,5 +1,14 @@
 # Log
 
+## 2026-09-20
+
+* Updated @effected/workspaces catalogs and the config-dependency seam
+* Updated @effected/workspaces peer-dependency checking
+* Updated @effected/workspaces snapshots
+* Updated @effected/workspaces: monorepo tooling
+* Updated PeerCheck cannot answer yarn
+* Updated Under the no-op hooks layer, a hook-injected catalog's range bump between two refs is invisible to a snapshot diff
+
 ## 2026-09-19
 
 * Updated Support the current major and one back of every package manager
