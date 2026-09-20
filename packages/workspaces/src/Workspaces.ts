@@ -133,7 +133,7 @@ const layer = (
  */
 const withGit = <R = never>(
 	hooks: Layer.Layer<ConfigDependencyHooks, never, R>,
-	options: WorkspacesGitOptions | undefined,
+	options?: WorkspacesGitOptions,
 ): Layer.Layer<
 	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
 	never,
@@ -427,6 +427,44 @@ export class Workspaces {
 	 * ```
 	 */
 	static readonly layerWithGitAndConfigDependenciesSubprocess = layerWithGitAndConfigDependenciesSubprocess;
+
+	/**
+	 * The git composite over a **caller-supplied** hooks layer — the same graph
+	 * as {@link Workspaces.layerWithGit} and its two config-dependency
+	 * variants, with the `ConfigDependencyHooks` policy chosen by the caller.
+	 *
+	 * @remarks
+	 * The three fixed git composites are this function applied to
+	 * {@link ConfigDependencyHooks.layerNoop}, {@link ConfigDependencyHooks.layerLive}
+	 * and {@link ConfigDependencyHooks.layerSubprocess}. It exists for the fourth
+	 * policy: {@link ConfigDependencyHooks.layerFrom}, the hermetic seam, which a
+	 * snapshot-backed test otherwise cannot reach without rebuilding the whole
+	 * git graph by hand — the copy `layerWithGitAndConfigDependencies` was added
+	 * to delete. The ONE hooks reference is handed to both `WorkspaceCatalogs`
+	 * and `WorkspaceSnapshots`, so `at(ref)` and `worktree()` cannot drift on
+	 * which policy they replay. A hooks layer carrying its own requirement (the
+	 * subprocess variant's `ChildProcessSpawner`) threads it through to the
+	 * composite's `R` unchanged.
+	 *
+	 * **Bind the result to a `const`.**
+	 *
+	 * @param hooks - The `ConfigDependencyHooks` layer to wire on both sides.
+	 * @param options - The composite options, as for {@link Workspaces.layerWithGit}.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ConfigDependencyHooks, Workspaces } from "@effected/workspaces";
+	 *
+	 * // A test pinning what at(ref) replays for two declared plugin versions.
+	 * const KitLayer = Workspaces.layerWithGitAndHooks(
+	 *   ConfigDependencyHooks.layerFrom({
+	 *     "@scope/plugin@1.0.0": "/fixtures/plugin-1/pnpmfile.mjs",
+	 *     "@scope/plugin@2.0.0": "/fixtures/plugin-2/pnpmfile.mjs",
+	 *   }),
+	 * );
+	 * ```
+	 */
+	static readonly layerWithGitAndHooks = withGit;
 
 	/**
 	 * This package's implementation of `@effected/commands`' `LocalExec`

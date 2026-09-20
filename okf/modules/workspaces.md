@@ -25,8 +25,8 @@ sources:
     resource: ../../packages/workspaces/src/Workspaces.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-20T05:03:32Z
-  body_sha256: b0cc66d0774d89ce08e554bc87abb57bc780ba595d0133b70f989027441481c9
+  at: 2026-09-20T05:21:37Z
+  body_sha256: 3772c51b4cd06d49a921e6254847eeb5809b9ece8f39211a99389cabe90e9661
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -157,7 +157,7 @@ concepts: [discovery and detection](../interfaces/workspaces-discovery.md),
 `Workspaces.ts` exposes the composites (`layer`, `layerWithConfigDependencies`,
 `layerWithConfigDependenciesSubprocess`, `layerWithGit`,
 `layerWithGitAndConfigDependencies`,
-`layerWithGitAndConfigDependenciesSubprocess`), the one-call manifest path
+`layerWithGitAndConfigDependenciesSubprocess`, and `layerWithGitAndHooks` over a caller-supplied hooks layer), the one-call manifest path
 (`resolverLayer`, `resolveManifest`), and `localExecLayer`. `Workspaces` is a
 static class with a private constructor rather than an `as const` namespace
 object, because an `as const` object's member types are inferred in the

@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
-import { WorkspaceSnapshots, WorkspaceStateSnapshot, Workspaces } from "../../src/index.js";
+import { ConfigDependencyHooks, WorkspaceSnapshots, WorkspaceStateSnapshot, Workspaces } from "../../src/index.js";
 import { installConfigDependency, storeConfigDependency, writeModulesYaml } from "./utils/configDependencyFixtures.js";
 
 const NAME = "cfg-replay";
@@ -134,6 +134,34 @@ describe("Workspaces.layerWithGitAndConfigDependencies — at(ref) replays the r
 			// worktree() carries the record too, off WorkspaceCatalogs' one memo.
 			assert.deepStrictEqual(live.hookReplays, { [NAME]: "2.0.0" });
 			assert.deepStrictEqual(live.hookReplays, head.hookReplays);
+		}).pipe(Effect.provide(Live));
+	});
+});
+
+describe("Workspaces.layerWithGitAndHooks — the hermetic seam reaches at(ref) without rebuilding the git graph", () => {
+	it.effect("layerFrom decides what each ref replays, and the disk is never consulted", () => {
+		// The map is deliberately CROSSED against the disk: the 1.0.0 key points at
+		// the store copy's pnpmfile (^2.0.0) and the 2.0.0 key at the installed one
+		// (^1.0.0). Agreeing with the disk would prove nothing; disagreeing proves
+		// the caller's map, not the ladder, answered — and that no marker was
+		// written by a rung that should not have run.
+		const installed = join(root, "node_modules", ".pnpm-config", NAME, "pnpmfile.mjs");
+		const stored = join(store, "links", NAME, "2.0.0", "f".repeat(64), "node_modules", NAME, "pnpmfile.mjs");
+		const hooks = ConfigDependencyHooks.layerFrom({ [`${NAME}@1.0.0`]: stored, [`${NAME}@2.0.0`]: installed });
+		const Live = Workspaces.layerWithGitAndHooks(hooks, { cwd: root }).pipe(Layer.provideMerge(NodeServices.layer));
+		return Effect.gen(function* () {
+			const snapshots = yield* WorkspaceSnapshots;
+			const before = yield* snapshots.at("before");
+			const after = yield* snapshots.at("after");
+			assert.deepStrictEqual(before.catalogs.rangeOf("hooked-dep", Option.none()), Option.some("^2.0.0"));
+			assert.deepStrictEqual(after.catalogs.rangeOf("hooked-dep", Option.none()), Option.some("^1.0.0"));
+			// The record still carries the DECLARED version — provenance is on the
+			// injection (`supplied`), never on the snapshot.
+			assert.deepStrictEqual(before.hookReplays, { [NAME]: "1.0.0" });
+			assert.deepStrictEqual(after.hookReplays, { [NAME]: "2.0.0" });
+			// And worktree() runs through the same supplied map as at(HEAD).
+			const live = yield* snapshots.worktree();
+			assert.deepStrictEqual(live.resolve("hooked-dep", "catalog:"), Option.some("^1.0.0"));
 		}).pipe(Effect.provide(Live));
 	});
 });
