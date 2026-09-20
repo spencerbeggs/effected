@@ -1,22 +1,52 @@
 // Parent-side plumbing of `ConfigDependencyHooks.layerSubprocess`, over the
 // public `ScriptedSpawner` double from `@effected/commands`.
 //
-// The child-process semantics (mjs-before-cjs, the ERR_MODULE_NOT_FOUND skip
-// discrimination, real hook replay) live in
-// `integration/ConfigDependencyHooksSubprocess.int.test.ts`, which spawns a
-// real `node`. This suite pins everything the PARENT decides: when a spawn
-// happens at all, the exact argv contract, and how each transport outcome maps
-// onto the typed error taxonomy.
+// The child-process semantics (real hook replay, per-name load failures) live
+// in `integration/ConfigDependencyHooksSubprocess.int.test.ts`, which spawns a
+// real `node`; the declared-version resolution ladder the parent runs BEFORE
+// spawning is pinned in `integration/ConfigDependencyResolution.int.test.ts`.
+// This suite pins everything else the PARENT decides: when a spawn happens at
+// all, the exact argv contract, and how each transport outcome maps onto the
+// typed error taxonomy.
+//
+// The ladder reads the real disk (it must — the pnpm store is real even when
+// a FileSystem is virtual), so the root here is a real temp directory whose
+// `.pnpm-config/<name>` entries are installed at `1.0.0` with a pnpmfile the
+// scripted spawner never actually loads.
 
-import { assert, describe, it } from "@effect/vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { ScriptedSpawner } from "@effected/commands";
 import { CatalogAssemblyError } from "@effected/npm";
 import { Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { ConfigDependencyHooks } from "../src/index.js";
 
-const ROOT = "/repo";
+let ROOT: string;
 const SEED = { default: { effect: "^4.0.0" }, named: { "left-pad": "^1.0.0" } } as const;
+const INSTALLED = ["dep", "dep-a", "@scope/dep-b", "@scope/pkg", "broken-dep"] as const;
+
+/** The pnpmfile path the parent resolves for an installed fixture. */
+const pnpmfileOf = (name: string): string => join(ROOT, "node_modules", ".pnpm-config", name, "pnpmfile.mjs");
+/** The `file:` URL the child receives for a resolved pnpmfile — the parent converts, the child only imports. */
+const pnpmfileUrlOf = (name: string): string => pathToFileURL(pnpmfileOf(name)).href;
+
+beforeAll(() => {
+	ROOT = mkdtempSync(join(tmpdir(), "effected-hooks-argv-"));
+	for (const name of INSTALLED) {
+		const dir = join(ROOT, "node_modules", ".pnpm-config", name);
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version: "1.0.0" }));
+		writeFileSync(join(dir, "pnpmfile.mjs"), "export const hooks = {};\n");
+	}
+});
+
+afterAll(() => {
+	if (ROOT !== undefined) rmSync(ROOT, { recursive: true, force: true });
+});
 
 /** A payload the subprocess protocol would print, framed as the final stdout line. */
 const emitted = (payload: unknown, noise = ""): string => `${noise}\n${JSON.stringify(payload)}\n`;
@@ -38,6 +68,7 @@ describe("ConfigDependencyHooks.layerSubprocess — no-spawn fast paths", () => 
 				catalogs: SEED,
 				releaseAge: {},
 				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				replays: {},
 			});
 			// The discriminating half: nothing was spawned to produce that answer.
 			assert.strictEqual(spawner.spawns.length, 0);
@@ -68,11 +99,11 @@ describe("ConfigDependencyHooks.layerSubprocess — no-spawn fast paths", () => 
 });
 
 describe("ConfigDependencyHooks.layerSubprocess — the argv contract", () => {
-	it.effect("spawns node with the static script and root/seed/names via argv, never interpolated", () => {
+	it.effect("spawns node with the static script and seed/rules/resolved pairs via argv, never interpolated", () => {
 		const { spawner, layer } = harness(() => ({ stdout: emitted({ ok: true, config: {} }) }));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			yield* hooks.inject(ROOT, { "dep-a": "1.0.0", "@scope/dep-b": "2.0.0" }, SEED);
+			yield* hooks.inject(ROOT, { "dep-a": "1.0.0", "@scope/dep-b": "1.0.0+sha512-abc" }, SEED);
 			const spawn = spawner.spawns[0];
 			assert.isDefined(spawn);
 			assert.strictEqual(spawn.command, "node");
@@ -81,19 +112,39 @@ describe("ConfigDependencyHooks.layerSubprocess — the argv contract", () => {
 			const script = spawn.args[2];
 			assert.isDefined(script);
 			// The script is a STATIC constant: no runtime value is spliced into the
-			// program text — root, seed and names travel exclusively as argv.
+			// program text — seed, rules and the resolved pairs travel exclusively
+			// as argv.
 			assert.isFalse(script?.includes(ROOT));
 			assert.isFalse(script?.includes("dep-a"));
-			assert.strictEqual(spawn.args[3], ROOT);
-			assert.deepStrictEqual(JSON.parse(spawn.args[4] ?? ""), SEED);
+			assert.deepStrictEqual(JSON.parse(spawn.args[3] ?? ""), SEED);
 			// The rules seed rides the same argv channel, in its own slot ahead of
-			// the names — never spliced into the program text either.
-			assert.deepStrictEqual(JSON.parse(spawn.args[5] ?? ""), {
+			// the pairs — never spliced into the program text either.
+			assert.deepStrictEqual(JSON.parse(spawn.args[4] ?? ""), {
 				allowedVersions: {},
 				ignoreMissing: [],
 				allowAny: [],
 			});
-			assert.deepStrictEqual(spawn.args.slice(6), ["dep-a", "@scope/dep-b"]);
+			// The PARENT resolved each declared version to a pnpmfile and converted
+			// it to a `file:` URL; the child receives `[name, fileUrl]` pairs as ONE
+			// JSON argument and performs no lookup or path conversion of its own.
+			assert.deepStrictEqual(JSON.parse(spawn.args[5] ?? ""), [
+				["dep-a", pnpmfileUrlOf("dep-a")],
+				["@scope/dep-b", pnpmfileUrlOf("@scope/dep-b")],
+			]);
+			assert.strictEqual(spawn.args.length, 6);
+		}).pipe(Effect.provide(layer));
+	});
+
+	it.effect("a declared version the ladder cannot resolve fails typed BEFORE any spawn", () => {
+		const { spawner, layer } = harness(() => ({ stdout: emitted({ ok: true, config: {} }) }));
+		return Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// `dep` is installed at 1.0.0; declaring 2.0.0 finds nothing anywhere.
+			const error = yield* Effect.flip(hooks.inject(ROOT, { dep: "2.0.0" }, SEED));
+			assert.instanceOf(error, CatalogAssemblyError);
+			assert.strictEqual(error.source, "hooks");
+			assert.strictEqual(error.path, "dep");
+			assert.strictEqual(spawner.spawns.length, 0);
 		}).pipe(Effect.provide(layer));
 	});
 
@@ -108,7 +159,7 @@ describe("ConfigDependencyHooks.layerSubprocess — the argv contract", () => {
 			// Seeded, not merged by us: the workspace file's rules go INTO the
 			// threaded config so the hooks merge onto them, exactly as pnpm seeds
 			// its own config.
-			assert.deepStrictEqual(JSON.parse(spawn.args[5] ?? ""), rules);
+			assert.deepStrictEqual(JSON.parse(spawn.args[4] ?? ""), rules);
 			assert.isFalse(spawn.args[2]?.includes("1.2.3"));
 		}).pipe(Effect.provide(layer));
 	});
@@ -157,10 +208,16 @@ describe("ConfigDependencyHooks.layerSubprocess — transport failures are typed
 		// The replay's hard-coded timeout must kill it and surface through the
 		// same typed `hooks`-source path as any other transport failure — never a
 		// hang of the memoized assemble pass, never a defect.
-		const { layer } = harness(() => ({ hang: true }));
+		const { spawner, layer } = harness(() => ({ hang: true }));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
 			const fiber = yield* Effect.forkChild(Effect.flip(hooks.inject(ROOT, { dep: "1.0.0" }, SEED)));
+			// The parent resolves the declared version over REAL async fs before it
+			// spawns, and the virtual clock cannot advance that — so let the event
+			// loop turn until the spawn has happened, THEN jump past the ceiling.
+			while (spawner.spawns.length === 0) {
+				yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+			}
 			yield* TestClock.adjust("31 seconds");
 			const error = yield* Fiber.join(fiber);
 			assert.instanceOf(error, CatalogAssemblyError);

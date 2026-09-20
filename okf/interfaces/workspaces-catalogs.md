@@ -15,10 +15,12 @@ sources:
     resource: ../../packages/workspaces/src/ConfigDependencyHooks.ts
   - id: internal-catalogs-ts
     resource: ../../packages/workspaces/src/internal/catalogs.ts
+  - id: config-dependency-resolution-ts
+    resource: ../../packages/workspaces/src/internal/configDependencyResolution.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-17T04:41:11Z
-  body_sha256: 28a0c1a09d4fbab271ed62c5e2ccf73cfb6afcd5bd74be75fbe41ec7588961e0
+  at: 2026-09-20T05:03:32Z
+  body_sha256: f7db62db9b27ef1baf6bde409db07acb5f3eeb25d04207d7fd57a4c4271d6bbc
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
@@ -70,20 +72,50 @@ block yields `NoPeerDependencyRules`, an assertion rather than a gap.
 
 ## ConfigDependencyHooks — the opt-in replay seam
 
-A contract service with three layers: an in-process layer that dynamically
+A contract service with four layers: an in-process layer that dynamically
 imports each config dependency's pnpmfile and replays its config hooks over
-the inline-catalog seed, a subprocess twin for bundled consumers, and a
-no-execution stand-in.[^config-dependency-hooks-ts]
+the inline-catalog seed, a subprocess twin for bundled consumers, a
+no-execution stand-in, and a hermetic `layerFrom` that replays
+caller-supplied files with no resolution at all.[^config-dependency-hooks-ts]
 
 The default composites wire the no-op layer — they never execute
-config-dependency code; opting in is an explicit composite choice.
-Opting in must not cost the git tier: a git composite that hard-wired the
-no-op catalogs layer would force a consumer wanting snapshots plus change
-detection plus hook replay to rebuild the whole service graph by hand, so
-the git composites and their subprocess twins are built over one internal
-helper so the variants cannot drift. On the git composites the subprocess
-variant is free, because its extra requirement — core's
-`ChildProcessSpawner` — is already required for `Git`.
+config-dependency code, on the worktree side or the ref side; opting in is
+an explicit composite choice. Opting in must not cost the git tier: a git
+composite that hard-wired the no-op catalogs layer would force a consumer
+wanting snapshots plus change detection plus hook replay to rebuild the
+whole service graph by hand, so the git composites and their subprocess
+twins are built over one internal helper that takes the hooks layer
+explicitly and hands the same reference to both `WorkspaceCatalogs` and
+`WorkspaceSnapshots` — one memoized layer, one policy for both sides of a
+diff, and never a member of the public `WorkspacesServices` output. On the
+git composites the subprocess variant is free, because its extra
+requirement — core's `ChildProcessSpawner` — is already required for `Git`.
+
+### The replaying layers resolve the declared version
+
+Every replaying layer loads the pnpmfile of the version a
+`configDependencies` entry declares — the text before the first `+` of its
+`<version>+<integrity>` value, or the whole bare `<version>` — never
+whatever `node_modules/.pnpm-config` happens to hold now. That entry is a
+symlink into the pnpm store's `links/` tree, and the store keeps every
+version ever installed on the machine, so a past ref's pnpmfile is
+recoverable with no checkout, no fetch and no registry.[^config-dependency-resolution-ts]
+The ladder runs in the parent for both replaying layers: the installed
+copy when its manifest carries exactly the declared version; otherwise the
+store's `links/<name>/<version>/*/node_modules/<name>` with the inner
+manifest verified rather than the path trusted, the store located from
+`.modules.yaml`, then the realpath of any `.pnpm-config` entry, then the
+conventional environment and platform locations; otherwise a typed,
+fail-closed `hooks` assembly error naming the package, the declared
+version, what is installed, the stores searched and the remediation
+(`pnpm add --config <name>@<version>` in a throwaway workspace). In the
+resolved directory the first of `pnpmfile.mjs`, `pnpmfile.cjs`,
+`pnpmfile.js` present in one directory listing is loaded; a listed but
+unreadable file fails typed at import time, never as "ships no hook", and
+a dependency shipping none contributes nothing. The ladder reads the real disk through `node:fs`
+rather than the effect `FileSystem`, because the store is real even when a
+caller's filesystem is virtual; `layerFrom` is the seam for that case,
+keyed `"<name>@<version>"` to an absolute path and consulting nothing else.
 
 Assembly precedence is lockfile, then inline, then hook-injected, merged
 per-dependency within a catalog, with the hooks seeded by the inline
@@ -93,8 +125,13 @@ assembly error. The security guard rejects a dependency name containing a
 `..` path segment before building the import target, so a malicious entry
 cannot escape the intended directory.
 
-The replay returns a structured injection, `HookInjection`, carrying three
-slices: `catalogs`, `releaseAge`, and `peerDependencyRules`. A sibling
+The replay returns a structured injection, `HookInjection`, carrying four
+slices: `catalogs`, `releaseAge`, `peerDependencyRules`, and `replays` —
+the version and resolution rung (`HookReplaySource`) each declared
+dependency was replayed from, recorded even for one that ships no pnpmfile
+and exposed by `WorkspaceCatalogs.hookReplays()` off the same memo, empty
+where config dependencies do not exist. The rung is live, machine-local
+provenance; a snapshot keeps only the version. A sibling
 method computing any one slice separately would re-execute
 config-dependency code — the whole point of the seam is that one replay
 over one mutable config object yields every output, exactly as pnpm replays
@@ -123,13 +160,14 @@ out of the bundle graph.
 The replay program is a static string constant, passed via argv: static is
 the whole mechanism, since a bundler rewrites the program text it can see,
 so the text carries no interpolated runtime value — the root, the seed, and
-the dependency names travel as arguments, never spliced into the script,
-and the spawn uses no shell so argv is argv. Typed-semantics parity with the
-in-process layer is the contract, pinned by an integration test rather than
-by intent: the same pnpmfile extension precedence, the same
-missing-pnpmfile skip discriminated by the module-not-found reason for the
-candidate itself, the same hook-locator shapes, the same synchronous hook
-call, and the same tolerant threading.
+the parent-resolved name-to-path pairs travel as arguments, never spliced
+into the script, and the spawn uses no shell so argv is argv. Typed-semantics
+parity with the in-process layer is the contract, pinned by integration
+tests rather than by intent: the same declared-version ladder run in the
+parent, the same pnpmfile candidate order, the same hook-locator shapes, the
+same synchronous hook call, and the same tolerant threading; the child
+performs no lookup of its own, so any import failure it reports is a real
+load failure.
 
 Per-dependency error attribution crosses the process boundary: the child
 prints one final JSON line naming the offending dependency and exits through
@@ -151,6 +189,10 @@ assembly errors.
     `CatalogAssemblyFailure`.
 [^config-dependency-hooks-ts]: `packages/workspaces/src/ConfigDependencyHooks.ts` —
     the contract, `HookInjection`, `PeerDependencyRules` /
-    `NoPeerDependencyRules`, `layerNoop` / `layerLive` / `layerSubprocess`.
+    `NoPeerDependencyRules`, `layerNoop` / `layerLive` / `layerSubprocess` /
+    `layerFrom`.
+[^config-dependency-resolution-ts]: `packages/workspaces/src/internal/configDependencyResolution.ts` —
+    `resolvePnpmfiles`, `lookupPnpmfiles`, the store-discovery rungs and
+    the fail-closed message.
 [^internal-catalogs-ts]: `packages/workspaces/src/internal/catalogs.ts:1-12` —
     the header comment and the four `@pnpm/catalogs.*` imports.

@@ -11,10 +11,12 @@ tags:
 sources:
   - id: peer-check-ts
     resource: ../../packages/workspaces/src/PeerCheck.ts
+  - id: peer-fixtures
+    resource: ../../packages/workspaces/__test__/fixtures/peers/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-17T04:41:11Z
-  body_sha256: d2c139da1dee421c512cb69fae4505c65bc2efe16fa8cfaafdd714b23bf0ae6e
+  at: 2026-09-20T05:03:32Z
+  body_sha256: b8b8400c16da17ccab44f3c280bf437ff07753643668288b45160448a19c03ee
 ---
 
 # @effected/workspaces peer-dependency checking
@@ -127,13 +129,15 @@ what the hooks return — "seeded value survives unless a hook replaces it"
 function would be a second, divergent implementation of a rule already
 owned elsewhere.
 
-Two axes ride along unapplied: `ignoreMissing` and `allowAny` are separate
-suppression mechanisms nobody has measured, and an unmeasured suppression
-is precisely what produced the bug being fixed, so they travel through the
-seam and no kit code acts on them. Only `allowedVersions` is applied, and
-rules whose `ignoreMissing` or `allowAny` is non-empty make the report
-`unverified` (`peerRulesNotApplied`) rather than being silently ignored —
-an unimplemented axis degrades to fail-closed instead of to a wrong answer.
+All three axes of the rules are applied — `allowedVersions`,
+`ignoreMissing` and `allowAny` — each with semantics measured against pnpm
+rather than recalled, because an unmeasured suppression is precisely what
+produced the bug this checker exists to remove. `allowedVersions` was
+measured against pnpm 11 (below); the two list axes against pnpm 12.5.1,
+with every oracle run committed under `__test__/fixtures/peers/allowany/`
+and `ignoremissing/`.[^peer-fixtures] Supplied rules therefore always yield
+a verified report; `peerRulesNotApplied` is reserved for the case where no
+rules were supplied at all.
 
 ### How pnpm matches an allowedVersions key
 
@@ -164,14 +168,50 @@ check, because pnpm records no version for an importer, so a workspace row
 carries the placeholder `"0.0.0"` and any comparison would be against a
 placeholder rather than the real version.
 
+### How pnpm matches ignoreMissing and allowAny, and why the axes never cross
+
+The two list axes share one grammar and it is not the `allowedVersions`
+key grammar: an entry is a pattern over the **peer name**, with no parent
+in it at all. `react-dom>react` is a literal name nothing declares, so it
+matches nothing on either axis, versioned or not — the parent-version quirk
+above has nothing to attach to. The patterns are `@pnpm/matcher`'s
+(restated in `src/internal/peerPatterns.ts` so the `@pnpm/*` edge stays
+confined to the catalogs module): a lone `*` matches everything; otherwise
+`*` is a wildcard within the name and a pattern without one is plain
+equality; a leading `!` negates. Composition over a list is order-sensitive
+when includes and negations mix — `["*", "!redux"]` is everything but
+redux, while `["!redux", "*"]` is everything — and a list holding only
+negations matches everything not excluded, so `["!redux"]` alone clears
+every other name.
+
+The axes partition the rows on `found` and never cross:
+
+- `ignoreMissing` hides a row where **nothing resolved** for a required
+  peer (`found: null`), whether the declarer is direct or transitive. It
+  never touches a peer that resolved at the wrong version.
+- `allowAny` hides a row where **something resolved outside the wanted
+  range**, required and optional alike. It never rescues a missing peer.
+- `allowedVersions` hides the same wrong-version rows `allowAny` can, by
+  range rather than by name, and cannot rescue a missing peer either.
+
+Both halves of the no-cross rule are pinned by cross-axis oracle runs:
+`allowAny: ["react"]` leaves every missing `react` in place, and
+`ignoreMissing: ["react", "redux"]` leaves both wrong-version rows in
+place.
+
 ## Failing closed: the two unverified reasons
 
-- **`peerRulesNotApplied`** — the effective suppression policy was not
-  applied, so pnpm's suppression could not be replicated and some rows may
-  be ones pnpm hides. Presence of the option key is the assertion, not its
+The union is closed at exactly two by measurement: with all three rule axes
+now applied, no supplied configuration leaves a suppression unreplicated,
+so there is nothing left for a third reason to name.
+
+- **`peerRulesNotApplied`** — no suppression policy was supplied, so
+  pnpm's suppression could not be replicated and some rows may be ones
+  pnpm hides. Presence of the option key is the assertion, not its
   contents: supplying `NoPeerDependencyRules` asserts the workspace has
   none, while omitting the key says nobody looked. Collapsing those two
-  would tell a gate that an unchecked workspace is clean.
+  would tell a gate that an unchecked workspace is clean. Supplied rules
+  never produce it, whatever their contents — all three axes are applied.
 - **`unresolvedEdge`** — some instance records an edge the model could not
   name, so a peer that edge satisfies cannot be verified. Such a peer is
   declined rather than reported: reporting it would be a false positive,
@@ -187,8 +227,8 @@ finding.
 
 ## The differential oracle
 
-See [the yarn and suppression-axis limitation](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
-for the two gaps this report surfaces rather than swallows.
+See [the yarn limitation](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
+for the gap this report surfaces rather than swallows.
 
 `pnpm peers check --json` is the reference for peer semantics, and the test
 suite checks agreement with it, but the oracle is committed, not executed:
@@ -202,3 +242,6 @@ on workspaces without them.
 
 [^peer-check-ts]: `packages/workspaces/src/PeerCheck.ts` — `PeerCheck`,
     `UnsatisfiedPeer`, `PeerParent`, `PeerCheckOptions`, `UnverifiedReason`.
+[^peer-fixtures]: `packages/workspaces/__test__/fixtures/peers/README.md` —
+    provenance of every oracle run, including the `allowany/` and
+    `ignoremissing/` measurement pass.

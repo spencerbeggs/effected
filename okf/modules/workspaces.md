@@ -25,8 +25,8 @@ sources:
     resource: ../../packages/workspaces/src/Workspaces.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T16:45:41Z
-  body_sha256: 69f1c6806e139724ea89a80a15adac01016aa1c7687f1ddad403e04a75e22203
+  at: 2026-09-20T05:03:32Z
+  body_sha256: b0cc66d0774d89ce08e554bc87abb57bc780ba595d0133b70f989027441481c9
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -311,8 +311,8 @@ suppressed.
 - [The second-published-entrypoint decision](../decisions/second-published-entrypoint.md)
 - [Gotcha: ReleaseTag's strict-SemVer default](../gotchas/releasetag-strict-semver-default.md)
 - [Gotcha: the publishability detector diagnoses late](../gotchas/publishability-detector-diagnoses-late.md)
-- [Limitation: PeerCheck cannot answer yarn or two suppression axes](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
-- [Limitation: a hook-injected catalog bump between refs is invisible to a snapshot diff](../limitations/workspaces-snapshot-hook-catalog-bump-between-refs.md)
+- [Limitation: PeerCheck cannot answer yarn](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
+- [Limitation: under the no-op hooks layer, a hook-injected catalog bump between refs is invisible to a snapshot diff](../limitations/workspaces-snapshot-hook-catalog-bump-between-refs.md)
 
 [^package-json]: `packages/workspaces/package.json` — the `dependencies`,
     `peerDependencies`, and `exports` blocks.

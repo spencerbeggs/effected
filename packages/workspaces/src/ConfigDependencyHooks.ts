@@ -13,19 +13,27 @@
 // package. `layerNoop` returns the seed untouched and is the safe default for
 // tests and consumers who want the topology without the execution.
 //
+// Every replaying layer loads the pnpmfile of the version each entry DECLARES,
+// not whatever `node_modules/.pnpm-config` holds right now: the resolution
+// ladder in `internal/configDependencyResolution.ts` checks the installed copy
+// first and falls back to the pnpm store, which keeps every version ever
+// installed. That is what lets `WorkspaceSnapshots.at(ref)` replay a past
+// ref's hooks at that ref's pinned version.
+//
 // `internal/catalogs.ts` stays the only `@pnpm/catalogs.*` importer: the shape
 // hooks operate on is the plain `catalog name → dependency → range` record, and
 // the only normalization borrowed here is the prototype-safe `normalize`.
 
-import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Run } from "@effected/commands";
 import type { PartialReleaseAgeGate } from "@effected/npm";
 import { CatalogAssemblyError } from "@effected/npm";
-import { Context, Duration, Effect, Layer, Predicate, Result, Schema } from "effect";
+import { Context, Duration, Effect, Layer, Predicate, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import type { CatalogEntries } from "./internal/catalogs.js";
 import { normalize } from "./internal/catalogs.js";
+import type { ResolvedPnpmfile } from "./internal/configDependencyResolution.js";
+import { lookupPnpmfiles, resolvePnpmfiles } from "./internal/configDependencyResolution.js";
 
 /**
  * The pnpm config surface a `pnpmfile.cjs` `updateConfig` hook reads and
@@ -52,11 +60,13 @@ interface HookConfig {
  * replayed hook returns `{ allowedVersions, ignoreMissing, allowAny }` intact,
  * needing no reshaping.
  *
- * Two keys are **carried but not yet consumed**. `ignoreMissing` and
- * `allowAny` are separate suppression axes that have not been measured, and an
- * unmeasured suppression is precisely what produced the false positives this
- * seam exists to remove — so they travel through the seam and no kit code acts
- * on them. Only `allowedVersions` is consumed today.
+ * All three axes are consumed by `PeerCheck`, each established by measurement
+ * against `pnpm peers check` with a firing control. `ignoreMissing` and
+ * `allowAny` are lists of **peer-name patterns** in pnpm's `@pnpm/matcher`
+ * grammar (`*` wildcard, leading `!` negation) — not `parent>peer` keys, which
+ * match nothing on those two axes. `ignoreMissing` hides only a required peer
+ * that resolved to nothing; `allowAny` hides only a peer that resolved outside
+ * its wanted range; the two never cross.
  *
  * `allowedVersions` keys come in two spellings in the wild, and both must be
  * handled: parent-versioned (`"@effect/ai-anthropic@4.0.0-rc.109>effect"`, as
@@ -68,9 +78,9 @@ interface HookConfig {
 export interface PeerDependencyRules {
 	/** `parent>peer` → the peer version or range the rule permits. */
 	readonly allowedVersions: Readonly<Record<string, string>>;
-	/** Peer names whose absence pnpm does not report. Carried, not consumed. */
+	/** Peer-name patterns whose absence pnpm does not report (a required peer that resolved to nothing). */
 	readonly ignoreMissing: ReadonlyArray<string>;
-	/** Peer names for which any version is accepted. Carried, not consumed. */
+	/** Peer-name patterns for which any resolved version is accepted. */
 	readonly allowAny: ReadonlyArray<string>;
 }
 
@@ -96,6 +106,36 @@ export const NoPeerDependencyRules: PeerDependencyRules = Object.freeze({
 
 /** Internal alias, kept short at the many call sites in this module. */
 const NO_PEER_RULES: PeerDependencyRules = NoPeerDependencyRules;
+
+/**
+ * Where a replayed config dependency's declared version was found: the
+ * `node_modules/.pnpm-config` copy, the pnpm store's `links/` tree, or a
+ * {@link ConfigDependencyHooks.layerFrom} entry.
+ *
+ * @public
+ */
+export type HookReplaySource = "installed" | "store" | "supplied";
+
+/**
+ * Which version of a config dependency a replay actually loaded, and where
+ * that version came from.
+ *
+ * @remarks
+ * Recorded per dependency so a consumer diffing two refs can tell not just
+ * WHAT the hooks injected but which pinned version injected it — the
+ * evidence that a "range moved" row came from a config-dependency bump and
+ * not from a hook edit. `installed` is the `node_modules/.pnpm-config` copy,
+ * `store` the pnpm store's `links/` tree, `supplied` a
+ * {@link ConfigDependencyHooks.layerFrom} entry.
+ *
+ * @public
+ */
+export interface HookReplay {
+	/** The declared version that was resolved and replayed. */
+	readonly version: string;
+	/** Which resolution rung answered. */
+	readonly source: HookReplaySource;
+}
 
 /**
  * The result of replaying a workspace's `configDependencies` hooks: the catalogs
@@ -134,6 +174,13 @@ export interface HookInjection {
 	 * overwrites for pnpm too — so do not "repair" it into a merger.
 	 */
 	readonly peerDependencyRules: PeerDependencyRules;
+	/**
+	 * Which version each declared config dependency was replayed from, keyed
+	 * by name — every dependency the layer resolved, including one that ships
+	 * no pnpmfile (resolved, contributed nothing). `{}` under
+	 * {@link ConfigDependencyHooks.layerNoop}, which resolves nothing.
+	 */
+	readonly replays: Readonly<Record<string, HookReplay>>;
 }
 
 /**
@@ -168,9 +215,12 @@ export interface ConfigDependencyHooksShape {
 	 * `hooks`-source `CatalogAssemblyError`, never a silent skip.
 	 *
 	 * @param root - The workspace root; config dependencies resolve under
-	 *   `<root>/node_modules/.pnpm-config/<name>`.
+	 *   `<root>/node_modules/.pnpm-config/<name>` when that holds the declared
+	 *   version, else through the pnpm store.
 	 * @param configDependencies - The `configDependencies` map (name →
-	 *   version+integrity) declared in `pnpm-workspace.yaml`.
+	 *   `<version>+<integrity>`, or a bare `<version>`) declared in the
+	 *   `pnpm-workspace.yaml` being read — the live one, or the one at a ref.
+	 *   The replaying layers load the pnpmfile of the DECLARED version.
 	 * @param seed - The inline catalogs, as `catalog name → dependency → range`.
 	 * @param rules - The workspace file's `peerDependencyRules`, seeded into the
 	 *   threaded config so hooks merge onto them rather than replacing them.
@@ -184,37 +234,6 @@ export interface ConfigDependencyHooksShape {
 		rules?: PeerDependencyRules,
 	) => Effect.Effect<HookInjection, CatalogAssemblyError>;
 }
-
-/** Whether `value` is a non-null, non-array object. */
-const isObject = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-/**
- * The file URL a Node ESM `ERR_MODULE_NOT_FOUND` reports as unresolvable, or
- * `undefined` when the failure is anything else.
- *
- * @remarks
- * Node sets `err.url` (an own string property) to the offending module's URL.
- * For an absent *entry* module it is that entry's own URL; for a module the entry
- * `import`s that fails to resolve it is the **nested** module's URL. That
- * distinction is exactly what separates "this pnpmfile does not exist" (a
- * legitimate skip, `err.url` equal to the candidate) from "the pnpmfile's own
- * import failed to resolve" (a real error, `err.url` pointing elsewhere) — a
- * discrimination `err.code` alone cannot make, since both raise
- * `ERR_MODULE_NOT_FOUND`. Verified against Node's ESM loader: the entry-absent
- * case yields `err.url === pathToFileURL(candidate).href`; the nested case yields
- * the nested module's URL.
- */
-const moduleNotFoundUrl = (cause: unknown): string | undefined =>
-	isObject(cause) && cause.code === "ERR_MODULE_NOT_FOUND" && typeof cause.url === "string" ? cause.url : undefined;
-
-/**
- * Whether a config-dependency `name` carries a `..` path segment. A scoped name
- * legitimately contains `/` (`@scope/pkg`), so only a `..` *segment* is rejected —
- * it would traverse out of `.pnpm-config` and feed an attacker-chosen path to the
- * dynamic `import()` below.
- */
-const hasTraversalSegment = (name: string): boolean => name.split(/[/\\]/).includes("..");
 
 /** Turn the seed record into the pnpm hook config, with the default catalog split out under `catalog`. */
 const seedToConfig = (
@@ -260,10 +279,12 @@ const stringArrayOr = (value: unknown, fallback: readonly string[] | undefined):
  * write wins**, exactly as pnpm's single mutable config object behaves.
  */
 const configOf = (value: unknown, fallback: HookConfig): HookConfig => {
-	if (!isObject(value)) return fallback;
+	if (!Predicate.isObject(value)) return fallback;
 	return {
-		catalog: isObject(value.catalog) ? (value.catalog as Record<string, string>) : fallback.catalog,
-		catalogs: isObject(value.catalogs) ? (value.catalogs as Record<string, Record<string, string>>) : fallback.catalogs,
+		catalog: Predicate.isObject(value.catalog) ? (value.catalog as Record<string, string>) : fallback.catalog,
+		catalogs: Predicate.isObject(value.catalogs)
+			? (value.catalogs as Record<string, Record<string, string>>)
+			: fallback.catalogs,
 		minimumReleaseAge: finiteNumberOr(value.minimumReleaseAge, fallback.minimumReleaseAge),
 		minimumReleaseAgeExclude: stringArrayOr(value.minimumReleaseAgeExclude, fallback.minimumReleaseAgeExclude),
 		peerDependencyRules: peerRulesOr(value.peerDependencyRules, fallback.peerDependencyRules),
@@ -281,12 +302,12 @@ const stringRecordOr = (
 	value: unknown,
 	fallback: Readonly<Record<string, string>> | undefined,
 ): Readonly<Record<string, string>> | undefined =>
-	isObject(value) && Object.values(value).every((entry) => typeof entry === "string")
+	Predicate.isObject(value) && Object.values(value).every((entry) => typeof entry === "string")
 		? (value as Record<string, string>)
 		: fallback;
 
 const peerRulesOr = (value: unknown, fallback: PeerDependencyRules | undefined): PeerDependencyRules | undefined => {
-	if (!isObject(value)) return fallback;
+	if (!Predicate.isObject(value)) return fallback;
 	// Every entry must be a string, not merely the block an object: the public
 	// contract is name→RANGE, and a non-string value reaches range parsing as a
 	// rule nobody can evaluate. The same all-entries rule `stringArrayOr`
@@ -320,7 +341,7 @@ const releaseAgeOf = (config: HookConfig): PartialReleaseAgeGate => ({
 const configToEntries = (config: HookConfig): CatalogEntries => {
 	const raw: Record<string, unknown> = { ...config.catalogs };
 	if (Object.keys(config.catalog).length > 0) {
-		raw.default = { ...(isObject(raw.default) ? raw.default : {}), ...config.catalog };
+		raw.default = { ...(Predicate.isObject(raw.default) ? raw.default : {}), ...config.catalog };
 	}
 	return normalize(raw);
 };
@@ -330,14 +351,92 @@ type UpdateConfig = (config: HookConfig) => unknown;
 
 /** Locate the `updateConfig` hook across the CJS/ESM export shapes a `pnpmfile.cjs` can present. */
 const updateConfigOf = (mod: unknown): UpdateConfig | undefined => {
-	for (const candidate of [mod, isObject(mod) ? mod.default : undefined]) {
-		if (!isObject(candidate)) continue;
+	for (const candidate of [mod, Predicate.isObject(mod) ? mod.default : undefined]) {
+		if (!Predicate.isObject(candidate)) continue;
 		const hooks = candidate.hooks;
-		if (isObject(hooks) && Predicate.isFunction(hooks.updateConfig)) return hooks.updateConfig as UpdateConfig;
+		if (Predicate.isObject(hooks) && Predicate.isFunction(hooks.updateConfig))
+			return hooks.updateConfig as UpdateConfig;
 		if (Predicate.isFunction(candidate.updateConfig)) return candidate.updateConfig as UpdateConfig;
 	}
 	return undefined;
 };
+
+/**
+ * The seed pass-through: what every layer returns for an empty
+ * `configDependencies`, and — with `replays` — what a replaying layer returns
+ * when every resolved dependency ships no pnpmfile.
+ */
+const untouched = (
+	seed: Readonly<Record<string, Readonly<Record<string, string>>>>,
+	rules: PeerDependencyRules | undefined,
+	replays: Readonly<Record<string, HookReplay>> = {},
+): HookInjection => ({ catalogs: seed, releaseAge: {}, peerDependencyRules: rules ?? NO_PEER_RULES, replays });
+
+/** The per-name replay record of a resolved set — every resolved dependency, pnpmfile or not. */
+const replaysOf = (pnpmfiles: ReadonlyArray<ResolvedPnpmfile>): Readonly<Record<string, HookReplay>> => {
+	const replays: Record<string, HookReplay> = {};
+	for (const { name, version, source } of pnpmfiles) replays[name] = { version, source };
+	return replays;
+};
+
+/** Project the final threaded config into the injection, alongside the replay record. */
+const injectionOf = (config: HookConfig, pnpmfiles: ReadonlyArray<ResolvedPnpmfile>): HookInjection => ({
+	catalogs: configToEntries(config),
+	releaseAge: releaseAgeOf(config),
+	peerDependencyRules: peerRulesOf(config),
+	replays: replaysOf(pnpmfiles),
+});
+
+/**
+ * Replay already-resolved pnpmfiles IN PROCESS over the seed, in order — the
+ * one implementation {@link ConfigDependencyHooks.layerLive} and
+ * {@link ConfigDependencyHooks.layerFrom} share; only how the paths were
+ * found differs.
+ *
+ * @remarks
+ * Each file is loaded via a dynamic `import()` of its file URL. Because the
+ * caller has already established that the file exists (listed by the
+ * ladder's directory read, or by the caller's own word under `layerFrom`),
+ * ANY load failure — a syntax error, a throwing top level, an unreadable
+ * file, an `ERR_MODULE_NOT_FOUND` for a module the pnpmfile itself imports —
+ * is a real error and surfaces typed as a
+ * `hooks`-source `CatalogAssemblyError` naming the dependency, never a silent
+ * skip. A file exposing no `updateConfig` hook contributes nothing. The hook
+ * is called synchronously and its returned data threaded tolerantly
+ * (`configOf`); a hook that throws fails typed.
+ */
+const replayInProcess = (
+	pnpmfiles: ReadonlyArray<ResolvedPnpmfile>,
+	seed: Readonly<Record<string, Readonly<Record<string, string>>>>,
+	rules: PeerDependencyRules | undefined,
+): Effect.Effect<HookInjection, CatalogAssemblyError> =>
+	Effect.gen(function* () {
+		let config = seedToConfig(seed, rules);
+		for (const { name, path } of pnpmfiles) {
+			// Resolved but shipping no pnpmfile: recorded in `replays`, nothing to run.
+			if (path === undefined) continue;
+			const url = pathToFileURL(path).href;
+			const loaded = yield* Effect.tryPromise({
+				// `webpackIgnore` keeps webpack-family bundlers from compiling this
+				// computed import into a context module: the target is a runtime
+				// path under the consumer's own node_modules (or store), unresolvable
+				// at bundle time, and every bundled consumer otherwise carries a
+				// Critical-dependency warning it cannot silence — even one composing
+				// `layerSubprocess`, because this module stays in its import graph
+				// either way.
+				try: () => import(/* webpackIgnore: true */ url) as Promise<unknown>,
+				catch: (cause) => new CatalogAssemblyError({ source: "hooks", path: name, cause }),
+			});
+			const updateConfig = updateConfigOf(loaded);
+			if (updateConfig === undefined) continue;
+			const currentConfig = config;
+			config = yield* Effect.try({
+				try: () => configOf(updateConfig(currentConfig), currentConfig),
+				catch: (cause) => new CatalogAssemblyError({ source: "hooks", path: name, cause }),
+			});
+		}
+		return injectionOf(config, pnpmfiles);
+	});
 
 /**
  * The subprocess replay program {@link ConfigDependencyHooks.layerSubprocess}
@@ -348,13 +447,16 @@ const updateConfigOf = (mod: unknown): UpdateConfig | undefined => {
  * dynamic `import()` into a context module that cannot resolve a runtime path
  * (`Cannot find module 'file:///…'`), so the computed import has to run in a
  * child process whose program text carries **no interpolated runtime value** —
- * the workspace root, the seed and the dependency names all arrive via argv
- * (`process.argv.slice(1)` under `-e`), never spliced into the script.
+ * the seed, the rules seed and the resolved `[name, fileUrl]` pairs all
+ * arrive via argv (`<seed> <rules> <entries>`, read as `process.argv.slice(1)`
+ * under `-e`), never spliced into the script.
  *
- * The script mirrors this module's in-process semantics exactly so the two
- * layers are drop-in interchangeable: `pnpmfile.mjs` before `pnpmfile.cjs`
- * (pnpm 11's loader order), the `ERR_MODULE_NOT_FOUND`-for-the-candidate-itself
- * skip discrimination (`err.url` equality), the same hook-locator shapes, the
+ * The PARENT resolves each config dependency to the pnpmfile of its declared
+ * version (`internal/configDependencyResolution.ts`) and hands the child only
+ * `file:` URLs of existing files, so the child performs no lookup, no path
+ * conversion and no skip discrimination: any `import()` failure is a real
+ * load failure. The script otherwise mirrors `replayInProcess` exactly so the
+ * two layers are drop-in interchangeable: the same hook-locator shapes, the
  * same tolerant threading of returned data (`configOf` / `finiteNumberOr` /
  * `stringArrayOr` clones below), and the same synchronous hook call. Only the
  * *mechanism* failures are reported: the script prints one final line of JSON —
@@ -365,9 +467,7 @@ const updateConfigOf = (mod: unknown): UpdateConfig | undefined => {
  * noise on stdout.
  */
 const REPLAY_SCRIPT = `
-const [root, seedJson, rulesJson, ...names] = process.argv.slice(1);
-const { pathToFileURL } = await import("node:url");
-const { join } = await import("node:path");
+const [seedJson, rulesJson, entriesJson] = process.argv.slice(1);
 const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 const finiteNumberOr = (value, fallback) => (typeof value === "number" && Number.isFinite(value) ? value : fallback);
 const stringArrayOr = (value, fallback) =>
@@ -412,25 +512,13 @@ const replay = async () => {
 		minimumReleaseAgeExclude: undefined,
 		peerDependencyRules: JSON.parse(rulesJson),
 	};
-	for (const name of names) {
+	for (const [name, url] of JSON.parse(entriesJson)) {
 		let loaded;
-		let found = false;
-		for (const filename of ["pnpmfile.mjs", "pnpmfile.cjs"]) {
-			const candidate = pathToFileURL(join(root, "node_modules", ".pnpm-config", name, filename)).href;
-			try {
-				loaded = await import(candidate);
-				found = true;
-				break;
-			} catch (cause) {
-				const url =
-					isObject(cause) && cause.code === "ERR_MODULE_NOT_FOUND" && typeof cause.url === "string"
-						? cause.url
-						: undefined;
-				if (url === candidate) continue;
-				return failure(name, cause);
-			}
+		try {
+			loaded = await import(url);
+		} catch (cause) {
+			return failure(name, cause);
 		}
-		if (!found) continue;
 		let hook;
 		for (const candidate of [loaded, isObject(loaded) ? loaded.default : undefined]) {
 			if (!isObject(candidate)) continue;
@@ -501,12 +589,21 @@ const replayFailureCause = (payload: { readonly message?: string; readonly stack
  * assembly.
  *
  * @remarks
- * A contract-only service: it declares the shape and ships two layers, never a
+ * A contract-only service: it declares the shape and ships layers, never a
  * baked-in default. {@link ConfigDependencyHooks.layerNoop} executes no
  * config-dependency code (it returns the seed untouched) and is what the default
  * {@link WorkspaceCatalogs} layer wires; {@link ConfigDependencyHooks.layerLive}
- * dynamically imports each `pnpmfile.cjs` and replays it, and is wired only by the
- * explicit `WorkspaceCatalogs.layerWithConfigDependencies` opt-in.
+ * dynamically imports each pnpmfile and replays it, and is wired only by the
+ * explicit `WorkspaceCatalogs.layerWithConfigDependencies` opt-in;
+ * {@link ConfigDependencyHooks.layerSubprocess} is its bundler-safe twin; and
+ * {@link ConfigDependencyHooks.layerFrom} is the hermetic test seam that
+ * replays caller-supplied files with no resolution.
+ *
+ * Every replaying layer replays the pnpmfile of the version each
+ * `configDependencies` entry **declares** — `layerLive` and `layerSubprocess`
+ * resolve it through `node_modules/.pnpm-config` and then the pnpm store,
+ * failing closed when neither holds that version — so a snapshot read at a
+ * past ref replays that ref's pinned hook, not today's.
  *
  * @public
  */
@@ -523,103 +620,96 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 			// The seed passes through untouched on every slice, rules included: a
 			// no-op replay changes nothing, and returning empty rules here would be
 			// indistinguishable from a workspace that declares none.
-			Effect.succeed({ catalogs: seed, releaseAge: {}, peerDependencyRules: rules ?? NO_PEER_RULES }),
+			Effect.succeed(untouched(seed, rules)),
 	});
 
 	/**
-	 * The live layer: dynamically imports each config dependency's `pnpmfile.cjs`
-	 * (in process, no subprocess) and replays its `updateConfig` hook over the
-	 * seed, in declaration order. A dependency without a `pnpmfile.cjs` contributes
-	 * nothing; a dependency whose file fails to load or replay fails typed with a
-	 * `hooks`-source `CatalogAssemblyError`, never a silent skip.
+	 * The live layer: resolves each config dependency to the pnpmfile of its
+	 * **declared** version, dynamically imports it (in process, no subprocess)
+	 * and replays its `updateConfig` hook over the seed, in declaration order.
+	 * A dependency that ships no pnpmfile contributes nothing; a dependency
+	 * whose declared version is installed nowhere, or whose file fails to load
+	 * or replay, fails typed with a `hooks`-source `CatalogAssemblyError`, never
+	 * a silent skip.
 	 *
 	 * @remarks
-	 * Runtime-coupled by design, not node-exclusive. The `import()` below loads
+	 * Resolution is a ladder, fail-closed, with no registry fetch ever:
+	 * `<root>/node_modules/.pnpm-config/<name>` when its `package.json`
+	 * `version` equals the declared version (the text before the first `+` of
+	 * the `configDependencies` value), else the pnpm store's
+	 * `links/<name>/<declared>/*\/node_modules/<name>` (the store is located
+	 * from `node_modules/.modules.yaml`, the realpath of any `.pnpm-config`
+	 * entry, then `$PNPM_HOME` / `$XDG_DATA_HOME` / the platform default), else
+	 * a typed error naming the package, the declared version, what is
+	 * installed, the stores searched, and the remediation
+	 * (`pnpm add --config <name>@<version>` in a throwaway workspace). In the
+	 * chosen directory the first of `pnpmfile.mjs`, `pnpmfile.cjs`,
+	 * `pnpmfile.js` present in one directory listing is loaded; a listed but
+	 * unreadable file fails typed at import time, never as "ships no hook".
+	 *
+	 * Runtime-coupled by design, not node-exclusive. The `import()` loads
 	 * **and executes** a config dependency's pnpmfile in-process — code execution,
-	 * not IO, so no `FileSystem` / `Path` service abstracts it. The `node:path` and
-	 * `node:url` imports (`join`, `pathToFileURL`) exist only to build the URL that
-	 * `import()` consumes; node and bun both implement those builtins and dynamic
-	 * import, so this layer runs on either runtime. Only ever wired by
-	 * `WorkspaceCatalogs.layerWithConfigDependencies`.
+	 * not IO, so no `FileSystem` / `Path` service abstracts it — and the ladder
+	 * reads the real disk through `node:fs` for the same reason: the store it
+	 * searches is real even when the caller's `FileSystem` is virtual. Only ever
+	 * wired by `WorkspaceCatalogs.layerWithConfigDependencies` and the
+	 * `Workspaces` composites of the same name.
 	 */
 	static readonly layerLive: Layer.Layer<ConfigDependencyHooks> = Layer.succeed(ConfigDependencyHooks, {
 		inject: (root, configDependencies, seed, rules) =>
 			Effect.gen(function* () {
-				const names = Object.keys(configDependencies);
-				if (names.length === 0) return { catalogs: seed, releaseAge: {}, peerDependencyRules: rules ?? NO_PEER_RULES };
-
-				let config = seedToConfig(seed, rules);
-				for (const name of names) {
-					// Validate the name BEFORE building the path it feeds to `import()`: a
-					// `..` segment would escape `.pnpm-config`. Fails typed, on the same
-					// `hooks`-source path as a load/replay failure — never a silent skip.
-					if (hasTraversalSegment(name)) {
-						return yield* Effect.fail(
-							new CatalogAssemblyError({
-								source: "hooks",
-								path: name,
-								cause: new Error(`config dependency name has a '..' path segment: ${name}`),
-							}),
-						);
-					}
-					// Load the pnpmfile via a dynamic `import()`, trying `pnpmfile.mjs`
-					// FIRST (pnpm 11 ships the config-dependency pnpmfile as an ES module —
-					// a pnpm-11-native config dep may carry ONLY `.mjs`) and falling back to
-					// `pnpmfile.cjs` (legacy). `import()` loads both, and preferring `.mjs`
-					// matches the file pnpm 11 itself loads. NO existsSync precheck — it
-					// returns false for an existing-but-inaccessible file and would silently
-					// skip a real hook.
-					let loaded: unknown;
-					let found = false;
-					for (const filename of ["pnpmfile.mjs", "pnpmfile.cjs"] as const) {
-						const candidatePath = join(root, "node_modules", ".pnpm-config", name, filename);
-						const candidateUrl = pathToFileURL(candidatePath).href;
-						const result = yield* Effect.result(
-							Effect.tryPromise({
-								// `webpackIgnore` keeps webpack-family bundlers from compiling this
-								// computed import into a context module: the target is a runtime
-								// path under the consumer's own node_modules, unresolvable at
-								// bundle time, and every bundled consumer otherwise carries a
-								// Critical-dependency warning it cannot silence — even one
-								// composing `layerSubprocess`, because this module stays in its
-								// import graph either way.
-								try: () => import(/* webpackIgnore: true */ candidateUrl) as Promise<unknown>,
-								catch: (cause) => cause,
-							}),
-						);
-						if (Result.isSuccess(result)) {
-							loaded = result.success;
-							found = true;
-							break;
-						}
-						// An ERR_MODULE_NOT_FOUND whose missing module IS this candidate means
-						// the file simply is not there — try the next candidate. Any OTHER
-						// failure (a syntax error, a throwing top-level, or an
-						// ERR_MODULE_NOT_FOUND for a module the pnpmfile itself imports) is a
-						// real error and must surface typed, never a silent skip.
-						if (moduleNotFoundUrl(result.failure) === candidateUrl) continue;
-						return yield* Effect.fail(new CatalogAssemblyError({ source: "hooks", path: name, cause: result.failure }));
-					}
-					// Neither `pnpmfile.mjs` nor `pnpmfile.cjs` exists — a config dependency
-					// that ships no pnpmfile, the one legitimate skip.
-					if (!found) continue;
-
-					const updateConfig = updateConfigOf(loaded);
-					if (updateConfig === undefined) continue;
-
-					const currentConfig = config;
-					config = yield* Effect.try({
-						try: () => configOf(updateConfig(currentConfig), currentConfig),
-						catch: (cause) => new CatalogAssemblyError({ source: "hooks", path: name, cause }),
-					});
-				}
-				return {
-					catalogs: configToEntries(config),
-					releaseAge: releaseAgeOf(config),
-					peerDependencyRules: peerRulesOf(config),
-				};
+				if (Object.keys(configDependencies).length === 0) return untouched(seed, rules);
+				const pnpmfiles = yield* resolvePnpmfiles(root, configDependencies);
+				return yield* replayInProcess(pnpmfiles, seed, rules);
 			}),
 	});
+
+	/**
+	 * The hermetic layer: replays caller-supplied pnpmfiles, keyed
+	 * `"<name>@<version>"` → absolute path, with **no resolution** — it consults
+	 * neither `node_modules/.pnpm-config` nor the pnpm store, and never the
+	 * effect `FileSystem` service, so it works unchanged under an
+	 * `@effected/memfs` volume.
+	 *
+	 * @remarks
+	 * The test seam for anything that replays hooks: a suite can pin what
+	 * `at(ref)` replays for a ref declaring `plugin@1.0.0` versus one declaring
+	 * `plugin@2.0.0` by mapping both keys to fixture files, with no store on
+	 * disk. The version half of the key is the declared version — the text
+	 * before the first `+` of the `configDependencies` value — so a
+	 * `<version>+<integrity>` spec and a bare `<version>` spec look up the same
+	 * entry.
+	 *
+	 * Same typed semantics as {@link ConfigDependencyHooks.layerLive} past the
+	 * lookup: the same in-process `import()`, the same hook-locator shapes, the
+	 * same tolerant threading, the same `hooks`-source attribution. A declared
+	 * `(name, version)` with no entry fails closed, the same shape as an
+	 * uninstalled version under `layerLive`; an empty `configDependencies`
+	 * returns the seed untouched. A `..` segment in a name is refused before
+	 * any lookup.
+	 *
+	 * @param entries - `"<name>@<version>"` → the absolute path of the pnpmfile
+	 *   to replay for that declared version.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ConfigDependencyHooks } from "@effected/workspaces";
+	 *
+	 * const hooks = ConfigDependencyHooks.layerFrom({
+	 *   "@scope/plugin@1.0.0": "/fixtures/plugin-1/pnpmfile.mjs",
+	 *   "@scope/plugin@2.0.0": "/fixtures/plugin-2/pnpmfile.mjs",
+	 * });
+	 * ```
+	 */
+	static readonly layerFrom = (entries: Readonly<Record<string, string>>): Layer.Layer<ConfigDependencyHooks> =>
+		Layer.succeed(ConfigDependencyHooks, {
+			inject: (_root, configDependencies, seed, rules) =>
+				Effect.gen(function* () {
+					if (Object.keys(configDependencies).length === 0) return untouched(seed, rules);
+					const pnpmfiles = yield* lookupPnpmfiles(entries, configDependencies);
+					return yield* replayInProcess(pnpmfiles, seed, rules);
+				}),
+		});
 
 	/**
 	 * The subprocess layer: replays each config dependency's pnpmfile in a `node`
@@ -634,24 +724,26 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * consumer, a GitHub Action above all, the in-process replay is unreachable.
 	 * This layer keeps every computed load out of the bundle graph: the replay
 	 * program is a **static** string constant passed via argv
-	 * (`node --input-type=module -e <script> <root> <seed> <...names>`), and the
+	 * (`node --input-type=module -e <script> <seed> <rules> <entries>`), and the
 	 * child process performs the computed imports where no bundler rewrote them.
 	 * A subprocess also keeps config-dependency code out of the consumer's own
 	 * process.
 	 *
-	 * The contract's semantics are unchanged, not the downstream fail-open shape:
-	 * an empty `configDependencies` returns the seed without spawning anything; a
-	 * `..` path segment in a dependency name fails typed **before** any spawn; a
-	 * missing pnpmfile (neither `.mjs` nor `.cjs`) is the one legitimate skip,
-	 * discriminated inside the child by `err.url` equality exactly as
-	 * `layerLive` discriminates in process; any other load failure — a syntax
-	 * error, a throwing top level, an `ERR_MODULE_NOT_FOUND` for a module the
-	 * pnpmfile itself imports — and a hook that throws when called are serialized
-	 * back per-name and surface typed as a `hooks`-source `CatalogAssemblyError`
-	 * naming that dependency. A hook's returned *data* stays tolerantly threaded
-	 * (last well-formed write wins), never fatal. Spawn and transport failures —
-	 * `node` absent, a non-zero exit without a result payload, unparseable
-	 * output — fail typed too, never a defect and never a silent skip.
+	 * The declared-version resolution is the PARENT's: the same ladder as
+	 * `layerLive` (`.pnpm-config` when it holds the declared version, else the
+	 * pnpm store, else a typed fail-closed error) runs here, and the child
+	 * receives the resolved `[name, fileUrl]` pairs as one JSON argv
+	 * argument. An empty `configDependencies`, or one whose dependencies all
+	 * ship no pnpmfile, returns the seed without spawning anything; a `..` path
+	 * segment in a dependency name fails typed **before** any spawn; a
+	 * load failure in the child — a syntax error, a throwing top level, an
+	 * `ERR_MODULE_NOT_FOUND` for a module the pnpmfile itself imports — and a
+	 * hook that throws when called are serialized back per-name and surface
+	 * typed as a `hooks`-source `CatalogAssemblyError` naming that dependency.
+	 * A hook's returned *data* stays tolerantly threaded (last well-formed write
+	 * wins), never fatal. Spawn and transport failures — `node` absent, a
+	 * non-zero exit without a result payload, unparseable output — fail typed
+	 * too, never a defect and never a silent skip.
 	 *
 	 * Two bounds this layer imposes that `layerLive` cannot: the replay is
 	 * given thirty seconds (a pnpmfile that loops or awaits forever fails typed
@@ -680,47 +772,38 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 				return {
 					inject: (root, configDependencies, seed, rules) =>
 						Effect.gen(function* () {
-							const names = Object.keys(configDependencies);
-							if (names.length === 0)
-								return { catalogs: seed, releaseAge: {}, peerDependencyRules: rules ?? NO_PEER_RULES };
+							if (Object.keys(configDependencies).length === 0) return untouched(seed, rules);
 
-							// Validate every name BEFORE spawning: a `..` segment would escape
-							// `.pnpm-config` inside the child. Fails typed on the same
-							// `hooks`-source path as layerLive — never a silent skip, and no
-							// subprocess ever sees the malicious name.
-							for (const name of names) {
-								if (hasTraversalSegment(name)) {
-									return yield* Effect.fail(
-										new CatalogAssemblyError({
-											source: "hooks",
-											path: name,
-											cause: new Error(`config dependency name has a '..' path segment: ${name}`),
-										}),
-									);
-								}
-							}
+							// Resolve in the parent: the `..` refusal and the declared-version
+							// ladder run here, so no subprocess ever sees a traversal name or
+							// performs a lookup of its own. Nothing to replay → nothing to spawn.
+							const pnpmfiles = yield* resolvePnpmfiles(root, configDependencies);
+							const loadable = pnpmfiles.flatMap(({ name, path }) =>
+								path === undefined ? [] : [[name, pathToFileURL(path).href] as const],
+							);
+							if (loadable.length === 0) return untouched(seed, rules, replaysOf(pnpmfiles));
 
-							// Root, seed and names travel via argv — never interpolated into the
-							// script, and `ChildProcess.make` spawns without a shell. `Run.jsonLine`
-							// owns the framing: scanning stdout lines from the end, the payload is
-							// the last line that decodes under the envelope — tolerant of a hook's
-							// own console noise before AND after it — parsed REGARDLESS of the
-							// exit code, since the envelope's `ok` discriminates in-band. No valid
-							// payload (a crash, a non-zero exit with no result, garbage output) is
-							// a mechanism failure, typed, with the exit code and stderr carried as
-							// context on the `CommandOutputError` cause.
+							// Seed, rules and the resolved `[name, fileUrl]` pairs travel via argv — never
+							// interpolated into the script, and `ChildProcess.make` spawns without
+							// a shell. `Run.jsonLine` owns the framing: scanning stdout lines from
+							// the end, the payload is the last line that decodes under the
+							// envelope — tolerant of a hook's own console noise before AND after
+							// it — parsed REGARDLESS of the exit code, since the envelope's `ok`
+							// discriminates in-band. No valid payload (a crash, a non-zero exit
+							// with no result, garbage output) is a mechanism failure, typed, with
+							// the exit code and stderr carried as context on the
+							// `CommandOutputError` cause.
 							const command = ChildProcess.make("node", [
 								"--input-type=module",
 								"-e",
 								REPLAY_SCRIPT,
-								root,
 								JSON.stringify(seed),
 								// The rules seed rides the same argv channel as the catalog seed —
 								// never spliced into the program text, which must stay a static
 								// string (a bundler compiles an interpolated dynamic import into an
 								// unresolvable context module).
 								JSON.stringify(rules ?? NO_PEER_RULES),
-								...names,
+								JSON.stringify(loadable),
 							]);
 							// The replay executes arbitrary config-dependency code; bound it, or a
 							// spinning pnpmfile hangs catalog assembly for the whole program. On
@@ -732,9 +815,9 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 								Effect.catch((cause) => Effect.fail(new CatalogAssemblyError({ source: "hooks", path: root, cause }))),
 							);
 
-							// A serialized per-name failure: the child discriminated a real
-							// load/replay failure from the legitimate missing-pnpmfile skip, so
-							// this maps 1:1 onto layerLive's typed error, attribution intact.
+							// A serialized per-name failure: the child reports a real load/replay
+							// failure by name, so this maps 1:1 onto layerLive's typed error,
+							// attribution intact.
 							if (payload.ok === false) {
 								return yield* Effect.fail(
 									new CatalogAssemblyError({
@@ -748,12 +831,7 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 							// The child returned the raw threaded config slice; fold and normalize
 							// in the parent exactly as layerLive does, reading the slice tolerantly
 							// against the seed (a hook's returned data is never fatal).
-							const config = configOf(payload.config, seedToConfig(seed, rules));
-							return {
-								catalogs: configToEntries(config),
-								releaseAge: releaseAgeOf(config),
-								peerDependencyRules: peerRulesOf(config),
-							};
+							return injectionOf(configOf(payload.config, seedToConfig(seed, rules)), pnpmfiles);
 						}),
 				};
 			}),

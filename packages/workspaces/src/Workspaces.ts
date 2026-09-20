@@ -21,6 +21,7 @@ import type { FileSystem, Path } from "effect";
 import { Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChangeDetector } from "./ChangeDetector.js";
+import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import { LockfileReader } from "./LockfileReader.js";
 import type { DetectedPackageManager } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
@@ -77,14 +78,17 @@ export type WorkspacesServices =
 // Shared composition helper for Workspaces.layer,
 // Workspaces.layerWithConfigDependencies and
 // Workspaces.layerWithConfigDependenciesSubprocess; the public contracts live
-// on those statics. Generic in R so a catalogs factory carrying an extra
-// requirement (the subprocess variant's ChildProcessSpawner) threads it
-// through to the composite's R unchanged.
+// on those statics. It takes the ConfigDependencyHooks layer EXPLICITLY —
+// built once per composite and handed to WorkspaceCatalogs here and, by
+// `withGit`, to WorkspaceSnapshots — so both services replay through ONE
+// hooks reference (layer memoization is by reference) while the composite's
+// OUTPUT never carries ConfigDependencyHooks: `WorkspacesServices` is
+// unchanged. Generic in R so a hooks layer carrying an extra requirement (the
+// subprocess variant's ChildProcessSpawner) threads it through to the
+// composite's R.
 const compose = <R = never>(
 	options: WorkspacesOptions | undefined,
-	catalogsFactory: (
-		options?: WorkspacesOptions,
-	) => Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path | R>,
+	hooks: Layer.Layer<ConfigDependencyHooks, never, R>,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path | R> => {
 	const roots = WorkspaceRoot.layer;
 	const detector = PackageManagerDetector.layer;
@@ -94,7 +98,10 @@ const compose = <R = never>(
 		Layer.provide(detector),
 		Layer.provide(discovery),
 	);
-	const catalogs = catalogsFactory(options).pipe(Layer.provide(roots), Layer.provide(lockfiles));
+	const catalogs = WorkspaceCatalogs.layerWithHooks(hooks, options).pipe(
+		Layer.provide(roots),
+		Layer.provide(lockfiles),
+	);
 
 	// PublishabilityDetector is deliberately ABSENT from this merge. Supplying a
 	// default here made the npm-semantics choice invisible and, because
@@ -114,36 +121,31 @@ const compose = <R = never>(
 const layer = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
-	compose<never>(options, WorkspaceCatalogs.layer);
+	compose(options, ConfigDependencyHooks.layerNoop);
 
 /**
- * The git half, over an ALREADY-BUILT core composite.
- *
- * @remarks
- * Taking the core as a parameter rather than building it is what lets the
- * config-dependency composites exist at all: the git services are identical
- * across all three, and only the catalogs layer underneath differs. Copying
- * this graph per variant is exactly what a consumer had to do downstream
- * before `layerWithGitAndConfigDependencies` existed.
- *
- * `core` is threaded in as a value, so the caller's single `layer(options)`
- * reference is shared by `ChangeDetector`, `WorkspaceSnapshots` and the merge —
- * building it twice here would defeat layer memoization inside one composite.
+ * The core composite widened with the git tier: `Git`, `ChangeDetector` and
+ * `WorkspaceSnapshots`. It builds the core over `hooks` ITSELF, so the SAME
+ * hooks layer reaches `WorkspaceCatalogs` (through `compose`) and
+ * `WorkspaceSnapshots` by construction — `at(ref)` replays a ref's config
+ * dependencies exactly as the live assembler replays the worktree's: one
+ * reference, one memo, one policy for both sides of a diff.
  */
-const withGit = <R>(
-	core: Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path | R>,
+const withGit = <R = never>(
+	hooks: Layer.Layer<ConfigDependencyHooks, never, R>,
 	options: WorkspacesGitOptions | undefined,
 ): Layer.Layer<
 	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
 	never,
 	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner | R
 > => {
+	const core = compose(options, hooks);
 	const git = Git.layer;
 	return Layer.mergeAll(
 		core,
 		git,
 		ChangeDetector.layer.pipe(Layer.provide(git), Layer.provide(core)),
-		WorkspaceSnapshots.layer(options).pipe(Layer.provide(git), Layer.provide(core)),
+		WorkspaceSnapshots.layer(options).pipe(Layer.provide(git), Layer.provide(hooks), Layer.provide(core)),
 	);
 };
 
@@ -154,7 +156,7 @@ const layerWithGit = (
 	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
 	never,
 	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-> => withGit<never>(layer(options), options);
+> => withGit(ConfigDependencyHooks.layerNoop, options);
 
 // Implementation of Workspaces.resolvers; the public contract lives on the static.
 const resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver, never, WorkspaceCatalogs | WorkspaceDiscovery> =
@@ -164,7 +166,7 @@ const resolvers: Layer.Layer<CatalogResolver | WorkspaceResolver, never, Workspa
 const layerWithConfigDependencies = (
 	options?: WorkspacesOptions,
 ): Layer.Layer<WorkspacesServices, never, FileSystem.FileSystem | Path.Path> =>
-	compose<never>(options, WorkspaceCatalogs.layerWithConfigDependencies);
+	compose(options, ConfigDependencyHooks.layerLive);
 
 // Implementation of Workspaces.layerWithConfigDependenciesSubprocess; the public contract lives on the static.
 const layerWithConfigDependenciesSubprocess = (
@@ -173,7 +175,7 @@ const layerWithConfigDependenciesSubprocess = (
 	WorkspacesServices,
 	never,
 	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-> => compose<ChildProcessSpawner.ChildProcessSpawner>(options, WorkspaceCatalogs.layerWithConfigDependenciesSubprocess);
+> => compose(options, ConfigDependencyHooks.layerSubprocess);
 
 // Implementation of Workspaces.layerWithGitAndConfigDependencies; the public
 // contract lives on the static.
@@ -183,7 +185,7 @@ const layerWithGitAndConfigDependencies = (
 	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
 	never,
 	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-> => withGit<never>(layerWithConfigDependencies(options), options);
+> => withGit(ConfigDependencyHooks.layerLive, options);
 
 // Implementation of Workspaces.layerWithGitAndConfigDependenciesSubprocess; the
 // public contract lives on the static.
@@ -193,7 +195,7 @@ const layerWithGitAndConfigDependenciesSubprocess = (
 	WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
 	never,
 	FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-> => withGit<ChildProcessSpawner.ChildProcessSpawner>(layerWithConfigDependenciesSubprocess(options), options);
+> => withGit(ConfigDependencyHooks.layerSubprocess, options);
 
 // Implementation of Workspaces.resolverLayer; the public contract lives on the static.
 const resolverLayer = (

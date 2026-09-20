@@ -17,6 +17,8 @@ import type { Lockfile, ResolvedPackage } from "@effected/lockfiles";
 import { Range, SemVer } from "@effected/semver";
 import { Result, Schema } from "effect";
 import type { PeerDependencyRules } from "./ConfigDependencyHooks.js";
+import type { PeerNameMatcher } from "./internal/peerPatterns.js";
+import { peerNameMatcher } from "./internal/peerPatterns.js";
 import type { ImporterRoots } from "./internal/roots.js";
 import { indexInstances, rootInstances } from "./internal/roots.js";
 
@@ -30,9 +32,9 @@ import { indexInstances, rootInstances } from "./internal/roots.js";
  *   so pnpm's post-hoc suppression could not be replicated and some reported
  *   rows may be ones pnpm hides. **Omitting the option always produces this**,
  *   because "nobody looked" and "I looked and there are none" are different
- *   facts. Supplied rules with a non-empty `ignoreMissing` or `allowAny` also
- *   produce it: only `allowedVersions` is applied, so an unimplemented axis
- *   degrades to fail-closed rather than to a wrong answer.
+ *   facts. Supplied rules never produce it: all three axes —
+ *   `allowedVersions`, `ignoreMissing` and `allowAny` — are applied with
+ *   pnpm's measured semantics.
  * - `"unresolvedEdge"` — some instance records an edge this model could not
  *   name (`ResolvedPackage.unresolvedEdges`), so a peer that edge satisfies
  *   cannot be verified either way.
@@ -55,10 +57,11 @@ export type UnverifiedReason = "peerRulesNotApplied" | "unresolvedEdge";
  * different results, because a gate must be able to tell "clean" from
  * "unchecked".
  *
- * **Only `allowedVersions` is applied.** Rules whose `ignoreMissing` or
- * `allowAny` is non-empty describe a suppression policy this module does not
- * implement, so they also yield `"peerRulesNotApplied"` — the unimplemented
- * axes fail closed instead of being silently ignored.
+ * **All three axes of the supplied rules are applied**, each with the
+ * semantics measured against pnpm (see {@link PeerCheck.run}): `allowedVersions`
+ * permits a resolved version by range, `ignoreMissing` hides a required peer
+ * nothing resolved for, and `allowAny` hides a peer that resolved outside its
+ * range. The two list axes are name patterns, never `parent>peer` keys.
  *
  * @public
  */
@@ -144,6 +147,13 @@ const supportsPeerResolution = (format: Lockfile["format"]): boolean => PEER_RES
 interface Walk {
 	readonly instance: ResolvedPackage;
 	readonly path: ReadonlyArray<PeerParent>;
+}
+
+/** The effective suppression policy, with both list axes compiled to predicates. */
+interface Policy {
+	readonly allowed: Readonly<Record<string, string>>;
+	readonly ignoreMissing: PeerNameMatcher;
+	readonly allowAny: PeerNameMatcher;
 }
 
 /**
@@ -261,17 +271,15 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 		// gate that an unchecked workspace is clean.
 		const keySupplied = options !== undefined && "peerDependencyRules" in options;
 		const rules = options?.peerDependencyRules;
-		// Only `allowedVersions` is applied. A workspace whose rules populate
-		// `ignoreMissing` or `allowAny` has a suppression policy this module cannot
-		// replicate, so claiming the policy was applied would report rows pnpm
-		// hides — the exact false-positive class this work removes. An unimplemented
-		// axis degrades to FAIL CLOSED rather than to a wrong answer, reusing the
-		// existing reason ("the effective suppression policy was not applied")
-		// rather than growing the deliberately closed union.
-		const axesUnapplied = rules !== undefined && (rules.ignoreMissing.length > 0 || rules.allowAny.length > 0);
-		const rulesApplied = keySupplied && !axesUnapplied;
-		const allowed = rules?.allowedVersions ?? {};
-		const unverified: Array<UnverifiedReason> = rulesApplied ? [] : ["peerRulesNotApplied"];
+		// All three axes are applied, so supplied rules yield a verified report.
+		// Each list axis compiles to a name predicate ONCE here rather than per
+		// row; both are `() => false` when the axis is empty.
+		const policy: Policy = {
+			allowed: rules?.allowedVersions ?? {},
+			ignoreMissing: peerNameMatcher(rules?.ignoreMissing ?? []),
+			allowAny: peerNameMatcher(rules?.allowAny ?? []),
+		};
+		const unverified: Array<UnverifiedReason> = keySupplied ? [] : ["peerRulesNotApplied"];
 
 		if (!supportsPeerResolution(lockfile.format)) {
 			return PeerCheck.make({ supported: false, unsatisfied: [], unresolvedImporters: [], unverified });
@@ -290,7 +298,7 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 				unresolved.push(importer.path);
 				continue;
 			}
-			collect(importer.path, walksFrom(roots), byId, rows, seen, allowed);
+			collect(importer.path, walksFrom(roots), byId, rows, seen, policy);
 		}
 
 		// An edge the lockfile records but the model could not name means some
@@ -336,7 +344,7 @@ const collect = (
 	byId: ReadonlyMap<string, ResolvedPackage>,
 	rows: Array<UnsatisfiedPeer>,
 	seen: Set<string>,
-	allowed: Readonly<Record<string, string>>,
+	policy: Policy,
 ): void => {
 	const visited = new Set<string>();
 	const queue: Array<Walk> = [...roots];
@@ -355,7 +363,7 @@ const collect = (
 			// pnpm computes the same violation and then SUPPRESSES it when a rule
 			// permits the version that resolved. Replicating that is the whole
 			// point: without it we report findings pnpm calls clean.
-			if (suppressedByRule(allowed, current.instance.name, peer, verdict.found)) continue;
+			if (suppressedByRule(policy, current.instance.name, peer, verdict.found)) continue;
 			// One row per (importer, peer, declaring INSTANCE) — which is what pnpm
 			// reports. Measured on `peers/diamond`, where one importer reaches
 			// `use-sync-external-store@1.2.2` through both react-redux and zustand:
@@ -429,32 +437,31 @@ const ruleParentName = (parent: string): string => {
 };
 
 /**
- * Whether a rule permits the version that actually resolved for this peer.
+ * Whether the effective rules suppress this row, the way pnpm would.
  *
  * @remarks
- * Only `allowedVersions` is consulted. `ignoreMissing` and `allowAny` are
- * carried through the seam **unmeasured and unwired** — an unmeasured
- * suppression is exactly what produced the false positives this work removes,
- * so no code acts on them until someone measures them. Non-empty, they make the
- * whole report `"peerRulesNotApplied"` (see {@link PeerCheck.run}) rather than
- * being ignored here.
+ * The three axes partition on `found`, and the partition is the measured
+ * no-cross rule (pnpm 12.5.1, `__test__/fixtures/peers/allowany/` and
+ * `ignoremissing/`):
  *
- * A rule cannot rescue a peer that resolved to nothing: with no version there
- * is nothing for the rule to permit, and pnpm's own `missing` section is not
- * suppressed by `allowedVersions` either.
+ * - **Nothing resolved** (`found === null`): only `ignoreMissing` can hide the
+ *   row, by matching the peer name. `allowedVersions` cannot — with no version
+ *   there is nothing for a range to permit, and pnpm's `missing` section is not
+ *   suppressed by it either — and neither can `allowAny`
+ *   (`ignoremissing/peers-check-allowany-react.json` keeps all three rows).
+ * - **Something resolved outside the range**: `allowAny` hides it by name, and
+ *   `allowedVersions` hides it when a matching key's range covers the found
+ *   version. `ignoreMissing` never does
+ *   (`allowany/peers-check-ignoremissing-react-redux.json` keeps both rows).
  *
  * @internal
  */
-const suppressedByRule = (
-	allowed: Readonly<Record<string, string>>,
-	parentName: string,
-	peer: string,
-	found: string | null,
-): boolean => {
-	if (found === null) return false;
+const suppressedByRule = (policy: Policy, parentName: string, peer: string, found: string | null): boolean => {
+	if (found === null) return policy.ignoreMissing(peer);
+	if (policy.allowAny(peer)) return true;
 	const version = SemVer.parseResult(found);
 	if (Result.isFailure(version)) return false;
-	for (const [key, permitted] of Object.entries(allowed)) {
+	for (const [key, permitted] of Object.entries(policy.allowed)) {
 		const separator = key.indexOf(">");
 		// A key starting with ">" names no parent at all — malformed, and a
 		// malformed rule suppresses nothing.
@@ -466,7 +473,7 @@ const suppressedByRule = (
 			// clean that it reports `react-dom>react` for — and still reports the
 			// row when the bare key's range does not cover the found version.
 			// Skipping bare keys therefore reports rows pnpm suppresses, while
-			// `rulesApplied` claims the policy was applied.
+			// the report claims the policy was applied.
 			if (key !== peer) continue;
 		} else {
 			if (key.slice(separator + 1) !== peer) continue;

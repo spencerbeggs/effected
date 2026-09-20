@@ -1,7 +1,7 @@
 ---
 type: Limitation
-title: A hook-injected catalog's range bump between two refs is invisible to a snapshot diff
-description: WorkspaceStateSnapshot.crossSeed cannot surface a range change made purely by editing a config-dependency pnpmfile between two refs, because neither ref's committed sources declare the catalog.
+title: Under the no-op hooks layer, a hook-injected catalog's range bump between two refs is invisible to a snapshot diff
+description: Under ConfigDependencyHooks.layerNoop (the default composites), WorkspaceStateSnapshot.crossSeed cannot surface a range change made purely by bumping a config dependency between two refs, because neither ref's committed sources declare the catalog; a replaying layer detects it.
 status: stable
 bounds: ../interfaces/workspaces-snapshots.md
 tags:
@@ -11,53 +11,53 @@ sources:
     resource: ../../packages/workspaces/src/WorkspaceStateSnapshot.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 373de34988bf57252266d1389b892885de10a37bb592edaf9cc579591f069f33
+  at: 2026-09-20T05:03:32Z
+  body_sha256: 8711a818e98f977ca9935e7e4cb410c771dc1b42dcf783bbf7153758318c01c1
 ---
 
-# A hook-injected catalog's range bump between two refs is invisible to a snapshot diff
+# Under the no-op hooks layer, a hook-injected catalog's range bump between two refs is invisible to a snapshot diff
 
 ## Condition
 
-`WorkspaceStateSnapshot.crossSeed(before, after)` gives each side of a
-two-ref diff the other side's committed catalogs as a seed, so a
-`catalog:` specifier resolved against a hook-injected catalog (one that
-exists only because a pnpm config-dependency pnpmfile injects it, never
-recorded in `pnpm-workspace.yaml` or the lockfile's `catalogs:` block) can
-still resolve to a concrete version on both sides of a diff.[^workspace-state-snapshot-ts]
-That fallback answers with a version, not a declared range.
+The snapshots were read under `ConfigDependencyHooks.layerNoop` — what
+`Workspaces.layer` and `Workspaces.layerWithGit` wire — so
+`WorkspaceSnapshots.at(ref)` executed no config-dependency code at either
+ref, and `WorkspaceStateSnapshot.crossSeed(before, after)` is what lets a
+`catalog:` specifier against a hook-injected catalog (one that exists only
+because a pnpm config-dependency pnpmfile injects it, never recorded in
+`pnpm-workspace.yaml` or the lockfile's `catalogs:` block) resolve at all
+on the ref side.[^workspace-state-snapshot-ts] Each side's answer then
+comes from the other side's seed, or from the importer-version fallback,
+which answers with a version rather than a declared range.
 
 ## Symptom
 
-When a config-dependency's pnpmfile changes the declared range of a
-hook-injected catalog entry between the two refs being diffed — with no
-other change to either ref's committed sources — the diff reports no row
-for that catalog specifier. The dependency table looks unchanged even
-though the effective policy genuinely moved.
+When the config dependency was bumped between the two refs and its newer
+pnpmfile declares a different range for a hook-injected catalog entry —
+with no other change to either ref's committed sources — the diff reports
+no row for that catalog specifier. The dependency table looks unchanged
+even though the effective policy genuinely moved.
 
 ## Why this is acceptable
 
-Surfacing the range change would require replaying the pinned
-config-dependency code at one or both refs, and an at-ref read
-(`WorkspaceSnapshots.at(ref)`) executes no historical code by design — it
-reads through `git show` with no checkout, which is what makes it safe to
-call against an arbitrary ref with no network access and no side effects.
-Widening that contract to replay a historical pnpmfile would reopen the
-exact class of risk (network fetch, arbitrary historical code execution)
-the read-with-no-checkout design exists to avoid, for a case with a
-narrow, identifiable blast radius: the catalog is not declared anywhere
-git can already see.
+The no-op layer is the default precisely so the default composites execute
+no config-dependency code, and a read that executes nothing cannot see a
+catalog that exists only through execution. The case has a narrow,
+identifiable blast radius: the catalog is not declared anywhere git can
+already see.
 
 ## What the fix would take
 
-Nothing changes within the snapshot's own committed-sources contract; the
-one committed artifact that does carry evidence of this change is the
-`configDependencies` block in `pnpm-workspace.yaml`, which names the
-config-dependency package and its pinned version. A consumer that must
-catch this class of change diffs that block directly rather than relying
-on `WorkspaceStateSnapshot`'s catalog diff, since a config-dependency
-version bump is the only committed signal that a hook-injected catalog's
-policy might have moved.
+Opting in. Under a replaying layer (`Workspaces.layerWithGitAndConfigDependencies`
+or its subprocess twin) `at(ref)` replays each ref's `configDependencies`
+at the version that ref declares — resolved through `node_modules/.pnpm-config`
+when it holds that version and through the pnpm store otherwise, failing
+closed when neither does — so each side's own catalogs carry its range and
+the bump is a visible row. The store keeps every version installed on the
+machine, which is what makes a past ref's pnpmfile reachable with no
+checkout and no fetch. A consumer that must stay on the no-op layer diffs
+the `configDependencies` block in `pnpm-workspace.yaml` directly, the only
+committed signal that a hook-injected catalog's policy might have moved.
 
 [^workspace-state-snapshot-ts]: `packages/workspaces/src/WorkspaceStateSnapshot.ts` —
     `crossSeed`, `withSeededCatalogs`, `seededCatalogs`.

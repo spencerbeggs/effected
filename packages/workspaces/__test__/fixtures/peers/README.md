@@ -166,3 +166,49 @@ by two chains. The oracle is the decision this fixture exists to record: pnpm
 reports that peer **once**, carrying the react-redux chain, and says nothing
 about the zustand one — it collapses per (importer, peer, package) rather than
 emitting a row per parent chain.
+
+## `allowany/` and `ignoremissing/`
+
+The measurement pass for the two suppression axes `PeerCheck` did not consume
+until now (effected#430). Generated with **pnpm 12.5.1** on 2026-09-20 by the
+same recipe (`pnpm install --lockfile-only`, `autoInstallPeers: false`); the
+lockfile in each directory is byte-identical under every rule configuration,
+so one lockfile carries every verdict. The interesting variable is again the
+*rule*, and every run has a firing control (`peers-check.json`, no rules).
+
+`allowany/` is two importers: `packages/unmet` (react@17.0.2 + react-dom@18.3.1,
+a **bad** required `react`) and `packages/optional` (react-redux@9.2.0 against
+redux@4.2.1, a **bad** optional `redux`). `ignoremissing/` is one importer,
+`packages/lone`, with react-dom and react-redux and **no react anywhere**, so
+pnpm reports three **missing** `react` rows, one transitive.
+
+What the verdicts establish, one axis at a time:
+
+- **An entry is a pattern over the PEER name, not a `parent>peer` key.**
+  `allowAny: ["react"]` clears the bad `react` row and leaves `redux`;
+  `["redux"]` does the reverse (`peers-check-bare-react.json`,
+  `peers-check-bare-redux.json`). `["react-dom>react"]` suppresses **nothing**
+  on either axis (`peers-check-parent-key.json` in both directories, and
+  `peers-check-parent-versioned-key.json` for `react-dom@18.3.1>react`) — the
+  `allowedVersions` key grammar does not carry over, and neither does the
+  parent-version quirk, because there is no parent in the key at all.
+- **Patterns are `@pnpm/matcher` globs**: `*` is a wildcard within the name,
+  a lone `*` matches everything, and a leading `!` negates. `["re*"]` clears
+  both bad rows; `["rea*"]` clears every missing `react`
+  (`peers-check-glob.json`). `["*", "!redux"]` clears `react` and keeps
+  `redux` (`allowany/peers-check-star-negation.json`); `["*", "!react"]` keeps
+  every missing `react` (`ignoremissing/peers-check-star-negation.json`). A
+  list holding **only** negations matches everything not excluded — `["!redux"]`
+  alone clears every missing `react` (`peers-check-negation-only.json`), which
+  is `@pnpm/matcher`'s "no include patterns" branch, not a typo.
+- **The axes do not cross.** `allowAny: ["react"]` leaves every **missing**
+  `react` in place (`ignoremissing/peers-check-allowany-react.json`), and
+  `ignoreMissing: ["react", "redux"]` leaves both **bad** rows in place
+  (`allowany/peers-check-ignoremissing-react-redux.json`). `allowAny` answers
+  only "something resolved at a version outside the range"; `ignoreMissing`
+  answers only "nothing resolved for a required peer".
+- **`allowAny` covers optional peers too** — the bad optional `redux` row is
+  cleared by `["redux"]` exactly as the required `react` row is by `["react"]`.
+- **`ignoreMissing` reaches transitive parents**: the
+  `react-redux > use-sync-external-store > react` row is cleared along with the
+  direct ones by the bare `react`; there is no per-chain grammar to spell.

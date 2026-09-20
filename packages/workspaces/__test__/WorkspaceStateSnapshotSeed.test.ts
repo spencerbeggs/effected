@@ -191,12 +191,14 @@ describe("WorkspaceStateSnapshot.crossSeed", () => {
 		assert.deepStrictEqual(seededBefore.resolve("effect", "catalog:"), Option.some("^5.0.0"));
 	});
 
-	it("suppresses a change neither ref declared — the documented limitation, pinned", () => {
+	it("suppresses a change neither ref declared — the layerNoop limitation, pinned", () => {
 		// Both sides get the catalog only from the other, so they agree by
-		// construction. This is inherent to cross-seeding, not a defect: recovering
-		// it would mean replaying each ref's pinned config-dependency code, which
-		// `at(ref)` will not do. Pinned so a future change to this behaviour is a
-		// deliberate decision rather than an accident.
+		// construction. This is what cross-seeding alone can see: two snapshots
+		// whose OWN catalogs are empty — the shape `at(ref)` produces under
+		// `ConfigDependencyHooks.layerNoop`. Under a replaying layer `at(ref)`
+		// replays each ref's pinned config dependency and the two `catalogs`
+		// fields differ, which the "genuine range change" case above covers.
+		// Pinned so a future change to this behaviour is a deliberate decision.
 		const before = snapshot({ catalogs: CatalogSet.empty(), importerVersions: { ".": { effect: "0.7.0" } } });
 		const after = snapshot({ catalogs: CatalogSet.empty(), importerVersions: { ".": { effect: "0.7.0" } } });
 		const [seededBefore, seededAfter] = WorkspaceStateSnapshot.crossSeed(before, after);
@@ -214,6 +216,38 @@ describe("WorkspaceStateSnapshot — seededCatalogs and serialization", () => {
 			const decoded = yield* Schema.decodeUnknownEffect(WorkspaceStateSnapshot)(encoded);
 			assert.deepStrictEqual(decoded.resolve("react", "catalog:react18"), Option.some("^18.2.0"));
 			assert.deepStrictEqual(decoded.catalogs.entries, { default: { effect: "^4.0.0" } });
+		}),
+	);
+
+	it.effect("carries hookReplays through withSeededCatalogs and crossSeed, and round-trips it", () =>
+		Effect.gen(function* () {
+			const replays = { "@scope/plugin": "1.0.0" };
+			const before = WorkspaceStateSnapshot.make({
+				packages: [],
+				catalogs: catalogs({ default: { effect: "^4.0.0" } }),
+				importerVersions: {},
+				hookReplays: replays,
+			});
+			const after = snapshot({ catalogs: catalogs({ default: { effect: "^5.0.0" } }) });
+			assert.deepStrictEqual(before.withSeededCatalogs(CatalogSet.empty()).hookReplays, replays);
+			const [seededBefore, seededAfter] = WorkspaceStateSnapshot.crossSeed(before, after);
+			assert.deepStrictEqual(seededBefore.hookReplays, replays);
+			// The other side had none, and seeding must not invent one.
+			assert.isUndefined(seededAfter.hookReplays);
+			const encoded = yield* Schema.encodeEffect(WorkspaceStateSnapshot)(seededBefore);
+			const decoded = yield* Schema.decodeUnknownEffect(WorkspaceStateSnapshot)(encoded);
+			assert.deepStrictEqual(decoded.hookReplays, replays);
+		}),
+	);
+
+	it.effect("decodes a snapshot serialized before hookReplays existed", () =>
+		Effect.gen(function* () {
+			const decoded = yield* Schema.decodeUnknownEffect(WorkspaceStateSnapshot)({
+				packages: [],
+				catalogs: { entries: {} },
+				importerVersions: {},
+			});
+			assert.isUndefined(decoded.hookReplays);
 		}),
 	);
 

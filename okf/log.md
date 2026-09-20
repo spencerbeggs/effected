@@ -1,5 +1,11 @@
 # Log
 
+## 2026-09-19
+
+* Updated Support the current major and one back of every package manager
+* Updated Vendored Effect is pinned to the catalog tag, not main
+* Added npm 12's pack --json is an object keyed by name, not an array
+
 ## 2026-09-17
 
 * Updated "Wait for the kit" leaves raw spawns and duplicated regex behind

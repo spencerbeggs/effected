@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,10 @@ import { manifest, platform } from "../fixtures.js";
 // temp workspace root with a real `node_modules/.pnpm-config/<name>/pnpmfile.cjs`
 // (node_modules is gitignored, so it cannot be committed) by copying the
 // committed fixture module, and points the config-dependency resolution at it.
+// Every fixture directory carries a `package.json` at `1.0.0`, the version the
+// tests declare: the replaying layers resolve the DECLARED version and a
+// directory holding no manifest is "nothing installed" (see
+// `ConfigDependencyResolution.int.test.ts` for the ladder itself).
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
 const CJS_FIXTURE = join(FIXTURES, "hook-pnpmfile.cjs");
@@ -51,8 +55,13 @@ const SEED = { default: { effect: "^4.0.0" } } as const;
 
 let root: string;
 
-/** The `.pnpm-config/<name>` directory under the temp root. */
-const configDepDir = (name: string): string => join(root, "node_modules", ".pnpm-config", name);
+/** The `.pnpm-config/<name>` directory under the temp root, created with a `package.json` at `1.0.0`. */
+const configDepDir = (name: string): string => {
+	const dir = join(root, "node_modules", ".pnpm-config", name);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version: "1.0.0" }));
+	return dir;
+};
 
 beforeAll(() => {
 	root = mkdtempSync(join(tmpdir(), "effected-hooks-"));
@@ -115,18 +124,18 @@ describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 		);
 	});
 
-	it.effect("a config dependency with no pnpmfile contributes nothing, not a failure", () =>
+	it.effect("a declared config dependency that is installed nowhere fails closed, never a silent skip", () =>
 		Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			// `absent-dep` has no `.pnpm-config/absent-dep/` directory at all, so both
-			// the `.mjs` and `.cjs` candidate imports fail ERR_MODULE_NOT_FOUND for the
-			// candidate itself and it is skipped; the seed passes through unchanged.
-			const result = yield* hooks.inject(root, { "absent-dep": "1.0.0" }, SEED);
-			assert.deepStrictEqual(result, {
-				catalogs: SEED,
-				releaseAge: {},
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
-			});
+			// `absent-dep` has no `.pnpm-config/absent-dep/` directory and no store
+			// copy. The declared version cannot be honoured, so this is a typed
+			// `hooks` failure naming the dependency — a silent skip here is how a
+			// hook-only catalog went missing on one side of a diff.
+			const error = yield* Effect.flip(hooks.inject(root, { "absent-dep": "1.0.0" }, SEED));
+			assert.instanceOf(error, CatalogAssemblyError);
+			assert.strictEqual(error.source, "hooks");
+			assert.strictEqual(error.path, "absent-dep");
+			assert.include((error.cause as Error).message, "pnpm add --config absent-dep@1.0.0");
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
 });
@@ -159,13 +168,15 @@ describe("ConfigDependencyHooks.layerLive — pnpm 11 .mjs pnpmfile and load dis
 	it.effect("a config-dependency directory with neither pnpmfile.mjs nor pnpmfile.cjs is skipped, not a failure", () =>
 		Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			// The directory exists but carries neither candidate, so both imports fail
-			// ERR_MODULE_NOT_FOUND for the candidate itself — the legitimate skip.
+			// The directory exists at the declared version but carries no pnpmfile
+			// candidate — the one legitimate skip.
 			const result = yield* hooks.inject(root, { [NEITHER_DEP_NAME]: "1.0.0" }, SEED);
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
 				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				// Resolved (so recorded), contributed nothing.
+				replays: { [NEITHER_DEP_NAME]: { version: "1.0.0", source: "installed" } },
 			});
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
@@ -201,13 +212,16 @@ describe("ConfigDependencyHooks.layerLive — rejects a traversal name before im
 	it.effect("a scoped name (a legitimate '/') is NOT rejected — only '..' segments are", () =>
 		Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			// `@scope/pkg` contains a `/` but no `..`; it resolves inside `.pnpm-config`,
-			// finds no pnpmfile, and contributes nothing — the seed passes through.
+			// `@scope/pkg` contains a `/` but no `..`; it resolves inside `.pnpm-config`
+			// (installed at 1.0.0 with no pnpmfile), and contributes nothing — the seed
+			// passes through.
+			configDepDir("@scope/pkg");
 			const result = yield* hooks.inject(root, { "@scope/pkg": "1.0.0" }, SEED);
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
 				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				replays: { "@scope/pkg": { version: "1.0.0", source: "installed" } },
 			});
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
 	);
@@ -356,11 +370,13 @@ describe("ConfigDependencyHooks.layerNoop — provably never loads the pnpmfile"
 			const hooks = yield* ConfigDependencyHooks;
 			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, SEED);
 			// Same root and same declared config dependency as the live test — the ONLY
-			// difference is the layer. The seed is unchanged and the fixture never ran.
+			// difference is the layer. The seed is unchanged, the fixture never ran,
+			// and nothing was resolved — so nothing is recorded as replayed.
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
 				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				replays: {},
 			});
 			assert.isFalse(existsSync(markerPath));
 		}).pipe(
