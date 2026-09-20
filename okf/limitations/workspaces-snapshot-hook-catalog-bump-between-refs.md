@@ -11,8 +11,8 @@ sources:
     resource: ../../packages/workspaces/src/WorkspaceStateSnapshot.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-20T05:03:32Z
-  body_sha256: 8711a818e98f977ca9935e7e4cb410c771dc1b42dcf783bbf7153758318c01c1
+  at: 2026-09-20T05:41:00Z
+  body_sha256: fbf866c9f2b10d220e355de9e9f8b2fa91ada836740ff9d71a98f75e359d32c9
 ---
 
 # Under the no-op hooks layer, a hook-injected catalog's range bump between two refs is invisible to a snapshot diff
@@ -48,11 +48,13 @@ already see.
 
 ## What the fix would take
 
-Opting in. Under a replaying layer (`Workspaces.layerWithGitAndConfigDependencies`
-or its subprocess twin) `at(ref)` replays each ref's `configDependencies`
-at the version that ref declares — resolved through `node_modules/.pnpm-config`
-when it holds that version and through the pnpm store otherwise, failing
-closed when neither does — so each side's own catalogs carry its range and
+Opting in. Under a replaying layer (`Workspaces.layerWithGitAndConfigDependencies`,
+its subprocess twin, or `Workspaces.layerWithGitAndHooks` over
+`ConfigDependencyHooks.layerFrom` for a hermetic test) `at(ref)` replays each
+ref's `configDependencies` at the version that ref declares — resolved through
+`node_modules/.pnpm-config` when it holds that version and through the pnpm
+store otherwise, failing closed when neither does; or read from the supplied
+map — so each side's own catalogs carry its range and
 the bump is a visible row. The store keeps every version installed on the
 machine, which is what makes a past ref's pnpmfile reachable with no
 checkout and no fetch. A consumer that must stay on the no-op layer diffs

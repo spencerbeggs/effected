@@ -15,8 +15,8 @@ sources:
     resource: ../../packages/workspaces/__test__/fixtures/peers/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-20T05:03:32Z
-  body_sha256: b8b8400c16da17ccab44f3c280bf437ff07753643668288b45160448a19c03ee
+  at: 2026-09-20T05:41:00Z
+  body_sha256: 9cb33f48086d7faa8e638d013d228d36cb9ed4cd78f970423d9b280e4d07470b
 ---
 
 # @effected/workspaces peer-dependency checking
@@ -135,9 +135,10 @@ rather than recalled, because an unmeasured suppression is precisely what
 produced the bug this checker exists to remove. `allowedVersions` was
 measured against pnpm 11 (below); the two list axes against pnpm 12.5.1,
 with every oracle run committed under `__test__/fixtures/peers/allowany/`
-and `ignoremissing/`.[^peer-fixtures] Supplied rules therefore always yield
-a verified report; `peerRulesNotApplied` is reserved for the case where no
-rules were supplied at all.
+and `ignoremissing/`.[^peer-fixtures] Supplied rules therefore never
+produce `peerRulesNotApplied`, which is reserved for the case where no rules
+were supplied at all; a report can still be unverified through
+`unresolvedEdge`, which rules do not touch.
 
 ### How pnpm matches an allowedVersions key
 

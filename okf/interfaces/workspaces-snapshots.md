@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/workspaces/src/ChangeDetector.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-20T05:03:32Z
-  body_sha256: 62afed05a68cba9f4c53b1934c2a9686753f4e9420c47c50121270928333f41b
+  at: 2026-09-20T05:41:00Z
+  body_sha256: 6eddd73a06883839c4b2bcb2477294abe7a93e1565da082e2c0296f55d79b870
 ---
 
 # @effected/workspaces snapshots
@@ -72,8 +72,10 @@ service therefore requires that layer, and the composites hand one
 reference to it and to `WorkspaceCatalogs` so the two sides of a diff run
 one policy. Under the no-op layer nothing executes and the ref side sees
 no hook-injected catalog; under a replaying layer each ref's hook runs at
-the version that ref declares, resolved through the installed copy or the
-pnpm store and failing closed otherwise (see
+the version that ref declares — resolved through the installed copy or the
+pnpm store by the live and subprocess layers, failing closed otherwise, or
+taken from a caller-supplied `"<name>@<version>"` map under
+`ConfigDependencyHooks.layerFrom` via `Workspaces.layerWithGitAndHooks` (see
 [the config-dependency seam](workspaces-catalogs.md#the-replaying-layers-resolve-the-declared-version)),
 which still requires no checkout, no fetch and no historical code the
 machine has not already installed. Every snapshot records which version
