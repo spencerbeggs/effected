@@ -241,48 +241,74 @@ const storesFromEnvironment = (root: string): Effect.Effect<ReadonlyArray<string
  * call rather than any single one.
  */
 const discoverStores = (root: string): Effect.Effect<ReadonlyArray<string>, CatalogAssemblyError> =>
-	Effect.map(
-		Effect.all([storeFromModulesYaml(root), storesFromLinks(root), storesFromEnvironment(root)]),
-		([fromYaml, fromLinks, fromEnvironment]) => Arr.dedupe([...fromYaml, ...fromLinks, ...fromEnvironment]),
-	);
+	Effect.gen(function* () {
+		const [fromYaml, fromLinks, fromEnvironment] = yield* Effect.all([
+			storeFromModulesYaml(root),
+			storesFromLinks(root),
+			storesFromEnvironment(root),
+		]);
+		// Dedupe by PHYSICAL directory, not by spelling: rung 2 already answers a
+		// realpath, while `.modules.yaml` and the environment rungs answer
+		// whatever spelling they were given — a symlinked home, `/var` versus
+		// `/private/var` — so string equality would keep one store twice and every
+		// entry in it would then read as two copies. A store that does not exist
+		// is dropped here; it could never hold anything.
+		const canonical: Array<string> = [];
+		for (const store of [...fromYaml, ...fromLinks, ...fromEnvironment]) {
+			const resolved = yield* ioOrNone(root, () => realpath(store));
+			if (Option.isSome(resolved) && !canonical.includes(resolved.value)) canonical.push(resolved.value);
+		}
+		return canonical;
+	});
 
 /**
- * Every `<store>/links/<name>/<declared>/<hash>/node_modules/<name>` directory
- * whose manifest carries exactly `declared`, across every store, in order.
+ * The `<store>/links/<name>/<declared>/<hash>/node_modules/<name>` directories
+ * whose manifest carries exactly `declared`, from the FIRST store (in
+ * discovery order) that holds any — `[]` when none does.
  *
  * @remarks
  * The `<hash>` segment is pnpm's, and it is NOT derivable from the declared
  * integrity (sha256/sha512 of the integrity string, its decoded bytes, the
  * `name@version` dep path and the tarball URL were all tried and none match),
  * and the store keeps no integrity metadata beside the entry — so the
- * manifest version is the only identity this rung can check. Every candidate
- * is collected rather than the first taken, because the CALLER must fail
- * closed when more than one matches: two store copies of one version (a
+ * manifest version is the only identity this rung can check.
+ *
+ * Two rules follow. The decision is scoped to ONE store: discovery order
+ * already encodes authority (`.modules.yaml` names the store this workspace
+ * installed from, the environment rungs are guesses), so a version held by
+ * several distinct stores — `store/v10` beside `store/v11`, a workspace store
+ * beside the platform default — resolves from the first, exactly as the rung
+ * order intends. Within that store every match is returned rather than the
+ * first taken, because the CALLER must fail closed when more than one hash
+ * directory carries the version: two honest copies of one version (a
  * same-version re-publish, a private mirror, a hand-populated store) cannot be
  * told apart here, and importing whichever `readdir` listed first would
- * execute code the ref's own integrity pin was written to exclude.
+ * execute code the ref's own integrity pin was written to exclude. The stores
+ * are already deduplicated by realpath, so two matches here are two entries,
+ * never one entry reached by two spellings.
  */
 const findInStores = (
 	name: string,
 	declared: string,
 	stores: ReadonlyArray<string>,
-): Effect.Effect<ReadonlyArray<string>, CatalogAssemblyError> =>
+): Effect.Effect<{ readonly store: string; readonly matches: ReadonlyArray<string> }, CatalogAssemblyError> =>
 	Effect.gen(function* () {
-		const matches: Array<string> = [];
 		for (const store of stores) {
 			const versionDir = join(store, "links", name, declared);
+			const matches: Array<string> = [];
 			for (const hash of yield* entriesOf(name, versionDir)) {
 				const dir = join(versionDir, hash, "node_modules", name);
 				const version = yield* manifestVersion(name, dir);
 				if (Option.isSome(version) && version.value === declared) matches.push(dir);
 			}
+			if (matches.length > 0) return { store, matches };
 		}
-		return matches;
+		return { store: "", matches: [] };
 	});
 
-/** The fail-closed message for a version the store holds MORE than once: which copies, and how to disambiguate. */
-const ambiguousMessage = (name: string, declared: string, matches: ReadonlyArray<string>): string =>
-	`config dependency ${name}@${declared} is ambiguous: the pnpm store holds ${matches.length} copies of that version ` +
+/** The fail-closed message for a version ONE store holds more than once: which store, which copies, how to disambiguate. */
+const ambiguousMessage = (name: string, declared: string, store: string, matches: ReadonlyArray<string>): string =>
+	`config dependency ${name}@${declared} is ambiguous: the pnpm store at ${store} holds ${matches.length} copies of that version ` +
 	`(${matches.join(", ")}) and the store records no integrity to tell them apart, so none is replayed. ` +
 	`Remove the stale copies, or install ${name}@${declared} in this workspace so node_modules/.pnpm-config answers instead.`;
 
@@ -340,14 +366,14 @@ const resolveDirectory = (
 		const installed = yield* manifestVersion(name, installedDir);
 		if (Option.isSome(installed) && installed.value === declared) return { dir: installedDir, source: "installed" };
 		const searched = yield* stores;
-		const fromStore = yield* findInStores(name, declared, searched);
-		const [only, ...rest] = fromStore;
+		const { store, matches } = yield* findInStores(name, declared, searched);
+		const [only, ...rest] = matches;
 		if (only !== undefined && rest.length === 0) return { dir: only, source: "store" };
-		// Two or more store copies of one version: nothing here can say which one
-		// the ref's integrity pinned, so replaying either would be a guess about
-		// which code to execute. Fail closed and say why.
+		// Two or more copies of one version in ONE store: nothing here can say
+		// which one the ref's integrity pinned, so replaying either would be a
+		// guess about which code to execute. Fail closed and say why.
 		if (only !== undefined)
-			return yield* Effect.fail(hooksError(name, new Error(ambiguousMessage(name, declared, fromStore))));
+			return yield* Effect.fail(hooksError(name, new Error(ambiguousMessage(name, declared, store, matches))));
 		return yield* Effect.fail(hooksError(name, new Error(notInstalledMessage(name, declared, installed, searched))));
 	});
 

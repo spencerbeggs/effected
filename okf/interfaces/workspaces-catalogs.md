@@ -19,8 +19,8 @@ sources:
     resource: ../../packages/workspaces/src/internal/configDependencyResolution.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-20T16:10:17Z
-  body_sha256: b0f4b60a03e8521eee147ce6e271fed2eb60f3d76f7be0b18968d62364bc20d6
+  at: 2026-09-21T16:59:16Z
+  body_sha256: 4cd411673e6efa0041557e4c515b0f7951ed49cc07b87f7be0e5fd6a76bdd3bf
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
@@ -109,10 +109,13 @@ conventional environment and platform locations; otherwise a typed,
 fail-closed `hooks` assembly error naming the package, the declared
 version, what is installed, the stores searched and the remediation
 (`pnpm add --config <name>@<version>` in a throwaway workspace). Two
-honest store copies of one version fail closed too, as ambiguous: the
-hash directory is not derivable from the declared integrity and the store
-records none, so the ladder names both copies rather than guessing which
-code to execute. In the
+honest store copies of one version in one store fail closed too, as
+ambiguous: the hash directory is not derivable from the declared integrity
+and the store records none, so the ladder names the store and both copies
+rather than guessing which code to execute — while discovered stores are
+deduplicated by realpath and the decision is scoped to the first store that
+holds the version, so an aliased spelling or a second store never reads as
+a second copy. In the
 resolved directory the first of `pnpmfile.mjs`, `pnpmfile.cjs`,
 `pnpmfile.js` present in one directory listing is loaded; a listed but
 unreadable file fails typed at import time, never as "ships no hook", and

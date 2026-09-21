@@ -8,7 +8,7 @@
 // is real even when a caller's FileSystem is virtual), and the subprocess
 // layer spawns a real `node`.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,6 +48,8 @@ const SCOPED = "@scope/cfg-scoped";
 const AMBIGUOUS = "cfg-ambiguous";
 // Only in a store reachable through `$PNPM_HOME/store` — rung 3 of discovery.
 const ENV_ONLY = "cfg-env";
+// Held by BOTH the workspace's store (rung 1) and the `$PNPM_HOME` store (rung 3).
+const TWO_STORES = "cfg-twostores";
 
 let root: string;
 let store: string;
@@ -55,8 +57,10 @@ let store: string;
 let linkedRoot: string;
 /** A third root with nothing under node_modules at all. */
 let bareRoot: string;
-/** A fake `$PNPM_HOME` whose `store/v11` holds ENV_ONLY and nothing else. */
+/** A fake `$PNPM_HOME` whose `store/v11` holds ENV_ONLY and a second TWO_STORES. */
 let envHome: string;
+/** A root whose `.modules.yaml` names `store` through a SYMLINK spelling, beside a `.pnpm-config` symlink that realpaths into it. */
+let aliasRoot: string;
 
 const Spawner = NodeChildProcessSpawner.layer.pipe(Layer.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)));
 const HooksSubprocess = ConfigDependencyHooks.layerSubprocess.pipe(Layer.provide(Spawner));
@@ -102,10 +106,26 @@ beforeAll(() => {
 		"pnpmfile.mjs",
 		pnpmfileInjecting("^8.0.0"),
 	]);
+	// One version in TWO distinct stores, each with a different pnpmfile so the
+	// injected range proves which store answered.
+	storeConfigDependency(store, TWO_STORES, "1.0.0", "2".repeat(64), ["pnpmfile.mjs", pnpmfileInjecting("^3.0.0")]);
+	storeConfigDependency(join(envHome, "store", "v11"), TWO_STORES, "1.0.0", "3".repeat(64), [
+		"pnpmfile.mjs",
+		pnpmfileInjecting("^4.0.0"),
+	]);
+
+	// The alias root: `.modules.yaml` spells the store through a symlink while
+	// the `.pnpm-config` entry realpaths into the same store — one physical
+	// store, two spellings.
+	aliasRoot = mkdtempSync(join(tmpdir(), "effected-ladder-alias-"));
+	const alias = join(aliasRoot, "store-alias");
+	symlinkSync(store, alias, "dir");
+	writeModulesYaml(aliasRoot, alias);
+	linkConfigDependency(aliasRoot, NAME, stored);
 });
 
 afterAll(() => {
-	for (const dir of [root, dirname(store), linkedRoot, bareRoot, envHome]) {
+	for (const dir of [root, dirname(store), linkedRoot, bareRoot, envHome, aliasRoot]) {
 		if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
 	}
 });
@@ -272,6 +292,9 @@ const ladderCases = (label: string, hooksLayer: Layer.Layer<ConfigDependencyHook
 				const message = (error.cause as Error).message;
 				assert.include(message, "ambiguous");
 				assert.include(message, "2 copies");
+				// The store is named by its REALPATH (macOS's `/var` is `/private/var`):
+				// discovery canonicalizes spellings so one store never counts twice.
+				assert.include(message, `store at ${realpathSync(store)}`);
 				assert.include(message, "e".repeat(64));
 				assert.include(message, "f".repeat(64));
 				// The control that makes this discriminating: the SAME two-hash shape
@@ -279,6 +302,37 @@ const ladderCases = (label: string, hooksLayer: Layer.Layer<ConfigDependencyHook
 				// about two HONEST copies, not about a second directory existing.
 				const fine = yield* hooks.inject(root, { [NAME]: "2.0.0" }, SEED);
 				assert.strictEqual(hooked(fine), "^2.0.0");
+			}).pipe(Effect.provide(hooksLayer)),
+		);
+
+		it.effect("one store reached by two spellings is ONE store — an aliased path is never 'ambiguous'", () =>
+			Effect.gen(function* () {
+				const hooks = yield* ConfigDependencyHooks;
+				// aliasRoot discovers `store` twice: once through the symlink spelling
+				// in .modules.yaml (rung 1) and once through the .pnpm-config
+				// realpath (rung 2). JS_ONLY lives ONLY in that store, under exactly
+				// one honest hash — so it must resolve from the store, once.
+				const result = yield* hooks.inject(aliasRoot, { [JS_ONLY]: "1.0.0" }, SEED);
+				assert.strictEqual(hooked(result), "^7.0.0");
+				assert.deepStrictEqual(result.replays, { [JS_ONLY]: { version: "1.0.0", source: "store" } });
+			}).pipe(Effect.provide(hooksLayer)),
+		);
+
+		it.effect("a version held by two distinct stores resolves from the FIRST in discovery order", () =>
+			Effect.gen(function* () {
+				const hooks = yield* ConfigDependencyHooks;
+				const previous = process.env.PNPM_HOME;
+				process.env.PNPM_HOME = envHome;
+				try {
+					// `root` names `store` in .modules.yaml (rung 1); $PNPM_HOME adds a
+					// second store (rung 3) that also holds TWO_STORES@1.0.0. Not
+					// ambiguous — the workspace's own store wins, and its pnpmfile ran.
+					const result = yield* hooks.inject(root, { [TWO_STORES]: "1.0.0" }, SEED);
+					assert.strictEqual(hooked(result), "^3.0.0");
+				} finally {
+					if (previous === undefined) delete process.env.PNPM_HOME;
+					else process.env.PNPM_HOME = previous;
+				}
 			}).pipe(Effect.provide(hooksLayer)),
 		);
 
