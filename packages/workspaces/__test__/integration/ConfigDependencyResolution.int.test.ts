@@ -50,6 +50,8 @@ const AMBIGUOUS = "cfg-ambiguous";
 const ENV_ONLY = "cfg-env";
 // Held by BOTH the workspace's store (rung 1) and the `$PNPM_HOME` store (rung 3).
 const TWO_STORES = "cfg-twostores";
+// Held by three store FORMATS under one `$PNPM_HOME` (`v9`, `v10`, `v11`).
+const FORMATS = "cfg-formats";
 
 let root: string;
 let store: string;
@@ -113,6 +115,19 @@ beforeAll(() => {
 		"pnpmfile.mjs",
 		pnpmfileInjecting("^4.0.0"),
 	]);
+
+	// Three store formats side by side, as a pnpm major upgrade leaves them; the
+	// injected range names the format that answered.
+	for (const [format, range] of [
+		["v9", "^9.0.0"],
+		["v10", "^10.0.0"],
+		["v11", "^11.0.0"],
+	] as const) {
+		storeConfigDependency(join(envHome, "store", format), FORMATS, "1.0.0", "4".repeat(64), [
+			"pnpmfile.mjs",
+			pnpmfileInjecting(range),
+		]);
+	}
 
 	// The alias root: `.modules.yaml` spells the store through a symlink while
 	// the `.pnpm-config` entry realpaths into the same store — one physical
@@ -329,6 +344,24 @@ const ladderCases = (label: string, hooksLayer: Layer.Layer<ConfigDependencyHook
 					// ambiguous — the workspace's own store wins, and its pnpmfile ran.
 					const result = yield* hooks.inject(root, { [TWO_STORES]: "1.0.0" }, SEED);
 					assert.strictEqual(hooked(result), "^3.0.0");
+				} finally {
+					if (previous === undefined) delete process.env.PNPM_HOME;
+					else process.env.PNPM_HOME = previous;
+				}
+			}).pipe(Effect.provide(hooksLayer)),
+		);
+
+		it.effect("store formats are consulted NEWEST first, numerically — v11 beats v10 beats v9", () =>
+			Effect.gen(function* () {
+				const hooks = yield* ConfigDependencyHooks;
+				const previous = process.env.PNPM_HOME;
+				process.env.PNPM_HOME = envHome;
+				try {
+					// A lexical sort would put v10 first (and v9 last); the newest
+					// format must answer, or a pnpm upgrade that left the old store
+					// behind replays the stale copy.
+					const result = yield* hooks.inject(bareRoot, { [FORMATS]: "1.0.0" }, SEED);
+					assert.strictEqual(hooked(result), "^11.0.0");
 				} finally {
 					if (previous === undefined) delete process.env.PNPM_HOME;
 					else process.env.PNPM_HOME = previous;

@@ -228,7 +228,13 @@ const storesFromEnvironment = (root: string): Effect.Effect<ReadonlyArray<string
 		if (platform !== "win32") roots.push(join(home, ".local", "share", "pnpm", "store"));
 		const stores: Array<string> = [];
 		for (const storeRoot of roots) {
-			const versions = (yield* entriesOf(root, storeRoot)).filter((entry) => /^v\d+$/.test(entry)).sort();
+			// NEWEST store format first — and numerically, not lexically: a plain
+			// `.sort()` orders `v10 < v11 < v9`, and since the first store holding
+			// a version now answers, a pnpm upgrade that left `v10` beside `v11`
+			// would otherwise replay the stale copy without a word.
+			const versions = (yield* entriesOf(root, storeRoot))
+				.filter((entry) => /^v\d+$/.test(entry))
+				.sort((a, b) => Number(b.slice(1)) - Number(a.slice(1)));
 			for (const version of versions) stores.push(join(storeRoot, version));
 		}
 		return stores;
