@@ -1402,33 +1402,45 @@ describe("PackageManagerInstaller", () => {
 			}),
 		);
 
-		it.live("a cache entry that lands away from the derived shim target is a typed cacheFailed", () =>
+		it.live("the shims name whatever the installer's cachePath answers, not a second derivation", () =>
 			Effect.gen(function* () {
-				// The divergence guard: the shims name a destination this module
-				// derived; if ToolInstaller's swap lands the entry anywhere else the
-				// shims point at nothing, and that must be loud, not latent.
+				// The shim target is ToolInstaller's own answer — the same closure
+				// `cacheDir` lands at — so there is no second resolution of the
+				// cache root or arch in this module to diverge from it. A stubbed
+				// installer answering a sentinel path proves the shims read it.
 				const root = scratch();
 				const extracted = join(root, "extracted", "package");
+				const target = join(root, "sentinel-target");
 				mkdirSync(join(extracted, "bin"), { recursive: true });
 				writeFileSync(join(extracted, "package.json"), JSON.stringify({ bin: { pnpm: "bin/pnpm.cjs" } }));
 				writeFileSync(join(extracted, "bin", "pnpm.cjs"), "console.log('pnpm')");
-				const error = yield* Effect.flip(
-					install("pnpm@2.0.6").pipe(
+				const asked: Array<string> = [];
+				const installed = cachedOf(
+					yield* install("pnpm@2.0.6").pipe(
 						Effect.provide(
 							stubbed({
 								installer: {
 									find: () => Effect.succeed(Option.none()),
 									download: () => Effect.succeed(join(root, "unused-archive")),
 									extractTar: () => Effect.succeed(join(root, "extracted")),
-									cacheDir: () => Effect.succeed(join(root, "somewhere-else")),
+									cachePath: (tool, version) => {
+										asked.push(`${tool}@${version}`);
+										return target;
+									},
+									// The stub does not move the tree, so the shims stay readable
+									// where they were written — in the STAGED package directory.
+									cacheDir: () => Effect.succeed(target),
 								},
 							}),
 						),
 					),
 				);
-				assert.instanceOf(error, PackageManagerInstallerError);
-				assert.strictEqual(error.reason, "cacheFailed");
-				assert.include(error.subject ?? "", "diverged");
+				assert.deepStrictEqual(asked, ["pnpm@2.0.6"]);
+				assert.strictEqual(installed.directory, target);
+				assert.strictEqual(
+					readFileSync(join(extracted, ".bin", "pnpm"), "utf8"),
+					`#!/bin/sh\nexec node "${join(target, "bin", "pnpm.cjs")}" "$@"\n`,
+				);
 				rmSync(root, { recursive: true, force: true });
 			}),
 		);

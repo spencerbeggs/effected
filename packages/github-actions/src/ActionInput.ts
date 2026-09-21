@@ -203,6 +203,47 @@ export class ActionInput {
 	}
 
 	/**
+	 * An input that must be one of a closed set of strings, typed as their
+	 * union.
+	 *
+	 * @remarks
+	 * The match is **exact**: no trimming and no case folding, so `" pr"` and
+	 * `"PR"` are both rejected for `["commit", "pr"]`. An action manifest
+	 * declares the set in `options:`-style prose and the workflow author copies
+	 * a value verbatim; the one thing worth tolerating there is nothing, because
+	 * a tolerated near-miss is a value the manifest never named. Absent or `""`
+	 * is **missing data** (see {@link ActionInput.string}) — `Config.withDefault`
+	 * for an optional input. A present value outside the set fails carrying its
+	 * `actual`, naming the input, the value and the allowed set, and is never
+	 * swallowed by a default.
+	 *
+	 * Core's `Config.Literals` is the same idea over `Config.schema`; this one
+	 * exists so the failure reads like every other `ActionInput` failure —
+	 * naming the input by its action name, not its `INPUT_` variable.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ActionInput } from "@effected/github-actions";
+	 * import { Config } from "effect";
+	 *
+	 * // Config<"commit" | "pr">
+	 * const mode = ActionInput.literals("mode", ["commit", "pr"]).pipe(Config.withDefault("commit"));
+	 * ```
+	 */
+	static literals<const L extends readonly [string, ...Array<string>]>(
+		name: string,
+		allowed: L,
+	): Config.Config<L[number]> {
+		return Config.String(inputVariable(name)).pipe(
+			Config.mapEffect((raw) =>
+				allowed.includes(raw)
+					? Effect.succeed(raw as L[number])
+					: Effect.fail(configError(`Input "${name}" must be one of: ${allowed.join(" | ")} — received "${raw}"`, raw)),
+			),
+		);
+	}
+
+	/**
 	 * An integer input.
 	 *
 	 * @remarks
@@ -371,6 +412,12 @@ export class ActionInput {
 	 * `Config.option` for an optional input. A present value that is not valid
 	 * JSON, or does not satisfy the schema, fails carrying its `actual` and is
 	 * never swallowed by a default.
+	 *
+	 * There is no `schemaOption`: `ActionInput.schema(name, S).pipe(Config.option)`
+	 * yields `Config<Option<A>>` with missing → `None` and a malformed value
+	 * still failing — core's documented `Config.option` behaviour ("validation
+	 * errors ... still propagate", `Config.ts`), which is exactly the
+	 * missing-versus-malformed split above.
 	 */
 	static schema<A, I>(name: string, schema: Schema.Codec<A, I>): Config.Config<A> {
 		return Config.String(inputVariable(name)).pipe(
@@ -422,7 +469,11 @@ export class ActionInput {
 	 * to input-name entries too: `{ "flag": "" }` is an unsupplied input.
 	 *
 	 * Taking the environment as an argument rather than reading `process.env`
-	 * is what makes inputs testable without mutating the test process.
+	 * is what makes inputs testable without mutating the test process. The
+	 * `process.env` default is a sanctioned exception to the package rule
+	 * stated on `ChildEnv` (ambient process state is never read behind a
+	 * caller's back) — a default the caller overrides by passing a value, the
+	 * same class as `DetachedProcess.spawn`'s `base`.
 	 *
 	 * **A bare `ConfigProvider.fromEnv` cannot serve input-name keys.** Composed
 	 * beneath this provider or {@link ActionInput.providerOver}, it uppercases

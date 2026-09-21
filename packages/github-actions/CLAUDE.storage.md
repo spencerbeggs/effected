@@ -36,6 +36,10 @@ discriminated union on `source` (`AmbientPackageManager` | `CachedPackageManager
 every tool-cache answer carries an `addPath`-able `binDir` — shims written into
 the **staged** entry for the npm-registry managers (never a post-swap mutation;
 regenerated best-effort on a foreign cache hit), bun's own directory for bun.
+The shims name the final cached path by asking `installer.cachePath(name,
+version)` — `ToolInstallerShape.cachePath` (2026-09-21, #763) is the same
+closure `cacheDir` lands at, so there is no second root/arch derivation here
+and the post-swap "diverged" guard it used to need is gone.
 
 **A shim's body follows its target, not its manager** (2026-09-17): a
 `.js`/`.mjs`/`.cjs` target runs under `node`, anything else is exec'd directly.

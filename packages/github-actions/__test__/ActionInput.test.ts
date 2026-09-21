@@ -142,6 +142,49 @@ describe("ActionInput", () => {
 		);
 	});
 
+	describe("literals", () => {
+		it.effect("accepts a member of the allowed set and narrows to it", () =>
+			Effect.gen(function* () {
+				const mode = yield* readOk(ActionInput.literals("mode", ["commit", "pr"]), { INPUT_MODE: "pr" });
+				// The compile-time half of the claim: the config's type is the union
+				// of the literals, not `string`.
+				const narrowed: Config.Config<"commit" | "pr"> = ActionInput.literals("mode", ["commit", "pr"]);
+				const value: "commit" | "pr" = mode;
+				assert.strictEqual(value, "pr");
+				assert.isDefined(narrowed);
+			}),
+		);
+
+		it.effect("rejects a value outside the set, naming the input, the value and the set", () =>
+			Effect.gen(function* () {
+				const text = yield* readErrorText(ActionInput.literals("mode", ["commit", "pr"]), { INPUT_MODE: "push" });
+				assert.include(text, 'Input "mode" must be one of: commit | pr');
+				assert.include(text, "push");
+			}),
+		);
+
+		it.effect("the match is exact — no trim, no case folding", () =>
+			Effect.gen(function* () {
+				yield* readFails(ActionInput.literals("mode", ["commit", "pr"]), { INPUT_MODE: " pr" });
+				yield* readFails(ActionInput.literals("mode", ["commit", "pr"]), { INPUT_MODE: "PR" });
+			}),
+		);
+
+		it.effect('absent or "" is missing data, so withDefault composes', () =>
+			Effect.gen(function* () {
+				const config = ActionInput.literals("mode", ["commit", "pr"]).pipe(Config.withDefault("commit"));
+				assert.strictEqual(yield* readOk(config, { INPUT_MODE: "" }), "commit");
+				assert.strictEqual(yield* readOk(config, {}), "commit");
+			}),
+		);
+
+		it.effect("a wrong value is NOT swallowed by withDefault", () =>
+			readFails(ActionInput.literals("mode", ["commit", "pr"]).pipe(Config.withDefault("commit")), {
+				INPUT_MODE: "push",
+			}),
+		);
+	});
+
 	describe("lines", () => {
 		it.effect("splits on newlines, trimming and dropping blanks", () =>
 			Effect.gen(function* () {

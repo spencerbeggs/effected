@@ -6,7 +6,7 @@ import { ActionEnvironment } from "./ActionEnvironment.js";
 import { digestFileHex } from "./internal/digest.js";
 import { typeAt } from "./internal/fsProbe.js";
 import { PNPM_EXE_PREFIX, detectMusl, isNodeScript, pnpmExeTarget, strongestSri } from "./internal/pnpmExe.js";
-import { isWindowsRunner, toolCacheRoot } from "./internal/runner.js";
+import { isWindowsRunner } from "./internal/runner.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import type { ToolInstallerError } from "./ToolInstaller.js";
 import { ToolInstaller } from "./ToolInstaller.js";
@@ -310,6 +310,8 @@ const make = Effect.gen(function* () {
 
 	// Resolved once, at construction — the platform comes from `RUNNER_OS` and
 	// `RUNNER_ARCH`, the runner's own answers, per the ToolInstaller precedent.
+	// `arch` selects the native binary target (pnpm exe, bun); the CACHE path's
+	// arch segment is ToolInstaller's business, asked via `installer.cachePath`.
 	// Off a runner `RUNNER_ARCH` is absent and the host's `process.arch` is the
 	// honest fallback; that read exists only for the fallback, everything else
 	// routes through ActionEnvironment.
@@ -324,16 +326,6 @@ const make = Effect.gen(function* () {
 	const bunBinaryName = windows ? "bun.exe" : "bun";
 	const shimFileName = (name: string): string => (windows ? `${name}.cmd` : name);
 	const shimBody = windows ? cmdShim : posixShim;
-
-	// The cache root is ToolInstaller's own resolution (`internal/runner.ts`),
-	// because the shims written into a staged entry must name the FINAL cache
-	// path. The arch segment is `process.arch` — that is the tool-cache layout's
-	// own contract (ToolInstaller.cachePath) — and the post-swap equality check
-	// below turns any divergence into a typed failure instead of shims that
-	// point at nothing.
-	const cacheRoot = yield* toolCacheRoot(env, path);
-	const finalCachePath = (tool: string, version: string): string =>
-		ToolInstaller.cachePath({ root: cacheRoot, tool, version, arch: process.arch });
 
 	const errorFor =
 		(pin: PackageManagerPin) =>
@@ -837,24 +829,14 @@ const make = Effect.gen(function* () {
 			}
 			// Shims are written into the STAGED tree, so they are part of what
 			// ToolInstaller renames into place — never a post-swap mutation — and
-			// their contents name the FINAL cache path derived above. The ordering
-			// is load-bearing twice over: `cacheDir` CONSUMES `packageDir`, so
-			// nothing may be written to or read from it after that call.
-			const destination = finalCachePath(name, version);
+			// their contents name the FINAL cache path, asked of the installer
+			// itself so it is the very answer `cacheDir` lands at (no second
+			// derivation of root or arch here, and nothing to guard against). The
+			// ordering is load-bearing twice over: `cacheDir` CONSUMES `packageDir`,
+			// so nothing may be written to or read from it after that call.
+			const destination = installer.cachePath(name, version);
 			yield* writeShims(pin, packageDir, destination, bins, { skipExisting: false });
 			const directory = yield* installer.cacheDir(packageDir, name, version).pipe(Effect.mapError(fromInstaller(pin)));
-			if (directory !== destination) {
-				// The two resolutions of the cache path (this module's, for shim
-				// contents; ToolInstaller's, for the swap) must agree. If they ever
-				// diverge the entry's shims point at nothing — fail loudly rather
-				// than hand back a broken PATH contract.
-				return yield* Effect.fail(
-					errorFor(pin)({
-						reason: "cacheFailed",
-						subject: `cache destination diverged: shims name ${destination}, entry landed at ${directory}`,
-					}),
-				);
-			}
 			return CachedPackageManager.make({
 				name,
 				version,

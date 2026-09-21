@@ -1,12 +1,14 @@
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcess } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import type { FileBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";
 import type { BackendIds } from "./internal/actionsResults.js";
 import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
+import { unzipCommand, zipCommand } from "./internal/archiveCommands.js";
 import { digestFileHex } from "./internal/digest.js";
 import { isWindowsRunner } from "./internal/runner.js";
 import { spawnOnce } from "./internal/spawn.js";
@@ -345,49 +347,20 @@ const make = (
 		const moved = (artifact: string) =>
 			Effect.mapError((cause: BlobTransferError) => new ArtifactError({ reason: "transferFailed", artifact, cause }));
 
-		const zip = (files: ReadonlyArray<string>, root: string, destination: string, level: number, artifact: string) => {
+		const zip = (files: ReadonlyArray<string>, root: string, destination: string, level: number, artifact: string) =>
 			// Stored relative to `rootDirectory`: `zip` and `Compress-Archive` both
 			// record the paths exactly as given, so absolute inputs would extract
 			// into a tree named after the runner that produced them.
-			const relative = files.map((file) => path.relative(root, file));
-			return windows
-				? archive(
-						ChildProcess.make(
-							"pwsh",
-							[
-								"-NoProfile",
-								"-NonInteractive",
-								"-Command",
-								`Compress-Archive -Path ${relative.map((file) => `'${file.replaceAll("'", "''")}'`).join(",")} -DestinationPath '${destination.replaceAll("'", "''")}' -Force`,
-							],
-							{ cwd: root },
-						),
-						artifact,
-					)
-				: archive(
-						ChildProcess.make(
-							"zip",
-							[`-${Math.min(9, Math.max(0, Math.trunc(level)))}`, "-qr", destination, ...relative],
-							{
-								cwd: root,
-							},
-						),
-						artifact,
-					);
-		};
+			archive(
+				zipCommand({ windows, root, files: files.map((file) => path.relative(root, file)), destination, level }),
+				artifact,
+			);
 
+		// One spelling with ToolInstaller.extractZip (`internal/archiveCommands.ts`):
+		// the Windows half must use the overwrite overload, or a download into a
+		// non-empty path fails with an empty stderr.
 		const unzip = (source: string, destination: string, artifact: string) =>
-			windows
-				? archive(
-						ChildProcess.make("pwsh", [
-							"-NoProfile",
-							"-NonInteractive",
-							"-Command",
-							`Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${source.replaceAll("'", "''")}', '${destination.replaceAll("'", "''")}')`,
-						]),
-						artifact,
-					)
-				: archive(ChildProcess.make("unzip", ["-oq", source, "-d", destination]), artifact);
+			archive(unzipCommand({ windows, source, destination }), artifact);
 
 		return {
 			upload: Effect.fn("Artifact.upload")(function* (

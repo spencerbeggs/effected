@@ -101,8 +101,13 @@ set stays one class. Depth →
 
 **Runtime** → `@./CLAUDE.runtime.md`
 
-- Only `ActionEnvironment` reads `process.env`, once, at layer construction, and
-  nothing mutates it.
+- `ActionEnvironment` is the reader of `process.env` — once, at layer
+  construction — and nothing mutates it. Ambient process state is otherwise
+  never read behind a caller's back (the rule is stated on `ChildEnv`'s class
+  doc); the sanctioned exceptions are defaulted parameters a caller overrides
+  (`ActionInput.provider`, `DetachedProcess.spawn`'s `base`), the runner-arch
+  and host-libc fallbacks, and `ToolInstaller.makeTest`. The closed list is
+  `__test__/ambientReads.test.ts`, which names any new site.
 - No caller spells a runner variable name: `ActionInput` for inputs,
   `ActionLogger.annotated` for annotations.
 - `ActionInput.pairs` rejects an **empty key** unconditionally and names the

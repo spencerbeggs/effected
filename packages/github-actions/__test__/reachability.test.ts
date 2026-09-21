@@ -100,6 +100,7 @@ const LIGHT_MODULES = [
 	"ToolInstaller.ts",
 	"WorkflowCommand.ts",
 	"internal/actionsResults.ts",
+	"internal/archiveCommands.ts",
 	"internal/cacheService.ts",
 	"internal/digest.ts",
 	"internal/fsProbe.ts",
@@ -264,6 +265,13 @@ describe("bundle reachability", () => {
 		// `effect/unstable/process` is a type-only import there: the spawner
 		// arrives as a value from the caller.
 		assert.deepStrictEqual([...reachableBareImports("internal/spawn.ts")].sort(), ["effect"]);
+		// The command-line half of every archiver call: `ChildProcess.make` is a
+		// VALUE import there, and it is shared by `Artifact` (Azure) and
+		// `ToolInstaller` (light) — exactly the kind of helper that must never
+		// grow a heavier edge.
+		assert.deepStrictEqual([...reachableBareImports("internal/archiveCommands.ts")].sort(), [
+			"effect/unstable/process",
+		]);
 		assert.deepStrictEqual([...reachableBareImports("internal/digest.ts")].sort(), ["effect", "node:crypto"]);
 		assert.deepStrictEqual([...reachableBareImports("internal/fsProbe.ts")].sort(), ["effect"]);
 		assert.deepStrictEqual([...reachableBareImports("internal/jwt.ts")].sort(), ["effect"]);

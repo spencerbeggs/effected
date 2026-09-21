@@ -25,9 +25,9 @@ export interface PathPrependOptions {
 	 * The environment the child will inherit — on a runner, `process.env`.
 	 *
 	 * @remarks
-	 * Explicit rather than defaulted, matching this package's rule that ambient
-	 * process state is never read behind a caller's back — which is also what
-	 * makes the Windows casing branch exercisable from a test on any host.
+	 * Explicit rather than defaulted, per the package rule stated on
+	 * {@link ChildEnv} — which is also what makes the Windows casing branch
+	 * exercisable from a test on any host.
 	 */
 	readonly base: Readonly<Record<string, string | undefined>>;
 	/**
@@ -66,6 +66,16 @@ export interface PathPrependOptions {
  * This class is total and pure — no service, no `R`, nothing read from the
  * ambient process — the same species as `Secret`'s statics, one concern per
  * member.
+ *
+ * **The package rule, stated once: ambient process state is never read behind
+ * a caller's back.** `process.env`, `process.arch` and `process.platform` are
+ * read by `ActionEnvironment` (once, at layer construction) and otherwise
+ * taken as an argument — which is what makes every platform branch
+ * exercisable from a test on any host. The sanctioned exceptions are
+ * *defaults a caller can override by passing the value*: `ActionInput.provider`'s
+ * `env = process.env` and `DetachedProcess.spawn`'s `base`. A structural test
+ * (`__test__/ambientReads.test.ts`) holds the list closed; a new default is
+ * added there with its reason, never silently.
  *
  * @public
  */

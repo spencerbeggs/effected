@@ -1,8 +1,10 @@
 import type { Duration, PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schedule, Schema, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcess } from "effect/unstable/process";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
+import { tarExtractCommand, unzipCommand } from "./internal/archiveCommands.js";
 import { isErrno, typeAt } from "./internal/fsProbe.js";
 import { isWindowsRunner, toolCacheRoot } from "./internal/runner.js";
 import { spawnOnce } from "./internal/spawn.js";
@@ -167,6 +169,20 @@ export interface ToolInstallerShape {
 	 * say) to a foreign entry is a real shipped bug.
 	 */
 	readonly find: (tool: string, version: string) => Effect.Effect<Option.Option<string>>;
+	/**
+	 * Where this installer's `cacheDir` / `cacheFile` will land `tool@version`:
+	 * the final `<root>/<tool>/<version>/<arch>`, over the root this layer
+	 * resolved at construction.
+	 *
+	 * @remarks
+	 * Pure — no IO, nothing is created — and exposed so a caller that must
+	 * write the final path INTO the staged tree before the swap (a shim that
+	 * names its own cached entry) reads the one answer `cacheDir` is about to
+	 * use, instead of deriving root and arch a second time and guarding the
+	 * two against drifting apart. {@link ToolInstaller.cachePath} is the same
+	 * layout as a static function of an explicit root.
+	 */
+	readonly cachePath: (tool: string, version: string) => string;
 	/** Download a url to a temporary file, retrying what is worth retrying. */
 	readonly download: (url: string, options?: ToolDownloadOptions) => Effect.Effect<string, ToolInstallerError>;
 	/** Extract a tarball. Returns the directory its contents landed in. */
@@ -409,12 +425,13 @@ const make = Effect.gen(function* () {
 	return {
 		find,
 
+		cachePath,
+
 		download,
 
 		extractTar: Effect.fn("ToolInstaller.extractTar")(function* (archive: string, options?: ExtractOptions) {
 			const destination = yield* destinationFor(options);
-			const flags = options?.flags === undefined || options.flags.length === 0 ? ["xzf"] : [...options.flags];
-			yield* extractWith(ChildProcess.make("tar", [...flags, archive, "-C", destination]), archive);
+			yield* extractWith(tarExtractCommand({ archive, destination, flags: options?.flags }), archive);
 			return destination;
 		}),
 
@@ -422,23 +439,9 @@ const make = Effect.gen(function* () {
 			const destination = yield* destinationFor(options);
 			// The platform comes from `RUNNER_OS` rather than `process.platform`,
 			// which is both the runner's own answer and the only version of this
-			// branch that a test on any host can reach.
-			// The pwsh branch is deliberately belt-and-braces: the THREE-argument
-			// `ExtractToDirectory(src, dest, $true)` overload overwrites existing
-			// files (the two-argument one refuses, which is what turned a repeated
-			// extraction into a hard failure), and the try/catch writes the actual
-			// .NET exception text plainly to stderr and exits 1 — pwsh's own error
-			// rendering does not reliably reach a captured stream, and an empty
-			// complaint costs a source dive to even hypothesize about.
-			const command = windows
-				? ChildProcess.make("pwsh", [
-						"-NoProfile",
-						"-NonInteractive",
-						"-Command",
-						`$ErrorActionPreference = 'Stop'; try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${archive.replaceAll("'", "''")}', '${destination.replaceAll("'", "''")}', $true) } catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 }`,
-					])
-				: ChildProcess.make("unzip", ["-oq", archive, "-d", destination]);
-			yield* extractWith(command, archive);
+			// branch that a test on any host can reach. The command text — and why
+			// the Windows half is belt-and-braces — lives in `internal/archiveCommands.ts`.
+			yield* extractWith(unzipCommand({ windows, source: archive, destination }), archive);
 			return destination;
 		}),
 
@@ -484,6 +487,16 @@ const make = Effect.gen(function* () {
 });
 
 const dies = unstubbed("ToolInstaller.makeTest");
+
+/**
+ * The root {@link ToolInstaller.makeTest}'s `cachePath` answers under: the
+ * same resolution as `make`'s (`internal/runner.ts`), read from the ambient
+ * environment because a double has no `ActionEnvironment` to ask. The literal
+ * `/tmp/runner-tool-cache` is what `make`'s `path.join("/tmp", "runner-tool-cache")`
+ * spells on POSIX, which is the only place a test double runs. Test-double
+ * only; allowlisted as such in `__test__/ambientReads.test.ts`.
+ */
+const testRoot = (): string => process.env.RUNNER_TOOL_CACHE ?? "/tmp/runner-tool-cache";
 
 /**
  * Download, extract and cache a toolchain in the runner's tool cache.
@@ -548,9 +561,23 @@ export class ToolInstaller extends Context.Service<ToolInstaller, ToolInstallerS
 		readonly arch: string;
 	}): string => `${options.root}/${options.tool}/${options.version}/${options.arch}`;
 
-	/** A test double. Unstubbed members die rather than reporting a tool that is not there. */
+	/**
+	 * A test double. Unstubbed members die rather than reporting a tool that is
+	 * not there.
+	 *
+	 * @remarks
+	 * `cachePath` is the one member with a default rather than a death: it is
+	 * pure and total, and a caller composing it into shim contents would
+	 * otherwise have to stub it in every test. The default is the static layout
+	 * over `RUNNER_TOOL_CACHE`, or the same off-runner root `make` resolves
+	 * (`internal/runner.ts`). **That is a read of the ambient environment**,
+	 * sanctioned here only because a double has no `ActionEnvironment` to ask —
+	 * test-double-only, and listed as such in the package's ambient-read
+	 * allowlist (`__test__/ambientReads.test.ts`).
+	 */
 	static readonly makeTest = (overrides: Partial<ToolInstallerShape> = {}): ToolInstallerShape => ({
 		find: () => dies("find"),
+		cachePath: (tool, version) => ToolInstaller.cachePath({ root: testRoot(), tool, version, arch: process.arch }),
 		download: () => dies("download"),
 		extractTar: () => dies("extractTar"),
 		extractZip: () => dies("extractZip"),

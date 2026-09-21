@@ -181,14 +181,31 @@ export interface DetachedSpawnOptions {
 	/** The working directory. */
 	readonly cwd?: string | undefined;
 	/**
+	 * The environment the child inherits, before `env` is merged over it.
+	 *
+	 * @remarks
+	 * Defaults to the parent's `process.env` — **the one sanctioned ambient
+	 * fallback in this module**, the same class of default as
+	 * `ActionInput.provider`'s `env = process.env`, and an exception to the
+	 * package rule stated on `ChildEnv` (ambient process state is never read
+	 * behind a caller's back) precisely because passing a value here is how a
+	 * caller opts out of it. Supply it to give the child a controlled block —
+	 * a test proving exactly what a worker sees, or a worker that must not
+	 * inherit the action's secrets — remembering that a base without `PATH`
+	 * costs the child its runtime. An `undefined` value is dropped by Node's
+	 * spawn, never stringified.
+	 */
+	readonly base?: Readonly<Record<string, string | undefined>> | undefined;
+	/**
 	 * Environment additions.
 	 *
 	 * @remarks
-	 * **Merged over the parent's environment, not substituted for it.** A bare
-	 * environment costs the child `PATH`, which usually means it cannot find its
-	 * own runtime and dies before writing a word to the log — a failure that
-	 * looks like a spawn bug and is not. Secrets belong here only via
-	 * `Secret.forChildEnv`, which masks them on the way out.
+	 * **Merged over `base` (the parent's environment by default), not
+	 * substituted for it.** A bare environment costs the child `PATH`, which
+	 * usually means it cannot find its own runtime and dies before writing a
+	 * word to the log — a failure that looks like a spawn bug and is not.
+	 * Secrets belong here only via `Secret.forChildEnv`, which masks them on
+	 * the way out.
 	 */
 	readonly env?: Readonly<Record<string, string>> | undefined;
 }
@@ -296,7 +313,7 @@ export class DetachedProcess {
 				try {
 					const child = spawnChild(options.command, [...(options.args ?? [])], {
 						...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-						env: { ...process.env, ...options.env },
+						env: { ...(options.base ?? process.env), ...options.env },
 						detached: true,
 						stdio: ["ignore", descriptor, descriptor],
 					});

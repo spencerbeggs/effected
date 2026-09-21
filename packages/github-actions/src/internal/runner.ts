@@ -35,9 +35,9 @@ export const isWindowsRunner = (env: ActionEnvironmentShape): Effect.Effect<bool
  * Resolved at layer construction, never at import: the source package read
  * the variable into a module-level constant, which fixed the root before any
  * layer could say otherwise and made it impossible to point a test elsewhere.
- * `PackageManagerInstaller` resolves the same root because the shims it
- * writes into a staged entry must name the FINAL cache path; sharing the
- * resolution is what keeps its post-swap equality check a formality.
+ * `ToolInstaller` is its only reader: a consumer that needs the final cache
+ * path (`PackageManagerInstaller`, for its shims) asks the installer's own
+ * `cachePath` member rather than resolving the root a second time.
  *
  * @internal
  */

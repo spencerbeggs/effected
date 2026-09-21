@@ -188,6 +188,34 @@ describe("ToolInstaller", () => {
 				"/opt/hostedtoolcache/node/22.11.0/x64",
 			);
 		});
+
+		it.live("the service's cachePath is the static layout over the resolved root — pure, no IO", () =>
+			withRoot((root) =>
+				Effect.gen(function* () {
+					// What PackageManagerInstaller writes into its shims BEFORE the
+					// swap: the same answer `cacheDir` lands at, from the same closure,
+					// so the two can no longer be derived twice and diverge.
+					const installer = yield* ToolInstaller;
+					assert.strictEqual(
+						installer.cachePath("node", "22.11.0"),
+						ToolInstaller.cachePath({ root, tool: "node", version: "22.11.0", arch: process.arch }),
+					);
+					assert.isFalse(existsSync(installer.cachePath("node", "22.11.0")), "cachePath must not create anything");
+				}),
+			),
+		);
+
+		it.live("cacheDir lands exactly where cachePath said it would", () =>
+			withRoot((root) =>
+				Effect.gen(function* () {
+					const installer = yield* ToolInstaller;
+					const source = join(root, "staged");
+					mkdirSync(source, { recursive: true });
+					writeFileSync(join(source, "tool.txt"), "x");
+					assert.strictEqual(yield* installer.cacheDir(source, "node", "1.2.3"), installer.cachePath("node", "1.2.3"));
+				}),
+			),
+		);
 	});
 
 	describe("find", () => {
@@ -708,5 +736,21 @@ describe("ToolInstaller", () => {
 				assert.deepStrictEqual(found, Option.some("/cached"));
 			}).pipe(Effect.provide(ToolInstaller.layerTest({ find: () => Effect.succeed(Option.some("/cached")) }))),
 		);
+
+		it("cachePath is the one member with a default: the static layout over RUNNER_TOOL_CACHE or the off-runner root", () => {
+			// Pure and total, so dying would only punish every test that reads it
+			// through PackageManagerInstaller. The default mirrors `make`'s own
+			// resolution (`internal/runner.ts`), read from the ambient environment
+			// because a double has no ActionEnvironment to ask.
+			const root = process.env.RUNNER_TOOL_CACHE ?? "/tmp/runner-tool-cache";
+			assert.strictEqual(
+				ToolInstaller.makeTest().cachePath("node", "22.11.0"),
+				ToolInstaller.cachePath({ root, tool: "node", version: "22.11.0", arch: process.arch }),
+			);
+			assert.strictEqual(
+				ToolInstaller.makeTest({ cachePath: () => "/elsewhere" }).cachePath("node", "1"),
+				"/elsewhere",
+			);
+		});
 	});
 });
