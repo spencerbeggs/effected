@@ -1,5 +1,19 @@
 # @effected/pnpm-plugin-effect
 
+## 0.9.1
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/workspaces` ^0.23.0 -> ^0.24.0 (peer ^0.24.0) [#797][#797]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#797]: https://github.com/spencerbeggs/effected/pull/797
+
 ## 0.9.0
 
 ### Breaking Changes
