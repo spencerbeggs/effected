@@ -4,6 +4,7 @@ import type { Duration } from "effect";
 import { Effect, Schedule, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcessSpawner } from "effect/unstable/process";
+import { isErrno } from "./internal/fsProbe.js";
 import { unstubbed } from "./internal/unstubbed.js";
 
 /**
@@ -237,10 +238,6 @@ export interface DetachedProcessOps {
 	/** {@link DetachedProcess.reap}. */
 	readonly reap: (pid: number, signal?: NodeJS.Signals) => Effect.Effect<boolean, DetachedProcessError>;
 }
-
-/** Whether a thrown value is a Node errno error with the given code. */
-const isErrno = (cause: unknown, code: string): boolean =>
-	typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === code;
 
 /** See {@link DetachedProcess.makeTestOps}: an unstubbed member dies naming itself. */
 const dies = unstubbed("DetachedProcess.makeTestOps");

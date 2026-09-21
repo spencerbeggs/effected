@@ -837,7 +837,9 @@ const make = Effect.gen(function* () {
 			}
 			// Shims are written into the STAGED tree, so they are part of what
 			// ToolInstaller renames into place — never a post-swap mutation — and
-			// their contents name the FINAL cache path derived above.
+			// their contents name the FINAL cache path derived above. The ordering
+			// is load-bearing twice over: `cacheDir` CONSUMES `packageDir`, so
+			// nothing may be written to or read from it after that call.
 			const destination = finalCachePath(name, version);
 			yield* writeShims(pin, packageDir, destination, bins, { skipExisting: false });
 			const directory = yield* installer.cacheDir(packageDir, name, version).pipe(Effect.mapError(fromInstaller(pin)));

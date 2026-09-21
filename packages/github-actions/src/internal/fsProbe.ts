@@ -17,3 +17,13 @@ import { Effect } from "effect";
  */
 export const typeAt = (fs: FileSystem.FileSystem, path: string): Effect.Effect<FileSystem.File.Type | undefined> =>
 	Effect.map(Effect.option(fs.stat(path)), (info) => (info._tag === "Some" ? info.value.type : undefined));
+
+/**
+ * Whether a thrown value is a Node errno error with the given code — the
+ * platform's `SystemError` keeps the raw exception as its `cause`, and codes
+ * it maps to no named tag (`EXDEV`, `ESRCH`) are only recoverable from there.
+ *
+ * @internal
+ */
+export const isErrno = (cause: unknown, code: string): boolean =>
+	typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === code;

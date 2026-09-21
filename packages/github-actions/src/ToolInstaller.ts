@@ -1,9 +1,9 @@
-import type { Duration } from "effect";
+import type { Duration, PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schedule, Schema, Stream } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
-import { typeAt } from "./internal/fsProbe.js";
+import { isErrno, typeAt } from "./internal/fsProbe.js";
 import { isWindowsRunner, toolCacheRoot } from "./internal/runner.js";
 import { spawnOnce } from "./internal/spawn.js";
 import { unstubbed } from "./internal/unstubbed.js";
@@ -173,7 +173,18 @@ export interface ToolInstallerShape {
 	readonly extractTar: (archive: string, options?: ExtractOptions) => Effect.Effect<string, ToolInstallerError>;
 	/** Extract a zip. Returns the directory its contents landed in. */
 	readonly extractZip: (archive: string, options?: ExtractOptions) => Effect.Effect<string, ToolInstallerError>;
-	/** Install a directory into the tool cache. Returns its cached path. */
+	/**
+	 * Install a directory into the tool cache. Returns its cached path.
+	 *
+	 * @remarks
+	 * **`source` is consumed.** On success it no longer exists at its original
+	 * path: the tree is renamed into the cache when the two share a filesystem
+	 * (`RUNNER_TEMP` and `RUNNER_TOOL_CACHE` do on hosted runners, making the
+	 * install O(1) rather than a recursive copy of the whole toolchain), and
+	 * otherwise copied and then removed. Write everything the cached entry must
+	 * contain — shims, overlaid binaries — into `source` *before* this call,
+	 * and read nothing from it afterwards.
+	 */
 	readonly cacheDir: (source: string, tool: string, version: string) => Effect.Effect<string, ToolInstallerError>;
 	/** Install a single file into the tool cache under `name`. Returns the cached directory. */
 	readonly cacheFile: (
@@ -285,6 +296,34 @@ const make = Effect.gen(function* () {
 			yield* fs.rename(staging, destination);
 			return destination;
 		}).pipe(Effect.mapError((cause) => new ToolInstallerError({ reason: "cacheFailed", subject: tool, cause })));
+
+	/**
+	 * Move a source tree into the staging directory, consuming the source.
+	 *
+	 * @remarks
+	 * A rename first: on the same filesystem it is O(1) however large the
+	 * toolchain is, where a recursive copy of a hundreds-of-MB tree is the
+	 * dominant cost of an install. The staging directory is removed before the
+	 * rename because Windows refuses to rename onto an existing directory; its
+	 * mktemp name stays reserved in practice. The copy fallback is taken ONLY
+	 * for `EXDEV` — a cross-filesystem move, the one case a rename cannot do —
+	 * and every other rename failure is reported as-is: a copy after a
+	 * permission error would turn a real failure into a slow success. The
+	 * fallback removes the source afterwards so the contract is the same on
+	 * both paths; that removal is best-effort, since the entry is already
+	 * complete and a leftover temp directory is not worth failing the install.
+	 */
+	const moveIntoStaging = (source: string, staging: string): Effect.Effect<void, PlatformError.PlatformError> =>
+		fs.remove(staging, { recursive: true, force: true }).pipe(
+			Effect.flatMap(() => fs.rename(source, staging)),
+			Effect.catchIf(
+				(error) => isErrno(error.cause, "EXDEV"),
+				() =>
+					fs
+						.copy(source, staging, { overwrite: true })
+						.pipe(Effect.andThen(Effect.ignore(fs.remove(source, { recursive: true, force: true })))),
+			),
+		);
 
 	/** A staging directory beside the cache, so the swap is a rename and not a copy. */
 	const staged = <A>(
@@ -406,7 +445,7 @@ const make = Effect.gen(function* () {
 		cacheDir: Effect.fn("ToolInstaller.cacheDir")(function* (source: string, tool: string, version: string) {
 			yield* Effect.annotateCurrentSpan({ tool, version });
 			return yield* staged(tool, (staging) =>
-				fs.copy(source, staging, { overwrite: true }).pipe(
+				moveIntoStaging(source, staging).pipe(
 					Effect.mapError((cause) => new ToolInstallerError({ reason: "cacheFailed", subject: tool, cause })),
 					Effect.flatMap(() => swapIntoCache(staging, tool, version)),
 				),
