@@ -38,7 +38,15 @@ describe("archiveCommands", () => {
 			assert.strictEqual(level(4.9), "-4");
 		});
 
-		it("Windows: `Compress-Archive -Force` over the quoted relative paths, from the root as cwd", () => {
+		const ZIP_PRELUDE =
+			"$ErrorActionPreference = 'Stop'; try { Add-Type -AssemblyName System.IO.Compression; " +
+			"Add-Type -AssemblyName System.IO.Compression.FileSystem; ";
+		const ZIP_EPILOGUE =
+			"} finally { $zip.Dispose() } } catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 }";
+		const windowsZip = (files: ReadonlyArray<string>, level = 6, root = "D:\\a\\root") =>
+			zipCommand({ windows: true, root, files, destination: "D:\\a\\_temp\\artifact.zip", level }).args[3] as string;
+
+		it("Windows: a pwsh script driving ZipFile directly — delete, open Create, one explicit entry per file", () => {
 			const command = zipCommand({
 				windows: true,
 				root: "D:\\a\\root",
@@ -51,24 +59,68 @@ describe("archiveCommands", () => {
 				[...command.args],
 				[
 					...PWSH_FLAGS,
-					"Compress-Archive -Path 'a.txt','dir\\b.txt' -DestinationPath 'D:\\a\\_temp\\artifact.zip' -Force",
+					ZIP_PRELUDE +
+						"[System.IO.File]::Delete('D:\\a\\_temp\\artifact.zip'); " +
+						"$zip = [System.IO.Compression.ZipFile]::Open('D:\\a\\_temp\\artifact.zip', [System.IO.Compression.ZipArchiveMode]::Create); " +
+						"try { " +
+						"[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, [System.IO.Path]::Combine('D:\\a\\root', 'a.txt'), 'a.txt', [System.IO.Compression.CompressionLevel]::Optimal); " +
+						"[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, [System.IO.Path]::Combine('D:\\a\\root', 'dir\\b.txt'), 'dir/b.txt', [System.IO.Compression.CompressionLevel]::Optimal); " +
+						ZIP_EPILOGUE,
 				],
 			);
 			assert.strictEqual(command.options.cwd, "D:\\a\\root");
 		});
 
-		it("Windows: a single quote in a path is doubled, the PowerShell single-quote escape", () => {
+		it("Windows: a nested path keeps its directory — source is Combine(root, rel), entry name is rel with `/`", () => {
+			// `Compress-Archive -Path` with file paths flattened every entry to its
+			// bare name, so `dir\b.txt` landed as `b.txt`. Naming the entry is the fix.
+			const script = windowsZip(["dir\\sub\\b.txt"]);
+			assert.include(
+				script,
+				"CreateEntryFromFile($zip, [System.IO.Path]::Combine('D:\\a\\root', 'dir\\sub\\b.txt'), 'dir/sub/b.txt', ",
+			);
+		});
+
+		it("Windows: a bracketed file name is taken literally — no wildcard path expands it", () => {
+			const script = windowsZip(["report[1].txt"]);
+			assert.include(script, "Combine('D:\\a\\root', 'report[1].txt'), 'report[1].txt', ");
+		});
+
+		it("Windows: a single quote in any path is doubled, the PowerShell single-quote escape", () => {
 			const command = zipCommand({
 				windows: true,
-				root: "D:\\r",
+				root: "D:\\o'brien",
 				files: ["it's.txt"],
 				destination: "D:\\o'brien\\a.zip",
 				level: 6,
 			});
-			assert.strictEqual(
-				command.args[3],
-				"Compress-Archive -Path 'it''s.txt' -DestinationPath 'D:\\o''brien\\a.zip' -Force",
-			);
+			const script = command.args[3] as string;
+			assert.include(script, "[System.IO.File]::Delete('D:\\o''brien\\a.zip'); ");
+			assert.include(script, "ZipFile]::Open('D:\\o''brien\\a.zip', ");
+			assert.include(script, "Combine('D:\\o''brien', 'it''s.txt'), 'it''s.txt', ");
+		});
+
+		it("Windows: the level maps onto .NET's CompressionLevel at each bucket boundary, clamped", () => {
+			const compression = (level: number) => {
+				const match = /CompressionLevel\]::(\w+)\)/.exec(windowsZip(["f"], level));
+				assert.isNotNull(match);
+				return match?.[1];
+			};
+			assert.strictEqual(compression(0), "NoCompression");
+			assert.strictEqual(compression(1), "Fastest");
+			assert.strictEqual(compression(3), "Fastest");
+			assert.strictEqual(compression(4), "Optimal");
+			assert.strictEqual(compression(8), "Optimal");
+			assert.strictEqual(compression(9), "SmallestSize");
+			assert.strictEqual(compression(-1), "NoCompression");
+			assert.strictEqual(compression(12), "SmallestSize");
+			assert.strictEqual(compression(3.9), "Fastest");
+		});
+
+		it("Windows: `Compress-Archive` is gone — it flattened entries and expanded wildcards", () => {
+			const script = windowsZip(["a.txt", "dir\\b.txt", "report[1].txt"]);
+			assert.notInclude(script, "Compress-Archive");
+			assert.notInclude(script, "-Path ");
 		});
 	});
 

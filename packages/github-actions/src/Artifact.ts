@@ -108,8 +108,9 @@ export interface UploadOptions {
 	 * The zlib level, 0–9, defaulting to 6 as `@actions/artifact` does.
 	 *
 	 * @remarks
-	 * Out-of-range values are clamped. No effect on Windows, where
-	 * `Compress-Archive` has no numeric equivalent.
+	 * Out-of-range values are clamped. On Windows the level maps onto .NET's
+	 * `CompressionLevel`: `0` is `NoCompression`, `1..3` `Fastest`, `4..8`
+	 * `Optimal`, `9` `SmallestSize`.
 	 */
 	readonly compressionLevel?: number | undefined;
 }
@@ -348,9 +349,11 @@ const make = (
 			Effect.mapError((cause: BlobTransferError) => new ArtifactError({ reason: "transferFailed", artifact, cause }));
 
 		const zip = (files: ReadonlyArray<string>, root: string, destination: string, level: number, artifact: string) =>
-			// Stored relative to `rootDirectory`: `zip` and `Compress-Archive` both
-			// record the paths exactly as given, so absolute inputs would extract
-			// into a tree named after the runner that produced them.
+			// Stored relative to `rootDirectory`: `zip` records the paths exactly
+			// as given, and the Windows script states each entry name explicitly
+			// from the same relative path, so the two archives have one structure
+			// — and absolute inputs would extract into a tree named after the
+			// runner that produced them.
 			archive(
 				zipCommand({ windows, root, files: files.map((file) => path.relative(root, file)), destination, level }),
 				artifact,

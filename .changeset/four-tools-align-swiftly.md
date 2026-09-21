@@ -31,3 +31,7 @@ const mode = ActionInput.literals("mode", ["commit", "pr"]).pipe(Config.withDefa
 ### `Artifact.download`/`unzip` no longer fails extracting into a non-empty directory on Windows
 
 The Windows extraction path now uses the three-argument `ZipFile.ExtractToDirectory(source, destination, $true)` overload, which overwrites existing files, and captures the underlying .NET exception text to stderr on failure. Previously the two-argument overload refused to overwrite and failed with an empty error message.
+
+### Windows `Artifact.upload` preserves subdirectory structure and honours `compressionLevel`
+
+The Windows pack drove `Compress-Archive -Path` with individual file paths, which stores every entry under its bare file name — `dir\b.txt` landed as `b.txt`, and same-named files in different directories collided — and expands `[`/`]` as wildcards, so a literal `report[1].txt` failed the upload. It now drives .NET's `ZipFile` directly, naming each entry explicitly from its path relative to `rootDirectory`, so a Windows archive has the same structure as the POSIX `zip -qr` one. `compressionLevel`, previously ignored on Windows, now maps onto .NET's `CompressionLevel` (`0` `NoCompression`, `1..3` `Fastest`, `4..8` `Optimal`, `9` `SmallestSize`).

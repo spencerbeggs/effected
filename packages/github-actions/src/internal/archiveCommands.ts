@@ -20,6 +20,21 @@
  * stream, and an empty complaint costs a source dive to even hypothesize
  * about.
  *
+ * **The pwsh zip drives .NET's `ZipFile` directly, not `Compress-Archive`.**
+ * Microsoft's own reference for `Compress-Archive -Path` states both faults:
+ * handed individual file paths it stores every entry under its bare file
+ * name — directory structure is kept only when `-Path` names a directory —
+ * so `dir\b.txt` landed as `b.txt`, same-named files in different
+ * directories collided, and a Windows artifact was structurally different
+ * from the POSIX `zip -qr` one; and `-Path` expands wildcards, so a literal
+ * `report[1].txt` matched nothing and failed the upload. Stating every entry
+ * name explicitly through `CreateEntryFromFile(zip, source, entryName)`
+ * removes both: the source is `Path.Combine(root, rel)`, taken literally,
+ * and the entry name is `rel` with `\` turned to `/`, which is what `zip`
+ * records on POSIX. The residual, unchanged from before: the whole file list
+ * is inlined into `-Command`, so a very large list can still exceed the
+ * Windows command-line limit. Documented, not fixed.
+ *
  * Every path handed to PowerShell is single-quoted, and a single quote inside
  * one is doubled — the only escape a single-quoted PowerShell literal has.
  *
@@ -40,36 +55,71 @@ const pwsh = (script: string, options?: ChildProcess.CommandOptions): ChildProce
 
 /** What {@link zipCommand} packs. */
 export interface ZipCommandOptions {
-	/** Whether the runner is Windows (`RUNNER_OS`), which selects `Compress-Archive` over `zip`. */
+	/** Whether the runner is Windows (`RUNNER_OS`), which selects the .NET `ZipFile` over `zip`. */
 	readonly windows: boolean;
 	/** The directory the archiver runs in; every entry is recorded relative to it. */
 	readonly root: string;
-	/** The files to pack, ALREADY relative to `root` — the caller relativizes, this module does not. */
+	/**
+	 * The files to pack, ALREADY relative to `root` — the caller relativizes,
+	 * this module does not. On Windows each becomes the entry name with every
+	 * `\` turned to `/`.
+	 */
 	readonly files: ReadonlyArray<string>;
-	/** Where the archive is written. */
+	/** Where the archive is written; an existing archive is replaced on both platforms. */
 	readonly destination: string;
-	/** `zip`'s compression level, clamped to `0..9`; `Compress-Archive` has no equivalent and ignores it. */
+	/**
+	 * The zlib level, clamped to `0..9` and truncated. `zip` takes it as
+	 * `-<level>`; on Windows it maps onto .NET's `CompressionLevel`: `0` is
+	 * `NoCompression`, `1..3` `Fastest`, `4..8` `Optimal`, `9` `SmallestSize`
+	 * (.NET 6+, which pwsh 7.2+ on the hosted runners has).
+	 */
 	readonly level: number;
 }
 
+/** {@link ZipCommandOptions.level} clamped to `zip`'s `0..9` and truncated. */
+const clampLevel = (level: number): number => Math.min(9, Math.max(0, Math.trunc(level)));
+
+/** The .NET `CompressionLevel` member a clamped zlib level maps onto. */
+const dotnetCompressionLevel = (level: number): string =>
+	level === 0 ? "NoCompression" : level <= 3 ? "Fastest" : level <= 8 ? "Optimal" : "SmallestSize";
+
 /**
  * Pack `files` into a zip: `zip -<level> -qr <destination> <files...>` with
- * `root` as the working directory, or `Compress-Archive ... -Force` on
- * Windows (`-Force` overwrites an existing archive).
+ * `root` as the working directory, or on Windows a pwsh script that opens
+ * `destination` with `ZipFile.Open(..., Create)` after a `File.Delete` (the
+ * overwrite) and adds one `CreateEntryFromFile` per file, naming each entry
+ * explicitly — under `$ErrorActionPreference = 'Stop'` and a stderr-writing
+ * try/catch, and with the archive disposed in a `finally` so a failed entry
+ * cannot leave the handle open (the module doc says why not
+ * `Compress-Archive`).
  *
  * @internal
  */
-export const zipCommand = (options: ZipCommandOptions): ChildProcess.StandardCommand =>
-	options.windows
-		? pwsh(
-				`Compress-Archive -Path ${options.files.map(pwshLiteral).join(",")} -DestinationPath ${pwshLiteral(options.destination)} -Force`,
-				{ cwd: options.root },
-			)
-		: ChildProcess.make(
-				"zip",
-				[`-${Math.min(9, Math.max(0, Math.trunc(options.level)))}`, "-qr", options.destination, ...options.files],
-				{ cwd: options.root },
-			);
+export const zipCommand = (options: ZipCommandOptions): ChildProcess.StandardCommand => {
+	const level = clampLevel(options.level);
+	if (!options.windows) {
+		return ChildProcess.make("zip", [`-${level}`, "-qr", options.destination, ...options.files], {
+			cwd: options.root,
+		});
+	}
+	const destination = pwshLiteral(options.destination);
+	const root = pwshLiteral(options.root);
+	const compression = `[System.IO.Compression.CompressionLevel]::${dotnetCompressionLevel(level)}`;
+	const entries = options.files
+		.map(
+			(file) =>
+				`[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, [System.IO.Path]::Combine(${root}, ${pwshLiteral(file)}), ${pwshLiteral(file.replaceAll("\\", "/"))}, ${compression}); `,
+		)
+		.join("");
+	return pwsh(
+		"$ErrorActionPreference = 'Stop'; try { Add-Type -AssemblyName System.IO.Compression; Add-Type -AssemblyName System.IO.Compression.FileSystem; " +
+			`[System.IO.File]::Delete(${destination}); ` +
+			`$zip = [System.IO.Compression.ZipFile]::Open(${destination}, [System.IO.Compression.ZipArchiveMode]::Create); ` +
+			`try { ${entries}} finally { $zip.Dispose() } } ` +
+			"catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 }",
+		{ cwd: options.root },
+	);
+};
 
 /** What {@link unzipCommand} unpacks. */
 export interface UnzipCommandOptions {
