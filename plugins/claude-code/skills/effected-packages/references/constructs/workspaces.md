@@ -28,6 +28,8 @@
 | `FindWorkspaceRootOptions` | Interface | Options for `WorkspaceRoot`'s `find`. | |
 | `GetWorkspacePackagesSyncOptions` | Interface | Options for `getWorkspacePackagesSync`: the required consumer-supplied operations plus the traversal bound. | |
 | `HookInjection` | Interface | The result of replaying a workspace's `configDependencies` hooks: the catalogs the hooks yield, and the release-age gate contribution they leave on the config (pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude`). | |
+| `HookReplay` | Interface | Which version of a config dependency a replay actually loaded, and where that version came from. | |
+| `HookReplaySource` | TypeAlias | Where a replayed config dependency's declared version was found: the `node_modules/.pnpm-config` copy, the pnpm store's `links/` tree, or a `ConfigDependencyHooks.layerFrom` entry. | |
 | `ImporterVersions` | TypeAlias | Each importer's dependency-name → resolved-version map, keyed by importer path (`"."` for the root package — the same keys `WorkspaceDiscovery.importerMap()` uses, and the same value `PackageStateSnapshot.relativePath` carries). | |
 | `LockfileReadError` | Class | Raised when the workspace's lockfile cannot be read off disk. | handle the workspace lockfile file cannot be read off disk |
 | `LockfileReadFailure` | TypeAlias | Every failure the lockfile methods can surface — the exported init-error union the review named best-in-class DX. | |
@@ -85,7 +87,7 @@
 | `WorkspaceRoot` | Class | Locates the workspace root by ascending from a starting directory. | find the nearest workspace root, ascend directories for pnpm-workspace.yaml or a package.json workspaces field |
 | `WorkspaceRootNotFoundError` | Class | Raised when no workspace root can be found by ascending from a directory. | handle no workspace root found above a starting directory |
 | `WorkspaceRootShape` | Interface | The `WorkspaceRoot` service contract. | |
-| `WorkspaceSnapshotAtFailure` | TypeAlias | Every failure `WorkspaceSnapshots.at` can surface: git's own typed errors, a catalog-assembly failure from the inline config source at the ref, or an unfindable workspace root. | |
+| `WorkspaceSnapshotAtFailure` | TypeAlias | Every failure `WorkspaceSnapshots.at` can surface: git's own typed errors, a catalog-assembly failure from the inline config source or the config-dependency hook replay at the ref, or an unfindable workspace root. | |
 | `WorkspaceSnapshotWorktreeFailure` | TypeAlias | Every failure `WorkspaceSnapshots.worktree` can surface: the discovery failures plus a catalog-assembly failure. | |
 | `WorkspaceSnapshots` | Class | Reads workspace state at a git ref with no checkout, and the live worktree. | read workspace state at a ref with no checkout, live worktree snapshot |
 | `WorkspaceSnapshotsOptions` | Interface | Options for the `WorkspaceSnapshots` layer. | |

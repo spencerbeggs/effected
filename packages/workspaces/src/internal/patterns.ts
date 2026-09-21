@@ -16,7 +16,8 @@ export interface PatternReadFailure {
 	readonly cause: unknown;
 }
 
-const stringsOf = (value: unknown): ReadonlyArray<string> | undefined =>
+/** The string entries of `value` when it is an array, else `undefined`. */
+export const stringsOf = (value: unknown): ReadonlyArray<string> | undefined =>
 	Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : undefined;
 
 /** The `packages:` list of a `pnpm-workspace.yaml` document. Total on a parsed document. */

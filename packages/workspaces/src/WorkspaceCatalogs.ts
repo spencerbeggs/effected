@@ -16,11 +16,17 @@ import {
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
-import type { PeerDependencyRules } from "./ConfigDependencyHooks.js";
-import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
+import type {
+	ConfigDependencyHooksShape,
+	HookInjection,
+	HookReplay,
+	PeerDependencyRules,
+} from "./ConfigDependencyHooks.js";
+import { ConfigDependencyHooks, NoPeerDependencyRules } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
 import { importerVersionsOf } from "./internal/importerVersions.js";
+import { configDependenciesOf, inlinePeerDependencyRules } from "./internal/workspaceYaml.js";
 import type { LockfileReadFailure } from "./LockfileReader.js";
 import { LockfileReader } from "./LockfileReader.js";
 import type { WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
@@ -230,16 +236,6 @@ const catalogBlocksOf = (
 	};
 };
 
-/** The `configDependencies` map (name → version+integrity) of a parsed pnpm-workspace document. */
-const configDependenciesOf = (document: unknown): Record<string, string> => {
-	if (!isObject(document) || !isObject(document.configDependencies)) return {};
-	const out: Record<string, string> = {};
-	for (const [name, spec] of Object.entries(document.configDependencies)) {
-		if (typeof spec === "string") out[name] = spec;
-	}
-	return out;
-};
-
 /**
  * The inline release-age gate contribution of a parsed `pnpm-workspace.yaml`
  * document — pnpm's top-level `minimumReleaseAge` (minutes) and
@@ -275,42 +271,6 @@ const inlineReleaseAge = (document: unknown): Effect.Effect<PartialReleaseAgeGat
 			(cause) => new CatalogAssemblyError({ source: "manifest", path: "pnpm-workspace.yaml", cause }),
 		),
 	);
-};
-
-/**
- * The `peerDependencyRules` a `pnpm-workspace.yaml` declares inline — the half
- * `pnpm:export` materializes into the file, as opposed to the half a config
- * dependency injects at replay time.
- *
- * @remarks
- * **Tolerant, unlike the catalog blocks**, and the asymmetry is deliberate: a
- * malformed catalog block must hard-fail because a silently-empty catalog makes
- * every dependency look newly added, whereas a malformed rules block costs only
- * suppression — the failure mode is reporting a peer pnpm would have hidden,
- * which is visible and safe. Failing the whole assembly over it would take the
- * catalogs down with it.
- *
- * Every axis is read independently, so a malformed `ignoreMissing` does not
- * discard a well-formed `allowedVersions`.
- */
-const EMPTY_PEER_RULES: PeerDependencyRules = { allowedVersions: {}, ignoreMissing: [], allowAny: [] };
-
-const inlinePeerDependencyRules = (document: unknown): PeerDependencyRules => {
-	if (!isObject(document) || !isObject(document.peerDependencyRules)) return EMPTY_PEER_RULES;
-	const block = document.peerDependencyRules;
-	const allowedVersions: Record<string, string> = {};
-	if (isObject(block.allowedVersions)) {
-		for (const [key, value] of Object.entries(block.allowedVersions)) {
-			if (typeof value === "string") allowedVersions[key] = value;
-		}
-	}
-	const strings = (value: unknown): ReadonlyArray<string> =>
-		Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-	return {
-		allowedVersions,
-		ignoreMissing: strings(block.ignoreMissing),
-		allowAny: strings(block.allowAny),
-	};
 };
 
 /** A hard-fail catalog-assembly failure naming the malformed part of a `workspaces` field. */
@@ -450,13 +410,38 @@ const unstubbed = (method: string): Effect.Effect<never> =>
 		new Error(`WorkspaceCatalogs.makeTest: ${method}() was called but not stubbed — pass a \`${method}\` override.`),
 	);
 
-/** The single assembly pass's two outputs, memoized together. */
+/** The single assembly pass's outputs, memoized together. */
 interface Assembled {
 	readonly catalogs: CatalogSet;
 	readonly releaseAgeGate: ReleaseAgeGate;
 	readonly importerVersions: ImporterVersions;
 	readonly peerDependencyRules: PeerDependencyRules;
+	readonly hookReplays: Readonly<Record<string, HookReplay>>;
 }
+
+/**
+ * Replay a parsed `pnpm-workspace.yaml` document's `configDependencies`
+ * hooks over its inline catalogs, seeded by its inline `peerDependencyRules`
+ * — the ONE call into `hooks.inject` that both the live assembler and the
+ * at-ref reader (`WorkspaceSnapshots`) make, so the two sides of a diff
+ * cannot disagree about what a document declares or how it is seeded.
+ *
+ * @remarks
+ * Rules are SEEDED, not merged afterwards: the workspace file's block goes
+ * into the threaded config so the hooks merge onto it, exactly as pnpm seeds
+ * its own config and takes back what the hooks return. Not part of the public
+ * surface; `WorkspaceSnapshots` imports it directly.
+ */
+export const injectFromDocument = (
+	hooks: ConfigDependencyHooksShape,
+	root: string,
+	document: unknown,
+	inline: CatalogSet,
+): Effect.Effect<{ readonly injected: CatalogSet; readonly injection: HookInjection }, CatalogAssemblyError> =>
+	Effect.map(
+		hooks.inject(root, configDependenciesOf(document), inline.entries, inlinePeerDependencyRules(document)),
+		(injection) => ({ injected: CatalogSet.fromCatalogs(injection.catalogs), injection }),
+	);
 
 /**
  * The {@link WorkspaceCatalogs} service shape.
@@ -499,10 +484,8 @@ export interface WorkspaceCatalogsShape {
 	 *
 	 * A consumer needs these to avoid **reporting** what pnpm suppresses: pnpm
 	 * computes the same peer violations and then hides the ones a rule allows,
-	 * so a checker without them reports findings pnpm calls clean.
-	 *
-	 * `ignoreMissing` and `allowAny` are carried but unmeasured — no kit code
-	 * acts on them today.
+	 * so a checker without them reports findings pnpm calls clean. `PeerCheck`
+	 * applies all three axes.
 	 */
 	readonly peerDependencyRules: () => Effect.Effect<PeerDependencyRules, CatalogAssemblyFailure>;
 	/**
@@ -518,6 +501,18 @@ export interface WorkspaceCatalogsShape {
 	 * nothing rather than failing.
 	 */
 	readonly importerVersions: () => Effect.Effect<ImporterVersions, CatalogAssemblyFailure>;
+	/**
+	 * Which version each declared config dependency was replayed from, keyed
+	 * by name — off the same single memoized assemble pass as `set()`.
+	 *
+	 * @remarks
+	 * Every dependency the hooks layer resolved when a `pnpm-workspace.yaml`
+	 * was read — `{}` when it declares no config dependencies or under the
+	 * no-op layer, which resolves nothing. Config dependencies are a pnpm
+	 * feature, so the bun / `package.json` path yields `{}` too, exactly as
+	 * `importerVersions` does.
+	 */
+	readonly hookReplays: () => Effect.Effect<Readonly<Record<string, HookReplay>>, CatalogAssemblyFailure>;
 	/**
 	 * Discard the memoized assembly so the **next** read re-assembles — the same
 	 * single read and hook replay as the first, over the workspace as it stands
@@ -663,7 +658,10 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				// threaded config, with every replayed hook's contribution merged onto
 				// it. Read back off the injection rather than recomputed here — the
 				// point of seeding is that one object carries the answer.
-				let peerDependencyRules: PeerDependencyRules = EMPTY_PEER_RULES;
+				let peerDependencyRules: PeerDependencyRules = NoPeerDependencyRules;
+				// Which version each config dependency replayed from; empty where
+				// config dependencies do not exist.
+				let hookReplays: Readonly<Record<string, HookReplay>> = {};
 				if (hasPnpmWorkspace) {
 					const text = yield* fs
 						.readFileString(workspaceYaml)
@@ -686,20 +684,14 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					inlineGate = yield* inlineReleaseAge(document);
 					// The opt-in hook replay, seeded by the inline catalogs and merged on
 					// top. The default layer's no-op hooks return the seed untouched, so
-					// this executes no config-dependency code. It surfaces both the injected
-					// catalogs and the hooks' release-age contribution from one replay.
-					// Rules are SEEDED, not merged afterwards: the workspace file's block
-					// goes into the threaded config so the hooks merge onto it, exactly as
-					// pnpm seeds its own config and takes back what the hooks return.
-					const injection = yield* hooks.inject(
-						root,
-						configDependenciesOf(document),
-						inline.entries,
-						inlinePeerDependencyRules(document),
-					);
-					injected = CatalogSet.fromCatalogs(injection.catalogs);
-					hookGate = injection.releaseAge;
-					peerDependencyRules = injection.peerDependencyRules;
+					// this executes no config-dependency code. It surfaces the injected
+					// catalogs, the hooks' release-age contribution, the effective rules
+					// and the replay record from ONE replay.
+					const replayed = yield* injectFromDocument(hooks, root, document, inline);
+					injected = replayed.injected;
+					hookGate = replayed.injection.releaseAge;
+					peerDependencyRules = replayed.injection.peerDependencyRules;
+					hookReplays = replayed.injection.replays;
 				} else {
 					const manifestPath = path.join(root, "package.json");
 					// The presence probe must distinguish genuine absence from a probe
@@ -713,7 +705,8 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 							catalogs: fromLockfile,
 							releaseAgeGate: ReleaseAgeGate.combine(),
 							importerVersions,
-							peerDependencyRules: EMPTY_PEER_RULES,
+							peerDependencyRules: NoPeerDependencyRules,
+							hookReplays: {},
 						};
 					const text = yield* fs
 						.readFileString(manifestPath)
@@ -736,7 +729,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 						"workspace.releaseAgeMinutes": releaseAgeGate.ageMinutes,
 					}),
 				);
-				return { catalogs: assembled, releaseAgeGate, importerVersions, peerDependencyRules };
+				return { catalogs: assembled, releaseAgeGate, importerVersions, peerDependencyRules, hookReplays };
 			});
 
 			const [resolveOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(assemble, Duration.infinity);
@@ -761,11 +754,39 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				importerVersions: Effect.fn("WorkspaceCatalogs.importerVersions")(function* () {
 					return (yield* memo).importerVersions;
 				}),
+				hookReplays: Effect.fn("WorkspaceCatalogs.hookReplays")(function* () {
+					return (yield* memo).hookReplays;
+				}),
 				// Infallible bookkeeping, not a fallible boundary — no span. The next
 				// read after this runs the full assembly again.
 				refresh: () => invalidate,
 			};
 		});
+
+	/**
+	 * The service over an explicit {@link ConfigDependencyHooks} layer — the
+	 * one builder every `layer*` static and the `Workspaces` composites
+	 * delegate to, so the hooks layer is provided to {@link WorkspaceCatalogs.make}
+	 * in exactly one place.
+	 *
+	 * @remarks
+	 * Reach for it when the hooks layer is chosen elsewhere — a composite that
+	 * must hand ONE hooks reference to both this service and
+	 * `WorkspaceSnapshots` (layers memoize by reference, so two references
+	 * would replay twice and could run two policies), or a test wiring
+	 * {@link ConfigDependencyHooks.layerFrom}. The three `layer*` statics are
+	 * this with the hooks layer fixed. `R` is the hooks layer's own
+	 * requirement (the subprocess variant's `ChildProcessSpawner`), threaded
+	 * through. Parameterized, so bind it to a `const` and reuse it.
+	 *
+	 * @param hooks - The {@link ConfigDependencyHooks} layer to replay through.
+	 * @param options - The same options the other layer statics take.
+	 */
+	static readonly layerWithHooks = <R = never>(
+		hooks: Layer.Layer<ConfigDependencyHooks, never, R>,
+		options?: WorkspaceCatalogsOptions,
+	): Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path | R> =>
+		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(Layer.provide(hooks));
 
 	/**
 	 * The live layer — the default, which **never executes config-dependency
@@ -779,9 +800,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	static readonly layer = (
 		options?: WorkspaceCatalogsOptions,
 	): Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path> =>
-		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(
-			Layer.provide(ConfigDependencyHooks.layerNoop),
-		);
+		WorkspaceCatalogs.layerWithHooks(ConfigDependencyHooks.layerNoop, options);
 
 	/**
 	 * The opt-in live layer that **does** replay config-dependency `pnpmfile.cjs`
@@ -797,9 +816,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	static readonly layerWithConfigDependencies = (
 		options?: WorkspaceCatalogsOptions,
 	): Layer.Layer<WorkspaceCatalogs, never, WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path> =>
-		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(
-			Layer.provide(ConfigDependencyHooks.layerLive),
-		);
+		WorkspaceCatalogs.layerWithHooks(ConfigDependencyHooks.layerLive, options);
 
 	/**
 	 * The opt-in layer that replays config-dependency `pnpmfile` hooks in a
@@ -824,10 +841,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 		WorkspaceCatalogs,
 		never,
 		WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-	> =>
-		Layer.effect(WorkspaceCatalogs, WorkspaceCatalogs.make(options)).pipe(
-			Layer.provide(ConfigDependencyHooks.layerSubprocess),
-		);
+	> => WorkspaceCatalogs.layerWithHooks(ConfigDependencyHooks.layerSubprocess, options);
 
 	/**
 	 * A test double satisfying the full {@link WorkspaceCatalogsShape} with no
@@ -846,9 +860,10 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	 * `resolveSpecifier` answers from that `CatalogSet`'s own
 	 * {@link CatalogSet.resolveSpecifier} — exactly what the live service runs
 	 * over its assembled set — so the two stay consistent by construction.
-	 * `releaseAgeGate` and `importerVersions` are **not** derivable from a
-	 * catalog set (the gate comes from release-age keys and hook contributions,
-	 * the importer index from the lockfile's importer blocks — neither is in a
+	 * `releaseAgeGate`, `importerVersions` and `hookReplays` are **not**
+	 * derivable from a catalog set (the gate comes from release-age keys and
+	 * hook contributions, the importer index from the lockfile's importer
+	 * blocks, the replay record from the hooks layer — none is in a
 	 * `CatalogSet`) and always die unless stubbed.
 	 *
 	 * `refresh` defaults to `Effect.void` honestly: the double holds no memo,
@@ -879,6 +894,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 			peerDependencyRules: () => unstubbed("peerDependencyRules"),
 			releaseAgeGate: () => unstubbed("releaseAgeGate"),
 			importerVersions: () => unstubbed("importerVersions"),
+			hookReplays: () => unstubbed("hookReplays"),
 			refresh: () => Effect.void,
 			...overrides,
 		};

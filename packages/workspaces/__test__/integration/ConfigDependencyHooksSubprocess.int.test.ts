@@ -55,8 +55,13 @@ const SEED = { default: { effect: "^4.0.0" } } as const;
 
 let root: string;
 
-/** The `.pnpm-config/<name>` directory under the temp root. */
-const configDepDir = (name: string): string => join(root, "node_modules", ".pnpm-config", name);
+/** The `.pnpm-config/<name>` directory under the temp root, created with a `package.json` at `1.0.0` — the version every test declares. */
+const configDepDir = (name: string): string => {
+	const dir = join(root, "node_modules", ".pnpm-config", name);
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, "package.json"), JSON.stringify({ name, version: "1.0.0" }));
+	return dir;
+};
 
 // The real spawner over the real filesystem — the only platform surface the
 // subprocess layer needs.
@@ -219,25 +224,40 @@ describe("ConfigDependencyHooks.layerSubprocess — pnpm 11 loader order and ski
 		}).pipe(Effect.provide(HooksSubprocess)),
 	);
 
-	it.effect("a config dependency with no pnpmfile contributes nothing, not a failure", () =>
+	it.effect("a config dependency with no pnpmfile contributes nothing, not a failure — and spawns nothing", () =>
 		Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			// `absent-dep` has no `.pnpm-config/absent-dep/` directory at all;
-			// `cfg-fixture-neither` exists but ships neither candidate. Both are the
-			// legitimate skip: ERR_MODULE_NOT_FOUND for the candidate itself.
-			const result = yield* hooks.inject(root, { "absent-dep": "1.0.0", [NEITHER_DEP_NAME]: "1.0.0" }, SEED);
+			// `cfg-fixture-neither` is installed at the declared version but ships no
+			// pnpmfile candidate — the legitimate skip, decided in the PARENT.
+			const result = yield* hooks.inject(root, { [NEITHER_DEP_NAME]: "1.0.0" }, SEED);
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
 				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				// Resolved in the parent (so recorded) even though nothing was spawned.
+				replays: { [NEITHER_DEP_NAME]: { version: "1.0.0", source: "installed" } },
 			});
+		}).pipe(Effect.provide(HooksSubprocess)),
+	);
+
+	it.effect("a declared config dependency installed nowhere fails closed BEFORE any spawn", () =>
+		Effect.gen(function* () {
+			const hooks = yield* ConfigDependencyHooks;
+			// `absent-dep` has no `.pnpm-config/absent-dep/` directory and no store
+			// copy: the parent's ladder fails typed, identical to layerLive.
+			const error = yield* Effect.flip(hooks.inject(root, { "absent-dep": "1.0.0" }, SEED));
+			assert.instanceOf(error, CatalogAssemblyError);
+			assert.strictEqual(error.source, "hooks");
+			assert.strictEqual(error.path, "absent-dep");
+			assert.include((error.cause as Error).message, "pnpm add --config absent-dep@1.0.0");
 		}).pipe(Effect.provide(HooksSubprocess)),
 	);
 
 	it.effect("a pnpmfile whose OWN nested import is missing fails typed, never silently skipped", () =>
 		Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			// ERR_MODULE_NOT_FOUND for the NESTED module: err.url differs from the
+			// ERR_MODULE_NOT_FOUND for the NESTED module — the pnpmfile itself was
+			// resolved by the parent, so any import failure in the child is real:
 			// candidate URL, so the child must surface it typed — the case a broad
 			// "ERR_MODULE_NOT_FOUND ⇒ no pnpmfile" skip would swallow.
 			const error = yield* Effect.flip(hooks.inject(root, { [NESTED_DEP_NAME]: "1.0.0" }, SEED));

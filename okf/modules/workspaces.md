@@ -25,8 +25,8 @@ sources:
     resource: ../../packages/workspaces/src/Workspaces.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T16:45:41Z
-  body_sha256: 69f1c6806e139724ea89a80a15adac01016aa1c7687f1ddad403e04a75e22203
+  at: 2026-09-20T05:21:37Z
+  body_sha256: 3772c51b4cd06d49a921e6254847eeb5809b9ece8f39211a99389cabe90e9661
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -157,7 +157,7 @@ concepts: [discovery and detection](../interfaces/workspaces-discovery.md),
 `Workspaces.ts` exposes the composites (`layer`, `layerWithConfigDependencies`,
 `layerWithConfigDependenciesSubprocess`, `layerWithGit`,
 `layerWithGitAndConfigDependencies`,
-`layerWithGitAndConfigDependenciesSubprocess`), the one-call manifest path
+`layerWithGitAndConfigDependenciesSubprocess`, and `layerWithGitAndHooks` over a caller-supplied hooks layer), the one-call manifest path
 (`resolverLayer`, `resolveManifest`), and `localExecLayer`. `Workspaces` is a
 static class with a private constructor rather than an `as const` namespace
 object, because an `as const` object's member types are inferred in the
@@ -311,8 +311,8 @@ suppressed.
 - [The second-published-entrypoint decision](../decisions/second-published-entrypoint.md)
 - [Gotcha: ReleaseTag's strict-SemVer default](../gotchas/releasetag-strict-semver-default.md)
 - [Gotcha: the publishability detector diagnoses late](../gotchas/publishability-detector-diagnoses-late.md)
-- [Limitation: PeerCheck cannot answer yarn or two suppression axes](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
-- [Limitation: a hook-injected catalog bump between refs is invisible to a snapshot diff](../limitations/workspaces-snapshot-hook-catalog-bump-between-refs.md)
+- [Limitation: PeerCheck cannot answer yarn](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
+- [Limitation: under the no-op hooks layer, a hook-injected catalog bump between refs is invisible to a snapshot diff](../limitations/workspaces-snapshot-hook-catalog-bump-between-refs.md)
 
 [^package-json]: `packages/workspaces/package.json` — the `dependencies`,
     `peerDependencies`, and `exports` blocks.

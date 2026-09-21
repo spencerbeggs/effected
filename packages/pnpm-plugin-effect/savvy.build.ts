@@ -343,8 +343,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/workspaces": {
-							range: "^0.23.0",
-							peer: "^0.23.0",
+							range: "^0.24.0",
+							peer: "^0.24.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},

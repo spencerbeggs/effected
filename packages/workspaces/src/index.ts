@@ -38,6 +38,8 @@ export {
 	ConfigDependencyHooks,
 	type ConfigDependencyHooksShape,
 	type HookInjection,
+	type HookReplay,
+	type HookReplaySource,
 	NoPeerDependencyRules,
 	type PeerDependencyRules,
 } from "./ConfigDependencyHooks.js";

@@ -1,7 +1,7 @@
 ---
 type: Interface
 title: "@effected/workspaces snapshots"
-description: WorkspaceSnapshots and WorkspaceStateSnapshot — point-in-time workspace reads at a git ref or in the worktree, and the at/worktree hook-catalog asymmetry.
+description: WorkspaceSnapshots and WorkspaceStateSnapshot — point-in-time workspace reads at a git ref or in the worktree, with config-dependency hooks replayed at the ref's declared versions.
 status: stable
 kind: api
 resource: ../../packages/workspaces/src/WorkspaceSnapshots.ts
@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/workspaces/src/ChangeDetector.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 4f3f425afe856b470c60e1cae0d331eb49d8b7528b93b935d491389a0b3ca0c6
+  at: 2026-09-20T05:41:00Z
+  body_sha256: 6eddd73a06883839c4b2bcb2477294abe7a93e1565da082e2c0296f55d79b870
 ---
 
 # @effected/workspaces snapshots
@@ -61,22 +61,36 @@ skip it. `worktree()` reads the live tree over the one shared
 `WorkspaceDiscovery` plus `WorkspaceCatalogs` path — there is no second
 manifest or lockfile read for the worktree.
 
-## The at/worktree hook-catalog asymmetry
+## Hook replay at a ref
 
-Reading at a ref never replays config-dependency hooks — it reads inline
-catalogs plus the lockfile at that ref only, because an at-ref read must
-not execute historical config-dependency code. So under the
-hook-replaying layer, an at-ref snapshot and a worktree snapshot can
-disagree on hook-injected catalog sets.
+Reading at a ref replays the ref's own `configDependencies` — read from
+that ref's `pnpm-workspace.yaml`, seeded by that ref's inline catalogs and
+peer-dependency rules — through whichever `ConfigDependencyHooks` layer is
+in scope, and merges the injection above the ref's lockfile and inline
+sources exactly as the live assembler does.[^workspace-snapshots-ts] The
+service therefore requires that layer, and the composites hand one
+reference to it and to `WorkspaceCatalogs` so the two sides of a diff run
+one policy. Under the no-op layer nothing executes and the ref side sees
+no hook-injected catalog; under a replaying layer each ref's hook runs at
+the version that ref declares — resolved through the installed copy or the
+pnpm store by the live and subprocess layers, failing closed otherwise, or
+taken from a caller-supplied `"<name>@<version>"` map under
+`ConfigDependencyHooks.layerFrom` via `Workspaces.layerWithGitAndHooks` (see
+[the config-dependency seam](workspaces-catalogs.md#the-replaying-layers-resolve-the-declared-version)),
+which still requires no checkout, no fetch and no historical code the
+machine has not already installed. Every snapshot records which version
+each config dependency was replayed from in `hookReplays`, a `name →
+version` record set on every fresh read (empty under the no-op layer or
+where config dependencies do not exist) and absent only on values
+serialized before the field existed; the resolution rung is machine-local
+provenance that stays on the live injection, and the worktree read takes
+the record off the same memoized assembly as the catalog set.
 
-The importer-version fallback closes the resulting gap for resolution
-without touching that asymmetry: when the catalog set cannot answer a
-`catalog:` specifier, resolution falls back to the version that ref's own
-lockfile importer entry recorded. Replaying the ref's pinned config
-dependency was rejected, since it requires a network fetch plus arbitrary
-historical code execution per ref and is impossible for an at-ref read
-regardless, because it reads without a checkout. Warning and emitting no
-row was also rejected, since it leaves the resulting changeset missing.
+The importer-version fallback remains for the no-op case: when the catalog
+set cannot answer a `catalog:` specifier, resolution falls back to the
+version that ref's own lockfile importer entry recorded. Warning and
+emitting no row was rejected, since it leaves the resulting changeset
+missing.
 
 ### The seeded-catalog seam
 
@@ -106,16 +120,17 @@ than accumulating it, because an accumulating seed would make precedence
 depend on call order — but the layer-level `seedCatalogs` option puts a
 seed on every snapshot the service returns, so a `crossSeed` built on a
 bare replace would silently discard that seed on both sides at once,
-reopening the hook-catalog gap (see
-[the cross-ref bump limitation](../limitations/workspaces-snapshot-hook-catalog-bump-between-refs.md)
-for the residual gap even with `crossSeed` composed correctly). `crossSeed` therefore composes the two
+reopening the hook-catalog gap. `crossSeed` therefore composes the two
 explicitly: the other ref's committed catalogs win, and the carried seed
-answers only what neither ref declared. The residual limitation is
-documented and pinned by a test rather than worked around: a range change
-made purely by bumping the config dependency between two refs stays
-suppressed, because neither committed source declares the catalog; the
-only committed evidence of that case is `configDependencies` in
-`pnpm-workspace.yaml`, which a consumer diffs directly.
+answers only what neither ref declared. Under a replaying hooks layer a
+range change made purely by bumping the config dependency between two
+refs is detected — each ref's own catalogs carry its replayed range, so the
+seed never gets a say; under the no-op layer that case stays suppressed,
+because neither committed source declares the catalog, and the only
+committed evidence is `configDependencies` in `pnpm-workspace.yaml`, which
+a consumer diffs directly (see
+[the cross-ref bump limitation](../limitations/workspaces-snapshot-hook-catalog-bump-between-refs.md)).
+Both cases are pinned by tests.
 
 ## Importer versions
 

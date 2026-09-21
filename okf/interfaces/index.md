@@ -16,7 +16,7 @@
 * [@effected/workspaces duplicate-copy checking](workspaces-duplicate-check.md) - DuplicateCheck — a lockfile-only report of every package resolving at two or more versions and who pulls each copy, with the kit predicate that names the Layer-mismatch trap.
 * [@effected/workspaces peer-dependency checking](workspaces-peer-check.md) - PeerCheck — a lockfile-only reproduction of pnpm peers check, returning a report rather than an array and failing closed on what it cannot verify.
 * [@effected/workspaces release surface](workspaces-release.md) - PublishabilityDetector, VersioningStrategy, and ReleaseTag — the release-shaped questions the workspace model already holds the facts for.
-* [@effected/workspaces snapshots](workspaces-snapshots.md) - WorkspaceSnapshots and WorkspaceStateSnapshot — point-in-time workspace reads at a git ref or in the worktree, and the at/worktree hook-catalog asymmetry.
+* [@effected/workspaces snapshots](workspaces-snapshots.md) - WorkspaceSnapshots and WorkspaceStateSnapshot — point-in-time workspace reads at a git ref or in the worktree, with config-dependency hooks replayed at the ref's declared versions.
 * [@effected/yaml comment model](yaml-comment-model.md) - The per-node comment fields, their attribution rules, one-string storage with its spaces-only escape, and the recorded divergences from the reference implementation.
 * [@effected/yaml lint system](yaml-lint.md) - The yamllint-class rule engine, public token stream, autofix, config schema and config-inference surface built on the yaml engine.
 * [@effected/yaml stringify options](yaml-stringify-options.md) - The emitter's optional presentation and compatibility behaviours -- indentSequences, explicit-key spill, lineWidth folding, requoteScalars and quoteCompat.

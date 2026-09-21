@@ -136,6 +136,23 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 */
 	importerVersions: Schema.optionalKey(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.String))),
 	/**
+	 * Which version each declared config dependency's hook was replayed from at
+	 * this moment, keyed by name.
+	 *
+	 * @remarks
+	 * Versions only — WHERE this machine found each pnpmfile (the `source` of a
+	 * live `HookReplay`) is machine-local provenance, not part of "what the
+	 * workspace looked like then", so it stays on the live `HookInjection`
+	 * diagnostic and off this serializable value. Every fresh read sets the
+	 * field: `{}` under the no-op layer, which resolves nothing, when the file
+	 * declares no config dependencies, or on the bun / `package.json` path,
+	 * where config dependencies do not exist. Absent only when decoding a
+	 * snapshot serialized before the field existed, so stored values stay
+	 * readable. Carried through `withSeededCatalogs` and `crossSeed`
+	 * unchanged, like `importerVersions`.
+	 */
+	hookReplays: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+	/**
 	 * Catalogs supplied from OUTSIDE this moment, consulted only when
 	 * `catalogs` cannot answer.
 	 *
@@ -148,11 +165,14 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * always wins and both halves stay readable.
 	 *
 	 * The motivating case is a catalog injected by a config-dependency
-	 * `pnpmfile` hook. It is recorded in no committed catalog source, so
-	 * `WorkspaceSnapshots.at(ref)` — which never replays hooks, by design — cannot
-	 * see it, and a `catalog:` specifier against it resolves to nothing on BOTH
-	 * sides of a diff. Seeding the live hook-injected set, or the other side's
-	 * set, restores a declared RANGE without executing any historical code.
+	 * `pnpmfile` hook. It is recorded in no committed catalog source, so under
+	 * a non-replaying `ConfigDependencyHooks` layer (`layerNoop`, the default)
+	 * `WorkspaceSnapshots.at(ref)` cannot see it, and a `catalog:` specifier
+	 * against it resolves to nothing on BOTH sides of a diff. Seeding the live
+	 * hook-injected set, or the other side's set, restores a declared RANGE
+	 * without executing any historical code. Under a replaying layer `at(ref)`
+	 * replays the ref's own pinned hook and the seed answers only what neither
+	 * source declared.
 	 *
 	 * Defaults to absent, which makes the seed inert — exactly the behavior of
 	 * every snapshot captured before this field existed.
@@ -324,8 +344,8 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * value, and an accumulating seed would make precedence depend on call
 	 * order). {@link WorkspaceStateSnapshot.crossSeed} is the deliberate
 	 * exception: it composes the two seeds explicitly, precisely because a bare
-	 * replace would discard a layer-level seed. `catalogs`, `packages` and `importerVersions` are carried through
-	 * unchanged, so what the ref declared is still exactly what it declared.
+	 * replace would discard a layer-level seed. `catalogs`, `packages`, `importerVersions` and `hookReplays` are
+	 * carried through unchanged, so what the ref declared is still exactly what it declared.
 	 *
 	 * The two seeds worth reaching for: the LIVE hook-injected catalog set (from
 	 * a `WorkspaceCatalogs` built by one of the config-dependency layers), or the
@@ -355,6 +375,7 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 			packages: this.packages,
 			catalogs: this.catalogs,
 			...(this.importerVersions === undefined ? {} : { importerVersions: this.importerVersions }),
+			...(this.hookReplays === undefined ? {} : { hookReplays: this.hookReplays }),
 			seededCatalogs: seed,
 		});
 	}
@@ -371,16 +392,19 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 * missing it, at strictly lower precedence than that side's own catalogs, so
 	 * a genuine change between the refs still reads as a change.
 	 *
-	 * **The limitation is inherent and is not a defect to work around.** A range
-	 * change made purely by bumping the config dependency BETWEEN the two refs is
-	 * suppressed: neither committed source declares the catalog, so each side
-	 * falls back to the other's value and the two agree by construction. Seeding
-	 * the live hook-injected set via
-	 * {@link WorkspaceStateSnapshot.withSeededCatalogs} has the same blind spot
-	 * against history — recovering it would mean replaying each ref's pinned
-	 * config-dependency code, which `at(ref)` will not do. If that case must be
-	 * detected, diff `configDependencies` in `pnpm-workspace.yaml` directly; it
-	 * is the only committed evidence that the injection changed.
+	 * **What cross-seeding can and cannot see depends on the hooks layer.** A
+	 * range change made purely by bumping the config dependency BETWEEN the two
+	 * refs is detected when the snapshots were read under a replaying
+	 * `ConfigDependencyHooks` layer: `WorkspaceSnapshots.at(ref)` replays each
+	 * ref's hook at the version that ref's `configDependencies` declares, so
+	 * each side's OWN catalogs carry that side's injected range and the seed
+	 * never gets a say. Under `layerNoop` the case stays suppressed — neither
+	 * committed source declares the catalog, so each side falls back to the
+	 * other's value and the two agree by construction; there, diff
+	 * `configDependencies` in `pnpm-workspace.yaml` directly, the only committed
+	 * evidence that the injection changed. Cross-seeding is harmless under a
+	 * replaying layer (own catalogs take precedence) and still worthwhile under
+	 * the no-op one, which is why it stays.
 	 *
 	 * **The seeding relationship is symmetric; the RETURN ORDER is not.** Each
 	 * snapshot is seeded with the other's catalogs, so neither argument is

@@ -15,6 +15,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Lockfile } from "@effected/lockfiles";
 import { Effect } from "effect";
 import { NoPeerDependencyRules } from "../src/ConfigDependencyHooks.js";
+import { peerNameMatcher } from "../src/internal/peerPatterns.js";
 import type { UnsatisfiedPeer } from "../src/PeerCheck.js";
 import { PeerCheck } from "../src/PeerCheck.js";
 
@@ -374,38 +375,10 @@ describe("PeerCheck.run — peerDependencyRules and the unverified states", () =
 		}),
 	);
 
-	it.effect("a non-empty ignoreMissing reports peerRulesNotApplied", () =>
+	it.effect("rules with only allowedVersions populated stay verified", () =>
 		Effect.gen(function* () {
-			// Wrong in exactly ONE way against the verified case below: only
-			// `ignoreMissing` is populated. Only `allowedVersions` is applied, so a
-			// workspace suppressing missing optional peers this way has a policy we
-			// did not replicate — the report must fail closed rather than present
-			// rows pnpm hides.
-			const report = PeerCheck.run(yield* parse("mixed"), {
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: ["react"], allowAny: [] },
-			});
-			assert.include(report.unverified, "peerRulesNotApplied");
-		}),
-	);
-
-	it.effect("a non-empty allowAny reports peerRulesNotApplied", () =>
-		Effect.gen(function* () {
-			// The OTHER path to the same outcome, mutated independently: two code
-			// paths implementing one rule are two things to pin, so dropping either
-			// check must turn a different test red.
-			const report = PeerCheck.run(yield* parse("mixed"), {
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: ["react"] },
-			});
-			assert.include(report.unverified, "peerRulesNotApplied");
-		}),
-	);
-
-	it.effect("rules with both unapplied axes EMPTY stay verified", () =>
-		Effect.gen(function* () {
-			// The regression guard for the two tests above: the overwhelmingly
-			// common shape — real `allowedVersions`, both other axes empty — is
-			// fully applied and must not be dragged into fail-closed. This goes red
-			// if the check fires on presence rather than on non-emptiness.
+			// The overwhelmingly common shape — real `allowedVersions`, both list
+			// axes empty — is fully applied and verified.
 			const report = PeerCheck.run(yield* parse("mixed"), {
 				peerDependencyRules: rules({ "react-dom>react": "17.0.2" }),
 			});
@@ -604,4 +577,218 @@ describe("PeerCheck.run — peerDependencyRules and the unverified states", () =
 			assert.deepStrictEqual(npm.unverified, []);
 		}),
 	);
+});
+
+// The two list axes, `ignoreMissing` and `allowAny`, measured against pnpm
+// 12.5.1 (effected#430). Every oracle file under `allowany/` and
+// `ignoremissing/` is one `pnpm peers check --json` run over the SAME lockfile
+// under a different rule configuration, so the rule is the variable and the
+// committed verdict is the decision. Provenance in `fixtures/peers/README.md`.
+describe("PeerCheck.run — ignoreMissing and allowAny", () => {
+	const withAllowAny = (allowAny: ReadonlyArray<string>) => ({
+		peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny },
+	});
+	const withIgnoreMissing = (ignoreMissing: ReadonlyArray<string>) => ({
+		peerDependencyRules: { allowedVersions: {}, ignoreMissing, allowAny: [] },
+	});
+
+	/** Runs the fixture under one rule configuration and pins it to its oracle file. */
+	const agrees = (dir: string, options: Parameters<typeof PeerCheck.run>[1], file: string) =>
+		Effect.gen(function* () {
+			const report = PeerCheck.run(yield* parse(dir), options);
+			assert.isTrue(report.supported);
+			// Supplied rules with these axes populated are FULLY applied, so the
+			// report is verified. This is the claim the whole block earns.
+			assert.deepStrictEqual(report.unverified, []);
+			assert.deepStrictEqual(ours(report.unsatisfied), theirs(dir, file));
+		});
+
+	// allowany/: a bad required `react` (packages/unmet) and a bad optional
+	// `redux` (packages/optional).
+	it.effect("allowany control: with no rules both bad rows fire", () =>
+		agrees("allowany", { peerDependencyRules: NoPeerDependencyRules }, "peers-check.json"),
+	);
+	it.effect("allowAny by bare name clears the bad required react and leaves redux", () =>
+		agrees("allowany", withAllowAny(["react"]), "peers-check-bare-react.json"),
+	);
+	it.effect("allowAny by bare name clears the bad OPTIONAL redux and leaves react", () =>
+		agrees("allowany", withAllowAny(["redux"]), "peers-check-bare-redux.json"),
+	);
+	it.effect("allowAny glob `re*` clears both bad rows", () =>
+		agrees("allowany", withAllowAny(["re*"]), "peers-check-glob.json"),
+	);
+	it.effect("allowAny `*` then `!redux` clears react and keeps redux", () =>
+		agrees("allowany", withAllowAny(["*", "!redux"]), "peers-check-star-negation.json"),
+	);
+	it.effect("allowAny with a parent>peer key suppresses nothing — the grammar has no parent", () =>
+		agrees("allowany", withAllowAny(["react-dom>react"]), "peers-check-parent-key.json"),
+	);
+	it.effect("allowAny `!redux` then `*`: the later `*` re-includes redux, so both rows clear", () =>
+		agrees("allowany", withAllowAny(["!redux", "*"]), "peers-check-negation-then-star.json"),
+	);
+	it.effect("allowAny with a lone `!` (negating the empty name) matches every peer and clears both rows", () =>
+		agrees("allowany", withAllowAny(["!"]), "peers-check-lone-negation.json"),
+	);
+	it.effect("ignoreMissing never rescues a row where something resolved at the wrong version", () =>
+		agrees("allowany", withIgnoreMissing(["react", "redux"]), "peers-check-ignoremissing-react-redux.json"),
+	);
+
+	// ignoremissing/: three missing `react` rows for packages/lone, one of them
+	// transitive (react-redux > use-sync-external-store).
+	it.effect("ignoremissing control: with no rules all three missing rows fire", () =>
+		agrees("ignoremissing", { peerDependencyRules: NoPeerDependencyRules }, "peers-check.json"),
+	);
+	it.effect("ignoreMissing by bare name clears every missing react, the transitive one included", () =>
+		agrees("ignoremissing", withIgnoreMissing(["react"]), "peers-check-bare.json"),
+	);
+	it.effect("ignoreMissing glob `rea*` clears every missing react", () =>
+		agrees("ignoremissing", withIgnoreMissing(["rea*"]), "peers-check-glob.json"),
+	);
+	it.effect("ignoreMissing `*` then `!react` keeps every missing react", () =>
+		agrees("ignoremissing", withIgnoreMissing(["*", "!react"]), "peers-check-star-negation.json"),
+	);
+	it.effect("ignoreMissing holding ONLY a negation clears everything not excluded", () =>
+		agrees("ignoremissing", withIgnoreMissing(["!redux"]), "peers-check-negation-only.json"),
+	);
+	it.effect("ignoreMissing with a parent>peer key suppresses nothing", () =>
+		agrees("ignoremissing", withIgnoreMissing(["react-dom>react"]), "peers-check-parent-key.json"),
+	);
+	it.effect("ignoreMissing with a parent@version>peer key suppresses nothing either", () =>
+		agrees("ignoremissing", withIgnoreMissing(["react-dom@18.3.1>react"]), "peers-check-parent-versioned-key.json"),
+	);
+	it.effect("allowAny never rescues a missing peer", () =>
+		agrees("ignoremissing", withAllowAny(["react"]), "peers-check-allowany-react.json"),
+	);
+
+	// Mutation discriminators, stated directly. The oracle comparisons above
+	// would also pass for an implementation that suppressed on the wrong axis
+	// only if pnpm did too — which the cross-axis files rule out — but these
+	// name each single-mutation failure so it fails one test, not a batch.
+	it.effect("a pattern that matches no peer name leaves every row in place", () =>
+		Effect.gen(function* () {
+			const before = PeerCheck.run(yield* parse("allowany"), { peerDependencyRules: NoPeerDependencyRules });
+			const after = PeerCheck.run(yield* parse("allowany"), withAllowAny(["reactx", "!*"]));
+			assert.strictEqual(after.unsatisfied.length, before.unsatisfied.length);
+			assert.isTrue(before.unsatisfied.length > 0);
+			const missing = PeerCheck.run(yield* parse("ignoremissing"), withIgnoreMissing(["redux"]));
+			assert.strictEqual(missing.unsatisfied.length, 3);
+		}),
+	);
+
+	it.effect("the axes do not cross, stated on the row rather than the oracle", () =>
+		Effect.gen(function* () {
+			// `ignoreMissing` reads only rows with `found === null`; `allowAny` reads
+			// only rows with a version. Swapping the two predicates inside
+			// `suppressedByRule` passes every single-axis oracle test whose other
+			// axis is empty; this is what turns red.
+			const bad = PeerCheck.run(yield* parse("allowany"), withIgnoreMissing(["*"]));
+			assert.strictEqual(bad.unsatisfied.length, 2);
+			assert.isTrue(bad.unsatisfied.every((r) => r.found !== null));
+			const missing = PeerCheck.run(yield* parse("ignoremissing"), withAllowAny(["*"]));
+			assert.strictEqual(missing.unsatisfied.length, 3);
+			assert.isTrue(missing.unsatisfied.every((r) => r.found === null));
+		}),
+	);
+
+	it.effect("both axes populated at once compose: each hides only its own kind of row", () =>
+		Effect.gen(function* () {
+			const report = PeerCheck.run(yield* parse("allowany"), {
+				peerDependencyRules: { allowedVersions: {}, ignoreMissing: ["*"], allowAny: ["redux"] },
+			});
+			assert.deepStrictEqual(report.unverified, []);
+			assert.deepStrictEqual(
+				report.unsatisfied.map((r) => r.dependency),
+				["react"],
+			);
+		}),
+	);
+
+	it.effect("omitting the key still reports peerRulesNotApplied, whatever the lockfile", () =>
+		Effect.gen(function* () {
+			// Applying the list axes must not have loosened the presence rule.
+			const report = PeerCheck.run(yield* parse("allowany"));
+			assert.deepStrictEqual(report.unverified, ["peerRulesNotApplied"]);
+			assert.strictEqual(report.unsatisfied.length, 2);
+		}),
+	);
+});
+
+// The pattern grammar, tested on the helper directly: the fixtures carry only
+// `react`/`redux`-shaped names, so the scoped-name and order-sensitivity
+// cases have no oracle row to fire on and are pinned here against the
+// `@pnpm/matcher@1000.1.0` source they restate.
+describe("peerNameMatcher — @pnpm/matcher semantics", () => {
+	it("an empty list matches nothing", () => {
+		assert.isFalse(peerNameMatcher([])("react"));
+	});
+
+	it("a lone `*` matches everything", () => {
+		const m = peerNameMatcher(["*"]);
+		assert.isTrue(m("react"));
+		assert.isTrue(m("@types/react"));
+		assert.isTrue(m(""));
+	});
+
+	it("a pattern without `*` is plain equality, not a prefix", () => {
+		const m = peerNameMatcher(["react"]);
+		assert.isTrue(m("react"));
+		assert.isFalse(m("react-dom"));
+		assert.isFalse(m("preact"));
+	});
+
+	it("`re*` is an anchored wildcard", () => {
+		const m = peerNameMatcher(["re*"]);
+		assert.isTrue(m("react"));
+		assert.isTrue(m("redux"));
+		assert.isTrue(m("re"));
+		assert.isFalse(m("preact"));
+		assert.isFalse(m("@re/x"));
+	});
+
+	it("a scoped pattern keeps regex-special characters literal", () => {
+		const m = peerNameMatcher(["@types/*"]);
+		assert.isTrue(m("@types/react"));
+		assert.isTrue(m("@types/node"));
+		assert.isFalse(m("@typesXreact"));
+		assert.isFalse(m("types/react"));
+		// `.` in a name must not become "any character".
+		assert.isFalse(peerNameMatcher(["lodash.*"])("lodashXmerge"));
+		assert.isTrue(peerNameMatcher(["lodash.*"])("lodash.merge"));
+		assert.isTrue(peerNameMatcher(["@types/react"])("@types/react"));
+	});
+
+	it("a single negation matches everything except", () => {
+		const m = peerNameMatcher(["!redux"]);
+		assert.isTrue(m("react"));
+		assert.isFalse(m("redux"));
+	});
+
+	it("a list of only negations matches everything none of them excludes", () => {
+		const m = peerNameMatcher(["!redux", "!re*"]);
+		assert.isTrue(m("zustand"));
+		assert.isFalse(m("redux"));
+		assert.isFalse(m("react"));
+	});
+
+	it("a list of only includes matches when any does", () => {
+		const m = peerNameMatcher(["react", "redux"]);
+		assert.isTrue(m("react"));
+		assert.isTrue(m("redux"));
+		assert.isFalse(m("zustand"));
+	});
+
+	it("a mixed list is walked in order: a later negation resets an earlier include", () => {
+		assert.isFalse(peerNameMatcher(["*", "!redux"])("redux"));
+		assert.isTrue(peerNameMatcher(["*", "!redux"])("react"));
+		// The other order: the negation runs first, then `*` includes redux again
+		// (oracle: allowany/peers-check-negation-then-star.json).
+		assert.isTrue(peerNameMatcher(["!redux", "*"])("redux"));
+	});
+
+	it("a lone `!` negates the empty name, which nothing has, so it matches everything", () => {
+		// Oracle: allowany/peers-check-lone-negation.json clears both bad rows.
+		const m = peerNameMatcher(["!"]);
+		assert.isTrue(m("react"));
+		assert.isTrue(m("redux"));
+	});
 });
