@@ -40,7 +40,7 @@
 		"@effected/toml": "workspace:*",
 		"@effected/walker": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@savvy-web/bundler": "^2.4.6",
+		"@savvy-web/bundler": "^2.4.7",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
