@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { tarExtractCommand, unzipCommand, zipCommand } from "../src/internal/archiveCommands.js";
+import { tarExtractCommand, unzipCommand, zipCommand, zipManifest } from "../src/internal/archiveCommands.js";
 
 /**
  * The archiver command lines, pinned verbatim.
@@ -22,6 +22,7 @@ describe("archiveCommands", () => {
 				windows: false,
 				root: "/work/root",
 				files: ["a.txt", "dir/b.txt"],
+				manifest: "/tmp/scratch/artifact.manifest",
 				destination: "/tmp/scratch/artifact.zip",
 				level: 6,
 			});
@@ -32,7 +33,8 @@ describe("archiveCommands", () => {
 
 		it("POSIX: the compression level is clamped to zip's 0..9 and truncated", () => {
 			const level = (value: number) =>
-				zipCommand({ windows: false, root: "/r", files: ["f"], destination: "/d.zip", level: value }).args[0];
+				zipCommand({ windows: false, root: "/r", files: ["f"], manifest: "/m", destination: "/d.zip", level: value })
+					.args[0];
 			assert.strictEqual(level(12), "-9");
 			assert.strictEqual(level(-3), "-0");
 			assert.strictEqual(level(4.9), "-4");
@@ -42,15 +44,23 @@ describe("archiveCommands", () => {
 			"$ErrorActionPreference = 'Stop'; try { Add-Type -AssemblyName System.IO.Compression; " +
 			"Add-Type -AssemblyName System.IO.Compression.FileSystem; ";
 		const ZIP_EPILOGUE =
-			"} finally { $zip.Dispose() } } catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 }";
+			"} } } finally { $zip.Dispose() } } catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 }";
 		const windowsZip = (files: ReadonlyArray<string>, level = 6, root = "D:\\a\\root") =>
-			zipCommand({ windows: true, root, files, destination: "D:\\a\\_temp\\artifact.zip", level }).args[3] as string;
+			zipCommand({
+				windows: true,
+				root,
+				files,
+				manifest: "D:\\a\\_temp\\artifact.manifest",
+				destination: "D:\\a\\_temp\\artifact.zip",
+				level,
+			}).args[3] as string;
 
-		it("Windows: a pwsh script driving ZipFile directly — delete, open Create, one explicit entry per file", () => {
+		it("Windows: a constant-size pwsh script driving ZipFile — delete, open Create, one explicit entry per manifest line", () => {
 			const command = zipCommand({
 				windows: true,
 				root: "D:\\a\\root",
 				files: ["a.txt", "dir\\b.txt"],
+				manifest: "D:\\a\\_temp\\artifact.manifest",
 				destination: "D:\\a\\_temp\\artifact.zip",
 				level: 6,
 			});
@@ -62,28 +72,43 @@ describe("archiveCommands", () => {
 					ZIP_PRELUDE +
 						"[System.IO.File]::Delete('D:\\a\\_temp\\artifact.zip'); " +
 						"$zip = [System.IO.Compression.ZipFile]::Open('D:\\a\\_temp\\artifact.zip', [System.IO.Compression.ZipArchiveMode]::Create); " +
-						"try { " +
-						"[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, [System.IO.Path]::Combine('D:\\a\\root', 'a.txt'), 'a.txt', [System.IO.Compression.CompressionLevel]::Optimal); " +
-						"[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, [System.IO.Path]::Combine('D:\\a\\root', 'dir\\b.txt'), 'dir/b.txt', [System.IO.Compression.CompressionLevel]::Optimal); " +
+						"try { foreach ($rel in [System.IO.File]::ReadAllLines('D:\\a\\_temp\\artifact.manifest')) { if ($rel -ne '') { " +
+						"$null = [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, [System.IO.Path]::Combine('D:\\a\\root', $rel), $rel.Replace('\\', '/'), [System.IO.Compression.CompressionLevel]::Optimal) " +
 						ZIP_EPILOGUE,
 				],
 			);
 			assert.strictEqual(command.options.cwd, "D:\\a\\root");
 		});
 
-		it("Windows: a nested path keeps its directory — source is Combine(root, rel), entry name is rel with `/`", () => {
+		it("Windows: the script's size does not grow with the file list — the list is in the manifest", () => {
+			// `CreateProcessW` caps the command line at 32,767 characters; the
+			// inlined form hit it at ~150 files. The script must not mention the
+			// files at all.
+			const one = windowsZip(["a.txt"]);
+			const many = windowsZip(Array.from({ length: 5_000 }, (_, index) => `dir\\file-${index}.txt`));
+			assert.strictEqual(many, one);
+			assert.notInclude(one, "a.txt");
+			assert.isBelow(one.length, 1_000);
+		});
+
+		it("Windows: every CreateEntryFromFile is assigned to $null, so entry listings never reach the captured stderr", () => {
+			// Unassigned, pwsh prints the returned ZipArchiveEntry (~430 bytes per
+			// file) to stdout, and `spawnOnce` interleaves that with stderr — burying
+			// the .NET exception `ArtifactError.stderr` exists to surface.
+			const script = windowsZip(["a.txt"]);
+			assert.include(script, "{ $null = [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(");
+			assert.notInclude(script, "{ [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(");
+		});
+
+		it("Windows: the entry keeps its directory — source is Combine(root, $rel), entry name is $rel with `\\` swapped for `/` literally", () => {
 			// `Compress-Archive -Path` with file paths flattened every entry to its
-			// bare name, so `dir\b.txt` landed as `b.txt`. Naming the entry is the fix.
+			// bare name, so `dir\b.txt` landed as `b.txt`. Naming the entry is the
+			// fix, and `.Replace` is .NET String.Replace: a literal swap, not a regex.
 			const script = windowsZip(["dir\\sub\\b.txt"]);
 			assert.include(
 				script,
-				"CreateEntryFromFile($zip, [System.IO.Path]::Combine('D:\\a\\root', 'dir\\sub\\b.txt'), 'dir/sub/b.txt', ",
+				"CreateEntryFromFile($zip, [System.IO.Path]::Combine('D:\\a\\root', $rel), $rel.Replace('\\', '/'), ",
 			);
-		});
-
-		it("Windows: a bracketed file name is taken literally — no wildcard path expands it", () => {
-			const script = windowsZip(["report[1].txt"]);
-			assert.include(script, "Combine('D:\\a\\root', 'report[1].txt'), 'report[1].txt', ");
 		});
 
 		it("Windows: a single quote in any path is doubled, the PowerShell single-quote escape", () => {
@@ -91,13 +116,15 @@ describe("archiveCommands", () => {
 				windows: true,
 				root: "D:\\o'brien",
 				files: ["it's.txt"],
+				manifest: "D:\\o'brien\\a.manifest",
 				destination: "D:\\o'brien\\a.zip",
 				level: 6,
 			});
 			const script = command.args[3] as string;
 			assert.include(script, "[System.IO.File]::Delete('D:\\o''brien\\a.zip'); ");
 			assert.include(script, "ZipFile]::Open('D:\\o''brien\\a.zip', ");
-			assert.include(script, "Combine('D:\\o''brien', 'it''s.txt'), 'it''s.txt', ");
+			assert.include(script, "ReadAllLines('D:\\o''brien\\a.manifest')");
+			assert.include(script, "Combine('D:\\o''brien', $rel)");
 		});
 
 		it("Windows: the level maps onto .NET's CompressionLevel at each bucket boundary, clamped", () => {
@@ -121,6 +148,20 @@ describe("archiveCommands", () => {
 			const script = windowsZip(["a.txt", "dir\\b.txt", "report[1].txt"]);
 			assert.notInclude(script, "Compress-Archive");
 			assert.notInclude(script, "-Path ");
+		});
+	});
+
+	describe("zipManifest", () => {
+		it("one relative path per line, `\\n`-joined, with a trailing newline", () => {
+			assert.strictEqual(zipManifest(["a.txt", "dir\\b.txt", "report[1].txt"]), "a.txt\ndir\\b.txt\nreport[1].txt\n");
+		});
+
+		it("no files is an empty manifest", () => {
+			assert.strictEqual(zipManifest([]), "");
+		});
+
+		it("takes a bracketed or quoted name literally — nothing is escaped or expanded", () => {
+			assert.strictEqual(zipManifest(["it's [1].txt"]), "it's [1].txt\n");
 		});
 	});
 

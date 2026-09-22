@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
+import { LanguageVariant, SyntaxKind, computeLineStarts, createScanner } from "typescript/unstable/ast";
 
 /**
  * The package's rule that ambient process state is never read behind a
@@ -21,37 +22,117 @@ const RULE =
 
 const srcRoot = fileURLToPath(new URL("../src/", import.meta.url));
 
+const AMBIENT_MEMBERS: ReadonlySet<string> = new Set(["env", "arch", "platform"]);
+
 /**
- * Line comments first, then blocks — `__test__/Secret.test.ts` says why the
- * order matters. Known limit: a `/*` inside a string literal (a `"**\/*"` glob)
- * would open a phantom block and hide the code up to the next `*\/`; the
- * "allowlisted site no longer present" assertion below is the backstop, since
- * a hidden site reads as missing rather than as clean.
+ * Every `process.env` / `process.arch` / `process.platform` read in `text`,
+ * found by walking TypeScript's own token stream rather than a regex over
+ * comment-stripped source.
+ *
+ * @remarks
+ * A site is the token triple `process` `.` `env|arch|platform`. The scanner
+ * skips trivia, so comments never match; a string literal is one
+ * `StringLiteral` token, so `"/* process.env *\/"` never matches either — the
+ * two false-positive classes a regex has to approximate. Template literals
+ * are the one place the scanner needs steering: after a `TemplateHead` or
+ * `TemplateMiddle` the code inside `${…}` is scanned as code — a read there
+ * IS a read and is counted — and when its closing brace arrives the scanner
+ * is told to `reScanTemplateToken`, so the template's remaining text is a
+ * template span, not code. Without that, a `}` inside a template resumes
+ * scanning template text as identifiers.
+ *
+ * The scanner is TypeScript 7's, from `typescript/unstable/ast` — the
+ * package's root export carries only `version` now that the compiler is
+ * native, and the JS scanner moved there with a shorter signature (no
+ * `ScriptTarget`) and `SyntaxKind.EndOfFile` in place of `EndOfFileToken`.
  */
-const stripComments = (source: string): string =>
-	source.replace(/(^|\n)\s*\/\/.*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, "");
+const scanAmbientReads = (text: string): ReadonlyArray<{ readonly line: number; readonly text: string }> => {
+	const found: Array<{ readonly line: number; readonly text: string }> = [];
+	const lineStarts = computeLineStarts(text);
+	const lines = text.split("\n");
+	const lineOf = (position: number): number => {
+		// The last line start at or before `position`; 0-based.
+		let line = 0;
+		while (line + 1 < lineStarts.length && (lineStarts[line + 1] ?? Number.POSITIVE_INFINITY) <= position) {
+			line += 1;
+		}
+		return line;
+	};
+	const scanner = createScanner(true, LanguageVariant.Standard, text);
+	// One entry per open template substitution: the brace depth at which its
+	// `}` closes the `${`. A `{` inside the substitution pushes deeper.
+	const templateDepths: Array<number> = [];
+	let depth = 0;
+	// The two tokens before the current one, oldest first, as (kind, text).
+	let history: ReadonlyArray<readonly [SyntaxKind, string]> = [];
+	const remember = (kind: SyntaxKind, value: string) => {
+		history = [...history.slice(-1), [kind, value]];
+	};
+	let token = scanner.scan();
+	while (token !== SyntaxKind.EndOfFile) {
+		if (token === SyntaxKind.TemplateHead || token === SyntaxKind.TemplateMiddle) {
+			templateDepths.push(depth);
+		} else if (token === SyntaxKind.OpenBraceToken) {
+			depth += 1;
+		} else if (token === SyntaxKind.CloseBraceToken) {
+			if (templateDepths[templateDepths.length - 1] === depth) {
+				templateDepths.pop();
+				// The `}` ends a substitution: what follows is template text, not
+				// code, until the next `${` (`TemplateMiddle`) or the closing
+				// backtick (`TemplateTail`).
+				token = scanner.reScanTemplateToken(false);
+				if (token === SyntaxKind.TemplateMiddle) {
+					templateDepths.push(depth);
+				}
+				remember(token, "");
+				token = scanner.scan();
+				continue;
+			}
+			depth -= 1;
+		}
+		if (
+			token === SyntaxKind.Identifier &&
+			AMBIENT_MEMBERS.has(scanner.getTokenValue()) &&
+			history[1]?.[0] === SyntaxKind.DotToken &&
+			history[0]?.[0] === SyntaxKind.Identifier &&
+			history[0][1] === "process"
+		) {
+			const line = lineOf(scanner.getTokenStart());
+			found.push({ line: line + 1, text: (lines[line] ?? "").trim() });
+		}
+		remember(token, token === SyntaxKind.Identifier ? scanner.getTokenValue() : "");
+		token = scanner.scan();
+	}
+	return found;
+};
 
-const AMBIENT = /process\.(env|arch|platform)\b/;
+/** One read of ambient process state in `src/`. */
+interface Site {
+	/** Relative to `src/`. */
+	readonly file: string;
+	/** 1-based. */
+	readonly line: number;
+	/** The line's text, trimmed. */
+	readonly text: string;
+}
 
-/** Every `(file, line-text)` in `src/` reading ambient process state outside a comment. */
-const ambientReadSites = (): ReadonlyArray<readonly [string, string]> => {
-	const found: Array<readonly [string, string]> = [];
+/** Every read of ambient process state in `src/`, by token. */
+const ambientReadSites = (): ReadonlyArray<Site> => {
+	const found: Array<Site> = [];
 	const walk = (dir: string) => {
 		for (const entry of readdirSync(dir, { withFileTypes: true })) {
 			const path = join(dir, entry.name);
 			if (entry.isDirectory()) {
 				walk(path);
 			} else if (entry.name.endsWith(".ts")) {
-				for (const line of stripComments(readFileSync(path, "utf8")).split("\n")) {
-					if (AMBIENT.test(line)) {
-						found.push([relative(srcRoot, path), line.trim()]);
-					}
+				for (const site of scanAmbientReads(readFileSync(path, "utf8"))) {
+					found.push({ file: relative(srcRoot, path), ...site });
 				}
 			}
 		}
 	};
 	walk(srcRoot);
-	return found.sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+	return found.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 };
 
 /**
@@ -102,36 +183,63 @@ const ALLOWED: ReadonlyArray<readonly [string, string, string]> = [
 ];
 
 describe("ambient process reads", () => {
+	// Keyed on (file, line text), not the line NUMBER: an edit above a sanctioned
+	// site must not fail the gate. The number is for the report.
+	const key = (site: { readonly file: string; readonly text: string }) => `${site.file} :: ${site.text}`;
+	const render = (site: Site) => `  ${site.file}:${site.line}: ${site.text}`;
+
 	it("every read of process.env / process.arch / process.platform in src/ is an allowlisted site", () => {
 		const actual = ambientReadSites();
-		const allowed = ALLOWED.map(([file, line]) => [file, line] as const).sort(
-			(a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]),
-		);
-		const key = (site: readonly [string, string]) => `${site[0]} :: ${site[1]}`;
+		const allowed = ALLOWED.map(([file, text]) => ({ file, text }));
 		const unexpected = actual.filter((site) => !allowed.some((entry) => key(entry) === key(site)));
 		const missing = allowed.filter((entry) => !actual.some((site) => key(entry) === key(site)));
 		assert.deepStrictEqual(
 			unexpected,
 			[],
-			`unsanctioned ambient read(s):\n${unexpected.map((site) => `  ${site[0]}: ${site[1]}`).join("\n")}\n${RULE}`,
+			`unsanctioned ambient read(s):\n${unexpected.map(render).join("\n")}\n${RULE}`,
 		);
 		assert.deepStrictEqual(
 			missing,
 			[],
 			`allowlisted site(s) no longer present — remove them from the allowlist:\n${missing
-				.map((site) => `  ${site[0]}: ${site[1]}`)
+				.map((site) => `  ${site.file}: ${site.text}`)
 				.join("\n")}`,
 		);
 	});
 
 	it("the scan can fail — it is asserting on a non-empty set with ActionEnvironment in it", () => {
-		const files = ambientReadSites().map(([file]) => file);
+		const files = ambientReadSites().map((site) => site.file);
 		assert.include(files, "ActionEnvironment.ts");
 	});
 
-	it("comment prose does not count as a read", () => {
-		assert.notMatch(stripComments("/** reads process.env once */\nconst a = 1;"), AMBIENT);
-		assert.notMatch(stripComments("// falls back to process.arch\nconst a = 1;"), AMBIENT);
-		assert.match(stripComments("// note\nconst a = process.arch;"), AMBIENT);
+	// biome-ignore-start lint/suspicious/noTemplateCurlyInString: the fixtures are SOURCE TEXT holding template substitutions for the scanner to read — the `${` is the point
+	it("the scanner counts code, not comments or strings, and sees inside a template substitution", () => {
+		const fixture = [
+			'const a = "/* process.env */";', // a string literal: one token, never a read
+			"// process.env", // a comment: trivia, skipped
+			"const b = `${process.env.X}`;", // a real read inside `${…}`
+			"const c = process.env.Y; // trailing process.env", // one read, then a comment
+		].join("\n");
+		assert.deepStrictEqual(scanAmbientReads(fixture), [
+			{ line: 3, text: "const b = `${process.env.X}`;" },
+			{ line: 4, text: "const c = process.env.Y; // trailing process.env" },
+		]);
+	});
+
+	it("the scanner resumes template text after a substitution, so `}` inside a template is not code", () => {
+		// After `${a}` the text ` process.env ` is template span, not an
+		// identifier chain; the object literal inside the substitution has its
+		// own braces, which must not close the template early.
+		const fixture = "const s = `${({ k: process.arch }).k} process.env ${process.platform}`;";
+		assert.deepStrictEqual(
+			scanAmbientReads(fixture).map((site) => site.line),
+			[1, 1],
+		);
+		assert.deepStrictEqual(scanAmbientReads("const t = `${1} process.env`; const u = 2;"), []);
+	});
+	// biome-ignore-end lint/suspicious/noTemplateCurlyInString: fixtures end
+
+	it("a lookalike is not a read: another object's `.env`, or `process` without the member", () => {
+		assert.deepStrictEqual(scanAmbientReads("const a = options.env; const b = process; const c = process.pid;"), []);
 	});
 });

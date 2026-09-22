@@ -31,9 +31,27 @@
  * name explicitly through `CreateEntryFromFile(zip, source, entryName)`
  * removes both: the source is `Path.Combine(root, rel)`, taken literally,
  * and the entry name is `rel` with `\` turned to `/`, which is what `zip`
- * records on POSIX. The residual, unchanged from before: the whole file list
- * is inlined into `-Command`, so a very large list can still exceed the
- * Windows command-line limit. Documented, not fixed.
+ * records on POSIX.
+ *
+ * **The Windows script is constant-size: the file list travels in a manifest
+ * file, never in `-Command`.** `CreateProcessW` caps the whole command line
+ * at 32,767 characters, and inlining one `CreateEntryFromFile` statement per
+ * file (~214 characters each) hit that ceiling at roughly 150 files with
+ * `ENAMETOOLONG` — fewer than the `Compress-Archive` form it replaced carried.
+ * The script now reads {@link zipManifest}'s output (one relative path per
+ * line) with `File.ReadAllLines` and loops. **The two branches deliberately
+ * differ in mechanism**: POSIX `zip` takes the files as argv, whose ceiling
+ * (`ARG_MAX`, megabytes on the hosted runners) is far larger, so the only
+ * file-count ceiling left is that POSIX argv limit. The manifest is written by
+ * the caller (`Artifact.zip`) as UTF-8 WITHOUT a BOM — `ReadAllLines` defaults
+ * to UTF-8 with BOM detection, so a BOM would prefix the first path.
+ *
+ * **Every `CreateEntryFromFile` is assigned to `$null`.** Unassigned, pwsh
+ * writes the returned `ZipArchiveEntry` to stdout — roughly 430 bytes of
+ * formatted object per file — and `internal/spawn.ts` interleaves stdout with
+ * stderr into the captured output, which is what `ArtifactError.stderr`
+ * carries. Left in, that chatter buried the one line that matters, the .NET
+ * exception, under kilobytes of entry listings.
  *
  * Every path handed to PowerShell is single-quoted, and a single quote inside
  * one is doubled — the only escape a single-quoted PowerShell literal has.
@@ -61,10 +79,18 @@ export interface ZipCommandOptions {
 	readonly root: string;
 	/**
 	 * The files to pack, ALREADY relative to `root` — the caller relativizes,
-	 * this module does not. On Windows each becomes the entry name with every
-	 * `\` turned to `/`.
+	 * this module does not. POSIX passes them as `zip`'s argv; the Windows
+	 * branch ignores them and reads `manifest` instead.
 	 */
 	readonly files: ReadonlyArray<string>;
+	/**
+	 * Windows only: the path of a file holding {@link zipManifest}'s output for
+	 * the same `files`, which the pwsh script reads with `File.ReadAllLines`.
+	 * Each line becomes an entry named with every `\` turned to `/`. Ignored
+	 * by the POSIX branch, whose argv has no comparable ceiling (the module doc
+	 * says why the two branches differ in mechanism).
+	 */
+	readonly manifest: string;
 	/** Where the archive is written; an existing archive is replaced on both platforms. */
 	readonly destination: string;
 	/**
@@ -84,14 +110,27 @@ const dotnetCompressionLevel = (level: number): string =>
 	level === 0 ? "NoCompression" : level <= 3 ? "Fastest" : level <= 8 ? "Optimal" : "SmallestSize";
 
 /**
+ * The manifest the Windows zip script reads: `files` one per line, `\n`-joined,
+ * with a trailing newline. Pure; the caller writes it (UTF-8, no BOM).
+ *
+ * @remarks
+ * A path containing `\n` or `\r` is unrepresentable — it would split into two
+ * entries — and this function does not check; `Artifact.zip` rejects such a
+ * file as `invalidOptions`, naming it, before anything is written.
+ *
+ * @internal
+ */
+export const zipManifest = (files: ReadonlyArray<string>): string => files.map((file) => `${file}\n`).join("");
+
+/**
  * Pack `files` into a zip: `zip -<level> -qr <destination> <files...>` with
  * `root` as the working directory, or on Windows a pwsh script that opens
  * `destination` with `ZipFile.Open(..., Create)` after a `File.Delete` (the
- * overwrite) and adds one `CreateEntryFromFile` per file, naming each entry
- * explicitly — under `$ErrorActionPreference = 'Stop'` and a stderr-writing
- * try/catch, and with the archive disposed in a `finally` so a failed entry
- * cannot leave the handle open (the module doc says why not
- * `Compress-Archive`).
+ * overwrite) and adds one `CreateEntryFromFile` per line of `manifest`,
+ * naming each entry explicitly — under `$ErrorActionPreference = 'Stop'` and
+ * a stderr-writing try/catch, and with the archive disposed in a `finally` so
+ * a failed entry cannot leave the handle open (the module doc says why not
+ * `Compress-Archive`, and why the list travels in a file).
  *
  * @internal
  */
@@ -104,18 +143,18 @@ export const zipCommand = (options: ZipCommandOptions): ChildProcess.StandardCom
 	}
 	const destination = pwshLiteral(options.destination);
 	const root = pwshLiteral(options.root);
+	const manifest = pwshLiteral(options.manifest);
 	const compression = `[System.IO.Compression.CompressionLevel]::${dotnetCompressionLevel(level)}`;
-	const entries = options.files
-		.map(
-			(file) =>
-				`[System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, [System.IO.Path]::Combine(${root}, ${pwshLiteral(file)}), ${pwshLiteral(file.replaceAll("\\", "/"))}, ${compression}); `,
-		)
-		.join("");
+	// `$rel.Replace('\', '/')` is .NET `String.Replace` — a literal substring
+	// swap, not a regex — so the backslash needs no escaping. The empty-line
+	// guard skips the trailing newline's phantom entry.
 	return pwsh(
 		"$ErrorActionPreference = 'Stop'; try { Add-Type -AssemblyName System.IO.Compression; Add-Type -AssemblyName System.IO.Compression.FileSystem; " +
 			`[System.IO.File]::Delete(${destination}); ` +
 			`$zip = [System.IO.Compression.ZipFile]::Open(${destination}, [System.IO.Compression.ZipArchiveMode]::Create); ` +
-			`try { ${entries}} finally { $zip.Dispose() } } ` +
+			`try { foreach ($rel in [System.IO.File]::ReadAllLines(${manifest})) { if ($rel -ne '') { ` +
+			`$null = [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, [System.IO.Path]::Combine(${root}, $rel), $rel.Replace('\\', '/'), ${compression}) ` +
+			"} } } finally { $zip.Dispose() } } " +
 			"catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 }",
 		{ cwd: options.root },
 	);

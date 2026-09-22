@@ -2,11 +2,12 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Sink, Stream } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { ChildProcessSpawner } from "effect/unstable/process";
 import type { FileBlobTransfer } from "../src/index.js";
 import { Artifact, ArtifactError, BlobTransferError } from "../src/index.js";
 import { json, resultsEnv, runtimeToken, twirpFetch } from "./results.js";
@@ -236,6 +237,115 @@ describe("Artifact", () => {
 				assert.strictEqual(empty.reason, "invalidOptions");
 				// Neither reserved a name for an upload that will never happen.
 				assert.lengthOf(calls, 0);
+			}),
+		),
+	);
+
+	it.effect("refuses a file path holding a line break on every platform, naming it, before anything is written", () =>
+		withScratch((root) =>
+			Effect.gen(function* () {
+				// The Windows list travels one path per line; a break would split the
+				// entry. Rejected on POSIX too, so an upload cannot pass on one runner
+				// and fail on another.
+				const broken = join(root, "a\nb.txt");
+				writeFileSync(broken, "x");
+				const { transfer } = fileTransfer();
+				const { calls, fetch } = twirpFetch({});
+				const error = yield* Effect.flip(
+					Effect.flatMap(Artifact, (artifacts) => artifacts.upload("logs", [broken], root)).pipe(
+						Effect.provide(live(fetch, transfer)),
+					),
+				);
+				assert.strictEqual(error.reason, "invalidOptions");
+				assert.include(error.message, JSON.stringify("a\nb.txt"));
+				assert.lengthOf(calls, 0);
+			}),
+		),
+	);
+
+	it.effect("Windows: writes the manifest beside the zip, BOM-free, before spawning the constant-size script", () =>
+		withScratch((root) =>
+			Effect.gen(function* () {
+				mkdirSync(join(root, "dir"), { recursive: true });
+				writeFileSync(join(root, "a.txt"), "a");
+				writeFileSync(join(root, "dir", "b.txt"), "b");
+				const { transfer } = fileTransfer();
+				const { calls, fetch } = twirpFetch({});
+				// Records the spawn — and the manifest's bytes AT SPAWN TIME, since
+				// the scratch directory holding it is gone once the upload settles —
+				// then answers as a failed pwsh would, so nothing reaches the backend.
+				const spawns: Array<{
+					readonly command: string;
+					readonly args: ReadonlyArray<string>;
+					readonly manifest: Buffer;
+				}> = [];
+				const spy = Layer.succeed(
+					ChildProcessSpawner.ChildProcessSpawner,
+					ChildProcessSpawner.make((command) =>
+						Effect.sync(() => {
+							if ("args" in command) {
+								const script = command.args[3] ?? "";
+								const manifestPath = /ReadAllLines\('([^']*)'\)/.exec(script)?.[1] ?? "";
+								spawns.push({
+									command: command.command,
+									args: [...command.args],
+									manifest: readFileSync(manifestPath),
+								});
+							}
+							const bytes = new TextEncoder().encode("System.IO.IOException: disk full");
+							return ChildProcessSpawner.makeHandle({
+								pid: ChildProcessSpawner.ProcessId(4321),
+								exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
+								isRunning: Effect.succeed(false),
+								kill: () => Effect.void,
+								stdin: Sink.drain,
+								stdout: Stream.empty,
+								stderr: Stream.fromIterable([bytes]),
+								all: Stream.fromIterable([bytes]),
+								getInputFd: () => Sink.drain,
+								getOutputFd: () => Stream.empty,
+								unref: Effect.succeed(Effect.void),
+							});
+						}),
+					),
+				);
+				const layer = Artifact.layerWith(transfer).pipe(
+					Layer.provide(spy),
+					Layer.provide(
+						Layer.mergeAll(
+							resultsEnv({ RUNNER_OS: "Windows" }),
+							NodeServices.layer,
+							FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fetch))),
+						),
+					),
+				);
+
+				const error = yield* Effect.flip(
+					Effect.flatMap(Artifact, (artifacts) =>
+						artifacts.upload("logs", [join(root, "a.txt"), join(root, "dir", "b.txt")], root),
+					).pipe(Effect.provide(layer)),
+				);
+				assert.strictEqual(error.reason, "archiveFailed");
+				assert.strictEqual(error.stderr, "System.IO.IOException: disk full");
+				assert.lengthOf(calls, 0);
+
+				assert.lengthOf(spawns, 1);
+				const [spawn] = spawns;
+				assert.strictEqual(spawn?.command, "pwsh");
+				const script = spawn?.args[3] ?? "";
+				// The manifest sits beside the archive inside the scratch directory,
+				// so the scratch release removes both.
+				const zipPath = /ZipFile\]::Open\('([^']*)'/.exec(script)?.[1] ?? "";
+				const manifestPath = /ReadAllLines\('([^']*)'\)/.exec(script)?.[1] ?? "";
+				assert.strictEqual(manifestPath, join(dirname(zipPath), "artifact.manifest"));
+				assert.strictEqual(basename(zipPath), "artifact.zip");
+				// One relative path per line, trailing newline, and NO BOM — .NET's
+				// `ReadAllLines` would otherwise prefix the first path with it.
+				assert.strictEqual(spawn?.manifest.toString("utf8"), `a.txt\n${join("dir", "b.txt")}\n`);
+				assert.notDeepEqual([...(spawn?.manifest.subarray(0, 3) ?? [])], [0xef, 0xbb, 0xbf]);
+				// The script itself never names a file: its size is independent of the list.
+				assert.notInclude(script, "a.txt");
+				assert.notInclude(script, "b.txt");
 			}),
 		),
 	);

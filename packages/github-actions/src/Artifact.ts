@@ -8,7 +8,7 @@ import type { FileBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";
 import type { BackendIds } from "./internal/actionsResults.js";
 import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
-import { unzipCommand, zipCommand } from "./internal/archiveCommands.js";
+import { unzipCommand, zipCommand, zipManifest } from "./internal/archiveCommands.js";
 import { digestFileHex } from "./internal/digest.js";
 import { isWindowsRunner } from "./internal/runner.js";
 import { spawnOnce } from "./internal/spawn.js";
@@ -354,10 +354,34 @@ const make = (
 			// from the same relative path, so the two archives have one structure
 			// — and absolute inputs would extract into a tree named after the
 			// runner that produced them.
-			archive(
-				zipCommand({ windows, root, files: files.map((file) => path.relative(root, file)), destination, level }),
-				artifact,
-			);
+			Effect.gen(function* () {
+				const relative = files.map((file) => path.relative(root, file));
+				// The Windows list travels one path per line (`internal/archiveCommands.ts`
+				// says why), so a path holding a line break cannot be represented.
+				// Rejected on every platform: the same upload must not succeed on one
+				// runner and fail on another.
+				const unrepresentable = relative.find((file) => file.includes("\n") || file.includes("\r"));
+				if (unrepresentable !== undefined) {
+					return yield* Effect.fail(
+						new ArtifactError({
+							reason: "invalidOptions",
+							artifact,
+							detail: `a file path may not contain a line break: ${JSON.stringify(unrepresentable)}`,
+						}),
+					);
+				}
+				// Beside the archive inside the scratch directory, so `scratch`'s
+				// release removes it with the zip. `writeFileString` is UTF-8 with no
+				// BOM, which is what `File.ReadAllLines` needs to read the first path
+				// intact.
+				const manifest = path.join(path.dirname(destination), "artifact.manifest");
+				if (windows) {
+					yield* fs
+						.writeFileString(manifest, zipManifest(relative))
+						.pipe(Effect.mapError((cause) => new ArtifactError({ reason: "archiveFailed", artifact, cause })));
+				}
+				yield* archive(zipCommand({ windows, root, files: relative, manifest, destination, level }), artifact);
+			});
 
 		// One spelling with ToolInstaller.extractZip (`internal/archiveCommands.ts`):
 		// the Windows half must use the overwrite overload, or a download into a

@@ -412,10 +412,16 @@ describe("DetachedProcess", () => {
 		it.live("a supplied base replaces the parent's environment wholesale, with env merged over it", () => {
 			const directory = scratch();
 			const logFile = join(directory, "env.log");
+			// A test-owned variable, not `HOME`: nothing guarantees a runner's
+			// environment carries any particular name. Set on the parent for the
+			// test's duration only, and restored on every path.
+			const PARENT_ONLY = "EFFECTED_DETACHED_PARENT_ONLY";
+			const previous = process.env[PARENT_ONLY];
+			process.env[PARENT_ONLY] = `parent-${Math.random().toString(36).slice(2)}`;
 			return Effect.gen(function* () {
-				// The parent certainly has HOME; the child must NOT see it — the
-				// base is the whole inherited block, not additions to process.env.
-				assert.isString(process.env.HOME, "the control: the parent must hold the variable the child must lack");
+				// The parent holds it; the child must NOT see it — the base is the
+				// whole inherited block, not additions to process.env.
+				assert.isString(process.env[PARENT_ONLY], "the control: the parent must hold the variable the child must lack");
 				const pid = yield* DetachedProcess.spawn({
 					command: process.execPath,
 					args: ["-e", "process.stdout.write(JSON.stringify(process.env));"],
@@ -438,11 +444,19 @@ describe("DetachedProcess", () => {
 				assert.strictEqual(seen.ONLY, "1");
 				assert.strictEqual(seen.X, "y");
 				assert.strictEqual(seen.PATH, process.env.PATH);
-				assert.notProperty(seen, "HOME", "the parent's own variables must not leak past an explicit base");
+				assert.notProperty(seen, PARENT_ONLY, "the parent's own variables must not leak past an explicit base");
 				// An `undefined` base value is dropped, never stringified.
 				assert.notProperty(seen, "DROPPED");
 				assert.notInclude(Object.values(seen), "undefined");
-			}).pipe(Effect.ensuring(Effect.sync(() => rmSync(directory, { recursive: true, force: true }))));
+			}).pipe(
+				Effect.ensuring(
+					Effect.sync(() => {
+						if (previous === undefined) delete process.env[PARENT_ONLY];
+						else process.env[PARENT_ONLY] = previous;
+						rmSync(directory, { recursive: true, force: true });
+					}),
+				),
+			);
 		});
 
 		it.live("env overrides a key the base also carries", () => {
