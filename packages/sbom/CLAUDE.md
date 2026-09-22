@@ -179,8 +179,8 @@ walker have the opposite order and are safe only by luck.
 
 ## Testing
 
-`@effect/vitest`, `it.effect`, `assert.*` — never `expect`. Run root-relative
-with `--coverage.enabled=false` for subset runs.
+`@effect/vitest`, `it.effect`, `assert.*` — never `expect`. Run root-relative;
+subset runs skip the global coverage thresholds automatically.
 
 **Two vendored oracles, both in `__test__/fixtures/` with a `VENDORED.md` pin.**
 Never hand-write an expectation either one can derive:

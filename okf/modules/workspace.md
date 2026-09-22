@@ -10,8 +10,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-14T02:44:47Z
-  body_sha256: 74e7fca515c4afeec10b71168066cdc796974f90909fbfd18b993d943e42280d
+  at: 2026-09-22T20:22:40Z
+  body_sha256: 0093246c26920f33e1eb8d6c82fe5afae06b23bf6f5b2df40187de00e0fd928a
 ---
 
 # workspace
@@ -76,6 +76,6 @@ Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package
 
 The root `globalSetup` (`vitest.setup.ts`) runs `pnpm exec turbo run build:dev --output-logs=errors-only` via `AgentPlugin.runScript` before **every** vitest run — CLI and the MCP `run_tests` tool alike, whichever project — so tests always see fresh `dist/dev` artifacts; turbo's cache makes it a fast no-op when nothing changed. Prefer `vitest run --project @effected/<pkg>`, which resolves against the config root and works identically from any directory. A bare positional filter is different: it is matched as a substring against each test file's path as rendered from the invoking cwd, not as a path selector, so the same argument can select the whole repo, one package, or nothing depending on where it runs — see [a vitest positional filter is cwd-relative](../gotchas/vitest-positional-filter-is-cwd-relative.md) for the measured comparison and the `Tests: 0/0 passed` / exit 1 shape a miss produces.
 
-`pnpm ci:test` sets `CI=true`. The global coverage thresholds in `vitest.config.ts` apply only when `CI` is set or the run passes `--coverage`, because they measure the whole repository — a filtered run would otherwise fail them by construction with every selected test green. Locally, an unfiltered-threshold run's exit code is a real signal again; do not "restore" unconditional thresholds.
+`pnpm ci:test` sets `CI=true`. The global coverage thresholds in `vitest.config.ts` are set unconditionally. They measure the whole repository, so a filtered run cannot meet them — but `@vitest-agent/plugin` (4.x) detects a partial run (positional filter, `--project`, `--tags-filter`, `--changed`, `--related`, `--shard`, `-t`) and skips them, printing `Coverage thresholds skipped: partial run`. A filtered run's exit code is therefore a real signal; do not reintroduce a CI-only gate around the thresholds.
 
 Three of this repository's gates — the `suppressed:` count in `issues.json`, the `Tests:` line, and `packages.length`-style fixture assertions — work by asserting a number did not change unexpectedly; state which count moved and why whenever one does, per [state the reason when a gate count moves](../conventions/state-the-reason-when-a-gate-count-moves.md).

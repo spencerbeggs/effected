@@ -773,11 +773,12 @@ itself however broken it is. Each with its probe →
 exit code, because they lie in complementary situations.** Measured 2026-09-05
 on `vitest@4.1.11`: every zero-collection run exits **1** while printing
 `Tests: 0/0 passed`, so there the *Tests line* is the liar; a passing subset run
-under `--coverage` (or on CI) exits **1** with a genuinely green Tests line, so
-there the *exit code* is. Treat disagreement between them as the alarm. The
+against whole-repo coverage thresholds exits **1** with a genuinely green Tests line, so
+there the *exit code* is — unless the reporter skips thresholds on partial runs, as
+`@vitest-agent/plugin` 4.x does (`Coverage thresholds skipped: partial run`). Treat disagreement between them as the alarm. The
 older rule "read the Tests line, not the exit code" dates from when global
-coverage thresholds were enforced on every run; scoping them to CI restored the
-exit code's meaning, and the rule outlived its condition. Read
+coverage thresholds failed every subset run; a reporter that skips thresholds on
+partial runs restored the exit code's meaning, and the rule outlived its condition. Read
 `unhandledErrors` alongside both: a `ChildProcess` with no `error` listener
 re-throws asynchronously *after* the failure was correctly reported, and 15
 green tests carried a live defect that only that field showed.
