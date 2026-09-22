@@ -1,5 +1,24 @@
 # @effected/github
 
+## 0.12.0
+
+### Features
+
+- Upgrades core Effect to `rc-117` [#812][#812]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github-references | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/semver | dependency | updated | 0.8.0 | 0.9.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#812]: https://github.com/spencerbeggs/effected/pull/812
+
 ## 0.11.0
 
 ### Breaking Changes

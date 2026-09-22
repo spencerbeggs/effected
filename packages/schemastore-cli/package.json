@@ -1,6 +1,6 @@
 {
 	"name": "@effected/schemastore-cli",
-	"version": "0.14.0",
+	"version": "0.15.0",
 	"private": true,
 	"description": "The schemastore command: build and check SchemaStore-shaped JSON Schema documents from a schemastore.config.ts, with a per-schema published flag and a drift policy.",
 	"keywords": ["schemastore", "json-schema", "draft-07", "cli", "effect", "effected"],

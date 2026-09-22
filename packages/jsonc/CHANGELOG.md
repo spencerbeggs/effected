@@ -1,5 +1,17 @@
 # @effected/jsonc
 
+## 0.13.0
+
+### Features
+
+- Upgrades core Effect to `rc-117` [#812][#812]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#812]: https://github.com/spencerbeggs/effected/pull/812
+
 ## 0.12.0
 
 ### Breaking Changes

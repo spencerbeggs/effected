@@ -1,5 +1,25 @@
 # @effected/app
 
+## 0.18.0
+
+### Features
+
+- Upgrades core Effect to `rc-117` [#812][#812]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.11.1 | 0.12.0 |
+| @effected/store | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/xdg | dependency | updated | 0.6.1 | 0.7.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#812]: https://github.com/spencerbeggs/effected/pull/812
+
 ## 0.17.0
 
 ### Breaking Changes

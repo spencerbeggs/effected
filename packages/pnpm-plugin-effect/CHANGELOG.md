@@ -1,5 +1,53 @@
 # @effected/pnpm-plugin-effect
 
+## 0.10.0
+
+### Features
+
+- Upgrades core Effect to `rc-117` [#812][#812]
+
+### Maintenance
+
+#### Updates 31 catalog:effected versions
+
+- `@effected/app` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/cli` ^0.6.0 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/commands` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/config-file` ^0.11.1 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/git` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/github` ^0.11.0 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/github-actions` ^0.15.0 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/github-references` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/glob` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/jsonc` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/jsonl` ^0.6.0 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/lockfiles` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/markdown` ^0.11.0 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/memfs` ^0.8.1 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/npm` ^0.15.0 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/package-json` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/runtimes` ^0.7.1 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/sbom` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/schema-org` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/schemastore` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/schemastore-cli` ^0.14.0 -> ^0.15.0 (peer ^0.15.0)
+- `@effected/semver` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/spdx` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/store` ^0.9.0 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/templates` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/toml` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/tsconfig-json` ^0.10.1 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/walker` ^0.11.0 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/workspaces` ^0.24.1 -> ^0.25.0 (peer ^0.25.0)
+- `@effected/xdg` ^0.6.1 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/yaml` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) and [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
+[#812]: https://github.com/spencerbeggs/effected/pull/812
+
 ## 0.9.3
 
 ### Maintenance
