@@ -8,8 +8,8 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-19T22:52:00Z
-  body_sha256: 978defcb80ee695d82368163adbfbd78750ba12588bd395a748a092955688d12
+  at: 2026-09-22T20:22:25Z
+  body_sha256: 7dadd5d4d9fc15e52b2e95b27430627ef75979b3f30795d39ab25e10cc9d581a
 ---
 
 # Vendored Effect is pinned to the catalog tag, not main
@@ -20,7 +20,7 @@ generated:
 
 ## Decision
 
-`.repos/effect` is pinned to the release tag matching the `effect` catalog pin in `pnpm-workspace.yaml` (currently `effect@4.0.0-rc.116`) — **not** tracking `main`. Re-pinning happens in the same commit as any catalog advance, via `savvy repos pin effect effect@<new-tag>` (see [advance the effect pin](../runbooks/advance-the-effect-pin.md)).
+`.repos/effect` is pinned to the release tag matching the `effect` catalog pin in `pnpm-workspace.yaml` (currently `effect@4.0.0-rc.117`) — **not** tracking `main`. Re-pinning happens in the same commit as any catalog advance, via `savvy repos pin effect effect@<new-tag>` (see [advance the effect pin](../runbooks/advance-the-effect-pin.md)).
 
 ## Alternatives rejected
 

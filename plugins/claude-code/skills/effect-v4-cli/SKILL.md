@@ -1,6 +1,6 @@
 ---
 name: effect-v4-cli
-description: Use when building a command-line tool on Effect v4 — there is no v4 @effect/cli package (its releases still peer on effect ^3.x), and the CLI framework lives in core as effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a no-match must not), and the two different `Command`s (spawning is core's effect/unstable/process, NOT unstable/cli). Constructors are PascalCase since rc.113 (Flag.String/Int/Finite/Literals/Never, Prompt.String, GlobalFlag.Action/Setting). Surface verified against effect@4.0.0-rc.115 and unchanged at rc.116.
+description: Use when building a command-line tool on Effect v4 — there is no v4 @effect/cli package (its releases still peer on effect ^3.x), and the CLI framework lives in core as effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a no-match must not), and the two different `Command`s (spawning is core's effect/unstable/process, NOT unstable/cli). Constructors are PascalCase since rc.113 (Flag.String/Int/Finite/Literals/Never, Prompt.String, GlobalFlag.Action/Setting). Surface verified against effect@4.0.0-rc.115 and unchanged at rc.117.
 ---
 
 # Effect v4 CLIs

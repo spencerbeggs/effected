@@ -7,7 +7,7 @@ description: >-
   effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI
   package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a
   no-match must not), and the two different `Command`s (spawning is core's
-  effect/unstable/process, NOT unstable/cli). Constructors are PascalCase since rc.113 (Flag.String/Int/Finite/Literals/Never, Prompt.String, GlobalFlag.Action/Setting). Surface verified against effect@4.0.0-rc.115 and unchanged at rc.116.
+  effect/unstable/process, NOT unstable/cli). Constructors are PascalCase since rc.113 (Flag.String/Int/Finite/Literals/Never, Prompt.String, GlobalFlag.Action/Setting). Surface verified against effect@4.0.0-rc.115 and unchanged at rc.117.
 ---
 
 # Effect v4 CLIs

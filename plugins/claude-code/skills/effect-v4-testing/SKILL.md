@@ -30,8 +30,8 @@ no dist-tag resolves to your pin (dist-tags re-checked 2026-09-12):
 | --- | --- | --- |
 | bare / `@latest` | `0.30.0` | `effect@^3.22.0`, `vitest@^3.2.0` — **the v3 line** |
 | `@beta` | `4.0.0-beta.107` — **frozen**, not floating | that beta. The v4 line moved to `rc`, so `@beta` is now a *stale* pin that silently mismatches an `rc` `effect` |
-| `@rc` | the newest rc, whatever that is (`4.0.0-rc.116` today) | that same rc — it **floats off your pin** the moment upstream publishes |
-| `@4.0.0-rc.116` | `4.0.0-rc.116` | `effect@^4.0.0-rc.116`, `vitest@>=5.0.0 <6.0.0` ✅ (the vitest peer moved from `>=4.1.0 <5` at rc.112 — a vitest 4 host cannot take this rc) |
+| `@rc` | the newest rc, whatever that is (`4.0.0-rc.117` today) | that same rc — it **floats off your pin** the moment upstream publishes |
+| `@4.0.0-rc.117` | `4.0.0-rc.117` | `effect@^4.0.0-rc.117`, `vitest@>=5.0.0 <6.0.0` ✅ (the vitest peer moved from `>=4.1.0 <5` at rc.112 — a vitest 4 host cannot take this rc) |
 
 The exact-pin row is not a recommendation of *this* rc — it is the shape:
 pin the same prerelease number your `effect` catalog pins. The `@beta` row is
@@ -45,7 +45,7 @@ a message naming neither `@effect/vitest` nor a version —
 which reads as a broken install. Confirm with `npm view @effect/vitest
 dist-tags` before believing any resolution. **Inside this monorepo** the
 dependency comes from `catalog:effect`, which already pins the matching rc
-(`@effect/vitest: 4.0.0-rc.116` in `pnpm-workspace.yaml`).
+(`@effect/vitest: 4.0.0-rc.117` in `pnpm-workspace.yaml`).
 
 **`vi.mock` is the one import that must NOT come from `@effect/vitest`.** Vitest
 hoists it above all imports, so a `vi` bound through the re-export is not yet

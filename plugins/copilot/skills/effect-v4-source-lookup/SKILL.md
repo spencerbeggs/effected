@@ -120,10 +120,10 @@ reader skims past it. Refuse, and the trap cannot spring.
 workspace root resolves **nothing**: a bare `effect` import there dies with
 `ERR_MODULE_NOT_FOUND` (re-checked 2026-09-05). The lockfile carried exactly one
 `effect` at the rc.112 pin; since the rc.115 advance it carries **two by intent** —
-the toolchain's own pin (`4.0.0-rc.115` at the rc.116 advance: `@savvy-web/tsdown-plugins`,
+the toolchain's own pin (`4.0.0-rc.116` at the rc.117 advance: `@savvy-web/tsdown-plugins`,
 `rolldown-pnpm-config` and `@vitest-agent/*` declare `effect` and their `@effected/*` inputs as
 regular dependencies, so the published kit binds to the toolchain's copy) and the current pin
-(`4.0.0-rc.116`) for the kit. The `packageExtensions` bridge that first produced that shape was
+(`4.0.0-rc.117`) for the kit. The `packageExtensions` bridge that first produced that shape was
 retired on the rc.116 advance (`okf/conventions/one-resolved-effect-copy.md` keeps both bridge
 shapes for the next runtime-incompatible advance). Neither copy is v3, and neither resolves from the root; which one a probe
 links against is decided by where the probe file lives — which is the point of the rule. Which failure you get depends on what a given repo has
@@ -371,7 +371,7 @@ Two riders on the package-root form, both learned by leaving mess behind:
   root is committed ground.
 
 1. **Run from inside the package, never the repo root.** A workspace root that has a v3 installed resolves it and will describe the v3 surface with total confidence; a root that has none — this repo today — fails with `ERR_MODULE_NOT_FOUND` instead. Both are the same rule: only `packages/<pkg>/` is guaranteed to resolve the pinned v4.
-2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once (it is `4.0.0-rc.116` in this repo today), so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
+2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once (it is `4.0.0-rc.117` in this repo today), so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
 3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
@@ -418,7 +418,7 @@ has no `await`.
 
 ```ts
 import pkg from "effect/package.json" with { type: "json" };
-console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.116 today
+console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.117 today
 ```
 
 ## Portability

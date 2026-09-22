@@ -2,7 +2,7 @@
 	"repos": {
 		"effect": {
 			"url": "https://github.com/Effect-TS/effect.git",
-			"ref": "effect@4.0.0-rc.116",
+			"ref": "effect@4.0.0-rc.117",
 			"purpose": "Read-only Effect v4 source pinned to the tag matching the effect catalog — the authority on what v4 actually exports, plus the v3→v4 migration notes and the @effect/vitest reference implementation. Tracks the main Effect-TS/effect monorepo (v4 development moved back there on 2026-07-19 when the effect-smol repo was archived); vendored at .repos/effect since the 2026-07-24 rename, matching the path a consuming repo would use.",
 			"sparse": [
 				"packages/effect",
@@ -34,6 +34,12 @@
 					"date": "2026-09-19",
 					"ref": "effect@4.0.0-rc.116",
 					"note": "rc.115→rc.116 advance (2026-09-19): one kit source break — Stream.scan / Stream.scanEffect take a LazyArg initial state (Stream.scan(() => initial, fold)); hit once in jsonl Journal.projection. The other rc.116 breaks did not touch the kit but bite consumers: SchemaTransformation.make is makeTransformation, Transformation#compose is the dual SchemaTransformation.composeTransformation, new SchemaGetter.Getter / onSome / onNone are gone (Getter is a tagged union exposing only pipe; use SchemaGetter.map/compose/run and transformOptionalEffect), SchemaAST.Context.constructorDefault holds the Effect directly (no Link), ByteSize.Input string literals are checked at compile time (parse external strings with ByteSize.fromString), Effect.orElseSucceed passes the error to its fallback, Effect.isEffect narrows to Effect<unknown, unknown, unknown>, Stream.partition returns [passes, fails] with a capacity option, Stream.mapBoth takes onElement/onError. Arbitrary shrinking changed so replay tokens from rc.115 no longer reproduce. Published kit stayed bound to rc.115 through the packageExtensions bridge (grep \"@effected/[a-z-]+@[0-9.]+\\(effect@4\\.0\\.0-rc\\.116\\)\" in the lockfile must be empty until the toolchain republishes)."
+				},
+				{
+					"id": "n-99ea",
+					"date": "2026-09-22",
+					"ref": "effect@4.0.0-rc.117",
+					"note": "rc.116→rc.117 advance (2026-09-22): zero kit source breaks; a patch-only release. Consumer-visible changes: Queue.shutdown now returns false when the queue was already shut down or completed (previously always true), and Queue.shutdownUnsafe is new; Decision.Probability.criteria is optional (guard before reading criteria.true); SqlClient gains a releaseSavepoint option and the bundled clients (sqlite-node included) now RELEASE savepoints after nested transactions; Pool.makeWithTTL leak fixed; Schema gains ~40 NetAddress refinements (Ip/Mac Multicast/Unicast/Broadcast/Loopback/LinkLocal + FromString forms) and NetAddress.toCanonical/formatNativeHost/formatMulticastInterface; MCP output schemas normalize to object roots. unstable/cli and @effect/vitest peers unchanged. The toolchain still binds effect@rc.116 through its own regular deps (two copies by intent, no bridge)."
 				}
 			]
 		},
