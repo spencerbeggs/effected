@@ -1,5 +1,17 @@
 # @effected/copilot-plugin
 
+## 0.8.2
+
+### Other
+
+- effected-packages skill: the memfs index row and reference now cover the inspection and fault-injection families (layerInspectable/layerInspectableWith publishing Volume, the makeInspectable/makeInspectableWith value-level pair, layerFaulty/layerFaultyWith/makeFaulty with failTimes), document the per-provide re-seed hazard that made post-run "nothing written" assertions vacuous, and give the Layer.provideMerge composition for fault injection plus read-back in one graph (effected#608). [#790][#790]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) for their contributions!
+
+[#790]: https://github.com/spencerbeggs/effected/pull/790
+
 ## 0.8.1
 
 ### Documentation

@@ -1,5 +1,69 @@
 # @effected/github-actions
 
+## 0.15.0
+
+### Features
+
+#### `ActionInput.literals` for enum-shaped inputs
+
+- A `Config<L[number]>` accessor for an input that must be one of a closed set of strings. The match is exact — no trimming, no case folding — and a present value outside the set fails with a `ConfigError` naming the input, the value and the allowed set. Composes with `Config.withDefault` like the other accessors:
+
+```ts
+import { ActionInput } from "@effected/github-actions";
+import { Config } from "effect";
+
+// Config<"commit" | "pr">
+const mode = ActionInput.literals("mode", ["commit", "pr"]).pipe(Config.withDefault("commit"));
+```
+
+- `ActionInput.schema`'s docs now point at `Config.option` for an optional JSON input.
+
+#### `ToolInstallerShape.cachePath`
+
+- `cachePath(tool, version)` answers the final tool-cache path a `cacheDir`/`cacheFile` call for `tool@version` will land at, without performing any IO. A caller that must write the final path into a staged tree before the swap — a shim naming its own cached entry — reads this instead of re-deriving the cache root and arch itself. `ToolInstaller.makeTest` provides a default implementation. `PackageManagerInstaller` now asks the installer for the shim destination instead of deriving it a second time, so the `cacheFailed` failure for a diverged cache destination can no longer occur and has been removed.
+
+#### `DetachedSpawnOptions.base`
+
+- `base` is the environment `spawn` merges `env` over, defaulting to `process.env` as before. Passing it gives a spawned child a fully controlled environment — useful for a test asserting exactly what the child sees, or a worker that must not inherit the action's secrets.
+
+### Bug Fixes
+
+#### `Artifact.download`/`unzip` no longer fails extracting into a non-empty directory on Windows
+
+- The Windows extraction path now uses the three-argument `ZipFile.ExtractToDirectory(source, destination, $true)` overload, which overwrites existing files, and captures the underlying .NET exception text to stderr on failure. Previously the two-argument overload refused to overwrite and failed with an empty error message.
+
+#### Windows `Artifact.upload` preserves subdirectory structure and honours `compressionLevel`
+
+- The Windows pack drove `Compress-Archive -Path` with individual file paths, which stores every entry under its bare file name — `dir\b.txt` landed as `b.txt`, and same-named files in different directories collided — and expands `[`/`]` as wildcards, so a literal `report[1].txt` failed the upload. It now drives .NET's `ZipFile` directly, naming each entry explicitly from its path relative to `rootDirectory`, so a Windows archive has the same structure as the POSIX `zip -qr` one. `compressionLevel`, previously ignored on Windows, now maps onto .NET's `CompressionLevel` (`0` `NoCompression`, `1..3` `Fastest`, `4..8` `Optimal`, `9` `SmallestSize`). [#805][#805]
+
+#### `CacheKey.matchingFiles` follows symlinked directories, matching the runner's `hashFiles()`
+
+- The `descend` walk now runs with `followSymlinks: true`, so a file reachable only through a symlinked directory contributes to the cache key — `@actions/glob` (the runner's `hashFiles()`) follows links by default (`followSymbolicLinks: true`), and the previously documented knowing divergence silently produced a different key than the runner for such a workspace. `descend`'s per-branch `traversalChain` cycle guard keeps link loops finite, and — as with `@actions/glob` — a link resolving outside the workspace is followed: the "never hash a file outside the workspace" property is lexical (literals climbing above it are dropped), not physical through links. [#781][#781]
+
+### Performance
+
+#### `ToolInstaller.cacheDir` renames the toolchain into the cache
+
+- `cacheDir` now moves its source directory into the tool cache with a rename instead of a recursive copy. On hosted runners `RUNNER_TEMP` and `RUNNER_TOOL_CACHE` share a filesystem, so installing an extracted toolchain is O(1) regardless of its size. A cross-filesystem source (`EXDEV`) falls back to the previous copy; any other rename failure is still reported as `cacheFailed` rather than masked by a copy.
+
+- **Behaviour change:** `cacheDir` now **consumes** `source` — after a successful call the directory no longer exists at its original path (moved, or copied and then removed). Write everything the cached entry must contain into the source before calling `cacheDir`, and read nothing from it afterwards. `PackageManagerInstaller` already followed that ordering; `cacheFile` is unchanged and still copies. [#804][#804]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/walker | dependency | updated | 0.10.0 | 0.11.0 |
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) and [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#781]: https://github.com/spencerbeggs/effected/pull/781
+
+[#804]: https://github.com/spencerbeggs/effected/pull/804
+
+[#805]: https://github.com/spencerbeggs/effected/pull/805
+
 ## 0.14.0
 
 ### Breaking Changes

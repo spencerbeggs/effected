@@ -1,5 +1,15 @@
 # @effected/memfs
 
+## 0.8.1
+
+### Documentation
+
+- `MemoryFileSystem.layerInspectableWith` now documents the per-provide re-seed consequence for write assertions: resolving `Volume` under a second `Effect.provide` of the same layer value observes a fresh volume holding only the seed, so a post-run "nothing was written" assertion passes vacuously. Resolve `Volume` inside the provided program, or pin identity with `MemoryFileSystem.makeInspectableWith`.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.8.0
 
 ### Breaking Changes

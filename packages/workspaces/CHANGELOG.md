@@ -1,5 +1,13 @@
 # @effected/workspaces
 
+## 0.24.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/walker | dependency | updated | 0.10.0 | 0.11.0 |
+
 ## 0.24.0
 
 ### Features
