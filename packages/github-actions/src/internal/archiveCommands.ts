@@ -43,8 +43,10 @@
  * differ in mechanism**: POSIX `zip` takes the files as argv, whose ceiling
  * (`ARG_MAX`, megabytes on the hosted runners) is far larger, so the only
  * file-count ceiling left is that POSIX argv limit. The manifest is written by
- * the caller (`Artifact.zip`) as UTF-8 WITHOUT a BOM — `ReadAllLines` defaults
- * to UTF-8 with BOM detection, so a BOM would prefix the first path.
+ * the caller (`Artifact.zip`) as UTF-8 WITHOUT a BOM, which is what
+ * `ReadAllLines` reads by default. Its BOM detection would consume a BOM
+ * rather than leak it into the first path (measured), so this is a
+ * plain-bytes preference, not a correctness guard.
  *
  * **Every `CreateEntryFromFile` is assigned to `$null`.** Unassigned, pwsh
  * writes the returned `ZipArchiveEntry` to stdout — roughly 430 bytes of
