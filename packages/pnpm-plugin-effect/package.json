@@ -33,7 +33,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@savvy-web/bundler": "^2.4.7",
+		"@savvy-web/bundler": "^2.4.8",
 		"@types/node": "catalog:build",
 		"rolldown-pnpm-config": "^1.0.3",
 		"typescript": "catalog:build"

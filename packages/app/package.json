@@ -43,7 +43,7 @@
 		"@effected/walker": "workspace:*",
 		"@effected/xdg": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@savvy-web/bundler": "^2.4.7",
+		"@savvy-web/bundler": "^2.4.8",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effect",
 		"typescript": "catalog:build"
