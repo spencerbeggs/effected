@@ -107,8 +107,10 @@ Absence means unwired; a recorded error means *this route fails, and here is why
   Getting the order backwards fails in the *safe* direction, which is the
   *worst* direction for a confinement test.
 - **Run subset suites root-relative, with coverage disabled for parallel
-  agents.** A project-filtered run from inside a package silently runs
-  zero tests and exits 0 — read the tests-run line, not the exit code.
+  agents.** A positional filter from inside a package matches nothing
+  (it is a substring of each path as rendered from the cwd) and reports
+  `0/0 passed` — a failed run, whatever the summary says. Prefer
+  `--project <name>`, which works from any directory.
 
 ## Footguns
 

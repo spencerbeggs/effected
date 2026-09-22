@@ -131,8 +131,9 @@ disabled:
 pnpm vitest run <package-dir> --coverage.enabled=false
 ```
 
-A project-filtered run from **inside** a package prints a zero-tests-run
-line and exits 0 — read the tests-run line, not the exit code. Concurrent
+Run the positional form from the workspace root: from **inside** a package
+the filter matches nothing and prints a zero-tests-run line — a failed run,
+not a pass (`--project <name>` works from anywhere). Concurrent
 agents collide on a shared coverage-reports directory without the flag.
 
 **Known rough edge, so nobody chases it as a regression:** a config error
