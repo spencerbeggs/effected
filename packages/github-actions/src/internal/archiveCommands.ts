@@ -148,8 +148,10 @@ export const zipCommand = (options: ZipCommandOptions): ChildProcess.StandardCom
 	const manifest = pwshLiteral(options.manifest);
 	const compression = `[System.IO.Compression.CompressionLevel]::${dotnetCompressionLevel(level)}`;
 	// `$rel.Replace('\', '/')` is .NET `String.Replace` — a literal substring
-	// swap, not a regex — so the backslash needs no escaping. The empty-line
-	// guard skips the trailing newline's phantom entry.
+	// swap, not a regex — so the backslash needs no escaping. `ReadAllLines`
+	// yields no entry for the manifest's trailing newline; the empty-line guard
+	// is for a stray blank line, which would otherwise build an entry from
+	// `root` itself.
 	return pwsh(
 		"$ErrorActionPreference = 'Stop'; try { Add-Type -AssemblyName System.IO.Compression; Add-Type -AssemblyName System.IO.Compression.FileSystem; " +
 			`[System.IO.File]::Delete(${destination}); ` +
