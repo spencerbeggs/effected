@@ -2,27 +2,59 @@ import type { PlatformError, Scope } from "effect";
 import { Effect, FileSystem, Path, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
-/** @public */
+/**
+ * A hermetic temp directory minted by {@link CliTest.sandbox}, removed when its
+ * scope closes.
+ *
+ * @public
+ */
 export interface Sandbox {
+	/** The temp directory itself; the default working directory of {@link CliTest.run}. */
 	readonly root: string;
+	/** The fresh `HOME` inside `root`; the XDG base directories live under it. */
 	readonly home: string;
+	/**
+	 * The complete child environment: `HOME`, the four `XDG_*_HOME` variables,
+	 * the injected `PATH` and `NO_COLOR=1`. Nothing is inherited from the host.
+	 */
 	readonly env: Readonly<Record<string, string>>;
 }
 
-/** @public */
+/**
+ * How {@link CliTest.run} spawns a bin.
+ *
+ * @public
+ */
 export interface RunOptions {
+	/** The sandbox whose environment and root the child runs in. */
 	readonly sandbox: Sandbox;
 	/** The node binary — pass `process.execPath` from the test file, never a PATH lookup. */
 	readonly execPath: string;
+	/** The child's working directory. Defaults to the sandbox `root`. */
 	readonly cwd?: string | undefined;
+	/**
+	 * Extra environment variables, merged over the sandbox environment — the
+	 * way to override `PATH` for one run.
+	 */
 	readonly env?: Readonly<Record<string, string>> | undefined;
+	/**
+	 * Text written to the child's stdin, which is then closed. Omitted or `""`,
+	 * the child gets an already-ended empty input, never an open pipe.
+	 */
 	readonly stdin?: string | undefined;
 }
 
-/** @public */
+/**
+ * What a spawned bin did, as data: a non-zero exit is a result, not a failure.
+ *
+ * @public
+ */
 export interface RunResult {
+	/** The child's exit code. */
 	readonly exitCode: number;
+	/** Everything the child wrote to stdout, decoded as UTF-8. */
 	readonly stdout: string;
+	/** Everything the child wrote to stderr, decoded as UTF-8. */
 	readonly stderr: string;
 }
 
@@ -46,6 +78,11 @@ export class CliTest {
 	 * within one test rather than calling this more than once per assertion.
 	 */
 	static readonly sandbox = (options: {
+		/**
+		 * The `PATH` the child sees, passed explicitly because nothing else is
+		 * inherited — `process.env.PATH` when the bin shells out to host tools,
+		 * a narrower list to prove it does not.
+		 */
 		readonly path: string;
 	}): Effect.Effect<Sandbox, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path | Scope.Scope> =>
 		Effect.gen(function* () {

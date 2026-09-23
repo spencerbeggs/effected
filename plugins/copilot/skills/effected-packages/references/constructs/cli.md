@@ -15,7 +15,7 @@
 | `ConfigIssueRenderer` | Class | Render a `@effected/config-file` validation failure. | render a @effected/config-file validation error into human-readable lines |
 | `MainOptions` | Interface | Options for `CliRuntime.main`. | |
 | `ReportFailuresOptions` | Interface | How a failure is turned into output and an exit code. | |
-| `RunOptions` | Interface | | from `@effected/cli/testing` |
-| `RunResult` | Interface | | from `@effected/cli/testing` |
-| `Sandbox` | Interface | | from `@effected/cli/testing` |
+| `RunOptions` | Interface | How `CliTest.run` spawns a bin. | from `@effected/cli/testing` |
+| `RunResult` | Interface | What a spawned bin did, as data: a non-zero exit is a result, not a failure. | from `@effected/cli/testing` |
+| `Sandbox` | Interface | A hermetic temp directory minted by `CliTest.sandbox`, removed when its scope closes. | from `@effected/cli/testing` |
 | `SchemaIssueRenderer` | Class | Turn a `SchemaIssue` tree into lines a user can act on. | turn a schema decode failure issue tree into lines a user can act on |
