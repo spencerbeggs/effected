@@ -6,5 +6,6 @@
  *
  * @packageDocumentation
  */
+export { McpStdio, type McpStdioOptions } from "./McpStdio.js";
 export { ToolFailure } from "./ToolFailure.js";
 export { type FormatUnknownKeysOptions, ToolInputSchema, type UnknownKeysLevel } from "./ToolInputSchema.js";
