@@ -32,7 +32,7 @@ interface Node {
 
 const MAX_DEPTH = 256;
 const MAX_ECHOED = 20;
-const DISCRIMINANTS = ["action", "kind"] as const;
+const DISCRIMINANTS = ["action", "kind", "_tag", "type"] as const;
 const REF_PREFIX = "#/$defs/";
 
 const isNode = (u: unknown): u is Node => typeof u === "object" && u !== null && !Array.isArray(u);
@@ -41,7 +41,9 @@ const resolveRef = (node: Node, root: Node, seen: ReadonlySet<string> = new Set(
 	const ref = node.$ref;
 	if (typeof ref !== "string" || !ref.startsWith(REF_PREFIX) || seen.has(ref)) return node;
 	const defs = root.$defs;
-	const target = isNode(defs) ? defs[ref.slice(REF_PREFIX.length)] : undefined;
+	// JSON Pointer (RFC 6901): core escapes `/` as `~1` and `~` as `~0` in a definition name.
+	const name = ref.slice(REF_PREFIX.length).replaceAll("~1", "/").replaceAll("~0", "~");
+	const target = isNode(defs) && Object.hasOwn(defs, name) ? defs[name] : undefined;
 	if (!isNode(target)) return node;
 	const { $ref: _ref, ...siblings } = node;
 	return resolveRef({ ...target, ...siblings }, root, new Set([...seen, ref]));
@@ -104,35 +106,34 @@ const collect = (payload: unknown, root: Node): ReadonlyArray<UnknownKeysLevel> 
 
 		if (!isNode(value)) return;
 		const declared = parts.filter((part) => isNode(part.properties));
-		if (declared.length === 0) {
-			if (members !== undefined) {
-				const member = selectMember(members, value, root);
-				if (member !== undefined) walk(value, member, path, depth + 1);
-				return;
-			}
-			if (isClosed) {
-				const unknown = Object.keys(value);
-				if (unknown.length > 0) out.push({ path, unknown, accepted: [] });
-				return;
-			}
-			if (additional !== undefined) {
-				for (const key of Object.keys(value)) walk(value[key], additional, [...path, key], depth + 1);
-			}
+		if (declared.length === 0 && members !== undefined) {
+			const member = selectMember(members, value, root);
+			if (member !== undefined) walk(value, member, path, depth + 1);
 			return;
 		}
 
-		const properties = Object.assign({}, ...declared.map((part) => part.properties)) as Node;
+		// A null-prototype merge, so a declared property named `__proto__` stays an own key.
+		const properties: Record<string, unknown> = Object.create(null);
+		for (const part of declared) {
+			for (const [key, schema] of Object.entries(part.properties as Node)) properties[key] = schema;
+		}
 		const patterns = parts.flatMap((part) =>
-			isNode(part.patternProperties) ? Object.keys(part.patternProperties) : [],
+			isNode(part.patternProperties) ? Object.entries(part.patternProperties) : [],
 		);
 		const accepted = Object.keys(properties);
-		const extra = Object.keys(value).filter(
-			(key) => !Object.hasOwn(properties, key) && !patterns.some((pattern) => matchesPattern(pattern, key)),
-		);
+		const extra: Array<string> = [];
+		const patterned: Array<readonly [string, unknown]> = [];
+		for (const key of Object.keys(value)) {
+			if (Object.hasOwn(properties, key)) continue;
+			const match = patterns.find(([pattern]) => matchesPattern(pattern, key));
+			if (match === undefined) extra.push(key);
+			else patterned.push([key, match[1]]);
+		}
 		if (extra.length > 0 && isClosed) out.push({ path, unknown: extra, accepted });
 		for (const key of accepted) {
 			if (Object.hasOwn(value, key)) walk(value[key], properties[key], [...path, key], depth + 1);
 		}
+		for (const [key, schema] of patterned) walk(value[key], schema, [...path, key], depth + 1);
 		if (additional !== undefined) {
 			for (const key of extra) walk(value[key], additional, [...path, key], depth + 1);
 		}
@@ -154,12 +155,17 @@ const collect = (payload: unknown, root: Node): ReadonlyArray<UnknownKeysLevel> 
  * - Only `additionalProperties: false` closes a node, as in JSON Schema; core
  *   emits it on every object node of a strict tool and `true` otherwise.
  * - `allOf` members' properties merge; `oneOf`/`anyOf` members are chosen by an
- *   `action` or `kind` literal, or by being the only object member.
- * - `items`, `prefixItems`, `$ref` into `$defs`, and `patternProperties` are
- *   followed.
+ *   `action`, `kind`, `_tag` or `type` literal (tried in that order), or by
+ *   being the only object member. A payload whose discriminant matches no
+ *   member, or is missing, is skipped and left for decoding.
+ * - `items`, `prefixItems`, `$ref` into `$defs` (JSON Pointer escapes
+ *   honoured), and `patternProperties` are followed; a key matched by a
+ *   pattern is accepted and walked with the first matching pattern's schema.
  * - The payload is untrusted: the walk stops descending at depth 256 rather
  *   than overflowing the stack, so a deeper unknown key goes unreported and
- *   is left for decoding.
+ *   is left for decoding. Every hop counts toward that cap: each property or
+ *   array position, and also each union member selection, which adds a hop
+ *   without adding a path segment.
  *
  * @public
  */
@@ -172,7 +178,8 @@ export class ToolInputSchema {
 
 	/**
 	 * `Unrecognized parameter(s): a, b.c. Accepted params: x, y.` per level. Each
-	 * echoed key is truncated, and at most 20 keys and 20 levels are named.
+	 * echoed key is truncated, and at most 20 keys and 20 levels are named; a
+	 * trailing `(and N more levels).` counts the levels left out.
 	 */
 	static readonly formatUnknownKeys = (
 		levels: ReadonlyArray<UnknownKeysLevel>,
@@ -187,15 +194,16 @@ export class ToolInputSchema {
 			const accepted = level.accepted.length === 0 ? "(none)" : level.accepted.join(", ");
 			return `Unrecognized parameter(s): ${shown.join(", ")}${more}. Accepted params: ${accepted}.`;
 		});
-		const hidden = levels.length > MAX_ECHOED ? ` (and ${levels.length - MAX_ECHOED} more levels)` : "";
+		const hidden = levels.length > MAX_ECHOED ? ` (and ${levels.length - MAX_ECHOED} more levels).` : "";
 		return `${sentences.join(" ")}${hidden}`;
 	};
 
 	/**
 	 * `schema` with a root `$ref` inlined and a top-level union of objects
-	 * sharing an `action`/`kind` literal rewritten to an object root carrying
-	 * `type: "object"`, `oneOf` and `"x-discriminator"` — MCP requires an
-	 * object root, and core dies at boot on a union root. Returned as the same value when nothing changes.
+	 * sharing an `action`, `kind`, `_tag` or `type` literal rewritten to an
+	 * object root carrying `type: "object"`, `oneOf` and `"x-discriminator"` —
+	 * MCP requires an object root, and core dies at boot on a union root.
+	 * Returned as the same value when nothing changes.
 	 */
 	static readonly objectRooted = (schema: JsonSchema.JsonSchema): JsonSchema.JsonSchema => {
 		const root = resolveRef(schema, schema);
