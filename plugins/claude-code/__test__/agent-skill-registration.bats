@@ -58,6 +58,15 @@ _tools_block() {
 	done
 }
 
+@test "design-patterns is registered under skills, in both Effect agents" {
+	for agent in effect-developer effect-reviewer; do
+		_skills_block "$AGENTS/$agent.md" | grep -qx -- "design-patterns" || {
+			echo "agent $agent does not list design-patterns under skills:" >&2
+			return 1
+		}
+	done
+}
+
 @test "designing-an-action is registered under skills, in action-engineer" {
 	# Pins the fix for the round-2 audit finding: action-engineer had no path,
 	# preloaded or on-demand, to the one skill that sequences a whole action

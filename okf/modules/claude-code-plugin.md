@@ -17,8 +17,8 @@ sources:
     resource: ../../plugins/CLAUDE.md
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-14T04:45:45Z
-  body_sha256: 2d2e07e0f2b7dbd7b40ca70b78f8ff59877edecd6d5750a20fe9e1e3453f1776
+  at: 2026-09-23T17:33:49Z
+  body_sha256: 1ba463b318847e8c811ce16adc5edb940dfa3cc02723303c1583eef009f45fab
 ---
 
 # claude-code-plugin
@@ -74,7 +74,7 @@ frontmatter `description` is the authoritative trigger. On disk today:
 `actions-reporting`, `actions-runtime`, `actions-state-and-secrets`,
 `bootstrapping-an-action`, `building-a-format-package`,
 `building-a-github-action`, `building-schemastore-schemas`,
-`designing-an-action`,
+`design-patterns`, `designing-an-action`,
 `effect-api-extractor-bases`, `effect-v4-cli`, `effect-v4-house-style`,
 `effect-v4-idioms`, `effect-v4-module-index`, `effect-v4-observability`,
 `effect-v4-planning`, `effect-v4-schema`, `effect-v4-services-layers`,

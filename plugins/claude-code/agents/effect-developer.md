@@ -46,6 +46,7 @@ skills:
   - effect-v4-observability
   - hardening-a-parser-port
   - effect-api-extractor-bases
+  - design-patterns
 model: inherit
 color: blue
 ---

@@ -164,6 +164,10 @@ Available via the Skill tool (several also auto-load on trigger):
   suppression for a zero-warning API (no @public X_base const).
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
   malformed-input-fails-as-a-typed-error-never-a-defect invariant.
+- design-patterns — proven architecture patterns for building on Effect v4 /
+  the @effected kit, indexed as loadable references; the first entry is the
+  carrier package pattern (core/engine/front ends -> carrier) for a tool
+  shipping more than one bin.
 
 The GitHub Actions / API suite — fifteen skills over @effected/github-actions,
 github, commands, npm and sbom. START at the router; the rest are named by it
