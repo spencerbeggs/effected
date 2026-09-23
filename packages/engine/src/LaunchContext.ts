@@ -9,7 +9,12 @@
  * @public
  */
 export interface ProjectDirInput {
-	/** Positional candidates, checked in order — usually `process.argv.slice(2)`. */
+	/**
+	 * Positional candidates, checked in order. Pass positional arguments only —
+	 * the parsed positionals of your command, never raw `process.argv.slice(2)`:
+	 * every non-empty value counts as a candidate, so a `--flag` would become the
+	 * project directory.
+	 */
 	readonly argv?: ReadonlyArray<string> | undefined;
 	/** The environment, usually `process.env`. */
 	readonly env: Readonly<Record<string, string | undefined>>;
