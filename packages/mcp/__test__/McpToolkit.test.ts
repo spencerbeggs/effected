@@ -46,6 +46,38 @@ const serve = <E, R>(registration: Layer.Layer<never, E, R>) =>
 	);
 const strictServer = (options: McpToolkitOptions = { strict: "all" }) => serve(McpToolkit.layer(Kit, options));
 
+// Raw-JSON-Schema dynamic tools: core decodes these leniently and dies at registration if one is strict.
+const RawOpen = Tool.dynamic("raw_open", {
+	parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+});
+const RawClosed = Tool.dynamic("raw_closed", {
+	parameters: {
+		type: "object",
+		properties: { query: { type: "string" } },
+		required: ["query"],
+		additionalProperties: false,
+	},
+});
+const RawClosedLoose = Tool.dynamic("raw_closed_loose", {
+	parameters: {
+		type: "object",
+		properties: { query: { type: "string" } },
+		required: ["query"],
+		additionalProperties: false,
+	},
+}).annotate(Tool.Strict, false);
+const DynamicKit = Toolkit.make(RawOpen, RawClosed, RawClosedLoose, Search);
+const DynamicHandlers = DynamicKit.toLayer({
+	raw_open: (params) => Effect.succeed(params),
+	raw_closed: (params) => Effect.succeed(params),
+	raw_closed_loose: (params) => Effect.succeed(params),
+	search: ({ query }) => Effect.succeed({ query }),
+});
+const dynamicServer = McpToolkit.layer(DynamicKit).pipe(
+	Layer.provide(DynamicHandlers),
+	Layer.provideMerge(McpStdio.layer({ name: "toolkit-dynamic-test", version: "0.0.0" })),
+);
+
 interface ToolResult {
 	readonly content: ReadonlyArray<{ readonly text?: string }>;
 	readonly structuredContent?: unknown;
@@ -173,6 +205,61 @@ describe("McpToolkit.layer", () => {
 			const harness = yield* McpHarness.make(serve(McpServer.toolkit(Kit)));
 			yield* harness.initialize;
 			assert.deepStrictEqual(resultOf(yield* harness.callTool("search", { query: "q", extra: 1 })).structuredContent, {
+				query: "q",
+			});
+		}),
+	);
+
+	it.effect("names a nested union-member key on 2026-07-28, the revision Claude Code negotiates", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(strictServer(), { protocol: McpProtocol.v2026_07_28 });
+			yield* harness.initialize;
+			const result = resultOf(
+				yield* harness.callTool("search", { query: "q", filter: { kind: "tag", tag: "t", text: "sneaky" } }),
+			);
+			assert.isTrue(result.isError);
+			assert.include(result.content[0]?.text ?? "", "filter.text");
+		}),
+	);
+
+	it.effect("a dynamic raw-schema tool is left lenient under the default, registers, and accepts an extra key", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(dynamicServer);
+			yield* harness.initialize;
+			const result = resultOf(yield* harness.callTool("raw_open", { query: "q", extra: 1 }));
+			assert.notStrictEqual(result.isError, true);
+			assert.deepStrictEqual(result.structuredContent, { query: "q", extra: 1 });
+		}),
+	);
+
+	it.effect("a lenient tool whose raw schema is closed is never rejected by the pre-check", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(dynamicServer);
+			yield* harness.initialize;
+			for (const name of ["raw_closed", "raw_closed_loose"]) {
+				const result = resultOf(yield* harness.callTool(name, { query: "q", extra: 1 }));
+				assert.notStrictEqual(result.isError, true, name);
+				assert.deepStrictEqual(result.structuredContent, { query: "q", extra: 1 }, name);
+			}
+			// Control: the same server still pre-checks its strict tool.
+			assert.isTrue(resultOf(yield* harness.callTool("search", { query: "q", extra: 1 })).isError);
+		}),
+	);
+
+	it.effect("a throwing unknownKeyMessage fails only that call, and the server keeps answering", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				strictServer({
+					strict: "all",
+					unknownKeyMessage: () => {
+						throw new Error("formatter bug");
+					},
+				}),
+			);
+			yield* harness.initialize;
+			const failed = yield* harness.callTool("search", { query: "q", extra: 1 });
+			assert.strictEqual((failed.error as { readonly code: number }).code, -32603);
+			assert.deepStrictEqual(resultOf(yield* harness.callTool("search", { query: "q" })).structuredContent, {
 				query: "q",
 			});
 		}),

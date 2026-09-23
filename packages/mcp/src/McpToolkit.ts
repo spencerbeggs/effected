@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import { McpSchema, McpServer, Tool, Toolkit } from "effect/unstable/ai";
 import type { UnknownKeysLevel } from "./ToolInputSchema.js";
 import { ToolInputSchema } from "./ToolInputSchema.js";
@@ -12,11 +12,19 @@ export interface McpToolkitOptions {
 	/**
 	 * `"all"` (the default): every tool without its own `Tool.Strict`
 	 * annotation is served and decoded strict. `"annotated"`: only tools
-	 * annotated `Tool.Strict` true are. An explicit annotation, true or false,
-	 * always wins, and a dynamic tool is never re-annotated.
+	 * annotated `Tool.Strict` true are. In both modes an explicit annotation,
+	 * true or false, always wins, and a `Tool.dynamic` tool is never
+	 * re-annotated (core dies at registration on a strict dynamic tool). Only
+	 * a tool that ends up strict gets the unknown-key pre-check; a lenient
+	 * one is passed through untouched even if its raw schema is closed.
 	 */
 	readonly strict?: "all" | "annotated" | undefined;
-	/** Replaces the default `ToolInputSchema.formatUnknownKeys` rendering. */
+	/**
+	 * Replaces the default `ToolInputSchema.formatUnknownKeys` rendering. It
+	 * runs per rejected call inside the handler's effect, so a throw becomes
+	 * a defect of that call alone — the client receives a JSON-RPC internal
+	 * error (-32603) — never a crash of the server.
+	 */
 	readonly unknownKeyMessage?: ((levels: ReadonlyArray<UnknownKeysLevel>) => string) | undefined;
 }
 
@@ -58,8 +66,14 @@ const strictened = <Tools extends Record<string, Tool.Any>>(
  * discriminated `oneOf`/`anyOf` members, and fails with one
  * `McpSchema.InvalidParams` naming every unknown key path plus the accepted
  * params, before core decodes. Core's strict decode stays behind it as the
- * backstop. No core internals are patched, so this survives an rc bump
- * without re-diffing.
+ * backstop. The pre-check is gated on the same predicate core uses to choose
+ * strict decoding — the registered tool's `Tool.Strict` annotation is
+ * `true` — so a lenient tool (explicit `Tool.Strict` false, a
+ * `Tool.dynamic` tool, or any unannotated tool under `"annotated"`) is
+ * never rejected here, even when its raw JSON Schema carries
+ * `additionalProperties: false`. The pre-check runs under `Effect.suspend`,
+ * so a throwing `unknownKeyMessage` dies inside the call's effect. No core
+ * internals are patched, so this survives an rc bump without re-diffing.
  *
  * Registration goes through core's module-level `McpServer.McpServer.layer`,
  * shared by reference with `McpStdio.layer`'s own copy — provide both into
@@ -104,15 +118,20 @@ export class McpToolkit {
 				const decorated = McpServer.McpServer.of({
 					...registry,
 					addTool: (registration) =>
-						registry.addTool({
-							...registration,
-							handle: (payload) => {
-								const levels = ToolInputSchema.unknownKeys(payload ?? {}, registration.tool.inputSchema);
-								return levels.length > 0
-									? Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }))
-									: registration.handle(payload);
-							},
-						}),
+						// Same predicate core uses to pick strict decoding (`Tool.getStrictMode(tool) === true`):
+						// a tool core decodes leniently is never rejected here, whatever its schema looks like.
+						Context.get(registration.annotations, Tool.Strict) === true
+							? registry.addTool({
+									...registration,
+									handle: (payload) =>
+										Effect.suspend(() => {
+											const levels = ToolInputSchema.unknownKeys(payload ?? {}, registration.tool.inputSchema);
+											return levels.length > 0
+												? Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }))
+												: registration.handle(payload);
+										}),
+								})
+							: registry.addTool(registration),
 				});
 				yield* McpServer.registerToolkit(strictened(toolkit, options.strict ?? DEFAULT_STRICT)).pipe(
 					Effect.provideService(McpServer.McpServer, decorated),
