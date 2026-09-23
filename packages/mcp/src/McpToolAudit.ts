@@ -24,20 +24,39 @@ interface Node {
 
 const isNode = (u: unknown): u is Node => typeof u === "object" && u !== null && !Array.isArray(u);
 const HINTS = ["readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"] as const;
-const COMBINATORS = ["prefixItems", "anyOf", "oneOf", "allOf"] as const;
+/** Real branches whose members are separate object shapes, each worth its own report. `allOf` is not one of these: core emits it to merge keywords (declared `properties` plus a Record's `additionalProperties`) onto the SAME node, never to introduce a sibling shape. */
+const BRANCHES = ["prefixItems", "anyOf", "oneOf"] as const;
 
-const objectNodes = (schema: JsonSchema.JsonSchema): ReadonlyArray<{ readonly path: string; readonly node: Node }> => {
-	const out: Array<{ readonly path: string; readonly node: Node }> = [];
+interface ObjectNode {
+	readonly path: string;
+	/** Declared keys, folded in from every `allOf` member that carries a `properties` keyword. */
+	readonly properties: Node | undefined;
+	/**
+	 * `true` iff this node — or any `allOf` member merged onto it — sets
+	 * `additionalProperties: false`. Per JSON Schema, and matching
+	 * `ToolInputSchema`'s documented rule: only an explicit `false` closes a
+	 * node. Missing, `true`, or a schema value all leave it open.
+	 */
+	readonly closed: boolean;
+}
+
+const objectNodes = (schema: JsonSchema.JsonSchema): ReadonlyArray<ObjectNode> => {
+	const out: Array<ObjectNode> = [];
 	const join = (path: string, key: string): string => (path === "" ? key : `${path}.${key}`);
 	const visit = (node: unknown, path: string): void => {
 		if (!isNode(node)) return;
-		if (isNode(node.properties) || node.type === "object") out.push({ path, node });
-		if (isNode(node.properties)) {
-			for (const [key, child] of Object.entries(node.properties)) visit(child, join(path, key));
+		// `allOf` members from core are keyword-merge artifacts on THIS node, not a nested or sibling shape.
+		const merged: ReadonlyArray<Node> = Array.isArray(node.allOf) ? [node, ...node.allOf.filter(isNode)] : [node];
+		const properties = merged.map((part) => part.properties).find(isNode);
+		const closed = merged.some((part) => part.additionalProperties === false);
+		if (isNode(properties) || merged.some((part) => part.type === "object")) out.push({ path, properties, closed });
+
+		if (isNode(properties)) {
+			for (const [key, child] of Object.entries(properties)) visit(child, join(path, key));
 		}
 		visit(node.items, join(path, "items"));
 		visit(node.additionalProperties, join(path, "additionalProperties"));
-		for (const keyword of COMBINATORS) {
+		for (const keyword of BRANCHES) {
 			const list = node[keyword];
 			if (Array.isArray(list)) {
 				for (const [index, child] of list.entries()) visit(child, join(path, `${keyword}[${index}]`));
@@ -50,12 +69,6 @@ const objectNodes = (schema: JsonSchema.JsonSchema): ReadonlyArray<{ readonly pa
 	visit(schema, "");
 	return out;
 };
-
-const hasCombinator = (node: Node): boolean => COMBINATORS.some((keyword) => Array.isArray(node[keyword]));
-
-const isOpen = (node: Node): boolean =>
-	node.additionalProperties !== false &&
-	(isNode(node.properties) || (!hasCombinator(node) && node.type === "object" && !isNode(node.additionalProperties)));
 
 /**
  * A pure sweep over a served `tools/list` that returns every policy
@@ -84,12 +97,10 @@ export class McpToolAudit {
 			seen.add(tool.name);
 
 			if (policy.input !== "any") {
-				for (const { path, node } of objectNodes(tool.inputSchema)) {
+				for (const { path, properties, closed } of objectNodes(tool.inputSchema)) {
 					const where = path === "" ? "the root" : path;
-					if (policy.input === "closed" && isOpen(node)) report(`input schema is open at ${where}`);
-					if (policy.input === "open" && isNode(node.properties) && node.additionalProperties === false) {
-						report(`input schema is closed at ${where}`);
-					}
+					if (policy.input === "closed" && !closed) report(`input schema is open at ${where}`);
+					if (policy.input === "open" && isNode(properties) && closed) report(`input schema is closed at ${where}`);
 				}
 			}
 

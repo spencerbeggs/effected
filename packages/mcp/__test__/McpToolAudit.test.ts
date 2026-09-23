@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { McpProtocol } from "effect/unstable/ai";
 import type { McpToolAuditPolicy, ServedTool } from "../src/testing.js";
 import { McpHarness, McpToolAudit } from "../src/testing.js";
@@ -94,6 +94,24 @@ describe("McpToolAudit.check fixtures, each wrong in exactly one way", () => {
 			{ input: "any" },
 			[],
 		],
+		[
+			// Core serves exactly this shape for a Struct field typed `Schema.Record(Schema.String, X)`
+			// (`toJsonSchemaDocument.ts` ~495-508): no `properties` key on the field's own node, and
+			// `additionalProperties` set to the value schema rather than to `true`/`false`. Only an
+			// explicit `false` may close a node — a schema value is open, the same as a missing key.
+			"a field shaped like a Schema.Record is open even though its own additionalProperties is a schema, not a boolean",
+			{
+				...clean,
+				inputSchema: {
+					type: "object",
+					properties: { id: { type: "string" }, tags: { type: "object", additionalProperties: { type: "string" } } },
+					required: ["id"],
+					additionalProperties: false,
+				},
+			},
+			strictest,
+			["get_thing: input schema is open at tags"],
+		],
 	];
 	for (const [label, tool, policy, expected] of cases) {
 		it(label, () => {
@@ -103,6 +121,20 @@ describe("McpToolAudit.check fixtures, each wrong in exactly one way", () => {
 
 	it("a duplicate tool name is reported under every policy", () => {
 		assert.deepStrictEqual(McpToolAudit.check([clean, clean], { input: "any" }), ["get_thing: duplicate tool name"]);
+	});
+
+	it("a Struct + Record merged at the SAME level — core's allOf wrapper — is open, and only once", () => {
+		// `Schema.StructWithRest` merges declared `properties` with a Record's `additionalProperties`
+		// via `allOf` (`toJsonSchemaDocument.ts` ~509-510) rather than putting `additionalProperties`
+		// directly on the root node. The allOf member is a keyword-merge artifact on the SAME object,
+		// not a second shape — it must not be reported as its own open node alongside the root.
+		const merged = Schema.toJsonSchemaDocument(
+			Schema.StructWithRest(Schema.Struct({ id: Schema.String }), [Schema.Record(Schema.String, Schema.String)]),
+		).schema;
+		assert.deepStrictEqual(
+			McpToolAudit.check([{ ...clean, name: "merged_thing", inputSchema: merged }], { input: "closed" }),
+			["merged_thing: input schema is open at the root"],
+		);
 	});
 });
 
