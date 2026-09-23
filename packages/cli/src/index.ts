@@ -26,6 +26,7 @@
  * @packageDocumentation
  */
 
+export { CliColor } from "./CliColor.js";
 export { CliLogger, type CliLoggerOptions } from "./CliLogger.js";
 export { CliRuntime, type ReportFailuresOptions } from "./CliRuntime.js";
 export { ConfigIssueRenderer } from "./ConfigIssueRenderer.js";
