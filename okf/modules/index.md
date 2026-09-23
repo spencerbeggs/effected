@@ -2,10 +2,12 @@
 
 * [@effected/cli](cli.md) - The boundary layer of an effect/unstable/cli program — a plain-text logger, a failure-reporting combinator, and two schema-issue renderers.
 * [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running and CLI tool discovery.
+* [@effected/engine](engine.md) - The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, and launch-context resolution.
 * [@effected/github](github.md) - The kit's typed GitHub REST and GraphQL API layer, owning the octokit runtime.
 * [@effected/github-references](github-references.md) - GitHub's issue-reference grammar as pure functions, extracted from @effected/github.
 * [@effected/jsonl](jsonl.md) - Append-only, schema-validated JSONL journals exposed as a definable Effect service — the file as a live object, not a text format.
 * [@effected/markdown](markdown.md) - CommonMark 0.31.2 + GFM as pure Effect Schema classes; parse, edit, format, modify and project markdown documents.
+* [@effected/mcp](mcp.md) - Design-only record of the boundary-tier MCP front end — stdio server wiring, tool-failure shaping, JSON-schema input walkers, and the probe-gated strict-toolkit decorator — built in phase 2.
 * [@effected/memfs](memfs.md) - An in-memory implementation of core Effect's FileSystem service — an isolated virtual POSIX volume the kit's tests use as their filesystem double.
 * [@effected/schema-org](schema-org.md) - The schema.org vocabulary as pure Effect Schema classes, a JsonLdDocument graph assembler with a script-safe serializer, and offline conformance validation over the vendored vocabulary.
 * [@effected/schemastore](schemastore.md) - Builds, versions, validates and lints SchemaStore-shaped Draft-07 JSON Schema documents from Effect Schema sources, over core's generation pipeline.

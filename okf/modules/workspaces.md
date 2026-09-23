@@ -25,8 +25,8 @@ sources:
     resource: ../../packages/workspaces/src/Workspaces.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 34aa5261467ef89b1e438bf6f5daad61c6f9a63c0543608cfa5fc16f6c4e058e
+  at: 2026-09-23T17:45:24Z
+  body_sha256: 8c7d77c5197278c8e3cf2c6e2fab3b68f5ab9391507151a5225c7eaa37e65964
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -171,6 +171,21 @@ static class with a private constructor rather than an `as const` namespace
 object, because an `as const` object's member types are inferred in the
 built `.d.ts` and lose their TSDoc, while `static readonly` members keep it
 with unaffected call syntax.
+
+## Planned: `./testing` subpath (phase 3)
+
+A `@effected/workspaces/testing` subpath is planned to hold three repo-shape
+checks currently hand-rolled per consumer repo: `WorkspaceLayering` (a
+ranked dependency-layering check over the discovered package graph, pure
+at its core), `PackedInstall` (a multi-package-manager packed-install e2e
+reusing `@effected/npm`'s `PackagePublish`/`PackageTarball` and
+`@effected/commands`' `Run`), and `SourceBoundary` (a pure source scanner
+flagging a `process` read or a forbidden import leaking into a module
+meant to stay clean of it). All three reuse this package's existing
+dependencies rather than adding new ones. See
+[D5: the layering, packed-install and boundary checks live in `@effected/workspaces/testing`](../decisions/repo-shape-checks-live-in-workspaces-testing.md)
+for why this subpath is the home for them rather than a dedicated package
+or an `engine/testing` subpath.
 
 ## WorkspacesSync — the escape hatch
 

@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 72f155430eb212dd56b785774f34de72ca3daf9e4250c08f54e34012f3f30168
+  at: 2026-09-23T17:45:24Z
+  body_sha256: cd8183b4c0032b73f8c3d561608221caa6822e6711887145eee2e7b2c365282e
 ---
 
 # @effected/cli
@@ -72,16 +72,31 @@ a new request against it.
 
 ## Public surface
 
-Four exports, each a static class with a private constructor — never an
+Exports are static classes with a private constructor — never an
 `as const` namespace object, which loses its members' TSDoc in the built
 `.d.ts`.
 
 | Export | What it is |
 | --- | --- |
-| `CliLogger` | A `Logger` rendering messages plainly, routing `Error`/`Fatal` to stderr and everything else to stdout |
+| `CliLogger` | A `Logger` rendering messages plainly, routing to stderr from `stderrFrom` down and everything else to stdout |
 | `CliRuntime` | The failure-reporting wrapper: report through the program's own logger, set the exit code |
+| `CliRuntime.main` | The full-program combinator: provides the platform layer inside failure reporting, a fresh `CliExit`, the `ShowHelp` remap, and the logger outermost. See "Findings are success" below. |
+| `CliExit` | A `Context.Service` holding a `MutableRef<number>`; `CliExit.set(code)` and `CliExit.layer` for in-process tests. See "Findings are success" below. |
+| `CliColor.enabled` | `Effect<boolean, never, Stdio>` — `Stdio.stdoutIsTerminal` and a non-empty `NO_COLOR` read through `Config.option`, never `process` (D8). |
+| `CliColor.formatterLayer` | `(overrides?: Partial<CliOutput.Formatter>) => Layer<never, never, Stdio>` — builds `CliOutput.defaultFormatter({ colors })` from the same `CliColor.enabled` decision, so help text, parse errors and rendered output always agree. |
+| `ReportFailuresOptions.usageExitCode` | Remaps a `ShowHelp` that carries errors to this code, default 64 (D7). A `ShowHelp` with no errors keeps exit 0. |
 | `SchemaIssueRenderer` | `SchemaIssue` tree → actionable lines, over core's formatter |
 | `ConfigIssueRenderer` | The same for `@effected/config-file`'s `ConfigValidationError` |
+
+### `@effected/cli/testing` (new subpath)
+
+| Export | Contract |
+| --- | --- |
+| `CliTest.sandbox` | `Effect<Sandbox, PlatformError, FileSystem \| Path \| Scope>`. A temporary directory with a fresh `HOME` and `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, and `NO_COLOR=1`. `PATH` is taken from an injected value and never inherited through `extendEnv`. |
+| `CliTest.run` | `(bin, args, { sandbox, execPath, path?, cwd?, stdin? }) => Effect<{ exitCode; stdout; stderr }, PlatformError, ChildProcessSpawner \| Scope>`. A non-zero exit is data, not a failure. Spawns `execPath` with `[bin, ...args]` over core `ChildProcess` (D9), no peer on `@effected/commands`. **When `stdin` is omitted, the spawned child receives an already-ended empty input, never an open pipe** — a test that does not pass `stdin` never hangs waiting for one. |
+
+See [D9: `CliTest` uses core `ChildProcess`](../decisions/cli-testing-uses-core-child-process.md)
+for why this subpath takes no dependency on `@effected/commands`.
 
 ### CliLogger, and why it does not need `Stdio`
 
@@ -95,8 +110,14 @@ based on the log level.
 Levels are compared ordinally, never by string equality —
 `LogLevel.isGreaterThanOrEqualTo(logLevel, stderrFrom)`, never
 `logLevel === "Error" || logLevel === "Fatal"`, which hard-codes two names
-and silently misses any level added upstream above `Fatal`. `stderrFrom`
-defaults to `"Error"`.
+and silently misses any level added upstream above `Fatal`. **`stderrFrom`
+defaults to `"All"`** ([D3](../decisions/cli-logger-defaults-all-to-stderr.md)):
+every log level routes to stderr unless a consumer narrows it explicitly,
+so a CLI's stdout carries only what the program writes with `Console.log`
+— never a diagnostic `Effect.logInfo` line a consumer never chose to print
+as output. This is a breaking 0.x change; the changeset says so. Any
+consumer relying on the old `"Error"`-only default now sees `Info`-level
+log lines move to stderr.
 
 `Console.Console` is a public `Context.Reference<Console>` with
 `globalThis.console` as its default value, so nothing is imposed on the
@@ -122,6 +143,45 @@ NodeRuntime.runMain(program.pipe(CliRuntime.reportFailures, Effect.provide(MainL
 Wrapping `runMain` itself would drag a platform choice into a library that
 has no business making one, and would make the package unusable from Bun or
 Deno for no gain.
+
+### Findings are success, exit codes still reach teardown
+
+A handler that reports findings — validation errors, lint violations, any
+result a program needs to surface with a non-zero exit but that is not
+itself a crash — *succeeds*, and calls `CliExit.set(code)` to record the
+code it wants. `CliExit` is a `Context.Service` holding a
+`MutableRef<number>`, not a `Reference`: forgetting to provide it inside
+`CliRuntime.main` is a type error, not a silently-ignored global. On
+success, `main` reads the cell; if it is non-zero, `main` turns the
+success into a failure carrying a private sentinel, marked with
+`CliRuntime.reported(sentinel, code)`.
+
+This exists because `process.exitCode` cannot be trusted to reach
+teardown. Node's `runMain` skips `process.exit(0)` on success — it calls
+`process.exit` only when the fiber received a signal or its own exit code
+is non-zero (`@effect/platform-node-shared` `NodeRuntime.ts:58-65`) — so a
+handler that only sets `process.exitCode` on an otherwise-successful fiber
+relies on Node's own process-exit machinery to eventually notice that
+field, well after Effect's own finalizers had their chance to run.
+Turning the non-zero code into a failure instead routes it through core's
+`defaultTeardown` on any runtime, exactly like an ordinary error, so
+finalizers run before the process exits with the recorded code. `main`
+packages no numeric taxonomy beyond 64 ([D7](../decisions/usage-exit-code-defaults-to-64.md))
+and 130 (signal interrupt); codes 1 to 3 stay each consumer's own to
+assign.
+
+### `reportFailures` never renders `ShowHelp`
+
+`Command.runWith` already printed the help text or the parse errors before
+a `ShowHelp` reaches `reportFailures` (`Command.ts:1958-1964`) — rendering
+it a second time is what produced the stray "Help requested" line every
+consumer previously worked around by hand. `reportFailures` now never
+renders a `ShowHelp`, and never renders the `CliExit` sentinel either. It
+still renders every other `errorReported: false` error: schemastore-cli's
+`GateError` summary relies on that render path staying intact. A
+`ShowHelp` that carries errors is remapped to `usageExitCode`
+([D7](../decisions/usage-exit-code-defaults-to-64.md), default 64); a bare
+`--help` invocation (`ShowHelp` with no errors) keeps exit 0.
 
 ### The renderers
 
