@@ -76,11 +76,18 @@ types.
   closes it.** Closing stdin right after writing — every hand-rolled smoke
   test did this — makes an Effect server drop the in-flight response and
   exit 0, reading as a pass with no response.
+- **`McpProcess.handshake` always uses id 1.** A test's own requests should
+  start at id 2 or above — the harness does not reserve or check this, so
+  reusing id 1 collides with the handshake's own response.
 - **Only `additionalProperties: false` closes a node.** `ToolInputSchema`
   and `McpToolAudit` both treat a missing value, `true`, or a schema-valued
   `additionalProperties` (a `Record`'s value schema) as open, matching what
   core itself emits — never the looser "any falsy-ish value closes it"
   reading.
+- **`McpToolAudit.check` reports a duplicate tool name under EVERY
+  policy.** The duplicate-name check runs unconditionally, independent of
+  `input`/`requireTitle`/etc. — a duplicate is a violation on any audit, not
+  something a permissive policy exempts.
 
 See `okf/modules/mcp.md`'s "Spec amendments" table (A1–A10) for the full
 list, each amendment against the original design spec.
