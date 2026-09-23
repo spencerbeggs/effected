@@ -1,0 +1,63 @@
+/**
+ * The process-derived facts a front end resolves once, passed in as values.
+ *
+ * @remarks
+ * Nothing here reads `process`: `argv`, `env` and `cwd` come from the front
+ * end's own `main.ts`. That keeps the resolution rule shared and testable
+ * while the process read stays at the one place allowed to make it.
+ *
+ * @public
+ */
+export interface ProjectDirInput {
+	/** Positional candidates, checked in order — usually `process.argv.slice(2)`. */
+	readonly argv?: ReadonlyArray<string> | undefined;
+	/** The environment, usually `process.env`. */
+	readonly env: Readonly<Record<string, string | undefined>>;
+	/** Env keys to try in order, for example `["OKFIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"]`. */
+	readonly keys: ReadonlyArray<string>;
+	/** The fallback, usually `process.cwd()`. */
+	readonly cwd: string;
+}
+
+const PLACEHOLDER = /\$\{[^}]*\}/;
+
+/**
+ * Resolves where a tool launched by an agent host should treat as its project.
+ *
+ * @public
+ */
+export class LaunchContext {
+	private constructor() {}
+
+	/**
+	 * Whether a value still carries a literal `${VAR}` placeholder.
+	 *
+	 * @remarks
+	 * Claude Code passes `${CLAUDE_PROJECT_DIR}` through unsubstituted in some
+	 * launch paths; a path containing a placeholder is never what was meant.
+	 */
+	static readonly isUnsubstituted = (value: string): boolean => PLACEHOLDER.test(value);
+
+	/**
+	 * The first usable argv value, then the first usable env value in `keys`
+	 * order, then `cwd`. A value is usable when it is non-empty after trimming
+	 * and carries no placeholder — `??` would return an empty string or a literal
+	 * `${VAR}`, which is the bug this replaces.
+	 */
+	static readonly projectDir = (input: ProjectDirInput): string => {
+		const usable = (value: string | undefined): string | undefined => {
+			if (value === undefined) return undefined;
+			const trimmed = value.trim();
+			return trimmed === "" || LaunchContext.isUnsubstituted(trimmed) ? undefined : trimmed;
+		};
+		for (const value of input.argv ?? []) {
+			const found = usable(value);
+			if (found !== undefined) return found;
+		}
+		for (const key of input.keys) {
+			const found = usable(input.env[key]);
+			if (found !== undefined) return found;
+		}
+		return input.cwd;
+	};
+}
