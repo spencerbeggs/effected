@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T19:03:17Z
-  body_sha256: 289204075d0dd04333596e2300e3b5ea532e55de1ab1e938fbd46dafd111b337
+  at: 2026-09-23T19:35:12Z
+  body_sha256: 4d1b0a6f777dd8ccc7bd259fc9fc0c1929fd25cd2b787239a02f45e2c9dcc2f8
 ---
 
 # @effected/cli
@@ -94,7 +94,7 @@ Exports are static classes with a private constructor — never an
 | Export | Contract |
 | --- | --- |
 | `CliTest.sandbox` | `Effect<Sandbox, PlatformError, FileSystem \| Path \| Scope>`. A temporary directory with a fresh `HOME` and `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, and `NO_COLOR=1`. `PATH` is taken from an injected value and never inherited through `extendEnv`. |
-| `CliTest.run` | `(bin, args, { sandbox, execPath, cwd?, env?, stdin? }) => Effect<{ exitCode; stdout; stderr }, PlatformError, ChildProcessSpawner \| Scope>`. A non-zero exit is data, not a failure. Spawns `execPath` with `[bin, ...args]` over core `ChildProcess` (D9), no peer on `@effected/commands`. **When `stdin` is omitted OR passed as `""`, the spawned child receives an already-ended empty input, never an open pipe** — a test that does not pass `stdin` never hangs waiting for one. |
+| `CliTest.run` | `(bin, args, { sandbox, execPath, cwd?, env?, stdin? }) => Effect<{ exitCode; stdout; stderr }, PlatformError, ChildProcessSpawner>`. Two deliberate differences from spec §6: there is **no `path?` option** (`PATH` is fixed once by `CliTest.sandbox({ path })`, and a per-run override goes through `env`, which merges over the sandbox environment), and it **scopes itself** (`Effect.scoped` around the spawn), so `Scope` is not in `R` and a caller need not wrap each run. A non-zero exit is data, not a failure. Spawns `execPath` with `[bin, ...args]` over core `ChildProcess` (D9), no peer on `@effected/commands`. **When `stdin` is omitted OR passed as `""`, the spawned child receives an already-ended empty input, never an open pipe** — a test that does not pass `stdin` never hangs waiting for one. |
 
 See [D9: `CliTest` uses core `ChildProcess`](../decisions/cli-testing-uses-core-child-process.md)
 for why this subpath takes no dependency on `@effected/commands`.
@@ -174,10 +174,16 @@ assign.
 ### `reportFailures` never renders `ShowHelp`
 
 `Command.runWith` already printed the help text or the parse errors before
-a `ShowHelp` reaches `reportFailures` (`Command.ts:1958-1964`) — rendering
+a `ShowHelp` reaches `reportFailures` (the `ShowHelp` `catchFilter` in
+`runWith`: `Command.ts:1958-1964` in the vendored `.repos/effect` tree,
+`:3094-3100` in the published `node_modules/effect/src` copy, both rc.117) — rendering
 it a second time is what produced the stray "Help requested" line every
 consumer previously worked around by hand. `reportFailures` now never
-renders a `ShowHelp`, and never renders the `CliExit` sentinel either. It
+renders a `ShowHelp`, and never renders the `CliExit` sentinel either.
+Nor does it render a `CliError.UserError` `runWith` already printed
+(`showUserError` flips its `Runtime.errorReported` mark to `false` after
+printing); that one exits with `usageExitCode`. Under `renderErrors: false`
+the mark stays `true` and the error renders normally. It
 still renders every other `errorReported: false` error: schemastore-cli's
 `GateError` summary relies on that render path staying intact. A
 `ShowHelp` that carries errors is remapped to `usageExitCode`

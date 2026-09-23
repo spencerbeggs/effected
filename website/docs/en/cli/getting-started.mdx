@@ -267,6 +267,8 @@ const load = configFile.load.pipe(
 );
 ```
 
+That pattern is for a program run **without** `CliRuntime.main` or `reportFailures`. Under either, do not print the failure yourself: `reportFailures` renders every error except a `ShowHelp`, a `UserError` that `Command.runWith` already printed and the `CliExit` sentinel, so a failure you logged and then marked would print twice. Fail with the error and put the multi-line rendering in the `render` option instead — the [multi-line failure pattern](/cli/advanced#rendering-a-multi-line-failure) in the advanced guide shows it.
+
 Two details are worth internalizing before you rely on them. The marker `Runtime.errorReported` has **inverted polarity relative to its name** — `false` is what suppresses the runtime's own report, because the marker means "should this be reported"; the intuitive `true` produces exactly the double report it was meant to prevent. And an **interrupt is never reported**: `reportFailures` passes an interrupt-only cause straight through, since it is not a failure anyone wants rendered and the default teardown already maps it to `130`.
 
 ## Next steps

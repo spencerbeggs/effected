@@ -98,6 +98,8 @@ ConfigValidationError: Config validation failed at "/home/me/.config/app/config.
   Missing key at variables.keep.resolved
 ```
 
+Print-then-`reported` is for a program run **without** `CliRuntime.main` or `reportFailures`. Under either, do not print the failure yourself: `reportFailures` renders every error except a `ShowHelp`, a `UserError` that `Command.runWith` already printed and the `CliExit` sentinel, so it would print twice. Fail with the error and put the multi-line rendering in the `render` option instead — see "Rendering a multi-line failure" in the [advanced guide](https://effected.spencerbeg.gs/cli/advanced#rendering-a-multi-line-failure).
+
 ## Putting it together
 
 A findings command — one whose non-zero exit reports a result rather than a

@@ -6,8 +6,8 @@ status: draft
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
-  body_sha256: 631e1980f39d4ca278cda0d0af075727438d24ddc8dab5b9f92ffd88cc15b750
+  at: 2026-09-23T19:35:12Z
+  body_sha256: 1536ac5e6c01d2ca76e372931c2a07bebe8a9261c3876a8109c9646841b502b4
 ---
 
 # D7: `usageExitCode` defaults to 64 (BSD `EX_USAGE`)
@@ -16,7 +16,8 @@ generated:
 
 `CliRuntime.reportFailures` never renders a `CliError` `ShowHelp`, because
 `Command.runWith` has already printed the help text or the parse error
-(`Command.ts:1958-1964`); rendering it again produced the stray "Help
+(`Command.ts:1958-1964` in the vendored `.repos/effect` tree,
+`:3094-3100` in the published `node_modules/effect/src` copy, both rc.117); rendering it again produced the stray "Help
 requested" line every consumer worked around by hand. That leaves the
 exit code question open: a `ShowHelp` that carries errors (a genuine
 parse failure — an unknown flag, a missing required argument) still needs

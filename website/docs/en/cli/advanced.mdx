@@ -124,13 +124,15 @@ NodeRuntime.runMain(CliRuntime.main(Command.run(check, { version: "1.0.0" }), { 
 2. The **platform layer is provided inside `reportFailures`** — a layer-build failure (`HOME` unset, say) renders as one line through your logger with the fallback exit code, rather than escaping to the runtime's own stack trace.
 3. **The logger is provided outermost**, so it is present whichever branch failed — even a failure during platform construction.
 
+`CliExit.set` takes an integer in `0..255`, the range a POSIX exit status can carry; anything else (`256`, `1.5`, `NaN`) dies as a defect naming the value, and `main` re-checks a code written to the cell directly. `256` would otherwise wrap to exit `0` and pass a run with findings. A program **failure** beats findings: `main` reads the cell only after the program succeeds, so a failed run exits with the failure's code.
+
 After the program body runs to completion, `main` reads the `CliExit` cell; a non-zero value becomes a failure carrying a private `ExitRequested` sentinel, marked exactly like `CliRuntime.reported` marks one. `reportFailures` never renders it — there is nothing to say, only an exit code a *successful* program already chose — and nothing outside this package can construct or match it.
 
 **Never provide `CliExit.layer` yourself inside a program run under `CliRuntime.main`.** `main` already provides one; a second provide anywhere in the program tree mints a second, unrelated cell (layers memoize by reference, and `Layer.fresh` defeats that memoization deliberately), so `CliExit.set` calls against it never reach the cell `main` reads back — the findings a handler recorded silently vanish and the run exits `0`.
 
 ### Why not `process.exitCode`?
 
-Node's own `runMain` skips `process.exit(0)` on success — it calls `process.exit` only when the fiber received a signal or its own exit code is non-zero — so a handler that sets `process.exitCode` on an otherwise-successful fiber is relying on Node's process-exit machinery to eventually notice that field, well after Effect's finalizers had their chance to run. And `process.exit(n)` called directly from a handler skips every finalizer outright. Turning the code into a failure routes it through core's `defaultTeardown` on **any** runtime, exactly like an ordinary error, so finalizers run before the process exits with the recorded code.
+Two reasons, and neither is about ordering. **Portability**: `process.exitCode` is a Node global, and it works there only because Node's own `runMain` skips `process.exit(0)` on success — it calls `process.exit` only when the fiber received a signal or its own exit code is non-zero — so the field survives until Node exits on its own. A program on another runtime has no such field, and a library that writes it has chosen a platform for its caller. **Finalizers**: the tempting alternative, `process.exit(n)` called directly from a handler, ends the process on the spot and skips every finalizer outright. Turning the code into a failure routes it through core's `defaultTeardown` on **any** runtime, exactly like an ordinary error, so finalizers run before the process exits with the recorded code.
 
 ## `CliColor`: one colour decision, shared by everything that renders
 

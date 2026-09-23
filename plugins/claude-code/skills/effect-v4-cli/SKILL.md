@@ -182,16 +182,18 @@ Two implementation facts worth knowing even if you write your own:
   asserted without stubbing globals, which is why nobody notices when the
   stderr/stdout split regresses. **Compare levels ordinally**
   (`LogLevel.isGreaterThanOrEqualTo`), never by string equality against `"Error"`.
-- **`CliLogger.layer()` routes to stderr from `"Error"` up, by default.**
-  `stderrFrom` defaults to `"Error"` (`CliLogger.make`: `options.stderrFrom ??
-  "Error"`), so `Info`/`Warning` go to **stdout** as program output. That is
-  right for a tool whose output *is* its log lines and wrong the moment stdout
-  is a machine-readable document: a `--format=json` command that leaves the
-  default in place interleaves its warnings into the JSON stream. Install
-  `CliLogger.layer({ stderrFrom: "All" })` for any CLI whose stdout is a
-  document, and write the document with `Console.log`, not `Effect.log`. The
-  trap this replaces is assuming the logger already splits "output" from
-  "diagnostics" by level — it does, but the split point is a *policy* you set.
+- **`CliLogger.layer()` sends every log level to stderr, by default.**
+  `stderrFrom` defaults to `"All"` (`CliLogger.make`: `options.stderrFrom ??
+  "All"`), so stdout carries only what the program writes with `Console.log` —
+  a `--format=json` document stays clean of warnings. Write program output with
+  `Console.log`, never `Effect.log`: every `Effect.log*` call is a diagnostic.
+  Pass `CliLogger.layer({ stderrFrom: "Error" })` to restore the old split,
+  where `Info`/`Warning` go to stdout as program output — right only for a tool
+  whose output *is* its log lines.
+- **`Command.runWith` renders a `CliError.UserError` itself** — through the
+  `CliOutput` formatter, on stderr — then re-fails with it, so
+  `CliRuntime.reportFailures` and `CliRuntime.main` skip it (and exit with the
+  usage code, `64` by default) rather than printing it a second time.
 - **Exit code and duplicate-report suppression are markers on the error**, read
   off the squashed failure: `Runtime.errorExitCode` and `Runtime.errorReported`.
   Beware the polarity — **`errorReported: false` is what SUPPRESSES** the
