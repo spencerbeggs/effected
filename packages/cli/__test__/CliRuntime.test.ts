@@ -1,7 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Console, Effect, Exit, Runtime } from "effect";
+import { CliError } from "effect/unstable/cli";
 import { CliLogger } from "../src/CliLogger.js";
 import { CliRuntime } from "../src/CliRuntime.js";
+import { ExitRequested } from "../src/internal/ExitRequested.js";
 
 const capturing = (): { readonly console: Console.Console; readonly out: string[]; readonly err: string[] } => {
 	const out: string[] = [];
@@ -123,6 +125,54 @@ describe("CliRuntime.reportFailures", () => {
 
 			assert.strictEqual(Exit.isSuccess(exit), true);
 			assert.deepStrictEqual([...out, ...err], []);
+		}),
+	);
+});
+
+describe("CliRuntime.reportFailures and ShowHelp", () => {
+	it.effect("never renders a ShowHelp: runWith already printed help", () =>
+		Effect.gen(function* () {
+			const help = new CliError.ShowHelp({ commandPath: ["tool"], errors: [] });
+			const { out, err } = yield* run(Effect.fail(help));
+			assert.deepStrictEqual(err, []);
+			assert.deepStrictEqual(out, []);
+		}),
+	);
+
+	it.effect("a bare-root ShowHelp (no errors) exits 0", () =>
+		Effect.gen(function* () {
+			const help = new CliError.ShowHelp({ commandPath: ["tool"], errors: [] });
+			const { exit } = yield* run(Effect.fail(help));
+			assert.strictEqual(Runtime.getErrorExitCode(failureOf(exit)), 0);
+		}),
+	);
+
+	it.effect("a ShowHelp carrying parse errors exits with usageExitCode, default 64", () =>
+		Effect.gen(function* () {
+			const help = new CliError.ShowHelp({
+				commandPath: ["tool"],
+				errors: [new CliError.UnrecognizedOption({ option: "--nope", suggestions: [] })],
+			});
+			const { exit } = yield* run(Effect.fail(help));
+			assert.strictEqual(Runtime.getErrorExitCode(failureOf(exit)), 64);
+			const custom = yield* run(Effect.fail(help), { usageExitCode: 2 });
+			assert.strictEqual(Runtime.getErrorExitCode(failureOf(custom.exit)), 2);
+		}),
+	);
+
+	it.effect("never renders the CliExit sentinel, and keeps its code", () =>
+		Effect.gen(function* () {
+			const { err, exit } = yield* run(Effect.fail(new ExitRequested(2)));
+			assert.deepStrictEqual(err, []);
+			assert.strictEqual(Runtime.getErrorExitCode(failureOf(exit)), 2);
+		}),
+	);
+
+	it.effect("still renders an already-reported error that is not ShowHelp", () =>
+		Effect.gen(function* () {
+			const gate = CliRuntime.reported(new Error("3 schemas drifted"), 1);
+			const { err } = yield* run(Effect.fail(gate));
+			assert.deepStrictEqual(err, ["Error: 3 schemas drifted"]);
 		}),
 	);
 });

@@ -1,4 +1,8 @@
 import { Cause, Effect, Runtime } from "effect";
+import { CliError } from "effect/unstable/cli";
+import { ExitRequested } from "./internal/ExitRequested.js";
+
+const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
 
 /**
  * How a failure is turned into output and an exit code.
@@ -22,6 +26,14 @@ export interface ReportFailuresOptions {
 	 * fallback, and it defaults to `1`.
 	 */
 	readonly exitCode?: number | undefined;
+	/**
+	 * The exit code for a usage error: a `ShowHelp` carrying parse errors.
+	 *
+	 * @remarks
+	 * Defaults to `64` (BSD `EX_USAGE`). A `ShowHelp` with no errors — a bare
+	 * root invocation, or `--help` — always exits `0`.
+	 */
+	readonly usageExitCode?: number | undefined;
 }
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>
@@ -99,6 +111,15 @@ const chooseExitCode = (error: unknown, fallback: number | undefined): number =>
  * An **interrupt is left alone**: it is not a failure to report, and the
  * default teardown already maps an interrupt-only cause to `130`.
  *
+ * A `CliError.ShowHelp` is never rendered: `Command.runWith` already printed
+ * the help text (and any parse errors) before re-failing with it, so
+ * rendering it again would print nothing but a stray "Help requested" line.
+ * A `ShowHelp` carrying errors is remapped to `usageExitCode` (default `64`,
+ * BSD `EX_USAGE`); a bare `--help` or root invocation — `errors` empty —
+ * keeps exit `0`. The private `ExitRequested` sentinel `CliRuntime.main`
+ * raises is likewise never rendered; it only carries the exit code a
+ * successful program recorded through `CliExit`.
+ *
  * @public
  */
 export class CliRuntime {
@@ -118,6 +139,18 @@ export class CliRuntime {
 					if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause as Cause.Cause<never>);
 
 					const error = Cause.squash(cause);
+
+					// Already marked by CliRuntime.main; there is nothing to render.
+					if (error instanceof ExitRequested) return Effect.fail(error);
+
+					// Command.runWith printed help (stdout) and any parse errors (stderr)
+					// BEFORE re-failing with ShowHelp. Rendering it again prints a stray
+					// "Help requested" line.
+					if (isShowHelp(error)) {
+						const code = error.errors.length > 0 ? (options.usageExitCode ?? 64) : 0;
+						return Effect.fail(CliRuntime.reported(error, code));
+					}
+
 					const render = options.render ?? ((value: unknown) => String(value));
 
 					return Effect.gen(function* () {
