@@ -7,3 +7,4 @@
  * @packageDocumentation
  */
 export { ToolFailure } from "./ToolFailure.js";
+export { type FormatUnknownKeysOptions, ToolInputSchema, type UnknownKeysLevel } from "./ToolInputSchema.js";
