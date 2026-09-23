@@ -13,7 +13,10 @@ const noColor = Config.option(Config.String("NO_COLOR"));
  * `NO_COLOR=""` does not disable colour. `FORCE_COLOR` is ignored, matching
  * core's own formatter. The environment is read through the ambient
  * `ConfigProvider`, never `process`, so a test swaps it with
- * `Effect.provideService(ConfigProvider.ConfigProvider, ...)`.
+ * `Effect.provideService(ConfigProvider.ConfigProvider, ...)`. The kit's
+ * default providers (`fromEnv`, `fromUnknown`) already treat an empty
+ * `NO_COLOR` as unset, so the explicit `set === ""` check exists for a
+ * provider constructed with `{ preserveEmptyStrings: true }`.
  *
  * @public
  */
