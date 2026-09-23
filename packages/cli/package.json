@@ -23,6 +23,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./testing": "./src/testing.ts",
 		"./package.json": "./package.json"
 	},
 	"scripts": {
@@ -32,6 +33,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
 		"@effected/config-file": "workspace:*",
 		"@effected/glob": "workspace:*",

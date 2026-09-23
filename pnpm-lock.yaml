@@ -286,6 +286,9 @@ importers:
 
   packages/cli:
     devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1)
