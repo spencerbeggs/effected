@@ -16,8 +16,14 @@ export interface CliLoggerOptions {
 	 */
 	readonly render?: ((message: unknown) => string) | undefined;
 	/**
-	 * The level at and above which output goes to stderr. Defaults to `"Error"`,
-	 * so `Error` and `Fatal` are diagnostics and everything else is output.
+	 * The level at and above which output goes to stderr. Defaults to `"All"`,
+	 * so every log level is a diagnostic and stdout carries only what the
+	 * program writes with `Console.log`.
+	 *
+	 * @remarks
+	 * Pass `"Error"` to restore the old split, for a tool whose output *is*
+	 * its log lines rather than a separate document written with
+	 * `Console.log`.
 	 */
 	readonly stderrFrom?: LogLevel.LogLevel | undefined;
 }
@@ -60,15 +66,23 @@ const defaultRender = (message: unknown): string =>
  * @example
  * ```ts
  * import { CliLogger } from "@effected/cli"
- * import { Effect } from "effect"
+ * import { Console, Effect } from "effect"
  *
  * const program = Effect.gen(function* () {
- *   yield* Effect.log("synced 3 repos")   // stdout, no timestamp
- *   yield* Effect.logError("one failed")  // stderr
+ *   yield* Effect.log("synced 3 repos")    // stderr, no timestamp — a diagnostic
+ *   yield* Console.log("3 repos synced")   // stdout — the program's actual output
+ *   yield* Effect.logError("one failed")   // stderr
  * })
  *
  * program.pipe(Effect.provide(CliLogger.layer()))
  * ```
+ *
+ * @remarks
+ * `stderrFrom` defaults to `"All"`: a CLI's stdout is its product, so every
+ * log level is a diagnostic unless a consumer narrows the threshold. Write
+ * program output with `Console.log`, never `Effect.log`. Pass
+ * `stderrFrom: "Error"` for a tool whose output *is* its log lines. This is
+ * a breaking change on the 0.x line (#716).
  *
  * @public
  */
@@ -84,7 +98,7 @@ export class CliLogger {
 	 */
 	static readonly make = (options: CliLoggerOptions = {}): Logger.Logger<unknown, void> => {
 		const render = options.render ?? defaultRender;
-		const stderrFrom = options.stderrFrom ?? "Error";
+		const stderrFrom = options.stderrFrom ?? "All";
 
 		return Logger.make<unknown, void>(({ fiber, logLevel, message }) => {
 			const console = fiber.getRef(Console.Console);

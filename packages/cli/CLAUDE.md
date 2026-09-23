@@ -40,7 +40,7 @@ appears in `R`, and a test swaps it.
 `LogLevel.isGreaterThanOrEqualTo(logLevel, stderrFrom)` is the test; `logLevel
 === "Error" || logLevel === "Fatal"` hard-codes two names and silently misses
 any level above them, including one added upstream. `stderrFrom` defaults to
-`"Error"` and the threshold is the option.
+`"All"` and the threshold is the option (#716; breaking on the 0.x line).
 
 **`LogToStderr` is honoured in one direction only.** It can force everything to
 stderr; it must never move an error onto stdout. That is the one guarantee this

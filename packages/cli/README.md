@@ -48,12 +48,13 @@ All `@effected/*` packages are ESM-only: the exports maps publish only `import` 
 ```ts
 import { CliLogger, CliRuntime } from "@effected/cli";
 import { NodeRuntime } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { Console, Effect, Layer } from "effect";
 
 declare const AppLive: Layer.Layer<never>;
 
 const program = Effect.gen(function* () {
-  yield* Effect.log("building 3 packages");
+  yield* Effect.logInfo("building 3 packages"); // a diagnostic, not the product
+  yield* Console.log("build.json contents");    // the program's actual output
   yield* Effect.logError("nothing to build");
 });
 
@@ -62,9 +63,10 @@ const program = Effect.gen(function* () {
 const MainLive = Layer.mergeAll(AppLive, CliLogger.layer());
 
 NodeRuntime.runMain(program.pipe(CliRuntime.reportFailures(), Effect.provide(MainLive)));
-// stdout: building 3 packages
+// stdout: build.json contents
+// stderr: building 3 packages
 // stderr: nothing to build
-// No timestamp, no level, no fiber id — and the diagnostic line never lands on stdout.
+// No timestamp, no level, no fiber id — and stdout carries only what Console.log wrote.
 ```
 
 Rendering a bad config into something actionable:
@@ -98,7 +100,7 @@ ConfigValidationError: Config validation failed at "/home/me/.config/app/config.
 
 ## Features
 
-- `CliLogger.layer(options?)` — replaces the default logger with plain lines, routing `Error` and above to stderr. The threshold is the `stderrFrom` option, compared ordinally, so a level added upstream lands on the right stream without a change here.
+- `CliLogger.layer(options?)` — replaces the default logger with plain lines, routing every level to stderr by default. The threshold is the `stderrFrom` option (pass `"Error"` to restore the old split), compared ordinally, so a level added upstream lands on the right stream without a change here.
 - `CliLogger.make(options?)` — the `Logger` itself, for composing into a logger set you already have.
 - `CliRuntime.reportFailures(options?)` — reports through your logger, then re-fails with an exit code and the mark that stops the runtime reporting it a second time.
 - `CliRuntime.reported(error, exitCode?)` — marks an error you reported yourself, so the runtime stays quiet about it. A typed `Error` comes back as its own type (the marks are added in place) when it passes `instanceof Error` at runtime; any other value — including one that only satisfies `Error`'s shape structurally — is wrapped in a plain `Error`.

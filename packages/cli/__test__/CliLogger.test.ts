@@ -35,7 +35,7 @@ const capture = (
 	});
 
 describe("CliLogger", () => {
-	it.effect("writes info to stdout and errors to stderr", () =>
+	it.effect("writes info to stderr and errors to stderr under the default stderrFrom", () =>
 		Effect.gen(function* () {
 			const { out, err } = yield* capture(
 				Effect.gen(function* () {
@@ -44,12 +44,12 @@ describe("CliLogger", () => {
 				}),
 			);
 
-			assert.deepStrictEqual(out, ["progress"]);
-			assert.deepStrictEqual(err, ["broke"]);
+			assert.deepStrictEqual(out, []);
+			assert.deepStrictEqual(err, ["progress", "broke"]);
 		}),
 	);
 
-	it.effect("routes every level at or above Error to stderr, and nothing below", () =>
+	it.effect("routes every level at or above Error to stderr, and nothing below, with stderrFrom Error", () =>
 		Effect.gen(function* () {
 			const { out, err } = yield* capture(
 				Effect.gen(function* () {
@@ -59,6 +59,7 @@ describe("CliLogger", () => {
 					yield* Effect.logError("error");
 					yield* Effect.logFatal("fatal");
 				}).pipe(Effect.provideService(References.MinimumLogLevel, "Debug")),
+				{ stderrFrom: "Error" },
 			);
 
 			// The discriminating mutant for this logger is "route everything to
@@ -70,18 +71,44 @@ describe("CliLogger", () => {
 
 	it.effect("renders plainly, with no timestamp, level or fiber id", () =>
 		Effect.gen(function* () {
-			const { out } = yield* capture(Effect.log("a plain line"));
+			const { err } = yield* capture(Effect.log("a plain line"));
 
-			assert.deepStrictEqual(out, ["a plain line"]);
-			assert.notMatch(out[0] ?? "", /^\[|INFO|\(#\d+\)/);
+			assert.deepStrictEqual(err, ["a plain line"]);
+			assert.notMatch(err[0] ?? "", /^\[|INFO|\(#\d+\)/);
 		}),
 	);
 
 	it.effect("joins a variadic message with spaces", () =>
 		Effect.gen(function* () {
-			const { out } = yield* capture(Effect.log("synced", 3, "repos"));
+			const { err } = yield* capture(Effect.log("synced", 3, "repos"));
 
-			assert.deepStrictEqual(out, ["synced 3 repos"]);
+			assert.deepStrictEqual(err, ["synced 3 repos"]);
+		}),
+	);
+
+	it.effect("by default routes Info and Warning to stderr, keeping stdout for program output (#716)", () =>
+		Effect.gen(function* () {
+			const { console: double, out, err } = capturing();
+			yield* Effect.logInfo("info line").pipe(
+				Effect.andThen(Effect.logWarning("warning line")),
+				Effect.andThen(Console.log("the document")),
+				Effect.provide(CliLogger.layer()),
+				Effect.provideService(Console.Console, double),
+			);
+			assert.deepStrictEqual(err, ["info line", "warning line"]);
+			assert.deepStrictEqual(out, ["the document"]);
+		}),
+	);
+
+	it.effect("stderrFrom still opts back into stdout for lower levels", () =>
+		Effect.gen(function* () {
+			const { console: double, out, err } = capturing();
+			yield* Effect.logInfo("info line").pipe(
+				Effect.provide(CliLogger.layer({ stderrFrom: "Error" })),
+				Effect.provideService(Console.Console, double),
+			);
+			assert.deepStrictEqual(out, ["info line"]);
+			assert.deepStrictEqual(err, []);
 		}),
 	);
 
