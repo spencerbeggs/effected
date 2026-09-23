@@ -4,11 +4,11 @@ import { Schema } from "effect";
  * What a caller — usually an agent — should do after a failure.
  *
  * @remarks
- * The superset of two shapes consumers built independently: `{ hint,
- * suggestedTool? }` (folded into a message) and `{ suggestedTool,
- * suggestedArgs, humanHint }` (carried as structured data). `humanHint` maps to
- * `hint`. Keys are `optionalKey`, so an explicit `undefined` is rejected rather
- * than silently encoded.
+ * The superset of two shapes consumers built independently: the folded-message
+ * shape `{ hint, suggestedTool? }` and the structured-data shape
+ * `{ suggestedTool, suggestedArgs, humanHint }`. `humanHint` maps to `hint`.
+ * Keys are `optionalKey`, so an explicit `undefined` is rejected rather than
+ * silently encoded.
  *
  * @public
  */
