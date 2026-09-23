@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
-  body_sha256: cd8183b4c0032b73f8c3d561608221caa6822e6711887145eee2e7b2c365282e
+  at: 2026-09-23T19:03:17Z
+  body_sha256: 289204075d0dd04333596e2300e3b5ea532e55de1ab1e938fbd46dafd111b337
 ---
 
 # @effected/cli
@@ -81,7 +81,8 @@ Exports are static classes with a private constructor — never an
 | `CliLogger` | A `Logger` rendering messages plainly, routing to stderr from `stderrFrom` down and everything else to stdout |
 | `CliRuntime` | The failure-reporting wrapper: report through the program's own logger, set the exit code |
 | `CliRuntime.main` | The full-program combinator: provides the platform layer inside failure reporting, a fresh `CliExit`, the `ShowHelp` remap, and the logger outermost. See "Findings are success" below. |
-| `CliExit` | A `Context.Service` holding a `MutableRef<number>`; `CliExit.set(code)` and `CliExit.layer` for in-process tests. See "Findings are success" below. |
+| `MainOptions<RP, EP>` | `ReportFailuresOptions & { platform: Layer<RP, EP>; logger?: Layer<never> }` — `platform` is passed in rather than owned so this package never imports one; `logger` defaults to `CliLogger.layer()`. |
+| `CliExit` | A `Context.Service` holding a `MutableRef<number>`; `CliExit.set(code)` and `CliExit.layer` for in-process tests. **`CliExit.layer` is `Layer.fresh`** — every provide mints a new cell, so a program run under `CliRuntime.main` must not provide `CliExit.layer` itself, or `CliExit.set` writes to a second, unread cell and the run silently exits `0`. See "Findings are success" below. |
 | `CliColor.enabled` | `Effect<boolean, never, Stdio>` — `Stdio.stdoutIsTerminal` and a non-empty `NO_COLOR` read through `Config.option`, never `process` (D8). |
 | `CliColor.formatterLayer` | `(overrides?: Partial<CliOutput.Formatter>) => Layer<never, never, Stdio>` — builds `CliOutput.defaultFormatter({ colors })` from the same `CliColor.enabled` decision, so help text, parse errors and rendered output always agree. |
 | `ReportFailuresOptions.usageExitCode` | Remaps a `ShowHelp` that carries errors to this code, default 64 (D7). A `ShowHelp` with no errors keeps exit 0. |
@@ -93,7 +94,7 @@ Exports are static classes with a private constructor — never an
 | Export | Contract |
 | --- | --- |
 | `CliTest.sandbox` | `Effect<Sandbox, PlatformError, FileSystem \| Path \| Scope>`. A temporary directory with a fresh `HOME` and `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, and `NO_COLOR=1`. `PATH` is taken from an injected value and never inherited through `extendEnv`. |
-| `CliTest.run` | `(bin, args, { sandbox, execPath, path?, cwd?, stdin? }) => Effect<{ exitCode; stdout; stderr }, PlatformError, ChildProcessSpawner \| Scope>`. A non-zero exit is data, not a failure. Spawns `execPath` with `[bin, ...args]` over core `ChildProcess` (D9), no peer on `@effected/commands`. **When `stdin` is omitted, the spawned child receives an already-ended empty input, never an open pipe** — a test that does not pass `stdin` never hangs waiting for one. |
+| `CliTest.run` | `(bin, args, { sandbox, execPath, cwd?, env?, stdin? }) => Effect<{ exitCode; stdout; stderr }, PlatformError, ChildProcessSpawner \| Scope>`. A non-zero exit is data, not a failure. Spawns `execPath` with `[bin, ...args]` over core `ChildProcess` (D9), no peer on `@effected/commands`. **When `stdin` is omitted OR passed as `""`, the spawned child receives an already-ended empty input, never an open pipe** — a test that does not pass `stdin` never hangs waiting for one. |
 
 See [D9: `CliTest` uses core `ChildProcess`](../decisions/cli-testing-uses-core-child-process.md)
 for why this subpath takes no dependency on `@effected/commands`.

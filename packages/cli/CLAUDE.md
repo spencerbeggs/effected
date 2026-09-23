@@ -1,8 +1,11 @@
 # @effected/cli
 
-The boundary layer of an `effect/unstable/cli` program. Four exports, all
-presentation: `CliLogger`, `CliRuntime`, `SchemaIssueRenderer`,
-`ConfigIssueRenderer`.
+The boundary layer of an `effect/unstable/cli` program: `CliLogger`,
+`CliRuntime` (including `CliRuntime.main`), `CliExit`, `CliColor`,
+`SchemaIssueRenderer`, `ConfigIssueRenderer` — plus a `./testing` subpath
+exporting `CliTest`, for spawning a built bin hermetically in tests. Every
+export but `CliTest` is presentation, and `CliTest` is test tooling behind
+its own entrypoint so it never enters a CLI's runtime import graph.
 
 **Design doc:** `@./okf/modules/cli.md` — Load when:
 changing the public surface, the logger's stream routing, the failure-reporting
@@ -66,6 +69,53 @@ would silently override a deliberate `1`. Test for the marker with
 `Runtime.errorExitCode in error` to keep "the error chose" distinct from
 "nothing chose".
 
+**`reportFailures` never renders `ShowHelp`.** `Command.runWith` already
+printed the help text or the parse errors before a `ShowHelp` reaches
+`reportFailures`, so rendering it again produces nothing but a stray "Help
+requested" line. A `ShowHelp` carrying parse errors is instead remapped to
+`usageExitCode` (default `64`, BSD `EX_USAGE`); a bare `--help` or root
+invocation — `errors` empty — keeps exit `0`.
+
+**`CliRuntime.main` uses a private `ExitRequested` sentinel, not
+`process.exitCode`.** Node's `runMain` skips `process.exit(0)` on success, so
+a handler that only sets `process.exitCode` on an otherwise-successful fiber
+relies on Node's own process-exit machinery to eventually notice that field —
+well after Effect's finalizers had their chance to run, and not at all on a
+non-Node runtime. `CliExit.set(code)` records a findings code instead; after
+the program succeeds, `main` reads the cell and, if non-zero, fails with the
+internal `ExitRequested(code)` sentinel — marked with `Runtime.errorReported:
+false` so it routes through core's `defaultTeardown` like any other error,
+with finalizers intact, on any runtime. `reportFailures` never renders it:
+there is nothing to say, only an exit code a successful program already
+chose. Nothing outside this package constructs or matches `ExitRequested`.
+
+**`CliExit.layer` is `Layer.fresh`.** Every provide mints a new cell —
+without `Layer.fresh`, layers memoize by reference across `Effect.provide`
+calls, so a second provide anywhere in the program (a nested
+`CliRuntime.main`, a test helper) would silently share the first run's cell
+and inherit its code. **A program run under `CliRuntime.main` must NOT
+provide `CliExit.layer` itself** — `main` already provides a fresh cell, and
+a second provide creates a second, unrelated cell: `CliExit.set` calls made
+against that shadow cell never reach the one `main` reads, and a findings run
+silently exits `0`.
+
+**`CliColor` reads `NO_COLOR` through `ConfigProvider`, never `process`.**
+Follows the no-color.org rule: colour is off when stdout is not a terminal,
+or `NO_COLOR` is set to any non-empty value; an empty `NO_COLOR=""` does not
+disable colour. `FORCE_COLOR` is ignored, matching core's own formatter. The
+environment read goes through the ambient `ConfigProvider`, so a test swaps
+it with `Effect.provideService(ConfigProvider.ConfigProvider, ...)` instead
+of mutating `process.env`.
+
+**The `./testing` split has a reachability test.** `entrypoints.test.ts`
+walks the import graph from `src/index.ts` and asserts nothing reachable from
+it imports `CliTest` or `testing.ts`, with a positive control proving the
+walker actually resolves imports (`./testing` DOES reach `CliTest`) and a
+second control proving it resolves the main entry too (`index.ts` reaches
+`CliRuntime`). A CLI that only imports `@effected/cli` therefore never pulls
+test-spawning machinery — `effect/unstable/process`'s `ChildProcessSpawner`
+included — into its runtime bundle.
+
 ## The optional peer, and the rule that makes it honest
 
 `@effected/config-file` is a `workspace:^` peer with
@@ -95,6 +145,19 @@ a test — `Warn` is the boundary that catches it.
 `Logger.withMinimumLogLevel` **does not exist on the v4 line** and is the
 obvious first reach. `@effect/vitest`, `it.effect`, `assert.*` — never
 `expect`.
+
+**Testing an actual built bin — a real subprocess, not the program in-process
+— uses `@effected/cli/testing`'s `CliTest`.** `CliTest.sandbox({ path })`
+mints a scoped temp directory with a fresh `HOME` and
+`XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, `NO_COLOR: "1"`, and the `path` you
+pass as `PATH` — the host environment is never inherited. `CliTest.run(bin,
+args, { sandbox, execPath, cwd?, env?, stdin? })` spawns `execPath` with
+`[bin, ...args]` over core's `ChildProcess`/`ChildProcessSpawner` and returns
+`{ exitCode, stdout, stderr }` as data — a non-zero exit is never a failure.
+**When `stdin` is omitted, or passed as `""`, the child receives an
+already-ended empty input (`Stream.empty`), never an open pipe** — core's
+default `"pipe"` stdio stays open until something writes to and ends it, so a
+stdin-reading bin would otherwise hang the test.
 
 ```bash
 pnpm vitest run packages/cli        # from the repo root

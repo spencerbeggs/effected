@@ -11,11 +11,11 @@ Picture a tool that has been carefully built. It installs a CLI logger, so its o
 
 Nothing in that program is visibly wrong. The report came from the platform's `runMain`, which composes its reporting `tapCause` *around* the already-provided effect, so it runs **outside** the layers the program installed and prints through Effect's default logger. The key went unnamed because a decode failure is a structured tree, and `SchemaError.message` does not use the formatters core ships for it. Both defects are invisible from the call site and both are only discovered by running the binary and reading what a person sees.
 
-`@effected/cli` is the four exports that fix that class of defect and nothing else: [`CliLogger`](/cli/api/class/clilogger), [`CliRuntime`](/cli/api/class/cliruntime), [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer) and [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer). This guide covers the composition rules, the exit-code semantics, the reference that can move the stream split, the optional-peer discipline, and how to test the part that silently regresses. It assumes the basics from the [getting-started guide](/cli/getting-started).
+`@effected/cli` is the presentation surface that fixes that class of defect and nothing else: [`CliLogger`](/cli/api/class/clilogger), [`CliRuntime`](/cli/api/class/cliruntime) (including `CliRuntime.main`), `CliExit`, `CliColor`, [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer) and [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer) — plus a `./testing` subpath exporting `CliTest`, test tooling that never enters a CLI's own runtime import graph. This guide covers the composition rules, the exit-code semantics, findings that exit non-zero without crashing, the reference that can move the stream split, the optional-peer discipline, and how to test the parts that silently regress. It assumes the basics from the [getting-started guide](/cli/getting-started).
 
 ## How it composes with Effect
 
-Nothing here is a service, and nothing here appears in your `R`. `CliLogger.layer` produces a `Layer.Layer<never>`, `CliRuntime.reportFailures` is a plain combinator that preserves your `R`, and both renderers are pure functions. The logger reaches for `Console.Console`, which is a `Context.Reference` carrying `globalThis.console` as its default — a reference never lands in the requirements channel, so a consumer's layer stack is untouched.
+Almost nothing here is a service. `CliLogger.layer` produces a `Layer.Layer<never>`, `CliRuntime.reportFailures` is a plain combinator that preserves your `R`, `CliColor` is pure functions and a layer factory, and both renderers are pure functions. The logger reaches for `Console.Console`, which is a `Context.Reference` carrying `globalThis.console` as its default — a reference never lands in the requirements channel, so a consumer's layer stack is untouched. `CliExit` is the one deliberate exception: a real `Context.Service`, so that forgetting to run a findings command under `CliRuntime.main` is a type error rather than a silently-ignored default.
 
 There is also **no platform package**, required or optional. That is a deliberate tier boundary: the moment `@effect/platform-node` appeared here the package would stop being usable from Bun and Deno for no benefit. You call your own runner.
 
@@ -85,6 +85,85 @@ Effect.runPromiseExit(validate.pipe(Effect.provide(CliLogger.layer()))).then((ex
 ```
 
 Note that this program does **not** apply `reportFailures`; it reports itself. Applying both is fine too — `reportFailures` renders whatever the failure is, and a `reported` error still carries the code you chose.
+
+## `reportFailures` never renders `ShowHelp`
+
+`effect/unstable/cli`'s `Command.runWith` already printed the help text, or the parse errors, before a `CliError.ShowHelp` reaches `reportFailures` — rendering it a second time produces nothing but a stray "Help requested" line. `reportFailures` special-cases it: a `ShowHelp` carrying parse errors is remapped to the `usageExitCode` option (default `64`, BSD `EX_USAGE`); a bare `--help` invocation or a root command with no arguments — a `ShowHelp` with no errors — keeps exit `0`.
+
+```ts
+import { CliRuntime } from "@effected/cli";
+
+// A ShowHelp carrying parse errors exits 64 by default; override it per program:
+const reported = program.pipe(CliRuntime.reportFailures({ usageExitCode: 2 }));
+```
+
+## `CliRuntime.main`: the whole recipe, in the one order that reports every failure well
+
+`reportFailures` is the combinator that fixes *where* a failure is reported. `CliRuntime.main` composes the whole program around it — a fresh `CliExit`, the platform layer, failure reporting, and the logger, each in a specific position for a reason:
+
+```ts
+import { CliColor, CliExit, CliRuntime } from "@effected/cli";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Console, Effect, Layer } from "effect";
+import { Command, Flag } from "effect/unstable/cli";
+
+const check = Command.make("check", { strict: Flag.Boolean("strict").pipe(Flag.withDefault(false)) }, (config) =>
+  Effect.gen(function* () {
+    const problems = config.strict ? ["missing changeset", "unpinned dependency"] : ["missing changeset"];
+    for (const problem of problems) yield* Console.log(problem);
+    if (problems.length > 0) yield* CliExit.set(1);
+  }),
+);
+
+const Platform = CliColor.formatterLayer().pipe(Layer.provideMerge(NodeServices.layer));
+
+NodeRuntime.runMain(CliRuntime.main(Command.run(check, { version: "1.0.0" }), { platform: Platform }));
+```
+
+1. `CliExit.layer` is provided first — `Layer.fresh`, so `main` always builds a brand-new cell rather than sharing one across provides.
+2. The **platform layer is provided inside `reportFailures`** — a layer-build failure (`HOME` unset, say) renders as one line through your logger with the fallback exit code, rather than escaping to the runtime's own stack trace.
+3. **The logger is provided outermost**, so it is present whichever branch failed — even a failure during platform construction.
+
+After the program body runs to completion, `main` reads the `CliExit` cell; a non-zero value becomes a failure carrying a private `ExitRequested` sentinel, marked exactly like `CliRuntime.reported` marks one. `reportFailures` never renders it — there is nothing to say, only an exit code a *successful* program already chose — and nothing outside this package can construct or match it.
+
+**Never provide `CliExit.layer` yourself inside a program run under `CliRuntime.main`.** `main` already provides one; a second provide anywhere in the program tree mints a second, unrelated cell (layers memoize by reference, and `Layer.fresh` defeats that memoization deliberately), so `CliExit.set` calls against it never reach the cell `main` reads back — the findings a handler recorded silently vanish and the run exits `0`.
+
+### Why not `process.exitCode`?
+
+Node's own `runMain` skips `process.exit(0)` on success — it calls `process.exit` only when the fiber received a signal or its own exit code is non-zero — so a handler that sets `process.exitCode` on an otherwise-successful fiber is relying on Node's process-exit machinery to eventually notice that field, well after Effect's finalizers had their chance to run. And `process.exit(n)` called directly from a handler skips every finalizer outright. Turning the code into a failure routes it through core's `defaultTeardown` on **any** runtime, exactly like an ordinary error, so finalizers run before the process exits with the recorded code.
+
+## `CliColor`: one colour decision, shared by everything that renders
+
+Both `effect/unstable/cli`'s own help/error rendering and anything your program renders itself should agree on whether output carries ANSI colour. `CliColor.enabled` is that decision, computed once per the [no-color.org](https://no-color.org) rule:
+
+```ts with-api
+import { CliColor } from "@effected/cli";
+import { Effect, Stdio } from "effect";
+
+Effect.runPromise(CliColor.enabled.pipe(Effect.provide(Stdio.layerTest({}))));
+```
+
+- Off when stdout is not a terminal.
+- Off when `NO_COLOR` is set to any **non-empty** value — an empty `NO_COLOR=""` does not disable colour.
+- `FORCE_COLOR` is **ignored**, matching core's own formatter.
+
+The environment is read through the ambient `ConfigProvider`, never `process`, so a test swaps it with `Effect.provideService(ConfigProvider.ConfigProvider, ...)` rather than mutating `process.env`.
+
+`CliColor.formatterLayer(overrides?)` builds `effect/unstable/cli`'s own `CliOutput.defaultFormatter({ colors })` from that same decision, so help text, parse errors and anything your program renders never disagree:
+
+```ts
+import { CliColor } from "@effected/cli";
+import { NodeServices } from "@effect/platform-node";
+import { Layer } from "effect";
+
+// overrides replaces individual formatter methods without losing the rest —
+// here, appending a "via <carrier>" line to the version output.
+const Platform = CliColor.formatterLayer({
+  formatVersion: (version) => `${version} (via mytool)`,
+}).pipe(Layer.provideMerge(NodeServices.layer));
+```
+
+Each call mints a fresh layer; bind the result to a `const`, as above, or the decision is re-read every time it is provided.
 
 ## Rendering a multi-line failure
 
@@ -175,7 +254,7 @@ That empty array is worth handling at the call site: print the error's own messa
 
 The whole surface is testable **without stubbing a global**, which is the payoff of reading `Console.Console` off the fiber. Provide a capturing `Console`, run the program, and assert on what was written *and on which stream*.
 
-The stream split is the property most worth pinning, because it is the one that silently regresses and the one `mytool run > log.txt` depends on. The discriminating mutant is *route everything to stdout*: a suite that still passes is asserting on content and not on stream. `Warn` is the boundary that catches it, since it must stay on stdout under the default threshold.
+The stream split is the property most worth pinning, because it is the one that silently regresses and the one `mytool run > log.txt` depends on. Test it at **both** thresholds: under the default `stderrFrom: "All"` every level goes to stderr, and under `stderrFrom: "Error"` — the split a tool whose output *is* its log lines reaches for — `Warn` is the discriminating boundary, since it must stay on stdout there and nowhere else.
 
 ```ts
 import { CliLogger } from "@effected/cli";
@@ -195,7 +274,20 @@ const capturing = (): { readonly console: Console.Console; readonly out: string[
 };
 
 describe("CliLogger", () => {
-  it.effect("routes every level at or above Error to stderr, and nothing below", () =>
+  it.effect("routes every level to stderr under the default stderrFrom", () =>
+    Effect.gen(function* () {
+      const { console: double, out, err } = capturing();
+
+      yield* Effect.gen(function* () {
+        yield* Effect.logInfo("info");
+        yield* Effect.logError("error");
+      }).pipe(Effect.provide(CliLogger.layer()), Effect.provideService(Console.Console, double));
+
+      assert.deepStrictEqual(out, []);
+      assert.deepStrictEqual(err, ["info", "error"]);
+    }));
+
+  it.effect("routes every level at or above Error to stderr, and nothing below, with stderrFrom Error", () =>
     Effect.gen(function* () {
       const { console: double, out, err } = capturing();
 
@@ -204,7 +296,7 @@ describe("CliLogger", () => {
         yield* Effect.logWarning("warn");
         yield* Effect.logError("error");
       }).pipe(
-        Effect.provide(CliLogger.layer()),
+        Effect.provide(CliLogger.layer({ stderrFrom: "Error" })),
         Effect.provideService(Console.Console, double),
         Effect.provideService(References.MinimumLogLevel, "Debug"),
       );
@@ -217,7 +309,38 @@ describe("CliLogger", () => {
 
 Two habits keep such a suite honest. Drive levels with `References.MinimumLogLevel` provided as a service rather than reaching for a `withMinimumLogLevel` helper that does not exist. And when you assert the exit-code behaviour, write the test so that flipping the source value **fails** — assert that a marked error keeps its own code and that an unmarked one takes the fallback, rather than merely recording whatever the current implementation returns.
 
+## Testing a built bin with `CliTest`
+
+Everything above tests a program **in-process**, through a capturing `Console`. `@effected/cli/testing`'s `CliTest` is for the other case: proving a **built** bin — the actual artifact a user runs — behaves correctly, over a real subprocess.
+
+```ts
+import { CliTest } from "@effected/cli/testing";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("mytool", () => {
+  it.effect("exits 1 when it finds a problem", () =>
+    Effect.gen(function* () {
+      const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
+      const result = yield* CliTest.run("./dist/mytool.js", ["check"], {
+        sandbox,
+        execPath: process.execPath,
+      });
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(result.stdout, "2 problems found");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+});
+```
+
+`CliTest.sandbox({ path })` mints a scoped temp directory with a fresh `HOME` and `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, `NO_COLOR: "1"`, and `path` as `PATH` — the host environment is never inherited. `CliTest.run(bin, args, { sandbox, execPath, cwd?, env?, stdin? })` spawns `execPath` with `[bin, ...args]` over core's `ChildProcess`/`ChildProcessSpawner` and returns `{ exitCode, stdout, stderr }` as **data** — a non-zero exit is never a failure, matching the findings pattern `CliExit` exists for.
+
+**When `stdin` is omitted, or passed as `""`, the child receives an already-ended empty input, never an open pipe.** `effect/unstable/process`'s default `"pipe"` stdio stays open until something writes to and ends it, so a stdin-reading bin would otherwise hang the test.
+
+A **reachability test** guards the split: nothing reachable from `@effected/cli`'s main entrypoint may import `CliTest`, with a positive control proving the import walker actually resolves modules — so importing the package for production use never pulls `effect/unstable/process`'s subprocess machinery into the bundle.
+
 ## Next steps
 
 - New to the package? Start with the [overview](/cli) for the shape of the problem, or the [getting-started guide](/cli/getting-started) for the wiring.
-- Every export, with full signatures, lives in the [API reference](/cli/api): [`CliLogger`](/cli/api/class/clilogger) with its [`CliLoggerOptions`](/cli/api/interface/cliloggeroptions), [`CliRuntime`](/cli/api/class/cliruntime) with its [`ReportFailuresOptions`](/cli/api/interface/reportfailuresoptions), [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer) and [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer).
+- Every export, with full signatures, lives in the [API reference](/cli/api): [`CliLogger`](/cli/api/class/clilogger) with its [`CliLoggerOptions`](/cli/api/interface/cliloggeroptions), [`CliRuntime`](/cli/api/class/cliruntime) with its [`ReportFailuresOptions`](/cli/api/interface/reportfailuresoptions) and `MainOptions`, `CliExit`, `CliColor`, [`SchemaIssueRenderer`](/cli/api/class/schemaissuerenderer) and [`ConfigIssueRenderer`](/cli/api/class/configissuerenderer).

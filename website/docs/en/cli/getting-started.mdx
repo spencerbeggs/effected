@@ -23,25 +23,27 @@ Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds n
 
 ## Your first task: make a program's output look like a tool
 
-Here is the everyday goal. You have a `sync` command that reports progress as it works and complains when something goes wrong, and you want the progress on stdout, the complaint on stderr, and nothing but the message on either line — so `mytool sync > report.txt` captures the report and still shows the failure on the terminal.
+Here is the everyday goal. You have a `sync` command that reports its result and complains when something goes wrong, and you want the result on stdout, the complaint on stderr, and nothing but the message on either line — so `mytool sync > report.txt` captures the result and still shows the failure on the terminal.
 
 Start from what the defaults give you. `Effect.log` is an `Info` record and `Effect.logError` is an `Error` record; with no logger installed, both print through Effect's structured default. Installing [`CliLogger`](/cli/api/class/clilogger) replaces it — `Logger.layer` replaces rather than merges, so nothing is emitted twice:
 
 ```ts with-api
 import { CliLogger } from "@effected/cli";
-import { Effect } from "effect";
+import { Console, Effect } from "effect";
 
 const sync = Effect.gen(function* () {
-  yield* Effect.log("synced 3 repos");
+  yield* Effect.logInfo("syncing acme/widgets"); // a diagnostic, not the result
+  yield* Console.log("synced 3 repos"); // the program's actual output
   yield* Effect.logError("one failed: acme/widgets");
 });
 
 Effect.runPromise(sync.pipe(Effect.provide(CliLogger.layer())));
 // stdout: synced 3 repos
+// stderr: syncing acme/widgets
 // stderr: one failed: acme/widgets
 ```
 
-Two things happened, and only one of them is obvious. The obvious one is the formatting: no timestamp, no level, no fiber id, so a formatted table or a summary block survives being logged. The second is the **stream split**. `CliLogger` sends a record to stderr when its level is at or above `stderrFrom`, which defaults to `"Error"`; everything below goes to stdout. The comparison is ordinal rather than an equality test against a list of level names, so a level above `Error` — including one added upstream — lands on stderr without a change here.
+Two things happened, and only one of them is obvious. The obvious one is the formatting: no timestamp, no level, no fiber id, so a formatted table or a summary block survives being logged. The second is the **stream split**. `CliLogger` sends a record to stderr when its level is at or above `stderrFrom`, which **defaults to `"All"`** — a CLI's stdout is its product, so every log level is a diagnostic unless you narrow the threshold, and the program's real output is written with `Console.log` instead. The comparison is ordinal rather than an equality test against a list of level names, so a level above the threshold — including one added upstream — lands on stderr without a change here.
 
 The logger reads the `Console` off the fiber to write, which is why it needs no platform package and why the split is testable: a test provides a capturing `Console` instead of stubbing a global.
 
@@ -92,7 +94,7 @@ Effect.runPromise(program.pipe(Effect.provide(layer)));
 
 ### Move the stderr threshold
 
-Some tools treat a warning as a diagnostic rather than as output. Lower the threshold with `stderrFrom` and `Warn` moves across, while `Info` stays on stdout:
+Some tools' output *is* their log lines rather than a separate document written with `Console.log` — for those, narrow the threshold with `stderrFrom` so only `Error` and above cross to stderr, and everything below stays on stdout:
 
 ```ts with-api
 import { CliLogger } from "@effected/cli";
@@ -101,11 +103,13 @@ import { Effect, References } from "effect";
 const program = Effect.gen(function* () {
   yield* Effect.logInfo("scanning workspace");
   yield* Effect.logWarning("skipping packages/legacy");
+  yield* Effect.logError("workspace root not found");
 }).pipe(Effect.provideService(References.MinimumLogLevel, "Debug"));
 
-Effect.runPromise(program.pipe(Effect.provide(CliLogger.layer({ stderrFrom: "Warn" }))));
+Effect.runPromise(program.pipe(Effect.provide(CliLogger.layer({ stderrFrom: "Error" }))));
 // stdout: scanning workspace
-// stderr: skipping packages/legacy
+// stdout: skipping packages/legacy
+// stderr: workspace root not found
 ```
 
 `References.MinimumLogLevel` is the reference that decides which records are emitted at all. Provide it as a service — there is no `Logger.withMinimumLogLevel` on the v4 line, and reaching for one is the usual first wrong turn.
@@ -170,6 +174,72 @@ Effect.runPromise(program).then(console.log);
 ```
 
 The renderer is a thin, deliberate wrapper over core's `SchemaIssue.makeFormatterStandardSchemaV1`, which is real but near-undiscoverable — it lives on `SchemaIssue` rather than on `SchemaError`, it is named `makeFormatter*`, and `SchemaError.message` does not use it. On top of it the renderer deduplicates lines (a union reports the same unknown key once per member) and rephrases core's `"Expected no excess property"`, which names the schema's rule, as `unknown key`, which names the user's mistake.
+
+### Assemble a whole program with `CliRuntime.main`
+
+`reportFailures` is the combinator; `CliRuntime.main` is the whole recipe — the platform layer, a fresh [`CliExit`](/cli/api/class/cliexit), failure reporting and the logger, composed in the one order that reports every failure well. A command whose non-zero exit is a *result* rather than a crash — a linter that found problems, say — calls `CliExit.set(code)` from a handler that still **succeeds**:
+
+```ts with-api
+import { CliExit, CliRuntime } from "@effected/cli";
+import { NodeServices } from "@effect/platform-node";
+import { Console, Effect } from "effect";
+
+const findings = Effect.gen(function* () {
+  yield* Console.log("2 problems found");
+  // Findings, not a crash: the handler still succeeds. CliExit.set records
+  // the code CliRuntime.main turns into a real exit once the program ends.
+  yield* CliExit.set(1);
+});
+
+const main = CliRuntime.main(findings, { platform: NodeServices.layer });
+```
+
+`CliExit` is a `Context.Service`, not a reference, so forgetting to run under `CliRuntime.main` is a type error, never a silently-ignored global — and `CliExit.layer` mints a **fresh** cell on every provide (`Layer.fresh`), so `main` provides one for you. **Do not provide `CliExit.layer` yourself inside a program run under `CliRuntime.main`** — a second provide creates a second, unrelated cell, and `CliExit.set` calls against it never reach the one `main` reads back, so a findings run silently exits `0`.
+
+This exists because `process.exitCode` cannot be trusted to reach teardown: Node's own `runMain` skips `process.exit(0)` on success, and `process.exit(n)` from inside a handler skips every finalizer. Turning the code into a failure instead routes it through core's `defaultTeardown` like any other error, with finalizers intact, on any runtime — and `reportFailures` never renders it, because there is nothing to say: only an exit code a successful program already chose.
+
+### Match core's colour decision with `CliColor`
+
+[`CliColor.enabled`](/cli/api/class/clicolor) follows the [no-color.org](https://no-color.org) rule: off when stdout is not a terminal, or when `NO_COLOR` is set to any non-empty value (`FORCE_COLOR` is ignored, matching core's own formatter). [`CliColor.formatterLayer`](/cli/api/class/clicolor) hands that same decision to `effect/unstable/cli`'s own `CliOutput.Formatter`, so help text, parse errors and anything you render agree with each other:
+
+```ts
+import { CliColor } from "@effected/cli";
+import { NodeServices } from "@effect/platform-node";
+import { Layer } from "effect";
+
+// Feeds Stdio from the platform layer into CliColor's decision, and keeps
+// NodeServices' own services available too.
+const Platform = CliColor.formatterLayer().pipe(Layer.provideMerge(NodeServices.layer));
+```
+
+Each call to `CliColor.formatterLayer()` mints a fresh layer — bind the result to a `const`, as above, or the decision is re-read every time it is provided.
+
+### Test a built bin with `CliTest`
+
+`@effected/cli/testing` is a **separate entrypoint** — nothing reachable from `@effected/cli` imports it, so it never reaches a CLI's own runtime bundle. `CliTest.sandbox` mints a hermetic temp directory with a fresh `HOME` and XDG tree; `CliTest.run` spawns a built bin inside it and hands back its exit code and both streams as data:
+
+```ts
+import { CliTest } from "@effected/cli/testing";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+describe("mytool", () => {
+  it.effect("exits 1 when it finds a problem", () =>
+    Effect.gen(function* () {
+      const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
+      const result = yield* CliTest.run("./dist/mytool.js", ["check"], {
+        sandbox,
+        execPath: process.execPath,
+      });
+      assert.strictEqual(result.exitCode, 1);
+      assert.include(result.stdout, "2 problems found");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+});
+```
+
+**When `stdin` is omitted, or passed as `""`, the child receives an already-ended empty input, never an open pipe** — core's default `"pipe"` stdio stays open until something writes to and ends it, so a stdin-reading bin cannot hang the test.
 
 ## Handling errors
 
