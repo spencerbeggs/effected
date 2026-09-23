@@ -26,3 +26,24 @@
   build time. Both must keep defect logs off `console.log`.
 - **Regenerating:** there is nothing to regenerate. Edit by hand, and keep
   one wire shape per tool.
+
+## `fake-server.mjs`
+
+- **Producing tool:** none. A hand-written plain JSON-RPC-over-stdio stand-in
+  with no Effect in it, for `McpProcess.test.ts` and `McpProbe.test.ts`.
+- **Why hand-authored:** it behaves like an Effect stdio server on stdin EOF
+  (ends at once, dropping anything in flight) while letting each test force
+  one failure shape a real server produces only by accident. It answers
+  `initialize` with a `notifications/tools/list_changed` first, so a reader
+  must read past an interleaved notification; it answers `server/discover`
+  for the stateless revision.
+
+| Flag | Failure shape it pins |
+| --- | --- |
+| `--exit-early` | writes `fatal: config missing` to stderr and exits 3 before responding |
+| `--delay-ms=N` | a slow `initialize`: the response arrives N ms after the request |
+| `--noise` | a non-JSON-RPC line on stdout before anything else |
+| `--count-on-end` | on stdin EOF, reports the number of frames it received |
+
+- **Regenerating:** there is nothing to regenerate. Edit by hand, and keep
+  one failure shape per flag.

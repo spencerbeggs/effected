@@ -10,5 +10,7 @@
  * @packageDocumentation
  */
 export { McpHarness, type McpHarnessOptions } from "./McpHarness.js";
+export { McpProbe, type McpProbeOptions, type McpProbeResult } from "./McpProbe.js";
+export { McpProcess } from "./McpProcess.js";
 export { McpTestFailure } from "./McpTestFailure.js";
 export type { JsonRpcMessage, ServedTool } from "./McpWire.js";
