@@ -1,11 +1,11 @@
 ---
 title: Packages
-description: The 33 packages of the effected kit — 31 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
+description: The 34 packages of the effected kit — 32 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
 ---
 
 # Packages
 
-The kit is **33 publishable packages**: 31 libraries and two companions. They are not a grab bag of
+The kit is **34 publishable packages**: 32 libraries and two companions. They are not a grab bag of
 utilities that happened to end up in the same repo. Scope is closed by five consuming applications, and a
 library earns its place by being something one of those five actually needs — which is why there is a TOML
 parser and a SPDX expression evaluator here, and no HTTP client or ORM.
@@ -41,6 +41,7 @@ north star, and the conventions the other thirty follow all started there.
 | Check a license expression | [spdx](/spdx) |
 | Test code that touches the filesystem | [memfs](/memfs) |
 | Share carrier identity or launch-context resolution across a CLI and an MCP front end | [engine](/engine) |
+| Serve tools to an agent over MCP, or test such a server | [mcp](/mcp) |
 | Pin every version this kit was tested against | [pnpm-plugin-effect](/pnpm-plugin-effect) |
 
 ## How to read a tier
@@ -99,6 +100,7 @@ IO through Effect core's service contracts, required in `R` and never provided f
 | [@effected/jsonl](/jsonl) | Append-only, schema-validated JSONL journals as a definable service, with filtered reads that never materialize the file |
 | [@effected/runtimes](/runtimes) | Resolve semver-compatible Node.js, Bun and Deno versions from the live release feeds, with a bundled offline snapshot |
 | [@effected/cli](/cli) | The CLI boundary: a plain-line logger, a runtime that reports failures through the program's own logger and sets the exit code, and the issue renderers |
+| [@effected/mcp](/mcp) | The MCP boundary: stdio wiring that keeps stdout the wire, remediated tool failures, strict-input walkers, and in-process and spawned test clients |
 
 [@effected/cli](/cli) is deliberately **not** a CLI framework. Argument parsing belongs to
 `effect/unstable/cli` in core; this package only owns the edge where a program becomes a process.
@@ -134,9 +136,9 @@ and releases as a fixed pair with `@effected/schemastore`.
 
 ## Versions and stability
 
-Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 33 packages are on npm except
-`@effected/schemastore-cli` and `@effected/engine`, which are built and documented but have not cut
-their first release.
+Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 34 packages are on npm except
+`@effected/schemastore-cli`, `@effected/engine` and `@effected/mcp`, which are built and documented but
+have not cut their first release.
 
 Releases are changeset-driven, so versions move per package rather than in lockstep — a release is
 sometimes the whole kit and sometimes a single package, and both are ordinary. Each package's npm page is

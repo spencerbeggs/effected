@@ -32,6 +32,59 @@ layers on each other.
 `Remediation` from `@effected/engine` is the shape `ToolFailure` folds into a
 wire message; nothing else in `@effected/engine` is consumed yet.
 
+## Exports
+
+`@effected/mcp` (`src/index.ts`): `McpStdio` (`protocols`, `layer`, `launch`,
+`teardown`), `McpToolkit` (`layer`), `ToolFailure` (`fields`, `message`,
+`truncate`, `ECHO_LIMIT`, `ENGINE_ECHO_LIMIT`), `ToolInputSchema`
+(`unknownKeys`, `formatUnknownKeys`, `objectRooted`), plus the
+`McpStdioOptions`, `McpToolkitOptions`, `UnknownKeysLevel` and
+`FormatUnknownKeysOptions` types.
+
+`@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`),
+`McpProcess` (`spawn`), `McpProbe` (`initialize`), `McpTestFailure`,
+`McpToolAudit` (`check`), plus the `McpHarnessOptions`, `McpProbeOptions`,
+`McpProbeResult`, `McpToolAuditPolicy`, `JsonRpcMessage` and `ServedTool`
+types.
+
+## Load-bearing decisions
+
+- **`McpStdio.launch` reports a launch failure itself, on stderr, rather
+  than trusting `Effect.provideService(References.LogToStderr, true)`
+  alone.** `provideService` restores the ambient context the moment its own
+  effect exits, and `runMain`'s own report runs via `Effect.tapCause`
+  *outside* anything the program provides — so a bare
+  `Layer.launch(Main).pipe(Effect.provideService(LogToStderr, true))`
+  typechecks and serves, but a launch failure still prints through
+  `console.log`, onto the wire. `launch` instead catches the cause, logs it
+  on stderr, and re-raises a `LaunchFailed` marked
+  `[Runtime.errorReported] = false` so `runMain` never reports it a second
+  time, keeping the original exit code via `[Runtime.errorExitCode]`.
+- **`McpStdio.layer` MERGES `LogToStderr` into its own output** with
+  `Layer.provideMerge`, not `Layer.provide` — so every layer composed WITH
+  it logs to stderr too, not only the wiring `McpStdio.layer` builds
+  internally.
+- **The harness never hangs.** Every `McpHarness` response wait and
+  `awaitOutboundMethod` races a stop signal and a corruption signal, so a
+  server that stops before responding, or writes a non-JSON-RPC line under
+  `strictStdout`, fails or dies the wait instead of hanging the test.
+- **`closeStdin` (`McpProcess`) and `close` (`McpHarness`) both use
+  `Queue.end`, never `Queue.shutdown`.** `end` delivers every frame already
+  offered before closing; `shutdown` would drop a frame sent immediately
+  before close.
+- **`McpProbe` holds stdin open until the id-1 response arrives, then
+  closes it.** Closing stdin right after writing — every hand-rolled smoke
+  test did this — makes an Effect server drop the in-flight response and
+  exit 0, reading as a pass with no response.
+- **Only `additionalProperties: false` closes a node.** `ToolInputSchema`
+  and `McpToolAudit` both treat a missing value, `true`, or a schema-valued
+  `additionalProperties` (a `Record`'s value schema) as open, matching what
+  core itself emits — never the looser "any falsy-ish value closes it"
+  reading.
+
+See `okf/modules/mcp.md`'s "Spec amendments" table (A1–A10) for the full
+list, each amendment against the original design spec.
+
 ## `./testing` split
 
 `src/testing.ts` is a separate entrypoint, exported at

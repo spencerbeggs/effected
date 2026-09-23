@@ -137,6 +137,11 @@
 		"label": "@effected/cli"
 	},
 	{
+		"type": "custom-link",
+		"link": "/mcp",
+		"label": "@effected/mcp"
+	},
+	{
 		"type": "section-header",
 		"label": "Integrated"
 	},

@@ -6,8 +6,8 @@ tier: `effect` is the only peer, and the only dependency of any kind — no
 `process`, no `node:` import, no platform package, not even as a devDependency
 edge into `src/`. There is no IO here and nothing to provide at the edge.
 
-**Nothing in the kit may depend on this package except `@effected/mcp`**
-(phase 2). `@effected/cli` must never depend on it — the two sit at the same
+**Nothing in the kit may depend on this package except `@effected/mcp`.**
+`@effected/cli` must never depend on it — the two sit at the same
 layer, both consumed by a front end, never by each other.
 
 ## Import

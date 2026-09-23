@@ -1,0 +1,195 @@
+---
+title: Advanced
+description: Close a tool's input against unknown keys with ToolInputSchema or McpToolkit, and test a server in-process with McpHarness or against a spawned bin with McpProcess, McpProbe and McpToolAudit.
+---
+
+# Advanced
+
+## Strict input
+
+Core's own `Tool.Strict` annotation already rejects a call carrying an
+unknown key, decoded with `onExcessProperty: "error"` — but it reports
+only the *first* excess key, so a caller fixes one typo per round trip and
+never learns about a nested one until the next call. `@effected/mcp`
+offers two ways to close the gap, at different scopes.
+
+### `ToolInputSchema` — pure walkers
+
+For a server that is not (yet) adopting `McpToolkit`, run the walkers
+directly inside a handler:
+
+```ts
+import { ToolInputSchema } from "@effected/mcp";
+
+// Inside a tool handler, against the schema the tool actually serves:
+const levels = ToolInputSchema.unknownKeys(payload, tool.inputSchema);
+if (levels.length > 0) {
+  const message = ToolInputSchema.formatUnknownKeys(levels);
+  // "Unrecognized parameter(s): extra, nested.bogus. Accepted params: id, nested."
+}
+```
+
+`unknownKeys` follows `$ref` (into `$defs`, JSON Pointer escapes
+honoured), merges `allOf` properties, chooses a discriminated `oneOf`/
+`anyOf` member by an `action`, `kind`, `_tag` or `type` literal, and walks
+`items`/`prefixItems` and `patternProperties` — the same schema shape core
+serves for a strict tool. Only `additionalProperties: false` closes a
+node; a missing value, `true`, or a schema-valued `additionalProperties`
+all leave it open.
+
+A tool whose parameters are a top-level discriminated union needs
+`objectRooted` before it is registered — core dies at boot decoding a
+non-object tool-parameters root:
+
+```ts
+import { ToolInputSchema } from "@effected/mcp";
+
+const rewritten = ToolInputSchema.objectRooted(unionSchema);
+// a union of { action: "a", ... } | { action: "b", ... } becomes an
+// object root with oneOf and "x-discriminator": "action"
+```
+
+### `McpToolkit` — strict by default, complete reporting
+
+The registration-scoped decorator is the recommended default for a new
+server. It runs core's `registerToolkit` unchanged, under a `McpServer`
+whose `addTool` puts an `unknownKeys` pre-check in front of each handler:
+
+```ts
+import { McpToolkit } from "@effected/mcp";
+import { Layer } from "effect";
+
+// Every tool without its own Tool.Strict annotation is served and decoded
+// strict; a rejected call names every unknown key at every depth in one
+// InvalidParams, not just the first.
+const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
+
+// Leave unannotated tools lenient; only explicitly-annotated tools are strict.
+const LenientByDefault = McpToolkit.layer(MyTools, { strict: "annotated" }).pipe(
+  Layer.provide(MyHandlers),
+);
+```
+
+An explicit `Tool.Strict` annotation — true or false — always wins over
+the default in either mode, and a `Tool.dynamic` tool is never
+re-annotated: core dies at registration on a strict dynamic tool, because
+it cannot strictly validate a raw JSON Schema. Only a tool that ends up
+strict gets the pre-check, gated on the same predicate core uses to
+choose strict decoding — a lenient tool is never rejected here, even when
+its raw schema happens to carry `additionalProperties: false`.
+
+`McpToolkit`'s default `strict` mode is `"all"`: real-traffic evidence
+against Claude Code 2.1.281 found every tool call's `arguments` carrying
+exactly the tool's declared keys, with every protocol extra confined to
+the sibling `params._meta` — so an all-strict default rejects nothing a
+real client sends.
+
+## Testing
+
+### In-process, with `McpHarness`
+
+The default for testing a server: no child process, no sockets, and the
+exact served schemas and wire results a real client would see, over a
+queue-backed `Stdio.layerTest`.
+
+```ts
+import { McpHarness } from "@effected/mcp/testing";
+import { Effect } from "effect";
+
+const test = Effect.gen(function* () {
+  const client = yield* McpHarness.make(ServerLayer);
+  const result = yield* client.callTool("get_thing", { id: "known" });
+  // result.result.structuredContent === { name: "a known thing" }
+  yield* client.close;
+});
+```
+
+Pass `server` **without** a `Stdio` of its own — one it provides
+internally wins, and talks to the real terminal instead of the harness's
+queues. Every response wait and `awaitOutboundMethod` races a stop signal
+and a corruption signal, so a server that stops before responding, or
+writes a non-JSON-RPC line under `strictStdout` (default `true`), fails
+or dies the wait rather than hanging the test. With `captureLogs` (default
+`true`), assert `client.stderrSoFar` and `client.consoleLogSoFar` —
+anything on `consoleLogSoFar` in a real server would have corrupted the
+wire.
+
+### A spawned bin, with `McpProcess`
+
+For a test that must exercise a **built** bin rather than a layer:
+
+```ts
+import { McpProcess } from "@effected/mcp/testing";
+import { ChildProcess } from "effect/unstable/process";
+import { Effect } from "effect";
+
+const test = Effect.gen(function* () {
+  const command = ChildProcess.make(process.execPath, ["./dist/bin.js"], {
+    env: { PATH: process.env.PATH ?? "" },
+  });
+  const child = yield* McpProcess.spawn(command);
+  yield* child.handshake();
+  yield* child.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "get_thing", arguments: { id: "known" } } });
+  const { response } = yield* child.readUntilResponse(2);
+  yield* child.closeStdin; // Queue.end — every frame already sent is delivered first
+});
+```
+
+`nextLine` fails with `StreamEnded` at end of stream, so a child that
+exits early fails the test instead of hanging it. `closeStdin` is
+`Queue.end`, never `Queue.shutdown` — a request in flight when stdin
+closes is dropped by an Effect server, so read its response first.
+
+### The packed-install proof, with `McpProbe`
+
+The MCP half of a packed-install proof — the smallest check that an
+installed bin actually boots:
+
+```ts
+import { McpProbe } from "@effected/mcp/testing";
+
+const result = yield* McpProbe.initialize(command);
+// assert result.stderr === "" and result.exitCode === 0
+```
+
+Stdin stays open until the id-1 response arrives, then closes — closing
+right after writing, as a hand-rolled smoke test typically does, makes an
+Effect server drop the in-flight response and exit `0`, reading as a pass
+with no response at all.
+
+### A pure policy sweep, with `McpToolAudit`
+
+No server needed — feed it a `tools/list` result and read the violations
+as data:
+
+```ts
+import { McpToolAudit } from "@effected/mcp/testing";
+
+const violations = McpToolAudit.check(tools, {
+  input: "closed",
+  requireTitle: true,
+  // objectRootedOutput defaults to true: the stateless 2026-07-28 adapter
+  // passes a non-object tool output through verbatim, unlike the stateful
+  // revisions, which object-root it.
+});
+```
+
+Run it against what a real server serves (`McpHarness.listTools`), not
+against your own source schemas — the served document is what a client
+actually sees, and it can differ by protocol revision.
+
+## `InvalidParams` per protocol revision
+
+A rejected call's shape on the wire differs by revision:
+
+| Revision | Shape |
+| --- | --- |
+| `2024-11-05` | JSON-RPC error, code `-32602` |
+| `2025-03-26` | JSON-RPC error, code `-32602` |
+| `2025-06-18` | JSON-RPC error, code `-32602` |
+| `2025-11-25` | `isError: true` tool result |
+| `2026-07-28` (stateless) | `isError: true` tool result |
+
+A test suite covering only one shape misses the other half of the matrix
+— `@effected/mcp`'s own tests cross every revision with success, declared
+failure and invalid params.

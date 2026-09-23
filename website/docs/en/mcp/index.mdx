@@ -1,0 +1,78 @@
+---
+title: "@effected/mcp"
+description: "The boundary layer of an effect/unstable/ai MCP server: stdio wiring that keeps stdout the JSON-RPC wire, tool-failure shaping, strict-input walkers, and in-process and spawned test clients."
+---
+
+# @effected/mcp
+
+The boundary layer of an `effect/unstable/ai` MCP server: stdio wiring that
+keeps stdout the JSON-RPC wire, tool-failure shaping, and strict-input
+walkers, plus a `./testing` subpath for driving a built server from a test.
+Protocol handling, tool registration and the wire format stay core's; this
+package fixes the defaults consumer repos kept getting wrong independently.
+
+## Why @effected/mcp
+
+Three real MCP servers each hand-rolled the same fixes, and most of the
+copies carried a bug. An unhandled launch failure printed through
+`runMain`'s default report — which lands on **stdout**, the JSON-RPC wire
+itself, so a client reads a crash as a malformed protocol frame. A
+spawned test client hung forever when the server it drove exited early.
+A smoke test closed stdin the instant it finished writing, so an
+Effect server dropped the in-flight response and exited `0` — a boot
+failure read as a pass.
+
+None of that is visible from the code. A tool that types correctly, a
+server that starts, and a test suite that is green all say nothing about
+whether a failure reaches a person (or an agent) in a form they can act
+on, or whether the wire itself stays clean.
+
+## Install
+
+```bash
+npm install @effected/mcp @effected/engine effect
+```
+
+```bash
+pnpm add @effected/mcp @effected/engine effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 and `@effected/engine` are the only
+peer dependencies — no `@effect/platform*` package. Boundary tier: `src/`
+reads no `process` token, imports no `node:` module, and calls no
+`console.*`; stdout is the wire.
+
+## What it exports
+
+- **`McpStdio`** — `layer`, `launch`, `teardown`, `protocols`: a stdio
+  server that never reports a failure or a log line onto the wire.
+- **`ToolFailure`** — the shared shape for folding a remediation hint into
+  a tool's declared-failure message, because core sends only
+  `error.message` to the client.
+- **`ToolInputSchema`** — pure walkers over a served JSON Schema: every
+  unknown key at every depth, a message naming them, and an object-rooted
+  form of a union.
+- **`McpToolkit`** — registers a toolkit strict by default, with one
+  response naming every unknown key instead of core's first-key-only
+  report.
+- **`@effected/mcp/testing`** — `McpHarness` (in-process), `McpProcess`
+  and `McpProbe` (spawned bins), `McpToolAudit` (a pure `tools/list`
+  policy sweep), and `McpTestFailure`.
+
+## Reach for it when
+
+- You are building an MCP server on `effect/unstable/ai` and want the
+  stdio wiring, failure shaping and strict-input handling done once,
+  correctly, rather than three times across three repos.
+- A tool's declared failure needs to read as a sentence an agent can act
+  on, not just a raw error message.
+- You need to test a server — in-process, against a spawned bin, or as a
+  static policy sweep over what it actually serves.
+
+`@effected/mcp` never depends on `@effected/cli` or `@effected/workspaces`
+— a CLI boundary and an MCP boundary are siblings, both front ends, never
+layers on each other. Nothing in the kit may depend on `@effected/mcp`
+except an application.
+
+See the [Getting Started guide](/mcp/getting-started) for a stdio server's
+`main.ts`, and [Advanced](/mcp/advanced) for strict input and testing.

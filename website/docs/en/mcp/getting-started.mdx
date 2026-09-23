@@ -1,0 +1,115 @@
+---
+title: Getting Started
+description: Build a stdio MCP server's main.ts with McpStdio, and shape a tool's declared failure with ToolFailure — using only @effected/mcp's real exports.
+---
+
+# Getting Started
+
+## Install
+
+```bash
+npm install @effected/mcp @effected/engine effect
+```
+
+```bash
+pnpm add @effected/mcp @effected/engine effect
+```
+
+## The one-line `main.ts`
+
+An MCP server built on `effect/unstable/ai` is a `Layer`. `McpStdio.launch`
+runs it and reports any failure itself, on stderr, and `McpStdio.teardown`
+maps stdin reaching EOF — the normal end of every session — to exit `0`
+instead of the `130` a plain interrupt would produce:
+
+```ts
+import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp";
+import { NodeRuntime } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+import { Tool, Toolkit } from "effect/unstable/ai";
+
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
+  ...ToolFailure.fields,
+  id: Schema.String,
+}) {}
+
+const GetThing = Tool.make("get_thing", {
+  description: "Fetch a thing by id.",
+  parameters: { id: Schema.String },
+  success: Schema.Struct({ name: Schema.String }),
+  failure: NotFound,
+});
+
+const MyTools = Toolkit.make(GetThing);
+
+const MyHandlers = MyTools.toLayer({
+  get_thing: ({ id }) =>
+    id === "known"
+      ? Effect.succeed({ name: "a known thing" })
+      : Effect.fail(
+          new NotFound({
+            id,
+            remediation: { hint: "List the ids first.", suggestedTool: "list_things" },
+            message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, {
+              hint: "List the ids first.",
+              suggestedTool: "list_things",
+            }),
+          }),
+        ),
+});
+
+const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
+const Main = ToolsLayer.pipe(
+  Layer.provideMerge(McpStdio.layer({ name: "my-server", version: "1.0.0" })),
+);
+
+NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown });
+```
+
+`McpStdio.layer` is `McpServer.layerStdio` with `LogToStderr` merged into
+its own output, so every layer composed with it — including `MyHandlers`
+above — logs to stderr, never stdout, which is the JSON-RPC wire.
+
+## A tool with a remediated failure
+
+Core sends a tool's declared failure — an `Error` instance, which every
+`Schema.TaggedError` is — to the client as `isError: true` with
+`error.message` as the only text. There is no `structuredContent` and
+nothing else survives the trip, so whatever a caller (usually an agent)
+needs to know — what went wrong, and what to try next — has to be folded
+into `message` when the error is constructed.
+
+`ToolFailure` is the shared shape for doing that consistently:
+
+```ts
+import { ToolFailure } from "@effected/mcp";
+import { Schema } from "effect";
+
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
+  ...ToolFailure.fields,
+  id: Schema.String,
+}) {}
+
+const remediation = { hint: "List the ids first.", suggestedTool: "list_things" };
+const id = "missing-id";
+
+const error = new NotFound({
+  id,
+  remediation,
+  message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, remediation),
+});
+
+console.log(error.message);
+// => No thing "missing-id". List the ids first. Try list_things.
+```
+
+`ToolFailure.truncate` caps a caller-supplied value at `ECHO_LIMIT` (200
+UTF-16 code units) before it is echoed back — a hostile multi-megabyte
+argument is otherwise echoed into the agent's context whole, backing off
+one unit rather than splitting a surrogate pair.
+
+## Next steps
+
+- See [Advanced](/mcp/advanced) for strict input (`ToolInputSchema`,
+  `McpToolkit`) and testing (`McpHarness`, `McpProcess`, `McpProbe`,
+  `McpToolAudit`).

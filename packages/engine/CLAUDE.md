@@ -15,8 +15,8 @@ capability belongs here versus in `@effected/cli` or a consumer's own
 devDependency edge into `src/`. There is no IO here and nothing to provide
 at the edge.
 
-**Nothing in the kit may depend on this package except `@effected/mcp`**
-(phase 2). `@effected/cli` must never depend on it — the two sit at the
+**Nothing in the kit may depend on this package except `@effected/mcp`.**
+`@effected/cli` must never depend on it — the two sit at the
 same layer, both consumed by a front end, never by each other. Adding a new
 dependent is a new Decision, not a drive-by import.
 

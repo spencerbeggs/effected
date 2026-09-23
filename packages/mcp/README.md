@@ -81,6 +81,126 @@ ToolFailure.truncate(enginePath, ToolFailure.ENGINE_ECHO_LIMIT);
 
 `ToolFailure` is a static-namespace class with a private constructor — it is never instantiated.
 
+## Putting it together
+
+A stdio server's `main.ts` is one line, plus the layer that wires it:
+
+```ts
+import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp";
+import { Effect, Layer, Schema } from "effect";
+import { NodeRuntime } from "@effect/platform-node";
+import { Tool, Toolkit } from "effect/unstable/ai";
+
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
+  ...ToolFailure.fields,
+  id: Schema.String,
+}) {}
+
+const GetThing = Tool.make("get_thing", {
+  description: "Fetch a thing by id.",
+  parameters: { id: Schema.String },
+  success: Schema.Struct({ name: Schema.String }),
+  failure: NotFound,
+});
+
+const MyTools = Toolkit.make(GetThing);
+
+const MyHandlers = MyTools.toLayer(
+  Effect.gen(function* () {
+    return {
+      get_thing: ({ id }) =>
+        id === "known"
+          ? Effect.succeed({ name: "a known thing" })
+          : Effect.fail(
+              new NotFound({
+                id,
+                remediation: { hint: "List the ids first.", suggestedTool: "list_things" },
+                message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, {
+                  hint: "List the ids first.",
+                  suggestedTool: "list_things",
+                }),
+              }),
+            ),
+    };
+  }),
+);
+
+const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
+const ServerLayer = ToolsLayer.pipe(
+  Layer.provideMerge(McpStdio.layer({ name: "my-server", version: "1.0.0" })),
+);
+
+const Main = ServerLayer; // add more subsystems here with Layer.mergeAll
+
+NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown });
+```
+
+`McpToolkit.layer` re-annotates every tool without its own `Tool.Strict`
+annotation to strict by default, so `get_thing({ id: "known", extra: 1 })`
+is rejected with one `Unrecognized parameter(s): extra. Accepted params:
+id.` before the handler ever runs — see [Strict input](#strict-input)
+below.
+
+## Strict input
+
+Two ways to close a tool's input schema against unknown keys, at different
+scopes:
+
+- **`ToolInputSchema`** — pure walkers, for a server that does not (or
+  cannot yet) adopt `McpToolkit`: run `ToolInputSchema.unknownKeys(payload,
+  tool.inputSchema)` inside a handler, or `objectRooted(schema)` when a
+  tool's parameters are a top-level discriminated union — core dies at boot
+  on an unrewritten union root.
+- **`McpToolkit.layer(toolkit, options?)`** — the registration-scoped
+  decorator, and the recommended default: every tool without its own
+  `Tool.Strict` annotation is served and decoded strict
+  (`options.strict` defaults to `"all"`), and a rejected call names every
+  unknown key at every depth in one response, not just the first. An
+  explicit `Tool.Strict` annotation always wins, and a `Tool.dynamic` tool
+  is never re-annotated. Pass `{ strict: "annotated" }` to leave
+  unannotated tools lenient, or annotate an individual tool
+  `Tool.Strict` false to opt it out under the default.
+
+```ts
+import { McpToolkit } from "@effected/mcp";
+import { Layer } from "effect";
+
+// Default: every tool is strict, and every rejection names every unknown key.
+const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
+
+// Only tools explicitly annotated Tool.Strict are decoded strict.
+const LenientByDefault = McpToolkit.layer(MyTools, { strict: "annotated" }).pipe(Layer.provide(MyHandlers));
+```
+
+## Testing
+
+`@effected/mcp/testing` is a separate entrypoint — importing it never pulls
+test machinery into a server's runtime import graph.
+
+```ts
+import { McpHarness } from "@effected/mcp/testing";
+import { Effect } from "effect";
+
+const test = Effect.gen(function* () {
+  const client = yield* McpHarness.make(ServerLayer);
+  const result = yield* client.callTool("get_thing", { id: "known" });
+  // result.result.structuredContent === { name: "a known thing" }
+  yield* client.close;
+});
+```
+
+`McpHarness.make` runs the server in-process over queue-backed `Stdio`, so
+a test sees the exact served schemas and wire results a real client would,
+with no child process and no sockets. Pass `server` **without** a `Stdio`
+of its own — a `Stdio` the server provides internally would talk to the
+real terminal instead of the test's queues. `McpProcess.spawn` and
+`McpProbe.initialize` are the spawned-bin equivalents, for a test that
+must exercise a built artifact rather than a layer — `McpProbe` in
+particular is the MCP half of a packed-install proof: it keeps stdin open
+until the response arrives, then asserts empty stderr and exit 0.
+`McpToolAudit.check` is a pure sweep over a served `tools/list`, for a
+static policy check with no server at all.
+
 ## Tier
 
 Boundary tier. Peers: `@effected/engine` and `effect`. Nothing in the kit depends on `@effected/mcp` except an application; it never depends on `@effected/cli` or `@effected/workspaces` — a CLI boundary and an MCP boundary are siblings, both front ends, never layers on each other.
