@@ -2,12 +2,15 @@
 type: Decision
 title: "D7: usageExitCode defaults to 64 (BSD EX_USAGE)"
 description: A ShowHelp carrying errors remaps to exit 64 by default rather than core's 1, giving a usage error a distinct, greppable code from an ordinary program failure.
-status: draft
+status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T19:35:12Z
   body_sha256: 1536ac5e6c01d2ca76e372931c2a07bebe8a9261c3876a8109c9646841b502b4
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D7: `usageExitCode` defaults to 64 (BSD `EX_USAGE`)

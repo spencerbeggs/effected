@@ -2,12 +2,15 @@
 type: Decision
 title: "D5: the layering, packed-install and boundary checks live in @effected/workspaces/testing"
 description: WorkspaceLayering, PackedInstall and SourceBoundary join a new testing subpath on the existing integrated-tier workspaces package rather than a dedicated package or an engine/testing subpath.
-status: draft
+status: stable
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
   body_sha256: 8da4d7914038a1d96aad16f1fc000d790e8c2cc87d9a22898ee06347feed7d2a
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D5: the layering, packed-install and boundary checks live in `@effected/workspaces/testing`

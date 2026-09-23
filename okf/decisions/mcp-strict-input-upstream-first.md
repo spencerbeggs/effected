@@ -2,12 +2,15 @@
 type: Decision
 title: "D2: strict MCP input is upstream-first"
 description: Ship pure ToolInputSchema walkers now, and add an McpToolkit decorator only if probe P1 proves the registerToolkit port round-trips; do not consolidate a full port into the kit.
-status: draft
+status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
   body_sha256: 085f2b4fa5fcf373e74892c6c2356dbb081405b569ed39fb653a2e2e063cb6de
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D2: strict MCP input is upstream-first

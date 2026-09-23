@@ -2,12 +2,15 @@
 type: Decision
 title: "D4: okfit and vitest-agent are registered as consumers before extraction"
 description: Consumer concepts are written and linked before any engine/cli/mcp primitive is extracted from their repos, so every extraction is justified against a recorded survey rather than memory.
-status: draft
+status: stable
 tags: [architecture, docs]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
   body_sha256: 84635f8e7ed9548281b311f8cdfd1825a79401f79545185ede9bbe27237f3848
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D4: okfit and vitest-agent are registered as consumers before extraction

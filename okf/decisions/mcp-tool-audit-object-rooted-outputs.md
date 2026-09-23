@@ -2,12 +2,15 @@
 type: Decision
 title: "D10: McpToolAudit enforces object-rooted outputs by default"
 description: McpToolAudit.check's objectRootedOutput policy defaults to true, flagging a tool whose declared output can be a bare scalar or array, because the stateless 2026-07-28 adapter passes a non-object output through verbatim.
-status: draft
+status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
   body_sha256: 4bf3e2e020c5f552f3e81d43438ffa8c7d02cb5ce009ede97f9cfab48c04a53e
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D10: `McpToolAudit` enforces object-rooted outputs by default

@@ -2,12 +2,15 @@
 type: Decision
 title: "D9: CliTest uses core ChildProcess, with no peer on @effected/commands"
 description: The new @effected/cli/testing subpath spawns fixture binaries directly over effect core's ChildProcess contract rather than adding an optional peer on @effected/commands.
-status: draft
+status: stable
 tags: [architecture, testing, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
   body_sha256: bc110660511c8e01ff43c08a31f4f2ef9cff053ab2ac97fae5b1a953ad99c609
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D9: `CliTest` uses core `ChildProcess`, with no peer on `@effected/commands`

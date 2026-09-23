@@ -2,12 +2,15 @@
 type: Decision
 title: "D3: CliLogger's stderrFrom default flips to All"
 description: Every log level now routes to stderr by default, so a CLI's stdout carries only what the program writes with Console.log — a breaking 0.x change closing #716.
-status: draft
+status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
   body_sha256: bb9181596967206b0392eaf6f8fb97a07df5af8fbcc9e3f492e3356185d85984
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D3: `CliLogger` default `stderrFrom` flips to `"All"`

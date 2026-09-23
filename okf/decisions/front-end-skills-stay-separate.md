@@ -2,12 +2,15 @@
 type: Decision
 title: "D6: CLI and MCP knowledge stays in separate skills, linked from design-patterns"
 description: effect-v4-cli and the new effect-v4-mcp stay independent skills rather than folding into design-patterns, which points at both instead of teaching either surface itself.
-status: draft
+status: stable
 tags: [architecture, docs]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
   body_sha256: 298f14aec759fdbcfd351c66c1f76c15cbfde418ee775d7a30da34f7ed598448
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D6: CLI and MCP knowledge stays in separate skills, linked from `design-patterns`

@@ -2,12 +2,15 @@
 type: Decision
 title: "D1: @effected/engine exists and holds Distribution, Remediation and LaunchContext"
 description: A new pure-tier package sits below @effected/cli and @effected/mcp so a consumer's own engine can stamp distribution without depending on a front end.
-status: draft
+status: stable
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
   at: 2026-09-23T17:45:24Z
   body_sha256: 6e6ce95b3d182d9845cffbb4dde0a7445e2aeb0943f4fbeb83875c49c1a3f508
+verified:
+  - by: human:spencer
+    at: 2026-09-23T19:50:29Z
 ---
 
 # D1: `@effected/engine` exists and holds `Distribution`, `Remediation` and `LaunchContext`

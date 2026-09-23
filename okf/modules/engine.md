@@ -2,7 +2,7 @@
 type: Module
 title: "@effected/engine"
 description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, and launch-context resolution.
-status: draft
+status: stable
 kind: package
 resource: ../../packages/engine
 layer: pure
