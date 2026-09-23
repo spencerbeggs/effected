@@ -454,6 +454,17 @@
 	"memfs": {
 		"MemoryFileSystem": "in-memory filesystem test double for FileSystem, seed files, inject faults, inspect writes"
 	},
+	"mcp": {
+		"McpHarness": "test mcp server in-process, call tools over queue-backed stdio",
+		"McpProbe": "smoke-test a built mcp bin, initialize then clean exit",
+		"McpProcess": "drive a spawned mcp bin, read json-rpc lines, never hang on exit",
+		"McpStdio": "serve mcp over stdio, keep stdout the json-rpc wire, exit 0 on stdin close",
+		"McpTestFailure": "mcp test client failure, stream ended, server stopped",
+		"McpToolAudit": "lint served tools list, closed inputs, titles, hints, object-rooted outputs",
+		"McpToolkit": "register toolkit with strict input, reject every unknown key at once",
+		"ToolFailure": "fold remediation into tool error message, truncate echoed caller values",
+		"ToolInputSchema": "find unknown tool arguments at every depth, object-root a union input"
+	},
 	"npm": {
 		"CachingPackageManager": "list of package managers with a known cache dir",
 		"CatalogAssemblyError": "handle unreadable or malformed pnpm-workspace.yaml, bad catalog block, broken pnpmfile config dependency",

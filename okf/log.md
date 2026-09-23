@@ -21,6 +21,7 @@
 * Updated savvy-web/systems
 * Updated spencerbeggs/okfit
 * Updated spencerbeggs/vitest-agent
+* Added D: strict MCP input default for Claude Code
 
 ## 2026-09-22
 
