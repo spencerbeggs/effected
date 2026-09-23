@@ -9,10 +9,13 @@ import type { ServedTool } from "./McpWire.js";
 export interface McpToolAuditPolicy {
 	/** `"closed"`: every object node rejects unknown keys. `"open"`: none with properties does. `"any"`: not checked. */
 	readonly input: "open" | "closed" | "any";
+	/** Every tool must carry a non-empty `title`, top-level or in `annotations.title`. */
 	readonly requireTitle?: boolean | undefined;
+	/** Every tool must serve an `outputSchema`. The stateful revisions drop a non-object one, so check the revision you serve. */
 	readonly requireOutputSchema?: boolean | undefined;
 	/** A served `outputSchema` must be rooted at `type: "object"`. Defaults to `true` (D10). */
 	readonly objectRootedOutput?: boolean | undefined;
+	/** The longest `description` allowed, in UTF-16 code units; a missing description counts as 0. */
 	readonly maxDescription?: number | undefined;
 	/** All four MCP annotation hints must be present as booleans. */
 	readonly requireHints?: boolean | undefined;
@@ -92,11 +95,27 @@ const objectNodes = (schema: JsonSchema.JsonSchema): ReadonlyArray<ObjectNode> =
  * non-object output through, while the stateful adapters drop it — which is
  * why `objectRootedOutput` defaults to `true`.
  *
+ * `"closed"` is only as sound as the walk. It follows `properties`,
+ * `items`, a schema-valued `additionalProperties`, `prefixItems`, `anyOf`,
+ * `oneOf` and `$defs`, and merges an `allOf` member's `properties` and
+ * `additionalProperties: false` onto its node. It does not visit
+ * `patternProperties` values, an `allOf` member's `items` or
+ * `additionalProperties` schema, or an `allOf` nested inside another; and
+ * a key declared in two `allOf` members is last-write-wins. A hand-authored
+ * or `Tool.dynamic` schema can therefore pass `"closed"` with an open node
+ * the walk never reached. Core-emitted strict schemas close every node, so
+ * a strict `Tool.make` tool is reported faithfully.
+ *
  * @public
  */
 export class McpToolAudit {
 	private constructor() {}
 
+	/**
+	 * Every violation of `policy` across `tools`, as `"<tool>: <what>"`, in
+	 * tool order. Empty means the sweep passed. A duplicate tool name is
+	 * reported under every policy, `input: "any"` included.
+	 */
 	static readonly check = (tools: ReadonlyArray<ServedTool>, policy: McpToolAuditPolicy): ReadonlyArray<string> => {
 		const violations: Array<string> = [];
 		const seen = new Set<string>();

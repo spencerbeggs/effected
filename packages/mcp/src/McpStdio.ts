@@ -75,10 +75,15 @@ export class McpStdio {
 
 	/**
 	 * `McpServer.layerStdio` with `LogToStderr` provided and merged into the
-	 * output, so every layer composed with it logs to stderr too. A bad
+	 * output, so every layer it provides logs to stderr too. A bad
 	 * `protocols` list dies: it is the implementer's defect.
 	 *
 	 * @remarks
+	 * Only a layer this one provides inherits `LogToStderr`: compose with
+	 * `Layer.provideMerge(McpStdio.layer(...))`. A sibling merged beside it
+	 * with `Layer.mergeAll` is not provided by it, so its build logs still
+	 * go through `console.log`, onto the wire.
+	 *
 	 * Each call mints a fresh layer; bind the result to a `const` or the
 	 * server builds twice.
 	 */
@@ -118,8 +123,14 @@ export class McpStdio {
 		);
 
 	/**
-	 * Success or an interrupt-only exit, which is what stdin EOF produces,
-	 * maps to 0. Anything else goes to `Runtime.defaultTeardown`.
+	 * Success or an interrupt-only exit maps to 0. Anything else goes to
+	 * `Runtime.defaultTeardown`.
+	 *
+	 * @remarks
+	 * Stdin EOF, the normal end of every session, ends in an interrupt-only
+	 * exit, and so do SIGINT and SIGTERM: `runMain` interrupts the program on
+	 * either signal. All three exit 0 here, not the 130 a default teardown
+	 * reports for an interrupt.
 	 */
 	static readonly teardown: Runtime.Teardown = (exit, onExit) =>
 		Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause) ? onExit(0) : Runtime.defaultTeardown(exit, onExit);

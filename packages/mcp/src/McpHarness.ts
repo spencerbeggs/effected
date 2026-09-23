@@ -40,7 +40,10 @@ interface HarnessParts {
 	readonly startRequest: (
 		method: string,
 		params?: unknown,
-	) => Effect.Effect<{ readonly id: number; readonly response: Effect.Effect<JsonRpcMessage, McpTestFailure> }>;
+	) => Effect.Effect<
+		{ readonly id: number; readonly response: Effect.Effect<JsonRpcMessage, McpTestFailure> },
+		McpTestFailure
+	>;
 	readonly notify: (method: string, params?: unknown) => Effect.Effect<void>;
 	readonly callTool: (name: string, args?: unknown) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly listTools: Effect.Effect<ReadonlyArray<ServedTool>, McpTestFailure>;
@@ -70,23 +73,30 @@ interface HarnessParts {
  *   holds stderr writes and every log line, and `consoleLogSoFar` holds
  *   anything that went through `console.log`, which in a real server is
  *   the wire. Assert it empty.
+ * - On a stateful revision (the default `2025-11-25`), send `initialize`
+ *   first. Every other request before it fails with `NotInitialized` and
+ *   is never written: the server would only answer an opaque
+ *   `Invalid request metadata`, `ping` included.
  *
  * @public
  */
 export class McpHarness {
 	/** The revision this client speaks. */
 	readonly protocol: McpProtocol.ProtocolAdapter;
-	/** `initialize` then `notifications/initialized`; `server/discover` on a stateless revision. */
+	/** `initialize` then `notifications/initialized`; `server/discover` on a stateless revision. Call it first on a stateful revision. */
 	readonly initialize: Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** `server/discover`. */
 	readonly discover: Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** Send a request and wait for its response. */
 	readonly request: (method: string, params?: unknown) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
-	/** Send a request now; wait for its response later. */
+	/** Send a request now; wait for its response later. Fails with `NotInitialized`, sending nothing, on a stateful revision before `initialize`. */
 	readonly startRequest: (
 		method: string,
 		params?: unknown,
-	) => Effect.Effect<{ readonly id: number; readonly response: Effect.Effect<JsonRpcMessage, McpTestFailure> }>;
+	) => Effect.Effect<
+		{ readonly id: number; readonly response: Effect.Effect<JsonRpcMessage, McpTestFailure> },
+		McpTestFailure
+	>;
 	/** Send a notification. */
 	readonly notify: (method: string, params?: unknown) => Effect.Effect<void>;
 	/** `tools/call`, returning the whole response: a JSON-RPC error is data here. */
@@ -95,7 +105,7 @@ export class McpHarness {
 	readonly listTools: Effect.Effect<ReadonlyArray<ServedTool>, McpTestFailure>;
 	/** `resources/read`, returning the whole response. */
 	readonly readResource: (uri: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
-	/** Write any value as one newline-framed line. */
+	/** Write any value as one newline-framed line. Never gated; a raw `initialize` counts as sent. */
 	readonly sendRaw: (message: unknown) => Effect.Effect<void>;
 	/** The next server-initiated frame with this method, skipping and keeping others; fails with `ServerStopped` once the server stops. */
 	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
@@ -236,10 +246,23 @@ export class McpHarness {
 				Effect.suspend(() =>
 					Deferred.isDoneUnsafe(waiter) ? Deferred.await(waiter) : stopAware(Deferred.await(waiter)),
 				);
+			// A stateful revision refuses every request before `initialize`, `ping` included,
+			// with an opaque "Invalid request metadata"; fail those fast, naming the missing step.
+			const stateful = !isStateless(protocol);
+			let initializeSent = false;
 			const sendRaw = (message: unknown): Effect.Effect<void> =>
-				Effect.asVoid(Queue.offer(stdin, encoder.encode(`${JSON.stringify(message)}\n`)));
+				Effect.suspend(() => {
+					if (isJsonRpcMessage(message) && message.method === "initialize") initializeSent = true;
+					return Effect.asVoid(Queue.offer(stdin, encoder.encode(`${JSON.stringify(message)}\n`)));
+				});
 			const startRequest = (method: string, params?: unknown) =>
 				Effect.gen(function* () {
+					if (stateful && !initializeSent && method !== "initialize") {
+						return yield* new McpTestFailure({
+							reason: "NotInitialized",
+							message: `${method} was not sent: call initialize first on stateful protocol ${protocol.protocolVersion}`,
+						});
+					}
 					const id = nextId++;
 					const waiter = yield* Deferred.make<JsonRpcMessage>();
 					waiters.set(requestKey(id), waiter);

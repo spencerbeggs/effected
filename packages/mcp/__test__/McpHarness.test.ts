@@ -168,6 +168,46 @@ describe("McpHarness", () => {
 		}),
 	);
 
+	it.effect("stateful: a request before initialize fails fast with NotInitialized, naming the revision", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer(), { protocol: McpProtocol.v2025_06_18 });
+			const failure = yield* Effect.flip(harness.callTool("echo", { text: "early" }));
+			assert.strictEqual(failure.reason, "NotInitialized");
+			assert.include(failure.message, "call initialize first on stateful protocol 2025-06-18");
+			// Not the server's opaque refusal: the request never reached it.
+			assert.notInclude(failure.message, "Invalid request metadata");
+			yield* harness.initialize;
+			assert.deepStrictEqual(resultOf(yield* harness.callTool("echo", { text: "late" })).structuredContent, {
+				text: "late",
+			});
+		}),
+	);
+
+	it.effect("stateless: a request needs no initialize first (positive control)", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer(), { protocol: McpProtocol.v2026_07_28 });
+			assert.deepStrictEqual(resultOf(yield* harness.callTool("echo", { text: "early" })).structuredContent, {
+				text: "early",
+			});
+		}),
+	);
+
+	it.effect("stateful: an initialize written with sendRaw is ungated and lifts the precondition", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			yield* harness.sendRaw({
+				jsonrpc: "2.0",
+				id: 50,
+				method: "initialize",
+				params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "raw", version: "0.0.0" } },
+			});
+			yield* harness.sendRaw({ jsonrpc: "2.0", method: "notifications/initialized" });
+			assert.deepStrictEqual(resultOf(yield* harness.callTool("echo", { text: "raw" })).structuredContent, {
+				text: "raw",
+			});
+		}),
+	);
+
 	it.effect("strictStdout: a stray non-JSON-RPC stdout line is a defect", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(fixtureServer());

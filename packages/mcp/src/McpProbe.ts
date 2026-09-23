@@ -4,6 +4,7 @@ import { McpProtocol } from "effect/unstable/ai";
 import type { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
 	DEFAULT_CLIENT_INFO,
+	STDERR_HINT,
 	frame,
 	initializeParams,
 	isJsonRpcMessage,
@@ -32,7 +33,7 @@ export interface McpProbeOptions {
  * @public
  */
 export interface McpProbeResult {
-	/** The id-1 response. */
+	/** The id-1 response. A refused handshake is still a response: assert `response.error === undefined`. */
 	readonly response: JsonRpcMessage;
 	/** Every raw stdout line, in order. */
 	readonly stdout: ReadonlyArray<string>;
@@ -50,8 +51,10 @@ export interface McpProbeResult {
  * Stdin stays open until the id-1 response has arrived. Closing it right
  * after writing, as every hand-rolled smoke test did, makes an Effect server
  * drop the in-flight response and exit 0, so a slow boot reads as a pass with
- * no response. The caller asserts `stderr` is empty and `exitCode` is 0; this
- * is the MCP half of a packed-install proof.
+ * no response. The caller asserts `response.error === undefined`, `stderr` is
+ * empty and `exitCode` is 0; this is the MCP half of a packed-install proof.
+ * Checking stderr and the exit code alone passes a server that answers
+ * the handshake with a JSON-RPC error, exits 0 and writes nothing.
  *
  * - Any stdout line that is not JSON-RPC fails with `NotJsonRpc`, naming the
  *   line: a server that logs to stdout corrupts the wire, so the probe fails
@@ -117,7 +120,7 @@ export class McpProbe {
 								const stderr = yield* child.stderrFinal;
 								return yield* new McpTestFailure({
 									reason: "StreamEnded",
-									message: `${failure.message}; the child exited with code ${code}; stderr: ${
+									message: `${failure.message.replace(STDERR_HINT, "")}; the child exited with code ${code}; stderr: ${
 										stderr === "" ? "(empty)" : ToolFailure.truncate(stderr)
 									}`,
 								});

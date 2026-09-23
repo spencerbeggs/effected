@@ -14,6 +14,15 @@ export const DEFAULT_CLIENT_INFO: ClientInfo = { name: "effected-mcp-testing", v
 const isRecord = (u: unknown): u is { readonly [key: string]: unknown } =>
 	typeof u === "object" && u !== null && !Array.isArray(u);
 
+/**
+ * The pointer `McpProcess` appends to a `StreamEnded` message. `McpProbe`
+ * strips it: the probe folds stderr into its own message, so the pointer is
+ * stale there.
+ *
+ * @internal
+ */
+export const STDERR_HINT = "; read stderrFinal for why";
+
 /** @internal */
 export const parseFrame = (line: string): unknown =>
 	Result.getOrUndefined(Result.try(() => JSON.parse(line) as unknown));

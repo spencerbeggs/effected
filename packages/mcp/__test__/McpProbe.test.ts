@@ -42,6 +42,8 @@ describe("McpProbe.initialize", () => {
 			assert.strictEqual(failure._tag === "McpTestFailure" ? failure.reason : undefined, "StreamEnded");
 			assert.include(failure.message, "fatal: config missing");
 			assert.include(failure.message, "exited with code 3");
+			// The probe already folded stderr in; the spawned-client hint to go read it would be stale here.
+			assert.notInclude(failure.message, "stderrFinal");
 		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 

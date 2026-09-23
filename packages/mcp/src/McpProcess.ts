@@ -5,6 +5,7 @@ import type { ChildProcess } from "effect/unstable/process";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import {
 	DEFAULT_CLIENT_INFO,
+	STDERR_HINT,
 	frame,
 	initializeParams,
 	isJsonRpcMessage,
@@ -130,7 +131,7 @@ export class McpProcess {
 						Effect.fail(
 							new McpTestFailure({
 								reason: "StreamEnded",
-								message: `the server's stdout ended before the expected line; read stderrFinal for why${
+								message: `the server's stdout ended before the expected line${STDERR_HINT}${
 									pump === undefined ? "" : `; stdin pump failed: ${ToolFailure.truncate(pump)}`
 								}`,
 							}),
