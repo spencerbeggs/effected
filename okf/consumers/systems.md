@@ -7,8 +7,8 @@ status: stable
 tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 1937178e3dab047ce2fd156944339450a6ba216f7a69dc768205a40d7a941786
+  at: 2026-09-23T17:36:08Z
+  body_sha256: 83c3f020c2a5efd70ab8eab63a12db995dd473d955dedba799617020c6fc675a
 ---
 
 # savvy-web/systems
@@ -127,3 +127,18 @@ policy in `systems`' own resolver rather than becoming a kit member.
   Claude Code plugin skills and is gone from the marketplace; whether
   `silk`'s plugin skills should follow their modules up into the kit has
   not been asked.
+- Its CLI (`packages/cli/src/main.ts`) has no `reportFailures` call at
+  all, and carries 49 raw `process.exitCode` writes across
+  `packages/cli/src` in its place, one of the widest hand-rolled
+  exit-code surfaces this register has surveyed.
+- Its warnings print on stdout rather than stderr, unlike the
+  stderr-routed convention `@effected/cli`'s `CliLogger` establishes.
+- An empty `NO_COLOR` is treated as set — `packages/bundler/src/run.ts`
+  and both `tsdown-plugins`/`bundler` `savvy.build.ts` files check
+  `process.env.NO_COLOR !== undefined`, so `NO_COLOR=""` disables colour
+  the same as `NO_COLOR=1`, the mirror image of the `NO_COLOR !== "1"`
+  bug found in `okfit`.
+- It carries a byte copy of okfit's MCP remediation helpers — the same
+  near-duplication a future `@effected/mcp` `Remediation`/`ToolFailure`
+  primitive would collapse across all three of this register's MCP
+  server consumers.
