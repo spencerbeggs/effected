@@ -383,6 +383,25 @@ importers:
         version: 7.0.2
     publishDirectory: dist/dev/pkg
 
+  packages/engine:
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1)
+      '@savvy-web/bundler':
+        specifier: ^2.4.9
+        version: 2.4.9(@types/node@26.6.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.15)(typescript@7.0.2)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.6.2
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-rc.117
+      typescript:
+        specifier: catalog:build
+        version: 7.0.2
+    publishDirectory: dist/dev/pkg
+
   packages/git:
     devDependencies:
       '@effect/platform-node':
