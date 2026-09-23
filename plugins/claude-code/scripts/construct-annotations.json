@@ -6,8 +6,11 @@
 		"AppStore": "the app's migrated sqlite state database in the xdg state directory"
 	},
 	"cli": {
+		"CliColor": "decide once whether cli output gets ansi color, no_color and terminal-detection aware, share with the formatter layer",
+		"CliExit": "record the highest exit code set during a run for a findings-not-a-failure cli command, read back by CliRuntime.main",
 		"CliLogger": "plain-line cli output logger, no timestamp or level prefix, errors to stderr",
 		"CliRuntime": "report a cli program's failures through its own logger, set exit code",
+		"CliTest": "spawn a built cli bin hermetically in a sandboxed temp home, read exit code and stdout/stderr as data",
 		"ConfigIssueRenderer": "render a @effected/config-file validation error into human-readable lines",
 		"SchemaIssueRenderer": "turn a schema decode failure issue tree into lines a user can act on"
 	},
@@ -67,6 +70,14 @@
 		"YamlCodec": "parse and stringify config as yaml",
 		"asConfigProvider": "bridge a loaded config document into effect's Config accessors",
 		"layerConfigProvider": "install a config file as a fallback beneath the ambient ConfigProvider"
+	},
+	"engine": {
+		"CurrentDistribution": "read which carrier package installed this run without it appearing in R, defaults to none",
+		"Distribution": "the carrier package name and version a tool's bins were installed through",
+		"DistributionField": "the nullable distribution field of a machine-readable envelope, null for a direct install",
+		"LaunchContext": "resolve a launched tool's project directory from argv, env keys, then cwd, rejecting unsubstituted placeholders",
+		"Remediation": "what a caller, usually an agent, should do after a failure: hint plus optional suggested tool and args",
+		"distributionSuffix": "render the via name version suffix for a --version line or startup log, empty for a direct install"
 	},
 	"git": {
 		"BranchEntry": "one local or remote-tracking branch, name sha and whether it is checked out",

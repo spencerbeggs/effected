@@ -49,8 +49,8 @@ export const CurrentDistribution: Context.Reference<Option.Option<Distribution>>
 );
 
 /**
- * The ` via <name> <version>` suffix a `--version` line or a startup log line
- * appends, or `""` for a direct install.
+ * The `via <name> <version>` suffix (prefixed with a space) a `--version`
+ * line or a startup log line appends, or `""` for a direct install.
  *
  * @public
  */

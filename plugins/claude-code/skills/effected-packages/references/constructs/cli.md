@@ -5,9 +5,17 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `CliColor` | Class | Whether a CLI's output should carry ANSI colour, decided once and shared by everything that renders — help text, error output, and any rendered result. | decide once whether cli output gets ansi color, no_color and terminal-detection aware, share with the formatter layer |
+| `CliExit` | Class | The exit code a successful run wants, for commands whose findings are a result rather than a failure (a linter that found problems, say). | record the highest exit code set during a run for a findings-not-a-failure cli command, read back by CliRuntime.main |
+| `CliExitShape` | Interface | The shape behind `CliExit`. | |
 | `CliLogger` | Class | A `Logger` that renders CLI output rather than service logs. | plain-line cli output logger, no timestamp or level prefix, errors to stderr |
 | `CliLoggerOptions` | Interface | How a log record is turned into a line. | |
 | `CliRuntime` | Class | Report a CLI program's failures through the program's own logger. | report a cli program's failures through its own logger, set exit code |
+| `CliTest` | Class | Spawn a built CLI bin hermetically and read its exit code and streams as data. | from `@effected/cli/testing` — spawn a built cli bin hermetically in a sandboxed temp home, read exit code and stdout/stderr as data |
 | `ConfigIssueRenderer` | Class | Render a `@effected/config-file` validation failure. | render a @effected/config-file validation error into human-readable lines |
+| `MainOptions` | Interface | Options for `CliRuntime.main`. | |
 | `ReportFailuresOptions` | Interface | How a failure is turned into output and an exit code. | |
+| `RunOptions` | Interface | | from `@effected/cli/testing` |
+| `RunResult` | Interface | | from `@effected/cli/testing` |
+| `Sandbox` | Interface | | from `@effected/cli/testing` |
 | `SchemaIssueRenderer` | Class | Turn a `SchemaIssue` tree into lines a user can act on. | turn a schema decode failure issue tree into lines a user can act on |

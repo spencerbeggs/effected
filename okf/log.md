@@ -1,5 +1,27 @@
 # Log
 
+## 2026-09-23
+
+* Updated @effected/cli
+* Added @effected/engine
+* Added @effected/mcp
+* Updated @effected/workspaces: monorepo tooling
+* Added D10: McpToolAudit enforces object-rooted outputs by default
+* Added D1: @effected/engine exists and holds Distribution, Remediation and LaunchContext
+* Added D2: strict MCP input is upstream-first
+* Added D3: CliLogger's stderrFrom default flips to All
+* Added D4: okfit and vitest-agent are registered as consumers before extraction
+* Added D5: the layering, packed-install and boundary checks live in @effected/workspaces/testing
+* Added D6: CLI and MCP knowledge stays in separate skills, linked from design-patterns
+* Added D7: usageExitCode defaults to 64 (BSD EX_USAGE)
+* Added D8: CliColor ignores FORCE_COLOR, matching core
+* Added D9: CliTest uses core ChildProcess, with no peer on @effected/commands
+* Updated claude-code-plugin
+* Updated effected
+* Updated savvy-web/systems
+* Updated spencerbeggs/okfit
+* Updated spencerbeggs/vitest-agent
+
 ## 2026-09-22
 
 * Updated walker
@@ -46,6 +68,8 @@
 * Updated npm
 * Added npm and bun rows never populate unresolvedEdges
 * Updated package-json
+* Updated Vendored Effect is pinned to the catalog tag, not main
+* Updated workspace
 
 ## 2026-09-20
 
