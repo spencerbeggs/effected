@@ -18,17 +18,21 @@ describe("McpProbe.initialize", () => {
 			assert.strictEqual(result.exitCode, 0);
 			assert.strictEqual(result.stderr, "");
 			assert.isTrue(result.stdout.every((line) => (JSON.parse(line) as { jsonrpc?: string }).jsonrpc === "2.0"));
-		}).pipe(Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 
 	it.live("speaks server/discover with _meta on the stateless revision", () =>
 		Effect.gen(function* () {
 			const result = yield* McpProbe.initialize(command(), { protocol: McpProtocol.v2026_07_28 });
-			assert.deepStrictEqual(
-				(result.response.result as { supportedVersions: ReadonlyArray<string> }).supportedVersions,
-				["2026-07-28"],
-			);
-		}).pipe(Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
+			const discovered = result.response.result as {
+				readonly supportedVersions: ReadonlyArray<string>;
+				readonly echoedMeta: { readonly [key: string]: unknown } | null;
+			};
+			assert.deepStrictEqual(discovered.supportedVersions, ["2026-07-28"]);
+			assert.isNotNull(discovered.echoedMeta);
+			assert.strictEqual(discovered.echoedMeta?.["io.modelcontextprotocol/protocolVersion"], "2026-07-28");
+			assert.isDefined(discovered.echoedMeta?.["io.modelcontextprotocol/clientInfo"]);
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 
 	it.live("a child that exits before responding fails with StreamEnded", () =>
@@ -36,6 +40,16 @@ describe("McpProbe.initialize", () => {
 			const failure = yield* Effect.flip(McpProbe.initialize(command("--exit-early")));
 			assert.strictEqual(failure._tag, "McpTestFailure");
 			assert.strictEqual(failure._tag === "McpTestFailure" ? failure.reason : undefined, "StreamEnded");
-		}).pipe(Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
+			assert.include(failure.message, "fatal: config missing");
+			assert.include(failure.message, "exited with code 3");
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
+	it.live("a stdout line that is not JSON-RPC fails the probe with NotJsonRpc, naming the line", () =>
+		Effect.gen(function* () {
+			const failure = yield* Effect.flip(McpProbe.initialize(command("--noise")));
+			assert.strictEqual(failure._tag === "McpTestFailure" ? failure.reason : undefined, "NotJsonRpc");
+			assert.include(failure.message, "this line is not json-rpc");
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 });

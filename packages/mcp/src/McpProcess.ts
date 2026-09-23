@@ -51,7 +51,14 @@ interface ProcessParts {
  * @public
  */
 export class McpProcess {
-	/** Write one JSON-encoded, newline-framed message to the child's stdin. */
+	/**
+	 * Write one JSON-encoded, newline-framed message to the child's stdin.
+	 *
+	 * @remarks
+	 * Never fails. A frame sent after `closeStdin` is dropped, and a write the
+	 * child can no longer receive fails the stdin pump instead; the next
+	 * `StreamEnded` message names that failure.
+	 */
 	readonly send: (message: unknown) => Effect.Effect<void>;
 	/** The next non-empty stdout line; fails with `StreamEnded` once stdout ends. */
 	readonly nextLine: Effect.Effect<string, McpTestFailure>;
@@ -94,7 +101,13 @@ export class McpProcess {
 			const encoder = new TextEncoder();
 
 			const stdin = yield* Queue.unbounded<Uint8Array, Cause.Done>();
-			yield* Stream.run(Stream.fromQueue(stdin), handle.stdin).pipe(Effect.forkScoped);
+			// The pump's failure (EPIPE once the child is gone) is recorded, not
+			// raised: `send` stays never-failing and StreamEnded reports it.
+			const stdinFailure = yield* Ref.make<string | undefined>(undefined);
+			yield* Stream.run(Stream.fromQueue(stdin), handle.stdin).pipe(
+				Effect.catch((error) => Ref.set(stdinFailure, error.message)),
+				Effect.forkScoped,
+			);
 
 			const lines = yield* Queue.unbounded<string, Cause.Done>();
 			yield* Stream.splitLines(Stream.decodeText(handle.stdout)).pipe(
@@ -112,12 +125,17 @@ export class McpProcess {
 			);
 
 			const nextLine = Queue.take(lines).pipe(
-				Effect.mapError(
-					() =>
-						new McpTestFailure({
-							reason: "StreamEnded",
-							message: "the server's stdout ended before the expected line; read stderrFinal for why",
-						}),
+				Effect.catch(() =>
+					Effect.flatMap(Ref.get(stdinFailure), (pump) =>
+						Effect.fail(
+							new McpTestFailure({
+								reason: "StreamEnded",
+								message: `the server's stdout ended before the expected line; read stderrFinal for why${
+									pump === undefined ? "" : `; stdin pump failed: ${ToolFailure.truncate(pump)}`
+								}`,
+							}),
+						),
+					),
 				),
 			);
 			const readUntilResponse = (id: string | number) =>

@@ -36,14 +36,16 @@
   one failure shape a real server produces only by accident. It answers
   `initialize` with a `notifications/tools/list_changed` first, so a reader
   must read past an interleaved notification; it answers `server/discover`
-  for the stateless revision.
+  for the stateless revision, echoing the request's `params._meta` back as
+  `echoedMeta` so a test can observe the protocol fields.
 
 | Flag | Failure shape it pins |
 | --- | --- |
 | `--exit-early` | writes `fatal: config missing` to stderr and exits 3 before responding |
 | `--delay-ms=N` | a slow `initialize`: the response arrives N ms after the request |
 | `--noise` | a non-JSON-RPC line on stdout before anything else |
-| `--count-on-end` | on stdin EOF, reports the number of frames it received |
+| `--count-on-end` | on stdin EOF, reports the frames it received and their methods, in order |
+| `--stderr-on-start` | writes `booting` to stderr at startup, while it keeps running |
 
 - **Regenerating:** there is nothing to regenerate. Edit by hand, and keep
   one failure shape per flag.

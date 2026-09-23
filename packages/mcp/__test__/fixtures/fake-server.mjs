@@ -4,9 +4,11 @@ const flags = new Set(process.argv.slice(2));
 const delayFlag = process.argv.find((arg) => arg.startsWith("--delay-ms="));
 const delay = delayFlag === undefined ? 0 : Number(delayFlag.slice("--delay-ms=".length));
 let frames = 0;
+const methods = [];
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
 if (flags.has("--noise")) process.stdout.write("this line is not json-rpc\n");
+if (flags.has("--stderr-on-start")) process.stderr.write("booting\n");
 
 let buffered = "";
 process.stdin.setEncoding("utf8");
@@ -21,12 +23,13 @@ process.stdin.on("data", (chunk) => {
 	}
 });
 process.stdin.on("end", () => {
-	if (flags.has("--count-on-end")) write({ jsonrpc: "2.0", method: "count", params: { frames } });
+	if (flags.has("--count-on-end")) write({ jsonrpc: "2.0", method: "count", params: { frames, methods } });
 	process.exit(0);
 });
 
 function handle(message) {
 	frames++;
+	methods.push(message.method);
 	if (flags.has("--exit-early")) {
 		process.stderr.write("fatal: config missing\n");
 		process.exit(3);
@@ -48,7 +51,12 @@ function handle(message) {
 			write({
 				jsonrpc: "2.0",
 				id: message.id,
-				result: { supportedVersions: ["2026-07-28"], capabilities: {}, serverInfo: { name: "fake", version: "0.0.0" } },
+				result: {
+					supportedVersions: ["2026-07-28"],
+					capabilities: {},
+					serverInfo: { name: "fake", version: "0.0.0" },
+					echoedMeta: message.params?._meta ?? null,
+				},
 			});
 		} else {
 			write({ jsonrpc: "2.0", id: message.id, error: { code: -32601, message: `Method not found: ${message.method}` } });
