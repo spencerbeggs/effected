@@ -47,7 +47,18 @@ const objectNodes = (schema: JsonSchema.JsonSchema): ReadonlyArray<ObjectNode> =
 		if (!isNode(node)) return;
 		// `allOf` members from core are keyword-merge artifacts on THIS node, not a nested or sibling shape.
 		const merged: ReadonlyArray<Node> = Array.isArray(node.allOf) ? [node, ...node.allOf.filter(isNode)] : [node];
-		const properties = merged.map((part) => part.properties).find(isNode);
+		const declaredParts = merged.filter((part) => isNode(part.properties));
+		// A null-prototype merge across EVERY part's `properties`, the same way `ToolInputSchema.ts`
+		// folds `allOf` members: a single `.find` only sees the FIRST part's declared keys, so a
+		// second allOf branch's properties (an ordinary hand-authored `allOf: [Base, Extension]`
+		// idiom, even though core never emits it) go both unreported and unvisited.
+		const properties: Node | undefined =
+			declaredParts.length === 0
+				? undefined
+				: declaredParts.reduce<Record<string, unknown>>((acc, part) => {
+						for (const [key, child] of Object.entries(part.properties as Node)) acc[key] = child;
+						return acc;
+					}, Object.create(null));
 		const closed = merged.some((part) => part.additionalProperties === false);
 		if (isNode(properties) || merged.some((part) => part.type === "object")) out.push({ path, properties, closed });
 

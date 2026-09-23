@@ -112,6 +112,29 @@ describe("McpToolAudit.check fixtures, each wrong in exactly one way", () => {
 			strictest,
 			["get_thing: input schema is open at tags"],
 		],
+		[
+			// Core never emits two `allOf` members that EACH declare `properties`, but `allOf: [Base,
+			// Extension]` is an ordinary hand-authored idiom, and McpToolAudit sweeps any served server,
+			// not just core-generated ones. `wrapper` itself stays closed (its own `additionalProperties`
+			// is `false`), isolating the assertion to whether the SECOND branch's `b` is found at all.
+			"properties declared in a SECOND allOf branch are folded in and recursed into, not lost to the first",
+			{
+				...clean,
+				inputSchema: {
+					...clean.inputSchema,
+					properties: {
+						id: { type: "string" },
+						wrapper: {
+							type: "object",
+							additionalProperties: false,
+							allOf: [{ properties: { a: { type: "string" } } }, { properties: { b: { type: "object" } } }],
+						},
+					},
+				},
+			},
+			strictest,
+			["get_thing: input schema is open at wrapper.b"],
+		],
 	];
 	for (const [label, tool, policy, expected] of cases) {
 		it(label, () => {
