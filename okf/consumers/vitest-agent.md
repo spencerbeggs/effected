@@ -7,8 +7,8 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:36:08Z
-  body_sha256: b71f97b7d8ffd1e09eaf8eb7e0f34ab0325e04f85be0146fbd862806bdb0fb8c
+  at: 2026-09-23T17:39:07Z
+  body_sha256: 8514b162dc5112547947a44e5bf15ba424f0fcba366f4507d2c63e97e0f265c2
 ---
 
 # spencerbeggs/vitest-agent
@@ -30,12 +30,11 @@ tarball rather than a workspace link.
 
 ## What it exercises
 
-- `@effected/app` — `AppDirs`, bound once to a `const` layer
+- `@effected/xdg` — `AppDirs`, bound once to a `const` layer
   (`packages/engine/src/layers/PathResolutionLive.ts`) so the layer
-  memoizes by reference, and read again in
-  `packages/engine/src/utils/resolve-data-path.ts` for XDG-namespaced data
-  paths.
-- `@effected/xdg` — the `Xdg` layer `AppDirs` is provided over.
+  memoizes by reference, over the `Xdg` layer it is provided over, and
+  read again in `packages/engine/src/utils/resolve-data-path.ts` for
+  XDG-namespaced data paths.
 - [`@effected/schemastore`](../modules/schemastore.md) — the report schema
   its MCP tool results validate against.
 

@@ -7,8 +7,8 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:36:08Z
-  body_sha256: 8ef39757137aed03619e015b6bfe477154e07e98deadca6281af8b8427c55b8b
+  at: 2026-09-23T17:39:07Z
+  body_sha256: ed75748bf90b0c80f545328a72d4b99e71c01baf8f0a7699a301cc19ff444cb3
 ---
 
 # spencerbeggs/okfit
@@ -32,12 +32,14 @@ integration. No front end depends on another front end.
   reporting layer, also in `main.ts`), and `ConfigIssueRenderer`
   (`packages/cli/src/errors.ts`) for rendering a validation error's
   `render` option one line per stderr line.
-- `@effected/app` — `AppConfig` only (`packages/engine/src/config/layer.ts`).
-  `App`, `AppStore`, and `AppCache` are forbidden imports, enforced by a
-  boundary test in both `packages/cli/__test__/utils/boundaries.ts` and
+- [`@effected/app`](../modules/app.md) — `AppConfig` only
+  (`packages/engine/src/config/layer.ts`). `App`, `AppStore`, and
+  `AppCache` are forbidden imports, enforced by a boundary test in both
+  `packages/cli/__test__/utils/boundaries.ts` and
   `packages/engine/__test__/boundaries.test.ts` (K-9's forbidden-names
   list: `App`, `AppStore`, `AppCache`).
-- `@effected/xdg` and [`@effected/config-file`](../modules/config-file.md)
+- [`@effected/xdg`](../modules/xdg.md) and
+  [`@effected/config-file`](../modules/config-file.md)
   (`TomlCodec`) for config discovery and parsing,
   [`@effected/schemastore`](../modules/schemastore.md) (`HostedSchema`) for
   the published config JSON Schema, and `@effected/schemastore-cli`.
