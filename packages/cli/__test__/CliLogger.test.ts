@@ -114,11 +114,16 @@ describe("CliLogger", () => {
 
 	it.effect("honours LogToStderr by forcing everything to stderr", () =>
 		Effect.gen(function* () {
+			// stderrFrom: "Error" so that, without the force, "progress" (Info)
+			// would land on stdout — the force is what has to move it to stderr.
+			// Under the default "All" this would already route Info to stderr on
+			// its own, making the LogToStderr force untested.
 			const { out, err } = yield* capture(
 				Effect.gen(function* () {
 					yield* Effect.log("progress");
 					yield* Effect.logError("broke");
 				}).pipe(Effect.provideService(References.LogToStderr, true)),
+				{ stderrFrom: "Error" },
 			);
 
 			assert.deepStrictEqual(err, ["progress", "broke"]);
