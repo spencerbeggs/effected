@@ -4,3 +4,4 @@
  * @packageDocumentation
  */
 export { CurrentDistribution, Distribution, DistributionField, distributionSuffix } from "./Distribution.js";
+export { Remediation } from "./Remediation.js";
