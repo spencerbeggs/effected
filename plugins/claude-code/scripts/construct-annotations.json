@@ -461,7 +461,7 @@
 		"McpStdio": "serve mcp over stdio, keep stdout the json-rpc wire, exit 0 on stdin close",
 		"McpTestFailure": "mcp test client failure, stream ended, server stopped",
 		"McpToolAudit": "lint served tools list, closed inputs, titles, hints, object-rooted outputs",
-		"McpToolkit": "register toolkit with strict input, reject every unknown key at once",
+		"McpToolkit": "name every unknown tool argument in one InvalidParams, strict by default",
 		"ToolFailure": "fold remediation into tool error message, truncate echoed caller values",
 		"ToolInputSchema": "find unknown tool arguments at every depth, object-root a union input"
 	},
