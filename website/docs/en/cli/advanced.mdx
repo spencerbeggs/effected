@@ -45,7 +45,7 @@ Within the kit, `@effected/cli` sits beside [`@effected/app`](/app) rather than 
 
 `reportFailures` does not swallow the failure it reported — swallowing it would make a broken run exit `0`. It re-fails with an `Error` carrying two of core's own markers, which is how the exit code is settled without a platform import.
 
-`Runtime.errorExitCode` is the process exit code `defaultTeardown` reads off the squashed error. An error that **already carries one keeps it**: that was a deliberate choice by whatever raised it, and the `exitCode` option is a fallback for errors that chose nothing, never an override.
+`Runtime.errorExitCode` is the process exit code `defaultTeardown` reads off the squashed error. An error that **already carries one keeps it**: that was a deliberate choice by whatever raised it. The `exitCode` option is a fallback for errors that chose nothing, and so is `usageExitCode` for a `CliError.UserError` — `CliRuntime.reported(userError, 3)` exits `3`. The one exception is a `ShowHelp`, whose code `reportFailures` always decides: `usageExitCode` when it carries parse errors, `0` when it does not.
 
 ```ts with-api
 import { CliRuntime } from "@effected/cli";
@@ -84,11 +84,13 @@ Effect.runPromiseExit(validate.pipe(Effect.provide(CliLogger.layer()))).then((ex
 // Failure
 ```
 
-Note that this program does **not** apply `reportFailures`; it reports itself. Applying both is fine too — `reportFailures` renders whatever the failure is, and a `reported` error still carries the code you chose.
+Note that this program does **not** apply `reportFailures`; it reports itself. That is the only place this pattern belongs. Under `CliRuntime.main` or `reportFailures`, do not print the failure yourself: `reportFailures` renders every error except a `ShowHelp`, a `CliError.UserError` whose reported mark is `false` and the `CliExit` sentinel, so a failure you logged and then marked would print twice. Fail with the error and put the multi-line rendering in the `render` option instead — [Rendering a multi-line failure](#rendering-a-multi-line-failure) below shows it.
 
 ## `reportFailures` never renders `ShowHelp`
 
 `effect/unstable/cli`'s `Command.runWith` already printed the help text, or the parse errors, before a `CliError.ShowHelp` reaches `reportFailures` — rendering it a second time produces nothing but a stray "Help requested" line. `reportFailures` special-cases it: a `ShowHelp` carrying parse errors is remapped to the `usageExitCode` option (default `64`, BSD `EX_USAGE`); a bare `--help` invocation or a root command with no arguments — a `ShowHelp` with no errors — keeps exit `0`.
+
+A `CliError.UserError` a handler fails with gets the same treatment. `Command.runWith` renders it through its `CliOutput` formatter and flips its `Runtime.errorReported` mark to `false` before re-failing, so `reportFailures` skips it and exits `usageExitCode` (default `64`) — unless the error carries its own `Runtime.errorExitCode`, which it keeps. `reportFailures` cannot tell that `UserError` from one you marked with `CliRuntime.reported`, because both carry the same `false` mark: **a `CliError.UserError` marked with `reported` is treated as already printed and is not rendered** — use a different error type if the program has not printed it. With runWith's `renderErrors: false`, runWith prints nothing, the mark stays set, and `reportFailures` renders the `UserError` like any other failure, with the `exitCode` fallback.
 
 ```ts
 import { CliRuntime } from "@effected/cli";
