@@ -258,6 +258,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/mcp": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/memfs": {
 							range: "^0.9.0",
 							peer: "^0.9.0",
