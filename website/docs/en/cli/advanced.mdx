@@ -159,7 +159,7 @@ import { Layer } from "effect";
 // overrides replaces individual formatter methods without losing the rest —
 // here, appending a "via <carrier>" line to the version output.
 const Platform = CliColor.formatterLayer({
-  formatVersion: (version) => `${version} (via mytool)`,
+  formatVersion: (name, version) => `${name} v${version} (via mytool)`,
 }).pipe(Layer.provideMerge(NodeServices.layer));
 ```
 

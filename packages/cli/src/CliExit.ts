@@ -38,6 +38,11 @@ export class CliExit extends Context.Service<CliExit, CliExitShape>()("@effected
 	 * `Effect.provide` calls, so without `Layer.fresh` a second provide of this
 	 * layer anywhere in the program — a nested `CliRuntime.main`, a test
 	 * helper — would silently share the first run's cell and inherit its code.
+	 *
+	 * A program run under `CliRuntime.main` must NOT provide `CliExit.layer`
+	 * itself: `main` already provides one, and a second provide mints a second,
+	 * unrelated cell that `main` never reads back, so `CliExit.set` calls made
+	 * against it are silently discarded and the run exits `0`.
 	 */
 	static readonly layer: Layer.Layer<CliExit> = Layer.fresh(Layer.sync(this, () => ({ code: MutableRef.make(0) })));
 
