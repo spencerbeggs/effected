@@ -1272,6 +1272,9 @@ importers:
       '@effected/config-file':
         specifier: workspace:*
         version: link:../packages/config-file/dist/dev/pkg
+      '@effected/engine':
+        specifier: workspace:*
+        version: link:../packages/engine/dist/dev/pkg
       '@effected/git':
         specifier: workspace:*
         version: link:../packages/git/dist/dev/pkg
@@ -1299,6 +1302,9 @@ importers:
       '@effected/markdown':
         specifier: workspace:*
         version: link:../packages/markdown/dist/dev/pkg
+      '@effected/mcp':
+        specifier: workspace:*
+        version: link:../packages/mcp/dist/dev/pkg
       '@effected/memfs':
         specifier: workspace:*
         version: link:../packages/memfs/dist/dev/pkg
