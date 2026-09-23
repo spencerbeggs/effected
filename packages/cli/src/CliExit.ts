@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, MutableRef } from "effect";
+import { isExitCode } from "./internal/isExitCode.js";
 
 /**
  * The shape behind {@link CliExit}.
@@ -52,9 +53,22 @@ export class CliExit extends Context.Service<CliExit, CliExitShape>()("@effected
 	 * @remarks
 	 * Highest-wins, not last-wins, so a later "clean" step cannot quietly
 	 * downgrade an earlier finding's code.
+	 *
+	 * The code must be an integer in `0..255` — the range a POSIX exit status
+	 * can carry. Anything else dies as a defect naming the value: `256` would
+	 * wrap to exit `0` and silently pass a run with findings, and a fraction
+	 * such as `1.5` makes `process.exit` throw `ERR_OUT_OF_RANGE` after the
+	 * program has finished.
+	 *
+	 * The code only applies to a run that **succeeds**. A program failure beats
+	 * findings: when the program fails, `CliRuntime.main` never reads this
+	 * cell, and the failure's own exit code (or the `exitCode` fallback) wins.
 	 */
 	static readonly set = (code: number): Effect.Effect<void, never, CliExit> =>
 		Effect.gen(function* () {
+			if (!isExitCode(code)) {
+				return yield* Effect.die(new Error(`CliExit.set: exit code must be an integer 0..255, received ${code}`));
+			}
 			const exit = yield* CliExit;
 			if (code > MutableRef.get(exit.code)) MutableRef.set(exit.code, code);
 		});

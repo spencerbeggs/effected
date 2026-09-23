@@ -4,8 +4,13 @@ import { CliError } from "effect/unstable/cli";
 import { CliExit } from "./CliExit.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
+import { isExitCode } from "./internal/isExitCode.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
+
+/** A `UserError` `Command.runWith` already printed: it sets the mark to `false` after rendering. */
+const isRenderedUserError = (u: unknown): u is CliError.UserError =>
+	CliError.isCliError(u) && u._tag === "UserError" && Runtime.getErrorReported(u) === false;
 
 /**
  * How a failure is turned into output and an exit code.
@@ -26,15 +31,23 @@ export interface ReportFailuresOptions {
 	 *
 	 * @remarks
 	 * An error carrying `Runtime.errorExitCode` keeps its own; this is only the
-	 * fallback, and it defaults to `1`.
+	 * fallback, and it defaults to `1`. Pass an integer in `0..255`, the range a
+	 * POSIX exit status can carry — `256` wraps to `0` and passes a failed run.
 	 */
 	readonly exitCode?: number | undefined;
 	/**
-	 * The exit code for a usage error: a `ShowHelp` carrying parse errors.
+	 * The exit code for a usage error: a `ShowHelp` carrying parse errors, or a
+	 * `CliError.UserError` `Command.runWith` already printed.
 	 *
 	 * @remarks
-	 * Defaults to `64` (BSD `EX_USAGE`). A `ShowHelp` with no errors — a bare
-	 * root invocation, or `--help` — always exits `0`.
+	 * Defaults to `64` (BSD `EX_USAGE`); pass an integer in `0..255`. A
+	 * `ShowHelp` with no errors — a bare root invocation, or `--help` — always
+	 * exits `0`.
+	 *
+	 * Keep `Command.runWith`'s default `renderErrors`: with `renderErrors: false`
+	 * runWith prints no parse errors and `reportFailures` never renders a
+	 * `ShowHelp`, so a parse error would exit with this code having printed
+	 * nothing on stderr.
 	 */
 	readonly usageExitCode?: number | undefined;
 }
@@ -134,7 +147,14 @@ const chooseExitCode = (error: unknown, fallback: number | undefined): number =>
  * rendering it again would print nothing but a stray "Help requested" line.
  * A `ShowHelp` carrying errors is remapped to `usageExitCode` (default `64`,
  * BSD `EX_USAGE`); a bare `--help` or root invocation — `errors` empty —
- * keeps exit `0`. The private `ExitRequested` sentinel `CliRuntime.main`
+ * keeps exit `0`. A `CliError.UserError` is likewise skipped when
+ * `Command.runWith` already rendered it through its `CliOutput` formatter
+ * (runWith flips its `Runtime.errorReported` mark to `false` after printing)
+ * and exits with `usageExitCode`; under runWith's `renderErrors: false` the
+ * mark stays set, and it renders here like any other failure. Every other
+ * error renders even when it already carries the reported mark — a gate
+ * failure marked with `CliRuntime.reported` still prints its line. The
+ * private `ExitRequested` sentinel `CliRuntime.main`
  * raises is likewise never rendered; it only carries the exit code a
  * successful program recorded through `CliExit`.
  *
@@ -167,6 +187,15 @@ export class CliRuntime {
 					if (isShowHelp(error)) {
 						const code = error.errors.length > 0 ? (options.usageExitCode ?? 64) : 0;
 						return Effect.fail(CliRuntime.reported(error, code));
+					}
+
+					// Command.runWith rendered a UserError through the CliOutput formatter
+					// and flipped its mark to false before re-failing. Rendering it again
+					// prints the same complaint twice. A UserError is a usage error, so it
+					// exits like a ShowHelp carrying errors. With runWith's
+					// `renderErrors: false` the mark stays true and it renders below.
+					if (isRenderedUserError(error)) {
+						return Effect.fail(CliRuntime.reported(error, options.usageExitCode ?? 64));
 					}
 
 					const render = options.render ?? ((value: unknown) => String(value));
@@ -210,6 +239,14 @@ export class CliRuntime {
 			yield* program;
 			const exit = yield* CliExit;
 			const code = MutableRef.get(exit.code);
+			// CliExit.set validates, but the cell is a public MutableRef a program
+			// can write directly; 256 would wrap to exit 0, 1.5 would throw in
+			// process.exit.
+			if (!isExitCode(code)) {
+				return yield* Effect.die(
+					new Error(`CliRuntime.main: CliExit code must be an integer 0..255, received ${code}`),
+				);
+			}
 			if (code !== 0) return yield* Effect.fail(new ExitRequested(code));
 		}).pipe(
 			Effect.provide(CliExit.layer),
@@ -225,6 +262,14 @@ export class CliRuntime {
 	 * Exported because a program that reports a failure itself — a validation
 	 * command that prints its own diagnostics, say — needs the same two marks
 	 * and should not have to rediscover the inverted polarity.
+	 *
+	 * Under {@link CliRuntime.main} or {@link CliRuntime.reportFailures}, do NOT
+	 * print the failure yourself before failing with it: `reportFailures`
+	 * renders every error but a `ShowHelp` and a runWith-printed `UserError`,
+	 * marked or not, so it would print twice. Fail with the marked error and put
+	 * any multi-line rendering in the `render` option instead. The mark matters
+	 * for a program run WITHOUT `reportFailures`, where it keeps the runtime
+	 * from reporting a failure the program already printed.
 	 *
 	 * The marks are added in place, so a typed error comes back as its own
 	 * type: the `E` overload returns the very instance it was given, and a

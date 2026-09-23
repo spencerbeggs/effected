@@ -1,5 +1,7 @@
+import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Console, Context, Effect, Exit, Layer, Runtime } from "effect";
+import { Cause, Console, Context, Effect, Exit, Layer, MutableRef, Runtime } from "effect";
+import { CliError, Command } from "effect/unstable/cli";
 import { CliExit, CliRuntime } from "../src/index.js";
 
 class Platform extends Context.Service<Platform, { readonly name: string }>()("test/Platform") {}
@@ -48,6 +50,15 @@ describe("CliRuntime.main", () => {
 			assert.strictEqual(codeOf(exit), 1);
 			assert.isTrue(finalized);
 			assert.deepStrictEqual(err, [], "the findings sentinel is never rendered");
+			// The sentinel carries the no-double-report mark (false SUPPRESSES), so
+			// the runtime stays quiet, and the teardown turns it into exit 1.
+			assert.isTrue(Exit.isFailure(exit));
+			if (Exit.isFailure(exit)) {
+				assert.strictEqual(Runtime.getErrorReported(Cause.squash(exit.cause)), false);
+			}
+			const codes: number[] = [];
+			Runtime.defaultTeardown(exit, (code) => codes.push(code));
+			assert.deepStrictEqual(codes, [1]);
 		}),
 	);
 
@@ -77,6 +88,80 @@ describe("CliRuntime.main", () => {
 			);
 			assert.deepStrictEqual(err, ["Error: boom"]);
 			assert.deepStrictEqual(out, []);
+		}),
+	);
+
+	for (const bad of [256, 1.5]) {
+		it.effect(`validates a code written to the CliExit cell directly (${bad})`, () =>
+			Effect.gen(function* () {
+				const { double, out, err } = capturing();
+				const program = Effect.gen(function* () {
+					const cell = yield* CliExit;
+					MutableRef.set(cell.code, bad);
+				});
+				const exit = yield* CliRuntime.main(program, { platform: Layer.empty }).pipe(
+					Effect.exit,
+					Effect.provideService(Console.Console, double),
+				);
+				// A bad code is a wiring defect: rendered once, exit 1 — never a
+				// silent 0 (256 wraps to 0 under POSIX) or a process.exit throw (1.5).
+				assert.strictEqual(codeOf(exit), 1);
+				assert.deepStrictEqual(err, [
+					`Error: CliRuntime.main: CliExit code must be an integer 0..255, received ${bad}`,
+				]);
+				assert.deepStrictEqual(out, []);
+			}),
+		);
+	}
+
+	it.effect("a program failure beats findings: its own code wins", () =>
+		Effect.gen(function* () {
+			const { double } = capturing();
+			const program = Effect.gen(function* () {
+				yield* CliExit.set(2);
+				return yield* Effect.fail(new Error("boom"));
+			});
+			const exit = yield* CliRuntime.main(program, { platform: Layer.empty, exitCode: 5 }).pipe(
+				Effect.exit,
+				Effect.provideService(Console.Console, double),
+			);
+			assert.strictEqual(codeOf(exit), 5);
+		}),
+	);
+});
+
+describe("CliRuntime.main and a UserError raised through Command.runWith", () => {
+	// A handler that fails with CliError.UserError. runWith renders it through
+	// the CliOutput formatter itself, then re-fails with it.
+	const deploy = Command.make("deploy", {}, () =>
+		Effect.fail(new CliError.UserError({ cause: "unknown target: moon", userMessage: "unknown target: moon" })),
+	);
+
+	it.effect("reports it exactly once, and exits with the usage code 64", () =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			const exit = yield* CliRuntime.main(Command.runWith(deploy, { version: "1.0.0" })([]), {
+				platform: NodeServices.layer,
+			}).pipe(Effect.exit, Effect.provideService(Console.Console, double));
+			assert.strictEqual(err.length, 1, `expected one stderr entry, got ${JSON.stringify(err)}`);
+			assert.include(err[0], "unknown target: moon");
+			assert.deepStrictEqual(out, []);
+			assert.strictEqual(codeOf(exit), 64);
+			const custom = yield* CliRuntime.main(Command.runWith(deploy, { version: "1.0.0" })([]), {
+				platform: NodeServices.layer,
+				usageExitCode: 2,
+			}).pipe(Effect.exit, Effect.provideService(Console.Console, capturing().double));
+			assert.strictEqual(codeOf(custom), 2);
+		}),
+	);
+
+	it.effect("with renderErrors: false runWith prints nothing, so reportFailures renders it once", () =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(Command.runWith(deploy, { version: "1.0.0", renderErrors: false })([]), {
+				platform: NodeServices.layer,
+			}).pipe(Effect.exit, Effect.provideService(Console.Console, double));
+			assert.strictEqual(err.length, 1, `expected one stderr entry, got ${JSON.stringify(err)}`);
 		}),
 	);
 });
