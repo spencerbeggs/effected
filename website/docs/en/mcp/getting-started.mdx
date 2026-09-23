@@ -24,7 +24,7 @@ instead of the `130` a plain interrupt would produce:
 
 ```ts
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp";
-import { NodeRuntime } from "@effect/platform-node";
+import { NodeRuntime, NodeStdio } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 import { Tool, Toolkit } from "effect/unstable/ai";
 
@@ -35,7 +35,7 @@ class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
 
 const GetThing = Tool.make("get_thing", {
   description: "Fetch a thing by id.",
-  parameters: { id: Schema.String },
+  parameters: Schema.Struct({ id: Schema.String }),
   success: Schema.Struct({ name: Schema.String }),
   failure: NotFound,
 });
@@ -59,16 +59,28 @@ const MyHandlers = MyTools.toLayer({
 });
 
 const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
-const Main = ToolsLayer.pipe(
+const ServerLayer = ToolsLayer.pipe(
   Layer.provideMerge(McpStdio.layer({ name: "my-server", version: "1.0.0" })),
 );
+
+// The platform Stdio is the one service provided at the edge.
+const Main = ServerLayer.pipe(Layer.provide(NodeStdio.layer));
 
 NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown });
 ```
 
+The platform `Stdio` is the one service provided at the edge: `ServerLayer`
+still requires it, and `Main` supplies `NodeStdio.layer` from
+`@effect/platform-node` just before launch. Leave that line out and
+`McpStdio.launch(Main)` fails to typecheck, because `Stdio` is still in its
+requirements. Test `ServerLayer`, never `Main`: `McpHarness.make` supplies
+its own queue-backed `Stdio`.
+
 `McpStdio.layer` is `McpServer.layerStdio` with `LogToStderr` merged into
-its own output, so every layer composed with it — including `MyHandlers`
-above — logs to stderr, never stdout, which is the JSON-RPC wire.
+its own output, so every layer it provides — `ToolsLayer` above, and the
+`MyHandlers` inside it — logs to stderr, never stdout, which is the
+JSON-RPC wire. A layer merged beside it with `Layer.mergeAll` is not
+provided by it and does not inherit the setting.
 
 ## A tool with a remediated failure
 

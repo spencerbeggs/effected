@@ -15,19 +15,77 @@ offers two ways to close the gap, at different scopes.
 
 ### `ToolInputSchema` — pure walkers
 
-For a server that is not (yet) adopting `McpToolkit`, run the walkers
-directly inside a handler:
+For a tool whose input is **raw JSON Schema** — a `Tool.dynamic` tool —
+nothing in core strictly validates the payload: core decodes it as
+`Schema.Unknown`, and dies at registration if the tool is annotated strict.
+Run the walkers inside the handler instead, against the JSON Schema you
+registered. The pairing with `objectRooted` is the common case: a
+top-level discriminated union only reaches a server as raw JSON Schema,
+because core dies at boot on a union root.
 
 ```ts
-import { ToolInputSchema } from "@effected/mcp";
+import { McpToolkit, ToolInputSchema } from "@effected/mcp";
+import { Effect, Layer, Schema } from "effect";
+import { Tool, Toolkit } from "effect/unstable/ai";
 
-// Inside a tool handler, against the schema the tool actually serves:
-const levels = ToolInputSchema.unknownKeys(payload, tool.inputSchema);
-if (levels.length > 0) {
-  const message = ToolInputSchema.formatUnknownKeys(levels);
-  // "Unrecognized parameter(s): extra, nested.bogus. Accepted params: id, nested."
-}
+// A top-level union, written as raw JSON Schema and rewritten to an object root.
+const EditInput = ToolInputSchema.objectRooted({
+  anyOf: [
+    {
+      type: "object",
+      properties: {
+        action: { const: "rename" },
+        to: { type: "string" },
+        options: { type: "object", properties: { force: { type: "boolean" } }, additionalProperties: false },
+      },
+      required: ["action", "to"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { action: { const: "delete" } },
+      required: ["action"],
+      additionalProperties: false,
+    },
+  ],
+});
+
+class UnknownKeys extends Schema.TaggedError<UnknownKeys>()("UnknownKeys", { message: Schema.String }) {}
+
+const Edit = Tool.dynamic("edit", {
+  description: "Rename or delete a thing.",
+  parameters: EditInput,
+  failure: UnknownKeys,
+});
+
+const EditTools = Toolkit.make(Edit);
+
+const EditHandlers = EditTools.toLayer({
+  // A dynamic tool is decoded as Schema.Unknown: the handler sees the raw payload.
+  edit: (payload) => {
+    const levels = ToolInputSchema.unknownKeys(payload, EditInput);
+    return levels.length > 0
+      ? Effect.fail(new UnknownKeys({ message: ToolInputSchema.formatUnknownKeys(levels) }))
+      : Effect.succeed(payload);
+  },
+});
+
+// McpToolkit never re-annotates a Tool.dynamic tool, so it stays lenient and the handler reports.
+const EditLayer = McpToolkit.layer(EditTools).pipe(Layer.provide(EditHandlers));
 ```
+
+`formatUnknownKeys` writes one sentence per object level that carries an
+unknown key:
+
+```text
+edit({ action: "rename", to: "b", extra: 1, options: { force: true, bogus: 2 } })
+=> Unrecognized parameter(s): extra. Accepted params: action, to, options. Unrecognized parameter(s): options.bogus. Accepted params: force.
+```
+
+This recipe is for dynamic tools only. For a `Tool.make` tool, core
+decodes the payload *before* the handler runs, so an excess key is already
+dropped (lenient) or rejected (strict) by the time a handler could look —
+use `McpToolkit` there.
 
 `unknownKeys` follows `$ref` (into `$defs`, JSON Pointer escapes
 honoured), merges `allOf` properties, chooses a discriminated `oneOf`/
@@ -37,17 +95,10 @@ serves for a strict tool. Only `additionalProperties: false` closes a
 node; a missing value, `true`, or a schema-valued `additionalProperties`
 all leave it open.
 
-A tool whose parameters are a top-level discriminated union needs
-`objectRooted` before it is registered — core dies at boot decoding a
-non-object tool-parameters root:
-
-```ts
-import { ToolInputSchema } from "@effected/mcp";
-
-const rewritten = ToolInputSchema.objectRooted(unionSchema);
-// a union of { action: "a", ... } | { action: "b", ... } becomes an
-// object root with oneOf and "x-discriminator": "action"
-```
+`objectRooted` inlines a root `$ref` and rewrites a top-level union of
+objects sharing an `action`, `kind`, `_tag` or `type` literal to an object
+root carrying `oneOf` and `"x-discriminator"` — MCP requires an object
+root. It returns the schema unchanged when there is nothing to rewrite.
 
 ### `McpToolkit` — strict by default, complete reporting
 
@@ -98,6 +149,7 @@ import { Effect } from "effect";
 
 const test = Effect.gen(function* () {
   const client = yield* McpHarness.make(ServerLayer);
+  yield* client.initialize; // initialize + notifications/initialized: every stateful revision requires it
   const result = yield* client.callTool("get_thing", { id: "known" });
   // result.result.structuredContent === { name: "a known thing" }
   yield* client.close;
@@ -113,6 +165,14 @@ or dies the wait rather than hanging the test. With `captureLogs` (default
 `true`), assert `client.stderrSoFar` and `client.consoleLogSoFar` —
 anything on `consoleLogSoFar` in a real server would have corrupted the
 wire.
+
+On a stateful revision — the default is `2025-11-25` — `yield*
+client.initialize` before anything else. A request sent before an
+`initialize` fails fast with `McpTestFailure` reason `NotInitialized`,
+naming the revision, instead of reaching a server that would only answer
+an opaque `Invalid request metadata`. `sendRaw` is never gated, so a test
+can still drive that refusal on purpose. The stateless `2026-07-28`
+revision needs no handshake.
 
 ### A spawned bin, with `McpProcess`
 
@@ -149,13 +209,15 @@ installed bin actually boots:
 import { McpProbe } from "@effected/mcp/testing";
 
 const result = yield* McpProbe.initialize(command);
-// assert result.stderr === "" and result.exitCode === 0
+// assert result.response.error === undefined, result.stderr === "" and result.exitCode === 0
 ```
 
 Stdin stays open until the id-1 response arrives, then closes — closing
 right after writing, as a hand-rolled smoke test typically does, makes an
 Effect server drop the in-flight response and exit `0`, reading as a pass
-with no response at all.
+with no response at all. Assert `result.response.error === undefined` as
+well: a server that refuses the handshake still answers id 1, exits `0`
+and writes nothing to stderr.
 
 ### A pure policy sweep, with `McpToolAudit`
 
@@ -169,8 +231,8 @@ const violations = McpToolAudit.check(tools, {
   input: "closed",
   requireTitle: true,
   // objectRootedOutput defaults to true: the stateless 2026-07-28 adapter
-  // passes a non-object tool output through verbatim, unlike the stateful
-  // revisions, which object-root it.
+  // passes a non-object tool output through verbatim, while the stateful
+  // revisions drop it from the served tool entirely.
 });
 ```
 
@@ -202,12 +264,14 @@ A rejected call's shape on the wire differs by revision:
 
 | Revision | Shape |
 | --- | --- |
-| `2024-11-05` | JSON-RPC error, code `-32602` |
-| `2025-03-26` | JSON-RPC error, code `-32602` |
+| `2024-11-05` | JSON-RPC error, code `-32602` (core's behaviour; not served by `McpStdio.protocols`) |
+| `2025-03-26` | JSON-RPC error, code `-32602` (core's behaviour; not served by `McpStdio.protocols`) |
 | `2025-06-18` | JSON-RPC error, code `-32602` |
 | `2025-11-25` | `isError: true` tool result |
 | `2026-07-28` (stateless) | `isError: true` tool result |
 
 A test suite covering only one shape misses the other half of the matrix
-— `@effected/mcp`'s own tests cross every revision with success, declared
-failure and invalid params.
+— `@effected/mcp`'s own tests cross the three revisions `McpStdio.protocols`
+serves (`2025-06-18`, `2025-11-25` and `2026-07-28`) with success,
+declared failure and invalid params. The two older rows record core's own
+adapters, which `@effected/mcp` neither serves by default nor tests.

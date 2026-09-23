@@ -87,8 +87,8 @@ A stdio server's `main.ts` is one line, plus the layer that wires it:
 
 ```ts
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp";
+import { NodeRuntime, NodeStdio } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
-import { NodeRuntime } from "@effect/platform-node";
 import { Tool, Toolkit } from "effect/unstable/ai";
 
 class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
@@ -98,42 +98,46 @@ class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
 
 const GetThing = Tool.make("get_thing", {
   description: "Fetch a thing by id.",
-  parameters: { id: Schema.String },
+  parameters: Schema.Struct({ id: Schema.String }),
   success: Schema.Struct({ name: Schema.String }),
   failure: NotFound,
 });
 
 const MyTools = Toolkit.make(GetThing);
 
-const MyHandlers = MyTools.toLayer(
-  Effect.gen(function* () {
-    return {
-      get_thing: ({ id }) =>
-        id === "known"
-          ? Effect.succeed({ name: "a known thing" })
-          : Effect.fail(
-              new NotFound({
-                id,
-                remediation: { hint: "List the ids first.", suggestedTool: "list_things" },
-                message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, {
-                  hint: "List the ids first.",
-                  suggestedTool: "list_things",
-                }),
-              }),
-            ),
-    };
-  }),
-);
+const MyHandlers = MyTools.toLayer({
+  get_thing: ({ id }) =>
+    id === "known"
+      ? Effect.succeed({ name: "a known thing" })
+      : Effect.fail(
+          new NotFound({
+            id,
+            remediation: { hint: "List the ids first.", suggestedTool: "list_things" },
+            message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, {
+              hint: "List the ids first.",
+              suggestedTool: "list_things",
+            }),
+          }),
+        ),
+});
 
 const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
 const ServerLayer = ToolsLayer.pipe(
   Layer.provideMerge(McpStdio.layer({ name: "my-server", version: "1.0.0" })),
 );
 
-const Main = ServerLayer; // add more subsystems here with Layer.mergeAll
+// The platform Stdio is the one service provided at the edge.
+const Main = ServerLayer.pipe(Layer.provide(NodeStdio.layer));
 
 NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown });
 ```
+
+The platform `Stdio` is the one service provided at the edge: `ServerLayer`
+still requires it, and `Main` supplies `NodeStdio.layer` from
+`@effect/platform-node` just before launch. Leave that line out and
+`McpStdio.launch(Main)` fails to typecheck, because `Stdio` is still in its
+requirements. Test `ServerLayer`, never `Main`: `McpHarness.make` supplies
+its own queue-backed `Stdio`.
 
 `McpToolkit.layer` re-annotates every tool without its own `Tool.Strict`
 annotation to strict by default, so `get_thing({ id: "known", extra: 1 })`
@@ -146,11 +150,14 @@ below.
 Two ways to close a tool's input schema against unknown keys, at different
 scopes:
 
-- **`ToolInputSchema`** — pure walkers, for a server that does not (or
-  cannot yet) adopt `McpToolkit`: run `ToolInputSchema.unknownKeys(payload,
-  tool.inputSchema)` inside a handler, or `objectRooted(schema)` when a
-  tool's parameters are a top-level discriminated union — core dies at boot
-  on an unrewritten union root.
+- **`ToolInputSchema`** — pure walkers, for a `Tool.dynamic` tool,
+  whose raw JSON Schema core never validates strictly: run
+  `ToolInputSchema.unknownKeys(payload, schema)` inside its handler against
+  the schema you registered, usually paired with `objectRooted(schema)`,
+  because a top-level discriminated union only reaches a server as raw
+  JSON Schema — core dies at boot on a union root. Not for a `Tool.make`
+  tool: core decodes its payload before the handler runs, so an excess key
+  is already dropped or rejected by then.
 - **`McpToolkit.layer(toolkit, options?)`** — the registration-scoped
   decorator, and the recommended default: every tool without its own
   `Tool.Strict` annotation is served and decoded strict
@@ -172,6 +179,64 @@ const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
 const LenientByDefault = McpToolkit.layer(MyTools, { strict: "annotated" }).pipe(Layer.provide(MyHandlers));
 ```
 
+The dynamic-tool recipe, with the handler reporting every unknown key:
+
+```ts
+import { McpToolkit, ToolInputSchema } from "@effected/mcp";
+import { Effect, Layer, Schema } from "effect";
+import { Tool, Toolkit } from "effect/unstable/ai";
+
+// A top-level union, written as raw JSON Schema and rewritten to an object root.
+const EditInput = ToolInputSchema.objectRooted({
+  anyOf: [
+    {
+      type: "object",
+      properties: {
+        action: { const: "rename" },
+        to: { type: "string" },
+        options: { type: "object", properties: { force: { type: "boolean" } }, additionalProperties: false },
+      },
+      required: ["action", "to"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { action: { const: "delete" } },
+      required: ["action"],
+      additionalProperties: false,
+    },
+  ],
+});
+
+class UnknownKeys extends Schema.TaggedError<UnknownKeys>()("UnknownKeys", { message: Schema.String }) {}
+
+const Edit = Tool.dynamic("edit", {
+  description: "Rename or delete a thing.",
+  parameters: EditInput,
+  failure: UnknownKeys,
+});
+
+const EditTools = Toolkit.make(Edit);
+
+const EditHandlers = EditTools.toLayer({
+  // A dynamic tool is decoded as Schema.Unknown: the handler sees the raw payload.
+  edit: (payload) => {
+    const levels = ToolInputSchema.unknownKeys(payload, EditInput);
+    return levels.length > 0
+      ? Effect.fail(new UnknownKeys({ message: ToolInputSchema.formatUnknownKeys(levels) }))
+      : Effect.succeed(payload);
+  },
+});
+
+// McpToolkit never re-annotates a Tool.dynamic tool, so it stays lenient and the handler reports.
+const EditLayer = McpToolkit.layer(EditTools).pipe(Layer.provide(EditHandlers));
+```
+
+```text
+edit({ action: "rename", to: "b", extra: 1, options: { force: true, bogus: 2 } })
+=> Unrecognized parameter(s): extra. Accepted params: action, to, options. Unrecognized parameter(s): options.bogus. Accepted params: force.
+```
+
 ## Testing
 
 `@effected/mcp/testing` is a separate entrypoint — importing it never pulls
@@ -183,11 +248,17 @@ import { Effect } from "effect";
 
 const test = Effect.gen(function* () {
   const client = yield* McpHarness.make(ServerLayer);
+  yield* client.initialize; // initialize + notifications/initialized: every stateful revision requires it
   const result = yield* client.callTool("get_thing", { id: "known" });
   // result.result.structuredContent === { name: "a known thing" }
   yield* client.close;
 });
 ```
+
+On a stateful revision (the default is `2025-11-25`), `initialize` comes
+first: any other request sent before it fails fast with `McpTestFailure`
+reason `NotInitialized` instead of the server's opaque `Invalid request
+metadata`.
 
 `McpHarness.make` runs the server in-process over queue-backed `Stdio`, so
 a test sees the exact served schemas and wire results a real client would,
@@ -197,7 +268,9 @@ real terminal instead of the test's queues. `McpProcess.spawn` and
 `McpProbe.initialize` are the spawned-bin equivalents, for a test that
 must exercise a built artifact rather than a layer — `McpProbe` in
 particular is the MCP half of a packed-install proof: it keeps stdin open
-until the response arrives, then asserts empty stderr and exit 0.
+until the response arrives, and the caller asserts
+`result.response.error === undefined`, empty `stderr` and exit 0 — a
+server that refuses the handshake still answers, exits 0 and stays quiet.
 `McpToolAudit.check` is a pure sweep over a served `tools/list`, for a
 static policy check with no server at all.
 

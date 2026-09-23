@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T22:34:23Z
-  body_sha256: 2a64e40cd43213c53fc767fd9d207e81b4a26cdd79051c515c0760733d476834
+  at: 2026-09-23T23:21:20Z
+  body_sha256: dcb2f486cc07d8e732abcd0ec4eadeaae9fa8699472847b882267788ab2bb448
 ---
 
 # @effected/mcp
@@ -52,10 +52,10 @@ exports this package consumes, not exports of its own.
 
 | Export | Contract |
 | --- | --- |
-| `McpHarness.make` | `<ROut, E, R>(server: Layer.Layer<ROut, E, R>, options?) => Effect.Effect<McpHarness, E, Scope \| Exclude<R, Stdio>>` — generic over the server's own output, so it accepts `McpStdio.layer` directly (whose output is `McpServer \| McpServerClient`, not `never`) (A3). Runs in-process over `Stdio.layerTest` with queues, the queue-backed `Stdio` provided innermost, matching responses by id. A caller-supplied `_meta` wins over the fields the harness injects when building a stateless frame. In stateless mode it injects `_meta` and uses `server/discover` in place of `initialize`. With `strictStdout` (default `true`), any stdout line that isn't JSON-RPC dies the wait; every wait races a stop signal and a corruption signal, so none can outlive the server. Operations, including `request`/`startRequest`/`notify` beyond the original spec table (A3): `initialize`/`discover`, `callTool`, `listTools`, `readResource`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`, `consoleLogSoFar`, `close` (`Queue.end`, never `shutdown`). Operation errors are typed `McpTestFailure`, a new `./testing` export (A3). Both `captureLogs` and `strictStdout` default to `true` (A3). |
+| `McpHarness.make` | `<ROut, E, R>(server: Layer.Layer<ROut, E, R>, options?) => Effect.Effect<McpHarness, E, Scope \| Exclude<R, Stdio>>` — generic over the server's own output, so it accepts `McpStdio.layer` directly (whose output is `McpServer \| McpServerClient`, not `never`) (A3). Runs in-process over `Stdio.layerTest` with queues, the queue-backed `Stdio` provided innermost, matching responses by id. A caller-supplied `_meta` wins over the fields the harness injects when building a stateless frame. In stateless mode it injects `_meta` and uses `server/discover` in place of `initialize`. With `strictStdout` (default `true`), any stdout line that isn't JSON-RPC dies the wait; every wait races a stop signal and a corruption signal, so none can outlive the server. On a stateful revision, a request other than `initialize` sent before one fails fast with `NotInitialized` rather than reaching the server's opaque `Invalid request metadata`; `sendRaw` is never gated. Operations, including `request`/`startRequest`/`notify` beyond the original spec table (A3): `initialize`/`discover`, `callTool`, `listTools`, `readResource`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`, `consoleLogSoFar`, `close` (`Queue.end`, never `shutdown`). Operation errors are typed `McpTestFailure`, a new `./testing` export (A3). Both `captureLogs` and `strictStdout` default to `true` (A3). |
 | `McpProcess.spawn` | `(command: ChildProcess.Command) => Effect<McpProcess, PlatformError, ChildProcessSpawner \| Scope>`, returning an `McpProcess` instance (A4). The test file builds the command with `execPath` and `env`. Reads stdout with `Stream.decodeText` and `Stream.splitLines`. `nextLine` and `readUntilResponse` fail with `McpTestFailure` (`StreamEnded` or `NotJsonRpc`) rather than hanging (A4); `readUntilResponse(id)` returns `{ response, seen }`, because `list_changed` notifications interleave. `handshake(protocol?)` always uses id 1 (A4). `closeStdin` is `Queue.end`, never `shutdown`. `stderrSoFar` is added beside `stderrFinal` (A4). |
-| `McpProbe.initialize` | `(command, options: McpProbeOptions) => Effect.Effect<McpProbeResult, McpTestFailure \| PlatformError, ChildProcessSpawner>`, with `stdout` holding the raw lines (A5). Keeps stdin open until the id-1 response arrives, then closes. On a `StreamEnded` failure the exit code and stderr are folded into the failure itself, because the caller holds no handle to read them separately. The caller asserts empty stderr and exit 0 — the MCP half of the packed-install proof. |
-| `McpTestFailure` | `Schema.TaggedError` shared by every test client, introduced as part of A3: `reason: "StreamEnded" \| "ServerStopped" \| "NotJsonRpc" \| "ErrorResponse"`, `message: string`. |
+| `McpProbe.initialize` | `(command, options: McpProbeOptions) => Effect.Effect<McpProbeResult, McpTestFailure \| PlatformError, ChildProcessSpawner>`, with `stdout` holding the raw lines (A5). Keeps stdin open until the id-1 response arrives, then closes. On a `StreamEnded` failure the exit code and stderr are folded into the failure itself, because the caller holds no handle to read them separately. The caller asserts `response.error === undefined`, empty stderr and exit 0 — the MCP half of the packed-install proof. |
+| `McpTestFailure` | `Schema.TaggedError` shared by every test client, introduced as part of A3: `reason: "StreamEnded" \| "ServerStopped" \| "NotJsonRpc" \| "NotInitialized" \| "ErrorResponse"`, `message: string`. `StreamEnded`/`NotJsonRpc` come from the spawned clients; `ServerStopped`/`NotInitialized`/`ErrorResponse` from `McpHarness`, which dies (never raises `NotJsonRpc`) on a non-JSON-RPC line. |
 | `McpToolAudit.check` | `(tools: ReadonlyArray<ServedTool>, policy: McpToolAuditPolicy) => ReadonlyArray<string>`. A pure sweep over `tools/list` that returns violations, `"<tool>: <what>"` per line. `input: "open" \| "closed" \| "any"`; `requireTitle?`; `requireOutputSchema?`; `objectRootedOutput?` defaults to `true` ([D10](../decisions/mcp-tool-audit-object-rooted-outputs.md)); `maxDescription?`; `requireHints?`. **Reports a duplicate tool name under every policy**, independent of `input`/`requireTitle`/etc. (A8). |
 | `JsonRpcMessage`, `ServedTool` | The wire-frame and served-tool-listing-entry shapes shared across the testing surface. |
 
@@ -135,12 +135,16 @@ writing; the upstream issue drafts are on hold, by user directive, until
 - **A tool whose parameters are a top-level union dies at boot**, because
   `McpSchema`'s tool-JSON encoding requires an object root and decodes it
   with `orDie`. Workaround: `ToolInputSchema.objectRooted`, which rewrites
-  a discriminated union to an object root before the tool is registered.
+  a raw JSON Schema discriminated union to an object root, registered as a
+  `Tool.dynamic` tool whose handler runs `unknownKeys` on the raw payload.
 
 ## `InvalidParams` per protocol revision
 
 How a rejected call's `McpSchema.InvalidParams` actually reaches the
-client differs by revision — `@effected/mcp`'s tests cover every row:
+client differs by revision. `@effected/mcp`'s tests cover the three
+revisions `McpStdio.protocols` serves (`2025-06-18`, `2025-11-25`,
+`2026-07-28`); the two older rows record core's own adapters, untested
+here:
 
 | Revision | Shape |
 | --- | --- |
