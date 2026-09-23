@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Context, Effect, Layer, Schema } from "effect";
 import { McpProtocol, McpServer, Tool, Toolkit } from "effect/unstable/ai";
 import type { McpToolkitOptions } from "../src/index.js";
-import { McpStdio, McpToolkit } from "../src/index.js";
+import { McpStdio, McpToolkit, ToolInputSchema } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
 
 class Stamper extends Context.Service<Stamper, { readonly now: () => string }>()("test/Stamper") {}
@@ -76,6 +76,48 @@ const DynamicHandlers = DynamicKit.toLayer({
 const dynamicServer = McpToolkit.layer(DynamicKit).pipe(
 	Layer.provide(DynamicHandlers),
 	Layer.provideMerge(McpStdio.layer({ name: "toolkit-dynamic-test", version: "0.0.0" })),
+);
+
+// The documented ToolInputSchema recipe: a raw top-level union, object-rooted, served as a
+// Tool.dynamic tool, whose handler walks the raw payload against the schema it registered.
+const EditInput = ToolInputSchema.objectRooted({
+	anyOf: [
+		{
+			type: "object",
+			properties: {
+				action: { const: "rename" },
+				to: { type: "string" },
+				options: { type: "object", properties: { force: { type: "boolean" } }, additionalProperties: false },
+			},
+			required: ["action", "to"],
+			additionalProperties: false,
+		},
+		{
+			type: "object",
+			properties: { action: { const: "delete" } },
+			required: ["action"],
+			additionalProperties: false,
+		},
+	],
+});
+class UnknownKeys extends Schema.TaggedError<UnknownKeys>()("UnknownKeys", { message: Schema.String }) {}
+const Edit = Tool.dynamic("edit", {
+	description: "Rename or delete a thing.",
+	parameters: EditInput,
+	failure: UnknownKeys,
+});
+const EditTools = Toolkit.make(Edit);
+const EditHandlers = EditTools.toLayer({
+	edit: (payload) => {
+		const levels = ToolInputSchema.unknownKeys(payload, EditInput);
+		return levels.length > 0
+			? Effect.fail(new UnknownKeys({ message: ToolInputSchema.formatUnknownKeys(levels) }))
+			: Effect.succeed(payload);
+	},
+});
+const editServer = McpToolkit.layer(EditTools).pipe(
+	Layer.provide(EditHandlers),
+	Layer.provideMerge(McpStdio.layer({ name: "toolkit-edit-test", version: "0.0.0" })),
 );
 
 interface ToolResult {
@@ -271,6 +313,33 @@ describe("McpToolkit.layer", () => {
 			const harness = yield* McpHarness.make(serve(McpToolkit.layer(Kit)));
 			yield* harness.initialize;
 			assert.isTrue(resultOf(yield* harness.callTool("search", { query: "q", extra: 1 })).isError);
+		}),
+	);
+
+	it.effect("recipe: a Tool.dynamic handler walks its raw payload against the objectRooted schema it registered", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(editServer);
+			yield* harness.initialize;
+			// Served object-rooted: core would die at boot on the unrewritten union root.
+			const [served] = yield* harness.listTools;
+			assert.strictEqual(served?.inputSchema.type, "object");
+			assert.strictEqual(served?.inputSchema["x-discriminator"], "action");
+
+			const rejected = resultOf(
+				yield* harness.callTool("edit", { action: "rename", to: "b", extra: 1, options: { force: true, bogus: 2 } }),
+			);
+			assert.isTrue(rejected.isError);
+			assert.strictEqual(
+				rejected.content[0]?.text,
+				"Unrecognized parameter(s): extra. Accepted params: action, to, options. Unrecognized parameter(s): options.bogus. Accepted params: force.",
+			);
+			// The second union member is selected by its discriminant, not by position.
+			const deleted = resultOf(yield* harness.callTool("edit", { action: "delete", to: "b" }));
+			assert.strictEqual(deleted.content[0]?.text, "Unrecognized parameter(s): to. Accepted params: action.");
+			// Control: a clean payload reaches the handler's success path.
+			const clean = resultOf(yield* harness.callTool("edit", { action: "delete" }));
+			assert.notStrictEqual(clean.isError, true);
+			assert.deepStrictEqual(clean.structuredContent, { action: "delete" });
 		}),
 	);
 });
