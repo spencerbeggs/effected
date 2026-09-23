@@ -158,10 +158,35 @@ describe("CliRuntime.main and a UserError raised through Command.runWith", () =>
 	it.effect("with renderErrors: false runWith prints nothing, so reportFailures renders it once", () =>
 		Effect.gen(function* () {
 			const { double, err } = capturing();
-			yield* CliRuntime.main(Command.runWith(deploy, { version: "1.0.0", renderErrors: false })([]), {
+			const exit = yield* CliRuntime.main(Command.runWith(deploy, { version: "1.0.0", renderErrors: false })([]), {
 				platform: NodeServices.layer,
 			}).pipe(Effect.exit, Effect.provideService(Console.Console, double));
 			assert.strictEqual(err.length, 1, `expected one stderr entry, got ${JSON.stringify(err)}`);
+			// Rendered here like any other failure, so it takes the fallback exit
+			// code, not the usage code.
+			assert.strictEqual(codeOf(exit), 1);
+		}),
+	);
+
+	it.effect("a plain UserError carries no exit-code mark of its own", () =>
+		Effect.sync(() => {
+			// The usage-code fallback below relies on this: were core ever to mark
+			// a UserError with a code, chooseExitCode would keep that instead.
+			assert.isFalse(Runtime.errorExitCode in new CliError.UserError({ cause: "x" }));
+		}),
+	);
+
+	it.effect("a UserError marked with an explicit exit code keeps it, and is printed once", () =>
+		Effect.gen(function* () {
+			const marked = Command.make("deploy", {}, () =>
+				Effect.fail(CliRuntime.reported(new CliError.UserError({ cause: "x" }), 3)),
+			);
+			const { double, err } = capturing();
+			const exit = yield* CliRuntime.main(Command.runWith(marked, { version: "1.0.0" })([]), {
+				platform: NodeServices.layer,
+			}).pipe(Effect.exit, Effect.provideService(Console.Console, double));
+			assert.strictEqual(err.length, 1, `expected one stderr entry, got ${JSON.stringify(err)}`);
+			assert.strictEqual(codeOf(exit), 3);
 		}),
 	);
 });

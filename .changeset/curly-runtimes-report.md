@@ -22,6 +22,8 @@ CliLogger.layer({ stderrFrom: "Error" }); // restores the pre-0.x split
 
 `Command.runWith` already renders a `CliError.UserError` itself, through its `CliOutput` formatter, before re-failing with it — `CliRuntime.reportFailures` and `CliRuntime.main` now detect that (the mark `runWith` flips) and skip printing it a second time, exiting with the usage code (`64` by default) instead of the generic fallback.
 
+- A `UserError` marked with an explicit exit code keeps it: `CliRuntime.reported(userError, 3)` exits `3`, not the usage code. Such an error is treated as already printed and is not rendered, so use a different error type if the program has not printed it.
+
 A bare `ShowHelp` — `--help`, or a root invocation with no parse errors — still exits `0` silently. A `ShowHelp` carrying parse errors now exits `usageExitCode` (default `64`, BSD `EX_USAGE`) instead of the previous fallback of `1`.
 
 ## Features

@@ -98,7 +98,7 @@ ConfigValidationError: Config validation failed at "/home/me/.config/app/config.
   Missing key at variables.keep.resolved
 ```
 
-Print-then-`reported` is for a program run **without** `CliRuntime.main` or `reportFailures`. Under either, do not print the failure yourself: `reportFailures` renders every error except a `ShowHelp`, a `UserError` that `Command.runWith` already printed and the `CliExit` sentinel, so it would print twice. Fail with the error and put the multi-line rendering in the `render` option instead — see "Rendering a multi-line failure" in the [advanced guide](https://effected.spencerbeg.gs/cli/advanced#rendering-a-multi-line-failure).
+Print-then-`reported` is for a program run **without** `CliRuntime.main` or `reportFailures`. Under either, do not print the failure yourself: `reportFailures` renders every error except a `ShowHelp`, a `CliError.UserError` whose reported mark is `false` (one `Command.runWith` already printed, or one you marked with `reported`) and the `CliExit` sentinel, so it would print twice. Fail with the error and put the multi-line rendering in the `render` option instead — see "Rendering a multi-line failure" in the [advanced guide](https://effected.spencerbeg.gs/cli/advanced#rendering-a-multi-line-failure).
 
 ## Putting it together
 
@@ -151,7 +151,7 @@ $ echo $?
 - `CliLogger.make(options?)` — the `Logger` itself, for composing into a logger set you already have.
 - `CliRuntime.reportFailures(options?)` — reports through your logger, then re-fails with an exit code and the mark that stops the runtime reporting it a second time. Never renders a `CliError.ShowHelp` (already printed by `Command.runWith`) — a `ShowHelp` carrying errors is remapped to `usageExitCode` (default `64`).
 - `CliRuntime.main(program, { platform, logger?, ... })` — assembles a whole program in the one order that reports every failure well: a fresh `CliExit`, the platform layer inside failure reporting, and the logger outermost.
-- `CliRuntime.reported(error, exitCode?)` — marks an error you reported yourself, so the runtime stays quiet about it. A typed `Error` comes back as its own type (the marks are added in place) when it passes `instanceof Error` at runtime; any other value — including one that only satisfies `Error`'s shape structurally — is wrapped in a plain `Error`.
+- `CliRuntime.reported(error, exitCode?)` — marks an error you reported yourself, so the runtime stays quiet about it. A typed `Error` comes back as its own type (the marks are added in place) when it passes `instanceof Error` at runtime; any other value — including one that only satisfies `Error`'s shape structurally — is wrapped in a plain `Error`. A `CliError.UserError` marked with `reported` is treated as already printed and is not rendered — use a different error type if the program has not printed it. It keeps the code you pass: `reported(userError, 3)` exits `3`, not `usageExitCode`.
 - `CliExit.set(code)` — records a findings exit code from a successful program; the highest code set during the run wins. `CliExit.layer` mints a fresh cell per provide (`Layer.fresh`) — `CliRuntime.main` provides it for you.
 - `CliColor.enabled` — `Effect<boolean, never, Stdio>`, the no-color.org decision: off when stdout is not a terminal, or `NO_COLOR` is a non-empty value. `FORCE_COLOR` is ignored.
 - `CliColor.formatterLayer(overrides?)` — core's `CliOutput.Formatter`, coloured by the same decision as `CliColor.enabled`.

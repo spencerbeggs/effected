@@ -42,7 +42,8 @@ export interface ReportFailuresOptions {
 	 * @remarks
 	 * Defaults to `64` (BSD `EX_USAGE`); pass an integer in `0..255`. A
 	 * `ShowHelp` with no errors — a bare root invocation, or `--help` — always
-	 * exits `0`.
+	 * exits `0`. A `UserError` that carries its own `Runtime.errorExitCode` —
+	 * one marked with `CliRuntime.reported(error, 3)` — keeps that code instead.
 	 *
 	 * Keep `Command.runWith`'s default `renderErrors`: with `renderErrors: false`
 	 * runWith prints no parse errors and `reportFailures` never renders a
@@ -147,11 +148,12 @@ const chooseExitCode = (error: unknown, fallback: number | undefined): number =>
  * rendering it again would print nothing but a stray "Help requested" line.
  * A `ShowHelp` carrying errors is remapped to `usageExitCode` (default `64`,
  * BSD `EX_USAGE`); a bare `--help` or root invocation — `errors` empty —
- * keeps exit `0`. A `CliError.UserError` is likewise skipped when
- * `Command.runWith` already rendered it through its `CliOutput` formatter
- * (runWith flips its `Runtime.errorReported` mark to `false` after printing)
- * and exits with `usageExitCode`; under runWith's `renderErrors: false` the
- * mark stays set, and it renders here like any other failure. Every other
+ * keeps exit `0`. A `CliError.UserError` whose `Runtime.errorReported` mark
+ * is `false` is likewise skipped: that is how `Command.runWith` leaves one it
+ * already rendered through its `CliOutput` formatter. It exits with its own
+ * `Runtime.errorExitCode` when it carries one, otherwise `usageExitCode`;
+ * under runWith's `renderErrors: false` the mark stays set, and it renders
+ * here like any other failure. Every other
  * error renders even when it already carries the reported mark — a gate
  * failure marked with `CliRuntime.reported` still prints its line. The
  * private `ExitRequested` sentinel `CliRuntime.main`
@@ -192,10 +194,12 @@ export class CliRuntime {
 					// Command.runWith rendered a UserError through the CliOutput formatter
 					// and flipped its mark to false before re-failing. Rendering it again
 					// prints the same complaint twice. A UserError is a usage error, so it
-					// exits like a ShowHelp carrying errors. With runWith's
-					// `renderErrors: false` the mark stays true and it renders below.
+					// exits like a ShowHelp carrying errors, unless it carries a code of
+					// its own (CliRuntime.reported(userError, 3)), which it keeps. With
+					// runWith's `renderErrors: false` the mark stays true and it renders
+					// below.
 					if (isRenderedUserError(error)) {
-						return Effect.fail(CliRuntime.reported(error, options.usageExitCode ?? 64));
+						return Effect.fail(CliRuntime.reported(error, chooseExitCode(error, options.usageExitCode ?? 64)));
 					}
 
 					const render = options.render ?? ((value: unknown) => String(value));
@@ -265,11 +269,18 @@ export class CliRuntime {
 	 *
 	 * Under {@link CliRuntime.main} or {@link CliRuntime.reportFailures}, do NOT
 	 * print the failure yourself before failing with it: `reportFailures`
-	 * renders every error but a `ShowHelp` and a runWith-printed `UserError`,
-	 * marked or not, so it would print twice. Fail with the marked error and put
-	 * any multi-line rendering in the `render` option instead. The mark matters
-	 * for a program run WITHOUT `reportFailures`, where it keeps the runtime
-	 * from reporting a failure the program already printed.
+	 * renders every error except a `ShowHelp` and a `CliError.UserError` whose
+	 * reported mark is `false`, so it would print twice. Fail with the marked
+	 * error and put any multi-line rendering in the `render` option instead. The
+	 * mark matters for a program run WITHOUT `reportFailures`, where it keeps the
+	 * runtime from reporting a failure the program already printed.
+	 *
+	 * A `CliError.UserError` marked with `reported` is treated as already
+	 * printed and is not rendered — use a different error type if the program
+	 * has not printed it. `reportFailures` cannot tell a `UserError` that
+	 * `Command.runWith` printed from one marked here: both carry the same `false`
+	 * mark. It does keep the code you pass: `reported(userError, 3)` exits `3`,
+	 * not `usageExitCode`.
 	 *
 	 * The marks are added in place, so a typed error comes back as its own
 	 * type: the `E` overload returns the very instance it was given, and a
