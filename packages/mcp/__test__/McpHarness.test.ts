@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Layer, Result } from "effect";
 import { McpProtocol } from "effect/unstable/ai";
 import { McpStdio } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
@@ -87,14 +87,84 @@ describe("McpHarness", () => {
 		}),
 	);
 
-	it.effect("closing stdin mid-request fails the pending call with ServerStopped instead of hanging", () =>
+	it.live("closing stdin mid-request fails the pending call with ServerStopped instead of hanging", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(fixtureServer());
 			yield* harness.initialize;
 			const pending = yield* harness.startRequest("tools/call", { name: "hang", arguments: {} });
 			yield* harness.close;
-			const failure = yield* Effect.flip(pending.response);
-			assert.strictEqual(failure.reason, "ServerStopped");
+			const failure = yield* Effect.flip(pending.response).pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(failure._tag, "McpTestFailure");
+			assert.strictEqual(failure._tag === "McpTestFailure" ? failure.reason : undefined, "ServerStopped");
+		}),
+	);
+
+	it.live("awaitOutboundMethod after close fails with ServerStopped instead of hanging", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			yield* harness.initialize;
+			yield* harness.close;
+			const failure = yield* Effect.flip(harness.awaitOutboundMethod("never/sent")).pipe(Effect.timeout("2 seconds"));
+			assert.strictEqual(failure._tag, "McpTestFailure");
+			assert.strictEqual(failure._tag === "McpTestFailure" ? failure.reason : undefined, "ServerStopped");
+		}),
+	);
+
+	it.effect("responses are matched by id: a later request resolves while an earlier one is still pending", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			yield* harness.initialize;
+			const hung = yield* harness.startRequest("tools/call", { name: "hang", arguments: {} });
+			const echoed = yield* harness.startRequest("tools/call", { name: "echo", arguments: { text: "second" } });
+			assert.isBelow(hung.id, echoed.id);
+			const response = yield* echoed.response;
+			assert.strictEqual(response.id, echoed.id);
+			assert.deepStrictEqual(resultOf(response).structuredContent, { text: "second" });
+		}),
+	);
+
+	it.effect("positive control: a layer merged beside McpStdio.layer logs its build through console.log", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				Layer.mergeAll(
+					Layer.effectDiscard(Effect.logError("build-log")),
+					McpStdio.layer({ name: "merged-log", version: "0.0.0" }),
+				),
+			);
+			assert.isTrue((yield* harness.consoleLogSoFar).some((line) => line.includes("build-log")));
+			assert.notInclude(yield* harness.stderrSoFar, "build-log");
+		}),
+	);
+
+	it.effect("a layer composed with provideMerge(McpStdio.layer) logs its build on stderr, never console.log", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				Layer.effectDiscard(Effect.logError("build-log")).pipe(
+					Layer.provideMerge(McpStdio.layer({ name: "provided-log", version: "0.0.0" })),
+				),
+			);
+			assert.include(yield* harness.stderrSoFar, "build-log");
+			assert.deepStrictEqual(yield* harness.consoleLogSoFar, []);
+		}),
+	);
+
+	it.effect("stateless: a caller-supplied _meta protocolVersion wins over the harness's own", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer(), { protocol: McpProtocol.v2026_07_28 });
+			yield* harness.initialize;
+			const response = yield* harness.request("tools/list", {
+				_meta: { "io.modelcontextprotocol/protocolVersion": "1999-01-01" },
+			});
+			// The caller's revision reached the server: core refuses it by name instead of serving the harness's own.
+			const error = response.error as {
+				readonly code: number;
+				readonly message: string;
+				readonly data: { readonly requested: string };
+			};
+			assert.strictEqual(error.code, -32022);
+			assert.include(error.message, "1999-01-01");
+			assert.strictEqual(error.data.requested, "1999-01-01");
+			assert.isUndefined(response.result);
 		}),
 	);
 
@@ -104,6 +174,8 @@ describe("McpHarness", () => {
 			yield* harness.initialize;
 			const exit = yield* Effect.exit(harness.callTool("garble"));
 			assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause));
+			const defect = Exit.isFailure(exit) ? Result.getOrUndefined(Cause.findDefect(exit.cause)) : undefined;
+			assert.include(String(defect), "not JSON-RPC");
 		}),
 	);
 
@@ -133,7 +205,7 @@ describe("McpHarness", () => {
 			yield* harness.callTool("grow");
 			const notification = yield* harness
 				.awaitOutboundMethod("notifications/tools/list_changed")
-				.pipe(Effect.timeout("5 seconds"));
+				.pipe(Effect.timeout("2 seconds"));
 			assert.strictEqual(notification.method, "notifications/tools/list_changed");
 		}),
 	);

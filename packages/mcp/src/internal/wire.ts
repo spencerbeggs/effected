@@ -33,10 +33,10 @@ export const isStateless = (protocol: McpProtocol.ProtocolAdapter): boolean => p
 
 /**
  * A request (with `id`) or notification frame. On the stateless revision every
- * frame carries the protocol fields under `params._meta`, merged over any
- * `_meta` the caller passed. The protocol fields win, unlike core's own
- * harness (`McpStdioHarness.ts`, `withRequestMetadata`), where the caller's
- * `_meta` wins; send a deliberately wrong revision with `sendRaw` instead.
+ * frame carries the protocol fields under `params._meta`, with any `_meta`
+ * the caller passed spread over them, so the caller wins. That matches core's
+ * own harness (`McpStdioHarness.ts`, `withRequestMetadata`) and lets a test
+ * send a deliberately wrong revision.
  *
  * @internal
  */
@@ -53,10 +53,10 @@ export const frame = (
 		return {
 			...base,
 			_meta: {
-				...caller,
 				"io.modelcontextprotocol/protocolVersion": protocol.protocolVersion,
 				"io.modelcontextprotocol/clientCapabilities": {},
 				"io.modelcontextprotocol/clientInfo": clientInfo,
+				...caller,
 			},
 		};
 	};

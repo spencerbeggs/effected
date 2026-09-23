@@ -46,7 +46,7 @@ interface HarnessParts {
 	readonly listTools: Effect.Effect<ReadonlyArray<ServedTool>, McpTestFailure>;
 	readonly readResource: (uri: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly sendRaw: (message: unknown) => Effect.Effect<void>;
-	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage>;
+	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly stderrSoFar: Effect.Effect<string>;
 	readonly consoleLogSoFar: Effect.Effect<ReadonlyArray<string>>;
 	readonly close: Effect.Effect<void>;
@@ -56,15 +56,16 @@ interface HarnessParts {
  * An in-process MCP client for a real server layer, over queue-backed stdio.
  *
  * @remarks
- * Builds your server with a `Stdio.layerTest` provided innermost, so tests see
- * the exact served schemas and wire results a real client would, with no child
- * and no sockets. Pass the server WITHOUT a `Stdio` of its own: a layer that
- * already provides one talks to the real terminal.
+ * Builds your server with a queue-backed `Stdio.layerTest` that satisfies the
+ * server's `Stdio` requirement, so tests see the exact served schemas and wire
+ * results a real client would, with no child and no sockets. Pass the server
+ * WITHOUT a `Stdio` of its own: a `Stdio` the server provides internally wins,
+ * and talks to the real terminal.
  *
  * - Responses are matched by id, so notifications may interleave freely.
- * - No wait can hang: a response wait fails with `ServerStopped` when the
- *   server stops (stdin closing mid-request does that), and dies when
- *   `strictStdout` sees a line that is not JSON-RPC.
+ * - No wait can hang: every response wait and `awaitOutboundMethod` fails
+ *   with `ServerStopped` when the server stops (stdin closing does that),
+ *   and dies when `strictStdout` sees a line that is not JSON-RPC.
  * - With `captureLogs`, the server's console is captured: `stderrSoFar`
  *   holds stderr writes and every log line, and `consoleLogSoFar` holds
  *   anything that went through `console.log`, which in a real server is
@@ -96,8 +97,8 @@ export class McpHarness {
 	readonly readResource: (uri: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** Write any value as one newline-framed line. */
 	readonly sendRaw: (message: unknown) => Effect.Effect<void>;
-	/** The next server-initiated frame with this method, skipping and keeping others. */
-	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage>;
+	/** The next server-initiated frame with this method, skipping and keeping others; fails with `ServerStopped` once the server stops. */
+	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** Everything written to stderr, plus every captured log line. */
 	readonly stderrSoFar: Effect.Effect<string>;
 	/** Every captured `console.log`, `info` or `debug` call. */
@@ -226,13 +227,14 @@ export class McpHarness {
 			);
 			yield* Deferred.await(ready);
 
+			// Every wait races the stop and corrupt signals, so none can outlive the server.
+			const stopAware = <A>(wait: Effect.Effect<A, McpTestFailure>): Effect.Effect<A, McpTestFailure> =>
+				Effect.raceAllFirst([wait, Deferred.await(stopped), Deferred.await(corrupt)]);
 			const awaitResponse = (
 				waiter: Deferred.Deferred<JsonRpcMessage>,
 			): Effect.Effect<JsonRpcMessage, McpTestFailure> =>
 				Effect.suspend(() =>
-					Deferred.isDoneUnsafe(waiter)
-						? Deferred.await(waiter)
-						: Effect.raceAllFirst([Deferred.await(waiter), Deferred.await(stopped), Deferred.await(corrupt)]),
+					Deferred.isDoneUnsafe(waiter) ? Deferred.await(waiter) : stopAware(Deferred.await(waiter)),
 				);
 			const sendRaw = (message: unknown): Effect.Effect<void> =>
 				Effect.asVoid(Queue.offer(stdin, encoder.encode(`${JSON.stringify(message)}\n`)));
@@ -265,15 +267,19 @@ export class McpHarness {
 							}),
 						),
 			);
-			const awaitOutboundMethod = (method: string) =>
-				Effect.gen(function* () {
+			const awaitOutboundMethod = (method: string): Effect.Effect<JsonRpcMessage, McpTestFailure> =>
+				Effect.suspend(() => {
 					const index = retained.findIndex((message) => message.method === method);
-					if (index !== -1) return retained.splice(index, 1)[0] as JsonRpcMessage;
-					while (true) {
-						const message = yield* Queue.take(inbound);
-						if (message.method === method) return message;
-						retained.push(message);
-					}
+					if (index !== -1) return Effect.succeed(retained.splice(index, 1)[0] as JsonRpcMessage);
+					return stopAware(
+						Effect.gen(function* () {
+							while (true) {
+								const message = yield* Queue.take(inbound);
+								if (message.method === method) return message;
+								retained.push(message);
+							}
+						}),
+					);
 				});
 
 			return new McpHarness({
