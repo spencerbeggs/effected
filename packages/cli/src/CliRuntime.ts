@@ -1,5 +1,8 @@
-import { Cause, Effect, Runtime } from "effect";
+import type { Layer } from "effect";
+import { Cause, Effect, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/unstable/cli";
+import { CliExit } from "./CliExit.js";
+import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
@@ -34,6 +37,21 @@ export interface ReportFailuresOptions {
 	 * root invocation, or `--help` — always exits `0`.
 	 */
 	readonly usageExitCode?: number | undefined;
+}
+
+/**
+ * Options for {@link CliRuntime.main}.
+ *
+ * @public
+ */
+export interface MainOptions<RP, EP> extends ReportFailuresOptions {
+	/**
+	 * The platform layer, usually `NodeServices.layer` or an app platform built
+	 * on it. Passed in so this package never imports a platform.
+	 */
+	readonly platform: Layer.Layer<RP, EP>;
+	/** The logger, provided outermost. Defaults to `CliLogger.layer()`. */
+	readonly logger?: Layer.Layer<never> | undefined;
 }
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>
@@ -162,6 +180,43 @@ export class CliRuntime {
 					});
 				}),
 			);
+
+	/**
+	 * Assemble a CLI program in the one order that reports every failure well.
+	 *
+	 * @remarks
+	 * - `CliExit` is provided fresh, and a non-zero code after success becomes a
+	 *   marked failure the teardown honours.
+	 * - The platform layer is provided **inside** failure reporting, so a
+	 *   layer-build failure (`HOME` unset, say) renders as one line with the
+	 *   fallback code rather than escaping to the runtime's stack trace.
+	 * - The logger is provided **outermost**, so it is present whichever branch
+	 *   fails.
+	 *
+	 * You still call your platform's runner:
+	 *
+	 * @example
+	 * ```ts
+	 * NodeRuntime.runMain(
+	 *   CliRuntime.main(Command.run(root, { version }), { platform: NodeServices.layer, exitCode: 3 }),
+	 * )
+	 * ```
+	 */
+	static readonly main = <A, E, R, RP, EP>(
+		program: Effect.Effect<A, E, R>,
+		options: MainOptions<RP, EP>,
+	): Effect.Effect<void, Error, Exclude<Exclude<R, CliExit>, RP>> =>
+		Effect.gen(function* () {
+			yield* program;
+			const exit = yield* CliExit;
+			const code = MutableRef.get(exit.code);
+			if (code !== 0) return yield* Effect.fail(new ExitRequested(code));
+		}).pipe(
+			Effect.provide(CliExit.layer),
+			Effect.provide(options.platform),
+			CliRuntime.reportFailures(options),
+			Effect.provide(options.logger ?? CliLogger.layer()),
+		);
 
 	/**
 	 * Mark an error as already reported, carrying an exit code.
