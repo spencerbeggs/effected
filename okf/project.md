@@ -7,8 +7,8 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-15T15:38:20Z
-  body_sha256: 7fd953dfa1815f381212a4cd0650301bdb0748c4aa410f108dc5c08dcf7d1f1d
+  at: 2026-09-23T18:09:38Z
+  body_sha256: 39dec68f16660aed669f96b44e5e365cecdade64bf13f9f71198751275d6d8f2
 ---
 
 # effected
@@ -45,6 +45,7 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `git` | boundary | invention; typed git introspection over core's `ChildProcessSpawner` |
 | `spdx` | pure | invention; vendored SPDX license expressions as pure schemas |
 | `app` | integrated | invention; thin composition over `xdg` + `config-file` + `store` |
+| `engine` | pure | invention; platform-free primitives shared across front ends (distribution identity, remediation, launch context) |
 | `cli` | boundary | invention; the CLI boundary (logger, failure reporting, issue rendering) over `effect/unstable/cli` |
 | `markdown` | pure | invention; CommonMark + GFM as pure schemas |
 | `commands` | boundary | part-port of `@savvy-web/silk-effects`' `ToolDiscovery` plus invention |

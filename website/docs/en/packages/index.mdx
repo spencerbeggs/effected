@@ -1,11 +1,11 @@
 ---
 title: Packages
-description: The 32 packages of the effected kit — 30 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
+description: The 33 packages of the effected kit — 31 Effect v4 libraries plus two companions — grouped by the runtime cost of depending on them.
 ---
 
 # Packages
 
-The kit is **32 publishable packages**: 30 libraries and two companions. They are not a grab bag of
+The kit is **33 publishable packages**: 31 libraries and two companions. They are not a grab bag of
 utilities that happened to end up in the same repo. Scope is closed by five consuming applications, and a
 library earns its place by being something one of those five actually needs — which is why there is a TOML
 parser and a SPDX expression evaluator here, and no HTTP client or ORM.
@@ -40,6 +40,7 @@ north star, and the conventions the other thirty follow all started there.
 | Publish or consume JSON Schema documents | [schemastore](/schemastore), [schema-org](/schema-org) |
 | Check a license expression | [spdx](/spdx) |
 | Test code that touches the filesystem | [memfs](/memfs) |
+| Share carrier identity or launch-context resolution across a CLI and an MCP front end | [engine](/engine) |
 | Pin every version this kit was tested against | [pnpm-plugin-effect](/pnpm-plugin-effect) |
 
 ## How to read a tier
@@ -78,6 +79,7 @@ No IO, no runtime dependencies beyond `effect` itself.
 | [@effected/github-references](/github-references) | GitHub's issue-reference grammar as pure functions, across all three dialects |
 | [@effected/memfs](/memfs) | A virtual POSIX volume behind core's `FileSystem` key — the kit's filesystem test double, with fault injection |
 | [@effected/lockfiles](/lockfiles) | bun, npm, pnpm and yarn Berry lockfiles normalized into one model, plus pure integrity checking against workspace manifests |
+| [@effected/engine](/engine) | Platform-free primitives shared across a tool's front ends: carrier distribution identity, a remediation shape, and agent-launch-context resolution |
 
 ## Boundary
 
@@ -132,8 +134,9 @@ and releases as a fixed pair with `@effected/schemastore`.
 
 ## Versions and stability
 
-Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 32 packages are on npm except
-`@effected/schemastore-cli`, which is built and documented but has not cut its first release.
+Everything is `0.x` and unstable; `1.0.0` waits for Effect v4 GA. All 33 packages are on npm except
+`@effected/schemastore-cli` and `@effected/engine`, which are built and documented but have not cut
+their first release.
 
 Releases are changeset-driven, so versions move per package rather than in lockstep — a release is
 sometimes the whole kit and sometimes a single package, and both are ordinary. Each package's npm page is

@@ -28,8 +28,11 @@ One module per concept. `src/index.ts` is the only re-exporting module.
   `DistributionField` (`Schema.NullOr(Distribution)`), `CurrentDistribution`
   (a `Context.Reference`, not a `Context.Service` — reading it adds nothing
   to `R`), `distributionSuffix`.
-
-Later tasks add `Remediation` and `LaunchContext` to this list.
+- `src/Remediation.ts` — `Remediation` (`Schema.Struct` + type): what a
+  caller, usually an agent, should do after a failure.
+- `src/LaunchContext.ts` — `LaunchContext` and `ProjectDirInput`: resolves
+  where a tool launched by an agent host should treat as its project, from
+  caller-supplied `argv`/`env`/`cwd` rather than reading `process` itself.
 
 ## Test and build
 

@@ -68,6 +68,11 @@
 		"label": "@effected/lockfiles"
 	},
 	{
+		"type": "custom-link",
+		"link": "/engine",
+		"label": "@effected/engine"
+	},
+	{
 		"type": "section-header",
 		"label": "Boundary"
 	},

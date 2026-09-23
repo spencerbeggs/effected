@@ -36,7 +36,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 
 ### Kit composition
 
-The kit is **32 publishable packages**: 30 libraries plus two companions (`pnpm-plugin-effect` and `schemastore-cli`); 31 have published (`schema-org`, the newest, on 2026-08-26) and `schemastore-cli` awaits its first release. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **33 publishable packages**: 31 libraries plus two companions (`pnpm-plugin-effect` and `schemastore-cli`); 31 have published (`schema-org`, the newest, on 2026-08-26) and `schemastore-cli` awaits its first release, as does `@effected/engine`, the newest library. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. **Never collect them into a namespace object**: it would drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `okf/modules/config-file.md` and `okf/decisions/codecs-are-free-standing-named-exports.md` before touching it.
 

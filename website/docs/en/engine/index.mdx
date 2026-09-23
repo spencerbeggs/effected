@@ -1,0 +1,72 @@
+---
+title: "@effected/engine"
+description: "Platform-free primitives shared by every front end of an Effect v4 tool: carrier distribution identity, a remediation shape, and launch-context resolution."
+---
+
+# @effected/engine
+
+Platform-free primitives shared by every front end of an Effect v4 tool: carrier
+distribution identity, a shape for telling a caller what to do after a failure,
+and resolving where an agent-launched tool should treat as its project. Pure
+tier: `effect` is the only peer, and the only dependency of any kind — no
+`process`, no `node:` import, no platform package, not even as a
+devDependency edge into `src/`. There is no IO here and nothing to provide at
+the edge.
+
+## Why @effected/engine
+
+A tool that ships more than one bin — a CLI and an MCP server, say — needs a
+few facts to agree across both: which carrier package installed it, what to
+tell an agent when something goes wrong, and where the project root is when
+the process was launched by an agent host rather than typed by a human at a
+shell. Each front end resolves the process-specific inputs itself (`argv`,
+`env`, `cwd`), but the *rule* that turns those inputs into an answer belongs
+in one place, or the two front ends drift.
+
+`@effected/engine` is that one place. It is deliberately platform-free: every
+function here takes plain values in and returns plain values or schemas out,
+so it needs no `Context.Service`, no layer, and no platform package to test.
+The one place `process` is allowed to be read is a front end's own `main.ts` —
+`@effected/engine` never reads it, which is what makes the resolution rule
+shared and independently testable.
+
+## Install
+
+```bash
+npm install @effected/engine effect
+```
+
+```bash
+pnpm add @effected/engine effect
+```
+
+Requires Node.js >=24.11.0. `effect` v4 is a peer dependency; the package adds
+no runtime dependencies of its own.
+
+## What it exports
+
+- **`Distribution`** / **`DistributionField`** / **`CurrentDistribution`** /
+  **`distributionSuffix`** — the carrier package a tool's bins were installed
+  through, read anywhere as a `Context.Reference` with no provision needed for
+  a direct install.
+- **`Remediation`** — what a caller, usually an agent, should do after a
+  failure: a hint plus an optional suggested tool and its arguments.
+- **`LaunchContext`** — `LaunchContext.projectDir`, resolving where an
+  agent-launched tool should treat as its project from caller-supplied
+  `argv`/`env`/`cwd`, and `LaunchContext.isUnsubstituted`, detecting a launch
+  argument an agent host left as a literal `${VAR}` placeholder.
+
+## Reach for it when
+
+- Two or more front ends of the same tool (a CLI, an MCP server) need to agree
+  on carrier identity, a remediation shape, or how to resolve the launched
+  project directory.
+- A capability genuinely needs no IO and no service — putting it here instead
+  of in `@effected/cli` keeps it usable from a front end that has no CLI
+  runtime at all.
+
+`@effected/engine` and `@effected/cli` sit at the same layer, both consumed by
+a front end. Neither depends on the other.
+
+See the [Getting Started guide](/engine/getting-started) for the pieces wired
+into a CLI's and an MCP server's `main.ts`.

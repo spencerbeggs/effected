@@ -1,0 +1,16 @@
+[
+	{
+		"type": "section-header",
+		"label": "@effected/engine"
+	},
+	{
+		"type": "file",
+		"name": "index.mdx",
+		"label": "Overview"
+	},
+	{
+		"type": "file",
+		"name": "getting-started.mdx",
+		"label": "Getting Started"
+	}
+]

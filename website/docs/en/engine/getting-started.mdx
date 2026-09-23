@@ -1,0 +1,136 @@
+---
+title: Getting Started
+description: Provide CurrentDistribution in a CLI's main.ts and resolve LaunchContext.projectDir in an MCP server's main.ts, using only @effected/engine's real exports.
+---
+
+# Getting Started
+
+`@effected/engine` has no layer to wire and no platform to provide — every
+export is a plain schema, a reference with a built-in default, or a static
+function. The work in a front end's `main.ts` is reading the process-specific
+inputs (`argv`, `env`, `cwd`) and handing them to the engine's functions.
+
+## Install
+
+```bash
+npm install @effected/engine effect
+```
+
+```bash
+pnpm add @effected/engine effect
+```
+
+## Providing `CurrentDistribution` in a CLI's `main.ts`
+
+A carrier package (`@scope/plugin`) re-exposes a tool's bins and passes its own
+identity down to each front end's `main`, usually as flags or environment
+variables. The CLI reads those process-specific values once, at the top of
+`main.ts`, and provides `CurrentDistribution` for the rest of the program:
+
+```ts
+import { CurrentDistribution, distributionSuffix } from "@effected/engine";
+import { Effect, Option } from "effect";
+
+// The carrier passes its own name/version through the environment.
+const distribution = Option.all({
+  name: Option.fromNullishOr(process.env.EFFECTED_DISTRIBUTION_NAME),
+  version: Option.fromNullishOr(process.env.EFFECTED_DISTRIBUTION_VERSION),
+});
+
+const printVersion = Effect.gen(function* () {
+  const current = yield* CurrentDistribution;
+  console.log(`mytool 1.4.0${distributionSuffix(current)}`);
+});
+
+Effect.runPromise(
+  printVersion.pipe(Effect.provideService(CurrentDistribution, distribution)),
+);
+// mytool 1.4.0 via @scope/plugin 2.0.0
+// or, installed directly: mytool 1.4.0
+```
+
+Anywhere deeper in the program, `yield* CurrentDistribution` reads the same
+value with nothing further to provide — `CurrentDistribution` is a
+`Context.Reference`, so it defaults to `Option.none()` and a direct install
+needs no provision at all.
+
+## Resolving `LaunchContext.projectDir` in an MCP server's `main.ts`
+
+An MCP server is usually launched by an agent host rather than typed by a
+human at a shell, so its working directory is not a reliable signal — the host
+may pass the real project directory as an argument or an environment
+variable, or it may pass nothing at all. `LaunchContext.projectDir` resolves
+that in one documented order: the first usable `argv` value, then the first
+usable environment variable in a given key order, then `cwd`:
+
+```ts
+import { LaunchContext } from "@effected/engine";
+
+// mcp/main.ts
+const projectDir = LaunchContext.projectDir({
+  argv: process.argv.slice(2),
+  env: process.env,
+  keys: ["OKFIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"],
+  cwd: process.cwd(),
+});
+
+// Start the MCP server against projectDir.
+```
+
+"Usable" excludes an empty or whitespace-only value and excludes a literal
+`${VAR}` placeholder — some agent hosts pass `${CLAUDE_PROJECT_DIR}` through
+unsubstituted rather than omitting the variable, and a path containing one is
+never what was meant:
+
+```ts
+import { LaunchContext } from "@effected/engine";
+
+LaunchContext.projectDir({
+  argv: ["${CLAUDE_PROJECT_DIR}"],
+  env: { CLAUDE_PROJECT_DIR: "${CLAUDE_PROJECT_DIR}" },
+  keys: ["CLAUDE_PROJECT_DIR"],
+  cwd: "/home/user/repo",
+});
+// "/home/user/repo" — both candidates were placeholders, so it falls back to cwd
+```
+
+`LaunchContext.isUnsubstituted(value)` is the underlying check, exported
+separately for a front end that wants to warn rather than silently fall back.
+
+## Testing with @effect/vitest
+
+Both pieces are plain values and static functions, so no layer or platform is
+needed in a test — provide `CurrentDistribution` per case with
+`Effect.provideService`, and call `LaunchContext.projectDir` directly:
+
+```ts
+import { CurrentDistribution, LaunchContext } from "@effected/engine";
+import { assert, describe, it } from "@effect/vitest";
+import { Effect, Option } from "effect";
+
+describe("front end wiring", () => {
+  it.effect("reads back the provided distribution", () =>
+    Effect.gen(function* () {
+      const current = yield* CurrentDistribution;
+      assert.deepStrictEqual(current, Option.some({ name: "@scope/plugin", version: "2.0.0" }));
+    }).pipe(
+      Effect.provideService(CurrentDistribution, Option.some({ name: "@scope/plugin", version: "2.0.0" })),
+    ));
+
+  it("falls back to cwd when every candidate is a placeholder", () => {
+    const projectDir = LaunchContext.projectDir({
+      argv: ["${CLAUDE_PROJECT_DIR}"],
+      env: {},
+      keys: ["CLAUDE_PROJECT_DIR"],
+      cwd: "/home/user/repo",
+    });
+    assert.strictEqual(projectDir, "/home/user/repo");
+  });
+});
+```
+
+## Next steps
+
+- See the [Packages overview](/packages) for how `@effected/engine` fits
+  alongside `@effected/cli` — both sit at the same layer, and neither depends
+  on the other.
