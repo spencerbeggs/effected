@@ -47,6 +47,13 @@ export class CliColor {
 	 * result to a `const` or the decision is re-read every time it is
 	 * provided.
 	 *
+	 * The `never` in its output does not mean it installs nothing.
+	 * `CliOutput.Formatter` is a `Context.Reference`, whose key type is
+	 * `never`, so this layer sets the formatter reference rather than
+	 * providing a service. Every command it is provided to renders with the
+	 * formatter it sets, and without it they fall back to core's default
+	 * formatter.
+	 *
 	 * @public
 	 */
 	static readonly formatterLayer = (
