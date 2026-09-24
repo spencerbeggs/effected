@@ -19,7 +19,7 @@ import { ToolFailure } from "./ToolFailure.js";
 
 interface ProcessParts {
 	readonly send: (message: unknown) => Effect.Effect<void>;
-	readonly sendRaw: (text: string) => Effect.Effect<void>;
+	readonly sendRaw: (text: string | Uint8Array) => Effect.Effect<void>;
 	readonly nextLine: Effect.Effect<string, McpTestFailure>;
 	readonly readUntilResponse: (
 		id: string | number,
@@ -43,8 +43,9 @@ interface ProcessParts {
  *
  * - `nextLine` fails with `StreamEnded` when stdout ends, so a child that
  *   exits early fails the test instead of hanging it.
- * - `send` writes one JSON-encoded line; `sendRaw` writes text exactly as
- *   given, for a malformed frame or one frame split across writes.
+ * - `send` writes one JSON-encoded line; `sendRaw` writes a string or bytes
+ *   exactly as given, for a malformed frame or one frame split across
+ *   writes, even mid-character.
  * - `readUntilResponse` reads past interleaved notifications, such as
  *   `list_changed`, to the matching id and returns what it saw.
  * - `closeStdin` is `Queue.end`, never `Queue.shutdown`, so every frame
@@ -65,15 +66,16 @@ export class McpProcess {
 	 */
 	readonly send: (message: unknown) => Effect.Effect<void>;
 	/**
-	 * Write `text` to the child's stdin exactly as given: no JSON encoding and
-	 * no newline added.
+	 * Write `text` to the child's stdin exactly as given: a string as UTF-8,
+	 * bytes unchanged, with no JSON encoding and no newline added.
 	 *
 	 * @remarks
 	 * For frames `send` cannot produce: a line that is not JSON, a blank line,
-	 * or one frame split across several writes. Include the `\n` yourself.
+	 * or one frame split across several writes, including mid-character by
+	 * passing bytes. Include the `\n` yourself.
 	 * Never fails, on the same terms as `send`.
 	 */
-	readonly sendRaw: (text: string) => Effect.Effect<void>;
+	readonly sendRaw: (text: string | Uint8Array) => Effect.Effect<void>;
 	/** The next non-empty stdout line; fails with `StreamEnded` once stdout ends. */
 	readonly nextLine: Effect.Effect<string, McpTestFailure>;
 	/** Read JSON-RPC lines up to and including the response with this id. */
@@ -169,7 +171,8 @@ export class McpProcess {
 						if (isResponse(message) && message.id === id) return { response: message, seen };
 					}
 				});
-			const sendRaw = (text: string): Effect.Effect<void> => Effect.asVoid(Queue.offer(stdin, encoder.encode(text)));
+			const sendRaw = (text: string | Uint8Array): Effect.Effect<void> =>
+				Effect.asVoid(Queue.offer(stdin, typeof text === "string" ? encoder.encode(text) : text));
 			const send = (message: unknown): Effect.Effect<void> => sendRaw(`${JSON.stringify(message)}\n`);
 			const handshake = (protocol: McpProtocol.ProtocolAdapter = McpProtocol.v2025_11_25) =>
 				Effect.gen(function* () {

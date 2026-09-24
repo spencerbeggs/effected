@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Context, Effect, Layer, Queue, Sink, Stdio, Stream } from "effect";
-import { GuardedStdio, PARSE_ERROR_FRAME, guardStdin, makeFrameGuard } from "../src/internal/StdinFrames.js";
+import { PARSE_ERROR_FRAME, guardStdin, makeFrameGuard, makeGuardedStdio } from "../src/internal/StdinFrames.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -133,12 +133,28 @@ describe("guardStdin", () => {
 	);
 });
 
-describe("GuardedStdio", () => {
+class SeenA extends Context.Service<SeenA, Stdio.Stdio>()("test/SeenA") {}
+class SeenB extends Context.Service<SeenB, Stdio.Stdio>()("test/SeenB") {}
+
+describe("makeGuardedStdio", () => {
+	it.effect("mints a guard per call, so two in one graph each wrap their own ambient Stdio", () =>
+		Effect.gen(function* () {
+			const side = <I>(seen: Context.Key<I, Stdio.Stdio>, stdin: string) =>
+				Layer.effect(seen, Stdio.Stdio).pipe(
+					Layer.provide(makeGuardedStdio()),
+					Layer.provide(Layer.succeed(Stdio.Stdio, stdioOver(Stream.make(bytes(stdin)), []))),
+				);
+			const context = yield* Layer.build(Layer.mergeAll(side(SeenA, '{"a":1}\n'), side(SeenB, '{"b":2}\n')));
+			assert.strictEqual(text(yield* Stream.runCollect(Context.get(context, SeenA).stdin)), '{"a":1}\n');
+			assert.strictEqual(text(yield* Stream.runCollect(Context.get(context, SeenB).stdin)), '{"b":2}\n');
+		}),
+	);
+
 	it.effect("provides the guarded Stdio over the ambient one", () =>
 		Effect.gen(function* () {
 			const out: Array<string> = [];
 			const ambient = stdioOver(Stream.make(bytes('{not json\n{"a":1}\n')), out);
-			const context = yield* Layer.build(GuardedStdio.pipe(Layer.provide(Layer.succeed(Stdio.Stdio, ambient))));
+			const context = yield* Layer.build(makeGuardedStdio().pipe(Layer.provide(Layer.succeed(Stdio.Stdio, ambient))));
 			const guarded = Context.get(context, Stdio.Stdio);
 			assert.notStrictEqual(guarded, ambient);
 			assert.strictEqual(text(yield* Stream.runCollect(guarded.stdin)), '{"a":1}\n');

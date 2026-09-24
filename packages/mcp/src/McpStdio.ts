@@ -3,7 +3,7 @@ import { Cause, Effect, Exit, Layer, References, Runtime } from "effect";
 import type { McpSchema } from "effect/unstable/ai";
 import { McpProtocol, McpServer } from "effect/unstable/ai";
 import { LaunchFailed } from "./internal/LaunchFailed.js";
-import { GuardedStdio } from "./internal/StdinFrames.js";
+import { makeGuardedStdio } from "./internal/StdinFrames.js";
 
 /**
  * Options for {@link McpStdio.layer}.
@@ -99,6 +99,12 @@ export class McpStdio {
 	 * tab, carriage return) is ignored. Valid JSON that is not a JSON-RPC
 	 * message still goes to core.
 	 *
+	 * Build one server per layer graph. Core's stdio protocol layer is a
+	 * shared constant, so two `McpStdio.layer` servers merged into one graph
+	 * share one protocol: only the first server built reads stdin, and the
+	 * second never answers. Build each in its own graph (its own
+	 * `Layer.build`, `ManagedRuntime` or process) instead.
+	 *
 	 * Each call mints a fresh layer; bind the result to a `const` or the
 	 * server builds twice.
 	 */
@@ -111,7 +117,11 @@ export class McpStdio {
 			instructions: options.instructions,
 			description: options.description,
 			protocols: options.protocols ?? McpStdio.protocols,
-		}).pipe(Layer.provide(GuardedStdio), Layer.provideMerge(Layer.succeed(References.LogToStderr, true)), Layer.orDie);
+		}).pipe(
+			Layer.provide(makeGuardedStdio()),
+			Layer.provideMerge(Layer.succeed(References.LogToStderr, true)),
+			Layer.orDie,
+		);
 
 	/**
 	 * `Layer.launch`, with any failure other than an interrupt logged on

@@ -142,12 +142,16 @@ export const guardStdin = (stdio: Stdio.Stdio): Stdio.Stdio => {
 };
 
 /**
- * Replaces the ambient `Stdio` with {@link guardStdin}'s, for the server
- * layer only.
+ * A layer replacing the ambient `Stdio` with {@link guardStdin}'s, for one
+ * server layer only.
+ *
+ * @remarks
+ * A function, never a module constant: layers memoize by reference, so one
+ * shared constant is built once per graph, and a second server in that graph
+ * would read the first server's guarded stdin. Each call mints a fresh layer;
+ * `McpStdio.layer` calls it once per server.
  *
  * @internal
  */
-export const GuardedStdio: Layer.Layer<Stdio.Stdio, never, Stdio.Stdio> = Layer.effect(
-	Stdio.Stdio,
-	Effect.map(Stdio.Stdio, guardStdin),
-);
+export const makeGuardedStdio = (): Layer.Layer<Stdio.Stdio, never, Stdio.Stdio> =>
+	Layer.effect(Stdio.Stdio, Effect.map(Stdio.Stdio, guardStdin));

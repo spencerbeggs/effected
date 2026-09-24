@@ -183,16 +183,42 @@ describe("McpStdio.layer over a real process's stdio", () => {
 		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 
+	it.live("decodes a UTF-8 character split between two writes", () =>
+		Effect.gen(function* () {
+			const server = yield* McpProcess.spawn(STDIO_MAIN);
+			yield* server.handshake();
+			const frame = new TextEncoder().encode(
+				`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "echo", arguments: { text: "é" } } })}\n`,
+			);
+			const cut = frame.indexOf(0xc3) + 1; // between the two bytes of "é"
+			yield* server.sendRaw(frame.subarray(0, cut));
+			// Real time, so the two writes reach the server as two chunks.
+			yield* Effect.sleep("100 millis");
+			yield* server.sendRaw(frame.subarray(cut));
+			const { response } = yield* server.readUntilResponse(2);
+			assert.deepStrictEqual((response.result as { readonly structuredContent: unknown }).structuredContent, {
+				text: "é",
+			});
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
 	it.live("keeps a partial frame held across core's retry after a frame it rejects", () =>
 		Effect.gen(function* () {
 			const server = yield* McpProcess.spawn(STDIO_MAIN);
 			yield* server.handshake();
-			// `null` is JSON, so it reaches core, whose decoder fails on it; core then re-subscribes to stdin.
+			// Precondition: `null` is JSON, so the guard forwards it, and core's decoder rejects it,
+			// logging an ERROR and re-subscribing to stdin. That retry is what the held partial must survive.
 			yield* server.sendRaw('null\n{"jsonrpc":"2.0","id":2,"meth');
 			yield* Effect.repeat(server.stderrSoFar, {
 				schedule: Schedule.spaced("10 millis"),
 				until: (text) => text.includes("ERROR"),
-			});
+			}).pipe(
+				Effect.timeoutOrElse({
+					duration: "1500 millis",
+					orElse: () =>
+						Effect.die(new Error("precondition changed: core no longer logs a decode failure for a `null` frame")),
+				}),
+			);
 			yield* server.sendRaw('od":"tools/list"}\n');
 			const { response } = yield* server.readUntilResponse(2);
 			assert.isArray((response.result as { readonly tools: unknown }).tools);

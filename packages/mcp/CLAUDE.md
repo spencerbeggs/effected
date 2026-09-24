@@ -78,8 +78,19 @@ types.
   `-32700` parse error, drops JSON-whitespace lines, and forwards only
   lines that parse. Its state lives once per `Stdio`, not per
   subscription: core re-subscribes to stdin after its own decode failure,
-  and a held partial line must survive that. Toolkit handlers still see
-  the ambient `Stdio`: the guard is `Layer.provide`d to `layerStdio` alone.
+  and a held partial line must survive that. The guard layer is minted per
+  `McpStdio.layer` call (`makeGuardedStdio()`), never a module constant,
+  which layers would memoize and share across servers in one graph.
+  Toolkit handlers still see the ambient `Stdio`: the guard is
+  `Layer.provide`d to `layerStdio` alone.
+- **One `McpStdio.layer` server per layer graph.** Core's
+  `RpcServer.layerProtocolStdio` is a module constant, so two stdio servers
+  merged into one graph share one protocol, built over whichever `Stdio`
+  came first; the second server never reads its stdin. This is core's
+  behaviour with or without the guard. `Layer.fresh` around `layerStdio`
+  is not a fix: tried, it failed 35 of the harness and toolkit tests
+  (tool calls stopped resolving), most likely because core's `McpServer.layer`
+  is also a shared constant that `McpServer.toolkit` registers through.
 - **The harness never hangs.** Every `McpHarness` response wait and
   `awaitOutboundMethod` races a stop signal and a corruption signal, so a
   server that stops before responding, or writes a non-JSON-RPC line under
