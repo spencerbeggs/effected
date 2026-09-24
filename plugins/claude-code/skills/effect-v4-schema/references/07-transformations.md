@@ -19,25 +19,8 @@ Transformations convert values from one type to another during decoding or encod
 
 ## Transformations as First-Class
 
-In previous versions, transformations were directly embedded in schemas. In the current version, they are defined as independent values that can be reused across schemas.
-
-**Example** (Previous approach: inline transformation)
-
-```ts
-const Trim = transform(
-  String,
-  Trimmed,
-  // non re-usable transformation
-  {
-    decode: (i) => i.trim(),
-    encode: identity
-  }
-) {}
-```
-
-This style made it difficult to reuse logic across different schemas.
-
-Now, transformations like `trim` are declared once and reused wherever needed.
+Transformations are independent values, not logic embedded in a schema, so a
+transformation like `trim` is declared once and reused wherever it is needed.
 
 **Example** (The `trim` built-in transformation)
 
@@ -63,9 +46,9 @@ console.log(Schema.decodeUnknownSync(schema)("  123"))
 
 ## The Transformation Type
 
-A `Transformation` carries four type parameters:
+A `Transformation` carries four type parameters (a type shape, shown as text):
 
-```ts
+```text
 Transformation<T, E, RD, RE>
 ```
 
@@ -81,15 +64,13 @@ A `Transformation` consists of two `Getter` functions:
 
 Each `Getter` receives an input and an optional context and returns either a value or an error. Getters can be composed to build more complex logic.
 
-**Example** (Implementation of `Transformation.trim`)
+**Example** (Implementation of `SchemaTransformation.trim`)
 
 ```ts
-/**
- * @category String transformations
- * @since 4.0.0
- */
-export function trim(): Transformation<string, string> {
-  return new Transformation(Getter.trim(), Getter.passthrough())
+import { SchemaGetter, SchemaTransformation } from "effect"
+
+export function trim(): SchemaTransformation.Transformation<string, string> {
+  return new SchemaTransformation.Transformation(SchemaGetter.trim(), SchemaGetter.passthrough())
 }
 ```
 
@@ -228,9 +209,9 @@ const URLFromString = Schema.String.pipe(
 )
 ```
 
-> **Prerelease trap.** The module is `SchemaIssue`; there is no bare `Issue` module to
-> import. An earlier draft of this example wrote `new Issue.InvalidValue(...)`
-> with nothing named `Issue` in scope — `TS2304: Cannot find name 'Issue'`. The
+> **Trap.** The module is `SchemaIssue`; there is no bare `Issue` module to
+> import, and `new Issue.InvalidValue(...)` with nothing named `Issue` in scope
+> fails with `TS2304: Cannot find name 'Issue'`. The
 > constructor's third parameter is the effective parse options; `transformEffect`
 > hands them to the callback as `(input, options)` so you can pass them on.
 

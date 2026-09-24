@@ -39,7 +39,7 @@ Schema.Null
 
 Sometimes you receive data that is not the right type yet — for example, a number that should become a string. You can build a schema that converts (coerces) values to the target type during decoding:
 
-> **Prerelease trap.** There is no `effect/schema` subpath and no `Getter` / `Parser`
+> **Trap.** There is no `effect/schema` subpath and no `Getter` / `Parser`
 > module. The `effect` package exports `SchemaGetter` and `SchemaParser` as
 > top-level modules. `import { Getter, Parser } from "effect/schema"` is not a
 > naming preference — it does not resolve.
@@ -145,7 +145,7 @@ Schema.String.pipe(Schema.decode(SchemaTransformation.toLowerCase()))
 Schema.String.pipe(Schema.decode(SchemaTransformation.toUpperCase()))
 ```
 
-> **Prerelease trap.** `decode` is a standalone combinator applied through `.pipe(...)`,
+> **Trap.** `decode` is a standalone combinator applied through `.pipe(...)`,
 > not a method on the schema. `Schema.String.decode(...)` does not typecheck —
 > schemas expose `.check`, `.annotate` and `.pipe`, but no `.decode`.
 
@@ -236,10 +236,9 @@ The `Schema.Date` schema matches valid `Date` objects and rejects invalid dates
 such as `new Date(NaN)`. Its guard is `input instanceof Date && !Number.isNaN(input.getTime())`
 and its `expected` annotation is `"a valid Date"`.
 
-> **Prerelease trap.** There is no separate "valid date" schema. `Schema.DateValid`
-> and `Schema.ValidDate` are both `undefined` — earlier drafts of this guide
-> described `Schema.Date` as accepting invalid dates and pointed at a companion
-> schema to exclude them. `Schema.Date` already excludes them.
+> **Trap.** There is no separate "valid date" schema: `Schema.DateValid`
+> and `Schema.ValidDate` are both `undefined`. `Schema.Date` itself rejects
+> invalid dates, so no companion schema is needed to exclude them.
 
 ## Template literals
 
@@ -300,11 +299,10 @@ export type Type = typeof schema.Type
 console.log(String(Schema.decodeUnknownExit(schema)("aa:1")))
 // Success(["aa",":",1])
 
+// A part that fails its own check reports the template as a whole, not the part:
 console.log(String(Schema.decodeUnknownExit(schema)("a:1")))
-// Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 2
-//   at [0]))]))
+// Failure(Cause([Fail(SchemaError(Expected a string matching template literal parts))]))
 
 console.log(String(Schema.decodeUnknownExit(schema)("aa:1.2")))
-// Failure(Cause([Fail(SchemaError(Expected an integer
-//   at [2]))]))
+// Failure(Cause([Fail(SchemaError(Expected a string matching template literal parts))]))
 ```

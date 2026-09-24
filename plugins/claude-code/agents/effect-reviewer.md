@@ -6,7 +6,7 @@ description: >
   after an implementation, or on a diff/PR. Also use to write or strengthen
   `@effect/vitest` tests. The main agent should delegate v4 review and test
   authoring to this agent; it carries the effected plugin's testing and
-  best-practice skills and verifies claims against the installed `effect` prerelease.
+  best-practice skills and verifies claims against the installed `effect`.
 tools:
   - Read
   - Write

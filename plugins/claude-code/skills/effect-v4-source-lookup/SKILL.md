@@ -395,7 +395,7 @@ Two riders on the package-root form, both learned by leaving mess behind:
   root is committed ground.
 
 1. **Run from inside the package, never the repo root.** A workspace root that has a v3 installed resolves it and will describe the v3 surface with total confidence; a root that has none — this repo today — fails with `ERR_MODULE_NOT_FOUND` instead. Both are the same rule: only `packages/<pkg>/` is guaranteed to resolve the pinned v4.
-2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once, so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
+2. **Print the resolved version inside every probe, and compare it to the exact `catalog:effect` pin — never to a prerelease channel word.** Channel words (`beta`, `rc`) are not stable across the v4 line, so a check that requires one rejects a valid probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
 3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
@@ -421,18 +421,19 @@ rm -f "$PWD/probe.ts"
 **Run `tsc` BARE — never pass the probe file as a CLI argument.** Under
 TypeScript 7 a found tsconfig plus CLI file args is a hard error
 (`TS5112: tsconfig.json is present but will not be loaded if files are
-specified on commandline`), probed 2026-08-02. The bare form compiles the
+specified on commandline`). The bare form compiles the
 package's own program, which includes a root-level probe (precondition 3's
 whole point). If a file argument is genuinely unavoidable, `--ignoreConfig`
 proceeds — but it abandons the package's tsconfig, so the bare form stays
 canonical.
 
-A type-level control that works:
+A type-level control that works — shown as `text` because it exists to fail
+the typecheck:
 
-```ts
+```text
 import { Effect } from "effect";
 const control = Effect.catchAll; // a name that does not exist; must fail
-// probe.ts(3,24): error TS2339: Property 'catchAll' does not exist on type 'typeof Effect'
+// probe.ts(2,24): error TS2339: Property 'catchAll' does not exist on type 'typeof Effect'
 ```
 
 Inside a probe **file**, print the version with an import, not `require` — a `require`

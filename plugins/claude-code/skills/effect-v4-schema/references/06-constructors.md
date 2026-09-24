@@ -19,7 +19,7 @@ A constructor creates a value of the schema's type, running all validations at t
 
 For an alternative that does not throw on schema validation failures, use the schema's own `makeOption` method (`schema.makeOption(input)`) or the standalone `SchemaParser.makeOption(schema)`, which returns `Option.Some` on success and `Option.None` for schema issues. Non-schema failures, such as defects, still throw.
 
-> **Prerelease trap.** `Schema.makeOption` is `undefined`. `makeOption` lives on the
+> **Trap.** `Schema.makeOption` is `undefined`. `makeOption` lives on the
 > schema instance (alongside `make`) and, in standalone form, on `SchemaParser`
 > — not on the `Schema` module.
 
@@ -69,7 +69,7 @@ const schema = Schema.String.pipe(Schema.brand("a"))
 schema.make
 ```
 
-> **Prerelease trap.** `Schema.brand` takes the identifier as a *value* argument:
+> **Trap.** `Schema.brand` takes the identifier as a *value* argument:
 > `Schema.brand("a")`. The type-argument-only spelling `Schema.brand<"a">()`
 > fails with `TS2554: Expected 1 arguments, but got 0`. The brand string is
 > inferred from the argument, so no explicit type argument is needed.

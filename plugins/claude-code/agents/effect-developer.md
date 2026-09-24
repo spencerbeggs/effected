@@ -6,7 +6,7 @@ description: >
   idiomatic v4 implementation work. The main agent should delegate feature
   implementation in Effect to this agent; it carries the effected plugin's
   v4 best-practice skills and the discipline of verifying every API against
-  the installed `effect` prerelease rather than v3 memory.
+  the installed `effect` rather than v3 memory.
 tools:
   - Read
   - Write

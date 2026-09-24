@@ -334,12 +334,11 @@ nested values parse successfully. If a nested value fails, its issue is reported
 but structural filters on the containing value are **not** evaluated, even with
 `{ errors: "all" }`.
 
-> **Prerelease trap.** Earlier drafts of this guide claimed the opposite — that
-> structural filters are evaluated separately from item-level ones so both
-> issues surface together under `{ errors: "all" }` — and showed a two-issue
-> expected output. Probed: the nested `isNonEmpty` failure
-> below suppresses the containing `isMinLength(3)` entirely, and only one issue
-> is reported. Do not write a test that asserts on the second issue.
+> **Trap.** Structural filters are not evaluated separately from item-level
+> ones, so the two issues do not surface together under `{ errors: "all" }`.
+> The nested `isNonEmpty` failure below suppresses the containing
+> `isMinLength(3)` entirely, and only one issue is reported. Do not write a
+> test that asserts on the second issue.
 
 **Example** (A nested failure prevents the structural filter from running)
 
@@ -397,7 +396,7 @@ const schema = Schema.Finite.pipe(
 )
 ```
 
-> **Prerelease trap (two of them).** `SchemaIssue.InvalidValue`'s annotation bag is
+> **Trap (two of them).** `SchemaIssue.InvalidValue`'s annotation bag is
 > `{ expected?, message? }`, but it also carries an index signature, so a
 > misspelled key type-checks and then silently does nothing. `{ title: "not
 > found" }` compiles and formats as `"Expected a valid value"` — the default

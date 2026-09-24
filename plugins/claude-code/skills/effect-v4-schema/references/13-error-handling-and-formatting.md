@@ -38,15 +38,14 @@ if (Result.isFailure(result)) {
 }
 ```
 
-> **Prerelease trap — the `, got X` suffix.** This is the single most common wrong
+> **Trap — the `, got X` suffix.** This is the single most common wrong
 > expectation in this guide. Formatted messages carry **no** `, got <value>`
 > suffix unless you opted into `reportInput`. Probed:
 > `Schema.decodeUnknownExit(Schema.NonEmptyString)("")` renders
 > `Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 1))]))`,
 > and only with `{ reportInput: true }` does it become
-> `... at least 1, got ""`. Earlier drafts of these reference files pasted the
-> `reportInput` spellings into every default-mode example; a test asserting on
-> them fails. Note also that the rendered prefix is `SchemaError(...)`, never
+> `... at least 1, got ""`. A test that expects the `reportInput` spelling from
+> a default-mode decode fails. Note also that the rendered prefix is `SchemaError(...)`, never
 > `SchemaError: ...`.
 >
 > `SchemaParser.decodeUnknownResult` fails with a bare `SchemaIssue.Issue`, so
@@ -146,35 +145,31 @@ Output:
 
 If a schema has a `message` annotation, it will take precedence over any formatter hook.
 
-To make the examples easier to follow, we define a helper function that prints formatted validation messages using `SchemaFormatter`.
+To make the examples easier to follow, we define a helper function that prints
+formatted validation messages, plus a minimal translator `t`. Any translation
+library with the same `t(key, params)` shape (i18next, for one) drops in
+unchanged.
 
 **Example utilities**
 
 ```ts
 // utils.ts
 import { Exit, Schema, SchemaIssue } from "effect"
-import i18next from "i18next"
 
-i18next.init({
-  lng: "en",
-  resources: {
-    en: {
-      translation: {
-        "string.mismatch": "Please enter a valid string",
-        "string.minLength": "Please enter at least {{minLength}} character(s)",
-        "struct.missingKey": "This field is required",
-        "struct.mismatch": "Please enter a valid object",
-        "default.mismatch": "Invalid type",
-        "default.invalidValue": "Invalid value",
-        "default.forbidden": "Forbidden operation",
-        "default.oneOf": "Too many successful values",
-        "default.check": "The value does not match the check"
-      }
-    }
-  }
-})
+const messages: Record<string, string> = {
+  "string.mismatch": "Please enter a valid string",
+  "string.minLength": "Please enter at least {{minLength}} character(s)",
+  "struct.missingKey": "This field is required",
+  "struct.mismatch": "Please enter a valid object",
+  "default.mismatch": "Invalid type",
+  "default.invalidValue": "Invalid value",
+  "default.forbidden": "Forbidden operation",
+  "default.oneOf": "Too many successful values",
+  "default.check": "The value does not match the check"
+}
 
-export const t = i18next.t
+export const t = (key: string, params: Record<string, unknown> = {}): string =>
+  (messages[key] ?? key).replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(params[name]))
 
 export function getLogIssues(options?: {
   readonly leafHook?: SchemaIssue.LeafHook | undefined
@@ -195,8 +190,14 @@ export function getLogIssues(options?: {
 **Example** (Using hooks to translate common messages)
 
 ```ts
-import { Schema } from "effect"
-import { getLogIssues, t } from "./utils.js"
+import { Schema, SchemaIssue } from "effect"
+
+// Exported by the utilities module above.
+declare const t: (key: string, params?: Record<string, unknown>) => string
+declare function getLogIssues(options?: {
+  readonly leafHook?: SchemaIssue.LeafHook | undefined
+  readonly checkHook?: SchemaIssue.CheckHook | undefined
+}): <S extends Schema.Codec<unknown, unknown, never, never>>(schema: S, input: unknown) => void
 
 const Person = Schema.Struct({
   name: Schema.String.check(Schema.isNonEmpty())
@@ -229,14 +230,14 @@ const logIssues = getLogIssues({
     }
   },
   // Format custom check errors (like isMinLength or user-defined validations)
+  // Built-in checks identify themselves through their `representation`
+  // annotation: `isMinLength` (and `isNonEmpty`, which is `isMinLength(1)`)
+  // carries the id "effect/schema/isMinLength" and a `{ minLength }` payload.
   checkHook: (issue) => {
-    const meta = issue.filter.annotations?.meta
-    if (meta) {
-      switch (meta._tag) {
-        case "isMinLength": {
-          return t("string.minLength", { minLength: meta.minLength })
-        }
-      }
+    const representation = issue.filter.annotations?.representation
+    if (representation?.id === "effect/schema/isMinLength") {
+      const { minLength } = representation.payload as { readonly minLength: number }
+      return t("string.minLength", { minLength })
     }
     return t("default.check")
   }
@@ -266,8 +267,14 @@ You can attach custom error messages directly to a schema using annotations. The
 **Example** (Attaching custom messages to a struct field)
 
 ```ts
-import { Schema } from "effect"
-import { getLogIssues, t } from "./utils.js"
+import { Schema, SchemaIssue } from "effect"
+
+// Exported by the utilities module above.
+declare const t: (key: string, params?: Record<string, unknown>) => string
+declare function getLogIssues(options?: {
+  readonly leafHook?: SchemaIssue.LeafHook | undefined
+  readonly checkHook?: SchemaIssue.CheckHook | undefined
+}): <S extends Schema.Codec<unknown, unknown, never, never>>(schema: S, input: unknown) => void
 
 const Person = Schema.Struct({
   name: Schema.String
