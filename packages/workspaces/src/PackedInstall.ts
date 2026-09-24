@@ -1,6 +1,5 @@
 import { Run } from "@effected/commands";
-import type { Duration } from "effect";
-import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
+import { Duration, Effect, FileSystem, Option, Path, Result, Schema } from "effect";
 import { ChildProcess } from "effect/unstable/process";
 import {
 	closureOf,
@@ -73,7 +72,7 @@ export interface PackedInstallOptions {
 	 * not of the pack.
 	 */
 	readonly consumerDependencies?: Readonly<Record<string, string>> | undefined;
-	/** Ceiling on each install. Defaults to four minutes. */
+	/** Ceiling on each install. Defaults to four minutes. Expiry fails `InstallFailed` with a message naming the manager and this duration. */
 	readonly installTimeout?: Duration.Input | undefined;
 }
 
@@ -148,6 +147,10 @@ const DEFAULT_PACK_FROM: PackSource = { directory: "dist/prod/npm/pkg" };
 const WORKSPACE_PROTOCOL_NOT_INSTALLED = "ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL";
 const TAIL = 2000;
 const tail = (text: string): string => (text.length <= TAIL ? text : text.slice(-TAIL));
+const DEFAULT_INSTALL_TIMEOUT: Duration.Input = "4 minutes";
+/** A ceiling as a person reads it: `"4m"` for `"4 minutes"`, the raw input if it does not decode. */
+const describeDuration = (input: Duration.Input): string =>
+	Option.match(Duration.fromInput(input), { onNone: () => String(input), onSome: Duration.format });
 
 const failure = (
 	reason: PackedInstallError["reason"],
@@ -364,10 +367,20 @@ export class PackedInstall {
 						.writeFileString(path.join(directory, file), content)
 						.pipe(Effect.mapError(io(`could not write ${file}`)));
 				}
+				const installTimeout = options.installTimeout ?? DEFAULT_INSTALL_TIMEOUT;
 				const output = yield* Run.collect(command(manager, installArgs(manager, version), directory), {
-					timeout: options.installTimeout ?? "4 minutes",
+					timeout: installTimeout,
 				}).pipe(
-					Effect.mapError((cause) => failure("InstallFailed", `${manager} install could not run`, { manager, cause })),
+					Effect.mapError((cause) =>
+						failure(
+							"InstallFailed",
+							// A ceiling that fired is not a spawn that failed: say which, so a slow registry is not read as a missing binary.
+							cause._tag === "CommandFailedError" && cause.kind === "timeout"
+								? `${manager} install timed out after ${describeDuration(installTimeout)}`
+								: `${manager} install could not run`,
+							{ manager, cause },
+						),
+					),
 				);
 				if (!output.succeeded) {
 					return yield* failure("InstallFailed", `${manager} install exited ${output.exitCode}`, {

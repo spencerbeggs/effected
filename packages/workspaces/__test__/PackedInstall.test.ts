@@ -284,7 +284,11 @@ describe("PackedInstall.run past the pack", () => {
 			}
 			return {};
 		});
-	const installSuite = (spawner: ScriptedSpawner, seed: MemoryFileSystemSeed) =>
+	const installSuite = (
+		spawner: ScriptedSpawner,
+		seed: MemoryFileSystemSeed,
+		options?: { excludeTestServices: true },
+	) =>
 		layer(
 			Layer.mergeAll(
 				MemoryFileSystem.layerFaultyWith(seed, { makeTempDirectoryScoped: () => Effect.succeed(SCRATCH) }),
@@ -292,6 +296,7 @@ describe("PackedInstall.run past the pack", () => {
 				spawner.layer,
 				Discovery,
 			),
+			options,
 		);
 
 	const happy = ScriptedSpawner.make(manifests());
@@ -455,6 +460,52 @@ describe("PackedInstall.run past the pack", () => {
 				assert.isTrue(output.endsWith("ERR_INSTALL_BOOM"), "stderr comes last");
 				assert.isTrue(output.startsWith("aaa"), "stdout precedes it");
 				assert.strictEqual(output.length, 2000, "only the tail is kept");
+			}),
+		);
+	});
+
+	// The real clock: installTimeout is a real ceiling, and a hung install must trip it.
+	const hungInstall = ScriptedSpawner.make((command, args) =>
+		args[0] === "install" ? { hang: true } : manifests()(command, args),
+	);
+	installSuite(hungInstall, seedWith(), { excludeTestServices: true })((it) => {
+		it.effect("an install that outlives installTimeout fails InstallFailed naming the manager and the ceiling", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({
+						carrier: "@x/carrier",
+						closure: "auto",
+						managers: ["npm"],
+						bins: [],
+						env: ENV,
+						installTimeout: "50 millis",
+					}),
+				).pipe(Effect.timeout("3 seconds"));
+				assert.deepStrictEqual([error.reason, error.manager], ["InstallFailed", "npm"]);
+				assert.strictEqual(error.message, "npm install timed out after 50ms");
+				assert.isTrue(
+					hungInstall.spawns.some((spawn) => spawn.args[0] === "install"),
+					"the install was spawned",
+				);
+			}),
+		);
+	});
+
+	// The discriminating control: a spawn that never started keeps the spawn-failure message.
+	const unspawnable = ScriptedSpawner.make((command, args) =>
+		args[0] === "install" ? ScriptedSpawner.notFound(command) : manifests()(command, args),
+	);
+	installSuite(
+		unspawnable,
+		seedWith(),
+	)((it) => {
+		it.effect("an install that cannot spawn fails InstallFailed as could not run, not as a timeout", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({ carrier: "@x/carrier", closure: "auto", managers: ["npm"], bins: [], env: ENV }),
+				);
+				assert.deepStrictEqual([error.reason, error.manager], ["InstallFailed", "npm"]);
+				assert.strictEqual(error.message, "npm install could not run");
 			}),
 		);
 	});

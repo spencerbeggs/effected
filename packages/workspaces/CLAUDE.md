@@ -28,6 +28,7 @@ Tests run on core's `Path.layer` + `@effected/memfs` (a devDependency), no platf
 
 - A suite-boundary `layer(...)` cannot vary per test, so **each distinct tree gets its own `layer(...)` block**.
 - `__test__/integration/self.int.test.ts` is the one exception: it discovers **this repository** through `@effect/platform-node` (a devDependency).
-- The `pnpm peers check` oracle under `__test__/fixtures/peers/*/peers-check.json` is committed pnpm output (provenance in that directory's `README.md`) — never shell out to a live pnpm from a test.
+- Unit and integration tests never drive a live package manager. The `pnpm peers check` oracle under `__test__/fixtures/peers/*/peers-check.json` is committed pnpm output (provenance in that directory's `README.md`), and `PackedInstall`'s unit tests script every spawn through `ScriptedSpawner`.
+- Only `__test__/e2e/` may run real package managers, and only against a fixture workspace it generates, with every spawn under the scrubbed dead-proxy offline env (`HTTP(S)_PROXY` at a closed port, `COREPACK_ENABLE_NETWORK=0`) so nothing reaches a registry. `e2e/PackedInstall.e2e.test.ts` is that exception.
 - `savvy.build.ts` carries the **narrow** `_base` suppression for synthesized class-factory bases. Never widen it — the narrow pattern once caught a genuine `ae-forgotten-export`.
 - Never run `node savvy.build.ts --target prod` directly — build through `pnpm build --filter @effected/workspaces`.
