@@ -65,6 +65,11 @@ interface HarnessParts {
  * WITHOUT a `Stdio` of its own: a `Stdio` the server provides internally wins,
  * and talks to the real terminal.
  *
+ * The server is built with a fresh layer memo map, never the ambient one, so
+ * a harness made under another stdio server's `Effect.provide` still serves
+ * its own. The flip side: a layer the server shares by reference with the
+ * test's own layers is built again for the harness, not reused.
+ *
  * - Responses are matched by id, so notifications may interleave freely.
  * - No wait can hang: every response wait and `awaitOutboundMethod` fails
  *   with `ServerStopped` when the server stops (stdin closing does that),
@@ -220,7 +225,12 @@ export class McpHarness {
 				Effect.forkScoped,
 			);
 
-			yield* Layer.build(provided).pipe(
+			// A fresh memo map, never the ambient one: core's stdio protocol layer is a
+			// module constant, so a build that forks an enclosing memo map (Layer.build
+			// does) would reuse an ambient server's protocol and never read this stdin.
+			yield* Effect.flatMap(Effect.scope, (scope) =>
+				Layer.buildWithMemoMap(provided, Layer.makeMemoMapUnsafe(), scope),
+			).pipe(
 				Effect.andThen(Deferred.succeed(ready, undefined)),
 				Effect.andThen(Effect.never),
 				Effect.scoped,

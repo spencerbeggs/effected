@@ -83,14 +83,27 @@ types.
   which layers would memoize and share across servers in one graph.
   Toolkit handlers still see the ambient `Stdio`: the guard is
   `Layer.provide`d to `layerStdio` alone.
-- **One `McpStdio.layer` server per layer graph.** Core's
+- **One `McpStdio.layer` server per layer memo map.** Core's
   `RpcServer.layerProtocolStdio` is a module constant, so two stdio servers
-  merged into one graph share one protocol, built over whichever `Stdio`
-  came first; the second server never reads its stdin. This is core's
-  behaviour with or without the guard. `Layer.fresh` around `layerStdio`
+  whose builds share a memo map share one protocol, built over whichever
+  `Stdio` came first; the second server never reads its stdin. Merging
+  both into one graph shares the map, and so does building or providing
+  the second anywhere under the first's `Effect.provide`: nested
+  `Layer.build` and `Effect.provide` fork the ambient memo map
+  (`CurrentMemoMap.forkOrCreate`). Isolate a server with its own
+  `ManagedRuntime`, `Effect.provide(layer, { local: true })` or its own
+  process. This is core's behaviour with or without the guard.
+  `McpHarness.make` builds with a fresh memo map
+  (`Layer.buildWithMemoMap(…, Layer.makeMemoMapUnsafe(), scope)`) for this
+  reason, so a harness never shares an ambient server's protocol. `Layer.fresh` around `layerStdio`
   is not a fix: tried, it failed 35 of the harness and toolkit tests
   (tool calls stopped resolving), most likely because core's `McpServer.layer`
   is also a shared constant that `McpServer.toolkit` registers through.
+- **Code after a completed `Effect.provide` of a stdio server never
+  runs.** Core's `makeProtocolStdio` captures the fiber that builds it and
+  interrupts that fiber when its stdin loop ends
+  (`ensuring(forkDetach(Fiber.interrupt(fiber)))`), which closing the
+  provide's scope does. Tests serve a server through `McpHarness`.
 - **The harness never hangs.** Every `McpHarness` response wait and
   `awaitOutboundMethod` races a stop signal and a corruption signal, so a
   server that stops before responding, or writes a non-JSON-RPC line under

@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Layer, Result } from "effect";
+import { Cause, Deferred, Effect, Exit, Layer, Result, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/unstable/ai";
 import { McpStdio } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
@@ -248,5 +248,33 @@ describe("McpHarness", () => {
 				.pipe(Effect.timeout("2 seconds"));
 			assert.strictEqual(notification.method, "notifications/tools/list_changed");
 		}),
+	);
+});
+
+describe("McpHarness beside an ambient stdio server", () => {
+	it.live("a harness made inside an Effect.provide of another McpStdio server still serves its own", () =>
+		Effect.gen(function* () {
+			const outcome = yield* Deferred.make<unknown, unknown>();
+			// Core's stdio protocol interrupts the fiber that built it once its scope closes, so nothing
+			// after a completed Effect.provide of a stdio server runs: report through a Deferred instead.
+			yield* Effect.forkChild(
+				Effect.gen(function* () {
+					const harness = yield* McpHarness.make(fixtureServer());
+					yield* harness.initialize;
+					yield* Deferred.succeed(
+						outcome,
+						resultOf(yield* harness.callTool("echo", { text: "own" })).structuredContent,
+					);
+				}).pipe(
+					Effect.catchCause((cause) => Deferred.failCause(outcome, cause)),
+					Effect.provide(
+						McpStdio.layer({ name: "ambient", version: "0.0.0" }).pipe(
+							Layer.provide(Stdio.layerTest({ stdin: Stream.never })),
+						),
+					),
+				),
+			);
+			assert.deepStrictEqual(yield* Deferred.await(outcome), { text: "own" });
+		}).pipe(Effect.timeout("3 seconds")),
 	);
 });

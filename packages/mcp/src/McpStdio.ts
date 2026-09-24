@@ -99,11 +99,20 @@ export class McpStdio {
 	 * tab, carriage return) is ignored. Valid JSON that is not a JSON-RPC
 	 * message still goes to core.
 	 *
-	 * Build one server per layer graph. Core's stdio protocol layer is a
-	 * shared constant, so two `McpStdio.layer` servers merged into one graph
-	 * share one protocol: only the first server built reads stdin, and the
-	 * second never answers. Build each in its own graph (its own
-	 * `Layer.build`, `ManagedRuntime` or process) instead.
+	 * Give each server a fresh layer memo map. Core's stdio protocol layer
+	 * is a shared constant, so a second `McpStdio.layer` server whose build
+	 * sees the first one's memo map shares its protocol: only the first
+	 * server reads stdin, and the second never answers. Merging both into
+	 * one graph does that, and so does building or providing the second
+	 * anywhere under the first one's `Effect.provide`: nested `Layer.build`
+	 * and `Effect.provide` fork the ambient memo map rather than starting a
+	 * new one. Isolate each server with its own `ManagedRuntime`,
+	 * `Effect.provide(layer, { local: true })` or its own process.
+	 *
+	 * Code after a completed `Effect.provide` of a stdio server never runs:
+	 * core's stdio protocol interrupts the fiber that built it when its stdin
+	 * loop ends, which closing the provide's scope does. In a test, serve the
+	 * layer through `McpHarness` from `@effected/mcp/testing` instead.
 	 *
 	 * Each call mints a fresh layer; bind the result to a `const` or the
 	 * server builds twice.
