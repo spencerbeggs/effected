@@ -19,6 +19,7 @@ import { ToolFailure } from "./ToolFailure.js";
 
 interface ProcessParts {
 	readonly send: (message: unknown) => Effect.Effect<void>;
+	readonly sendRaw: (text: string) => Effect.Effect<void>;
 	readonly nextLine: Effect.Effect<string, McpTestFailure>;
 	readonly readUntilResponse: (
 		id: string | number,
@@ -42,6 +43,8 @@ interface ProcessParts {
  *
  * - `nextLine` fails with `StreamEnded` when stdout ends, so a child that
  *   exits early fails the test instead of hanging it.
+ * - `send` writes one JSON-encoded line; `sendRaw` writes text exactly as
+ *   given, for a malformed frame or one frame split across writes.
  * - `readUntilResponse` reads past interleaved notifications, such as
  *   `list_changed`, to the matching id and returns what it saw.
  * - `closeStdin` is `Queue.end`, never `Queue.shutdown`, so every frame
@@ -61,6 +64,16 @@ export class McpProcess {
 	 * `StreamEnded` message names that failure.
 	 */
 	readonly send: (message: unknown) => Effect.Effect<void>;
+	/**
+	 * Write `text` to the child's stdin exactly as given: no JSON encoding and
+	 * no newline added.
+	 *
+	 * @remarks
+	 * For frames `send` cannot produce: a line that is not JSON, a blank line,
+	 * or one frame split across several writes. Include the `\n` yourself.
+	 * Never fails, on the same terms as `send`.
+	 */
+	readonly sendRaw: (text: string) => Effect.Effect<void>;
 	/** The next non-empty stdout line; fails with `StreamEnded` once stdout ends. */
 	readonly nextLine: Effect.Effect<string, McpTestFailure>;
 	/** Read JSON-RPC lines up to and including the response with this id. */
@@ -83,6 +96,7 @@ export class McpProcess {
 
 	private constructor(parts: ProcessParts) {
 		this.send = parts.send;
+		this.sendRaw = parts.sendRaw;
 		this.nextLine = parts.nextLine;
 		this.readUntilResponse = parts.readUntilResponse;
 		this.handshake = parts.handshake;
@@ -155,8 +169,8 @@ export class McpProcess {
 						if (isResponse(message) && message.id === id) return { response: message, seen };
 					}
 				});
-			const send = (message: unknown): Effect.Effect<void> =>
-				Effect.asVoid(Queue.offer(stdin, encoder.encode(`${JSON.stringify(message)}\n`)));
+			const sendRaw = (text: string): Effect.Effect<void> => Effect.asVoid(Queue.offer(stdin, encoder.encode(text)));
+			const send = (message: unknown): Effect.Effect<void> => sendRaw(`${JSON.stringify(message)}\n`);
 			const handshake = (protocol: McpProtocol.ProtocolAdapter = McpProtocol.v2025_11_25) =>
 				Effect.gen(function* () {
 					if (isStateless(protocol)) {
@@ -173,6 +187,7 @@ export class McpProcess {
 
 			return new McpProcess({
 				send,
+				sendRaw,
 				nextLine,
 				readUntilResponse,
 				handshake,

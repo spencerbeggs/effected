@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T04:08:05Z
-  body_sha256: 11a762a61388f8cda1bef50d2a59ee7a995527a94b6e67e48b2912cff12eabd7
+  at: 2026-09-24T04:38:26Z
+  body_sha256: ec09a4988421e63967f4bf4db2425c345ca231d81865bb7a22391cf5e4ebce37
 ---
 
 # @effected/mcp
@@ -38,7 +38,7 @@ from `cli` to `mcp`, none from `mcp` to `workspaces`.
 | Export | Contract |
 | --- | --- |
 | `McpStdio.protocols` | `[McpProtocol.v2026_07_28, v2025_11_25, v2025_06_18]`. Stateless first; never a single entry; `initialize` only matches stateful adapters; a request with no session and no `_meta` falls to `protocols[0]`; at most one stateless adapter. |
-| `McpStdio.layer` | `(options: { name; version; instructions?; description?; protocols? }) => Layer<McpServer \| McpServerClient, never, Stdio>`. `McpServer.layerStdio` with `LogToStderr` **merged into its own output** (`Layer.provideMerge`, not `Layer.provide`) and `Layer.orDie`, because an `IllegalArgumentError` from `protocols` is the implementer's own defect (A2). The server's `Stdio` is wrapped so that a stdin line that is not JSON is answered with a JSON-RPC `-32700` parse error (`id: null`) and never reaches core's decoder, and a whitespace-only line is ignored; the server keeps serving after either. |
+| `McpStdio.layer` | `(options: { name; version; instructions?; description?; protocols? }) => Layer<McpServer \| McpServerClient, never, Stdio>`. `McpServer.layerStdio` with `LogToStderr` **merged into its own output** (`Layer.provideMerge`, not `Layer.provide`) and `Layer.orDie`, because an `IllegalArgumentError` from `protocols` is the implementer's own defect (A2). The server's `Stdio` is wrapped by a guard that frames stdin exactly as core's decoder does (one streaming UTF-8 decoder, a BOM stripped only at stream start). A line that is not JSON, or longer than core's cap of 16 Mi UTF-16 code units, is answered with a JSON-RPC `-32700` parse error (`id: null`) and never reaches core's decoder; a line of JSON whitespace is ignored; the server keeps serving after either. The guard's state lives once per `Stdio`, so a partial line held across core's re-subscription to stdin survives. |
 | `McpStdio.launch` | `<ROut, E, R>(layer: Layer.Layer<ROut, E, R>) => Effect.Effect<never, Error, R>`. Catches every non-interrupt cause itself and logs it inside the `LogToStderr` scope, then re-fails with a private `LaunchFailed` sentinel carrying `Runtime.errorReported = false` (so `runMain` stays silent) and `Runtime.errorExitCode` copied from the original error (so the exit code survives) (A1). |
 | `McpStdio.teardown` | `Runtime.Teardown`. A success or an interrupt-only exit maps to 0 — stdin reaching EOF would otherwise exit 130. Anything else goes to `Runtime.defaultTeardown`. |
 | `ToolFailure` | `message(raw, remediation)` gives `"<raw> <hint>[ Try <suggestedTool>.]"`, dropping any empty part so an empty hint never leaves a double space (A10). `truncate(value, limit?)` echoes caller values safely, never splitting a UTF-16 surrogate pair (A10); `ECHO_LIMIT = 200`, `ENGINE_ECHO_LIMIT = 2000`. `fields` is `{ message: Schema.String, remediation: Remediation }` to spread into a consumer's `Schema.TaggedError`. Folded into the message because core sends an `Error`-instance declared failure as `isError` with message text only (`McpServer.ts:1842-1845`). |
@@ -53,7 +53,7 @@ exports this package consumes, not exports of its own.
 | Export | Contract |
 | --- | --- |
 | `McpHarness.make` | `<ROut, E, R>(server: Layer.Layer<ROut, E, R>, options?) => Effect.Effect<McpHarness, E, Scope \| Exclude<R, Stdio>>` — generic over the server's own output, so it accepts `McpStdio.layer` directly (whose output is `McpServer \| McpServerClient`, not `never`) (A3). Runs in-process over `Stdio.layerTest` with queues, the queue-backed `Stdio` provided innermost, matching responses by id. A caller-supplied `_meta` wins over the fields the harness injects when building a stateless frame. In stateless mode it injects `_meta` and uses `server/discover` in place of `initialize`. With `strictStdout` (default `true`), any stdout line that isn't JSON-RPC dies the wait; every wait races a stop signal and a corruption signal, so none can outlive the server. On a stateful revision, a request other than `initialize` sent before one fails fast with `NotInitialized` rather than reaching the server's opaque `Invalid request metadata`; `sendRaw` is never gated. Operations, including `request`/`startRequest`/`notify` beyond the original spec table (A3): `initialize`/`discover`, `callTool`, `listTools`, `readResource`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`, `consoleLogSoFar`, `close` (`Queue.end`, never `shutdown`). Operation errors are typed `McpTestFailure`, a new `./testing` export (A3). Both `captureLogs` and `strictStdout` default to `true` (A3). |
-| `McpProcess.spawn` | `(command: ChildProcess.Command) => Effect<McpProcess, PlatformError, ChildProcessSpawner \| Scope>`, returning an `McpProcess` instance (A4). The test file builds the command with `execPath` and `env`. Reads stdout with `Stream.decodeText` and `Stream.splitLines`. `nextLine` and `readUntilResponse` fail with `McpTestFailure` (`StreamEnded` or `NotJsonRpc`) rather than hanging (A4); `readUntilResponse(id)` returns `{ response, seen }`, because `list_changed` notifications interleave. `handshake(protocol?)` always uses id 1 (A4). `closeStdin` is `Queue.end`, never `shutdown`. `stderrSoFar` is added beside `stderrFinal` (A4). |
+| `McpProcess.spawn` | `(command: ChildProcess.Command) => Effect<McpProcess, PlatformError, ChildProcessSpawner \| Scope>`, returning an `McpProcess` instance (A4). The test file builds the command with `execPath` and `env`. Reads stdout with `Stream.decodeText` and `Stream.splitLines`. `nextLine` and `readUntilResponse` fail with `McpTestFailure` (`StreamEnded` or `NotJsonRpc`) rather than hanging (A4); `readUntilResponse(id)` returns `{ response, seen }`, because `list_changed` notifications interleave. `handshake(protocol?)` always uses id 1 (A4). `closeStdin` is `Queue.end`, never `shutdown`. `stderrSoFar` is added beside `stderrFinal` (A4). `sendRaw(text)` writes text to stdin exactly as given, with no JSON encoding and no newline, for frames `send` cannot make: a non-JSON line, a blank line, one frame split across writes. |
 | `McpProbe.initialize` | `(command, options: McpProbeOptions) => Effect.Effect<McpProbeResult, McpTestFailure \| PlatformError, ChildProcessSpawner>`, with `stdout` holding the raw lines (A5). Keeps stdin open until the id-1 response arrives, then closes. On a `StreamEnded` failure the exit code and stderr are folded into the failure itself, because the caller holds no handle to read them separately. The caller asserts `response.error === undefined`, empty stderr and exit 0 — the MCP half of the packed-install proof. |
 | `McpTestFailure` | `Schema.TaggedError` shared by every test client, introduced as part of A3: `reason: "StreamEnded" \| "ServerStopped" \| "NotJsonRpc" \| "NotInitialized" \| "ErrorResponse"`, `message: string`. `StreamEnded`/`NotJsonRpc` come from the spawned clients; `ServerStopped`/`NotInitialized`/`ErrorResponse` from `McpHarness`, which dies (never raises `NotJsonRpc`) on a non-JSON-RPC line. |
 | `McpToolAudit.check` | `(tools: ReadonlyArray<ServedTool>, policy: McpToolAuditPolicy) => ReadonlyArray<string>`. A pure sweep over `tools/list` that returns violations, `"<tool>: <what>"` per line. `input: "open" \| "closed" \| "any"`; `requireTitle?`; `requireOutputSchema?`; `objectRootedOutput?` defaults to `true` ([D10](../decisions/mcp-tool-audit-object-rooted-outputs.md)); `maxDescription?`; `requireHints?`. **Reports a duplicate tool name under every policy**, independent of `input`/`requireTitle`/etc. (A8). |
@@ -146,13 +146,20 @@ publishes:
   protocol, outside the stdin stream that `RpcServer.makeProtocolStdio`
   retries. So each later chunk re-throws on the same line: the error is
   logged once per chunk, no request after it is answered, and stdin EOF
-  still exits 0. A blank line does the same, since `JSON.parse("")` throws.
+  still exits 0. A blank line does the same, since `JSON.parse("")` throws,
+  and so does a U+FEFF opening any line but the first: core's streaming
+  decoder strips a byte-order mark only at the start of the stream. A line
+  over the 16 Mi-code-unit cap fails with `MaxBufferSizeExceeded`, after
+  `failMaxBufferSize` has cleared the buffer, so the rest of that line
+  arrives as a fresh line with no answer, and core never replies to the
+  client either way.
   Workaround: `McpStdio.layer` provides the server a `Stdio` whose `stdin`
-  forwards only complete lines that parse as JSON. It answers each
-  unparseable line with the `-32700` frame on `stdout`, drops blank lines,
-  and forwards a line longer than core's 16 MiB frame cap unexamined, so
-  core's own cap still applies. The serialization cannot be swapped
-  instead: `layerStdio` provides it internally.
+  frames the stream as core does and forwards only complete lines that
+  parse as JSON and fit the cap. It answers every other non-blank line with
+  the `-32700` frame on `stdout` (an over-cap line once, as it passes the
+  cap, then discarding to its newline) and drops JSON-whitespace lines.
+  The serialization cannot be swapped instead: `layerStdio` provides it
+  internally.
 
 ## `InvalidParams` per protocol revision
 

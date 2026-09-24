@@ -87,13 +87,17 @@ export class McpStdio {
 	 * with `Layer.mergeAll` is not provided by it, so its build logs still
 	 * go through `console.log`, onto the wire.
 	 *
-	 * The server reads stdin through a guard. A complete line that is not
-	 * JSON is answered on stdout with a JSON-RPC parse error, code `-32700`
-	 * and `id: null`, and never reaches core's decoder, which would otherwise
-	 * throw on that line again for every later chunk and stop answering. A
-	 * whitespace-only line is ignored. A line longer than core's 16 MiB frame
-	 * cap passes through unexamined, so core's cap still applies to it. Valid
-	 * JSON that is not a JSON-RPC message still goes to core.
+	 * The server reads stdin through a guard that frames it exactly as core's
+	 * decoder does: one streaming UTF-8 decoder, a byte-order mark stripped
+	 * only at the start of the stream, lines split on `\n`. A line that is
+	 * not JSON is answered on stdout with a JSON-RPC parse error, code
+	 * `-32700` and `id: null`, and never reaches core's decoder, which would
+	 * otherwise throw on that line again for every later chunk and stop
+	 * answering. So is a line longer than core's cap of 16 Mi UTF-16 code
+	 * units: it is answered once, as soon as it passes the cap, and the rest
+	 * of it is discarded up to its newline. A line of JSON whitespace (space,
+	 * tab, carriage return) is ignored. Valid JSON that is not a JSON-RPC
+	 * message still goes to core.
 	 *
 	 * Each call mints a fresh layer; bind the result to a `const` or the
 	 * server builds twice.

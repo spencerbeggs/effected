@@ -63,6 +63,19 @@ describe("McpProcess", () => {
 		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 
+	it.live("sendRaw writes its text as given, so one frame can arrive in two writes", () =>
+		Effect.gen(function* () {
+			const server = yield* McpProcess.spawn(command("--count-on-end"));
+			yield* server.sendRaw('{"jsonrpc":"2.0","met');
+			yield* server.sendRaw('hod":"a"}\n');
+			yield* server.closeStdin;
+			const count = JSON.parse(yield* server.nextLine) as {
+				readonly params: { readonly frames: number; readonly methods: ReadonlyArray<string> };
+			};
+			assert.deepStrictEqual(count.params, { frames: 1, methods: ["a"] });
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
 	it.live("a stdout line that is not JSON-RPC fails readUntilResponse with NotJsonRpc", () =>
 		Effect.gen(function* () {
 			const server = yield* McpProcess.spawn(command("--noise"));

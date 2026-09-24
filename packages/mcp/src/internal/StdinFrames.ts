@@ -1,16 +1,15 @@
 import { Effect, Layer, Stdio, Stream } from "effect";
 import { McpSchema } from "effect/unstable/ai";
 
-const NEWLINE = 0x0a;
-const NEWLINE_BYTES = new Uint8Array([NEWLINE]);
-
 /**
- * The frame-size cap core's NDJSON decoder applies to one line, in the same
- * units: a longer line is forwarded unexamined so core's own cap reports it.
+ * The line-length cap core's stdio NDJSON decoder applies, in the same unit
+ * (UTF-16 code units of the decoded text) and with the same predicate
+ * (`length > cap`). The guard answers a longer line itself, so no line core
+ * would reject ever reaches core.
  *
  * @internal
  */
-export const MAX_FRAME_BYTES = 16 * 1024 * 1024;
+export const MAX_FRAME_LENGTH = 16 * 1024 * 1024;
 
 /**
  * The JSON-RPC 2.0 answer to a frame that is not JSON, newline-framed. The id
@@ -26,7 +25,7 @@ export const PARSE_ERROR_FRAME = `${JSON.stringify({
 
 /**
  * One stdin chunk after the guard: the bytes to hand to core, and how many
- * complete lines were dropped for not being JSON.
+ * lines the guard answered with a parse error instead.
  *
  * @internal
  */
@@ -35,126 +34,112 @@ export interface FrameGuardStep {
 	readonly parseErrors: number;
 }
 
-const concat = (parts: ReadonlyArray<Uint8Array>): Uint8Array => {
-	if (parts.length === 1) return parts[0] as Uint8Array;
-	let length = 0;
-	for (const part of parts) length += part.length;
-	const out = new Uint8Array(length);
-	let offset = 0;
-	for (const part of parts) {
-		out.set(part, offset);
-		offset += part.length;
-	}
-	return out;
-};
+/** JSON's insignificant whitespace, minus the newline that ends the line. */
+const BLANK = /^[ \t\r]*$/;
 
-const decoder = new TextDecoder();
-
-const classify = (line: Uint8Array): "blank" | "json" | "unparseable" => {
-	const text = decoder.decode(line);
-	if (text.trim() === "") return "blank";
+const isJson = (line: string): boolean => {
 	try {
-		JSON.parse(text);
-		return "json";
+		JSON.parse(line);
+		return true;
 	} catch {
-		return "unparseable";
+		return false;
 	}
 };
 
 /**
- * A stateful step over stdin chunks that forwards only complete lines that
- * parse as JSON, each with its newline.
+ * A stateful step over stdin chunks that forwards only complete lines core's
+ * decoder will parse, each with its newline.
  *
  * @remarks
  * Core's stdio decoder parses each line inside its read loop. A line that is
  * not JSON throws before the decoder advances past it, so the line stays at
  * the head of its buffer and every later chunk throws on it again: the server
- * never reads another frame. The guard drops such a line and counts it,
- * which the caller answers with {@link PARSE_ERROR_FRAME}.
+ * never reads another frame. The guard frames stdin exactly as core does and
+ * answers such a line itself, counting it for the caller to write
+ * {@link PARSE_ERROR_FRAME}.
  *
- * - A partial line is held until its newline arrives, as core does.
- * - A whitespace-only line is not a frame; it is dropped and not counted.
- * - A line longer than `maxFrameBytes` is forwarded unexamined, so core's own
- *   frame-size cap applies exactly as before.
+ * - Decoding mirrors core: one streaming UTF-8 decoder, so a character split
+ *   across chunks decodes whole, a byte-order mark is stripped only at the
+ *   start of the stream, and a U+FEFF opening any later line stays in that
+ *   line, where `JSON.parse` rejects it as core's would.
+ * - A partial line is held until its newline arrives.
+ * - A line of JSON whitespace only is not a frame: dropped, not answered.
+ * - A line longer than `maxFrameLength` code units is answered once, as soon
+ *   as the held part exceeds the cap, and the rest of it is discarded up to
+ *   its newline. Nothing is held beyond the cap.
+ *
+ * Create one guard per stdin: its state must outlive core re-subscribing to
+ * stdin after a failure, or a held partial line is lost.
  *
  * @internal
  */
-export const makeFrameGuard = (maxFrameBytes: number = MAX_FRAME_BYTES): ((chunk: Uint8Array) => FrameGuardStep) => {
-	let pending: Array<Uint8Array> = [];
-	let pendingBytes = 0;
-	// Forwarding an over-cap line to core until its newline.
-	let passthrough = false;
+export const makeFrameGuard = (maxFrameLength: number = MAX_FRAME_LENGTH): ((chunk: Uint8Array) => FrameGuardStep) => {
+	const decoder = new TextDecoder();
+	const encoder = new TextEncoder();
+	let pending = "";
+	// Discarding the rest of an over-cap line, already answered, up to its newline.
+	let discarding = false;
 
 	return (chunk) => {
-		const out: Array<Uint8Array> = [];
+		const text = decoder.decode(chunk, { stream: true });
+		let forward = "";
 		let parseErrors = 0;
 		let start = 0;
-		while (true) {
-			const newline = chunk.indexOf(NEWLINE, start);
-			if (newline === -1) {
-				const rest = chunk.subarray(start);
-				if (passthrough) {
-					if (rest.length > 0) out.push(rest);
-				} else if (rest.length > 0) {
-					// Copied: a held line must not alias a chunk the source may reuse.
-					pending.push(rest.slice());
-					pendingBytes += rest.length;
-					if (pendingBytes > maxFrameBytes) {
-						out.push(...pending);
-						pending = [];
-						pendingBytes = 0;
-						passthrough = true;
-					}
-				}
-				break;
-			}
-			const lineStart = start;
+		if (discarding) {
+			const newline = text.indexOf("\n");
+			if (newline === -1) return { forward: undefined, parseErrors: 0 };
+			discarding = false;
 			start = newline + 1;
-			if (passthrough) {
-				out.push(chunk.subarray(lineStart, start));
-				passthrough = false;
-				continue;
-			}
-			pending.push(chunk.subarray(lineStart, newline));
-			const line = concat(pending);
-			pending = [];
-			pendingBytes = 0;
-			const kind = line.length > maxFrameBytes ? "oversized" : classify(line);
-			if (kind === "oversized" || kind === "json") out.push(line, NEWLINE_BYTES);
-			else if (kind === "unparseable") parseErrors++;
 		}
-		return { forward: out.length === 0 ? undefined : concat(out), parseErrors };
+		let newline = text.indexOf("\n", start);
+		while (newline !== -1) {
+			const line = pending + text.slice(start, newline);
+			pending = "";
+			start = newline + 1;
+			newline = text.indexOf("\n", start);
+			if (line.length > maxFrameLength || (!BLANK.test(line) && !isJson(line))) parseErrors++;
+			else if (!BLANK.test(line)) forward += `${line}\n`;
+		}
+		pending += text.slice(start);
+		if (pending.length > maxFrameLength) {
+			pending = "";
+			discarding = true;
+			parseErrors++;
+		}
+		return { forward: forward === "" ? undefined : encoder.encode(forward), parseErrors };
 	};
 };
 
 /**
- * `Stdio` whose `stdin` carries only JSON lines, answering each unparseable
- * line with {@link PARSE_ERROR_FRAME} on `stdout`. Everything else is the
- * ambient `Stdio`.
+ * `Stdio` whose `stdin` carries only lines core's decoder will parse,
+ * answering every other line with {@link PARSE_ERROR_FRAME} on `stdout`.
+ * Everything else is the ambient `Stdio`.
+ *
+ * @remarks
+ * One guard per call, shared by every subscription to the returned `stdin`,
+ * because core re-subscribes after a failure and builds its own decoder once.
  *
  * @internal
  */
-export const guardStdin = (stdio: Stdio.Stdio): Stdio.Stdio =>
-	Stdio.make({
+export const guardStdin = (stdio: Stdio.Stdio): Stdio.Stdio => {
+	const step = makeFrameGuard();
+	return Stdio.make({
 		args: stdio.args,
 		stdinIsTerminal: stdio.stdinIsTerminal,
 		stdoutIsTerminal: stdio.stdoutIsTerminal,
 		stdout: (options) => stdio.stdout(options),
 		stderr: (options) => stdio.stderr(options),
-		// Fresh guard state per subscription: core re-subscribes to stdin after a failure.
-		stdin: Stream.suspend(() => {
-			const step = makeFrameGuard();
-			return stdio.stdin.pipe(
-				Stream.mapEffect((chunk) => {
-					const { forward, parseErrors } = step(chunk);
-					return parseErrors === 0
-						? Effect.succeed(forward)
-						: Stream.run(Stream.make(PARSE_ERROR_FRAME.repeat(parseErrors)), stdio.stdout()).pipe(Effect.as(forward));
-				}),
-				Stream.filter((chunk): chunk is Uint8Array => chunk !== undefined),
-			);
-		}),
+		stdin: stdio.stdin.pipe(
+			Stream.mapEffect((chunk) => {
+				const { forward, parseErrors } = step(chunk);
+				return parseErrors === 0
+					? Effect.succeed(forward)
+					: Stream.run(Stream.make(PARSE_ERROR_FRAME.repeat(parseErrors)), stdio.stdout()).pipe(Effect.as(forward));
+			}),
+			Stream.filter((chunk): chunk is Uint8Array => chunk !== undefined),
+		),
 	});
+};
 
 /**
  * Replaces the ambient `Stdio` with {@link guardStdin}'s, for the server

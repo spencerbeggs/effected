@@ -44,7 +44,9 @@ wire message; nothing else in `@effected/engine` is consumed yet.
 `FormatUnknownKeysOptions` types.
 
 `@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`),
-`McpProcess` (`spawn`), `McpProbe` (`initialize`), `McpTestFailure`,
+`McpProcess` (`spawn`; instances carry `send`, `sendRaw`, `nextLine`,
+`readUntilResponse`, `handshake`, `closeStdin`, `exitCode`, `stderrSoFar`,
+`stderrFinal`), `McpProbe` (`initialize`), `McpTestFailure`,
 `McpToolAudit` (`check`), plus the `McpHarnessOptions`, `McpProbeOptions`,
 `McpProbeResult`, `McpToolAuditPolicy`, `JsonRpcMessage` and `ServedTool`
 types.
@@ -70,10 +72,14 @@ types.
   throws on a line that is not JSON before it drops that line from its
   buffer, so every later chunk throws on it again and the server stops
   answering while stdin EOF still exits 0. `McpStdio.layer` provides the
-  server a `Stdio` (`src/internal/StdinFrames.ts`) that answers such a line
-  with a `-32700` parse error and forwards only lines that parse; blank
-  lines are dropped. Toolkit handlers still see the ambient `Stdio`: the
-  guard is `Layer.provide`d to `layerStdio` alone.
+  server a `Stdio` (`src/internal/StdinFrames.ts`) that frames stdin the
+  way core does (streaming UTF-8 decode, BOM stripped only at stream
+  start), answers a non-JSON or over-cap (16 Mi code units) line with a
+  `-32700` parse error, drops JSON-whitespace lines, and forwards only
+  lines that parse. Its state lives once per `Stdio`, not per
+  subscription: core re-subscribes to stdin after its own decode failure,
+  and a held partial line must survive that. Toolkit handlers still see
+  the ambient `Stdio`: the guard is `Layer.provide`d to `layerStdio` alone.
 - **The harness never hangs.** Every `McpHarness` response wait and
   `awaitOutboundMethod` races a stop signal and a corruption signal, so a
   server that stops before responding, or writes a non-JSON-RPC line under

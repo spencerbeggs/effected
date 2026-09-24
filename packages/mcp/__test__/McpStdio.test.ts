@@ -2,11 +2,11 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it, vi } from "@effect/vitest";
-import type { Scope } from "effect";
-import { Cause, Context, Effect, Exit, Layer, Queue, References, Runtime, Stdio, Stream } from "effect";
+import { Cause, Context, Effect, Exit, Layer, References, Runtime, Schedule, Sink, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/unstable/ai";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess } from "effect/unstable/process";
 import { McpStdio } from "../src/index.js";
+import { McpProcess } from "../src/testing.js";
 
 /** Run an effect exactly as a platform runMain does — its outer failure report included — and resolve the exit code. */
 const runMainFor = (
@@ -55,41 +55,11 @@ const INITIALIZE = JSON.stringify({
 	method: "initialize",
 	params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } },
 });
-const PARSE_ERROR = { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } };
+const PARSE_ERROR = { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } } as const;
 
-/** A real server process driven with raw stdin writes, which `McpProcess.send` cannot make: it always writes valid JSON. */
-const spawnRaw: Effect.Effect<
-	{
-		readonly write: (text: string) => Effect.Effect<void>;
-		readonly readUntilId: (id: number) => Effect.Effect<ReadonlyArray<unknown>, Cause.Done>;
-	},
-	unknown,
-	ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
-> = Effect.gen(function* () {
-	const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-	const handle = yield* spawner.spawn(STDIO_MAIN);
-	const stdin = yield* Queue.unbounded<Uint8Array, Cause.Done>();
-	yield* Stream.run(Stream.fromQueue(stdin), handle.stdin).pipe(Effect.forkScoped);
-	const lines = yield* Queue.unbounded<string, Cause.Done>();
-	yield* Stream.splitLines(Stream.decodeText(handle.stdout)).pipe(
-		Stream.runForEach((line) => Queue.offer(lines, line)),
-		Effect.ensuring(Queue.end(lines)),
-		Effect.forkScoped,
-	);
-	const encoder = new TextEncoder();
-	return {
-		write: (text: string) => Effect.asVoid(Queue.offer(stdin, encoder.encode(text))),
-		readUntilId: (id: number) =>
-			Effect.gen(function* () {
-				const seen: Array<unknown> = [];
-				while (true) {
-					const frame = JSON.parse(yield* Queue.take(lines)) as { readonly id?: unknown };
-					seen.push(frame);
-					if (frame.id === id) return seen;
-				}
-			}),
-	};
-});
+class Seen extends Context.Service<Seen, Stdio.Stdio>()("test/Seen") {}
+
+const idOf = (frame: unknown): unknown => (frame as { readonly id?: unknown }).id;
 
 class ConfigMissing extends Error {
 	readonly [Runtime.errorExitCode] = 3;
@@ -111,6 +81,24 @@ describe("McpStdio.layer", () => {
 				McpStdio.layer({ name: "t", version: "0.0.0" }).pipe(Layer.provide(Stdio.layerTest({ stdin: Stream.never }))),
 			);
 			assert.isTrue(Context.get(context, References.LogToStderr));
+		}),
+	);
+
+	it.effect("a layer composed with it sees the ambient Stdio, never the server's guarded one", () =>
+		Effect.gen(function* () {
+			const ambient = Stdio.make({
+				args: Effect.succeed([]),
+				stdin: Stream.never,
+				stdout: () => Sink.drain,
+				stderr: () => Sink.drain,
+			});
+			const seen = yield* Layer.build(
+				Layer.effect(Seen, Stdio.Stdio).pipe(
+					Layer.provideMerge(McpStdio.layer({ name: "t", version: "0.0.0" })),
+					Layer.provide(Layer.succeed(Stdio.Stdio, ambient)),
+				),
+			);
+			assert.strictEqual(Context.get(seen, Seen), ambient);
 		}),
 	);
 
@@ -173,19 +161,41 @@ describe("McpStdio.launch under runMain semantics", () => {
 describe("McpStdio.layer over a real process's stdio", () => {
 	it.live("answers an unparseable frame with a -32700 parse error, ignores a blank line, and keeps serving", () =>
 		Effect.gen(function* () {
-			const server = yield* spawnRaw;
-			// A blank line, the bad frame and a good one in one write, then another request in a later write.
+			const server = yield* McpProcess.spawn(STDIO_MAIN);
+			// A blank line, the bad frame and a good one in one write, then more in later writes.
 			// A blank line is not a frame: it gets no answer, and it too stopped the server before the guard.
-			yield* server.write(`\n{not json\n${INITIALIZE}\n`);
-			const first = yield* server.readUntilId(1);
+			yield* server.sendRaw(`\n{not json\n${INITIALIZE}\n`);
+			const first = yield* server.readUntilResponse(1);
 			assert.deepStrictEqual(
-				first.filter((frame) => (frame as { readonly id?: unknown }).id === null),
+				first.seen.filter((frame) => idOf(frame) === null),
 				[PARSE_ERROR],
 			);
-			yield* server.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
-			yield* server.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" })}\n`);
-			const second = yield* server.readUntilId(2);
-			assert.isArray((second.at(-1) as { readonly result: { readonly tools: unknown } }).result.tools);
+			yield* server.send({ jsonrpc: "2.0", method: "notifications/initialized" });
+			// A U+FEFF opening a later line is not stripped by core's decoder, so it is not JSON there either.
+			yield* server.sendRaw(`\ufeff${JSON.stringify({ jsonrpc: "2.0", id: 3, method: "ping" })}\n`);
+			yield* server.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+			const second = yield* server.readUntilResponse(2);
+			assert.deepStrictEqual(
+				second.seen.filter((frame) => idOf(frame) !== 2),
+				[PARSE_ERROR],
+			);
+			assert.isArray((second.response.result as { readonly tools: unknown }).tools);
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
+	it.live("keeps a partial frame held across core's retry after a frame it rejects", () =>
+		Effect.gen(function* () {
+			const server = yield* McpProcess.spawn(STDIO_MAIN);
+			yield* server.handshake();
+			// `null` is JSON, so it reaches core, whose decoder fails on it; core then re-subscribes to stdin.
+			yield* server.sendRaw('null\n{"jsonrpc":"2.0","id":2,"meth');
+			yield* Effect.repeat(server.stderrSoFar, {
+				schedule: Schedule.spaced("10 millis"),
+				until: (text) => text.includes("ERROR"),
+			});
+			yield* server.sendRaw('od":"tools/list"}\n');
+			const { response } = yield* server.readUntilResponse(2);
+			assert.isArray((response.result as { readonly tools: unknown }).tools);
 		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 });
