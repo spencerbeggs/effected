@@ -339,7 +339,13 @@ describe("source boundary", () => {
 });
 ```
 
-The scanner is a lexer, not a type checker. It has no scope analysis, so a local binding named `console` is still flagged: exempt that file with an `allow` glob and assert `scan.allowed` names exactly it. `globalThis["process"]`, a regex literal straight after a block-closing `}`, and JSX text are known misses.
+The scanner is a lexer, not a type checker. Its known limits:
+
+- There is no scope analysis, so any local binding named `process` or `console` is flagged like the global: a parameter (`(process: Handle) => process.kill()`), a variable, a label, or an unannotated class field (`process = 1`). An annotated class field (`process: T`) reads as a type member and is spared. Prefer renaming the binding; failing that, exempt the file with an `allow` glob (it then skips every rule) and assert `scan.allowed` names exactly it.
+- `globalThis["process"]` and `const { process: p } = globalThis` are not seen.
+- A regex literal directly after a block-closing `}` reads as a division.
+- JSX text reads as code, which is why `.tsx` and `.jsx` are not scanned by default.
+- `forbidImports: ["node:*"]` matches only the `node:` spelling, not a bare `"fs"`. To forbid both, spread Node's list in the test file: `{ forbidImports: ["node:*", ...builtinModules] }`, with `builtinModules` from `node:module`. That also forbids npm packages named like a built-in (`events`, `buffer`).
 
 ### Packed install
 
@@ -375,6 +381,7 @@ describe("packed install", () => {
             managers: ["npm", "pnpm", "yarn", "bun"],
             bins: ["my-tool-mcp"],
             env: process.env,
+            installTimeout: "2 minutes",
           });
           assert.isAbove(result.consumers.length, 0, `nothing installed; unavailable: ${result.unavailable.join(", ")}`);
           const env = PackedInstall.scrubEnv(process.env);
@@ -389,14 +396,15 @@ describe("packed install", () => {
             assert.strictEqual(stderr, "", `${consumer.manager}: stderr`);
             assert.strictEqual(exitCode, 0, `${consumer.manager}: exit code`);
           }
-        }).pipe(Effect.timeout("5 minutes")),
-      360_000,
+          // The installs run one after another: the guard covers 4 managers x installTimeout, plus pack and probes.
+        }).pipe(Effect.timeout("12 minutes")),
+      780_000,
     );
   });
 });
 ```
 
-Pass `process.env` in: nothing in the subpath reads `process` itself. Run the bins under `PackedInstall.scrubEnv(process.env)`, the same environment the installs ran under. A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure instead. Declare in `consumerDependencies` every package the consumer's own code imports besides the carrier: pnpm links only declared dependencies at a project's top level. An entry that names a packed package is written as its `file:` tarball whatever spec you pass, so any range will do; npm fails `EOVERRIDE` when a direct spec differs from its override. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
+Pass `process.env` in: nothing in the subpath reads `process` itself. Run the bins under `PackedInstall.scrubEnv(process.env)`, the same environment the installs ran under. A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure instead. Declare in `consumerDependencies` every package the consumer's own code imports besides the carrier: pnpm links only declared dependencies at a project's top level. An entry that names a packed package is written as its `file:` tarball whatever spec you pass, so any range will do; npm fails `EOVERRIDE` when a direct spec differs from its override. The installs run one after another, so an outer `Effect.timeout` must be at least the number of managers times `installTimeout` (four minutes by default), plus the pack and the probes; a tighter guard fires first, as a `TimeoutError` that names no manager. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
 
 ## Error handling
 

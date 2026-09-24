@@ -44,6 +44,13 @@ const PROD = "dist/prod/npm/pkg";
 
 // A port nothing listens on. Every manager honours HTTP(S)_PROXY, so a
 // registry fetch or a self-download fails fast with ECONNREFUSED.
+//
+// Assumes no proxy in the user's ~/.npmrc. HOME is inherited on purpose, so a
+// `proxy` or `https-proxy` set there may win over these variables (precedence
+// not verified). The dead-proxy control below would then fail with a proxy or
+// E404 error instead of ECONNREFUSED. The installs stay hermetic either way,
+// because the fixture has no external dependencies. The scrub strips every
+// `npm_config_*` variable, so an env override cannot pin it from here.
 const DEAD_PROXY = "http://127.0.0.1:9";
 const OFFLINE: Readonly<Record<string, string | undefined>> = {
 	...process.env,

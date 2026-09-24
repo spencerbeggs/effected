@@ -192,19 +192,32 @@ const failure = (
  * @example
  * ```ts
  * import { NodeServices } from "@effect/platform-node";
+ * import { Run } from "@effected/commands";
  * import { Workspaces } from "@effected/workspaces";
  * import { PackedInstall } from "@effected/workspaces/testing";
  * import { Effect, Layer } from "effect";
+ * import { ChildProcess } from "effect/unstable/process";
  *
  * const Live = Workspaces.layer({ cwd: "/repo" }).pipe(Layer.provideMerge(NodeServices.layer));
  *
- * const installed = PackedInstall.run({
- *   carrier: "my-tool",
- *   closure: "auto",
- *   managers: ["npm", "pnpm"],
- *   bins: ["my-tool"],
- *   env: process.env,
- * }).pipe(Effect.provide(Live), Effect.scoped);
+ * // Use the consumers INSIDE the scope: closing it removes the scratch
+ * // directory, so a binPath returned out of Effect.scoped points at nothing.
+ * const program = Effect.gen(function* () {
+ *   const result = yield* PackedInstall.run({
+ *     carrier: "my-tool",
+ *     closure: "auto",
+ *     managers: ["npm", "pnpm"],
+ *     bins: ["my-tool"],
+ *     env: process.env,
+ *   });
+ *   const env = PackedInstall.scrubEnv(process.env);
+ *   for (const consumer of result.consumers) {
+ *     const version = yield* Run.text(
+ *       ChildProcess.make(consumer.binPath("my-tool"), ["--version"], { env, extendEnv: false }),
+ *     );
+ *     console.log(consumer.manager, version.trim());
+ *   }
+ * }).pipe(Effect.scoped, Effect.provide(Live));
  * ```
  *
  * @public

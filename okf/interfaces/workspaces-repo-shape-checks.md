@@ -42,8 +42,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T02:11:10Z
-  body_sha256: 825920d7a2d0bbe313164a64fcba4bf2a906a40f378eebee95ab7ef852d54ab8
+  at: 2026-09-24T02:19:03Z
+  body_sha256: e4d69209fb0018161c809dd8cfa774d63992ca3b716d2b14a65a172fbf991bce
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -114,6 +114,12 @@ The known misses:
   so a quote or `/*` inside it can hide the code after it.
 - JSX text, which reads as code. `.tsx` and `.jsx` are not among the default
   extensions for this reason.
+- A bare built-in under `forbidImports: ["node:*"]`: the entry matches only
+  the `node:` spelling, so `import { readFile } from "fs"` passes. A test
+  that means "no Node built-ins" spreads Node's own list,
+  `["node:*", ...builtinModules]` from `node:module`, which also forbids npm
+  packages named like a built-in (`events`, `buffer`). The subpath ships no
+  built-in list of its own, because one would drift with Node releases.
 
 ### No scope analysis
 
@@ -122,9 +128,13 @@ a local `console` to core's `Console` service
 (`CliLogger.ts:104`),[^cli-logger-ts] and `console-write` flags it. The fix is
 an `allow` glob for that one file. `cli`'s own boundary test proves the
 allowance is both needed and the only one: an unallowed scan finds offences
-in `CliLogger.ts` and nowhere else. An unannotated class field named
-`process` (`class A { process = 1 }`) is flagged for the same reason; an
-annotated one (`process: string`) reads as a type member and is not.
+in `CliLogger.ts` and nowhere else. The same holds for every local binding
+named `process`: a parameter (`(process: Handle) => process.kill()`), a
+variable, a label, and an unannotated class field
+(`class A { process = 1 }`) are all flagged. An annotated class field
+(`process: string`) reads as a type member and is not. Code that handles
+child-process objects commonly names a parameter `process`. Renaming it is
+the better remedy, because an `allow` glob exempts the file from every rule.
 
 ### `scan` and its non-vacuity handles
 
@@ -196,6 +206,15 @@ accepted. A policy file that carries keys of its own, such as systems'
 `harness`, names them in `allowKeys`
 (`LayerPolicy.load(path, { allowKeys: ["harness"] })`), and those keys are
 dropped before decoding.
+
+### What a policy cannot express
+
+Layers forbid only upward and same-layer edges. A policy cannot forbid one
+particular downward edge. In this repository `cli` sits above `engine`, so a
+manifest edge `cli -> engine` passes layering even though the front-end
+design keeps `cli` off `engine`.[^layers-json] Only `cli`'s own source scan
+guards that edge, through its `forbidImports`, and only for an import under
+`src/`. A `forbiddenEdges` key would close the gap and does not exist yet.
 
 ### Edges by name, one per field
 
@@ -279,6 +298,7 @@ hand-rolling this check; the pure half lives in
 | pnpm 12 fails an install that ignored a dependency build script | pnpm installs with `--config.ignore-scripts=true` | systems (lines 56-68) |
 | A repo's `packageManager` pin makes corepack refuse any other manager inside it | each manager is probed with `--version` from the scratch directory | vitest-agent (lines 119-128) |
 | pnpm 12 only **warns** on a mismatched `packageManager` pin; it neither refuses nor switches | `PackedInstall` does not check this. To prove no switch happened, assert in your own test that `<pm> --version` run inside the consumer equals `consumer.managerVersion` | this package's e2e, which makes that assertion[^packed-install-e2e] |
+| npm fails `EOVERRIDE` when a direct dependency's spec differs from its override | a `consumerDependencies` entry naming a packed package is written as the same `file:` spec the override uses | this package's final review (npm 11.19.1), pinned by the e2e's S1 case under every manager |
 
 User-level configuration is inherited by design. `HOME` stays, so each
 manager still reads the user's registry, auth and proxy settings, as a real
@@ -296,7 +316,10 @@ publishes. `"source"` runs `pnpm pack` in the package directory instead. That
 packs whatever `publishConfig.directory` names, which under the effected
 bundler is the **dev** build, and it needs a workspace that has been
 `pnpm install`ed, or the pack fails `PackFailed` naming the missing
-install.[^packed-install-ts] Why the default is the prod directory is
+install.[^packed-install-ts] A packed manifest whose runtime maps still carry a
+`workspace:`, `catalog:`, `link:` or relative `file:` specifier fails
+`UnresolvedProtocol` before any install, naming each one; no consumer
+outside the workspace could resolve them.[^packed-install-plan-ts] Why the default is the prod directory is
 [the pack-source decision](../decisions/packed-install-pack-source.md).
 
 A requested manager that does not answer `--version` lands in `unavailable`.
@@ -320,7 +343,11 @@ the tarball the run exists to prove.[^packed-install-plan-ts]
 
 An install that outlives `installTimeout` (four minutes by default) fails
 `InstallFailed` with a message naming the manager and the ceiling, distinct
-from a manager that could not spawn at all.
+from a manager that could not spawn at all. The installs run one after
+another, so a test's outer `Effect.timeout` must cover the number of
+managers times `installTimeout`, plus the pack and whatever the test runs
+afterwards. A tighter guard fires first, as a `TimeoutError` that names no
+manager.
 
 ### POSIX only
 

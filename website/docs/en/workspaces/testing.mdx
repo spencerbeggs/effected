@@ -50,6 +50,8 @@ An edge *from* an unconstrained or unclassified package is not checked, but an u
 - `requiredEdges` lists edges, written `"a -> b"`, that must exist in a checked field: the guard against a discovery that quietly drops real edges.
 - Any other key fails `LayerPolicyError` (`decode`), naming the key, so a typo such as `requiredEdge` cannot silently drop a guard. `$schema` is always accepted; keys of your own go in `LayerPolicy.load(path, { allowKeys: [...] })`.
 
+Layers forbid only upward and same-layer edges, so a policy cannot forbid one particular downward edge (say, `my-tool-cli -> my-tool-engine` when both layers allow it). Guard such an edge with the lower-layer package's name in the upper package's `SourceBoundary` `forbidImports`, which sees only imports in the scanned source.
+
 A cycle closed only by a devDependency is invisible when `fields` leaves out `devDependencies`. If your layers are about runtime edges, check runtime fields, and pin acyclicity across every field separately with `DependencyGraph.make({ packages }).hasCycle`.
 
 ### Adopting it
@@ -148,10 +150,11 @@ describe("source boundary", () => {
 
 The scanner is a lexer, not a type checker:
 
-- There is no scope analysis, so a local binding named `console` is still flagged. Exempt that file with an `allow` glob, and assert `scan.allowed` names exactly it.
+- There is no scope analysis, so any local binding named `process` or `console` is flagged like the global: a parameter (`(process: Handle) => process.kill()`), a variable, a label, or an unannotated class field (`process = 1`). An annotated class field (`process: T`) reads as a type member and is spared. Prefer renaming the binding; failing that, exempt the file with an `allow` glob (it then skips every rule) and assert `scan.allowed` names exactly it.
 - `globalThis["process"]` and `const { process: p } = globalThis` are not seen.
 - A regex literal directly after a block-closing `}` reads as a division.
 - JSX text reads as code, which is why `.tsx` and `.jsx` are not scanned by default.
+- `forbidImports: ["node:*"]` matches only the `node:` spelling, not a bare `"fs"`. To forbid both, spread Node's list in the test file: `{ forbidImports: ["node:*", ...builtinModules] }`, with `builtinModules` from `node:module`. That also forbids npm packages named like a built-in (`events`, `buffer`).
 
 ## Packed install
 
@@ -191,6 +194,7 @@ describe("packed install", () => {
             managers: ["npm", "pnpm", "yarn", "bun"],
             bins: ["my-tool-mcp"],
             env: process.env,
+            installTimeout: "2 minutes",
           });
           assert.isAbove(result.consumers.length, 0, `nothing installed; unavailable: ${result.unavailable.join(", ")}`);
           const env = PackedInstall.scrubEnv(process.env);
@@ -205,8 +209,9 @@ describe("packed install", () => {
             assert.strictEqual(stderr, "", `${consumer.manager}: stderr`);
             assert.strictEqual(exitCode, 0, `${consumer.manager}: exit code`);
           }
-        }).pipe(Effect.timeout("5 minutes")),
-      360_000,
+          // The installs run one after another: the guard covers 4 managers x installTimeout, plus pack and probes.
+        }).pipe(Effect.timeout("12 minutes")),
+      780_000,
     );
   });
 });
@@ -232,7 +237,7 @@ Each of these was found the hard way by a repository that hand-rolled this check
 | pnpm links only a project's declared dependencies at its top level | declare every package your consumer code imports in `consumerDependencies`; an entry naming a packed package is written as its tarball, whatever spec you pass |
 | npm fails `EOVERRIDE` when a direct dependency's spec differs from its override | a `consumerDependencies` entry naming a packed package gets the same `file:` spec as the override |
 
-A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure. No manager at all fails `NoManagerAvailable`, never an empty success. An install that outlives `installTimeout` fails `InstallFailed` with a message naming the manager and the ceiling. User-level configuration under `HOME` (registry, auth, proxy) is inherited, as a real install on that machine would inherit it. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
+A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure. No manager at all fails `NoManagerAvailable`, never an empty success. An install that outlives `installTimeout` fails `InstallFailed` with a message naming the manager and the ceiling. The installs run one after another, so an outer `Effect.timeout` must be at least the number of managers times `installTimeout`, plus the pack and whatever the test runs afterwards; a tighter guard fires first, as a `TimeoutError` that names no manager. User-level configuration under `HOME` (registry, auth, proxy) is inherited, as a real install on that machine would inherit it. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
 
 ## API reference
 

@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T02:11:10Z
-  body_sha256: dc009075126c571a31a1343007babaed2f4902f840416857efee4ca2ed2530bc
+  at: 2026-09-24T02:19:03Z
+  body_sha256: 2b267f360dc08a6e3018e29f35ad8916d026cb9a576ebc49137d3ce08bc9e60a
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -220,12 +220,12 @@ The built modules' raw byte sizes, measured on 2026-09-24 with `wc -c` over
 | Module | Bytes |
 | --- | --- |
 | `testing.js` | 1,151 |
-| `SourceBoundary.js` | 14,665 |
-| `LayerPolicy.js` | 3,885 |
+| `SourceBoundary.js` | 15,381 |
+| `LayerPolicy.js` | 5,158 |
 | `WorkspaceLayering.js` | 7,855 |
-| `PackedInstall.js` | 12,307 |
+| `PackedInstall.js` | 13,662 |
 | `internal/sourceText.js` | 10,369 |
-| `internal/packedInstallPlan.js` | 6,613 |
+| `internal/packedInstallPlan.js` | 7,501 |
 | `internal/dependencyFields.js` | 496 |
 
 `PackedInstall.js` imports `@effected/commands`, `effect`,

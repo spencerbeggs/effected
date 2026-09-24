@@ -14,6 +14,13 @@ import { isIdentifierChar, lex, locate, references, specifierLiterals } from "./
  * equals an entry, is a subpath of one, or starts with an entry's text before a
  * trailing `*` (so `"node:*"` and `"@effect/platform*"` are prefixes).
  *
+ * `"node:*"` matches only the `node:` spelling: a bare built-in such as `"fs"`
+ * is not caught. To forbid both, spread Node's own list from the test file,
+ * `{ forbidImports: ["node:*", ...builtinModules] }` with `builtinModules`
+ * from `node:module`. That also forbids npm packages that share a built-in's
+ * name (`events`, `buffer`, `punycode`). No built-in list ships here: it
+ * would drift with Node releases.
+ *
  * @public
  */
 export type BoundaryRule =
@@ -300,9 +307,13 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  *
  * It is a lexer, not a type checker, and these misses are known:
  *
- * - there is no scope analysis, so a local binding named `console` is still
- *   flagged (allowlist the file), and so is an unannotated class field named
- *   `process` (`process = 1`; an annotated `process: T` reads as a type member);
+ * - there is no scope analysis, so ANY local binding named `process` or
+ *   `console` is flagged like the global: a parameter
+ *   (`(process: Handle) => process.kill()`), a variable, a label, or an
+ *   unannotated class field (`process = 1`). An annotated class field
+ *   (`process: T`) reads as a type member and is spared. The remedy is an
+ *   `allow` glob for the file, which exempts it from every rule, so prefer
+ *   renaming the binding;
  *
  * - a computed access through a string key (`globalThis["process"]`) and a
  *   destructuring of a global (`const { process: p } = globalThis`) are not seen;
@@ -310,7 +321,10 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  * - a regex literal directly after a block-closing `}` reads as a division, so
  *   a quote or `/*` inside it can hide the code after it;
  *
- * - JSX text reads as code.
+ * - JSX text reads as code;
+ *
+ * - `forbidImports: ["node:*"]` does not catch a bare built-in such as
+ *   `"fs"` (see {@link BoundaryRule}).
  *
  * Assert on {@link SourceBoundary.verifyFixtures} beside your own scan: it
  * proves the scanner you are trusting still flags what it must and spares
