@@ -1,0 +1,224 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: these strings are source text under test
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { assert, describe, it } from "@effect/vitest";
+import type { BoundaryRule } from "../src/testing.js";
+import { SourceBoundary } from "../src/testing.js";
+
+const lines = (text: string, rule: BoundaryRule): ReadonlyArray<number> =>
+	SourceBoundary.check("fixture.ts", text, [rule]).map((offence) => offence.line);
+
+describe("SourceBoundary.stripComments", () => {
+	it("blanks line and block comments to spaces, keeping the length and every line break", () => {
+		const text = "const a = 1; // process\n/* process\n */ const b = 2;";
+		const out = SourceBoundary.stripComments(text);
+		assert.strictEqual(out.length, text.length);
+		assert.notInclude(out, "process");
+		assert.strictEqual(out.split("\n").length, 3);
+		assert.include(out, "const b = 2;");
+	});
+
+	it("leaves comment markers inside strings, templates and regex literals alone", () => {
+		const text = 'const u = "http://x/*y*/"; const t = `//z`; const r = /\\/\\*/;';
+		assert.strictEqual(SourceBoundary.stripComments(text), text);
+	});
+});
+
+describe("SourceBoundary.referencesProcess", () => {
+	const reads = [
+		["destructuring", "const { env } = process;"],
+		["bracket access", 'const env = process["env"];'],
+		["a member of globalThis", "const cwd = globalThis.process?.cwd();"],
+		["a template substitution", "const where = `cwd: ${process.cwd()}`;"],
+		["a nested template substitution", "const s = `a ${`b ${process.pid}`}`;"],
+		["a spread", "const copy = { ...process.env };"],
+		["a typeof guard", 'if (typeof process !== "undefined") run();'],
+		[
+			"code after a string holding a comment opener",
+			'const open = "/*"; const argv = process.argv; const close = "*/";',
+		],
+		["code after a regex holding a quote", 'const re = /"/; const argv = process.argv; const q = "x";'],
+		["code after a regex whose class holds a slash", 'const re = /[/"]/; const argv = process.argv; const q = "x";'],
+		["code after a division", "const half = total / 2; const argv = process.argv; const r = 1 / 4;"],
+		["a look-alike of the exempt token", "const v = process.env.__PACKAGE_VERSION__X;"],
+	] as const;
+	for (const [name, text] of reads) {
+		it(`flags ${name}`, () => assert.isTrue(SourceBoundary.referencesProcess(text), text));
+	}
+
+	const nonReads = [
+		["a line comment", "// process.exit(1) is forbidden here"],
+		["a block comment", "/* process.cwd() */ const x = 1;"],
+		["a string", 'const label = "process.env";'],
+		["template text", "const help = `run process.exit to quit`;"],
+		["a regex literal", "const re = /process\\.env/g;"],
+		["a member of another object", "const pid = child.process;"],
+		["an identifier containing the word", 'import { ChildProcess } from "effect/unstable/process";'],
+		["a private field", "class A { #process = 1; }"],
+		["the exempt build-time constant", "const version = process.env.__PACKAGE_VERSION__;"],
+	] as const;
+	for (const [name, text] of nonReads) {
+		it(`spares ${name}`, () => assert.isFalse(SourceBoundary.referencesProcess(text), text));
+	}
+
+	it("honours extra ignore tokens exactly, not as prefixes", () => {
+		assert.isFalse(
+			SourceBoundary.referencesProcess("const p = process.platform;", { ignoreTokens: ["process.platform"] }),
+		);
+		assert.isTrue(
+			SourceBoundary.referencesProcess("const p = process.platforms;", { ignoreTokens: ["process.platform"] }),
+		);
+	});
+});
+
+describe("SourceBoundary.importSpecifiers", () => {
+	it("reads static, side-effect, re-export, type-only, dynamic and require specifiers, in order", () => {
+		const text = [
+			'import { a } from "./a.js";',
+			'import "./side-effect.js";',
+			'export { b } from "./b.js";',
+			'export * as c from "./c.js";',
+			'import type { D } from "./d.js";',
+			'const e = await import("./e.js");',
+			"const f = await import(`./f.js`);",
+			'const g = require("./g.js");',
+			'import h = require("./h.js");',
+		].join("\n");
+		assert.deepStrictEqual(SourceBoundary.importSpecifiers(text), [
+			"./a.js",
+			"./side-effect.js",
+			"./b.js",
+			"./c.js",
+			"./d.js",
+			"./e.js",
+			"./f.js",
+			"./g.js",
+			"./h.js",
+		]);
+	});
+
+	it("reads a multi-line import", () => {
+		assert.deepStrictEqual(SourceBoundary.importSpecifiers('import {\n\ta,\n\tb,\n} from\n\t"./multi.js";'), [
+			"./multi.js",
+		]);
+	});
+
+	it("ignores strings that are not specifiers, commented-out imports and computed dynamic imports", () => {
+		const text = [
+			'const s = "node:process";',
+			'// import x from "./gone.js";',
+			'const t = obj.require("./not.js");',
+			'declare module "./ambient.js" {}',
+			"const u = import(`./${name}.js`);",
+		].join("\n");
+		assert.deepStrictEqual(SourceBoundary.importSpecifiers(text), []);
+	});
+});
+
+describe("SourceBoundary.importsNode", () => {
+	it("matches the node: and bare forms, static or dynamic, and nothing that merely contains the name", () => {
+		assert.isTrue(SourceBoundary.importsNode('import { env } from "node:process";', "process"));
+		assert.isTrue(SourceBoundary.importsNode('import process from "process";', "process"));
+		assert.isTrue(SourceBoundary.importsNode('const p = await import("node:process");', "process"));
+		assert.isFalse(SourceBoundary.importsNode('import { ChildProcess } from "effect/unstable/process";', "process"));
+		assert.isFalse(SourceBoundary.importsNode('const s = "node:process";', "process"));
+		assert.isFalse(SourceBoundary.importsNode('import x from "processor";', "process"));
+	});
+});
+
+describe("SourceBoundary.check", () => {
+	it("locates an offence by 1-based line and column in the original text", () => {
+		const [offence] = SourceBoundary.check("src/a.ts", "const a = 1;\n\tconst { env } = process;\n", ["process"]);
+		assert.strictEqual(offence?.label, "src/a.ts:2:18 process process");
+	});
+
+	it("forbidImports matches an exact name, its subpaths, and a trailing-star prefix — nothing else", () => {
+		const text = [
+			'import { NodeServices } from "@effect/platform-node";',
+			'import { App } from "@effected/app/x";',
+			'import { Dirs } from "@effected/application";',
+			'import { Effect } from "effect";',
+		].join("\n");
+		const found = SourceBoundary.check("f.ts", text, [{ forbidImports: ["@effect/platform*", "@effected/app"] }]);
+		assert.deepStrictEqual(
+			found.map((offence) => offence.detail),
+			["@effect/platform-node", "@effected/app/x"],
+		);
+	});
+
+	it("stdout-write flags a write through any stdout, in code only", () => {
+		const text =
+			'process.stdout.write("x");\nconst { stdout } = process;\nstdout.write(line);\nconst s = "stdout.write";\n// stdout.write';
+		assert.deepStrictEqual(lines(text, "stdout-write"), [1, 3]);
+	});
+
+	it("console-write flags the global console, never core's Console service", () => {
+		const text =
+			'console.log("a");\nglobalThis.console.error(e);\nconst c = yield* Console.Console;\nlogger.console;\n// console.log';
+		assert.deepStrictEqual(lines(text, "console-write"), [1, 2]);
+	});
+
+	it("is conservative about a local binding named console: there is no scope analysis, so it is flagged", () => {
+		assert.deepStrictEqual(
+			lines('const console = yield* Console.Console;\nconsole.log("x");', "console-write"),
+			[1, 2],
+		);
+	});
+});
+
+describe("SourceBoundary.fixtures", () => {
+	it("every shipped fixture behaves as it claims (the consumer's positive control)", () => {
+		assert.deepStrictEqual(SourceBoundary.verifyFixtures(), []);
+	});
+
+	it("covers both polarities for every rule kind", () => {
+		const kinds = new Set(
+			SourceBoundary.fixtures.map((fixture) => (typeof fixture.rule === "string" ? fixture.rule : "forbidImports")),
+		);
+		for (const kind of kinds) {
+			const own = SourceBoundary.fixtures.filter(
+				(fixture) => (typeof fixture.rule === "string" ? fixture.rule : "forbidImports") === kind,
+			);
+			assert.isTrue(
+				own.some((fixture) => fixture.flagged),
+				`${kind} has a flagged fixture`,
+			);
+			assert.isTrue(
+				own.some((fixture) => !fixture.flagged),
+				`${kind} has a spared fixture`,
+			);
+		}
+		assert.strictEqual(kinds.size, 5);
+	});
+});
+
+describe("SourceBoundary on the real tree", () => {
+	// ConfigDependencyHooks.ts embeds a node program (REPLAY_SCRIPT) as template
+	// text: it reads process.argv, writes process.stdout and calls import(url),
+	// all as TEXT that this module never executes.
+	const file = resolve(dirname(fileURLToPath(import.meta.url)), "../src/ConfigDependencyHooks.ts");
+	const text = readFileSync(file, "utf8");
+	const open = text.indexOf("const REPLAY_SCRIPT = `");
+	const script = text.slice(text.indexOf("`", open) + 1, text.indexOf("\n`;", open));
+
+	it("positive control: the embedded script, lexed as code, does read process and write stdout", () => {
+		assert.isAbove(script.length, 1000, "the REPLAY_SCRIPT body was located");
+		assert.isAbove(SourceBoundary.check("script.js", script, ["process"]).length, 2);
+		assert.strictEqual(SourceBoundary.check("script.js", script, ["stdout-write"]).length, 1);
+	});
+
+	it("spares the process reads and the stdout write that sit in REPLAY_SCRIPT's template text", () => {
+		const offences = SourceBoundary.check("src/ConfigDependencyHooks.ts", text, [
+			"process",
+			"stdout-write",
+			"console-write",
+		]);
+		assert.deepStrictEqual(
+			offences.map((offence) => offence.label),
+			[],
+		);
+		assert.notInclude(SourceBoundary.importSpecifiers(text), "url");
+		assert.include(SourceBoundary.importSpecifiers(text), "effect/unstable/process");
+	});
+});
