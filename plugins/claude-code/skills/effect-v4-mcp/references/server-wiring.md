@@ -112,15 +112,24 @@ ever sees it:
   the over-cap case answered once, as soon as the held text passes the cap,
   discarding the rest of that line up to its newline;
 - a line of JSON whitespace is dropped, not answered;
-- valid JSON that is not a JSON-RPC message — `null`, for instance — still
-  reaches core, which logs an error and re-subscribes to stdin; any other
-  already-parsed frame from that same read still in core's decode batch is
-  lost with it. Never send a bare `null` frame; if a client might, don't
-  pipeline other requests in the same write.
+- a line that is JSON but no JSON-RPC message core can handle gets
+  `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}}`
+  and never reaches core. That is a value that is neither an object nor an
+  array (core throws on a bare `null`, dropping every other frame that
+  arrived in the same chunk, and ignores a number, string or boolean with no
+  reply), an object whose `method` is not a string and whose `id` is absent
+  or `null` (core throws on that too), and an object with neither `method`
+  nor `id`, which is neither a request nor a response. A request co-batched
+  in the same write after such a line is still answered.
+
+Everything else goes to core, which handles it: an array gets core's own
+`-32600` (it serves no batches), an object with an `id` and no `method` is a
+response and gets no reply, and a request with an `id` is answered even when
+its `method` is malformed.
 
 The guard's own state — the held partial line — lives once per `Stdio`, not
-per subscription, so it survives core's re-subscription after a decode
-failure. Hand-wiring `McpServer.layerStdio` directly, without
+per subscription, so it survives core re-subscribing to stdin after any
+failure in its read loop. Hand-wiring `McpServer.layerStdio` directly, without
 `McpStdio.layer`, skips all of this and wedges on the first bad line.
 
 ~~~ts

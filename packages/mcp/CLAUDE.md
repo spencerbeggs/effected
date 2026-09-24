@@ -75,10 +75,17 @@ types.
   server a `Stdio` (`src/internal/StdinFrames.ts`) that frames stdin the
   way core does (streaming UTF-8 decode, BOM stripped only at stream
   start), answers a non-JSON or over-cap (16 Mi code units) line with a
-  `-32700` parse error, drops JSON-whitespace lines, and forwards only
-  lines that parse. Its state lives once per `Stdio`, not per
-  subscription: core re-subscribes to stdin after its own decode failure,
-  and a held partial line must survive that. The guard layer is minted per
+  `-32700` parse error, drops JSON-whitespace lines, and answers JSON that
+  is no JSON-RPC message core can handle with a `-32600` Invalid Request:
+  a non-object non-array value (core throws on `null`, dropping the rest of
+  its chunk, and silently ignores scalars), an object with a non-string
+  `method` and no usable `id` (core throws), and an object with neither
+  `method` nor `id` (core ignores it). Arrays, responses and requests with
+  an `id` go to core, which answers or ignores them correctly itself —
+  probe before widening the guard, and keep the `answerFor` classes in step
+  with what core actually throws on. Its state lives once per `Stdio`, not
+  per subscription: core re-subscribes to stdin after any failure in its
+  read loop, and a held partial line must survive that. The guard layer is minted per
   `McpStdio.layer` call (`makeGuardedStdio()`), never a module constant,
   which layers would memoize and share across servers in one graph.
   Toolkit handlers still see the ambient `Stdio`: the guard is

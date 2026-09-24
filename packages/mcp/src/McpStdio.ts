@@ -36,8 +36,8 @@ export interface McpStdioOptions {
  *
  * - {@link McpStdio.layer} is `McpServer.layerStdio` with `LogToStderr`
  *   provided and merged into its output, and `Layer.orDie`. It answers a
- *   stdin line that is not JSON with a JSON-RPC `-32700` parse error and
- *   keeps serving.
+ *   stdin line that is not JSON with a JSON-RPC `-32700` parse error, and
+ *   JSON that is not a JSON-RPC message with `-32600`, and keeps serving.
  * - {@link McpStdio.launch} reports a launch failure itself, on stderr, and
  *   hides it from `runMain`, whose own report is written outside anything
  *   the program can provide.
@@ -96,8 +96,19 @@ export class McpStdio {
 	 * answering. So is a line longer than core's cap of 16 Mi UTF-16 code
 	 * units: it is answered once, as soon as it passes the cap, and the rest
 	 * of it is discarded up to its newline. A line of JSON whitespace (space,
-	 * tab, carriage return) is ignored. Valid JSON that is not a JSON-RPC
-	 * message still goes to core.
+	 * tab, carriage return) is ignored.
+	 *
+	 * A line that is JSON but no JSON-RPC message core can handle is answered
+	 * with an Invalid Request, code `-32600` and `id: null`, and never reaches
+	 * core: a value that is neither an object nor an array (core throws on
+	 * `null`, dropping every other frame in its chunk, and ignores a number,
+	 * string or boolean without a reply), an object whose `method` is not a
+	 * string and whose `id` is absent or `null` (core throws on it too), and
+	 * an object with neither `method` nor `id`, which is neither a request nor
+	 * a response. Everything else goes to core: an array, which core answers
+	 * `-32600` itself because it serves no batches; an object with an `id`
+	 * and no `method`, which is a response and gets no reply; and a request
+	 * with an `id`, which core answers even when its `method` is malformed.
 	 *
 	 * Give each server a fresh layer memo map. Core's stdio protocol layer
 	 * is a shared constant, so a second `McpStdio.layer` server whose build

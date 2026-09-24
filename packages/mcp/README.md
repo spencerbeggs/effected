@@ -168,9 +168,19 @@ stdout:
 - a line longer than core's cap of 16 Mi UTF-16 code units gets the same
   reply once, as soon as it passes the cap, and the rest of it is discarded
   up to its newline;
+- a line that is JSON but no JSON-RPC message gets an Invalid Request,
+  `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}}`,
+  and the server keeps serving. That covers a value that is neither an object
+  nor an array (core throws on a bare `null`, dropping every other frame that
+  arrived in the same chunk, and ignores a number, string or boolean without a
+  reply), an object whose `method` is not a string and whose `id` is absent or
+  `null` (core throws on that too), and an object with neither `method` nor
+  `id`, which is neither a request nor a response;
 - a line of JSON whitespace (space, tab, carriage return) is ignored.
 
-Valid JSON that is not a JSON-RPC message still goes to core.
+Every other line goes to core. That includes an array, which core answers with
+`-32600` itself because it serves no batches, and an object with an `id` and
+no `method`, which is a response and never gets a reply.
 
 **Give each server a fresh layer memo map.** Core's stdio protocol layer is a
 shared constant, so a second `McpStdio.layer` server whose build sees the

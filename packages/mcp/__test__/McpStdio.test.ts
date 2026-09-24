@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it, vi } from "@effect/vitest";
-import { Cause, Context, Effect, Exit, Layer, References, Runtime, Schedule, Sink, Stdio, Stream } from "effect";
+import { Cause, Context, Effect, Exit, Layer, References, Runtime, Sink, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/unstable/ai";
 import { ChildProcess } from "effect/unstable/process";
 import { McpStdio } from "../src/index.js";
@@ -56,6 +56,8 @@ const INITIALIZE = JSON.stringify({
 	params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } },
 });
 const PARSE_ERROR = { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } } as const;
+const INVALID_REQUEST = { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } } as const;
+const toolsList = (id: number) => JSON.stringify({ jsonrpc: "2.0", id, method: "tools/list" });
 
 class Seen extends Context.Service<Seen, Stdio.Stdio>()("test/Seen") {}
 
@@ -202,25 +204,47 @@ describe("McpStdio.layer over a real process's stdio", () => {
 		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 
-	it.live("keeps a partial frame held across core's retry after a frame it rejects", () =>
+	it.live(
+		"answers JSON that is not a JSON-RPC message with -32600, answers the request co-batched after it, and keeps serving",
+		() =>
+			Effect.gen(function* () {
+				const server = yield* McpProcess.spawn(STDIO_MAIN);
+				yield* server.handshake();
+				// Before the guard answered these, core's decoder threw on `null` and on a method-less-id object with a
+				// non-string method, dropping every other frame in the same chunk: id 2 below never got a reply.
+				yield* server.sendRaw(`null\n${toolsList(2)}\n`);
+				const first = yield* server.readUntilResponse(2);
+				assert.deepStrictEqual(
+					first.seen.filter((frame) => idOf(frame) === null),
+					[INVALID_REQUEST],
+				);
+				// Scalars and an object that is neither a request nor a response got no reply at all.
+				yield* server.sendRaw(`{"method":1}\n7\n{}\n${toolsList(3)}\n`);
+				const second = yield* server.readUntilResponse(3);
+				assert.deepStrictEqual(
+					second.seen.filter((frame) => idOf(frame) === null),
+					[INVALID_REQUEST, INVALID_REQUEST, INVALID_REQUEST],
+				);
+				yield* server.send({ jsonrpc: "2.0", id: 4, method: "tools/list" });
+				const { response } = yield* server.readUntilResponse(4);
+				assert.isArray((response.result as { readonly tools: unknown }).tools);
+				assert.notInclude(yield* server.stderrSoFar, "ERROR");
+			}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
+	it.live("answers a bare null and keeps the partial frame written after it", () =>
 		Effect.gen(function* () {
 			const server = yield* McpProcess.spawn(STDIO_MAIN);
 			yield* server.handshake();
-			// Precondition: `null` is JSON, so the guard forwards it, and core's decoder rejects it,
-			// logging an ERROR and re-subscribing to stdin. That retry is what the held partial must survive.
 			yield* server.sendRaw('null\n{"jsonrpc":"2.0","id":2,"meth');
-			yield* Effect.repeat(server.stderrSoFar, {
-				schedule: Schedule.spaced("10 millis"),
-				until: (text) => text.includes("ERROR"),
-			}).pipe(
-				Effect.timeoutOrElse({
-					duration: "1500 millis",
-					orElse: () =>
-						Effect.die(new Error("precondition changed: core no longer logs a decode failure for a `null` frame")),
-				}),
-			);
+			// Real time, so the two writes reach the server as two chunks.
+			yield* Effect.sleep("100 millis");
 			yield* server.sendRaw('od":"tools/list"}\n');
-			const { response } = yield* server.readUntilResponse(2);
+			const { response, seen } = yield* server.readUntilResponse(2);
+			assert.deepStrictEqual(
+				seen.filter((frame) => idOf(frame) === null),
+				[INVALID_REQUEST],
+			);
 			assert.isArray((response.result as { readonly tools: unknown }).tools);
 		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);

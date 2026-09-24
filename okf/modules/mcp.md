@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T05:53:26Z
-  body_sha256: c6bc7b95a3cb0cb36173f09a85e94561c8c054f63475f6cd1e5df3c64005620a
+  at: 2026-09-24T07:17:39Z
+  body_sha256: be56e8d831edc36f52cacc9dfa3797e63e64ac832beaff8573810b0b86150153
 ---
 
 # @effected/mcp
@@ -38,7 +38,7 @@ from `cli` to `mcp`, none from `mcp` to `workspaces`.
 | Export | Contract |
 | --- | --- |
 | `McpStdio.protocols` | `[McpProtocol.v2026_07_28, v2025_11_25, v2025_06_18]`. Stateless first; never a single entry; `initialize` only matches stateful adapters; a request with no session and no `_meta` falls to `protocols[0]`; at most one stateless adapter. |
-| `McpStdio.layer` | `(options: { name; version; instructions?; description?; protocols? }) => Layer<McpServer \| McpServerClient, never, Stdio>`. `McpServer.layerStdio` with `LogToStderr` **merged into its own output** (`Layer.provideMerge`, not `Layer.provide`) and `Layer.orDie`, because an `IllegalArgumentError` from `protocols` is the implementer's own defect (A2). The server's `Stdio` is wrapped by a guard that frames stdin exactly as core's decoder does (one streaming UTF-8 decoder, a BOM stripped only at stream start). A line that is not JSON, or longer than core's cap of 16 Mi UTF-16 code units, is answered with a JSON-RPC `-32700` parse error (`id: null`) and never reaches core's decoder; a line of JSON whitespace is ignored; the server keeps serving after either. The guard's state lives once per `Stdio`, so a partial line held across core's re-subscription to stdin survives, and the guard layer is minted per call, never shared through memoization. One server per layer memo map: core's `RpcServer.layerProtocolStdio` is a module constant, so two stdio servers whose builds share a memo map share one protocol and only the first reads stdin. Merging them into one graph shares the map, and so does building or providing the second under the first's `Effect.provide`, since nested `Layer.build` and `Effect.provide` fork the ambient memo map; isolate each with its own `ManagedRuntime`, `Effect.provide(layer, { local: true })` or process. Code after a completed `Effect.provide` of a stdio server never runs: core's stdio protocol interrupts the fiber that built it when its stdin loop ends. |
+| `McpStdio.layer` | `(options: { name; version; instructions?; description?; protocols? }) => Layer<McpServer \| McpServerClient, never, Stdio>`. `McpServer.layerStdio` with `LogToStderr` **merged into its own output** (`Layer.provideMerge`, not `Layer.provide`) and `Layer.orDie`, because an `IllegalArgumentError` from `protocols` is the implementer's own defect (A2). The server's `Stdio` is wrapped by a guard that frames stdin exactly as core's decoder does (one streaming UTF-8 decoder, a BOM stripped only at stream start). A line that is not JSON, or longer than core's cap of 16 Mi UTF-16 code units, is answered with a JSON-RPC `-32700` parse error (`id: null`) and never reaches core's decoder. A line that is JSON but no JSON-RPC message core can handle is answered with `-32600` Invalid Request (`id: null`, code from `McpSchema.INVALID_REQUEST_ERROR_CODE`): a value that is neither an object nor an array, an object whose `method` is not a string and whose `id` is absent or `null`, and an object with neither `method` nor `id`. Arrays (core answers a batch `-32600` itself), responses (an `id`, no `method`) and requests with an `id` go to core. A line of JSON whitespace is ignored; the server keeps serving after any of these. The guard's state lives once per `Stdio`, so a partial line held across core's re-subscription to stdin survives, and the guard layer is minted per call, never shared through memoization. One server per layer memo map: core's `RpcServer.layerProtocolStdio` is a module constant, so two stdio servers whose builds share a memo map share one protocol and only the first reads stdin. Merging them into one graph shares the map, and so does building or providing the second under the first's `Effect.provide`, since nested `Layer.build` and `Effect.provide` fork the ambient memo map; isolate each with its own `ManagedRuntime`, `Effect.provide(layer, { local: true })` or process. Code after a completed `Effect.provide` of a stdio server never runs: core's stdio protocol interrupts the fiber that built it when its stdin loop ends. |
 | `McpStdio.launch` | `<ROut, E, R>(layer: Layer.Layer<ROut, E, R>) => Effect.Effect<never, Error, R>`. Catches every non-interrupt cause itself and logs it inside the `LogToStderr` scope, then re-fails with a private `LaunchFailed` sentinel carrying `Runtime.errorReported = false` (so `runMain` stays silent) and `Runtime.errorExitCode` copied from the original error (so the exit code survives) (A1). |
 | `McpStdio.teardown` | `Runtime.Teardown`. A success or an interrupt-only exit maps to 0 — stdin reaching EOF would otherwise exit 130. Anything else goes to `Runtime.defaultTeardown`. |
 | `ToolFailure` | `message(raw, remediation)` gives `"<raw> <hint>[ Try <suggestedTool>.]"`, dropping any empty part so an empty hint never leaves a double space (A10). `truncate(value, limit?)` echoes caller values safely, never splitting a UTF-16 surrogate pair (A10); `ECHO_LIMIT = 200`, `ENGINE_ECHO_LIMIT = 2000`. `fields` is `{ message: Schema.String, remediation: Remediation }` to spread into a consumer's `Schema.TaggedError`. Folded into the message because core sends an `Error`-instance declared failure as `isError` with message text only (`McpServer.ts:1842-1845`). |
@@ -125,7 +125,8 @@ implementation-driven refinements the later tasks made on top of them.
 ## Upstream gaps and their kit workarounds
 
 The first two core gaps drove this design (D2); the third was found in the
-phase-4 review. All three remain open upstream as of this writing; the
+phase-4 review and the fourth by okfit's dogfood round 1. All four remain
+open upstream as of this writing; the
 upstream issue drafts are on hold, by user directive, until `@effected/mcp`
 publishes:
 
@@ -160,6 +161,20 @@ publishes:
   cap, then discarding to its newline) and drops JSON-whitespace lines.
   The serialization cannot be swapped instead: `layerStdio` provides it
   internally.
+- **A line that is JSON but no JSON-RPC message gets no typed reply, and
+  some such lines drop the frames after them.** `RpcSerialization`'s
+  `decodeJsonRpcMessage` calls `Object.hasOwn` on each decoded frame, which
+  throws on a bare `null`, and calls `method.startsWith` when `id` is
+  nullish, which throws on a non-string `method`. Either throw fails the
+  whole chunk after its lines were already consumed, so every other frame in
+  that chunk is dropped unanswered; core logs the error and re-subscribes to
+  stdin. A number, string or boolean, and an object with neither `method`
+  nor `id`, decode as a response to no request and are ignored with no reply.
+  Probed against a spawned stdio server: core already answers any array
+  with `-32600` ("JSON-RPC batches are not supported"), and answers a
+  request that has an `id` but a non-string `method` with `-32601`.
+  Workaround: the same guard answers those lines with `-32600` Invalid
+  Request (`id: null`) and never forwards them.
 
 ## `InvalidParams` per protocol revision
 

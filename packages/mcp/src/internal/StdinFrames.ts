@@ -24,39 +24,86 @@ export const PARSE_ERROR_FRAME = `${JSON.stringify({
 })}\n`;
 
 /**
- * One stdin chunk after the guard: the bytes to hand to core, and how many
- * lines the guard answered with a parse error instead.
+ * The JSON-RPC 2.0 answer to a frame that is JSON but no JSON-RPC message
+ * core can handle, newline-framed. The id is `null` because such a frame
+ * carries no usable id.
+ *
+ * @internal
+ */
+export const INVALID_REQUEST_FRAME = `${JSON.stringify({
+	jsonrpc: "2.0",
+	id: null,
+	error: { code: McpSchema.INVALID_REQUEST_ERROR_CODE, message: "Invalid Request" },
+})}\n`;
+
+/**
+ * One stdin chunk after the guard: the bytes to hand to core, and the reply
+ * frames the guard answered lines with instead, in stdin order.
  *
  * @internal
  */
 export interface FrameGuardStep {
 	readonly forward: Uint8Array | undefined;
-	readonly parseErrors: number;
+	readonly replies: ReadonlyArray<string>;
 }
 
 /** JSON's insignificant whitespace, minus the newline that ends the line. */
 const BLANK = /^[ \t\r]*$/;
 
-const isJson = (line: string): boolean => {
+const isNullish = (value: unknown): boolean => value === null || value === undefined;
+
+/**
+ * The guard's answer to one non-blank line within the cap, or `undefined` to
+ * forward it to core.
+ *
+ * @remarks
+ * A frame that parses is forwarded unless core would throw on it or ignore
+ * it without a reply, which JSON-RPC 2.0 calls an Invalid Request:
+ *
+ * - a value that is neither an object nor an array: core throws on `null`,
+ *   dropping every other frame in its chunk, and ignores a number, string or
+ *   boolean without a reply;
+ * - an object with a `method` that is not a string and no usable `id`: core
+ *   throws on it, dropping the rest of its chunk (with an `id`, core answers
+ *   `-32601` itself);
+ * - an object with neither `method` nor `id`: every JSON-RPC request carries a
+ *   `method` and every response an `id`, so it is neither, and core ignores it
+ *   as a response to nothing.
+ *
+ * Arrays are forwarded: core answers a batch `-32600` itself. So is any object
+ * with an `id` and no `method`, which is a response; JSON-RPC never answers a
+ * response.
+ */
+const answerFor = (line: string): string | undefined => {
+	let value: unknown;
 	try {
-		JSON.parse(line);
-		return true;
+		value = JSON.parse(line);
 	} catch {
-		return false;
+		return PARSE_ERROR_FRAME;
 	}
+	if (typeof value !== "object" || value === null) return INVALID_REQUEST_FRAME;
+	if (Array.isArray(value)) return undefined;
+	const message = value as { readonly method?: unknown; readonly id?: unknown };
+	if (Object.hasOwn(message, "method")) {
+		return typeof message.method !== "string" && isNullish(message.id) ? INVALID_REQUEST_FRAME : undefined;
+	}
+	return Object.hasOwn(message, "id") ? undefined : INVALID_REQUEST_FRAME;
 };
 
 /**
  * A stateful step over stdin chunks that forwards only complete lines core's
- * decoder will parse, each with its newline.
+ * decoder will parse and answer, each with its newline.
  *
  * @remarks
  * Core's stdio decoder parses each line inside its read loop. A line that is
  * not JSON throws before the decoder advances past it, so the line stays at
  * the head of its buffer and every later chunk throws on it again: the server
- * never reads another frame. The guard frames stdin exactly as core does and
- * answers such a line itself, counting it for the caller to write
- * {@link PARSE_ERROR_FRAME}.
+ * never reads another frame. A line that is JSON but no JSON-RPC message core
+ * can handle either throws inside the decoder, dropping the frames after it in
+ * the same chunk, or is ignored without a reply. The guard frames stdin
+ * exactly as core does and answers such a line itself, returning
+ * {@link PARSE_ERROR_FRAME} or {@link INVALID_REQUEST_FRAME} for the caller
+ * to write.
  *
  * - Decoding mirrors core: one streaming UTF-8 decoder, so a character split
  *   across chunks decodes whole, a byte-order mark is stripped only at the
@@ -64,12 +111,15 @@ const isJson = (line: string): boolean => {
  *   line, where `JSON.parse` rejects it as core's would.
  * - A partial line is held until its newline arrives.
  * - A line of JSON whitespace only is not a frame: dropped, not answered.
+ * - A line that is JSON is answered `-32600` when it is not an object or an
+ *   array, when its `method` is not a string and it has no usable `id`, or
+ *   when it has neither `method` nor `id`; everything else goes to core.
  * - A line longer than `maxFrameLength` code units is answered once, as soon
  *   as the held part exceeds the cap, and the rest of it is discarded up to
  *   its newline. Nothing is held beyond the cap.
  *
  * Create one guard per stdin: its state must outlive core re-subscribing to
- * stdin after a failure, or a held partial line is lost.
+ * stdin after any failure in its read loop, or a held partial line is lost.
  *
  * @internal
  */
@@ -83,11 +133,11 @@ export const makeFrameGuard = (maxFrameLength: number = MAX_FRAME_LENGTH): ((chu
 	return (chunk) => {
 		const text = decoder.decode(chunk, { stream: true });
 		let forward = "";
-		let parseErrors = 0;
+		const replies: Array<string> = [];
 		let start = 0;
 		if (discarding) {
 			const newline = text.indexOf("\n");
-			if (newline === -1) return { forward: undefined, parseErrors: 0 };
+			if (newline === -1) return { forward: undefined, replies };
 			discarding = false;
 			start = newline + 1;
 		}
@@ -97,23 +147,30 @@ export const makeFrameGuard = (maxFrameLength: number = MAX_FRAME_LENGTH): ((chu
 			pending = "";
 			start = newline + 1;
 			newline = text.indexOf("\n", start);
-			if (line.length > maxFrameLength || (!BLANK.test(line) && !isJson(line))) parseErrors++;
-			else if (!BLANK.test(line)) forward += `${line}\n`;
+			if (line.length > maxFrameLength) {
+				replies.push(PARSE_ERROR_FRAME);
+				continue;
+			}
+			if (BLANK.test(line)) continue;
+			const answer = answerFor(line);
+			if (answer === undefined) forward += `${line}\n`;
+			else replies.push(answer);
 		}
 		pending += text.slice(start);
 		if (pending.length > maxFrameLength) {
 			pending = "";
 			discarding = true;
-			parseErrors++;
+			replies.push(PARSE_ERROR_FRAME);
 		}
-		return { forward: forward === "" ? undefined : encoder.encode(forward), parseErrors };
+		return { forward: forward === "" ? undefined : encoder.encode(forward), replies };
 	};
 };
 
 /**
- * `Stdio` whose `stdin` carries only lines core's decoder will parse,
- * answering every other line with {@link PARSE_ERROR_FRAME} on `stdout`.
- * Everything else is the ambient `Stdio`.
+ * `Stdio` whose `stdin` carries only lines core's decoder will parse and
+ * answer, writing the guard's reply to every other line on `stdout`: one
+ * write per chunk, replies in stdin order. Everything else is the ambient
+ * `Stdio`.
  *
  * @remarks
  * One guard per call, shared by every subscription to the returned `stdin`,
@@ -131,10 +188,10 @@ export const guardStdin = (stdio: Stdio.Stdio): Stdio.Stdio => {
 		stderr: (options) => stdio.stderr(options),
 		stdin: stdio.stdin.pipe(
 			Stream.mapEffect((chunk) => {
-				const { forward, parseErrors } = step(chunk);
-				return parseErrors === 0
+				const { forward, replies } = step(chunk);
+				return replies.length === 0
 					? Effect.succeed(forward)
-					: Stream.run(Stream.make(PARSE_ERROR_FRAME.repeat(parseErrors)), stdio.stdout()).pipe(Effect.as(forward));
+					: Stream.run(Stream.make(replies.join("")), stdio.stdout()).pipe(Effect.as(forward));
 			}),
 			Stream.filter((chunk): chunk is Uint8Array => chunk !== undefined),
 		),

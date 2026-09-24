@@ -301,7 +301,10 @@ to the child's stdin with no JSON encoding and no newline added — for a
 frame `send` cannot construct, such as a genuinely malformed line. See
 `server-wiring.md`'s [Stdin guard](./server-wiring.md#stdin-guard), which
 already spawns a real process, sends one, and asserts the server answers a
-typed `-32700` and keeps serving rather than wedging.
+typed `-32700` and keeps serving rather than wedging. JSON that is no
+JSON-RPC message (a bare `null`, `{}`) is answered `-32600` the same way;
+send a valid request in the same `sendRaw` write after it to prove a
+co-batched frame is still answered.
 
 ## Packed install proof
 
