@@ -1,6 +1,6 @@
 {
 	"name": "@effected/engine",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Platform-free primitives shared by every front end of an Effect v4 tool: distribution identity, remediation, and launch context",
 	"keywords": ["effect", "cli", "mcp", "carrier", "distribution", "effected"],

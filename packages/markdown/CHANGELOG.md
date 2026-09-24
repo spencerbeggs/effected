@@ -1,5 +1,17 @@
 # @effected/markdown
 
+## 0.12.1
+
+### Documentation
+
+- Corrected the `RowContent` API docs. `make` passes an already-constructed class instance through a nested class-typed field by reference, whether or not the field is wrapped in a `Schema.Union`. The category unions behind the `children` fields of `TableRow`, `Table` and `List` exist to mirror mdast's content-model vocabulary, not for construction speed as the docs previously claimed. [#821][#821]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#821]: https://github.com/spencerbeggs/effected/pull/821
+
 ## 0.12.0
 
 ### Features

@@ -1,5 +1,23 @@
 # @effected/pnpm-plugin-effect
 
+## 0.11.0
+
+### Features
+
+- The managed `catalog:effected` now covers the kit's two new packages, each at `^0.1.0` (peer `^0.1.0`, `lock-minor`): `@effected/engine`, the platform-free primitives shared across a tool's front ends, and `@effected/mcp`, the MCP server boundary. [#821][#821]
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/schemastore-cli` ^0.15.0 -> ^0.15.1 (peer ^0.15.0) [#821][#821]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#821]: https://github.com/spencerbeggs/effected/pull/821
+
 ## 0.10.1
 
 ### Maintenance
