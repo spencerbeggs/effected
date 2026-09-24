@@ -1,5 +1,7 @@
 # @effected/engine
 
+Pattern: `design-patterns`.
+
 Platform-free primitives shared by every front end of an Effect v4 tool: carrier
 distribution identity, a remediation shape, and launch-context resolution. Pure
 tier: `effect` is the only peer, and the only dependency of any kind — no
