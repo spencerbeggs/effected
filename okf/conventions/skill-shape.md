@@ -11,8 +11,8 @@ sources:
     resource: ../../plugins/claude-code/skills/effected-packages
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: f5b442f6bf78ff269ec338ac10b65de9ffdcd5663b9026ed9cb07ca0273e1428
+  at: 2026-09-24T04:12:55Z
+  body_sha256: dca29f588b97548789f4edb2bfdcd7f1ffe8ff5057d7c952cb9a82fb0affc5ca
 ---
 
 # A plugin skill is a lean index over references
@@ -46,15 +46,24 @@ Skills name packages as `@effected/<name>` and carry no repo-relative
 paths, run ids, issue numbers or dates. Where a count is load-bearing, it
 is stated as the grep that produces it rather than a number that silently
 ages, because the reader is in a *consumer* repository and history that
-reader cannot act on is cost without payoff. Citations into the vendored
+reader cannot act on is cost without payoff. The same reasoning bans an
+Effect prerelease version or since-version history from a skill's own
+prose — see
+[consumer-text-states-current-effect-behaviour.md](consumer-text-states-current-effect-behaviour.md)
+for the full rule and its narrow exceptions. Citations into the vendored
 Effect source are the sanctioned exception, and they are load-bearing
 rather than merely tolerated: a `Module.ts:line` anchor is what lets a
 reader settle a v4 claim against source instead of trusting the skill's
-prose. They are written module-relative so they resolve against a
-consumer's `node_modules/effect/src` as well as the vendored tree. The
-cost is that an anchor is a pinned fact — an Effect catalog advance
-drifts every anchor at once, so re-verifying them belongs with the
-catalog bump, not on a schedule of its own.
+prose. They are written module-relative so the *path* resolves against a
+consumer's `node_modules/effect/src` as well as the vendored tree, but the
+**line number does not**: at the same version, npm's published `effect`
+carries publish-time TSDoc the vendored tag does not, so a declaration
+sits at a different line in each tree. A `Module.ts:line` anchor names the
+vendored tree's line; a consumer without that tree finds the same
+declaration in `node_modules` by symbol name instead. The cost is that an
+anchor is a pinned fact — an Effect catalog advance drifts every anchor at
+once, so re-verifying them belongs with the catalog bump, not on a
+schedule of its own.
 
 ## The frontmatter contract
 

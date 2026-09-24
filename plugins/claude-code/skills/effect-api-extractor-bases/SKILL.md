@@ -30,7 +30,7 @@ await build({
 });
 ```
 
-```ts
+```text
 // src/X.ts — inline, no base const, no annotation
 /** ... @public */
 export class SemVer extends Schema.Class<SemVer>("SemVer")({
@@ -51,7 +51,7 @@ bucket.
 
 The emitted `.d.ts` proves the base is genuinely internal:
 
-```ts
+```text
 declare const SemVer_base: Schema.Class<SemVer, /* full inlined shape */>;
 declare class SemVer extends SemVer_base { /* full shape: fields, statics, methods */ }
 export { SemVer /* , ... */ };   // <- SemVer_base is NOT exported
@@ -74,7 +74,7 @@ green and **no hand-written annotations** on:
 
 - `Schema.Opaque`, `Schema.Class`, `TaggedClass`, `TaggedError`.
   (Naming trap: this list used to include `Schema.asClass`, which **does not
-  exist** — zero occurrences in `Schema.ts` at rc.109. To give a schema value
+  exist** — zero occurrences in `Schema.ts`. To give a schema value
   a class identity you subclass it directly: `class MyString extends
   Schema.String {}`.)
 - **Recursive `Schema.Class` + `Schema.suspend`** (a node whose field
@@ -114,7 +114,7 @@ real and must be fixed, not suppressed:
   named — best for engine-internal record types that should not become public
   surface:
 
-  ```ts
+  ```text
   static fromRaw(
    raw: { readonly code: YamlErrorCode; readonly message: string; readonly offset: number; readonly length: number },
    text: string,
@@ -167,7 +167,11 @@ The same gap bites one step earlier, in the **heritage clause itself**. An
 unexported interface passed as a *type argument* to the factory —
 
 ```ts
-interface VersionCacheShape { … }   // NOT exported from index.ts
+import { Context } from "effect"
+
+interface VersionCacheShape {
+  readonly current: string
+} // NOT exported from index.ts
 
 export class VersionCache extends Context.Service<VersionCache, VersionCacheShape>()(
  "@effected/semver/VersionCache",
@@ -268,7 +272,7 @@ selector, and the bare member name never resolves.** Every package entry point
 in this repo exports the shape
 
 ```ts
-const ascend = (...) => ...                    // module-local, NOT exported
+const ascend = (path: string): string => path; // module-local, NOT exported
 export const Walker = { ascend } as const;     // the only export
 ```
 
@@ -451,6 +455,40 @@ its `exports` map (every key `"./package.json"`), or it reports the bin as a
 perpetually missing build. The `effect-v4-cli` skill covers the package shape
 itself.
 
+## A second published entrypoint models its own surface
+
+A `package.json` `exports` map can publish more than one subpath — `.` and
+`./testing`, say — and api-extractor builds and gates **each entrypoint
+independently**, as its own closed surface. A type that one entrypoint's
+public signature reaches is not automatically visible through another
+entrypoint just because both ship from the same package: every kit type an
+entrypoint's own exported signatures name must be re-exported from **that**
+entrypoint too, or that entrypoint alone reports `ae-forgotten-export` —
+"already exported from `.`" is never the fix for a second entrypoint's own
+gate.
+
+Worked example: `@effected/workspaces/testing`
+(`packages/workspaces/src/testing.ts`). `WorkspaceLayering.checkWorkspace`'s
+requirement and error channel reach the `WorkspaceDiscovery` service — its
+shape, options and failures. `WorkspaceDiscovery` is not part of the
+package's main `.` surface at all; `./testing` re-exports it anyway, because
+`./testing`'s own signatures are the ones naming it. The module's own header
+comment states the rule: "This module is an ENTRY POINT: api-extractor
+models it as its own surface, so every kit type its signatures name is
+re-exported here."
+
+```ts
+import type { WorkspaceDiscovery, WorkspaceLayering } from "@effected/workspaces/testing"
+
+// Both resolve from the SAME subpath: WorkspaceLayering's own signatures
+// reach WorkspaceDiscovery (edgesOf's parameter, checkWorkspace's
+// requirement and error channel), so this entrypoint re-exports
+// WorkspaceDiscovery too rather than relying on the package's main entry
+// to already have done so.
+declare const service: WorkspaceDiscovery
+declare const layering: typeof WorkspaceLayering
+```
+
 ## Reading the gate without fooling yourself
 
 `issues.json` is a **false-green oracle**. Four rules, each learned by being burned:
@@ -491,7 +529,7 @@ describes a tree no commit ever contained.
 One cosmetic non-defect while reading built declarations: core's dollar-alias
 export names surface verbatim — a `Schema.Array` field emits as
 `Schema.$Array<…>`, `Schema.Record` as `Schema.$Record<…>`. Correct output,
-observed across multiple package builds at beta.101; do not "fix" it, and do
+observed across multiple package builds; do not "fix" it, and do
 not read it as a wrong import in the source.
 
 ## History
@@ -503,11 +541,19 @@ retired 2026-07-08 once the inline form + scoped `_base` suppression was
 validated on the recursive and `Context.Service` cases).
 
 The inline factory + scoped `_base` suppression is the **single policy**, and
-the transitional backlog is **drained**: as of 2026-08-23 no package in the kit
-carries a `@public X_base` const. `grep -rln "_base" packages/*/src/` returns a
-single hit — a *comment* in `runtimes/src/NodeResolver.ts` explaining why the
-suppression is scoped — and every building package's `savvy.build.ts` carries
-the suppression line except `app`, `cli` and `github-references`, which declare
-no class factory needing it. If you find a `@public X_base` const anywhere, it
-is new code written against the retired idiom, not residue: inline the factory
-into the heritage clause and delete the const.
+the transitional backlog is **drained**: no package in the kit carries a
+`@public X_base` const. `grep -rln "_base" packages/*/src/` returns a single
+hit — a *comment* in `runtimes/src/NodeResolver.ts` explaining why the
+suppression is scoped. Which packages' `savvy.build.ts` still lack the
+suppression line is not a list worth hand-keeping — a package gains it the
+moment it gains its first class factory (`cli` gained the line when `CliExit`,
+a `Context.Service`, shipped) — so read it live instead:
+
+```bash
+grep -L "_base" packages/*/savvy.build.ts
+```
+
+Every name that grep prints declares no class factory yet. If you find a
+`@public X_base` const anywhere, it is new code written against the retired
+idiom, not residue: inline the factory into the heritage clause and delete
+the const.

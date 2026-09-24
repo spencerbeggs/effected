@@ -11,6 +11,13 @@ This skill tells you where to look and how far to go. (If the question is
 merely "which module does X" — start at `effect-v4-module-index`, then verify
 here.)
 
+**Every claim this skill settles is written about current behaviour, never a
+version.** Cite a source finding by module and symbol, with the line resolved
+against the vendored tree, and never name an Effect prerelease — the reader
+takes their own Effect through their own pin, and a number in a claim goes
+stale on the next advance without teaching anything the current tree does
+not already show.
+
 ## The evidence ladder
 
 Three rungs, ordered by cost. Each settles a strictly different class of question. Climb to the rung your claim needs — no further, no less.
@@ -49,6 +56,13 @@ path breaks the moment you do.
   '*platform-node-shared@<pin>*' -name NodeFileSystem.ts` locates it). When a
   semantic has to be *copied* from the platform layer, that file is rung 2 for it;
   the vendored tree is silent, not authoritative.
+  **At the same version, `$EFFECT_SRC` and `$SRC` still disagree on line
+  numbers**: npm's published `effect` carries publish-time TSDoc the vendored
+  tag does not, so a declaration sits at a different line in each tree even
+  when both resolve the identical release. A `Module.ts:line` anchor in this
+  plugin always names the **vendored tag** (`$SRC`); a consumer reading
+  `node_modules` finds the same declaration by symbol name instead of by
+  line — `grep -n "export const layerStdio" "$EFFECT_SRC/unstable/ai/McpServer.ts"`.
 
 Resolve both before you trust any lookup. The bottom of the ladder is a hard failure,
 never a fallback to memory — a wrong answer from v3 memory is indistinguishable from
@@ -59,8 +73,9 @@ a right one.
 **Do not assume the vendored tree matches what you compile against.** The submodule
 sits at the exact tag it was last pinned to, and a catalog bump that lands without its
 matching `savvy repos pin` leaves the two silently disagreeing — exactly this drift
-happened under the old subtree pattern (vendored `beta.94` against an installed
-`beta.97`) and version-checking is still the reader's job, not the tooling's.
+happened under the old subtree pattern, a vendored prerelease sitting one advance
+behind an already-bumped install — and version-checking is still the reader's job, not
+the tooling's.
 
 So a rung-2 answer from `$SRC` can be a *stale* answer, delivered with total confidence
 and no error. The rule:
@@ -77,6 +92,18 @@ before you trust the tree — the versions match, or they do not (the snippet us
 diff <(node -p 'require("'"$SRC"'/packages/effect/package.json").version') \
      <(node -p 'require("effect/package.json").version') \
   || echo "VENDORED TREE IS STALE — settle rung 2 against \$EFFECT_SRC, not \$SRC."
+```
+
+**The version-string `diff` above cannot see a second, quieter drift**: even
+when the two trees report the identical version, npm's publish step adds
+TSDoc the vendored tag never carries, so a symbol's line number can still
+differ between them. A version match is not a line-number match — check that
+separately, against a symbol, never a line count alone:
+
+```bash
+diff <(grep -n "export const resource" "$SRC/packages/effect/src/unstable/ai/McpServer.ts") \
+     <(grep -n "export const resource" "$EFFECT_SRC/unstable/ai/McpServer.ts") \
+  || echo "ANCHORS ARE VENDORED-TREE LINES — search installed source by symbol."
 ```
 
 ```bash
@@ -112,17 +139,16 @@ reader skims past it. Refuse, and the trap cannot spring.
 
 **Do not read that history as "the root gives you v3" today.** In *this* repo the
 workspace root resolves **nothing**: a bare `effect` import there dies with
-`ERR_MODULE_NOT_FOUND` (re-checked 2026-09-05). The lockfile carried exactly one
-`effect` at the rc.112 pin; since the rc.115 advance it carries **two by intent** —
-the toolchain's own pin (`4.0.0-rc.116` at the rc.117 advance: `@savvy-web/tsdown-plugins`,
-`rolldown-pnpm-config` and `@vitest-agent/*` declare `effect` and their `@effected/*` inputs as
-regular dependencies, so the published kit binds to the toolchain's copy) and the current pin
-(`4.0.0-rc.117`) for the kit. The `packageExtensions` bridge that first produced that shape was
-retired on the rc.116 advance (`okf/conventions/one-resolved-effect-copy.md` keeps both bridge
-shapes for the next runtime-incompatible advance). Neither copy is v3, and neither resolves from the root; which one a probe
-links against is decided by where the probe file lives — which is the point of the rule. Which failure you get depends on what a given repo has
-installed, so the gate must key on the *resolved version*, never on a remembered
-answer for a particular directory.
+`ERR_MODULE_NOT_FOUND`. The lockfile carries **two `effect` entries by intent** —
+the toolchain's own pin (`@savvy-web/tsdown-plugins`, `rolldown-pnpm-config` and
+`@vitest-agent/*` declare `effect` and their `@effected/*` inputs as regular
+dependencies, so the published kit binds to the toolchain's copy) and the kit's
+own current pin. Neither copy is v3, and neither resolves from the root; which
+one a probe links against is decided by where the probe file lives — which is
+the point of the rule. `okf/conventions/one-resolved-effect-copy.md` has the
+full shape of the two-copies-by-intent arrangement. Which failure you get
+depends on what a given repo has installed, so the gate must key on the
+*resolved version*, never on a remembered answer for a particular directory.
 
 **Read the LOCKFILE, and read it carefully — neither the pnpm store nor a raw
 grep count is the check.** `ls node_modules/.pnpm | grep '^effect@'` lists store
@@ -157,7 +183,7 @@ So: **a removal is never settled by rung 1.** If the docs are silent on a symbol
 
 ### Rung 1 also asserts things source refutes
 
-Silence is the *gentler* failure. The migration notes also make positive claims that the tree contradicts, in both directions — and a confident wrong answer costs more than an absent one. Both of these were found in one audit at beta.107 and both still hold at rc.109:
+Silence is the *gentler* failure. The migration notes also make positive claims that the tree contradicts, in both directions — and a confident wrong answer costs more than an absent one. Both of these were found in one audit and both still hold:
 
 - **A method that does not exist.** `migration/yieldable.md` documents the `Yieldable` trait as `asEffect(): Effect<A, E, R>` and states the runtime calls `.asEffect()` internally. **`asEffect` has zero occurrences in the entire source tree.** A design built on it fails at the first call.
 - **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:142`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
@@ -168,7 +194,7 @@ Silence is the *gentler* failure. The migration notes also make positive claims 
 
 The vendored tree ships `packages/effect/SCHEMA.md` **at the pin** — 7,400 lines of upstream Schema documentation, versioned with the source rather than floating like a website. That makes it far stronger than `migration/`: it describes the surface you actually have, so it is an excellent **diff oracle** for checking a claim quickly, and when it disagrees with a skill it is usually the skill that is wrong.
 
-It is still a document, and it does not outrank `src`. A beta.107 audit of the Schema references found roughly thirty disagreements where `SCHEMA.md` was right — and **eight where it was itself wrong**, on `Getter`/`Parser`, the `effect/data` import path, `Schema.brand<T>()`, `UnknownFromJsonString`, `cause.failures`, `Array$`, `toJsonSchema` and `ValidDate`. Those corrections went beyond the pinned upstream doc on source authority.
+It is still a document, and it does not outrank `src`. An audit of the Schema references found roughly thirty disagreements where `SCHEMA.md` was right — and **eight where it was itself wrong**, on `Getter`/`Parser`, the `effect/data` import path, `Schema.brand<T>()`, `UnknownFromJsonString`, `cause.failures`, `Array$`, `toJsonSchema` and `ValidDate`. Those corrections went beyond the pinned upstream doc on source authority.
 
 So: reach for it early because it is cheap and version-exact, and treat a disagreement with it as a strong signal worth chasing — then settle the answer in `packages/effect/src`. Call it rung 1.5: better than the migration notes, never a substitute for reading the declaration.
 
@@ -183,7 +209,7 @@ The mechanism is that a module cannot declare `const Array` beside its own uses
 of the global `Array` type, so core defines the symbol under a private name and
 renames it in an `export {}` block:
 
-```ts
+```text
 // Schema.ts:4617 — the real definition, under a name you did not grep for
 const ArraySchema = Struct_.lambda<ArrayLambda>((schema) => …)
 
@@ -192,7 +218,7 @@ export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at :4638
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
-nothing. The confirmed occurrences of this pattern at rc.109 —
+nothing. The confirmed occurrences of this pattern (vendored-tree lines) —
 `Schema.ts:4638`, `Equivalence.ts:620`, `Order.ts:578`, `Config.ts:1072` — are all
 `Array`, but treat the *class* of names as suspect, not just that one:
 `Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
@@ -272,20 +298,24 @@ conclusion.** Picking is how a stale read gets laundered into a verified fact.
 
 ### Worked example: the three rungs disagree
 
-`Context.Key`, checked against `effect@4.0.0-beta.94` and re-confirmed at rc.109
-(`Context.ts:64`, same declaration, same line):
+`Context.Key` (`Context.ts:64`):
 
 - **Rung 1** — `migration/services.md` never mentions it. Reading harder produces nothing.
 - **A runtime check** says it does not exist: `typeof Context.Key` is `undefined` and `"Key" in Context` is `false`, because it is type-only.
 - **Rung 2** — `$SRC/packages/effect/src/Context.ts:64` settles it:
 
-  ```ts
+  ```text
   export interface Key<out Identifier, out Shape> extends Effect<Shape, never, Identifier>
   ```
 
   It exists, it is type-only, and `Shape` is **covariant** — so a `Context.Key` parameter accepts a wider shape than declared, and a design that expected a compile error there will not get one.
 
-  `$EFFECT_SRC/Context.ts:64` is the same declaration, at the same line. Either root answers a rung-2 question.
+  `$EFFECT_SRC/Context.ts:64` is the same declaration, and — for this one
+  anchor — the same line: `Context.ts` overall carries far more publish-time
+  TSDoc in the installed copy than the vendored tag, but the extra lines land
+  after this declaration, not before it. Do not generalize that coincidence:
+  confirm any other anchor by symbol, per the drift check above, rather than
+  assuming a line number survives the same way.
 
 Three answers, one truth, and the cheap rungs are the ones that lie.
 
@@ -365,7 +395,7 @@ Two riders on the package-root form, both learned by leaving mess behind:
   root is committed ground.
 
 1. **Run from inside the package, never the repo root.** A workspace root that has a v3 installed resolves it and will describe the v3 surface with total confidence; a root that has none — this repo today — fails with `ERR_MODULE_NOT_FOUND` instead. Both are the same rule: only `packages/<pkg>/` is guaranteed to resolve the pinned v4.
-2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once (it is `4.0.0-rc.117` in this repo today), so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
+2. **Print the resolved version inside every probe, and compare it to the repo's actual `effect` pin — not to a remembered prerelease word.** The v4 line has already moved `beta` → `rc` once, so a hard-coded "must say `beta`" check rejects a perfectly good probe. The thing that voids a probe is resolving **v3** (`3.x`); read the pin out of `pnpm-workspace.yaml`'s `catalog:effect` and require an exact match.
 3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
@@ -397,7 +427,7 @@ whole point). If a file argument is genuinely unavoidable, `--ignoreConfig`
 proceeds — but it abandons the package's tsconfig, so the bare form stays
 canonical.
 
-A type-level control that works, verified against `effect@4.0.0-beta.94`:
+A type-level control that works:
 
 ```ts
 import { Effect } from "effect";
@@ -412,7 +442,7 @@ has no `await`.
 
 ```ts
 import pkg from "effect/package.json" with { type: "json" };
-console.log("resolved effect:", pkg.version); // must match catalog:effect — 4.0.0-rc.117 today
+console.log("resolved effect:", pkg.version); // must match this workspace's catalog:effect pin
 ```
 
 ## Portability

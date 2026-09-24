@@ -37,7 +37,22 @@ Two working areas, both **gitignored and disposable**:
   come from the MCP `run_tests`/`test` tools. A file reporter still writes:
   `--reporter=json --outputFile=<path>` is how a property test's shrunk input
   and replay token are read, since the terminal compacts a falsification to
-  `Property falsified after N run(s)`.
+  `Property falsified after N run(s)`. **`console.log` inside a `__test__/`
+  probe is swallowed** by the vitest-agent reporter, which owns the terminal
+  output — write what you need to read back to a file (`--outputFile`) rather
+  than a `console.log` you expect to see; a `probes/*.ts` `tsx` probe has no
+  such reporter in front of it and prints normally.
+
+`pnpm scratchpad:check` **can be red from another session's stale probe file**
+that has nothing to do with your own work — the type-check program covers
+every file under `probes/`, `__test__/` and `lib/scripts/` at once, shared
+across every agent using this workspace concurrently. Judge only your own
+files: filter the output to your own paths, and plant a known-bad control
+file first (a line you know must fail) to prove the filter is actually live
+before trusting a clean read on it — a filter that matched nothing would
+look identical to a clean tag. `pnpm scratchpad:reset` is the other option
+when a stale probe is in your way, but it deletes every session's probes,
+not just the stale one.
 
 `pnpm scratchpad:reset` (repo root) deletes both working areas and reseeds
 them from `lib/templates/`. It never runs git. Anything you leave in the

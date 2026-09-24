@@ -110,6 +110,8 @@ So on any dependency bump, sweep twice:
 
 The tell that you are in this failure mode: you found one such line **by reading**, fixed it, and did not widen your sweep pattern to the class of defect you had just discovered. Turn every mechanism-bug you find by hand into a grep before moving on.
 
+Re-verify every anchor this sweep touches against the **vendored tree**, never `node_modules` — the installed copy's publish-time TSDoc shifts line numbers even when the symbol itself is unchanged, so a line that still resolves in `node_modules` is not evidence the vendored-tree anchor still holds.
+
 ## Red flags
 
 Stop if you catch yourself doing any of these. Each has happened.
@@ -133,7 +135,7 @@ The plugin is currently loaded only from this repo (`claude --plugin-dir plugin`
 
 `effect-v4-source-lookup` now resolves an ordered ladder: `$EFFECT_SMOL_SRC` override → the vendored tree → `node_modules/effect/src` → hard failure. Two facts settled it, and the second corrects what this section used to claim:
 
-- **`effect` publishes its source.** Its `files` array is `["src/**/*.ts", "dist/**/*.js", …]`, so every consumer has the complete v4 TypeScript source, `internal/` implementations included — not merely `.d.ts`. `node_modules/effect/src/Context.ts:65` is byte-identical to the vendored tree's, same line. Rung 2 survives publication at full fidelity.
+- **`effect` publishes its source.** Its `files` array is `["src/**/*.ts", "dist/**/*.js", …]`, so every consumer has the complete v4 TypeScript source, `internal/` implementations included — not merely `.d.ts`. Rung 2 survives publication at full fidelity **for existence and signature**. **Line numbers do not**: npm's publish step adds TSDoc the vendored tag does not carry, so most modules diverge in total line count between the two trees, and a declaration further into a file lands at a different line in each. `node_modules/effect/src/Context.ts:65` happens to still match the vendored tree at that early line, but that is a property of *this* declaration's position, not a guarantee — settle any other anchor by symbol name in `node_modules`, never by assuming the line survived.
 - **Rung 1 does not survive.** No `migration/`, `ai-docs/`, or `LLMS.md` ships in the package. The ladder announces this and sends the reader to rung 2, rather than papering over it.
 
 **The version gate is the load-bearing line.** `effect@3` *also* ships `src/`, so a bare `require.resolve` from the workspace root returns a complete, confident, wrong rung-2 source. The resolver must **refuse** a non-`4.*` resolution, not report it — a printed version is a version a reader skims past. This was caught by running the resolver's own control (no tree + only v3 resolvable → must exit 1, must not serve v3), which the first draft failed.
