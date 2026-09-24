@@ -6,6 +6,9 @@
 // Deliberately NOT a parser. It tracks exactly what decides whether a
 // character is code: comments, the three quote forms, template substitutions
 // nested to any depth, and regex literals by the classic previous-token rule.
+// Parentheses are tracked so a `/` after the `)` of an `if`/`while`/`for`/
+// `with` condition opens a regex while one after any other `)` divides; a `/`
+// after a postfix `++`/`--` or a TypeScript non-null `!` divides.
 // Documented misreads: a regex literal directly after a block-closing `}`
 // reads as division, and JSX text reads as code.
 
@@ -49,6 +52,9 @@ const REGEX_AFTER = new Set([
 	"await",
 ]);
 
+/** Keywords whose parenthesized condition may be followed directly by a statement, so a `/` after its `)` opens a regex. */
+const CONTROL = new Set(["if", "while", "for", "with"]);
+
 /** Objects a member access on which still reaches a global. */
 const GLOBAL_OBJECTS = new Set(["globalThis", "global", "window", "self"]);
 
@@ -62,6 +68,10 @@ export const lex = (text: string): LexedSource => {
 	const literals: Array<SourceLiteral> = [];
 	// One brace-depth counter per open template substitution, innermost last.
 	const substitutions: Array<number> = [];
+	// One entry per open `(`: whether it opened an if/while/for/with condition.
+	const parens: Array<boolean> = [];
+	// Offsets in the code view of every `)` that closed such a condition.
+	const controlCloses = new Set<number>();
 	const length = text.length;
 	let i = 0;
 
@@ -72,18 +82,53 @@ export const lex = (text: string): LexedSource => {
 		code.push(live ? char : blank(char));
 	};
 
+	/** The last non-space offset in the code view at or before `from`; `-1` when there is none. */
+	const lastCode = (from: number): number => {
+		let j = from;
+		while (j >= 0 && SPACE.test(code[j] ?? "")) j--;
+		return j;
+	};
+
+	/** The identifier ending at code offset `end`, or `""`. */
+	const wordAt = (end: number): string => {
+		let start = end;
+		while (start >= 0 && isIdentifierChar(code[start])) start--;
+		return code.slice(start + 1, end + 1).join("");
+	};
+
+	/** Whether the code at offset `j` ends an operand (a value a postfix operator or a `/` division can follow). */
+	const endsOperand = (j: number): boolean => {
+		const char = code[j] ?? "";
+		return char === ")" || char === "]" || (isIdentifierChar(char) && !REGEX_AFTER.has(wordAt(j)));
+	};
+
 	/** Whether a `/` here opens a regex, judged by the last code token. */
 	const regexAllowed = (): boolean => {
-		let j = code.length - 1;
-		while (j >= 0 && SPACE.test(code[j] ?? "")) j--;
+		const j = lastCode(code.length - 1);
 		if (j < 0) return true;
 		const last = code[j] ?? "";
-		if (isIdentifierChar(last)) {
-			let start = j;
-			while (start > 0 && isIdentifierChar(code[start - 1])) start--;
-			return REGEX_AFTER.has(code.slice(start, j + 1).join(""));
+		if (isIdentifierChar(last)) return REGEX_AFTER.has(wordAt(j));
+		// `x!` is a TypeScript non-null assertion: an operand, so `/` divides.
+		if (last === "!") return !endsOperand(j - 1);
+		// `i++` / `i--` is a postfix update: an operand, so `/` divides.
+		if ((last === "+" || last === "-") && code[j - 1] === last) return !endsOperand(lastCode(j - 2));
+		if (last === ")") return controlCloses.has(j);
+		return !"]}\"'`".includes(last);
+	};
+
+	/** Whether the `(` about to be emitted opens an if/while/for/with condition. */
+	const opensCondition = (): boolean => {
+		const j = lastCode(code.length - 1);
+		if (j < 0 || !isIdentifierChar(code[j])) return false;
+		let word = wordAt(j);
+		let end = j - word.length;
+		// `for await (`: the keyword sits one word further back.
+		if (word === "await") {
+			end = lastCode(end);
+			word = end < 0 ? "" : wordAt(end);
+			end -= word.length;
 		}
-		return !")]}\"'`".includes(last);
+		return CONTROL.has(word) && code[lastCode(end)] !== ".";
 	};
 
 	/** Consume a regex literal at `i` if one closes on this line; `false` leaves `i` untouched. */
@@ -208,6 +253,14 @@ export const lex = (text: string): LexedSource => {
 			else if (stop === "substitution") substitutions.push(0);
 		} else if (char === "/" && regexAllowed() && regex()) {
 			// consumed by regex()
+		} else if (char === "(") {
+			parens.push(opensCondition());
+			emit(char, true, true);
+			i++;
+		} else if (char === ")") {
+			if (parens.pop() === true) controlCloses.add(code.length);
+			emit(char, true, true);
+			i++;
 		} else if (char === "{") {
 			const depth = substitutions.at(-1);
 			if (depth !== undefined) substitutions[substitutions.length - 1] = depth + 1;
@@ -232,9 +285,27 @@ export const lex = (text: string): LexedSource => {
 };
 
 /**
+ * Whether the identifier ending just before `after` is an object-literal key or
+ * a type member (`{ process: 1 }`, `interface I { process?: string }`): the
+ * previous code character (at `before`) is `{`, `,` or `;` and the next one is
+ * `:` or `?:`. A ternary branch (`ok ? process : x`) follows `?`, so it still counts.
+ */
+const isPropertyKey = (code: string, before: number, after: number): boolean => {
+	if (before < 0 || !"{,;".includes(code[before] ?? "")) return false;
+	let k = after;
+	while (k < code.length && SPACE.test(code[k] ?? "")) k++;
+	if (code[k] === "?") {
+		k++;
+		while (k < code.length && SPACE.test(code[k] ?? "")) k++;
+	}
+	return code[k] === ":";
+};
+
+/**
  * Offsets where `name` is referenced in lexed `code` as a free identifier, a
  * member of a global object, or a spread operand. A member of any other object
- * (`child.process`), a longer identifier and a private field are not.
+ * (`child.process`), a longer identifier, a private field and an object-literal
+ * key or type member are not.
  */
 export const references = (code: string, name: string): ReadonlyArray<number> => {
 	const found: Array<number> = [];
@@ -244,7 +315,7 @@ export const references = (code: string, name: string): ReadonlyArray<number> =>
 		let j = at - 1;
 		while (j >= 0 && SPACE.test(code[j] ?? "")) j--;
 		if (code[j] !== ".") {
-			found.push(at);
+			if (!isPropertyKey(code, j, at + name.length)) found.push(at);
 			continue;
 		}
 		if (code[j - 1] === "." && code[j - 2] === ".") {
@@ -271,7 +342,8 @@ const wordEndingAt = (code: string, end: number): string => {
 
 /**
  * The literals that are module specifiers: after `from` or `import`, or the
- * sole argument of `import(` or `require(`.
+ * whole first argument of `import(` or `require(` (followed by `)` or `,`, so
+ * `import("./x" + name)` is not read as `"./x"`).
  */
 export const specifierLiterals = (lexed: LexedSource): ReadonlyArray<SourceLiteral> =>
 	lexed.literals.filter((literal) => {
@@ -279,7 +351,10 @@ export const specifierLiterals = (lexed: LexedSource): ReadonlyArray<SourceLiter
 		while (j >= 0 && SPACE.test(lexed.code[j] ?? "")) j--;
 		if (lexed.code[j] === "(") {
 			const callee = wordEndingAt(lexed.code, j - 1);
-			return callee === "import" || callee === "require";
+			if (callee !== "import" && callee !== "require") return false;
+			let k = literal.start + literal.value.length + 2;
+			while (k < lexed.code.length && SPACE.test(lexed.code[k] ?? "")) k++;
+			return lexed.code[k] === ")" || lexed.code[k] === ",";
 		}
 		const keyword = wordEndingAt(lexed.code, j);
 		return keyword === "from" || keyword === "import";

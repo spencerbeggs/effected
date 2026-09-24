@@ -42,6 +42,21 @@ describe("SourceBoundary.referencesProcess", () => {
 		["code after a regex whose class holds a slash", 'const re = /[/"]/; const argv = process.argv; const q = "x";'],
 		["code after a division", "const half = total / 2; const argv = process.argv; const r = 1 / 4;"],
 		["a look-alike of the exempt token", "const v = process.env.__PACKAGE_VERSION__X;"],
+		["the exempt token reached through globalThis", "const v = globalThis.process.env.__PACKAGE_VERSION__;"],
+		["a ternary branch", "const p = ok ? process : fallback;"],
+		["code after a call divided", "const y = f(x) / 2; const a = process.argv; const b = 1 / 4;"],
+		["code after a non-null assertion divided", "const y = x! / 2; const a = process.argv; const b = 1 / 4;"],
+		[
+			"code after an indexed non-null assertion divided",
+			"const y = xs[0]! / 2; const a = process.argv; const b = 1 / 4;",
+		],
+		["code after a postfix increment divided", "const y = i++ / 2; const a = process.argv; const b = 1 / 4;"],
+		["code after a postfix decrement divided", "const y = xs[0]-- / 2; const a = process.argv; const b = 1 / 4;"],
+		["code after a regex that follows an if condition", "if (x) /\\/*/.test(s);\nconst a = process.argv;\n/* c */"],
+		[
+			"code after a regex that follows a while condition",
+			"while (f(x)) /\\/*/.test(s);\nconst a = process.argv;\n/* c */",
+		],
 	] as const;
 	for (const [name, text] of reads) {
 		it(`flags ${name}`, () => assert.isTrue(SourceBoundary.referencesProcess(text), text));
@@ -57,6 +72,10 @@ describe("SourceBoundary.referencesProcess", () => {
 		["an identifier containing the word", 'import { ChildProcess } from "effect/unstable/process";'],
 		["a private field", "class A { #process = 1; }"],
 		["the exempt build-time constant", "const version = process.env.__PACKAGE_VERSION__;"],
+		["an object-literal key", "const o = { process: 1, other: 2 };"],
+		["an object-literal key after a comma", "const o = {\n\ta: 1,\n\tprocess: 2,\n};"],
+		["an interface member", "interface I { a: string; process: string }"],
+		["an optional type member", "interface I { process?: string }"],
 	] as const;
 	for (const [name, text] of nonReads) {
 		it(`spares ${name}`, () => assert.isFalse(SourceBoundary.referencesProcess(text), text));
@@ -102,6 +121,18 @@ describe("SourceBoundary.importSpecifiers", () => {
 		assert.deepStrictEqual(SourceBoundary.importSpecifiers('import {\n\ta,\n\tb,\n} from\n\t"./multi.js";'), [
 			"./multi.js",
 		]);
+	});
+
+	it("reads a dynamic import carrying an options argument", () => {
+		assert.deepStrictEqual(
+			SourceBoundary.importSpecifiers('const j = await import("./j.json", { with: { type: "json" } });'),
+			["./j.json"],
+		);
+	});
+
+	it("ignores a call whose literal is only the first operand of a computed specifier", () => {
+		const text = 'const x = await import("./x" + name);\nconst y = require("./y/" + name);';
+		assert.deepStrictEqual(SourceBoundary.importSpecifiers(text), []);
 	});
 
 	it("ignores strings that are not specifiers, commented-out imports and computed dynamic imports", () => {

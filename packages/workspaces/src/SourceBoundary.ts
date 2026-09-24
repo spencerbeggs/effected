@@ -78,9 +78,18 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 const EXEMPT: ReadonlyArray<string> = ["process.env.__PACKAGE_VERSION__"];
 const STDOUT_WRITE = /stdout\s*(?:\?\.|\.)\s*write/gu;
 
+/** Whether the reference at `at` is itself a member access (`globalThis.process`), which no ignore token exempts. */
+const isMemberAccess = (code: string, at: number): boolean => {
+	let j = at - 1;
+	while (j >= 0 && /\s/.test(code[j] ?? "")) j--;
+	return code[j] === ".";
+};
+
 const processReads = (code: string, ignoreTokens: ReadonlyArray<string>): ReadonlyArray<number> =>
 	references(code, "process").filter(
-		(at) => !ignoreTokens.some((token) => code.startsWith(token, at) && !isIdentifierChar(code[at + token.length])),
+		(at) =>
+			isMemberAccess(code, at) ||
+			!ignoreTokens.some((token) => code.startsWith(token, at) && !isIdentifierChar(code[at + token.length])),
 	);
 
 const stdoutWrites = (code: string): ReadonlyArray<number> =>
@@ -151,6 +160,40 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 		rule: "process",
 		flagged: false,
 	},
+	// The lexer-ambiguity corpus: each snippet once hid a real read (or invented one).
+	{
+		name: "process: the version constant reached through globalThis",
+		source: "const version = globalThis.process.env.__PACKAGE_VERSION__;",
+		rule: "process",
+		flagged: true,
+	},
+	{
+		name: "process: after a non-null assertion divided",
+		source: "const y = x! / 2; const a = process.argv; const b = 1 / 4;",
+		rule: "process",
+		flagged: true,
+	},
+	{
+		name: "process: after a postfix increment divided",
+		source: "const y = i++ / 2; const a = process.argv; const b = 1 / 4;",
+		rule: "process",
+		flagged: true,
+	},
+	{
+		name: "process: after a call divided",
+		source: "const y = f(x) / 2; const a = process.argv; const b = 1 / 4;",
+		rule: "process",
+		flagged: true,
+	},
+	{
+		name: "process: after a regex that follows an if condition",
+		source: "if (x) /\\/*/.test(s);\nconst a = process.argv;\n/* c */",
+		rule: "process",
+		flagged: true,
+	},
+	{ name: "process: a ternary branch", source: "const p = ok ? process : fallback;", rule: "process", flagged: true },
+	{ name: "process: an object-literal key", source: "const o = { process: 1 };", rule: "process", flagged: false },
+	{ name: "process: a type member", source: "interface I { process?: string }", rule: "process", flagged: false },
 	{
 		name: "node:process: a static import",
 		source: 'import { env } from "node:process";',
@@ -206,10 +249,24 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  * Every check runs over one lexer pass that separates code from comments,
  * strings, template text and regex bodies, so `process` in prose, in a string
  * or in an embedded script's template text never counts, and a `/*` inside a
- * string never hides the code behind it. It is a lexer, not a type checker:
- * there is no scope analysis, so a local binding named `console` is still
- * flagged (allowlist the file), and a computed access through a string key
- * (`globalThis["process"]`) is not seen.
+ * string never hides the code behind it. A `/` after an operand divides (an
+ * identifier, `)`, `]`, a postfix `++`/`--` or a non-null `!`), while one after
+ * an operator, a keyword or the `)` of an `if`/`while`/`for`/`with` condition
+ * opens a regex. An object-literal key or type member named `process`
+ * (`{ process: 1 }`) is not a read.
+ *
+ * It is a lexer, not a type checker, and these misses are known:
+ *
+ * - there is no scope analysis, so a local binding named `console` is still
+ *   flagged (allowlist the file), and so is a class field named `process`;
+ *
+ * - a computed access through a string key (`globalThis["process"]`) and a
+ *   destructuring of a global (`const { process: p } = globalThis`) are not seen;
+ *
+ * - a regex literal directly after a block-closing `}` reads as a division, so
+ *   a quote or `/*` inside it can hide the code after it;
+ *
+ * - JSX text reads as code.
  *
  * Assert on {@link SourceBoundary.verifyFixtures} beside your own scan: it
  * proves the scanner you are trusting still flags what it must and spares
@@ -222,6 +279,7 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  * const offences = SourceBoundary.check("src/a.ts", "const { env } = process;", ["process"]);
  * const clean = SourceBoundary.verifyFixtures().length === 0;
  * console.log(offences.map((offence) => offence.label), clean);
+ * // => [ 'src/a.ts:1:17 process process' ] true
  * ```
  *
  * @public
