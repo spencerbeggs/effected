@@ -67,8 +67,9 @@ curried call shape. Code written against the older names fails with
 ## Decoding tolerates excess keys silently — and a typo is the common case
 
 `Schema.Struct` **drops unknown keys without complaint** on decode under
-`onExcessProperty`'s default of `"ignore"` — `"error"` rejects them and
-`"preserve"` keeps them, but you get `"ignore"` unless you ask. A struct of
+`onExcessProperty`'s default of `"ignore"`. The only other value is `"error"`,
+which rejects them; there is no `"preserve"`, and a struct keeps unknown keys
+only when it declares them with `Schema.StructWithRest`. A struct of
 all-`optionalKey` fields decodes `{ mxa: 100 }` to `{}` and reports success, so a
 typo'd key and a correct-but-absent one are indistinguishable.
 
@@ -84,7 +85,7 @@ Two failures this has already caused in the kit, from independent directions:
   (`@effected/yaml` lint system, #129).
 - A config loader could report neither a typo'd section **nor a field the schema
   deliberately removed** — a user migrating an older file kept a dead credential
-  and was told nothing (`@spencerbeggs/reposets`, 2026-08-13). Their first
+  and was told nothing (`@spencerbeggs/reposets`). Their first
   conclusion was that v4 had dropped the feature entirely, and they began writing
   one hand-rolled filter per removed field before a probe found `onExcessProperty`
   alive and well.

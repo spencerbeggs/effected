@@ -109,7 +109,7 @@ the two documented deviations. Oracle calls map `platform: "posix"` →
 identical and immune to ambient drift).
 
 ```bash
-pnpm vitest run --project @effected/glob   # this package's tests
+pnpm vitest run --project @effected/glob   # this package's tests, from the repo root
 pnpm build --filter @effected/glob         # dev + prod, from the repo root
 ```
 

@@ -133,7 +133,7 @@ Tests live in `__test__/`, use `@effect/vitest`, assert with `assert.*` —
 never `expect`.
 
 ```bash
-pnpm vitest run --project @effected/mcp   # this package's tests
+pnpm vitest run --project @effected/mcp   # this package's tests, from the repo root
 pnpm build --filter @effected/mcp         # dev + prod, from the repo root
 ```
 

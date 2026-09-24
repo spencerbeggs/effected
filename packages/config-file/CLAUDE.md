@@ -215,7 +215,7 @@ Tests live in `__test__/` (18 files, 191 passing), use `@effect/vitest`, and
 assert with `assert.*` — **never** `expect`.
 
 ```bash
-pnpm vitest run --project @effected/config-file
+pnpm vitest run --project @effected/config-file   # from the repo root
 pnpm build --filter @effected/config-file   # from the repo root
 ```
 

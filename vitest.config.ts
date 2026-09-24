@@ -24,27 +24,22 @@ export default async () => {
 			tags,
 			pool: "forks",
 			// Resolved against THIS file, not the cwd. A bare relative path here
-			// resolves against wherever vitest was invoked, so running from inside
-			// a package died with `Failed to load url .../packages/<pkg>/vitest.setup.ts`
+			// resolves against wherever vitest was invoked, so a run from inside a
+			// package that points `--config` here dies with
+			// `Failed to load url .../packages/<pkg>/vitest.setup.ts`
 			// — an error that reads as a missing file you were meant to create,
 			// whose tempting "fix" is to create a per-package setup and fork it
 			// permanently (effected#455).
 			//
-			// Vitest walks up from the cwd to find this config and anchors its
-			// root here, so far less is cwd-sensitive than the folklore claims.
-			// Measured from inside `packages/lockfiles`:
-			//   vitest run                        -> the WHOLE repo, 12298/12298, exit 0
-			//   vitest run --project @effected/lockfiles -> 143/143, exit 0
-			//   vitest run --project @effected/walker    -> 75/75,  exit 0  (a DIFFERENT
-			//        package, so this is config-root anchoring, not the filter
-			//        happening to match the directory you stand in)
-			//   vitest run packages/lockfiles     -> 0/0 collected, exit 1
-			//   vitest run __test__               -> the WHOLE repo, exit 0
-			// Only POSITIONAL filters are cwd-sensitive, and not as a path: they
-			// are matched as a substring of each test file's path as rendered
-			// from the cwd. `packages/<pkg>` therefore matches from the root and
-			// matches nothing from inside that package, while `__test__` matches
-			// every project from anywhere. Prefer `--project <name>`.
+			// Vitest does NOT walk up to this config: run from inside a package it
+			// uses that directory as its root with no repo config. Measured from
+			// inside `packages/lockfiles`:
+			//   vitest run                               -> that package only, default reporter, exit 0
+			//   vitest run --project @effected/lockfiles -> "No projects matched the filter", exit 1
+			//   vitest run packages/lockfiles            -> "No test files found", exit 1
+			// From the repo root, `--project <name>` selects one project, and a
+			// POSITIONAL filter is a substring of each test file's path (`ckfiles`
+			// selects lockfiles). Run from the root; prefer `--project <name>`.
 			globalSetup: [fileURLToPath(new URL("vitest.setup.ts", import.meta.url))],
 			coverage: {
 				enabled: true,

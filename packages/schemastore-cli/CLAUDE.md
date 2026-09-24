@@ -38,4 +38,4 @@ A changesets **fixed** group holds `@effected/schemastore` and `@effected/schema
 
 - `pnpm build --filter @effected/schemastore-cli`; never run `savvy.build.ts` directly. Confirm `dist/dev/issues.json` `generatedAt` postdates your edit.
 - Prove the bin: `node dist/dev/pkg/bin/schemastore.js --help` exits `0`; `--bogus` exits `64`.
-- Tests live in `__test__/`, drive `Command.run` in-process over `@effected/memfs`, and assert with `assert.*`. Run them with `vitest run --project @effected/schemastore-cli`.
+- Tests live in `__test__/`, drive `Command.run` in-process over `@effected/memfs`, and assert with `assert.*`. Run them from the repo root with `vitest run --project @effected/schemastore-cli`.

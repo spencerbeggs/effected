@@ -48,9 +48,9 @@ pnpm vitest run packages/commands/__test__   # from the repo root, always
 pnpm build --filter @effected/commands       # never `node savvy.build.ts`
 ```
 
-A positional filter from *inside* the package matches nothing and prints
-`Tests: 0/0 passed`; use `--project @effected/commands`, which works from
-any directory.
+Run vitest from the repo root. From *inside* the package vitest does not load
+the root config, so `--project @effected/commands` fails with
+`No projects matched the filter` and a positional filter finds no test files.
 
 `savvy.build.ts` carries the narrow `_base` suppression
 (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the

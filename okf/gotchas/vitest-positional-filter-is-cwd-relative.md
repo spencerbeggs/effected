@@ -1,7 +1,7 @@
 ---
 type: Gotcha
-title: A vitest positional filter is a cwd-rendered substring match, and a miss collects nothing
-description: "A vitest positional filter is not a package or directory selector -- it substring-matches each test file's path as rendered from the current working directory, so the same filter can select the whole repo, one package, or nothing depending on where it is invoked from."
+title: A vitest positional filter is a substring match, and a run from inside a package never loads the root config
+description: "A vitest positional filter is not a package or directory selector -- it substring-matches each test file's path. Run from inside a package, vitest does not load the root config at all, so --project matches no project and a root-relative positional filter finds no files."
 status: stable
 resource: ../../vitest.config.ts
 stale_after: 2027-03-13T00:00:00Z
@@ -13,64 +13,59 @@ sources:
     resource: ../../vitest.config.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-14T02:44:47Z
-  body_sha256: 4a4572cb59dbc6091574851ab8be07fc9ec8205f7e120cb16776a55f03cbfa95
+  at: 2026-09-24T05:32:50Z
+  body_sha256: 7874cb63abd9e16ecd2fbb9575cd0f17aa11b79c3405ae4efdc408c5bd887fa3
 ---
 
-# A vitest positional filter is a cwd-rendered substring match, and a miss collects nothing
+# A vitest positional filter is a substring match, and a run from inside a package never loads the root config
 
 ## What a reader sees
 
-Running `vitest run packages/lockfiles` from the repository root collects
-and runs the `@effected/lockfiles` suite as expected. Running the exact
-same command from inside `packages/lockfiles` reports `Tests: 0/0
-passed` and exits 1 — no files collected, no error message naming what
-went wrong.
+Running `vitest run packages/lockfiles` or `vitest run --project
+@effected/lockfiles` from the repository root runs the `@effected/lockfiles`
+suite. Running either from inside `packages/lockfiles` fails: the positional
+form prints `No test files found, exiting with code 1`, and the `--project`
+form stops with `Startup Error: No projects matched the filter
+"@effected/lockfiles"`.
 
 ## What they wrongly conclude
 
-That the positional argument is a path to a package or directory, so the
-same argument should behave the same way regardless of where the command
-is invoked from — and that a `0/0` result with exit 1 means either "there
-really are no matching tests" or "the config is broken," rather than "the
-filter matched nothing from here."
+That vitest walks up from the cwd to the root config, so `--project` works
+from any directory and only a positional filter is cwd-sensitive; or that a
+positional argument is a path to a package, so it should behave the same
+wherever it is invoked.
 
 ## What is actually true
 
-Vitest resolves its config by walking up from the invoking `cwd`, so the
-project root itself is not cwd-sensitive — `vitest run` with no
-positional filter runs the whole repository from anywhere.[^vitest-config]
-A **positional** filter, however, is matched as a plain substring against
-each candidate test file's path **as rendered relative to the cwd it was
-invoked from**, not as a path selector:
+Vitest does not walk up to find the root `vitest.config.ts`.[^vitest-config]
+Invoked from inside a package it runs with that directory as its root and no
+repo config: no projects, no `globalSetup`, no plugins, and vitest's default
+reporter instead of the vitest-agent one.
 
 ```text
 # from inside packages/lockfiles:
-vitest run                                  -> the WHOLE repo, exit 0
-vitest run --project @effected/lockfiles    -> 143/143, exit 0
-vitest run packages/lockfiles               -> 0/0 collected, exit 1
-vitest run __test__                         -> the WHOLE repo, exit 0
+vitest run                                                    -> the package's 7 files, default reporter, exit 0
+vitest run --project @effected/lockfiles                      -> Startup Error: No projects matched the filter, exit 1
+vitest run packages/lockfiles                                 -> No test files found, exit 1
+vitest run --config ../../vitest.config.ts --project @effected/walker -> green, exit 0
+# from the repo root:
+vitest run --project @effected/lockfiles                      -> 143/143, exit 0
+vitest run ckfiles                                            -> 143/143, exit 0
+vitest run zzz-no-such-filter                                 -> Tests: 0/0 passed, exit 1
 ```
 
-`packages/lockfiles` matches file paths rendered from the repo root
-(`packages/lockfiles/__test__/...`) but matches nothing when the same
-paths render relative to `packages/lockfiles` itself
-(`__test__/...`). `__test__` matches everywhere, because every package's
-tests live under that literal directory name. A miss produces `Tests:
-0/0 passed` with no distinguishing signal from "there are genuinely no
-tests here" — read a `0/0` result as "the filter did not match," not as
-an empty suite, before trusting the exit code.
+A **positional** filter is matched as a plain substring against each test
+file's path, not as a path selector: `ckfiles` is neither a path nor a whole
+segment, and it selects the lockfiles suite. A filter that matches nothing
+prints `Tests: 0/0 passed` and exits 1 — the summary line says passed while
+the exit code says failed.
 
 ## The check
 
-Prefer `vitest run --project @effected/<pkg>` (or the equivalent `--project
-<name>` for a non-package project such as `scratchpad`), which resolves
-against the config root rather than the cwd and works identically from
-any directory. Treat a positional filter as fragile by construction: if
-one is used, confirm the `Tests:` line reports a non-zero count before
-trusting the exit code, since a `0/0` collection and a "nothing failed"
-result both exit 0 or 1 in ways that look alike.
+Run vitest from the repository root, and prefer `vitest run --project
+@effected/<pkg>` (or `--project scratchpad`). When you must stay in a package
+directory, pass `--config` pointing at the root config. Read both the `Tests:`
+line and the exit code; a `0/0` line means the filter matched nothing.
 
 [^vitest-config]: `vitest.config.ts` — the inline comment on `globalSetup`
-    documents the exact four-command comparison above, measured from
-    inside `packages/lockfiles`.
+    records the same comparison.

@@ -41,7 +41,7 @@ Two mtime traps. `file(content, { mtime })` seeds through a `Date`, because `Fil
 Tests in `__test__/`, `@effect/vitest`, `assert.*` never `expect`. Three layers: the adapted #6555 contract suite against `MemoryFileSystem.layer`; the same suite against `@effect/platform-node`'s real filesystem (the differential oracle, `self.int.test.ts` pattern); memory-specific + kit tests (seeding, honest-NotFound, isolation, watch-recursive).
 
 ```bash
-pnpm vitest run --project @effected/memfs
+pnpm vitest run --project @effected/memfs   # from the repo root
 pnpm build --filter @effected/memfs
 ```
 

@@ -147,10 +147,10 @@ pnpm build --filter @effected/jsonl   # from the repo root
 Four operational facts that cost real debugging time and are recorded here so
 the next session does not rediscover them:
 
-- **Filter with `--project @effected/jsonl`, or use the vitest-agent MCP
-  `run_tests` tool.** A positional filter like `packages/jsonl` matches
-  nothing from inside the package and reports `0/0 passed`: a
-  green-looking failure.
+- **Filter with `--project @effected/jsonl` from the repo root, or use the
+  vitest-agent MCP `run_tests` tool.** From inside the package vitest does not
+  load the root config: `--project` fails with `No projects matched the
+  filter` and a positional filter finds no test files.
 - **Exit codes lie; only the `Tests:` summary line (or the MCP's structured
   `run_tests` result) is evidence.** A subset run skips the suite's global
   coverage thresholds (the plugin prints `Coverage thresholds skipped:

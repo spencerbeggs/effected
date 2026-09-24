@@ -13,8 +13,8 @@ sources:
     resource: ../../packages/commands/__test__/ScriptedSpawner.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: e6b573957f8c78a64354eb7d4b6b617c2105a0f35946bbce4b18f5ee4ba925d0
+  at: 2026-09-24T05:32:50Z
+  body_sha256: 115c101e6b43c173a266601fff90ecadde89e867c4e4d5db0d00ea015f90e083
 ---
 
 # @effected/commands
@@ -382,8 +382,9 @@ logging inside the combinators.
   `NotFound` mapping the whole absence classification rests on, the
   dual-stream backpressure deadlock, and `detach` surviving its scope both
   ways.
-- Run vitest from the repo root. A project-filtered run from inside the
-  package prints `Tests: 0/0 passed` and exits 0.
+- Run vitest from the repo root. From inside the package vitest does not load
+  the root config, so a project-filtered run fails at startup with
+  `No projects matched the filter` (exit 1).
 
 Build through `pnpm build --filter @effected/commands`, never the raw
 script. `savvy.build.ts` carries the narrow `_base` suppression for the

@@ -26,12 +26,16 @@ Two working areas, both **gitignored and disposable**:
 
 - `probes/*.ts` — free-form probes. Run: `pnpm scratchpad:probe probes/<name>.ts`
   (from the repo root; tsx handles workspace TS resolution — bare `node` cannot).
-- `__test__/*.test.ts` — test-shaped probes with `@effect/vitest`. Run:
+- `__test__/*.test.ts` — test-shaped probes with `@effect/vitest`. Run from
+  the repo root (from `scratchpad/` vitest does not load the root config and
+  `--project` finds no projects):
   `pnpm exec vitest run --project scratchpad --coverage.enabled=false`, or the
   vitest-agent `run_tests` tool. Results persist to the vitest-agent database
-  like any package's. Without the flag, the repo's global coverage thresholds
-  fail any project-scoped run — and through the MCP `run_tests` tool (which
-  has the same behavior) read the Tests line, not the exit code. The
+  like any package's. The flag keeps concurrent agents off the shared
+  coverage directory; a project-scoped run with coverage on skips the global
+  thresholds (`Coverage thresholds skipped: partial run`). Read both the Tests
+  line and the exit code: a filter that matches nothing prints
+  `Tests: 0/0 passed` and exits 1. The
   vitest-agent reporter owns the TERMINAL output (summary line only;
   `--reporter=*` flags do not change it) — per-test names and console capture
   come from the MCP `run_tests`/`test` tools. A file reporter still writes:

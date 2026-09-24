@@ -133,11 +133,10 @@ fi
 **The version gate is the load-bearing line, and it must refuse rather than report.**
 `effect@3` also publishes `src/`, so wherever a v3 is installed, `require.resolve`
 finds `node_modules/.pnpm/effect@3.x/.../src` — a complete, confident, *wrong* rung-2
-source. An earlier draft of this block merely *printed* the resolved version; it
-resolved v3 source at the repo root and reported it in passing. Print a version and a
-reader skims past it. Refuse, and the trap cannot spring.
+source. A block that merely *prints* the resolved version reports v3 source in passing,
+and a reader skims past it. Refuse, and the trap cannot spring.
 
-**Do not read that history as "the root gives you v3" today.** In *this* repo the
+**That does not mean "the root gives you v3".** In *this* repo the
 workspace root resolves **nothing**: a bare `effect` import there dies with
 `ERR_MODULE_NOT_FOUND`. The lockfile carries **two `effect` entries by intent** —
 the toolchain's own pin (`@savvy-web/tsdown-plugins`, `rolldown-pnpm-config` and
@@ -265,8 +264,7 @@ summary was reasonable and wrong.
 
 The ladder settles claims about a source tree. Two claim classes need a
 different authority — the registry and the installed artifacts — because no
-tree you are standing in can answer them. Both bit in one release wave
-(2026-08-14):
+tree you are standing in can answer them:
 
 - **Closed upstream ≠ released.** An issue's or PR's closed state proves
   nothing about any published artifact. What actually shipped is settled by
@@ -275,9 +273,9 @@ tree you are standing in can answer them. Both bit in one release wave
 - **A repo-local grep structurally cannot see downstream consumers.** Before
   calling an API change "breaking in-package only", read the installed
   artifacts of the known consumers — the `node_modules` of a consuming repo.
-  On 2026-08-14 exactly that check caught a shape change that would have
-  landed as a runtime defect in an installed consumer, after a repo-local
-  grep had confidently reported zero consumers.
+  That check catches a shape change that would land as a runtime defect in an
+  installed consumer, where a repo-local grep confidently reports zero
+  consumers.
 
 ### When two reads of one file disagree, settle it against the committed blob
 
@@ -341,9 +339,9 @@ A probe that cannot fail is worse than no probe. Every precondition below exists
 > `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` — precondition 3's
 > failure, reached by a route that feels like following this rule rather than
 > breaking it. The venue below means a `scratchpad/` DIRECTORY INSIDE THE REPO,
-> resolved relative to the repo root. Re-proven 2026-08-23: a probe written to
-> the harness scratchpad failed to resolve `effect`, and the identical file
-> copied into `packages/npm/` ran first try.
+> resolved relative to the repo root: a probe written to the harness scratchpad
+> fails to resolve `effect`, and the identical file copied into `packages/npm/`
+> runs.
 
 Some kit repos (the effected monorepo among them) ship a private `scratchpad/`
 workspace member with every kit package at `workspace:*` and `effect` at the
@@ -402,7 +400,7 @@ Two riders on the package-root form, both learned by leaving mess behind:
 
    The safe spelling is `packages/<pkg>/probe.ts` — package root, top level, deleted by absolute path afterwards.
 
-   **Probing a package's OWN engine/internal modules: use `npx tsx` — still from a file inside the package.** `npx tsx packages/<pkg>/probe.ts` resolves the house `.js`-extension TypeScript imports correctly and runs without a test project. The file placement rule is NOT relaxed: a probe in `/tmp` dies with `ERR_MODULE_NOT_FOUND` the moment anything in its import graph names `effect` bare (the entry's own imports resolve from `/tmp`, which has no `node_modules` — re-proven 2026-07-18 when a `/tmp` tsx probe of `effect/testing` failed exactly this way). The safe universal spelling is one probe file at the package root, run via `npx tsx`, **never named `*.test.ts`**: one scratch test file with a load-time error silently zeroes the package's whole run (`Tests: 0/0 passed`, exit 0 — the false green in `effect-v4-testing`). Delete the probe by absolute path afterwards, same as rule 6.
+   **Probing a package's OWN engine/internal modules: use `npx tsx` — still from a file inside the package.** `npx tsx packages/<pkg>/probe.ts` resolves the house `.js`-extension TypeScript imports correctly and runs without a test project. The file placement rule is NOT relaxed: a probe in `/tmp` dies with `ERR_MODULE_NOT_FOUND` the moment anything in its import graph names `effect` bare (the entry's own imports resolve from `/tmp`, which has no `node_modules`). The safe universal spelling is one probe file at the package root, run via `npx tsx`, **never named `*.test.ts`**: one scratch test file with a load-time error fails the package's whole run (`✗ test suite failed to load`, exit 1 — see `effect-v4-testing`). Delete the probe by absolute path afterwards, same as rule 6.
 4. **Run the control first.** Write a line you *know* must fail. Watch it fail. Only then write the real assertion. For a **behavioural** probe, "must fail" is the wrong control — invert it and prove the probe can *observe the effect at all*. A probe asking "does a defect roll the transaction back?" reads success as *zero rows*, and zero rows is also what a broken harness prints; the control that rescues it is a **committing** transaction that must leave its row behind. Ask what a silently-dead probe would print, and make the control the thing that distinguishes it.
 5. **A probe of any multi-value API must exercise a NON-first member.** A probe that constructs with the first literal of a union, the first element of a list, or the first overload succeeds under both the correct reading and a silently-degraded one — it cannot fail, so it settles nothing. The `@effected/glob` planning probe for `Schema.Literal("a", "b", "c")` passed precisely because it constructed with `"a"`; only a `"b"` construction exposed that v4's runtime keeps the first literal and drops the rest.
 6. **Delete the probe by absolute path** when done.

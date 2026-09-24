@@ -13,8 +13,8 @@ sources:
     resource: ../../scratchpad/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: d0b2d3c8465acfb33e6daf0356923ea800ec3cea648cd86ba833d152bde40582
+  at: 2026-09-24T05:32:50Z
+  body_sha256: 040423d47e5cd536d1cae7ceaedf56065d88aba4807765cb858b9dcbbd4168c5
 ---
 
 # scratchpad
@@ -107,10 +107,12 @@ build they read.
   stock discover strategy picks it up as an ordinary project, so probes
   run through the root vitest CLI and the vitest-agent MCP `run_tests`,
   with persisted results and history. The documented invocation is `pnpm
-  exec vitest run --project scratchpad --coverage.enabled=false` —
-  without the flag, the repo's global coverage thresholds fail any
-  project-scoped run, and the MCP `run_tests` path has the same behavior,
-  so read the Tests line, not the exit code. The seeded `probe.test.ts`
+  exec vitest run --project scratchpad --coverage.enabled=false`, from the
+  repo root — from inside `scratchpad/` vitest does not load the root config
+  and `--project` matches nothing. A project-scoped run with coverage on
+  skips the global thresholds as a partial run; read both the Tests line and
+  the exit code, since a filter that matches nothing prints
+  `Tests: 0/0 passed` and exits 1. The seeded `probe.test.ts`
   demonstrates both shapes: `it.effect` for Effect-typed probes and plain
   `it` for sync ones — a yield-less `Effect.gen` would trip Biome's
   error-level `useYield` rule.
