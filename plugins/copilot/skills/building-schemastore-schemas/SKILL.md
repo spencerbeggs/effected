@@ -87,6 +87,12 @@ a devDependency.
   default, so a config that used to pin `"error"` on every entry can drop
   the pin. See
   [references/document-authoring.md](references/document-authoring.md).
+- **When the application writes `$schema` itself, build a `HostedSchema`
+  once and hand it to both.** `HostedSchema.github({ repo, path, name,
+  versions })` (or `.schemastore(...)` / `.custom(...)`) derives `$id`,
+  the catalog URL and the file name; `Schema.Literal(hosted.$id)` in the
+  app and `{ schema, hosted }` in the config, keyed by `hosted.name`, so the
+  two cannot disagree. See [references/config.md](references/config.md).
 - **Run `schema:check` in CI and read its exit code.** `0` is clean (or drift
   under `--on-drift=warn`), `1` is drift, a gate failure, or a stale document
   a build would write, `2` is a config problem, `64` is a usage error. See

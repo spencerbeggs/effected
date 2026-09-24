@@ -49,6 +49,7 @@ clients.
 - A bare-string resource `content` loses its `mimeType` on the read itself, even though it still appears in `resources/list` — see [The `mimeType` trap](./references/resources.md#the-mimetype-trap).
 - A resource URI template variable cannot span a slash — an id containing one needs a static resource per id, not a template — see [A template variable cannot span a slash](./references/resources.md#a-template-variable-cannot-span-a-slash).
 - An `Effect.timeout` guard inside `it.effect` never fires — `TestClock` never advances on its own, so the test hangs until vitest's own default timeout kills it instead. Use `it.live` or a real-clock `layer(...)` — see [Timeouts](./references/testing.md#timeouts).
+- Code placed after a completed `Effect.provide` of a stdio server never runs — core's stdio protocol interrupts the fiber that built it once the server stops, so a hand-written test provides-then-asserts and silently checks nothing. Use `McpHarness` — see [The in-process harness](./references/testing.md#the-in-process-harness).
 
 ## Additional resources
 
