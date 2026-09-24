@@ -93,6 +93,74 @@ describe("GitHubClient.request", () => {
 		),
 	);
 
+	it.effect("classifies the releases endpoint's code-only duplicate as alreadyExists and carries the entry", () =>
+		withClient(
+			[
+				{
+					status: 422,
+					body: {
+						message: "Validation Failed",
+						errors: [{ resource: "Release", code: "already_exists", field: "tag_name" }],
+					},
+				},
+			],
+			(client) =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(
+						client.request("POST /repos/{owner}/{repo}/releases", { owner: "o", repo: "r", tag_name: "v1.0.0" }),
+					);
+					assert.strictEqual(error.kind, "alreadyExists");
+					assert.deepStrictEqual(
+						error.validation?.map((entry) => ({ ...entry })),
+						[{ resource: "Release", field: "tag_name", code: "already_exists" }],
+					);
+				}),
+		),
+	);
+
+	it.effect("classifies every other documented validation code as rejected, keeping the code inspectable", () =>
+		Effect.forEach(
+			["missing", "missing_field", "invalid", "unprocessable", "custom"] as const,
+			(code) =>
+				withClient(
+					[
+						{
+							status: 422,
+							body: { message: "Validation Failed", errors: [{ resource: "Release", code, field: "tag_name" }] },
+						},
+					],
+					(client) =>
+						Effect.gen(function* () {
+							const error = yield* Effect.flip(
+								client.request("POST /repos/{owner}/{repo}/releases", { owner: "o", repo: "r", tag_name: "v1" }),
+							);
+							assert.strictEqual(error.kind, "rejected", code);
+							assert.isFalse(error.retryable, code);
+							assert.isTrue(GitHubError.hasValidationCode(code)(error), code);
+							assert.isFalse(GitHubError.hasValidationCode("already_exists")(error), code);
+						}),
+				),
+			{ discard: true },
+		),
+	);
+
+	it.effect("leaves validation absent on a prose-only 422", () =>
+		withClient([{ status: 422, body: { message: "Update is not a fast forward" } }], (client) =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					client.request("PATCH /repos/{owner}/{repo}/git/refs/{ref}", {
+						owner: "o",
+						repo: "r",
+						ref: "heads/x",
+						sha: "y",
+					}),
+				);
+				assert.strictEqual(error.kind, "rejected");
+				assert.isUndefined(error.validation);
+			}),
+		),
+	);
+
 	it.effect("records rate-limit headers off a successful response", () =>
 		withClient(
 			[{ status: 200, body: {}, headers: rateLimitHeaders({ remaining: 4_321, resetEpochSeconds: 1_700_000_090 }) }],

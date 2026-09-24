@@ -6,7 +6,7 @@ const thrown = (options: {
 	status?: number;
 	message?: string;
 	headers?: Record<string, unknown>;
-	errors?: ReadonlyArray<{ message?: string; code?: string; resource?: string; field?: string }>;
+	errors?: ReadonlyArray<unknown>;
 }): unknown => ({
 	name: "HttpError",
 	message: options.message ?? "boom",
@@ -192,6 +192,46 @@ describe("GitHubError.fromOctokit", () => {
 		assert.isFalse(error.retryable);
 	});
 
+	it("carries each validation entry, skipping ones with nothing GitHub-shaped in them", () => {
+		const error = GitHubError.fromOctokit(
+			"x",
+			thrown({
+				status: 422,
+				message: "Validation Failed",
+				errors: [
+					{ resource: "Label", code: "invalid", field: "color" },
+					{ code: "custom", message: "name is reserved" },
+					"not an object",
+					{},
+					{ code: 7 },
+				],
+			}),
+			NOW,
+		);
+		assert.deepStrictEqual(
+			error.validation?.map((entry) => ({ ...entry })),
+			[
+				{ resource: "Label", field: "color", code: "invalid" },
+				{ code: "custom", message: "name is reserved" },
+			],
+		);
+	});
+
+	it("omits validation when GitHub sent no errors array", () => {
+		const error = GitHubError.fromOctokit("x", thrown({ status: 422, message: "Update is not a fast forward" }), NOW);
+		assert.isUndefined(error.validation);
+	});
+
+	it("carries a code GitHub has not documented rather than dropping it", () => {
+		const error = GitHubError.fromOctokit(
+			"x",
+			thrown({ status: 422, message: "Validation Failed", errors: [{ code: "too_many" }] }),
+			NOW,
+		);
+		assert.strictEqual(error.kind, "rejected");
+		assert.strictEqual(error.validation?.[0]?.code, "too_many");
+	});
+
 	it("replaces an HTML error page with a sentence", () => {
 		const error = GitHubError.fromOctokit(
 			"x",
@@ -254,6 +294,17 @@ describe("GitHubError statics", () => {
 		assert.isTrue(predicate(GitHubError.notFound("x", "y")));
 		assert.isTrue(predicate(GitHubError.alreadyExists("x", "y")));
 		assert.isFalse(predicate(GitHubError.rejected("x", 422, "no")));
+	});
+
+	it("hasValidationCode matches any listed code and is false without validation", () => {
+		const error = GitHubError.fromOctokit(
+			"x",
+			thrown({ status: 422, message: "Validation Failed", errors: [{ code: "missing_field", field: "tag_name" }] }),
+			NOW,
+		);
+		assert.isTrue(GitHubError.hasValidationCode("invalid", "missing_field")(error));
+		assert.isFalse(GitHubError.hasValidationCode("missing")(error));
+		assert.isFalse(GitHubError.hasValidationCode("missing_field")(GitHubError.rejected("x", 422, "no")));
 	});
 
 	it("is a tagged error whose tag is stable", () => {

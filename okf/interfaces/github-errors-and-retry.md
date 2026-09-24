@@ -8,8 +8,8 @@ resource: ../../packages/github/src/GitHubError.ts
 tags: [bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 3a5bc4fbcc57620d5c17a03ec5eb69a0d3637288b9342fec9214435cc16aa048
+  at: 2026-09-24T18:10:58Z
+  body_sha256: f472634e381f3ce86f0de3a977df375c9f3b2f3fd1fa5701c6064b0a98ad56e9
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:34.761Z
@@ -53,6 +53,15 @@ with ergonomic statics filling them from the value the mapper already has.
 - **"Already exists" is first-class on both channels**, REST and GraphQL. It
   closes a consumer that lowercased a message and grepped it for two
   words — and the upsert operations make even that unnecessary.
+- **A 422's validation entries ride on the error, not only in its kind.**
+  GitHub documents six `errors[].code` values; only `already_exists` gets
+  a kind of its own, and it is read from the code first because some
+  endpoints (creating a release for a tag that has one) send no message
+  at all. The other five classify as rejected and stay inspectable through
+  the `validation` field and `hasValidationCode`. `missing` is deliberately
+  not `notFound`: it names a resource the request referred to, not the one
+  it acted on, and routing it there would let a not-found recovery swallow
+  a bad argument.
 - **A schema failure never escapes.** The decoding request and the GraphQL
   member normalize a decode failure into the decode kind with the schema
   error carried structurally.

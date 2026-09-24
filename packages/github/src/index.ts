@@ -65,7 +65,7 @@ export {
 	type GitHubCommitShape,
 } from "./GitHubCommit.js";
 export { GitHubContent, type GitHubContentShape } from "./GitHubContent.js";
-export { GitHubError, GitHubErrorKind } from "./GitHubError.js";
+export { GitHubError, GitHubErrorKind, GitHubValidationCode, GitHubValidationEntry } from "./GitHubError.js";
 export { CommentOnceResult, GitHubIssue, type GitHubIssueShape, IssueInfo, LinkedIssue } from "./GitHubIssue.js";
 export { GitHubRelease, type GitHubReleaseShape, ReleaseAsset, ReleaseInfo } from "./GitHubRelease.js";
 export {

@@ -242,6 +242,8 @@
 		"GitHubIssue": "get list close and comment on an issue, post a marked comment",
 		"GitHubRelease": "create update and list releases, upload a release asset, get a release by tag",
 		"GitHubRepository": "read patch repository settings, apply settings blob across rest graphql",
+		"GitHubValidationCode": "missing missing_field invalid already_exists unprocessable custom, github 422 validation error codes",
+		"GitHubValidationEntry": "one entry from a failed rest response's errors array, resource field code and message",
 		"GitTag": "create reset resolve and delete a tag ref, find newest semver-shaped tag",
 		"GraphQLDocument": "a named graphql query or mutation, its variables and response codec, typed graphql call",
 		"GraphQLErrorEntry": "one entry from a graphql response's errors array, message and github's error type",

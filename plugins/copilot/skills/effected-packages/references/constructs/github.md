@@ -69,6 +69,8 @@
 | `GitHubReleaseShape` | Interface | Releases and their assets. | |
 | `GitHubRepository` | Class | Repository settings and coordinates. | read patch repository settings, apply settings blob across rest graphql |
 | `GitHubRepositoryShape` | Interface | The repository itself. | |
+| `GitHubValidationCode` | Variable | The validation codes GitHub documents for a 422's `errors[].code`. | missing missing_field invalid already_exists unprocessable custom, github 422 validation error codes |
+| `GitHubValidationEntry` | Class | One entry from a failed response's `data.errors` array, as GitHub sent it. | one entry from a failed rest response's errors array, resource field code and message |
 | `GitTag` | Class | Tags. | create reset resolve and delete a tag ref, find newest semver-shaped tag |
 | `GitTagShape` | Interface | Tag refs in GitHub's Git Database API. | |
 | `GraphQLDocument` | Class | A named GraphQL document, its variables, and how to read its answer. | a named graphql query or mutation, its variables and response codec, typed graphql call |
