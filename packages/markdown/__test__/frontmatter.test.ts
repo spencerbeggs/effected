@@ -232,12 +232,11 @@ describe("frontmatter capture", () => {
 			assert.strictEqual(node.format, "yaml");
 		});
 
-		// Re-widened at effect@4.0.0-beta.101: Effect-TS/effect#6491 is fixed
-		// (`SchemaParser.recurDefaults` now APPENDS the default link instead of
-		// replacing the field's class-construction link), so a constructor
-		// -defaulted class field again accepts the plain-object literal its
-		// `~type.make.in` always admitted. The beta.99 tripwire that pinned the
-		// throwing behavior is deleted; this asserts the promotion instead.
+		// A constructor-defaulted class field accepts a plain-object literal for
+		// `position`, matching what `~type.make.in` has always admitted: `make`
+		// deep-validates the literal and promotes it to a real `Position`/`Point`
+		// instance tree rather than requiring the caller to pre-construct one.
+		// This asserts that promotion.
 		it("make accepts a plain-object position and promotes it to instances", () => {
 			const node = Frontmatter.make({
 				type: "frontmatter",

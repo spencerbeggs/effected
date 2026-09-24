@@ -95,13 +95,14 @@ describe("MarkdownNode", () => {
 
 		it("passes constructed children through `make` by identity", () => {
 			// The pin for the category-union children fields (`RowContent` in
-			// `MarkdownNode.ts`): `make` passes an existing instance through a
-			// union member untouched, while a class-typed field re-runs
-			// construction on every element — which re-built all 90k rows of
-			// the pathological "tables" case inside the single `Table.make`
-			// call. `position` deliberately stays a class-typed field, so THIS
-			// pass-through holds for children while positions still
-			// re-construct (the `deepStrictEqual`-not-`strictEqual` rule).
+			// `MarkdownNode.ts`): `make` passes an already-constructed instance
+			// through a nested class-typed field by reference, whether the field
+			// is a plain class type or — as here — wrapped in a category union.
+			// `position` (a plain class-typed field, pinned in
+			// node-synthesis.test.ts) and `children` (wrapped in `RowContent` /
+			// `TableContent`) both preserve identity on `make`; this test pins
+			// that pass-through specifically for the category-union `children`
+			// fields that back `TableRow`/`Table`/`List`.
 			const text = Text.make({ value: "x", position: span(0, 1) });
 			const cell = TableCell.make({ children: [text], position: span(0, 1) });
 			assert.strictEqual(cell.children[0], text);

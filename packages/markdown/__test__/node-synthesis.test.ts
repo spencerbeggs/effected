@@ -26,22 +26,24 @@ describe("Position.synthetic", () => {
 	});
 });
 
-// Asserted by VALUE, not by reference. Through effect@4.0.0-beta.99 a nested
-// `Schema.Class` field short-circuited on an instance check, so `make` passed
-// the very same object through and `strictEqual` held. The beta.101 fix for
-// Effect-TS/effect#6491 makes the field's own construction link always run, so
-// `make` now re-constructs nested class fields — a structurally equal but
-// distinct instance, for the default and for an explicit value alike (probed:
-// a field with NO constructor default re-constructs too, so this is `make`'s
-// nested-field semantics, not anything about the default). `Position` is an
-// immutable value class with structural equality, so identity was never the
-// contract worth pinning; these assert the value and the promotion instead.
+// Asserted by both reference and value. `make` passes an already-constructed
+// `Position` instance through a nested class-typed field by reference — the
+// zero-width default fills in the single shared `Position.synthetic`
+// instance, so every synthesized node's position is strictly that same
+// object (pinned below with `strictEqual`). `Position` is also an immutable
+// value class with structural equality, so `deepStrictEqual` remains the
+// right comparison wherever a fresh-but-equal `Position` is legitimate — a
+// hand-built plain-object literal, for instance, which `make` promotes to a
+// distinct instance rather than reusing.
 describe("make fills the synthetic position", () => {
 	it("constructs a Text fragment in one line", () => {
 		const text = Text.make({ value: "shipped" });
 		assert.instanceOf(text, Text);
 		assert.strictEqual(text.value, "shipped");
 		assert.deepStrictEqual(text.position, Position.synthetic);
+		// The default is the single shared `Position.synthetic` instance, not a
+		// fresh copy — pins that `make` never re-synthesizes it.
+		assert.strictEqual(text.position, Position.synthetic);
 	});
 
 	it("constructs Paragraph and Heading fragments in one line", () => {
@@ -61,6 +63,9 @@ describe("make fills the synthetic position", () => {
 		assert.deepStrictEqual(text.position, explicit);
 		// the point of the test: the default did NOT win
 		assert.notDeepEqual(text.position, Position.synthetic);
+		// an already-constructed Position passed explicitly is passed through
+		// by reference, not re-constructed
+		assert.strictEqual(text.position, explicit);
 	});
 });
 

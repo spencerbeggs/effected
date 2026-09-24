@@ -650,15 +650,14 @@ export class TableCell extends Schema.Class<TableCell>("TableCell")({
  * content — the cells in a {@link TableRow}. A one-member union, kept because
  * mdast names the category.
  *
- * A REAL `Schema.Union`, not a bare suspended class reference, and the
- * wrapper is load-bearing: `make` passes an already-constructed class
- * instance through a union member untouched, while a class-typed field
- * re-runs construction on every element of the array. On a 30k-row table
- * that re-construction was 1137ms for the single `Table.make` call against
- * 9ms through the union (measured; the pathological suite's "tables" case is
- * the regression instrument). The `children` fields of `TableRow`, `Table`
- * and `List` point at these category unions for exactly that reason — do not
- * "simplify" them back to the member class.
+ * A REAL `Schema.Union`, not a bare suspended class reference. `make` passes
+ * an already-constructed class instance through a nested class-typed field
+ * by reference regardless of whether the field is a plain class type or —
+ * as here — wrapped in a `Schema.Union`, so the wrapper buys no
+ * construction-cost advantage over the bare member class. It is kept
+ * because mdast names the category: the `children` fields of `TableRow`,
+ * `Table` and `List` point at these category unions to mirror mdast's
+ * content-model vocabulary, not for a performance reason.
  *
  * @public
  */
