@@ -44,6 +44,7 @@ clients.
 - Closing stdin with a request in flight drops that response — see [`McpStdio.teardown`](./references/server-wiring.md).
 - A bare-string resource `content` loses its `mimeType` on the read itself, even though it still appears in `resources/list` — see [The `mimeType` trap](./references/resources.md#the-mimetype-trap).
 - A resource URI template variable cannot span a slash — an id containing one needs a static resource per id, not a template — see [A template variable cannot span a slash](./references/resources.md#a-template-variable-cannot-span-a-slash).
+- An `Effect.timeout` guard inside `it.effect` never fires — `TestClock` never advances on its own, so the test hangs until vitest's own default timeout kills it instead. Use `it.live` or a real-clock `layer(...)` — see [Timeouts](./references/testing.md#timeouts).
 
 ## Additional resources
 

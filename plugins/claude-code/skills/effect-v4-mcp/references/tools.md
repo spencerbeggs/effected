@@ -99,10 +99,16 @@ const program = Effect.scoped(
 Effect.runPromise(program)
 ~~~
 
-Prints an `isError: true` result naming **both** unknown keys — the
-top-level `extra` and the nested `nested.bogus` — each with its own accepted
-list: `Unrecognized parameter(s): extra. Accepted params: name, nested.
-Unrecognized parameter(s): nested.bogus. Accepted params: value.`
+Prints, on the default `2025-11-25` revision, an `isError: true` result
+naming **both** unknown keys — the top-level `extra` and the nested
+`nested.bogus` — each with its own accepted list: `Unrecognized
+parameter(s): extra. Accepted params: name, nested. Unrecognized
+parameter(s): nested.bogus. Accepted params: value.` The pre-check's reply
+follows the same per-revision split as any other `InvalidParams` (see
+[Failures on the wire](#failures-on-the-wire)), because it fails with
+`McpSchema.InvalidParams` — the same error class core's own decode raises:
+on `2024-11-05`, `2025-03-26` and `2025-06-18` this same call gets a
+JSON-RPC error, code `-32602`, not `isError`.
 
 `McpToolkit.layer`'s `strict` option defaults to `"all"`: every tool without
 its own `Tool.Strict` annotation is re-annotated strict and decoded that

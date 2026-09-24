@@ -93,8 +93,8 @@ await Effect.runPromise(program)
 
 Prints `string form has mimeType: false`, `full form has mimeType: true`,
 and `declared mimeType still in resources/list for string form: text/plain`
-— confirming the brief's claim exactly: the declared value survives the
-listing either way, but only the full-shape read keeps it on the wire.
+— the declared value survives the listing either way, but only the
+full-shape read keeps it on the wire.
 
 ## URI templates
 

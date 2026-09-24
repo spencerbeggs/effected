@@ -73,6 +73,19 @@ internally would win over the harness's and talk to the real terminal.
   `NonEmptyReadonlyArray`, so an empty list is a compile error, not a
   runtime one.
 
+**One `McpStdio.layer` server per layer graph.** Core's
+`RpcServer.layerProtocolStdio` is a module constant, so two stdio servers
+merged into one graph share one protocol, built over whichever `Stdio` came
+first — the second server never reads its own stdin, silently. This is
+core's behaviour with or without the guard; `Layer.fresh` around
+`layerStdio` is not a fix (tried in the kit itself: it failed 35 of the
+harness and toolkit tests, most likely because core's `McpServer.layer` is
+also a shared constant that `McpServer.toolkit` registers through). Nesting
+one `Effect.provide` inside a fiber that another `Effect.provide` already
+wraps does **not** create a separate graph either — both still resolve
+through the same memo map. Build each server its own graph instead: its own
+`Layer.build`, its own `ManagedRuntime`, or its own process.
+
 ### Stdin guard
 
 Core's own stdio decoder (`RpcSerialization.makeNdjson`) runs `JSON.parse`

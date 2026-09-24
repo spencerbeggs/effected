@@ -121,11 +121,15 @@ empty is the check that no stray log line reached stdout.
 for a **known** tool's own bad parameters, and only on `2025-11-25` and the
 stateless `2026-07-28` — see `tools.md`'s [Failures on the
 wire](./tools.md#failures-on-the-wire) for the full rule and the
-unknown-tool counter-case. A test over this matrix needs the real clock:
-`McpHarness.make` builds and tears down a layer graph per iteration, so use
-`it.live`, not `it.effect` — **not** nested inside `@effect/vitest`'s
-`layer(...)` helper, whose returned `it` (`Vitest.MethodsNonLive`) has no
-`.live` method at all; only the top-level `it` export does.
+unknown-tool counter-case. A test over this matrix needs the real clock, not
+because building the harness twice needs it — the harness-behaviour tests
+above build and tear down a fresh `McpHarness` per test under plain
+`it.effect` and pass — but because `it.effect` installs `TestClock`, and the
+`Effect.timeout("3 seconds")` guard around this test never fires under a
+virtual clock that only advances when something explicitly asks it to. Use
+`it.live` instead — **not** nested inside `@effect/vitest`'s `layer(...)`
+helper, whose returned `it` (`Vitest.MethodsNonLive`) has no `.live` method
+at all; only the top-level `it` export does.
 
 ~~~ts
 import { McpStdio, McpToolkit } from "@effected/mcp"
@@ -168,10 +172,11 @@ describe("InvalidParams protocol matrix", () => {
 })
 ~~~
 
-Passes. **Mutation check:** changing the first revision's expected code from
-`-32602` to `-32600` fails by assertion — `expected -32602 to equal -32600`
-— confirming the test actually reads the real response code rather than a
-constant; restoring `-32602` returns it to green.
+Passes, and the assertions actually discriminate: each revision's branch
+checks the field the OTHER revision would fail on (`response.error`'s code
+for `2025-06-18`, `response.result`'s `isError` for `2025-11-25`), so a test
+that silently degenerated to asserting the same thing on both revisions
+would fail rather than passing vacuously.
 
 ## Declared-failure assertion
 
@@ -273,12 +278,12 @@ await Effect.runPromise(program).finally(() => unlinkSync(serverFile))
 
 Prints an `Exit` whose cause carries `{"_tag":"McpTestFailure","reason":"StreamEnded", ...}`
 — a typed failure, not a hang, for a child that exits before writing
-anything. For the stdin-guard proof over `McpProcess.sendRaw(string |
-Uint8Array)` — new from the kit fix that guards `McpStdio.layer`'s stdin —
-see `server-wiring.md`'s [Stdin guard](./server-wiring.md#stdin-guard),
-which already spawns a real process, sends a genuinely malformed line, and
-asserts the server answers a typed `-32700` and keeps serving rather than
-wedging.
+anything. `McpProcess.sendRaw(text: string | Uint8Array)` writes raw bytes
+to the child's stdin with no JSON encoding and no newline added — for a
+frame `send` cannot construct, such as a genuinely malformed line. See
+`server-wiring.md`'s [Stdin guard](./server-wiring.md#stdin-guard), which
+already spawns a real process, sends one, and asserts the server answers a
+typed `-32700` and keeps serving rather than wedging.
 
 ## Packed install proof
 
@@ -293,10 +298,17 @@ exit `0`, reading a slow or broken boot as a pass with no response at all.
 The caller asserts `response.error === undefined`, `stderr === ""` and
 `exitCode === 0`. Checking `stderr` and the exit code alone is not enough —
 a server that answers the handshake with a JSON-RPC error, exits `0` and
-writes nothing to stderr passes that weaker check. On a `StreamEnded`
-failure (the child exited before responding), the exit code and stderr are
-folded into the failure message, since the caller holds no separate handle
-to read them once the streams have ended.
+writes nothing to stderr passes that weaker check. Any stdout line that is
+not JSON-RPC fails typed with `NotJsonRpc`, naming the line — a server that
+logs to stdout corrupts the wire, so the probe fails rather than skipping
+the line and reading a corrupted boot as clean. On a `StreamEnded` failure
+(the child exited before responding), the exit code and stderr are folded
+into the failure message, since the caller holds no separate handle to read
+them once the streams have ended.
+
+A child that ignores stdin EOF never exits, and the probe waits for it
+forever: wrap `McpProbe.initialize` in `Effect.timeout`, the same way every
+runnable example in this reference does.
 
 Composed with `PackedInstall.run` (`@effected/workspaces/testing`) in the
 consumer's own end-to-end test — this is typecheck-only here: it really
@@ -367,7 +379,21 @@ about avoiding `layer(...)` altogether.
 `McpToolAudit.check(tools, policy)` is a pure sweep over a served
 `tools/list` (`McpHarness.listTools`, not your own schemas — the served
 document differs by protocol revision) that returns every violation as
-`"<tool>: <what>"` strings; empty means the sweep passed.
+`"<tool>: <what>"` strings; empty means the sweep passed. `input` is
+`"open" | "closed" | "any"`: `"closed"` requires `additionalProperties:
+false` on every object node, `"open"` requires none of them to have it, and
+`"any"` skips the input walk entirely.
+
+`"closed"` (and `"open"`) is only as sound as the walk: it follows
+`properties`, `items`, a schema-valued `additionalProperties`,
+`prefixItems`, `anyOf`, `oneOf` and `$defs`, and merges an `allOf` member's
+`properties` and `additionalProperties: false` onto its node — but it does
+**not** visit `patternProperties` values, an `allOf` member's `items` or
+`additionalProperties` schema, or an `allOf` nested inside another `allOf`;
+a key declared in two `allOf` members is last-write-wins. A hand-authored or
+`Tool.dynamic` schema can pass `"closed"` with an open node the walk never
+reached. Core-emitted strict schemas close every node, so a strict
+`Tool.make` tool is reported faithfully regardless.
 
 ~~~ts
 import { McpToolAudit } from "@effected/mcp/testing"
@@ -387,7 +413,17 @@ const duplicate: ServedTool = { ...open, name: "open_tool" }
 
 console.log("closed-policy on a closed tool:", McpToolAudit.check([closed], { input: "closed" }))
 console.log("closed-policy on an open tool:", McpToolAudit.check([open], { input: "closed" }))
+console.log("open-policy on an open tool:", McpToolAudit.check([open], { input: "open" }))
+console.log("open-policy on a closed tool:", McpToolAudit.check([closed], { input: "open" }))
 console.log("duplicate names reported under input: any:", McpToolAudit.check([open, duplicate], { input: "any" }))
+console.log(
+  "requireTitle with no title:",
+  McpToolAudit.check([open], { input: "any", requireTitle: true }),
+)
+console.log(
+  "requireOutputSchema with none served:",
+  McpToolAudit.check([open], { input: "any", requireOutputSchema: true }),
+)
 console.log(
   "requireHints on a tool with no annotations:",
   McpToolAudit.check([open], { input: "any", requireHints: true }),
@@ -407,12 +443,15 @@ console.log(
 ~~~
 
 Prints, in order: `[]` (the closed tool passes `"closed"`); one violation
-naming the open tool's root as open; one `duplicate tool name` violation
-(reported under `input: "any"` too — a duplicate is checked unconditionally,
-independent of every other policy field); one violation listing all four
-missing hint names; one violation stating the description's length against
-the limit; one violation naming the non-object `outputSchema`'s root type;
-then `[]` once `objectRootedOutput` is explicitly turned off.
+naming the open tool's root as open; `[]` (the open tool passes `"open"`);
+one violation naming the closed tool's root as closed under `"open"`; one
+`duplicate tool name` violation (reported under `input: "any"` too — a
+duplicate is checked unconditionally, independent of every other policy
+field); one `no title` violation; one `no outputSchema` violation; one
+violation listing all four missing hint names; one violation stating the
+description's length against the limit; one violation naming the
+non-object `outputSchema`'s root type; then `[]` once `objectRootedOutput`
+is explicitly turned off.
 
 `objectRootedOutput`'s default of `true` matters because the protocol
 revisions disagree on whether a non-object success schema even survives to
@@ -460,10 +499,19 @@ surface it.
 
 ## Timeouts
 
+A `3`-second `Effect.timeout` guard only fires under a real clock: `it.live`
+(as the protocol matrix above uses), or `layer(X, { excludeTestServices:
+true })`. Written inside plain `it.effect`, the same guard is dead code — it
+races `TestClock`, which never advances on its own, so the guard never
+fires and the test instead hangs until vitest's own `5`-second default test
+timeout kills it, reporting a generic timeout with none of the guard's own
+diagnostic message.
+
 An `Effect.timeout` guard of `5` seconds or more, run under vitest's own
-`5` second default test timeout, is dead code: vitest kills the test before
-the guard ever fires, so the guard's own failure message — the one naming
-what actually hung — never has a chance to run. Keep a guard at `3` seconds
-(as used throughout this reference), or pass an explicit, larger vitest
-timeout (the second argument to `it`/`it.live`, as the packed-install
-example above does with `780_000`).
+`5` second default test timeout, is dead code for the same underlying
+reason from the other direction: vitest kills the test before the guard
+ever fires, so the guard's own failure message — the one naming what
+actually hung — never has a chance to run. Keep a guard at `3` seconds (as
+used throughout this reference), or pass an explicit, larger vitest timeout
+(the second argument to `it`/`it.live`, as the packed-install example above
+does with `780_000`).
