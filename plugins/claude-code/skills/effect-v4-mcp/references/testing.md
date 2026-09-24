@@ -507,11 +507,12 @@ fires and the test instead hangs until vitest's own `5`-second default test
 timeout kills it, reporting a generic timeout with none of the guard's own
 diagnostic message.
 
-An `Effect.timeout` guard of `5` seconds or more, run under vitest's own
-`5` second default test timeout, is dead code for the same underlying
-reason from the other direction: vitest kills the test before the guard
-ever fires, so the guard's own failure message — the one naming what
-actually hung — never has a chance to run. Keep a guard at `3` seconds (as
+A second, distinct cause produces the same symptom: an `Effect.timeout`
+guard of `5` seconds or more, run under a real clock and under vitest's own
+`5` second default test timeout, is dead code because the two race at the
+same real duration and vitest's own timeout wins — the guard never fires,
+so its own failure message — the one naming what actually hung — never has
+a chance to run. Keep a guard at `3` seconds (as
 used throughout this reference), or pass an explicit, larger vitest timeout
 (the second argument to `it`/`it.live`, as the packed-install example above
 does with `780_000`).

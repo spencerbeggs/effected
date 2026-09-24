@@ -75,16 +75,20 @@ internally would win over the harness's and talk to the real terminal.
 
 **One `McpStdio.layer` server per layer graph.** Core's
 `RpcServer.layerProtocolStdio` is a module constant, so two stdio servers
-merged into one graph share one protocol, built over whichever `Stdio` came
-first — the second server never reads its own stdin, silently. This is
-core's behaviour with or without the guard; `Layer.fresh` around
-`layerStdio` is not a fix (tried in the kit itself: it failed 35 of the
-harness and toolkit tests, most likely because core's `McpServer.layer` is
-also a shared constant that `McpServer.toolkit` registers through). Nesting
+merged into **one** graph — one `Layer.mergeAll`/`Layer.build` call — share
+one protocol, built over whichever `Stdio` came first: the second server
+never reads its own stdin, silently. This is core's behaviour with or
+without the guard; `Layer.fresh` around `layerStdio` is not a fix. Nesting
 one `Effect.provide` inside a fiber that another `Effect.provide` already
-wraps does **not** create a separate graph either — both still resolve
-through the same memo map. Build each server its own graph instead: its own
-`Layer.build`, its own `ManagedRuntime`, or its own process.
+wraps is **not** the same trap: each `Effect.provide` builds its own
+independent graph with its own memo map, regardless of nesting — probed
+directly (two `McpStdio.layer` servers, each over its own in-memory
+`Stdio`, the second's `Effect.provide`-equivalent build nested inside the
+fiber the first's already wraps) and the inner server answered on its own
+stdio, correctly, with its own identity. The one real trap is the merge:
+build each server its own graph — its own `Layer.build`, its own
+`ManagedRuntime`, or its own process — never merge two `McpStdio.layer`
+outputs into one.
 
 ### Stdin guard
 
