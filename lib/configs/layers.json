@@ -1,0 +1,41 @@
+{
+	"layers": [
+		["@effected/app", "@effected/github-actions", "@effected/schemastore-cli"],
+		["@effected/cli", "@effected/mcp", "@effected/sbom", "@effected/workspaces", "@effected/xdg"],
+		["@effected/config-file", "@effected/lockfiles", "@effected/package-json", "@effected/tsconfig-json"],
+		[
+			"@effected/github",
+			"@effected/markdown",
+			"@effected/npm",
+			"@effected/runtimes",
+			"@effected/schemastore",
+			"@effected/walker"
+		],
+		[
+			"@effected/commands",
+			"@effected/engine",
+			"@effected/git",
+			"@effected/github-references",
+			"@effected/glob",
+			"@effected/jsonc",
+			"@effected/jsonl",
+			"@effected/memfs",
+			"@effected/schema-org",
+			"@effected/semver",
+			"@effected/spdx",
+			"@effected/store",
+			"@effected/templates",
+			"@effected/toml",
+			"@effected/yaml"
+		]
+	],
+	"tooling": ["@effected/pnpm-plugin-effect"],
+	"unconstrained": ["effected", "docs", "scratchpad", "@effected/claude-code-plugin", "@effected/copilot-plugin"],
+	"fields": ["dependencies", "peerDependencies", "optionalDependencies"],
+	"requiredEdges": [
+		"@effected/mcp -> @effected/engine",
+		"@effected/workspaces -> @effected/npm",
+		"@effected/schemastore-cli -> @effected/cli",
+		"@effected/app -> @effected/xdg"
+	]
+}
