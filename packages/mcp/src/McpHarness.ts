@@ -67,8 +67,12 @@ interface HarnessParts {
  *
  * The server is built with a fresh layer memo map, never the ambient one, so
  * a harness made under another stdio server's `Effect.provide` still serves
- * its own. The flip side: a layer the server shares by reference with the
- * test's own layers is built again for the harness, not reused.
+ * its own. Never pass a server layer that provides a layer the test also
+ * provides and then reads — `McpHarness.make(server.pipe(Layer.provide(AppLayer)))`
+ * under `Effect.provide(AppLayer)` builds `AppLayer` twice, so the tools write
+ * to one instance and the test reads the other. Leave the service in the
+ * server layer's requirements and provide it once from the test, or build it
+ * once and pass `Layer.succeed(Tag, value)`.
  *
  * - Responses are matched by id, so notifications may interleave freely.
  * - No wait can hang: every response wait and `awaitOutboundMethod` fails

@@ -95,8 +95,9 @@ types.
   process. This is core's behaviour with or without the guard.
   `McpHarness.make` builds with a fresh memo map
   (`Layer.buildWithMemoMap(…, Layer.makeMemoMapUnsafe(), scope)`) for this
-  reason, so a harness never shares an ambient server's protocol. `Layer.fresh` around `layerStdio`
-  is not a fix: tried, it failed 35 of the harness and toolkit tests
+  reason, so a harness never shares an ambient server's protocol.
+  `Layer.fresh` around `layerStdio` is not a fix: tried, it failed 35 of
+  the harness and toolkit tests
   (tool calls stopped resolving), most likely because core's `McpServer.layer`
   is also a shared constant that `McpServer.toolkit` registers through.
 - **Code after a completed `Effect.provide` of a stdio server never

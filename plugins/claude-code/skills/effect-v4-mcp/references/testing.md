@@ -38,11 +38,13 @@ green having checked nothing. Use `McpHarness` instead of hand-wiring
 `McpHarness` builds the server under its own fresh memo map, never the
 ambient one, so a harness created inside an ambient `Effect.provide` of
 another stdio server still answers on its own `Stdio` — it does not hit the
-nesting trap above. The flip side: a layer the server shares by reference
-with the test's own layers is built again for the harness, not reused. To
-observe state the server writes, build that layer once in the test and pass
-it in with `Layer.succeed` rather than relying on the harness to share the
-same instance.
+nesting trap above. **Never pass a server layer that provides a layer the
+test also provides and then reads** —
+`McpHarness.make(server.pipe(Layer.provide(AppLayer)))` under
+`Effect.provide(AppLayer)` builds `AppLayer` twice, so the tools write to
+one instance and the test reads the other. Leave the service in the server
+layer's requirements and provide it once from the test, or build it once
+and pass `Layer.succeed(Tag, value)`.
 
 ~~~ts
 import { McpStdio, McpToolkit } from "@effected/mcp"
