@@ -307,6 +307,9 @@ importers:
       '@effected/walker':
         specifier: workspace:*
         version: link:../walker/dist/dev/pkg
+      '@effected/workspaces':
+        specifier: workspace:*
+        version: link:../workspaces/dist/dev/pkg
       '@effected/yaml':
         specifier: workspace:*
         version: link:../yaml/dist/dev/pkg
@@ -388,9 +391,15 @@ importers:
 
   packages/engine:
     devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-rc.117(effect@4.0.0-rc.117)(redis@6.2.1)
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.117(effect@4.0.0-rc.117)(vitest@5.0.1)
+      '@effected/workspaces':
+        specifier: workspace:*
+        version: link:../workspaces/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.4.9
         version: 2.4.9(@types/node@26.6.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.15)(typescript@7.0.2)
@@ -682,6 +691,9 @@ importers:
       '@effected/engine':
         specifier: workspace:*
         version: link:../engine/dist/dev/pkg
+      '@effected/workspaces':
+        specifier: workspace:*
+        version: link:../workspaces/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.4.9
         version: 2.4.9(@types/node@26.6.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.15)(typescript@7.0.2)

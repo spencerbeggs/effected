@@ -14,17 +14,19 @@ the user verifies it.
 ## Tier: boundary — no exceptions in `src/`
 
 `src/` never reads `process` (not even inside a string literal — the
-boundary test is a token scan), never imports `node:` or an
-`@effect/platform*` package, and never calls `console.*`. `Console` is
-reached only through core's `Console.Console` reference. stdout is the
-JSON-RPC wire; any unguarded write to it corrupts the protocol. The current
-guard is a temporary scanner in `__test__/boundary.test.ts`, replaced by
-`@effected/workspaces/testing`'s `SourceBoundary` in phase 3.
+guard is `__test__/boundary.test.ts` over `SourceBoundary.scan` from
+`@effected/workspaces/testing`; it ignores comments, strings, template text
+and regex bodies), never imports `node:` or an `@effect/platform*` package,
+and never calls `console.*`. `Console` is reached only through core's
+`Console.Console` reference. stdout is the JSON-RPC wire; any unguarded write
+to it corrupts the protocol.
 
 **Nothing in the kit may depend on this package except an application.**
-`@effected/mcp` never depends on `@effected/cli` or `@effected/workspaces` —
-a CLI boundary and an MCP boundary are siblings, both front ends, never
-layers on each other.
+`@effected/mcp` never takes a runtime dependency on `@effected/cli` or
+`@effected/workspaces` — a CLI boundary and an MCP boundary are siblings,
+both front ends, never layers on each other; `@effected/workspaces` is a
+devDependency for `SourceBoundary` only, and the boundary test forbids
+importing it from `src/`.
 
 ## Peers
 

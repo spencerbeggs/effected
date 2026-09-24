@@ -89,6 +89,6 @@ Effect.runPromise(
 - `CurrentDistribution` is a reference, not a service: `yield* CurrentDistribution`
   works with nothing provided (`Option.none()` default) — do not reach for
   `Layer.succeed` to give it a value; use `Effect.provideService`.
-- This package intentionally ships no `SourceBoundary`-style purity check of
-  its own yet; `packages/engine/__test__/purity.test.ts` is a temporary local
-  scanner replaced by `@effected/workspaces`' `SourceBoundary` in phase 3.
+- Purity is pinned by `__test__/purity.test.ts` over `SourceBoundary.scan` from
+  `@effected/workspaces/testing` (a devDependency; engine takes no runtime kit
+  edge).

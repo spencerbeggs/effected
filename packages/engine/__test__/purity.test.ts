@@ -1,41 +1,37 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
-import { assert, describe, it } from "@effect/vitest";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { SourceBoundary } from "@effected/workspaces/testing";
+import { Effect } from "effect";
 
-const SRC = join(import.meta.dirname, "..", "src");
+const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 
-const files = (dir: string): ReadonlyArray<string> =>
-	readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-		entry.isDirectory() ? files(join(dir, entry.name)) : entry.name.endsWith(".ts") ? [join(dir, entry.name)] : [],
-	);
-
-/** Strips line and block comments; good enough for this package's source (no regex or template literals mention process). */
-const code = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-
-// Replaced by @effected/workspaces/testing SourceBoundary in phase 3.
 describe("engine purity", () => {
-	it("walks a non-empty source tree (positive control)", () => {
-		assert.isAbove(files(SRC).length, 2);
-	});
-
-	it("no source file reads process", () => {
-		const offenders = files(SRC).filter((file) => /\bprocess\b/.test(code(readFileSync(file, "utf8"))));
-		assert.deepStrictEqual(
-			offenders.map((file) => relative(SRC, file)),
-			[],
+	layer(NodeServices.layer)((it) => {
+		it.effect("the scanner still flags and spares what its shipped fixtures say (positive control)", () =>
+			Effect.sync(() => assert.deepStrictEqual(SourceBoundary.verifyFixtures(), [])),
 		);
-	});
 
-	it("no source file imports node: or a platform package", () => {
-		const offenders = files(SRC).filter((file) => /from\s+"(node:|@effect\/platform)/.test(readFileSync(file, "utf8")));
-		assert.deepStrictEqual(
-			offenders.map((file) => relative(SRC, file)),
-			[],
+		it.effect(
+			"no source file reads process, imports a node:, platform or kit module, or writes to stdout or the console",
+			() =>
+				Effect.gen(function* () {
+					const scan = yield* SourceBoundary.scan({
+						root: SRC,
+						rules: [
+							"process",
+							"node:process",
+							"stdout-write",
+							"console-write",
+							{ forbidImports: ["node:*", "@effect/platform*", "@effected/*"] },
+						],
+					});
+					assert.include(scan.files, "LaunchContext.ts", "the scan read the real tree");
+					assert.isAbove(scan.files.length, 2);
+					assert.deepStrictEqual(scan.allowed, []);
+					assert.deepStrictEqual(scan.violations, []);
+				}),
 		);
-	});
-
-	it("the scanner catches a planted process read (negative control)", () => {
-		assert.isTrue(/\bprocess\b/.test(code("const { env } = process;")));
-		assert.isFalse(/\bprocess\b/.test(code("// process is mentioned only in a comment")));
 	});
 });
