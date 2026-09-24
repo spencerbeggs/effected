@@ -5,6 +5,8 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `BoundaryFixture` | Interface | A snippet with the verdict one rule must reach on it. | from `@effected/workspaces/testing` |
+| `BoundaryRule` | TypeAlias | One rule a source file must keep. | from `@effected/workspaces/testing` |
 | `CatalogAssemblyFailure` | TypeAlias | Every failure catalog assembly can surface. | |
 | `CatalogSet` | Class | An immutable, fully-normalized catalog collection — the one catalog resolution semantic in the package. | pnpm catalog data, resolve a catalog: specifier to a version range |
 | `ChangeDetectionError` | Class | Raised when change detection cannot proceed for a reason that is not one of git's own typed failures — the wrapper for "detection has no ground to stand on". | handle git change detection setup failure, no repository or nothing to detect against |
@@ -31,12 +33,20 @@
 | `HookReplay` | Interface | Which version of a config dependency a replay actually loaded, and where that version came from. | |
 | `HookReplaySource` | TypeAlias | Where a replayed config dependency's declared version was found: the `node_modules/.pnpm-config` copy, the pnpm store's `links/` tree, or a `ConfigDependencyHooks.layerFrom` entry. | |
 | `ImporterVersions` | TypeAlias | Each importer's dependency-name → resolved-version map, keyed by importer path (`"."` for the root package — the same keys `WorkspaceDiscovery.importerMap()` uses, and the same value `PackageStateSnapshot.relativePath` carries). | |
+| `InstalledConsumer` | Class | One scratch project, outside the workspace, with the carrier installed. | from `@effected/workspaces/testing` — scratch consumer project, installed bin path |
+| `LayerEdge` | Class | One dependency edge between two workspace packages, in one field. | from `@effected/workspaces/testing` — one workspace dependency edge in one manifest field |
+| `LayerPolicy` | Class | A committed dependency-layering policy (`layers.json`). | from `@effected/workspaces/testing` — decode a committed layers.json dependency layering policy |
+| `LayerPolicyError` | Class | Raised when a layer policy cannot be read, parsed or decoded. | from `@effected/workspaces/testing` — layer policy file unreadable, not json, or wrong shape |
+| `LayeringGraph` | Interface | The input to `WorkspaceLayering.check`: package names, and per-field edges between them. | from `@effected/workspaces/testing` |
+| `LayeringReport` | Class | What a layering check found. | from `@effected/workspaces/testing` — layering violations, sideways upward edges, cycles, unclassified packages |
 | `LockfileReadError` | Class | Raised when the workspace's lockfile cannot be read off disk. | handle the workspace lockfile file cannot be read off disk |
 | `LockfileReadFailure` | TypeAlias | Every failure the lockfile methods can surface — the exported init-error union the review named best-in-class DX. | |
 | `LockfileReader` | Class | Reads and parses the workspace's lockfile. | read and parse the workspace lockfile, look up a resolved package version |
 | `LockfileReaderOptions` | Interface | Options for the `LockfileReader` layer. | |
 | `LockfileReaderShape` | Interface | The `LockfileReader` service shape. | |
 | `NoPeerDependencyRules` | Variable | The empty `PeerDependencyRules`: every axis present and empty. | empty peer-dependency suppression rules, assert a workspace declares no peerDependencyRules |
+| `Offence` | Class | One place a source file breaks a `BoundaryRule`. | from `@effected/workspaces/testing` — one boundary violation with file line column and rule |
+| `PackSource` | TypeAlias | Where each closure package is packed from. | from `@effected/workspaces/testing` |
 | `PackageManagerDetectionError` | Class | Raised when a directory carries no lockfile and no workspace configuration, so no package manager can be attributed to it. | handle no package manager could be detected at a workspace root |
 | `PackageManagerDetectionFailure` | TypeAlias | Every failure `PackageManagerDetector` can surface: no manager could be attributed to the root, or the root's `package.json` exists but cannot be read or parsed. | |
 | `PackageManagerDetector` | Class | Detects which package manager owns a workspace root. | detect which package manager npm pnpm yarn bun runs a workspace |
@@ -46,6 +56,10 @@
 | `PackageNotFoundError` | Class | Raised when a workspace package is requested by a name no member carries. | handle an unknown workspace package name requested by name |
 | `PackageRelease` | Interface | One entry in a release batch: which package went out, at which version. | |
 | `PackageStateSnapshot` | Class | One workspace member as captured in a `WorkspaceStateSnapshot` — the serializable slice a snapshot diff reads: identity, version, location, and the four dependency records. | one package's captured state at a point in time: name, version, dependencies |
+| `PackedInstall` | Class | Prove a carrier's bins reach a consumer that is not part of the workspace, once per available package manager. | from `@effected/workspaces/testing` — pack carrier, install outside workspace under npm pnpm yarn bun |
+| `PackedInstallError` | Class | Why a packed install could not be proven. | from `@effected/workspaces/testing` — packed install failure, manager unavailable, unresolved workspace protocol, missing bin |
+| `PackedInstallOptions` | Interface | Options for `PackedInstall.run`. | from `@effected/workspaces/testing` |
+| `PackedInstallResult` | Class | What a packed install produced. | from `@effected/workspaces/testing` — installed consumers, unavailable managers, packed tarball paths |
 | `PeerCheck` | Class | The result of checking a lockfile for unsatisfied peer dependencies. | find unsatisfied peer dependencies in a lockfile, replicate pnpm peers check, peer dependency audit |
 | `PeerCheckOptions` | Interface | Options for `PeerCheck.run`. | |
 | `PeerDependencyRules` | Interface | pnpm's `peerDependencyRules` block — the suppression policy pnpm applies **after** computing peer violations, in pnpm's own shape. | |
@@ -54,7 +68,11 @@
 | `PublishTarget` | Class | A resolved publish destination for a workspace package. | a resolved publish destination for a package, registry access directory and provenance |
 | `PublishabilityDetector` | Class | Decides whether a workspace package publishes, and to where. | decide whether a workspace package publishes and to where, npm publish semantics |
 | `PublishabilityDetectorShape` | Interface | The `PublishabilityDetector` service shape. | |
+| `ReferenceOptions` | Interface | Options for the `process` rule. | from `@effected/workspaces/testing` |
 | `ReleaseTag` | Class | A git tag naming a release, and the parts it was built from. | format a git release tag, single shared tag or per-package scoped tag naming |
+| `ScanOptions` | Interface | Options for `SourceBoundary.scan`. | from `@effected/workspaces/testing` |
+| `SourceBoundary` | Class | Source-text boundary checks: which files read `process`, import a forbidden module, or write to stdout or the console. | from `@effected/workspaces/testing` — scan source for process reads, node imports, console and stdout writes |
+| `SourceScan` | Class | What a scan read and found. | from `@effected/workspaces/testing` — boundary scan result, files read, allowlisted files, offences |
 | `SyncDirectoryEntry` | Interface | One directory entry with its type resolved, as the optional `SyncFileSystem.readDirectoryWithTypes` fast path reports it. Node's `Dirent` satisfies it after mapping its predicate methods to booleans. | |
 | `SyncFileSystem` | Interface | The synchronous file operations the sync entry points need, supplied by the consumer. Node's built-ins satisfy it directly: | |
 | `SyncPath` | Interface | The synchronous path operations the sync entry points need, supplied by the consumer. Deliberately a structural subset of `node:path`, so the built-in module (and its `win32` / `posix` variants, or a Bun / Deno equivalent) satisfies it verbatim: | |
@@ -80,6 +98,7 @@
 | `WorkspaceDiscoverySkip` | Interface | One manifest `getWorkspacePackagesSync` skipped, reported through `GetWorkspacePackagesSyncOptions.onSkip`. | |
 | `WorkspaceDiscoverySkipKind` | TypeAlias | Why `getWorkspacePackagesSync` left a manifest out of its result — the `WorkspaceDiscoveryError.kind` values a single manifest read can produce. | |
 | `WorkspaceInfo` | Class | Top-level facts about a workspace: where it is, what manages it, and the patterns that define its membership. | top-level workspace facts, root directory and packages: patterns |
+| `WorkspaceLayering` | Class | Holds a workspace's package graph to a committed `LayerPolicy`. | from `@effected/workspaces/testing` — check monorepo package graph against layers, per-field edges |
 | `WorkspaceLookupFailure` | TypeAlias | Every failure `WorkspaceDiscovery.getPackage` can surface: the discovery failures plus a name that matches no member. | |
 | `WorkspaceManifestError` | Class | Raised when a workspace member's `package.json` cannot be read or decoded into the strict `@effected/package-json` `Package` model. | handle a package.json that cannot be read or decoded into the strict manifest model |
 | `WorkspacePackage` | Class | A single package inside a workspace: the discovery-relevant slice of its `package.json` plus its filesystem location. | a located workspace member, discovered package.json projection, dependency lookups and glob matching |

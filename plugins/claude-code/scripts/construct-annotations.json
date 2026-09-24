@@ -890,7 +890,19 @@
 		"getWorkspacePackagesSync": "synchronously enumerate workspace packages, non-Effect entry point for config files",
 		"nodeFileSystem": "sync filesystem adapter over node:fs, exists read directory stat",
 		"nodePath": "sync path adapter, the running platform's node:path",
-		"nodeSyncOps": "bundle node filesystem and path adapters for the sync entry points"
+		"nodeSyncOps": "bundle node filesystem and path adapters for the sync entry points",
+		"SourceBoundary": "scan source for process reads, node imports, console and stdout writes",
+		"Offence": "one boundary violation with file line column and rule",
+		"SourceScan": "boundary scan result, files read, allowlisted files, offences",
+		"LayerPolicy": "decode a committed layers.json dependency layering policy",
+		"LayerPolicyError": "layer policy file unreadable, not json, or wrong shape",
+		"LayerEdge": "one workspace dependency edge in one manifest field",
+		"LayeringReport": "layering violations, sideways upward edges, cycles, unclassified packages",
+		"WorkspaceLayering": "check monorepo package graph against layers, per-field edges",
+		"PackedInstall": "pack carrier, install outside workspace under npm pnpm yarn bun",
+		"PackedInstallError": "packed install failure, manager unavailable, unresolved workspace protocol, missing bin",
+		"InstalledConsumer": "scratch consumer project, installed bin path",
+		"PackedInstallResult": "installed consumers, unavailable managers, packed tarball paths"
 	},
 	"xdg": {
 		"AppDirKind": "the config, data, cache, state or runtime directory kind",
