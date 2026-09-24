@@ -1,5 +1,22 @@
 # @effected/copilot-plugin
 
+## 0.10.1
+
+### Documentation
+
+- The `github-api` and `effected-packages` skills now teach `GitHubError`'s `validation` entries and the `hasValidationCode` predicate, so 422 recovery branches on GitHub's validation code rather than on `reason` text.
+- The `@effected/github` construct index lists `GitHubValidationCode` and `GitHubValidationEntry`. [#825][#825]
+
+* `effect-v4-mcp` and the `effected-packages` MCP reference now say which refusal a request sent before `initialize` gets: `-32602 Invalid request metadata` when a stateless adapter is listed first, `-32603 Internal error` when only stateful revisions are served. [#824][#824]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#824]: https://github.com/spencerbeggs/effected/pull/824
+
+[#825]: https://github.com/spencerbeggs/effected/pull/825
+
 ## 0.10.0
 
 ### Features
