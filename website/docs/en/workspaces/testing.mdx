@@ -211,7 +211,7 @@ describe("packed install", () => {
 });
 ```
 
-Build first: by default each package is packed from its built `dist/prod/npm/pkg`, byte-for-byte the artifact a release publishes. `packFrom: "source"` runs `pnpm pack` in the package directory instead, which packs whatever `publishConfig.directory` names and needs a workspace that has been `pnpm install`ed.
+Build first: by default each package is packed from its built `dist/prod/npm/pkg`, the same file list a release publishes. `packFrom: "source"` runs `pnpm pack` in the package directory instead, which packs whatever `publishConfig.directory` names and needs a workspace that has been `pnpm install`ed.
 
 ### The traps it carries
 

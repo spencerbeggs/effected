@@ -20,7 +20,7 @@ import type { WorkspacePackage } from "./WorkspacePackage.js";
  * `{ directory }` runs `npm pack` in that subdirectory of each package, whose
  * manifest must already be publish-ready. The default,
  * `{ directory: "dist/prod/npm/pkg" }`, is the effected bundler's prod npm
- * output: byte-for-byte the artifact a release publishes.
+ * output: the same file list a release publishes.
  *
  * `"source"` runs `pnpm pack` in the package directory: pnpm honours
  * `publishConfig.directory` and rewrites `workspace:` and `catalog:`

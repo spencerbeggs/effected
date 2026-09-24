@@ -301,7 +301,8 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  * It is a lexer, not a type checker, and these misses are known:
  *
  * - there is no scope analysis, so a local binding named `console` is still
- *   flagged (allowlist the file), and so is a class field named `process`;
+ *   flagged (allowlist the file), and so is an unannotated class field named
+ *   `process` (`process = 1`; an annotated `process: T` reads as a type member);
  *
  * - a computed access through a string key (`globalThis["process"]`) and a
  *   destructuring of a global (`const { process: p } = globalThis`) are not seen;

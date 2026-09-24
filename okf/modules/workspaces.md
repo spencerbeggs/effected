@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T01:41:28Z
-  body_sha256: 67cb74c1471c728fa33935ebd938f32a9e210d4b30ecece1e2effd6d2ca14f3f
+  at: 2026-09-24T01:49:30Z
+  body_sha256: 3e5b6460d6321d6dee0a26eb5cc8361373955d1bb4f8cee9d2d07e91b2ce53ae
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -220,7 +220,7 @@ The built modules' raw byte sizes, measured on 2026-09-24 with `wc -c` over
 | Module | Bytes |
 | --- | --- |
 | `testing.js` | 1,151 |
-| `SourceBoundary.js` | 14,582 |
+| `SourceBoundary.js` | 14,665 |
 | `LayerPolicy.js` | 3,885 |
 | `WorkspaceLayering.js` | 7,855 |
 | `PackedInstall.js` | 12,307 |
@@ -228,12 +228,13 @@ The built modules' raw byte sizes, measured on 2026-09-24 with `wc -c` over
 | `internal/packedInstallPlan.js` | 6,613 |
 | `internal/dependencyFields.js` | 496 |
 
-`PackedInstall.js` imports only `@effected/commands`, `effect`,
-`effect/unstable/process` and local modules (`WorkspaceDiscovery.js`,
-`PackageManagerName.js`, `internal/packedInstallPlan.js`), all of which `.`
-already loads, so D5's "a consumer that only needs the pure check must not pay
-to load `PackedInstall`" is honoured at the `.`/`./testing` boundary rather
-than inside `./testing`.
+`PackedInstall.js` imports `@effected/commands`, `effect`,
+`effect/unstable/process` and three local modules. The external imports,
+`WorkspaceDiscovery.js` and `PackageManagerName.js` are already loaded by `.`;
+`internal/packedInstallPlan.js` is `./testing`-only, and
+`__test__/entrypoints.test.ts` asserts `.` never reaches it. So D5's "a
+consumer that only needs the pure check must not pay to load `PackedInstall`"
+is honoured at the `.`/`./testing` boundary rather than inside `./testing`.
 
 ### Spec amendments (phase 3)
 

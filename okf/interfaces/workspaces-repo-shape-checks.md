@@ -42,8 +42,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T01:41:28Z
-  body_sha256: 52f027ceeaff5220d76044284f794dfc162354ebde471f509577d4a842c5290b
+  at: 2026-09-24T01:49:30Z
+  body_sha256: 90c5e2bbafa1a07e7b73b130f39b1645d65fcc61bdbff738f5ad55fabc69841e
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -95,7 +95,7 @@ quote, or a division read as a regex, would swallow the rest of the line.
 
 | Never counted | Always counted |
 | --- | --- |
-| a string, template text, a regex body or a comment | `globalThis.process` and `global.process` |
+| a string, template text, a regex body or a comment | `globalThis.process`, `global.process`, `window.process` and `self.process` |
 | a member of another object: `child.process` | a spread: `...process` |
 | a longer identifier: `ChildProcess` | `typeof process` |
 | a private field: `#process` | computed access: `process["env"]` |
@@ -122,8 +122,9 @@ a local `console` to core's `Console` service
 (`CliLogger.ts:104`),[^cli-logger-ts] and `console-write` flags it. The fix is
 an `allow` glob for that one file. `cli`'s own boundary test proves the
 allowance is both needed and the only one: an unallowed scan finds offences
-in `CliLogger.ts` and nowhere else. A class field named `process` is flagged
-for the same reason.
+in `CliLogger.ts` and nowhere else. An unannotated class field named
+`process` (`class A { process = 1 }`) is flagged for the same reason; an
+annotated one (`process: string`) reads as a type member and is not.
 
 ### `scan` and its non-vacuity handles
 
@@ -265,7 +266,7 @@ hand-rolling this check; the pure half lives in
 | Outside the repo, corepack falls back to whatever it cached last | `packageManager` is pinned to the probed `<pm>@<version>` | systems (lines 139-142) |
 | pnpm 12 fails an install that ignored a dependency build script | pnpm installs with `--config.ignore-scripts=true` | systems (lines 56-68) |
 | A repo's `packageManager` pin makes corepack refuse any other manager inside it | each manager is probed with `--version` from the scratch directory | vitest-agent (lines 119-128) |
-| pnpm 12 only **warns** on a mismatched `packageManager` pin; it neither refuses nor switches | the no-switch property is proven by version equality: `<pm> --version` inside the consumer must equal the probed version | this package's e2e[^packed-install-e2e] |
+| pnpm 12 only **warns** on a mismatched `packageManager` pin; it neither refuses nor switches | `PackedInstall` does not check this. To prove no switch happened, assert in your own test that `<pm> --version` run inside the consumer equals `consumer.managerVersion` | this package's e2e, which makes that assertion[^packed-install-e2e] |
 
 User-level configuration is inherited by design. `HOME` stays, so each
 manager still reads the user's registry, auth and proxy settings, as a real
@@ -278,7 +279,7 @@ dependencies: `dependencies`, `optionalDependencies` and `peerDependencies`,
 never `devDependencies`.[^packed-install-plan-ts]
 
 `packFrom` defaults to `{ directory: "dist/prod/npm/pkg" }`, which `npm pack`s
-the effected bundler's prod output: byte-for-byte the artifact a release
+the effected bundler's prod output: the same file list a release
 publishes. `"source"` runs `pnpm pack` in the package directory instead. That
 packs whatever `publishConfig.directory` names, which under the effected
 bundler is the **dev** build, and it needs a workspace that has been
