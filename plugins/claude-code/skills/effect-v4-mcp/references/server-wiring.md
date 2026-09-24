@@ -2,7 +2,7 @@
 
 Loaded from `effect-v4-mcp`. Covers the complete `main.ts`, why `Stdio` is provided at the edge, `McpStdio`'s three pieces, protocol ordering, crash guards, and resolving a launched project directory.
 
-## The complete `main.ts` {#main-ts}
+## The complete `main.ts`
 
 ~~~ts
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp"
@@ -66,10 +66,97 @@ internally would win over the harness's and talk to the real terminal.
   `Layer.provideMerge` is not provided *by* it, so that sibling's own build
   still logs through the default logger, which lands on stdout when nothing
   else has set `LogToStderr`.
-- A malformed `protocols` list — an empty array, or more than one stateless
-  adapter — is the implementer's own defect: `Layer.orDie` turns the
-  `IllegalArgumentError` core would otherwise raise into a die, since there
-  is no way to recover from a static configuration mistake at runtime.
+- A malformed `protocols` list — more than one stateless adapter — is the
+  implementer's own defect: `Layer.orDie` turns the `IllegalArgumentError`
+  core would otherwise raise into a die, since there is no way to recover
+  from a static configuration mistake at runtime. `protocols` is typed
+  `NonEmptyReadonlyArray`, so an empty list is a compile error, not a
+  runtime one.
+
+### Stdin guard
+
+Core's own stdio decoder (`RpcSerialization.makeNdjson`) runs `JSON.parse`
+on each line inside its read loop and throws before it trims the consumed
+line from its buffer. A line that is not JSON therefore stays at the head of
+that buffer forever: every later chunk re-throws on the same line, the
+server never answers another request, and stdin EOF still exits `0` — a
+silent hang, not a crash. A blank line does the same (`JSON.parse("")`
+throws), and so does a U+FEFF opening any line but the first, since core's
+streaming decoder strips a byte-order mark only at the very start of the
+stream. A line over the 16 Mi-UTF-16-code-unit cap fails differently but no
+better: `failMaxBufferSize` clears the buffer before throwing, so the rest of
+that line arrives as an unanswered fresh line and the client never gets a
+reply either way.
+
+`McpStdio.layer` provides the server a `Stdio` (`src/internal/StdinFrames.ts`)
+that frames stdin exactly as core's decoder does — one streaming UTF-8
+decoder, the same BOM-at-stream-start rule, the same 16 Mi-code-unit cap —
+and answers every line core would choke on itself, on `stdout`, before core
+ever sees it:
+
+- a non-JSON or over-cap line gets `{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}`,
+  the over-cap case answered once, as soon as the held text passes the cap,
+  discarding the rest of that line up to its newline;
+- a line of JSON whitespace is dropped, not answered;
+- valid JSON that is not a JSON-RPC message — `null`, for instance — still
+  reaches core, which logs an error and re-subscribes to stdin; any other
+  already-parsed frame from that same read still in core's decode batch is
+  lost with it, so a client that pipelines several requests in one write
+  should keep at most one JSON value per line that could ever be `null`.
+
+The guard's own state — the held partial line — lives once per `Stdio`, not
+per subscription, so it survives core's re-subscription after a decode
+failure. Hand-wiring `McpServer.layerStdio` directly, without
+`McpStdio.layer`, skips all of this and wedges on the first bad line.
+
+~~~ts
+import { unlinkSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { McpProcess } from "@effected/mcp/testing"
+import { Effect } from "effect"
+import { ChildProcess } from "effect/unstable/process"
+
+// A minimal server, written to disk so it can be spawned as a real process —
+// the guard only matters over a real pipe, not the in-process test harness.
+const serverFile = join(import.meta.dirname, "mcp-guard-demo-server.mjs")
+writeFileSync(
+  serverFile,
+  `
+import { McpStdio, McpToolkit } from "@effected/mcp"
+import { NodeRuntime, NodeStdio } from "@effect/platform-node"
+import { Effect, Layer } from "effect"
+import { Tool, Toolkit } from "effect/unstable/ai"
+
+const Ping = Tool.make("ping", { description: "Liveness check.", parameters: Tool.EmptyParams })
+const Tools = Toolkit.make(Ping)
+const Handlers = Tools.toLayer({ ping: () => Effect.void })
+const Main = McpToolkit.layer(Tools).pipe(
+  Layer.provide(Handlers),
+  Layer.provideMerge(McpStdio.layer({ name: "guard-demo", version: "0.0.0" })),
+  Layer.provide(NodeStdio.layer),
+)
+
+NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown })
+`,
+)
+
+const program = Effect.gen(function* () {
+  const server = yield* McpProcess.spawn(ChildProcess.make(process.execPath, [serverFile]))
+  yield* server.handshake()
+  // A bad line and a good one, written in the same chunk.
+  yield* server.sendRaw('not json\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n')
+  const { response, seen } = yield* server.readUntilResponse(2)
+  console.log("answered the bad line itself:", seen.some((f) => (f as { id: unknown }).id === null))
+  console.log("kept serving after it:", Array.isArray((response.result as { tools: unknown }).tools))
+}).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.timeout("5 seconds"))
+
+await Effect.runPromise(program).finally(() => unlinkSync(serverFile))
+~~~
+
+Prints `answered the bad line itself: true` and `kept serving after it:
+true` — the malformed line got its own `-32700` reply and the server never
+wedged.
 
 ## `McpStdio.launch`
 
@@ -100,19 +187,44 @@ cause — the same code as a killed process, for what is actually a clean
 client disconnect. `McpStdio.teardown` maps a success or an interrupt-only
 exit to `0`; everything else still goes to `Runtime.defaultTeardown`.
 
-Evidence: the `#main-ts` snippet above, run with stdin `/dev/null`, exits `0`
-with empty stdout — closing stdin immediately reproduces the EOF a real
-client's disconnect produces.
+`SIGINT` and `SIGTERM` land the same way: `runMain` interrupts the main
+fiber on either signal too, so a killed server also produces an
+interrupt-only exit and reports `0` under `McpStdio.teardown`, not the
+signal's own exit code.
 
-## Protocol ordering {#protocols}
+Evidence: the complete `main.ts` snippet above, run with stdin `/dev/null`,
+exits `0` with empty stdout — closing stdin immediately reproduces the EOF a
+real client's disconnect produces.
+
+Closing stdin while a request is still in flight drops that response
+silently, in either direction: `McpProcess.closeStdin` and `McpHarness.close`
+are both `Queue.end`, never `Queue.shutdown`, precisely so every frame
+already sent is delivered first — but that only protects frames already
+*written*, not a response still in flight when stdin ends. Read the
+response before closing stdin, both in a hand-rolled test client and in
+production usage of a spawned server.
+
+## Protocol ordering
 
 `McpStdio.protocols` is `[McpProtocol.v2026_07_28, v2025_11_25, v2025_06_18]`
 — the stateless revision first, then the two newest stateful ones. The order
-is load-bearing, not cosmetic:
+is load-bearing, not cosmetic, but it decides less than it looks like it
+does: a request carrying `_meta` — `server/discover` included — is matched
+against whichever adapter in the list recognizes it, in either order. What
+the order actually decides is the **fallback** for a request with neither a
+session nor `_meta`:
 
-- **Stateless first.** A request that carries no session and no `_meta`
-  falls to `protocols[0]`, so the stateless adapter has to be first for a
-  client that never sends `initialize` to be recognized at all.
+- **Stateless first** (the shipped order) answers that fallback case with
+  `-32602 Invalid request metadata` from the stateless adapter.
+- **Stateful first** answers it with `-32601` (method not found) for
+  `server/discover` and `-32603` (internal error) for `tools/list`, since
+  the stateful adapter tries to resolve a session that was never
+  established.
+
+Keep the stateless adapter first for the more specific, more diagnosable
+error on that fallback path — not because ordering is required for a
+`_meta`-carrying `server/discover` to be recognized at all.
+
 - **Never reduce the list to one entry.** `initialize` only matches a
   *stateful* adapter — a stateless-only list refuses every client that opens
   with `initialize` instead of `server/discover`.
@@ -133,15 +245,20 @@ Capabilities are derived from what is actually registered (the tools and
 resources on the server), never hand-declared separately from the
 registration that would make them true.
 
-## Crash guards {#crash-guards}
+## Crash guards
 
-A throw during evaluation of the server graph itself — a `Toolkit.make` call
-that throws building a schema, a dynamic import that rejects — must still be
-reported, which only works if the process-level guards are registered
-**before** anything that could throw is even imported. A static `import` at
-the top of the file runs before any code in the file does, including a guard
-registration a few lines down — so the guards have to go first, and
-everything that follows has to be a dynamic `import()`.
+Node already exits `1` on its own for an uncaught exception or an unhandled
+rejection with no listener — the guards below do not buy survival by
+themselves, they buy a **custom** handler (a prefix on the message, a
+process-specific policy) being in place in time to run before Node's default
+behaviour does. That timing is the actual reason for the awkward shape: a
+throw during evaluation of the server graph itself — a `Toolkit.make` call
+that throws building a schema, a dynamic import that rejects — has to reach
+*this* handler, not Node's default one, which only works if the guards are
+registered **before** anything that could throw is even imported. A static
+`import` at the top of the file runs before any code in the file does,
+including a guard registration a few lines down — so the guards have to go
+first, and everything that follows has to be a dynamic `import()`.
 
 ~~~ts
 process.on("uncaughtException", (error) => {
@@ -171,23 +288,39 @@ NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown })
 
 This skeleton is the **exit-always** policy: any uncaught exception or
 unhandled rejection, at any point in the process's life, logs and exits `1`.
-The other shipped policy is **survive-once-connected**: set a boolean flag
-once the whole server layer graph has finished building (a small
-`Layer.effectDiscard` tapped onto `Main` runs strictly after it, since
-`Layer.provide` builds its dependency to completion before the dependent),
-and make the `uncaughtException` handler exit only when that flag is still
-`false` — logging and staying alive once the transport is connected.
 
-Choose **exit-always** when the server reloads its state fresh on every
-call and holds nothing worth preserving mid-session — a clean restart loses
-nothing, and refusing to guess about a corrupted process is the safer
-default. Choose **survive-once-connected** when the server holds long-lived,
-session-bound state (an open database transaction, an in-memory session
-object) that a hard exit would corrupt or silently drop for a client with no
-in-flight caller waiting on the failure — logging and continuing carries
-less risk than dying mid-session once the transport is already live.
+The other shipped policy is **survive-once-connected**, and it is not about
+whether the server holds session-bound state *worth preserving* — it is
+about whether any in-process mutable state *could be left half-written*.
+Node's own guidance for `uncaughtException` is "do not resume normal
+operation", because arbitrary in-process state may be corrupt; a server that
+genuinely holds none — every call is a self-contained transaction against an
+external store, nothing shared mutates across calls — can accept that
+residual risk once a client is already relying on it, because the
+alternative (silent process death mid-session, deregistering every tool from
+that client) is strictly worse. Three parts, not one flag:
 
-## Resolving the launched project directory {#project-directory}
+- **`unhandledRejection` never exits.** Anything reaching this handler
+  originated outside a tool-call boundary (every in-flight call's own
+  rejection is already caught) and has no caller waiting on it, so logging
+  and continuing is safe regardless of connection state.
+- **`uncaughtException` exits before the transport connects, and survives
+  after.** Set a boolean flag once the whole server layer graph has finished
+  building (a small `Layer.effectDiscard` tapped onto `Main` runs strictly
+  after it, since `Layer.provide` builds its dependency to completion before
+  the dependent) and exit only while that flag is still `false`.
+- **A `try`/`catch` around every startup `await` exits `1` on its own.**
+  Without it, a rejection before `runMain` owns the process — a dynamic
+  import failing to resolve, the layer graph refusing to build — drains to
+  the `unhandledRejection` handler above, which never exits: the process
+  idles at exit `0` with no server actually listening, silently.
+
+Choose **exit-always** when there is no such state to protect at all, and
+refusing to guess about a corrupted process is the simpler default. Choose
+**survive-once-connected**, with all three parts above, only once the
+in-process-mutable-state condition is actually true.
+
+## Project directory
 
 Resolve a project directory once, in `main.ts`, from caller-supplied
 `argv`/`env`/`cwd` — never by reading `process` anywhere else in the server:
@@ -219,24 +352,19 @@ entry and finally to `cwd`, rather than resolving to the literal string
 
 ## Resources
 
+A future reference (`resources.md`) will cover resource wiring in the same
+depth as tools; this section is a pointer to the wire-safe subset until then.
+
 `McpServer.resource({ uri, name, description, mimeType, content })` returns
-a `Layer`. `content` must be an `Effect` producing a **whole**
-`ReadResourceResult` — `{ contents: [{ uri, mimeType, text }] }` — not a bare
-string: a bare string loses `mimeType` on the read itself, even though the
-declared `mimeType` still appears correctly in `resources/list`. A resource
-read failure is `new McpSchema.InternalError({ message })`.
+a `Layer`. `content` can be a bare string or a **whole**
+`ReadResourceResult` — `{ contents: [{ uri, mimeType, text }] }`. Prefer the
+whole shape: a bare string loses `mimeType` on the read itself, even though
+the declared `mimeType` still appears correctly in `resources/list`. A
+resource read failure is `new McpSchema.InternalError({ message })`.
 
 A dynamic resource set (one entry per item in a collection loaded at boot)
 is built as `Layer.unwrap(Effect.gen(...))`, loading the collection once and
 reduce-merging one `McpServer.resource` layer per item from `Layer.empty`;
 on a load failure, `tapError(Effect.logError)` then `orElseSucceed(() =>
 Layer.empty)` so the rest of the server — its tools included — still comes
-up even when the resource collection itself failed to load. This is also
-why resources use one static layer per item rather than a single URI
-**template**: a template variable such as `{id}` cannot span a `/`
-(core's router is `FindMyWay`, `unstable/ai/McpServer.ts:36`), so an id
-containing a slash has no way to reach a templated resource.
-
-Closing stdin while a request is still in flight drops that response
-silently — read the response before closing stdin, both in a hand-rolled
-test client and in production usage of a spawned server.
+up even when the resource collection itself failed to load.

@@ -34,15 +34,15 @@ clients.
 
 ## Footguns
 
-- `runMain`'s own failure report runs outside anything the program provides and lands on stdout, the wire — see `server-wiring.md`.
-- Stdin EOF interrupts the main fiber; the default teardown exits `130` — see `server-wiring.md`.
-- A declared failure reaches the agent as message text only, never `structuredContent` — see `tools.md`.
-- `InvalidParams` is a JSON-RPC error on some protocol revisions and an `isError` tool result on others — see `tools.md`.
-- A top-level union `parameters` schema dies the server at boot, not at the first call — see `tools.md`.
-- `Schema.Struct({})` is not `Tool.EmptyParams` — it fails server registration outright — see `tools.md`.
-- Closing stdin with a request in flight drops that response — see `server-wiring.md`.
-- A resource URI template cannot span `/` — see `server-wiring.md`.
-- A bare-string resource `content` loses its `mimeType` — see `server-wiring.md`.
+- Hand-wiring `McpServer.layerStdio` without `McpStdio.layer` wedges on one bad line: core's stdio decoder throws on a non-JSON line and never trims it, so every later chunk re-throws and the server stops answering while stdin EOF still exits `0` — see [The stdin guard](./references/server-wiring.md#stdin-guard).
+- `runMain`'s own failure report runs outside anything the program provides and lands on stdout, the wire — see [`McpStdio.launch`](./references/server-wiring.md).
+- Stdin EOF interrupts the main fiber; the default teardown exits `130` — see [`McpStdio.teardown`](./references/server-wiring.md).
+- A declared failure reaches the agent as message text only, never `structuredContent` — see [Failures on the wire](./references/tools.md#failures-on-the-wire).
+- `InvalidParams` moves to an `isError` tool result on the newer protocol revisions only for a known tool's own bad parameters — an unknown tool or non-object `arguments` stays a JSON-RPC error on every revision — see [Failures on the wire](./references/tools.md#failures-on-the-wire).
+- A top-level union `parameters` schema dies the server at registration, not at the first call — see [Failures on the wire](./references/tools.md#failures-on-the-wire).
+- `Schema.Struct({})` is not `Tool.EmptyParams` — it fails server registration outright — see [Defining a tool](./references/tools.md#defining-a-tool).
+- Closing stdin with a request in flight drops that response — see [`McpStdio.teardown`](./references/server-wiring.md).
+- A bare-string resource `content` loses its `mimeType` — see [Resources](./references/server-wiring.md).
 
 ## Additional resources
 

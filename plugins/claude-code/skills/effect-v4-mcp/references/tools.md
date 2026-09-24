@@ -2,7 +2,7 @@
 
 Loaded from `effect-v4-mcp`. Covers `Tool.make`, annotations, `Toolkit.toLayer`, strict-input reporting, what reaches the agent on failure, and the `ok: false` envelope recipe.
 
-## Defining a tool {#defining-a-tool}
+## Defining a tool
 
 `Tool.make(name, { description, parameters, success, failure, dependencies })`
 is the whole shape. `dependencies` is required the moment a handler yields a
@@ -27,7 +27,7 @@ path decodes the JSON Schema it generates for a tool's parameters against a
 fixed shape (`ToolJson`), `.orDie` on failure, and a zero-key struct produces
 a shape that decode rejects (`unstable/ai/McpServer.ts:1864-1866`, the same
 `orDie` that kills the server on a top-level union parameter — see
-`#failures-on-the-wire`). This is a **registration-time defect**, not a
+[Failures on the wire](#failures-on-the-wire)). This is a **registration-time defect**, not a
 runtime rejection by a client's own schema validator — the server never
 finishes coming up.
 
@@ -46,7 +46,7 @@ name. Keep handlers thin — parse and shape the call, then hand off to the
 engine that does the real work; a handler that grows business logic of its
 own is the tool boundary blurring into the engine it should be calling.
 
-## Strict input {#strict-input}
+## Strict input
 
 A tool annotated `Tool.Strict` true is served with `additionalProperties:
 false` on every object node and decoded with `onExcessProperty: "error"`
@@ -125,9 +125,9 @@ tool's raw JSON Schema is never decoded that way, so its handler is the only
 place left to check it — usually against the same schema rewritten with
 `ToolInputSchema.objectRooted`, since a dynamic tool with a raw top-level
 union needs that rewrite for the same registration-time reason a
-`Schema.Union` parameter does (see `#failures-on-the-wire`).
+`Schema.Union` parameter does (see [Failures on the wire](#failures-on-the-wire)).
 
-## Failures on the wire {#failures-on-the-wire}
+## Failures on the wire
 
 A tool call's result on success carries **both** shapes: `structuredContent`
 is the encoded success value, and `content[0].text` is that same value
@@ -192,15 +192,64 @@ ids first. Try list_things."}],"isError":true}` — no `structuredContent`,
 and the remediation only reached the agent because `ToolFailure.message`
 folded it into the text at construction. `ToolFailure.fields` (`{ message,
 remediation }`) spreads into the `Schema.TaggedError`; `ToolFailure.truncate`
-caps a caller-supplied value at `ECHO_LIMIT` (200 UTF-16 code units) before
-it is echoed back, or `ENGINE_ECHO_LIMIT` (2000) for a value the engine
-itself produced, such as a path.
+is `truncate(value, limit?)`: it caps at `ECHO_LIMIT` (200 UTF-16 code
+units) by default, never splitting a UTF-16 surrogate pair. Pass
+`ENGINE_ECHO_LIMIT` (2000) explicitly as `limit` for a value the engine
+itself produced, such as a path — the wider cap is not automatic, and a call
+that omits it gets `ECHO_LIMIT` regardless of where the value came from.
 
 `InvalidParams` (a parameter-validation failure) differs by protocol
-revision: on `2024-11-05`, `2025-03-26` and `2025-06-18` it is a JSON-RPC
-error, code `-32602`; on `2025-11-25` and the stateless `2026-07-28` it is
-an `isError: true` tool result instead. A test that checks only one of
-these shapes misses the other half of the matrix.
+revision, but only for a **known** tool's parameters: on `2024-11-05`,
+`2025-03-26` and `2025-06-18` it is a JSON-RPC error, code `-32602`; on
+`2025-11-25` and the stateless `2026-07-28` it is an `isError: true` tool
+result instead. An unknown tool name, or `arguments` that is not an object at
+all, stays a JSON-RPC `-32602` error on every revision — that path never
+reaches a tool's own parameter validation, so the later revisions have
+nothing to move to `isError`. A test that checks only one of these shapes,
+or asserts the newer revisions' `isError` move for every kind of invalid
+call rather than only a known tool's bad parameters, misses the other half
+of the matrix.
+
+~~~ts
+import { McpStdio, McpToolkit } from "@effected/mcp"
+import { McpHarness } from "@effected/mcp/testing"
+import { Effect, Layer, Schema } from "effect"
+import { McpProtocol, Tool, Toolkit } from "effect/unstable/ai"
+
+const Echo = Tool.make("echo", { description: "Echo text back.", parameters: Schema.Struct({ text: Schema.String }) })
+const Tools = Toolkit.make(Echo)
+const Handlers = Tools.toLayer({ echo: ({ text }) => Effect.succeed({ text }) })
+const ServerLayer = McpToolkit.layer(Tools).pipe(
+  Layer.provide(Handlers),
+  Layer.provideMerge(McpStdio.layer({ name: "invalid-params-demo", version: "0.0.0" })),
+)
+
+const runOn = (protocol: McpProtocol.ProtocolAdapter) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* McpHarness.make(ServerLayer, { protocol })
+      yield* harness.initialize
+      // A known tool ("echo") called with the wrong parameter type.
+      const badParams = yield* harness.callTool("echo", { text: 42 })
+      // An unknown tool name, on the same revision.
+      const unknownTool = yield* harness.callTool("no_such_tool", { text: "x" })
+      return {
+        protocol: protocol.protocolVersion,
+        badParams: badParams.error !== undefined ? `error ${(badParams.error as { code: number }).code}` : "isError",
+        unknownTool:
+          unknownTool.error !== undefined ? `error ${(unknownTool.error as { code: number }).code}` : "isError",
+      }
+    }),
+  )
+
+console.log(await Effect.runPromise(runOn(McpProtocol.v2025_06_18)))
+console.log(await Effect.runPromise(runOn(McpProtocol.v2025_11_25)))
+~~~
+
+Prints `{ protocol: '2025-06-18', badParams: 'error -32602', unknownTool:
+'error -32602' }` then `{ protocol: '2025-11-25', badParams: 'isError',
+unknownTool: 'error -32602' }` — only `badParams` moves between revisions;
+`unknownTool` stays a JSON-RPC error on both.
 
 An **undeclared** failure or a defect is logged on the server's own side and
 the client receives a scrubbed, generic internal-error text — deliberately
@@ -210,60 +259,103 @@ A top-level `Schema.Union` `parameters` schema dies the server at
 **registration**, the same way `Schema.Struct({})` does: `Tool.make`'s
 `parameters` has to resolve to an object schema for MCP's tool-JSON
 encoding, and the registration path's `orDie` decode
-(`unstable/ai/McpServer.ts:1864-1866`) kills the server before it ever binds
-a port or opens stdin. Design the tool with an object-rooted, field-discriminated
-shape from the start; for a `Tool.dynamic` tool whose raw JSON Schema is a
-union, rewrite it with `ToolInputSchema.objectRooted` before registering.
+(`unstable/ai/McpServer.ts:1864-1866`) kills the server layer while it is
+still building — a stdio server never even starts reading stdin, and a
+server exposed some other way never finishes coming up either. Design the
+tool with an object-rooted, field-discriminated shape from the start; for a
+`Tool.dynamic` tool whose raw JSON Schema is a union, rewrite it with
+`ToolInputSchema.objectRooted` before registering.
 
-## The `ok: false` envelope {#ok-false-envelope}
+## The `ok: false` envelope
 
 When an agent needs **structured** remediation for an error it should
 handle programmatically — not just read as a sentence — put the expected
-domain errors inside the tool's own **success** union instead of its
-declared failure channel:
+domain errors inside the tool's own **success** schema instead of its
+declared failure channel. Root that schema in an object, not a top-level
+`Schema.Union`: a union root means `tools/list` serves **no**
+`outputSchema` at all, the same registration-shape rule as
+[Failures on the wire](#failures-on-the-wire)'s `Schema.Struct({})` and
+top-level-union cases, just for the success side instead of `parameters`. An
+`ok: Schema.Boolean` field with optional `value`/`error` fields keeps one
+object root while still discriminating:
 
 ~~~ts
-import { Effect, Schema } from "effect"
+import { Remediation } from "@effected/engine"
+import { McpStdio, McpToolkit } from "@effected/mcp"
+import { McpHarness } from "@effected/mcp/testing"
+import { Effect, Layer, Schema } from "effect"
+import { Tool, Toolkit } from "effect/unstable/ai"
 
-const Envelope = Schema.Union([
-  Schema.Struct({ ok: Schema.Literal(true), value: Schema.Struct({ name: Schema.String }) }),
-  Schema.Struct({
-    ok: Schema.Literal(false),
-    error: Schema.Struct({ _tag: Schema.String, message: Schema.String, remediation: Schema.String }),
-  }),
-])
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { id: Schema.String }) {}
 
-class NotFound {
-  readonly _tag = "NotFound"
-  constructor(readonly id: string) {}
-}
+const Envelope = Schema.Struct({
+  ok: Schema.Boolean,
+  value: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
+  error: Schema.optionalKey(
+    Schema.Struct({ _tag: Schema.Literal("NotFound"), message: Schema.String, remediation: Remediation }),
+  ),
+})
+
+const Lookup = Tool.make("lookup", {
+  description: "Look up a thing by id.",
+  parameters: Schema.Struct({ id: Schema.String }),
+  success: Envelope,
+})
 
 const lookup = (id: string): Effect.Effect<{ readonly name: string }, NotFound> =>
-  id === "known" ? Effect.succeed({ name: "a known thing" }) : Effect.fail(new NotFound(id))
+  id === "known" ? Effect.succeed({ name: "a known thing" }) : Effect.fail(new NotFound({ id }))
 
-const handler = (id: string) =>
-  lookup(id).pipe(
-    Effect.map((value) => ({ ok: true as const, value })),
-    Effect.catchTags({
-      NotFound: (error) =>
+const Tools = Toolkit.make(Lookup)
+const Handlers = Tools.toLayer({
+  lookup: ({ id }) =>
+    lookup(id).pipe(
+      Effect.map((value) => ({ ok: true as const, value })),
+      Effect.catchTag("NotFound", (error) =>
         Effect.succeed({
           ok: false as const,
-          error: { _tag: error._tag, message: `No thing "${error.id}".`, remediation: "List the ids first." },
+          error: {
+            _tag: "NotFound" as const,
+            message: `No thing "${error.id}".`,
+            remediation: { hint: "List the ids first.", suggestedTool: "list_things" },
+          },
         }),
-    }),
-  )
+      ),
+    ),
+})
 
-console.log(await Effect.runPromise(handler("missing")))
-console.log(Schema.is(Envelope)({ ok: false, error: { _tag: "NotFound", message: "x", remediation: "y" } }))
+const ServerLayer = McpToolkit.layer(Tools).pipe(
+  Layer.provide(Handlers),
+  Layer.provideMerge(McpStdio.layer({ name: "envelope-demo", version: "0.0.0" })),
+)
+
+const program = Effect.scoped(
+  Effect.gen(function* () {
+    const harness = yield* McpHarness.make(ServerLayer)
+    yield* harness.initialize
+    const [served] = yield* harness.listTools
+    console.log("outputSchema present:", served?.outputSchema !== undefined)
+    const call = yield* harness.callTool("lookup", { id: "missing" })
+    console.log(JSON.stringify(call.result))
+  }),
+)
+
+await Effect.runPromise(program)
 ~~~
 
-`Effect.catchTags` turns each expected domain error into a **success**
-value the agent sees as `structuredContent`, not `content[0].text` alone —
-an agent driving structured logic off the result gets a typed field to
-branch on instead of parsing a sentence. The trade-off: the success schema
-now has to describe both the `ok: true` and `ok: false` shapes, and grows
-with every domain error a caller is expected to handle programmatically.
-Keep genuinely unexpected failures — the ones no caller should special-case
-— as `Error`-instance declared failures instead of folding everything into
-this union; that keeps the envelope's growth proportional to what an agent
-actually needs to branch on.
+Prints `outputSchema present: true`, then a result whose
+`structuredContent` is the whole `{"ok":false,"error":{...}}` envelope,
+`Remediation`'s own `hint`/`suggestedTool` fields included, and `isError`
+`false` — the failure never left the success channel, so it is data the
+agent can branch on, not text it has to parse. `Effect.catchTag` (or
+`Effect.catchTags` for more than one expected error) turns each expected
+domain error into that success value. `Remediation` (`@effected/engine`) is
+the same shape `ToolFailure` folds into a declared failure's message — reuse
+it here instead of a hand-rolled `remediation: Schema.String`, since an
+agent reading `structuredContent` benefits from the same `suggestedTool`/
+`suggestedArgs` structure either channel would otherwise duplicate. The
+trade-off: the success schema now has to describe both the "ok true" and
+"ok false" shapes, and grows with every domain error a caller is expected to
+handle programmatically. Keep genuinely unexpected failures — the ones no
+caller should special-case — as `Error`-instance declared failures instead
+of folding everything into this envelope; that keeps its growth
+proportional to what an agent actually needs to branch on.
