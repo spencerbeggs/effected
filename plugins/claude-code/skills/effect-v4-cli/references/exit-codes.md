@@ -14,9 +14,9 @@ Everything follows from that one fact:
 something invalid". The full `CliError` union is nine members
 (`CliError.ts:74`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
 `MissingArgument`, `UnexpectedArgument`, `InvalidValue`, `UnknownSubcommand`,
-`ShowHelp`, `UserError`. An exhaustive `catchTags` or `Match` that omits
-`UnexpectedArgument` will not compile — and one written before it existed is
-exactly the shape that breaks on a beta advance.
+`ShowHelp`, `UserError`. An exhaustive `catchTags` or `Match` that omits any
+one of these nine will not compile — write the exhaustive check against the
+full union rather than a partial list assembled from memory.
 
 ~~~ts
 import { Effect } from "effect"
@@ -103,7 +103,7 @@ Running this prints nothing and exits `2`.
 | `130` | interrupt — the default teardown maps an interrupt-only cause to `130` before any error-exit-code logic runs |
 | the `exitCode` fallback (default `1`) | any other failure that carries no `Runtime.errorExitCode` of its own |
 | an error's own `Runtime.errorExitCode` | always wins over both fallbacks — see below |
-| 1–3 | not reserved by the kit; a consumer's own taxonomy (infrastructure vs. conformance vs. lint, say) |
+| 2, 3 | not reserved by the kit; a consumer's own taxonomy (conformance vs. lint, say) — `1` is already the kit's own `exitCode` fallback, above, not a free code to repurpose |
 
 ## Findings exit non-zero by succeeding, never by failing
 

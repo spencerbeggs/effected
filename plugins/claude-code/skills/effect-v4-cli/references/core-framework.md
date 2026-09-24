@@ -35,7 +35,7 @@ expensive misread. The roster:
 
 | kind | constructors |
 | --- | --- |
-| `Flag` / `Argument` | `String`, `Int`, `Finite`, `Literals(["a", "b"])`, `ChoiceWithValue`, `Never`, `Boolean`\*, `Date`\*, `Path`, `File`, `Directory`, `Redacted`, `FileText`\*, `FileParse`\*, `FileSchema`\*, `KeyValuePair`\* (\* `Flag` only) |
+| `Flag` / `Argument` | `String`, `Int`, `Finite`, `Literals(["a", "b"])`, `ChoiceWithValue`, `Never`, `Boolean`\*, `Date`, `Path`, `File`, `Directory`, `Redacted`, `FileText`, `FileParse`, `FileSchema`, `KeyValuePair`\* (\* `Flag` only) |
 | `Prompt` | `String`, `Int`, `Number`, `Confirm`, `Date`, `File`, `Hidden`, `List`, `Password`, `Select`, `MultiSelect`, `AutoComplete`, `Toggle` |
 | `GlobalFlag` | `Action`, `Setting` |
 | `Primitive` | `Choice`, `Never`, `isTrueLiteral`, `isFalseLiteral` |

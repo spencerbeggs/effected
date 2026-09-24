@@ -54,22 +54,35 @@ Prints `[ 'layer built for config.json', 'handler ran' ]` — the layer-build
 side effect always precedes the handler's, even though nothing at the call
 site suggests an ordering.
 
-## `Flag.File(name, { mustExist: true })` fails at parse time — exit 64, not your infrastructure code
+## `Flag.File(name, { mustExist: true })` fails at parse time — exit 64 only under `CliRuntime.main`
 
 The existence check runs inside the primitive's own parser
 (`unstable/cli/Primitive.ts:498`), before any handler sees the value. A
 failure there does not reach the handler as a domain error: `Command.runWith`
 wraps every parse failure in a `CliError.ShowHelp`, which reports as a usage
-error (exit `64`) — wrong for a `--config` whose *absence* is meant to be an
-infrastructure error your own code decides how to report.
+error — wrong for a `--config` whose *absence* is meant to be an
+infrastructure error your own code decides how to report. **The `64` itself
+is `@effected/cli`'s doing, not core's**: `CliError.ShowHelp` carries its own
+default `Runtime.errorExitCode` of `1` when it has errors (`0` when it does
+not); only `CliRuntime.main`'s `reportFailures` remaps an errors-carrying
+`ShowHelp` to `usageExitCode` (`64` by default). A bare `Command.run`/`runWith`
+under `NodeRuntime.runMain`, with no `CliRuntime.main` in between, exits `1`
+for the same failure.
+
+The demo below uses `@effected/memfs`, seeded with exactly one file, so the
+check discriminates a real existing path from a missing one — a
+`FileSystem.layerNoop({})` stub answers `exists` `false` unconditionally
+(its documented default), so a demo built on it would show the same failure
+for *any* path, existing or not, and prove nothing about the check itself:
 
 ~~~ts
-import { Effect, FileSystem, Layer, Path, Stdio, Terminal } from "effect"
+import { MemoryFileSystem } from "@effected/memfs"
+import { Effect, Layer, Path, Stdio, Terminal } from "effect"
 import { CliError, Command, Flag } from "effect/unstable/cli"
 import { ChildProcessSpawner } from "effect/unstable/process"
 
 const CliTestLayer = Layer.mergeAll(
-  FileSystem.layerNoop({}),
+  MemoryFileSystem.layerWith({ "/config.toml": "port = 8080\n" }),
   Path.layer,
   Stdio.layerTest({}),
   Layer.succeed(
@@ -87,21 +100,22 @@ const CliTestLayer = Layer.mergeAll(
 
 const demo = Command.make("demo", { config: Flag.File("config", { mustExist: true }) }, () => Effect.void)
 
-const error = await Effect.runPromise(
-  Command.runWith(demo, { version: "1.0.0", renderErrors: false })(["--config", "/does/not/exist.toml"]).pipe(
-    Effect.provide(CliTestLayer),
-    Effect.flip,
-  ),
-)
+const run = (args: ReadonlyArray<string>) =>
+  Command.runWith(demo, { version: "1.0.0", renderErrors: false })(args).pipe(Effect.provide(CliTestLayer))
 
-console.log(CliError.isCliError(error) && error._tag, (error as CliError.ShowHelp).errors[0]?._tag)
+await Effect.runPromise(run(["--config", "/config.toml"]))
+console.log("existing file: command ran")
+
+const error = await Effect.runPromise(run(["--config", "/missing.toml"]).pipe(Effect.flip))
+console.log("missing file:", CliError.isCliError(error) && error._tag, (error as CliError.ShowHelp).errors[0]?._tag)
 ~~~
 
 `Command.runWith` always renders the help document for a `ShowHelp`, even with
 `renderErrors: false` (that option only controls the *extra* parse-error and
-`UserError` detail); the last line this prints is `ShowHelp InvalidValue` — a
-usage error, never a value the handler gets a chance to inspect or report
-itself.
+`UserError` detail); the seeded `/config.toml` runs the handler and prints
+nothing beyond `existing file: command ran`, while `/missing.toml` prints the
+full help document (the last line is `ShowHelp InvalidValue`) — a usage
+error, never a value the handler gets a chance to inspect or report itself.
 
 ## Two optional positionals bind in declaration order
 
@@ -215,12 +229,16 @@ The primitive resolves a non-absolute value with `path.resolve(value)`
 the moment the argument is parsed, not when the handler later reads it. A
 handler that expects the raw string it was passed, or that resolves relative
 to a directory the user supplied elsewhere, gets a different path than it
-asked for.
+asked for. `Flag.Path`, `Flag.File` and `Flag.Directory` share this exact
+behavior with `Argument.Path` — both kinds route through the same
+`Param.Path`/`Primitive.Path`, so the trap is not `Argument`-specific.
 
-## The built-in global flags are always inherited
+## The built-in global flags are on by default, program-wide, not per command
 
 `--help`, `--version`, `--wizard`, `--completions` and `--log-level`
 (`unstable/cli/GlobalFlag.ts:156,179,202,222,249`) are registered on every
-command tree, not opt-in per command — a subcommand cannot "not have"
-`--help`, and a flag or argument named the same as one of these collides with
-a global, not a local, definition.
+command tree by default — a subcommand cannot "not have" `--help` on its own.
+Trim them program-wide with `CliConfig.layer({ builtIns: [] })`
+(`unstable/cli/CliConfig.ts`), read by `Command.runWith` when it collects the
+active flag set (`Command.ts:1856`) — there is no per-command opt-out, only
+this one program-wide switch.

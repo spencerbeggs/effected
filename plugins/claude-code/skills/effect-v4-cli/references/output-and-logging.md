@@ -44,13 +44,17 @@ Implementation facts worth knowing even if you write your own:
   "All"`), so stdout carries only what the program writes with `Console.log` —
   a `--format=json` document stays clean of warnings. Write program output with
   `Console.log`, never `Effect.log`: every `Effect.log*` call is a diagnostic.
-  Pass `CliLogger.layer({ stderrFrom: "Error" })` to restore the old split,
+  Pass `CliLogger.layer({ stderrFrom: "Error" })` for the alternative split,
   where `Info`/`Warning` go to stdout as program output — right only for a tool
   whose output *is* its log lines.
 - **`Command.runWith` renders a `CliError.UserError` itself** — through the
   `CliOutput` formatter, on stderr — then re-fails with it, so
   `CliRuntime.reportFailures` and `CliRuntime.main` skip it (and exit with the
-  usage code, `64` by default) rather than printing it a second time.
+  usage code, `64` by default) rather than printing it a second time. A
+  `CliError.UserError` marked at the throw site with `CliRuntime.reported`
+  (never printed by `Command.runWith` at all) is skipped by the same check —
+  `reportFailures` only tests the tag and the mark, so it cannot tell one a
+  handler reported itself from one `Command.runWith` already printed.
 - **Exit code and duplicate-report suppression are markers on the error**, read
   off the squashed failure: `Runtime.errorExitCode` and `Runtime.errorReported`.
   Beware the polarity — **`errorReported: false` is what SUPPRESSES** the
@@ -58,11 +62,12 @@ Implementation facts worth knowing even if you write your own:
   `true` and it logs. The intuitive `true` produces exactly the double report
   you were trying to avoid.
 
-`reportFailures` never renders a `ShowHelp` or the `CliExit` findings
-sentinel — both already said everything there is to say — but it still
-renders any other error whose `errorReported` mark is `false`, such as one
-`CliRuntime.reported` marked at the throw site: the mark means "don't report
-this the way the runtime normally would," not "never render it here."
+`reportFailures` never renders a `ShowHelp`, the `CliExit` findings sentinel,
+or a `CliError.UserError` marked with `reported: false` — but it still
+renders any OTHER error whose `errorReported` mark is `false`, such as a
+domain error `CliRuntime.reported` marked at the throw site: the mark means
+"don't report this the way the runtime normally would," not "never render
+it here." Only those three tag/mark combinations are skipped outright.
 
 ## The stdout/stderr split and message conventions
 

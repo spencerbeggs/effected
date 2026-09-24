@@ -1,7 +1,7 @@
 ---
 name: effect-v4-cli
 description: Use when building or reviewing a command-line program on Effect v4 — effect/unstable/cli in core, its exit-code contract, and the @effected/cli boundary that keeps stdout clean and failures on stderr.
-when_to_use: effect/unstable/cli, Command, Flag, Argument, @effect/cli, exit code, usage error, --format json, stdout vs stderr, CliLogger, CliRuntime, NO_COLOR, bin-only package, emitDts false, Command.Environment, ChildProcess vs Command
+when_to_use: effect/unstable/cli, Command, Flag, Argument, @effect/cli, exit code, findings exit code, usage error, --format json, --version, stdout vs stderr, stdin, CliLogger, CliRuntime, CliExit, CliColor, CliTest, @effected/cli/testing, NO_COLOR, bin-only package, emitDts false, Command.Environment, ChildProcess vs Command
 ---
 
 # Effect v4 CLIs
@@ -47,12 +47,12 @@ gap core leaves open.
 - A no-match result must succeed; only a usage error may fail — see `exit-codes.md`.
 - `it.effect` starts `TestClock` at the epoch, and `TestConsole.logLines` accumulates across a whole test — see `testing-a-cli.md`.
 - `Command.provide` builds its layer before the handler runs — a handler cannot pre-flight the value the layer depends on — see `gotchas.md`.
-- `Flag.File(name, { mustExist: true })` fails at parse time (a usage error), not as your own infrastructure error — see `gotchas.md`.
+- `Flag.File(name, { mustExist: true })` fails at parse time (a usage error, exit `1` under a bare `runMain`, `64` under `CliRuntime.main`), not as your own infrastructure error — see `gotchas.md`.
 - Two optional positionals bind in declaration order — the first one gets a lone argument, not whichever one "makes sense" — see `gotchas.md`.
 - `Schema.decodeUnknownSync` in a handler throws a defect, invisible to `catchTag` — use `Schema.decodeUnknownEffect` — see `gotchas.md`.
 - `Runtime.getErrorExitCode` returns `1` for both "marked 1" and "unmarked" — test the marker with `Runtime.errorExitCode in error` — see `gotchas.md`.
-- `Argument.Path` resolves a relative value against the process's own cwd, at parse time — see `gotchas.md`.
-- The built-in global flags (`--help`, `--version`, `--wizard`, `--completions`, `--log-level`) are always inherited, not opt-in — see `gotchas.md`.
+- `Argument.Path` resolves a relative value against the process's own cwd, at parse time — `Flag.Path`/`File`/`Directory` share the same behavior — see `gotchas.md`.
+- The built-in global flags (`--help`, `--version`, `--wizard`, `--completions`, `--log-level`) are on by default, program-wide — trim them with `CliConfig.layer({ builtIns: [] })`, not per command — see `gotchas.md`.
 
 ## Additional resources
 
@@ -61,7 +61,7 @@ gap core leaves open.
 - [bin-only-package.md](./references/bin-only-package.md) — `emitDts: false`, the `exports: "./package.json"` shape, and why `Cannot merge zero API models` is not an extractor bug. Load when: building a package whose only surface is a `bin`.
 - [exit-codes.md](./references/exit-codes.md) — the exit-code contract, `CliRuntime.main`'s assembly order, the code table, and how a findings command exits non-zero by succeeding. Load when: deciding whether a code path should fail or succeed, assembling `main.ts`, or handling `CliError` exhaustively.
 - [testing-a-cli.md](./references/testing-a-cli.md) — the two false-green traps specific to testing a CLI, and `CliTest` for spawning a built bin hermetically. Load when: writing a test that asserts on CLI output, time-dependent behavior, or a real subprocess's exit code and streams.
-- [gotchas.md](./references/gotchas.md) — seven traps that pass a type-check and a casual run: `Command.provide`'s build order, `Flag.File`'s parse-time existence check, positional binding order, `decodeUnknownSync`'s defect, the exit-code marker, `Argument.Path` resolution, and the always-inherited global flags. Load when: a handler isn't seeing the value you expect, or an exit code doesn't match what the handler did.
+- [gotchas.md](./references/gotchas.md) — seven traps that pass a type-check and a casual run: `Command.provide`'s build order, `Flag.File`'s parse-time existence check, positional binding order, `decodeUnknownSync`'s defect, the exit-code marker, `Argument.Path`/`Flag.Path` resolution, and the on-by-default global flags. Load when: a handler isn't seeing the value you expect, or an exit code doesn't match what the handler did.
 - [recipes.md](./references/recipes.md) — patterns the kit deliberately does not package: the main-assembly file layout, the version constant and formatter, the JSON failure tap, reading stdin safely, process confinement, and an injectable clock. Load when: wiring up a new CLI front end from scratch.
 
 Anchors in this skill and its references cite the vendored tag at

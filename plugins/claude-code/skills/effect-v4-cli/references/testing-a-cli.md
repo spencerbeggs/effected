@@ -39,7 +39,7 @@ open pipe.
 
 Three traps this replaces:
 
-- A hand-rolled `child_process.spawnSync` that throws on a non-zero exit,
+- A hand-rolled `child_process.execFileSync` that throws on a non-zero exit,
   forcing every "the CLI should reject this" test into a `try`/`catch`.
 - A sandbox that leaks the host's `HOME` (or a `XDG_*` variable), so a test
   passes locally by reading the developer's real config and fails — or
