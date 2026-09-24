@@ -147,6 +147,9 @@ Available via the Skill tool (several also auto-load on trigger):
   scope/resources, forking, structural equality.
 - effect-v4-cli — the CLI framework is effect/unstable/cli in core.
   Command.Environment, tier impact, exit codes.
+- effect-v4-mcp — MCP servers on effect/unstable/ai: stdio wiring that keeps
+  stdout the wire, tools, failures an agent can read, resources, and the
+  in-process and spawned test clients.
 - effect-v4-observability — spans/logging/metrics; OTel composed at the edge,
   libraries telemetry-agnostic, named spans on public fallible boundaries only.
 - effect-v4-testing — @effect/vitest, it.effect, test layers, property tests,
