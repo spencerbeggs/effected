@@ -1,8 +1,9 @@
 /**
  * Repo-shape checks for a monorepo's own test suite: `SourceBoundary` keeps
  * `process`, `node:` imports and console writes out of modules meant to be
- * free of them, and `WorkspaceLayering` holds the package graph to a
- * committed `LayerPolicy`.
+ * free of them, `WorkspaceLayering` holds the package graph to a committed
+ * `LayerPolicy`, and `PackedInstall` proves a carrier's bins install from its
+ * packed tarballs under every available package manager.
  *
  * @remarks
  * A separate subpath, never re-exported from `.`, so the main entry's
@@ -20,6 +21,15 @@
 // service its layer requires, and WorkspacePackage's field and method types
 // (the second-published-entrypoint decision).
 export { LayerPolicy, LayerPolicyError } from "./LayerPolicy.js";
+export { PackageManagerName } from "./PackageManagerName.js";
+export {
+	InstalledConsumer,
+	type PackSource,
+	PackedInstall,
+	PackedInstallError,
+	type PackedInstallOptions,
+	PackedInstallResult,
+} from "./PackedInstall.js";
 export {
 	type BoundaryFixture,
 	type BoundaryRule,

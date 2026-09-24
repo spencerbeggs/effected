@@ -42,7 +42,14 @@ describe("entrypoint boundary", () => {
 	it("positive control: ./testing DOES reach its modules", () => {
 		const reachable = [...reachableFrom(resolve(SRC, "testing.ts"))];
 		assert.isAbove(reachable.length, 1, "the walker must actually resolve imports");
-		for (const module of ["SourceBoundary", "internal/sourceText", "LayerPolicy", "WorkspaceLayering"]) {
+		for (const module of [
+			"SourceBoundary",
+			"internal/sourceText",
+			"LayerPolicy",
+			"WorkspaceLayering",
+			"PackedInstall",
+			"internal/packedInstallPlan",
+		]) {
 			assert.isTrue(
 				reachable.some((file) => file.endsWith(`src/${module}.ts`)),
 				module,
