@@ -34,6 +34,7 @@ export {
 	type BoundaryFixture,
 	type BoundaryRule,
 	Offence,
+	type OffenceRule,
 	type ReferenceOptions,
 	type ScanOptions,
 	SourceBoundary,

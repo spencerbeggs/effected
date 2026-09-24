@@ -23,7 +23,7 @@ describe("engine purity", () => {
 							"process",
 							"node:process",
 							"stdout-write",
-							"console-write",
+							"console",
 							{ forbidImports: ["node:*", "@effect/platform*", "@effected/*"] },
 						],
 					});

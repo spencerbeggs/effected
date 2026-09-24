@@ -85,7 +85,7 @@ describe("@effected/workspaces, scanned by SourceBoundary", () => {
 							"process",
 							"node:process",
 							"stdout-write",
-							"console-write",
+							"console",
 							{ forbidImports: ["node:*", "@effect/platform*"] },
 						],
 					});

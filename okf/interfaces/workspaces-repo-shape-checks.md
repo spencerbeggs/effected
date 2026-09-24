@@ -30,6 +30,8 @@ sources:
     resource: ../../packages/npm/src/PackageTarball.ts
   - id: cli-logger-ts
     resource: ../../packages/cli/src/CliLogger.ts
+  - id: node-console
+    resource: https://nodejs.org/api/console.html
   - id: layers-json
     resource: ../../lib/configs/layers.json
   - id: vitest-agent-packed-install
@@ -42,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T02:19:03Z
-  body_sha256: e4d69209fb0018161c809dd8cfa774d63992ca3b716d2b14a65a172fbf991bce
+  at: 2026-09-24T08:04:45Z
+  body_sha256: c79581d8d9b376b4e12ab4e3213415940db09d99196f861a50c934564d507352
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -77,8 +79,8 @@ ways:[^source-text-ts]
   offset.
 
 Both text views keep the input's exact length and line breaks, so an offset
-in either one is an offset in the file. The `process`, `stdout-write` and
-`console-write` rules read `code`. The import rules read `literals`, but only
+in either one is an offset in the file. The `process`, `stdout-write`,
+`console` and `console-stdout` rules read `code`. The import rules read `literals`, but only
 the ones in specifier position: after `from` or `import`, or the whole first
 argument of `import(` or `require(`. A commented-out import is never a
 specifier.
@@ -121,20 +123,42 @@ The known misses:
   packages named like a built-in (`events`, `buffer`). The subpath ships no
   built-in list of its own, because one would drift with Node releases.
 
+### The console rules
+
+`"console"` flags every reference to the global `console`.
+`"console-stdout"` flags the same references except a member access to one
+of the methods Node's console writes to stderr: `error`, `warn`, `trace` and
+`assert`.[^source-boundary-ts] It suits a stdio server that keeps stdout for
+its protocol but may log to stderr. A bare or aliased reference
+(`const c = console`, `f(console)`, `console[m]`) is still flagged, because it
+can reach `log`. So is `console["error"]`, since the lexer blanks the string
+key. Neither rule flags core's `Console` service: `Console.Console` is a
+different identifier.
+
+The stderr list comes from Node's console documentation, which has `error`
+and `trace` print to stderr, `warn` as an alias of `error`, and `log` and
+`info` print to stdout. It names no stream for `assert`.[^node-console] A
+probe on Node 26 settled the rest: a
+`Console` built over two capturing streams sent `error`, `warn`, `trace` and a
+failing `assert` to stderr. It sent `log`, `info`, `debug`, `dir`, `dirxml`,
+`table`, `count`, `group`, `groupCollapsed` and `time` to stdout.
+
 ### No scope analysis
 
 The scanner cannot tell a local binding from the global. `cli`'s logger binds
 a local `console` to core's `Console` service
-(`CliLogger.ts:104`),[^cli-logger-ts] and `console-write` flags it. The fix is
-an `allow` glob for that one file. `cli`'s own boundary test proves the
-allowance is both needed and the only one: an unallowed scan finds offences
-in `CliLogger.ts` and nowhere else. The same holds for every local binding
+(`CliLogger.ts:104`),[^cli-logger-ts] and `console` flags it. The fix is an
+`allowRules` waiver of `console` for that one file. `cli`'s own boundary test
+proves the waiver is both needed and the only one: its scan reports no
+violations, and `waived` names `CliLogger.ts` under `console` and nothing
+else. The file is still held to every other rule. The same holds for every local binding
 named `process`: a parameter (`(process: Handle) => process.kill()`), a
 variable, a label, and an unannotated class field
 (`class A { process = 1 }`) are all flagged. An annotated class field
 (`process: string`) reads as a type member and is not. Code that handles
 child-process objects commonly names a parameter `process`. Renaming it is
-the better remedy, because an `allow` glob exempts the file from every rule.
+the better remedy; failing that, waive the one rule with `allowRules` rather
+than exempting the file from every rule with `allow`.
 
 ### `scan` and its non-vacuity handles
 
@@ -146,12 +170,24 @@ declaration files are skipped. Every path comes back relative to the root and
 against that same form. A missing root fails the scan; it never scans
 nothing.[^source-boundary-ts]
 
+Two kinds of exemption exist. An `allow` glob exempts a file from every rule.
+An `allowRules` glob, keyed by an `OffenceRule`, exempts a file from that one
+rule and leaves it checked against every other; the `"forbidImports"` key
+covers every `{ forbidImports }` rule. Both compile through the same
+`GlobSet` and match the same relative path, and an uncompilable glob of
+either kind fails the scan with `GlobPatternError`. A file `allow` matches is
+never checked, so nothing in it is waived.[^source-boundary-ts]
+
 A `SourceScan` carries `files` (every file read), `allowed` (the files an
-`allow` glob exempted) and `offences`. `violations` is `[]` when clean. The
-handles exist so a mistyped root cannot read as clean:
+`allow` glob exempted), `offences`, and `waived` (every offence an
+`allowRules` glob waived, sorted like `offences`). A waived offence is
+reported, never dropped. `violations` is `[]` when clean. The handles exist
+so a mistyped root, or a stale or over-broad exemption, cannot read as clean:
 
 - assert `files` names a real file, or at least is non-empty;
-- assert `allowed` is exactly the files you meant to exempt.
+- assert `allowed` is exactly the files you meant to exempt;
+- assert `waived` is exactly what you meant to waive. A waiver that no
+  longer waives anything, or waives more than intended, shows up here.
 
 ### `verifyFixtures`: the consumer's positive control
 
@@ -244,6 +280,13 @@ and it pins acyclicity across all four fields with a separate
 `WorkspaceDiscovery` always returns the root package, with `relativePath`
 `"."`. A policy that forgets it reports it in `unclassified`. Classify it,
 usually with an `unconstrained` glob.
+
+Every policy entry matches a package's `name`, never its
+`relativePath`.[^workspace-layering-ts] `layers` and `tooling` list exact names,
+and `unconstrained` globs match names. A private root named `okfit` at
+`relativePath` `"."` is classified by `"okfit"`, and an entry of `"."` or
+`"packages/*"` classifies nothing. `__test__/WorkspaceLayering.test.ts` pins
+both halves.
 
 ### The worked example
 
@@ -385,6 +428,8 @@ directory is removed when the scope closes.
     `LexedSource` and `lex`.
 [^cli-logger-ts]: `packages/cli/src/CliLogger.ts:104` — the local `console`
     binding.
+[^node-console]: <https://nodejs.org/api/console.html> — the global
+    console's methods and the streams they write to.
 [^layer-policy-ts]: `packages/workspaces/src/LayerPolicy.ts` — the policy
     schema and its field semantics.
 [^workspace-layering-ts]: `packages/workspaces/src/WorkspaceLayering.ts` —

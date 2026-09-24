@@ -32,16 +32,25 @@ describe("cli boundary", () => {
 		);
 
 		// CliLogger binds a LOCAL `console` to core's Console service
-		// (CliLogger.ts:104); the scanner has no scope analysis, so that one
-		// file is allowed, and the unallowed scan proves the allowance is both
-		// needed and the only one.
-		it.effect("only CliLogger.ts names console, and it is the only allowance", () =>
+		// (CliLogger.ts:104); the scanner has no scope analysis, so the console
+		// rule is waived for that one file. The waiver is visible in `waived`,
+		// which proves it is both needed and the only one, while every other
+		// rule still holds CliLogger.ts.
+		it.effect("only CliLogger.ts names console, and only the console rule is waived there", () =>
 			Effect.gen(function* () {
-				const unallowed = yield* SourceBoundary.scan({ root: SRC, rules: ["console-write"] });
-				assert.deepStrictEqual([...new Set(unallowed.offences.map((offence) => offence.file))], ["CliLogger.ts"]);
-				const allowed = yield* SourceBoundary.scan({ root: SRC, rules: ["console-write"], allow: ["CliLogger.ts"] });
-				assert.deepStrictEqual(allowed.allowed, ["CliLogger.ts"]);
-				assert.deepStrictEqual(allowed.violations, []);
+				const scan = yield* SourceBoundary.scan({
+					root: SRC,
+					rules: ["process", "stdout-write", "console"],
+					allowRules: { console: ["CliLogger.ts"] },
+				});
+				assert.include(scan.files, "CliLogger.ts", "the scan read the real tree");
+				assert.deepStrictEqual(scan.allowed, []);
+				assert.deepStrictEqual(scan.violations, []);
+				assert.isNotEmpty(scan.waived, "the waiver still waives something");
+				assert.deepStrictEqual(
+					[...new Set(scan.waived.map((offence) => `${offence.file} ${offence.rule}`))],
+					["CliLogger.ts console"],
+				);
 			}),
 		);
 	});

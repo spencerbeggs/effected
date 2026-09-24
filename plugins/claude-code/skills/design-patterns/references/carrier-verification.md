@@ -68,6 +68,12 @@ policy rather than folding both concerns into one check.
 returns it (its `relativePath` is `"."`); a policy that forgets it reports
 the root in `unclassified`. Usually an `unconstrained` glob covers it.
 
+**Every policy entry matches a package's `name`, never its `relativePath`.**
+`layers` and `tooling` list exact names, and `unconstrained` globs match
+names too. A private root named `okfit` at `relativePath` `"."` is classified
+by `"okfit"`; an entry of `"."` or `"packages/*"` classifies nothing, and the
+packages it meant come back in `unclassified`.
+
 Remove any hand-rolled `LAYER_RANKS` lookup table and its own from-scratch
 edge-direction assertions — `WorkspaceLayering.check` already is that table,
 plus the five-reason classification and the non-vacuity guard, over a
@@ -77,7 +83,7 @@ policy format every kit-based tool shares.
 
 Scan a package's `src/` tree for the things its layer promises not to do —
 `process` reads, a platform import leaking into core, front ends importing
-each other — with `SourceBoundary.scan({ root, allow, rules })`, and prove
+each other — with `SourceBoundary.scan({ root, rules, allow, allowRules })`, and prove
 the scanner itself can fail before trusting a clean result:
 
 ```ts
@@ -129,7 +135,33 @@ variable, an unannotated class field — is flagged exactly like the global,
 with no scope analysis (`globalThis["process"]` is a known miss in the
 other direction); **`forbidImports: ["node:*"]` misses a bare built-in**
 such as `"fs"` — spread `builtinModules` from `node:module` in the test file
-to actually mean "no Node built-ins."
+to actually mean "no Node built-ins." For a local binding you cannot rename,
+waive that one rule for the file with `allowRules` and assert `scan.waived`.
+
+Exempt a file from **one** rule with `allowRules`, keyed by the rule
+(`"forbidImports"` covers every `{ forbidImports }` rule), not from all of
+them with `allow`. The file stays checked against every other rule, and each
+offence a per-rule glob waives lands in `scan.waived` instead of vanishing.
+Assert `waived` is exactly what you meant to waive, so a stale or over-broad
+waiver fails. A stdio front end whose `main.ts` hands `process.stdout` to a
+transport waives `process` there and keeps `stdout-write`:
+
+```ts
+const scan = yield* SourceBoundary.scan({
+  root: resolve(ROOT, "packages", "lsp", "src"),
+  rules: ["process", "stdout-write"],
+  allowRules: { process: ["main.ts"] },
+})
+// scan.violations: [] — yet a `process.stdout.write(...)` in main.ts is still flagged.
+// scan.waived: main.ts's `process` reads only.
+```
+
+Two console rules exist. `"console"` flags every reference to the global
+`console`. `"console-stdout"` spares a member access to a method Node writes
+to stderr (`error`, `warn`, `trace`, `assert`), so it fits a stdio server that
+keeps stdout for its protocol but may log to stderr. A bare or aliased
+`console` is still flagged, since it can reach `log`. Neither flags core's
+`Console` service.
 
 Remove any hand-rolled `stripComments` + regex scanner — `SourceBoundary`
 already tokenizes correctly enough to spare a comment or a string literal

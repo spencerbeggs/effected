@@ -9,8 +9,13 @@ import { isIdentifierChar, lex, locate, references, specifierLiterals } from "./
  * @remarks
  * `"process"` forbids a read of the global `process`. `"node:process"` forbids
  * importing `node:process` or `process`. `"stdout-write"` forbids a
- * `stdout.write` call on anything. `"console-write"` forbids any reference to
- * the global `console`. `{ forbidImports }` forbids an import whose specifier
+ * `stdout.write` call on anything. `"console"` forbids any reference to the
+ * global `console`. `"console-stdout"` forbids a reference to the global
+ * `console` except a member access to one of the methods Node's console
+ * writes to stderr: `error`, `warn`, `trace` and `assert`. A bare or aliased
+ * reference (`const c = console`, `f(console)`, `console[m]`) is still
+ * flagged, since it can reach the stdout methods. Neither console rule flags
+ * core's `Console` service. `{ forbidImports }` forbids an import whose specifier
  * equals an entry, is a subpath of one, or starts with an entry's text before a
  * trailing `*` (so `"node:*"` and `"@effect/platform*"` are prefixes).
  *
@@ -27,7 +32,8 @@ export type BoundaryRule =
 	| "process"
 	| "node:process"
 	| "stdout-write"
-	| "console-write"
+	| "console"
+	| "console-stdout"
 	| { readonly forbidImports: ReadonlyArray<string> };
 
 /**
@@ -73,7 +79,7 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 	/** The 1-based column, in UTF-16 code units. */
 	column: Schema.Number,
 	/** The rule broken. */
-	rule: Schema.Literals(["process", "node:process", "stdout-write", "console-write", "forbidImports"]),
+	rule: Schema.Literals(["process", "node:process", "stdout-write", "console", "console-stdout", "forbidImports"]),
 	/** What matched: the identifier, the call, or the import specifier. */
 	detail: Schema.String,
 }) {
@@ -82,6 +88,15 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 		return `${this.file}:${this.line}:${this.column} ${this.rule} ${this.detail}`;
 	}
 }
+
+/**
+ * The rule an {@link Offence} names: every string {@link BoundaryRule}, plus
+ * `"forbidImports"` for any `{ forbidImports }` rule. These are the keys of
+ * {@link ScanOptions.allowRules}.
+ *
+ * @public
+ */
+export type OffenceRule = Offence["rule"];
 
 /**
  * What a scan read and found.
@@ -95,6 +110,12 @@ export class SourceScan extends Schema.Class<SourceScan>("SourceScan")({
 	allowed: Schema.Array(Schema.String),
 	/** Every offence, sorted by file, then line, then column. */
 	offences: Schema.Array(Offence),
+	/**
+	 * Every offence an `allowRules` glob waived, sorted like `offences`. Assert
+	 * it is exactly what you meant to waive: a waiver that no longer waives
+	 * anything, or waives more than intended, shows up here.
+	 */
+	waived: Schema.Array(Offence),
 }) {
 	/** One `file:line:column rule detail` label per offence: `[]` means clean. */
 	get violations(): ReadonlyArray<string> {
@@ -115,6 +136,15 @@ export interface ScanOptions extends ReferenceOptions {
 	/** Globs, relative to `root` with `/` separators, naming files exempt from every rule. */
 	readonly allow?: ReadonlyArray<string> | undefined;
 	/**
+	 * Globs per rule, matched like `allow`, naming files exempt from that one
+	 * rule. A matching file is still checked against every other rule, and
+	 * each offence a glob waives is reported in `SourceScan.waived`
+	 * rather than dropped. The `"forbidImports"` key covers every
+	 * `{ forbidImports }` rule. A file `allow` matches is exempt from every
+	 * rule, so nothing in it is waived.
+	 */
+	readonly allowRules?: { readonly [R in OffenceRule]?: ReadonlyArray<string> | undefined } | undefined;
+	/**
 	 * File extensions to scan. Defaults to `.ts`, `.mts`, `.cts`, `.js`,
 	 * `.mjs` and `.cjs`; declaration files are always skipped.
 	 */
@@ -124,8 +154,19 @@ export interface ScanOptions extends ReferenceOptions {
 const DEFAULT_EXTENSIONS: ReadonlyArray<string> = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"];
 const DECLARATION = /\.d\.[cm]?ts$/;
 const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+const byPosition = (a: Offence, b: Offence): number =>
+	byCodeUnit(a.file, b.file) || a.line - b.line || a.column - b.column;
 
 const EXEMPT: ReadonlyArray<string> = ["process.env.__PACKAGE_VERSION__"];
+/**
+ * The console methods Node writes to stderr. nodejs.org/api/console.html has
+ * `error` and `trace` print to stderr and `warn` alias `error`; it names no
+ * stream for `assert`, and a probe over a `Console` built on two capturing
+ * streams sent a failing `assert` to stderr. Everything else that writes
+ * (`log`, `info`, `debug`, `dir`, `dirxml`, `table`, `count`, `group`,
+ * `time`) writes to stdout.
+ */
+const STDERR_METHODS: ReadonlySet<string> = new Set(["error", "warn", "trace", "assert"]);
 const STDOUT_WRITE = /stdout\s*(?:\?\.|\.)\s*write/gu;
 
 /** Whether the reference at `at` is itself a member access (`globalThis.process`), which no ignore token exempts. */
@@ -147,6 +188,19 @@ const stdoutWrites = (code: string): ReadonlyArray<number> =>
 		.map((match) => ({ at: match.index ?? 0, end: (match.index ?? 0) + match[0].length }))
 		.filter(({ at, end }) => !isIdentifierChar(code[at - 1]) && code[at - 1] !== "#" && !isIdentifierChar(code[end]))
 		.map(({ at }) => at);
+
+/** The member name directly after the reference at `at` (`console.log` → `"log"`, `console?.log` too), or `undefined` when it is not a named member access. */
+const memberAfter = (code: string, at: number, name: string): string | undefined => {
+	let j = at + name.length;
+	while (j < code.length && /\s/.test(code[j] ?? "")) j++;
+	if (code[j] === "?" && code[j + 1] === ".") j++;
+	if (code[j] !== ".") return undefined;
+	j++;
+	while (j < code.length && /\s/.test(code[j] ?? "")) j++;
+	let end = j;
+	while (isIdentifierChar(code[end])) end++;
+	return end > j ? code.slice(j, end) : undefined;
+};
 
 const forbids = (entry: string, specifier: string): boolean =>
 	entry.endsWith("*")
@@ -270,11 +324,27 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 	},
 	{ name: "stdout-write: a direct write", source: 'process.stdout.write("x");', rule: "stdout-write", flagged: true },
 	{ name: "stdout-write: a string", source: 'const s = "stdout.write";', rule: "stdout-write", flagged: false },
-	{ name: "console-write: console.log", source: 'console.log("x");', rule: "console-write", flagged: true },
+	{ name: "console: console.log", source: 'console.log("x");', rule: "console", flagged: true },
+	{ name: "console: console.error", source: "console.error(e);", rule: "console", flagged: true },
 	{
-		name: "console-write: the Console service",
+		name: "console: the Console service",
 		source: "const current = yield* Console.Console;",
-		rule: "console-write",
+		rule: "console",
+		flagged: false,
+	},
+	{ name: "console-stdout: console.log", source: 'console.log("x");', rule: "console-stdout", flagged: true },
+	{ name: "console-stdout: a bare alias", source: "const c = console;", rule: "console-stdout", flagged: true },
+	{ name: "console-stdout: console.error", source: "console.error(e);", rule: "console-stdout", flagged: false },
+	{
+		name: "console-stdout: a stderr method through globalThis",
+		source: 'globalThis.console.warn("x");',
+		rule: "console-stdout",
+		flagged: false,
+	},
+	{
+		name: "console-stdout: the Console service",
+		source: "const current = yield* Console.Console;",
+		rule: "console-stdout",
 		flagged: false,
 	},
 	{
@@ -311,9 +381,10 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  *   `console` is flagged like the global: a parameter
  *   (`(process: Handle) => process.kill()`), a variable, a label, or an
  *   unannotated class field (`process = 1`). An annotated class field
- *   (`process: T`) reads as a type member and is spared. The remedy is an
- *   `allow` glob for the file, which exempts it from every rule, so prefer
- *   renaming the binding;
+ *   (`process: T`) reads as a type member and is spared. Prefer renaming the
+ *   binding; otherwise waive that one rule for the file with an
+ *   `allowRules` glob, which leaves every other rule in force and reports
+ *   what it waived. An `allow` glob exempts the file from every rule;
  *
  * - a computed access through a string key (`globalThis["process"]`) and a
  *   destructuring of a global (`const { process: p } = globalThis`) are not seen;
@@ -383,8 +454,14 @@ export class SourceBoundary {
 				}
 			} else if (rule === "stdout-write") {
 				for (const offset of stdoutWrites(lexed.code)) found.push({ offset, rule, detail: "stdout.write" });
-			} else if (rule === "console-write") {
+			} else if (rule === "console") {
 				for (const offset of references(lexed.code, "console")) found.push({ offset, rule, detail: "console" });
+			} else if (rule === "console-stdout") {
+				for (const offset of references(lexed.code, "console")) {
+					const member = memberAfter(lexed.code, offset, "console");
+					if (member !== undefined && STDERR_METHODS.has(member)) continue;
+					found.push({ offset, rule, detail: member === undefined ? "console" : `console.${member}` });
+				}
 			} else {
 				for (const literal of specifiers) {
 					if (rule.forbidImports.some((entry) => forbids(entry, literal.value))) {
@@ -426,11 +503,16 @@ export class SourceBoundary {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 		const allow = yield* GlobSet.compile(options.allow ?? []);
+		const allowRules = new Map<string, GlobSet>();
+		for (const [rule, patterns] of Object.entries(options.allowRules ?? {})) {
+			if (patterns !== undefined) allowRules.set(rule, yield* GlobSet.compile(patterns));
+		}
 		const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
 		const posix = (relative: string): string => relative.split(path.sep).join("/");
 		const files: Array<string> = [];
 		const allowed: Array<string> = [];
 		const offences: Array<Offence> = [];
+		const waived: Array<Offence> = [];
 		const visited = new Set<string>();
 		const pending: Array<string> = [options.root];
 		while (pending.length > 0) {
@@ -473,13 +555,16 @@ export class SourceBoundary {
 					allowed.push(file);
 					continue;
 				}
-				offences.push(...SourceBoundary.check(file, yield* fs.readFileString(full), options.rules, options));
+				for (const offence of SourceBoundary.check(file, yield* fs.readFileString(full), options.rules, options)) {
+					(allowRules.get(offence.rule)?.matches(file) === true ? waived : offences).push(offence);
+				}
 			}
 		}
 		return SourceScan.make({
 			files: files.sort(byCodeUnit),
 			allowed: allowed.sort(byCodeUnit),
-			offences: offences.sort((a, b) => byCodeUnit(a.file, b.file) || a.line - b.line || a.column - b.column),
+			offences: offences.sort(byPosition),
+			waived: waived.sort(byPosition),
 		});
 	});
 

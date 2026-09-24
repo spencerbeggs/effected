@@ -23,7 +23,7 @@ describe("mcp boundary", () => {
 							"process",
 							"node:process",
 							"stdout-write",
-							"console-write",
+							"console",
 							{ forbidImports: ["node:*", "@effect/platform*", "@effected/cli", "@effected/workspaces"] },
 						],
 					});

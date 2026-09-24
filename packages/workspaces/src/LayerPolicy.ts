@@ -54,6 +54,11 @@ export class LayerPolicyError extends Schema.TaggedError<LayerPolicyError>()("La
  * exist in a checked field: the non-vacuity guard against a discovery that
  * quietly drops real edges.
  *
+ * Every entry matches a package's `name`, never its `relativePath`: `layers`
+ * and `tooling` list exact names, and `unconstrained` globs match names. A
+ * private root named `my-monorepo` at `relativePath` `"."` is classified as
+ * `"my-monorepo"`; an entry of `"."` or `"packages/*"` classifies nothing.
+ *
  * Decoding is strict: a key the policy does not model fails `decode`, and the
  * message names every such key. A typo on an optional key would otherwise be
  * silently dropped: `requiredEdge` would remove the non-vacuity guard and
@@ -72,11 +77,11 @@ export class LayerPolicyError extends Schema.TaggedError<LayerPolicyError>()("La
  * @public
  */
 export class LayerPolicy extends Schema.Class<LayerPolicy>("LayerPolicy")({
-	/** Package names per layer, top layer first. */
+	/** Exact package names (never relative paths) per layer, top layer first. */
 	layers: Schema.Array(Schema.Array(Schema.String)),
-	/** Packages any layer may depend on that never depend on a layer. */
+	/** Exact package names (never relative paths) any layer may depend on that never depend on a layer. */
 	tooling: Schema.Array(Schema.String),
-	/** Globs naming packages whose own edges are not checked. */
+	/** Globs matched against package names (never relative paths) for packages whose own edges are not checked. */
 	unconstrained: Schema.Array(Schema.String).check(
 		Schema.makeFilter((patterns) => Result.isSuccess(GlobSet.compileResult(patterns)), {
 			title: "compilable glob patterns",

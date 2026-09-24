@@ -263,7 +263,7 @@ Every check refuses to pass vacuously, so every example below pairs "nothing wro
 
 ### Layering
 
-`WorkspaceLayering` holds the discovered package graph to a committed `layers.json`. `layers` is top-down: a package may depend only on a layer below its own, or on `tooling`. `unconstrained` globs name packages whose own edges are not checked, such as the private root, which must be classified like any other package. `fields` picks the dependency maps that count, and `requiredEdges` lists edges that must exist, so a discovery that silently drops edges fails. Decoding is strict: any other key fails `LayerPolicyError` naming the key, so a typo such as `requiredEdge` cannot silently drop that guard. `$schema` is always accepted, and keys a policy file carries for its own use go in `LayerPolicy.load(path, { allowKeys: [...] })`.
+`WorkspaceLayering` holds the discovered package graph to a committed `layers.json`. `layers` is top-down: a package may depend only on a layer below its own, or on `tooling`. `unconstrained` globs name packages whose own edges are not checked, such as the private root, which must be classified like any other package. Every entry matches a package's `name`, never its `relativePath`: `layers` and `tooling` list exact names, and `unconstrained` globs match names. So a private root named `my-monorepo` at `relativePath` `.` is classified as `"my-monorepo"`, and an entry of `"."` or `"packages/*"` classifies nothing. `fields` picks the dependency maps that count, and `requiredEdges` lists edges that must exist, so a discovery that silently drops edges fails. Decoding is strict: any other key fails `LayerPolicyError` naming the key, so a typo such as `requiredEdge` cannot silently drop that guard. `$schema` is always accepted, and keys a policy file carries for its own use go in `LayerPolicy.load(path, { allowKeys: [...] })`.
 
 ```json
 {
@@ -329,7 +329,7 @@ describe("source boundary", () => {
       Effect.gen(function* () {
         const scan = yield* SourceBoundary.scan({
           root: SRC,
-          rules: ["process", "node:process", "console-write", { forbidImports: ["node:*", "@effect/platform*"] }],
+          rules: ["process", "node:process", "console", { forbidImports: ["node:*", "@effect/platform*"] }],
         });
         assert.isNotEmpty(scan.files, "the scan read the tree");
         assert.deepStrictEqual(scan.violations, []);
@@ -339,9 +339,35 @@ describe("source boundary", () => {
 });
 ```
 
+| Rule | Flags |
+| --- | --- |
+| `"process"` | a read of the global `process`; `process.env.__PACKAGE_VERSION__` is exempt |
+| `"node:process"` | an import of `node:process` or `process` |
+| `"stdout-write"` | a `stdout.write` call on anything |
+| `"console"` | any reference to the global `console` |
+| `"console-stdout"` | a reference to the global `console`, except a member access to a method Node writes to stderr: `error`, `warn`, `trace`, `assert`. A bare or aliased reference (`const c = console`, `f(console)`, `console[m]`) is flagged, since it can reach `log` |
+| `{ forbidImports }` | an import equal to an entry, a subpath of one, or starting with an entry's text before a trailing `*` |
+
+Neither console rule flags core's `Console` service. `"console-stdout"` suits a stdio server that must keep stdout for its protocol but may log to stderr.
+
+`allow` globs exempt a file from every rule, and the file is listed in `scan.allowed`. To exempt a file from one rule only, use `allowRules`, keyed by the rule (`"forbidImports"` covers every `{ forbidImports }` rule). The file is still checked against every other rule, and each offence a per-rule glob waives lands in `scan.waived` rather than disappearing, so a stale or over-broad waiver fails an assertion:
+
+```ts
+const scan = yield* SourceBoundary.scan({
+  root: SRC,
+  rules: ["process", "stdout-write"],
+  // main.ts hands process.stdout to a transport, but must never write to it itself.
+  allowRules: { process: ["main.ts"] },
+});
+assert.deepStrictEqual(scan.violations, []);
+assert.deepStrictEqual([...new Set(scan.waived.map((offence) => offence.file))], ["main.ts"]);
+```
+
+Both kinds of glob compile with `@effected/glob` and match the scan's relative, `/`-separated path; an uncompilable one fails the scan with `GlobPatternError`.
+
 The scanner is a lexer, not a type checker. Its known limits:
 
-- There is no scope analysis, so any local binding named `process` or `console` is flagged like the global: a parameter (`(process: Handle) => process.kill()`), a variable, a label, or an unannotated class field (`process = 1`). An annotated class field (`process: T`) reads as a type member and is spared. Prefer renaming the binding; failing that, exempt the file with an `allow` glob (it then skips every rule) and assert `scan.allowed` names exactly it.
+- There is no scope analysis, so any local binding named `process` or `console` is flagged like the global: a parameter (`(process: Handle) => process.kill()`), a variable, a label, or an unannotated class field (`process = 1`). An annotated class field (`process: T`) reads as a type member and is spared. Prefer renaming the binding; failing that, waive that one rule for the file with `allowRules` and assert `scan.waived` names exactly it.
 - `globalThis["process"]` and `const { process: p } = globalThis` are not seen.
 - A regex literal directly after a block-closing `}` reads as a division.
 - JSX text reads as code, which is why `.tsx` and `.jsx` are not scanned by default.

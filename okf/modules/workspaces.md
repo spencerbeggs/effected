@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T02:19:03Z
-  body_sha256: 2b267f360dc08a6e3018e29f35ad8916d026cb9a576ebc49137d3ce08bc9e60a
+  at: 2026-09-24T08:04:45Z
+  body_sha256: 407266c8f6be64811d046774a9c24d60fc32c3137398e6b635ddd69b4105511d
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -182,11 +182,13 @@ with unaffected call syntax.
 hand-roll, each a static class with a private
 constructor:[^testing-ts]
 
-- `SourceBoundary` (with `Offence`, `SourceScan`, `BoundaryRule`,
-  `BoundaryFixture`, `ReferenceOptions` and `ScanOptions`): a lexer-backed
-  scanner that flags a `process` read, a forbidden import, a `stdout.write`
-  or a console write, with pure `check` and `referencesProcess`, a `scan`
-  over `FileSystem`, and shipped positive controls behind `verifyFixtures`.
+- `SourceBoundary` (with `Offence`, `OffenceRule`, `SourceScan`,
+  `BoundaryRule`, `BoundaryFixture`, `ReferenceOptions` and `ScanOptions`): a
+  lexer-backed scanner that flags a `process` read, a forbidden import, a
+  `stdout.write`, any console reference (`console`) or one that can reach
+  stdout (`console-stdout`), with pure `check` and `referencesProcess`, a
+  `scan` over `FileSystem` with whole-file `allow` and per-rule `allowRules`
+  exemptions, and shipped positive controls behind `verifyFixtures`.
 - `WorkspaceLayering` (with `LayerPolicy`, `LayerPolicyError`, `LayerEdge`,
   `LayeringGraph` and `LayeringReport`): a pure check of a per-field edge
   graph against a committed layer policy, plus `checkWorkspace` over
@@ -220,8 +222,8 @@ The built modules' raw byte sizes, measured on 2026-09-24 with `wc -c` over
 | Module | Bytes |
 | --- | --- |
 | `testing.js` | 1,151 |
-| `SourceBoundary.js` | 15,381 |
-| `LayerPolicy.js` | 5,158 |
+| `SourceBoundary.js` | 18,272 |
+| `LayerPolicy.js` | 5,576 |
 | `WorkspaceLayering.js` | 7,855 |
 | `PackedInstall.js` | 13,662 |
 | `internal/sourceText.js` | 10,369 |
@@ -253,8 +255,9 @@ continue phase 2's A1–A10:
 - **B3**: `LayeringReport.offenders` carries `{ edge, reason }` over five
   reasons, and edges are drawn by dependency name, not protocol
   (`WorkspaceLayering.ts`).
-- **B4**: `SourceBoundary.scan` returns a `SourceScan` of `files`, `allowed`
-  and `offences`, so an empty or mistyped root cannot read as clean, and
+- **B4**: `SourceBoundary.scan` returns a `SourceScan` of `files`, `allowed`,
+  `offences` and `waived` (the offences an `allowRules` glob waived), so an
+  empty or mistyped root, or a stale waiver, cannot read as clean, and
   gains `check`, `fixtures` and `verifyFixtures` (`SourceBoundary.ts`).
 - **B5**: `referencesProcess` never counts strings, template text, regex
   bodies, comments or other objects' members, always counts `globalThis`,

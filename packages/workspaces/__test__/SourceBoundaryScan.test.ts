@@ -136,6 +136,95 @@ describe("SourceBoundary.scan over a virtual tree", () => {
 		);
 	});
 
+	// okfit's LSP policy: main.ts may hold a bare process.stdout handle for a
+	// transport, yet must still never call .write() on it.
+	const LSP = {
+		"/lsp/src/main.ts": 'const transport = listen(process.stdout);\nprocess.stdout.write("x");\n',
+		"/lsp/src/server.ts": "export const cwd = process.cwd();\n",
+		"/lsp/src/io.ts": 'import { readFile } from "node:fs";\nexport { readFile };\n',
+	};
+	const LSP_RULES = ["process", "stdout-write", { forbidImports: ["node:*"] }] as const;
+	layer(
+		Layer.mergeAll(MemoryFileSystem.layerWith(LSP), Path.layer),
+		LIVE_CLOCK,
+	)((it) => {
+		it.effect("positive control: without a waiver, main.ts is flagged for both process and stdout-write", () =>
+			Effect.gen(function* () {
+				const scan = yield* SourceBoundary.scan({ root: "/lsp/src", rules: LSP_RULES });
+				assert.deepStrictEqual(scan.violations, [
+					"io.ts:1:26 forbidImports node:fs",
+					"main.ts:1:26 process process",
+					"main.ts:2:1 process process",
+					"main.ts:2:9 stdout-write stdout.write",
+					"server.ts:1:20 process process",
+				]);
+				assert.deepStrictEqual(scan.waived, []);
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+
+		it.effect("an allowRules glob waives one rule for the matching file, and every other rule still flags it", () =>
+			Effect.gen(function* () {
+				const scan = yield* SourceBoundary.scan({
+					root: "/lsp/src",
+					rules: LSP_RULES,
+					allowRules: { process: ["main.ts"] },
+				});
+				assert.deepStrictEqual(scan.files, ["io.ts", "main.ts", "server.ts"]);
+				assert.deepStrictEqual(scan.allowed, []);
+				assert.deepStrictEqual(scan.violations, [
+					"io.ts:1:26 forbidImports node:fs",
+					"main.ts:2:9 stdout-write stdout.write",
+					"server.ts:1:20 process process",
+				]);
+				assert.deepStrictEqual(
+					scan.waived.map((offence) => offence.label),
+					["main.ts:1:26 process process", "main.ts:2:1 process process"],
+				);
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+
+		it.effect("a forbidImports key waives every forbidImports entry, and only for the matching file", () =>
+			Effect.gen(function* () {
+				const scan = yield* SourceBoundary.scan({
+					root: "/lsp/src",
+					rules: LSP_RULES,
+					allowRules: { forbidImports: ["io.ts"], "stdout-write": ["server.ts"] },
+				});
+				assert.deepStrictEqual(
+					scan.waived.map((offence) => offence.label),
+					["io.ts:1:26 forbidImports node:fs"],
+				);
+				assert.include(scan.violations, "main.ts:2:9 stdout-write stdout.write");
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+
+		it.effect("a whole-file allow wins over a per-rule glob: the file is allowed, and nothing is waived", () =>
+			Effect.gen(function* () {
+				const scan = yield* SourceBoundary.scan({
+					root: "/lsp/src",
+					rules: LSP_RULES,
+					allow: ["main.ts"],
+					allowRules: { process: ["main.ts"] },
+				});
+				assert.deepStrictEqual(scan.allowed, ["main.ts"]);
+				assert.deepStrictEqual(scan.waived, []);
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+
+		it.effect("an uncompilable allowRules glob fails typed, as an allow glob does", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					SourceBoundary.scan({
+						root: "/lsp/src",
+						rules: LSP_RULES,
+						allowRules: { "stdout-write": ["a".repeat(65_537)] },
+					}),
+				);
+				assert.strictEqual(error._tag, "GlobPatternError");
+			}),
+		);
+	});
+
 	layer(
 		Layer.mergeAll(MemoryFileSystem.layerWith(SEED), BackslashPath),
 		LIVE_CLOCK,
@@ -145,6 +234,21 @@ describe("SourceBoundary.scan over a virtual tree", () => {
 				const scan = yield* SourceBoundary.scan({ root: "/repo/src", rules: RULES, allow: ["nested/**"] });
 				assert.include(scan.files, "nested/b.mts");
 				assert.deepStrictEqual(scan.allowed, ["nested/b.mts"]);
+				assert.deepStrictEqual(scan.violations, ["a.ts:1:18 process process"]);
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+
+		it.effect("allowRules globs match the same POSIX path under a backslash Path", () =>
+			Effect.gen(function* () {
+				const scan = yield* SourceBoundary.scan({
+					root: "/repo/src",
+					rules: RULES,
+					allowRules: { "node:process": ["nested/**"] },
+				});
+				assert.deepStrictEqual(
+					scan.waived.map((offence) => offence.label),
+					["nested/b.mts:1:21 node:process node:process"],
+				);
 				assert.deepStrictEqual(scan.violations, ["a.ts:1:18 process process"]);
 			}).pipe(Effect.timeout("3 seconds")),
 		);

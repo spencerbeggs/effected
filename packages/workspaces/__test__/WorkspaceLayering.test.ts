@@ -188,3 +188,53 @@ describe("WorkspaceLayering.checkWorkspace", () => {
 		);
 	});
 });
+
+describe("WorkspaceLayering: what a policy entry matches", () => {
+	// okfit's shape: a private root named "okfit" at relativePath ".", and members
+	// whose relativePath differs from their name. Every policy entry is matched
+	// against WorkspacePackage.name, never relativePath.
+	const at = (name: string, relativePath: string, dependencies: Record<string, string> = {}): WorkspacePackage =>
+		WorkspacePackage.make({
+			name,
+			version: "1.0.0",
+			path: `/repo/${relativePath}`,
+			packageJsonPath: `/repo/${relativePath}/package.json`,
+			relativePath,
+			workspaceRoot: "/repo",
+			dependencies,
+		});
+	const PACKAGES = [
+		at("okfit", ".", { "@okfit/cli": "workspace:^" }),
+		at("@okfit/cli", "packages/cli", { "@okfit/engine": "workspace:^" }),
+		at("@okfit/engine", "packages/engine"),
+		at("@okfit/tool", "tools/tool"),
+	];
+	layer(WorkspaceDiscovery.layerTest({ listPackages: () => Effect.succeed(PACKAGES) }))((it) => {
+		it.effect("layers, tooling and unconstrained all classify by name, so the root is matched as okfit", () =>
+			Effect.gen(function* () {
+				const report = yield* WorkspaceLayering.checkWorkspace(
+					LayerPolicy.make({
+						layers: [["@okfit/cli"], ["@okfit/engine"]],
+						tooling: ["@okfit/tool"],
+						unconstrained: ["okfit"],
+					}),
+				);
+				assert.strictEqual(report.edgeCount, 2);
+				assert.deepStrictEqual(report.violations, []);
+			}),
+		);
+
+		it.effect("positive control: the same policy written in relativePaths classifies nothing", () =>
+			Effect.gen(function* () {
+				const report = yield* WorkspaceLayering.checkWorkspace(
+					LayerPolicy.make({
+						layers: [["packages/cli"], ["packages/engine"]],
+						tooling: ["tools/tool"],
+						unconstrained: [".", "packages/*"],
+					}),
+				);
+				assert.deepStrictEqual(report.unclassified, ["@okfit/cli", "@okfit/engine", "@okfit/tool", "okfit"]);
+			}),
+		);
+	});
+});

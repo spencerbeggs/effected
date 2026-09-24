@@ -184,17 +184,75 @@ describe("SourceBoundary.check", () => {
 		assert.deepStrictEqual(lines(text, "stdout-write"), [1, 3]);
 	});
 
-	it("console-write flags the global console, never core's Console service", () => {
+	it("console flags every reference to the global console, never core's Console service", () => {
 		const text =
 			'console.log("a");\nglobalThis.console.error(e);\nconst c = yield* Console.Console;\nlogger.console;\n// console.log';
-		assert.deepStrictEqual(lines(text, "console-write"), [1, 2]);
+		assert.deepStrictEqual(lines(text, "console"), [1, 2]);
 	});
 
 	it("is conservative about a local binding named console: there is no scope analysis, so it is flagged", () => {
+		assert.deepStrictEqual(lines('const console = yield* Console.Console;\nconsole.log("x");', "console"), [1, 2]);
+	});
+});
+
+describe("SourceBoundary.check console-stdout", () => {
+	const flagged = [
+		["console.log", 'console.log("x");'],
+		["console.info", 'console.info("x");'],
+		["console.debug", 'console.debug("x");'],
+		["console.table", "console.table(rows);"],
+		["console.dir", "console.dir(value);"],
+		["console.dirxml", "console.dirxml(value);"],
+		["console.count", 'console.count("x");'],
+		["console.group", 'console.group("x");'],
+		["console.time", 'console.time("x");'],
+		["a stdout method through globalThis", 'globalThis.console.log("x");'],
+		["a stdout method through optional chaining", 'console?.log("x");'],
+		["a longer name that starts with a stderr method", 'console.errors("x");'],
+		["a bare alias", 'const c = console;\nc.log("x");'],
+		["console passed as an argument", "register(console);"],
+		["a computed member", "console[method](x);"],
+		["a computed member whose key is a stderr method's name", 'console["error"](x);'],
+		["a spread", "const copy = { ...console };"],
+	] as const;
+	for (const [name, text] of flagged) {
+		it(`flags ${name}`, () => assert.isNotEmpty(lines(text, "console-stdout"), text));
+	}
+
+	const spared = [
+		["console.error", 'console.error("x");'],
+		["console.warn", 'console.warn("x");'],
+		["console.trace", 'console.trace("x");'],
+		["console.assert", 'console.assert(ok, "x");'],
+		["a stderr method through globalThis", "globalThis.console.error(e);"],
+		["a stderr method through optional chaining", 'console?.warn("x");'],
+		["a stderr method on the next line", 'console\n\t.error("x");'],
+		["a stderr method read, not called", "const warn = console.warn;"],
+		["core's Console service", "const current = yield* Console.Console;"],
+		["core's Console module functions", 'yield* Console.log("x");'],
+		[
+			"a string, a comment and template text",
+			'const s = "console.log";\n// console.log("x")\nconst t = `console.log`;',
+		],
+	] as const;
+	for (const [name, text] of spared) {
+		it(`spares ${name}`, () => assert.deepStrictEqual(lines(text, "console-stdout"), [], text));
+	}
+
+	it("names the member it flagged, or the bare global", () => {
+		const found = SourceBoundary.check("f.ts", 'console.error("e");\nconsole.log("x");\nconst c = console;', [
+			"console-stdout",
+		]);
 		assert.deepStrictEqual(
-			lines('const console = yield* Console.Console;\nconsole.log("x");', "console-write"),
-			[1, 2],
+			found.map((offence) => offence.label),
+			["f.ts:2:1 console-stdout console.log", "f.ts:3:11 console-stdout console"],
 		);
+	});
+
+	it("positive control: console, on the same text, flags the stderr calls console-stdout spares", () => {
+		const text = 'console.error("x");\nconsole.warn("x");\nconsole.trace("x");\nconsole.assert(ok);';
+		assert.deepStrictEqual(lines(text, "console"), [1, 2, 3, 4]);
+		assert.deepStrictEqual(lines(text, "console-stdout"), []);
 	});
 });
 
@@ -220,7 +278,7 @@ describe("SourceBoundary.fixtures", () => {
 				`${kind} has a spared fixture`,
 			);
 		}
-		assert.strictEqual(kinds.size, 5);
+		assert.strictEqual(kinds.size, 6);
 	});
 });
 
@@ -240,11 +298,7 @@ describe("SourceBoundary on the real tree", () => {
 	});
 
 	it("spares the process reads and the stdout write that sit in REPLAY_SCRIPT's template text", () => {
-		const offences = SourceBoundary.check("src/ConfigDependencyHooks.ts", text, [
-			"process",
-			"stdout-write",
-			"console-write",
-		]);
+		const offences = SourceBoundary.check("src/ConfigDependencyHooks.ts", text, ["process", "stdout-write", "console"]);
 		assert.deepStrictEqual(
 			offences.map((offence) => offence.label),
 			[],
