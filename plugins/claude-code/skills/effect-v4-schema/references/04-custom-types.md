@@ -5,7 +5,7 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: `Schema.declare`, `declareConstructor`,
+API surface audited against the pinned Effect source: `Schema.declare`, `declareConstructor`,
 `instanceOf`, `link`, `toCodecJson` and the SchemaIssue constructors all exist as described, and every
 code block typechecks. FALSIFIED and corrected inline: `new SchemaIssue.InvalidType(ast, Option.some(u))`
 and the two-argument `InvalidValue(annotations, input)` form. Both constructors take

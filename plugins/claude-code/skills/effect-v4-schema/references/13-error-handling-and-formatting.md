@@ -5,13 +5,13 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: the formatters, `makeFormatterDefault`,
+API surface audited against the pinned Effect source: the formatters, `makeFormatterDefault`,
 `makeFormatterStandardSchemaV1`, `hasInput`, `LeafHook`/`CheckHook` and `StandardSchemaV1FailureResult`
 all exist as described; the two examples that fail to typecheck do so only on external/doc-local
 imports (i18next, ./utils.js). FALSIFIED and corrected inline: `cause.failures` (a `Cause` exposes
 `reasons`) and the `, got X` suffixes in expected output. RESTORED: the "Reporting Rejected Inputs"
 section, which is what explains those suffixes — they appear only under `{ reportInput: true }`.
-PROBED on beta.107: the corrected `cause.reasons` snippet compiles and prints exactly the expected
+PROBED: the corrected `cause.reasons` snippet compiles and prints exactly the expected
 output shown, and the default formatter emits no input suffix.
 -->
 
@@ -40,7 +40,7 @@ if (Result.isFailure(result)) {
 
 > **Beta trap — the `, got X` suffix.** This is the single most common wrong
 > expectation in this guide. Formatted messages carry **no** `, got <value>`
-> suffix unless you opted into `reportInput`. Probed on `4.0.0-beta.107`:
+> suffix unless you opted into `reportInput`. Probed:
 > `Schema.decodeUnknownExit(Schema.NonEmptyString)("")` renders
 > `Failure(Cause([Fail(SchemaError(Expected a value with a length of at least 1))]))`,
 > and only with `{ reportInput: true }` does it become

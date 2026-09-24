@@ -5,7 +5,7 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: `decodeTo`, `decode`, `encodeTo`, the
+API surface audited against the pinned Effect source: `decodeTo`, `decode`, `encodeTo`, the
 `SchemaTransformation` constructors and the passthrough helpers all exist as described, and every code
 block typechecks. FALSIFIED and corrected inline: `new Issue.InvalidValue(...)` with nothing named
 `Issue` in scope (the module is `SchemaIssue`) and the dropped `options` argument — `transformEffect`
@@ -100,7 +100,7 @@ In this case:
 
 ## Composing Transformations
 
-You can combine transformations using `SchemaTransformation.composeTransformation` (a dual standalone function since rc.116 — the `Transformation#compose` method is gone). The resulting transformation applies the `decode` and `encode` logic of both transformations in sequence.
+You can combine transformations using `SchemaTransformation.composeTransformation` (a dual standalone function — there is no `Transformation#compose` method). The resulting transformation applies the `decode` and `encode` logic of both transformations in sequence.
 
 **Example** (Trim and lowercase a string)
 
@@ -123,7 +123,7 @@ In this example:
 - The `decode` logic applies `SchemaGetter.trim()` followed by `SchemaGetter.toLowerCase()`, producing a string that is trimmed and lowercased.
 - The `encode` logic is `SchemaGetter.passthrough()`, which returns the input unchanged.
 
-A `Getter` value exposes only `pipe` since rc.116: run one with the standalone `SchemaGetter.run`, and build one with `SchemaGetter.map` / `SchemaGetter.compose` or the `transform*` constructors — `new SchemaGetter.Getter`, `onSome` and `onNone` no longer exist.
+A `Getter` value exposes only `pipe`: run one with the standalone `SchemaGetter.run`, and build one with `SchemaGetter.map` / `SchemaGetter.compose` or the `transform*` constructors — `new SchemaGetter.Getter`, `onSome` and `onNone` no longer exist.
 
 ## Transforming One Schema into Another
 

@@ -5,14 +5,14 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: every Schema/SchemaGetter/SchemaParser/
+API surface audited against the pinned Effect source: every Schema/SchemaGetter/SchemaParser/
 SchemaTransformation member named here exists, and every code block with imports typechecks.
 Three claims were FALSIFIED and are corrected inline with trap notes: the `effect/schema` subpath
 with its `Getter`/`Parser` modules (neither the path nor the module names exist — use `SchemaGetter`
 and `SchemaParser` from `effect`), `Schema.String.decode(...)` as a method (`decode` is a combinator
 applied through `.pipe`), and the claim that `Schema.Date` accepts invalid dates with a companion
 `Schema.DateValid` (Schema.Date already rejects NaN dates; DateValid does not exist).
-PROBED on beta.107: the coercion outputs, and the absence of the `, got X` suffix in default-mode
+PROBED: the coercion outputs, and the absence of the `, got X` suffix in default-mode
 error messages — those suffixes were removed from the expected output here.
 -->
 

@@ -1,6 +1,6 @@
 ---
 name: effect-v4-idioms
-description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, structural equality, Config.schema inputs (a JSON-string input is Config.schema(Schema.fromJsonString(S)), and what withDefault does and does not swallow), and polling with Effect.repeat options instead of a recursive Effect.sleep. Teaches the idiomatic v4 spelling. Every identifier and source citation re-verified against effect@4.0.0-rc.109.
+description: Use when writing core Effect v4 code — generators (Effect.gen/Effect.fn), typed error handling and recovery (catch/catchTag/catchFilter/catchReason), yieldable errors, PlatformError on FileSystem/Path IO, Cause inspection, Scope and resource cleanup, forking and fibers, runtime/entrypoints, FiberRef-as-Context.Reference, structural equality, Config.schema inputs (a JSON-string input is Config.schema(Schema.fromJsonString(S)), and what withDefault does and does not swallow), and polling with Effect.repeat options instead of a recursive Effect.sleep. Teaches the idiomatic v4 spelling.
 ---
 
 # Effect v4 core idioms
@@ -9,9 +9,9 @@ The idiomatic way to write core v4 code — generators, errors, resources, fiber
 runtime, equality. For *which module* to reach for in the first place (what is
 `Sink`, `RcMap`, `Latch`…), consult `effect-v4-module-index` — this skill owns
 patterns, not the map. For confirming that a name exists before you rely on it,
-see `effect-v4-source-lookup`. Every identifier below was verified to exist against
-`effect@4.0.0-rc.109`, and every `file:line` citation re-checked against the
-vendored tree at that tag; when you reach past this list, run one runtime probe
+see `effect-v4-source-lookup`. Every identifier below was verified to exist, and
+every `file:line` citation checked against the vendored tree; when you reach
+past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
 before writing — v4 betas move fast and muscle memory lies.
 
@@ -58,7 +58,7 @@ Split rule: reusable parameterized operation → `Effect.fn`; one-off inline
 workflow → `Effect.gen`.
 
 **`Effect.fn` is not generator-only.** A plain function that *returns* an Effect
-both runs and typechecks (probed beta.94):
+both runs and typechecks:
 
 ```ts
 const double = Effect.fn("double")((n: number) => Effect.succeed(n * 2))
@@ -68,8 +68,8 @@ Reach for it when the body has nothing to `yield*` — you still get the named s
 and the stack frames, without a generator wrapping a single expression. The
 generator is the common case, not a requirement.
 
-Two semantics of the plain-function form worth stating, both probed at
-beta.98: the body is **lazy** — it runs when the returned effect is *executed*,
+Two semantics of the plain-function form worth stating: the body is **lazy** —
+it runs when the returned effect is *executed*,
 not when `double(21)` is called (calling the wrapped function only constructs
 the effect); and a **`throw` from the body becomes a `Die` defect**, not a
 typed failure — the plain form gives you no typed error channel for free, so a
@@ -91,7 +91,7 @@ The idiomatic recoveries:
   `catchTag` also accepts a non-empty tag ARRAY sharing one handler —
   `Effect.catchTag(["UnknownRefError", "GitCommandError"], () => fallback)` —
   which obviates `catchTags` boilerplate when several tags route to the same
-  recovery (verified at rc.109, `Effect.ts:2695` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
+  recovery (`Effect.ts:2744` `Arr.NonEmptyReadonlyArray<Tags<E>>`).
 - **`Effect.catch(handler)`** — recover from any typed failure; there is no
   `catchAll`. **`Effect.catchCause(handler)`** for full-cause infra handling,
   **`Effect.catchDefect(handler)`** for defects.
@@ -114,7 +114,7 @@ Effect.fail(42).pipe(
 Use `Effect.catchCauseFilter` for the cause-level equivalent.
 
 **`Effect.catch` recovers typed failures ONLY — defects and interrupts pass
-straight through.** Probed on beta.94: `Effect.fail("x").pipe(Effect.catch(h))`
+straight through.** `Effect.fail("x").pipe(Effect.catch(h))`
 succeeds with the handler's value, while the same pipe on `Effect.die` and
 `Effect.interrupt` exits `Failure` with the `Die`/`Interrupt` reason intact.
 The corollary bites in code whose error channel is later declared `never`: a
@@ -128,7 +128,7 @@ you covered.
 
 Core `FileSystem` / `Path` operations fail with `PlatformError`, and its shape
 is not guessable: `effect` re-exports the module **as a namespace**
-(`export * as PlatformError from "./PlatformError.ts"`, index.ts:402) and the
+(`export * as PlatformError from "./PlatformError.ts"`, index.ts:407) and the
 error **class** is declared inside it (PlatformError.ts:157, a
 `Data.TaggedError("PlatformError")`). So the type you write is the doubled
 `PlatformError.PlatformError`:
@@ -151,8 +151,7 @@ Written once it looks like a typo — which is exactly why it gets replaced with
 `unknown`. Do not: typing a `FileSystem`-backed channel `unknown` violates the
 house standard (never collapse errors to `string`/`unknown` early) when the
 precise type is one `import type` away. `fs.exists: (path: string) =>
-Effect.Effect<boolean, PlatformError>` (FileSystem.ts:143) — verified against
-rc.109. The `reason` field is where the detail lives: a `PlatformError` wraps
+Effect.Effect<boolean, PlatformError>` (FileSystem.ts:143). The `reason` field is where the detail lives: a `PlatformError` wraps
 a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
 carrying a normalized `SystemErrorTag`), `PlatformError.ts:36,109,157`.
 
@@ -192,17 +191,19 @@ variant of `catch` that runs synchronous recovery immediately.
 
 ## Yieldable — not everything is an Effect
 
-Not every type is yieldable in v4, and the surface is narrower than the
+Not every type is yieldable in v4, and `Option`/`Result` are narrower than the
 vendored notes claim. **The notes are the trap here.**
 `migration/yieldable.md` documents a `Yieldable` trait whose contract is
 `asEffect(): Effect<A, E, R>`, lists `Option` and `Result` as implementors, and
-states "the runtime calls `.asEffect()` internally when yielding". **None of
-that holds at rc.109**: `asEffect` has zero occurrences in the entire core
-source, in the vendored tree and in `node_modules` alike, and
-`typeof Option.some(1).asEffect` is `undefined`. Rung 1 is prescriptive and it
-has gone stale here; the source settles it.
+states "the runtime calls `.asEffect()` internally when yielding". **The
+`Option`/`Result` claim does not hold**: neither implements `asEffect`, and
+`typeof Option.some(1).asEffect` is `undefined`. `asEffect` itself does exist
+in core (`Effectable.ts` — an opt-in base class and mixin a domain type can
+extend to become yieldable), but `Option` and `Result` are not built on it.
+Rung 1 is prescriptive and it has gone stale on this specific claim; the
+source settles it.
 
-Directly yieldable at rc.109 — **all five rows probed**, against two controls:
+Directly yieldable — **all five rows probed**, against two controls:
 a positive `Effect.succeed` that yielded, and a discriminating `Option.some(7)`
 that died, proving the harness could observe a failure to yield at all:
 
@@ -217,10 +218,10 @@ that died, proving the harness could observe a failure to yield at all:
 **`Option` and `Result` are both off the list, and both die the same way.**
 `yield* Option.some(7)` exits `Failure` with
 `Die("Fiber.runLoop: Not a valid effect: some(7)")`; `Option.none()`,
-`Result.succeed(42)` and `Result.fail("boom")` die identically (re-probed at
-rc.109: `yield* Result.succeed(42)` dies
+`Result.succeed(42)` and `Result.fail("boom")` die identically: `yield*
+Result.succeed(42)` dies
 `"Fiber.runLoop: Not a valid effect: success(42)"`, against an
-`Effect.succeed` control that returned normally). Note the **success**
+`Effect.succeed` control that returned normally. Note the **success**
 cases die too: this is not "errors need a bridge", it is "these are not Effects
 at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
 rejects anything carrying no `evaluate` (`internal/effect.ts:671`).
@@ -228,8 +229,8 @@ rejects anything carrying no `evaluate` (`internal/effect.ts:671`).
 The bridge is a module function on `Effect`, one per type:
 
 ```ts
-const u = yield* Effect.fromOption(maybeUser)              // Effect.ts:1816 — fails NoSuchElementError
-const v = yield* Effect.fromResult(Fmt.parseResult(text))  // Effect.ts:1777 — fails typed with the Result's E
+const u = yield* Effect.fromOption(maybeUser)              // Effect.ts:1867 — fails NoSuchElementError
+const v = yield* Effect.fromResult(Fmt.parseResult(text))  // Effect.ts:1828 — fails typed with the Result's E
 ```
 
 `Effect.fromOption` takes an optional second argument for the failure
@@ -277,8 +278,7 @@ Config.String("PORT").pipe(Effect.catchTag("ConfigError", () => Effect.succeed("
 That `Config` sits beside `Option` in every "yieldable" list ever written — and
 yet needs the opposite treatment — is exactly what makes the pair a trap: the
 one that looks like it needs converting does not, and the one that looks
-interchangeable with it dies. Two more `Config` facts worth carrying, both
-probed on beta.94 and re-verified at beta.107:
+interchangeable with it dies. Two more `Config` facts worth carrying:
 
 - **`ConfigError` is not on the `effect` root.** It is `Config.ConfigError`;
   importing it from `"effect"` yields `undefined`, and a `catchTag` against that
@@ -292,27 +292,27 @@ probed on beta.94 and re-verified at beta.107:
   `Config.String` + `JSON.parse` + `decodeUnknown*`, which re-derives the codec by
   hand and puts a throwing host call in the seam. `withDefault` covers **absent
   data only**: it replaces an `Absent` resolution and leaves every other error in
-  the channel (`Config.ts:528`). Probed rc.115 under `ConfigProvider.fromEnv`
+  the channel (`Config.ts:528`). Probed under `ConfigProvider.fromEnv`
   with `Config.schema(Schema.fromJsonString(Struct({ a: Number })), "INPUT_PAYLOAD")
   .pipe(Config.withDefault({ a: -1 }))`: an unset variable **and `""`** both
   resolve to the default; `"{nope"` and `'{"a":"str"}'` both fail with a
   typed `ConfigError` the default does **not** swallow. The `""` case is the
   provider's doing, not the schema's — `fromEnv` / `fromEnvRecord` /
   `fromUnknown` map an empty string to *missing* unless
-  `{ preserveEmptyStrings: true }` (`ConfigProvider.ts:832`), and with that flag
+  `{ preserveEmptyStrings: true }` (`ConfigProvider.ts:781`), and with that flag
   set the same `""` is present-but-malformed and fails. That is exactly the
   contract a GitHub Actions input needs — the runner exports an unset input as
   `INPUT_NAME=""` — and a hand-rolled parse has to re-invent it.
 
 ## Yieldable errors — schema-backed error classes
 
-Define errors as `Schema.TaggedError`. Naming trap: beta.102–105 renamed
-`Schema.TaggedErrorClass` back to `Schema.TaggedError` (same curried call
-shape); code written against earlier v4 betas fails with "TaggedErrorClass is
+Define errors as `Schema.TaggedError`. Naming trap: `Schema.TaggedErrorClass`
+is `undefined` — the current name is `Schema.TaggedError`, same curried call
+shape; code using the old name fails with "TaggedErrorClass is
 not a function". The payoff at the call site: an instance is yieldable —
 `yield* new MyError({...})` fails the effect — and it is `instanceof Error`.
 Capture unknown throwables with a `Schema.Defect()` field — `Schema.Defect` is a
-**callable** in beta.94, not a bare schema value. The bare `cause: Schema.Defect`
+**callable**, not a bare schema value. The bare `cause: Schema.Defect`
 typechecks but throws at construction (`Cannot read properties of undefined
 (reading 'encoding')`); you must call it:
 
@@ -413,7 +413,7 @@ interrupt behavior, because no consumer will guess it.
 
 ## The `Effect.timeout` family — three forms, and timing out interrupts
 
-Verified against rc.109: exactly three exist — `timeoutFail` and `timeoutTo`
+Exactly three exist — `timeoutFail` and `timeoutTo`
 are both `undefined`.
 
 | Form | On timeout | Signature shape |
@@ -437,7 +437,7 @@ into the taxonomy, not exposed as a parameter.
 
 A poll loop written as `const go = Effect.gen(function*() { ...; yield* Effect.sleep(d); return yield* go })`
 re-derives a schedule by hand and hides the stop condition in control flow.
-`Effect.repeat` (`Effect.ts:7651`) takes either a `Schedule` or an **options
+`Effect.repeat` (`Effect.ts:7656`) takes either a `Schedule` or an **options
 object** — `{ schedule?, times?, while?, until? }` — that
 `internal/schedule.ts:223` (`buildFromOptions`) folds into one schedule; `while`
 and `until` may return a `boolean` or an `Effect<boolean>`, and they see the
@@ -452,13 +452,13 @@ const status = yield* Effect.repeat(pollOnce, {
 })
 ```
 
-Three facts probed at rc.115, each a trap for a hand-rolled loop:
+Three facts, each a trap for a hand-rolled loop:
 
 - **The effect runs once before the schedule is consulted**, so `times: 2`
   produces **three** runs (the doc's own gotcha, confirmed: a counter read 3);
   `times` counts repetitions, not executions.
 - **The value is the last result**, and an `until` written as a type guard
-  narrows it — `Repeat.Return` (`Effect.ts:7503`) picks the refined type, so the
+  narrows it — `Repeat.Return` (`Effect.ts:7508`) picks the refined type, so the
   example above types as `"done"`, not `"pending" | "done"`. `while` with a
   refinement narrows to the *excluded* branch.
 - **`until` alone with no `schedule` spins with no delay** (`passthroughForever`
@@ -472,7 +472,7 @@ type-guard helpers — the `Predicate` module ships them. A hand-rolled guard is
 both a duplication and a subtle-drift risk; retire any you find on contact.
 
 Two names that read as real but are not: **`Predicate.isRecord` and `Predicate.isPlainObject` do
-NOT exist on rc.109** (probed; the vendored `Predicate.ts` has neither). The
+NOT exist** (probed; the vendored `Predicate.ts` has neither). The
 guards that DO ship: `isString`, `isNumber`, `isBoolean`, `isObject`,
 `isReadonlyObject`, `isObjectOrArray`, `isObjectKeyword`, `hasProperty`,
 `isTagged`, `isIterable`, `isNullish`/`isNotNullish`, `isTupleOf`, and
@@ -529,7 +529,7 @@ reporting, but it is no longer what keeps the event loop from draining.
 
 ## Fiber-local state — `Context.Reference`
 
-`FiberRef` and `FiberRefs` are removed (zero occurrences in core at rc.109,
+`FiberRef` and `FiberRefs` are removed (zero occurrences in core,
 and `effect/FiberRef` does not resolve as a module).
 **`Differ` is not** — it survives as a top-level module (`Differ.ts:27`,
 `interface Differ<in out T, in out Patch>`) for patch-based value updates; it
@@ -556,7 +556,7 @@ Built-in fiber refs moved to the `References` module — read them the same way:
 
 **There is no `References.CurrentConcurrency`** — the module's own header prose
 says the references "cover concurrency, scheduling, logging, tracing"
-(`References.ts:4`), but no concurrency reference is exported at rc.109, and
+(`References.ts:4`), but no concurrency reference is exported, and
 a `yield*` against the remembered name gets `undefined`. Concurrency is an
 *option* in v4 (`{ concurrency }` on `Effect.all` and friends), not an ambient
 reference. The twelve that do exist: `CurrentLogAnnotations`, `CurrentLogLevel`,
@@ -566,7 +566,7 @@ reference. The twelve that do exist: `CurrentLogAnnotations`, `CurrentLogLevel`,
 
 **Overriding the config provider is ordinary service provision.** There is no
 `Effect.withConfigProvider`; `ConfigProvider.ConfigProvider` is itself a
-`Context.Reference` (`ConfigProvider.ts:342` at rc.115), so swap it with
+`Context.Reference` (`ConfigProvider.ts:342`), so swap it with
 `Effect.provideService(effect, ConfigProvider.ConfigProvider, provider)`. Reach
 for a combinator name instead and you get `undefined is not a function` at the
 call site — which reads like a bad import, not a missing API.
@@ -613,17 +613,17 @@ faster, permanent). Derive an `Equivalence` with `Equal.asEquivalence()`.
 A nasty family: the name **does** exist and is spelled exactly like the value you
 want, but it is a **factory with an optional (or no) argument** — so the uncalled
 reference is a perfectly good expression and the mistake surfaces far away, as a
-construction throw or a service that was never provided. Verified at rc.109:
+construction throw or a service that was never provided:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:10769` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:10669` — same shape, same optional-`options` trap, one page away in the same module. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:8732` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:8656` — same shape, same optional-`options` trap, one page away in the same module. |
 | `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:436` — a *function* returning a Layer, unlike almost every other `layer` in core. |
-| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:4956` — takes ONE array argument. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:4800` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:10493`) and `Schema.Exit(...)` (`:10831`) are factories too, but their
+(`Schema.ts:10575`) and `Schema.Exit(...)` (`:12916`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 

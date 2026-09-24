@@ -6,12 +6,11 @@ description: Use when defining Effect v4 services or wiring Layers — the `Cont
 # Services & Layers (Effect v4)
 
 **API surface** — existence, signatures and the source line citations below —
-re-verified against `effect@4.0.0-rc.109` on 2026-08-23 by reading
-`packages/effect/src`. The **behavioural** claims are older and were not
-re-probed: the memoize-by-reference resource-count result and the two
-temporal-dead-zone results are beta.94 probes, and the sync-facade /
-requirement-union notes are beta.97–98 probes, each dated where it appears.
-Treat those as unverified at rc.109.
+verified by reading `packages/effect/src`. The **behavioural** claims (the
+memoize-by-reference resource-count result, the two temporal-dead-zone
+results, the sync-facade and requirement-union notes) were probed once and
+not re-probed on every catalog advance; treat them as behavior to spot-check
+against a control before leaning on them for something load-bearing.
 
 A service is a typed key into the runtime's context; a layer is the recipe that
 builds it. Get three things right — the one service form, provide-once
@@ -40,7 +39,7 @@ Argument order is **type params first** via `Context.Service<Self, Shape>()`,
 
 **Tags are Effects.** A service key is a
 first-class Effect — `Context.Key<Identifier, Shape> extends
-Effect<Shape, never, Identifier>` (`Context.ts:64` at rc.112 — line 63 is the
+Effect<Shape, never, Identifier>` (`Context.ts:64` — line 63 is the
 closing comment delimiter, not the declaration) — so
 `yield* Database` works, and combinator-style consumer code like
 `Effect.flatMap(Database, (db) => …)` composes directly with no `.asEffect()`
@@ -208,7 +207,7 @@ export const BunResolver = class extends Context.Service()("BunResolver", {}) {
 };
 ```
 
-Probed on beta.94: the class-expression form throws, the `this` form does not,
+Probed: the class-expression form throws, the `this` form does not,
 and the class-*declaration* form does not either.
 
 **Write `this` unconditionally.** It is correct in both forms, so it costs
@@ -414,7 +413,7 @@ const DatabaseLayer = makeDatabaseLayer();
 const AppLayer = Layer.mergeAll(DatabaseLayer, OtherLayer);
 ```
 
-Probed on beta.94, counting resource opens: an inline factory call at two
+Probed, counting resource opens: an inline factory call at two
 provide sites opened the resource **twice**; the same factory called once and
 bound to a `const` opened it **once**. The two-provide dedup is real, but it can
 only dedup a reference it can recognize.

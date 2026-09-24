@@ -5,7 +5,7 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: the JSON / string / FormData / URLSearchParams
+API surface audited against the pinned Effect source: the JSON / string / FormData / URLSearchParams
 codecs and the canonical codecs all exist as described, and every code block typechecks after one fix.
 FALSIFIED and corrected inline: `Schema.UnknownFromJsonString`. It exists at RUNTIME but is marked
 `@internal` in source and is therefore stripped from the published `.d.ts` — a runtime probe passes

@@ -6,7 +6,7 @@ description: Use when adding logging, metrics, tracing/spans, or OpenTelemetry t
 # Effect v4 observability
 
 Every Effect-core name below was verified to exist against the vendored
-`effect@4.0.0-rc.109` source, and every claimed absence verified absent there.
+Effect source, and every claimed absence verified absent there.
 `@effect/opentelemetry` is **not installed** in this monorepo — every
 `@effect/opentelemetry` example is *shape per the official guide; verify against
 the installed package when first adopted*. The v4 release line moves fast; when an API is not
@@ -42,7 +42,7 @@ those never ran or cannot fail. The blind spot reads as signal.
 
 `Effect.fn`, `Effect.fnUntraced`, `Effect.withSpan`, `Effect.withSpanScoped`,
 `Effect.withParentSpan`, `Effect.annotateCurrentSpan`, `Effect.withLogSpan` — all
-still exported from `Effect.ts` at rc.109.
+still exported from `Effect.ts`.
 
 ```ts
 import { Effect } from "effect"
@@ -107,7 +107,7 @@ const sync = Effect.fn("User.sync")(function* (id: string) {
 ## Structured logging
 
 `Effect.log`, `logTrace`, `logDebug`, `logInfo`, `logWarning`, `logError`,
-`logFatal`, `annotateLogs` — all still exported at rc.109. They flow through the
+`logFatal`, `annotateLogs` — all still exported. They flow through the
 current fiber: span context, annotations, and log spans attach automatically.
 
 ```ts
@@ -123,7 +123,7 @@ through the engine — a public boundary may log, the hot path does not.
 
 ### Custom loggers — format with `Logger.make`, route with `withConsoleLog`
 
-A `Logger<Message, Output>` is one method, `log(options): Output` (`Logger.ts:66`).
+A `Logger<Message, Output>` is one method, `log(options): Output` (`Logger.ts:64`).
 Keep **formatting** and **routing** as two loggers, because core already ships
 the routing half:
 
@@ -144,7 +144,7 @@ line by hand — `Logger.make((o) => o.fiber.getRef(Console.Console).log(render(
 `consoleLogFmt` / `consoleStructured` / `consoleJson` are
 `withConsoleLog(formatLogFmt | formatStructured | formatJson)` (`Logger.ts:917-965`),
 and `Logger.map(logger, f)` post-processes an output. Because the route goes
-through the `Console` service, `TestConsole` captures it: probed rc.115,
+through the `Console` service, `TestConsole` captures it: probed,
 `Effect.logInfo("hello")` under `Logger.layer([withConsoleLog(format)])` lands
 in `TestConsole.logLines` as `["Info: hello"]` and the `withConsoleError` twin in
 `errorLines` — the `ConsoleRef` coupling `effect-v4-testing` warns about is the
@@ -152,7 +152,7 @@ same mechanism, and here it works for you.
 
 ## Metrics
 
-The `Metric` surface at rc.109: `counter`, `gauge`, `histogram`, `frequency`,
+The `Metric` surface: `counter`, `gauge`, `histogram`, `frequency`,
 `summary`, `timer`, `withAttributes`, `withConstantInput`, `linearBoundaries`,
 `exponentialBoundaries`, `boundariesFromIterable` — all exported from
 `Metric.ts`.
@@ -175,7 +175,7 @@ const loadUser = Effect.fn("loadUser")(
 ```
 
 **Names that are easy to reach for and do not exist** (each absence verified
-absent in the rc.109 source):
+absent in the source):
 
 - There is no `Metric.tagged` / `Metric.taggedWithLabels`. Use
   `Metric.withAttributes({ ... })`; ambient attributes ride on

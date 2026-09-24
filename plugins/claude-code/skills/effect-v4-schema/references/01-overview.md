@@ -5,7 +5,7 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107. No API claims in this file; nothing was changed.
+API surface audited against the pinned Effect source. No API claims in this file; nothing was changed.
 The upstream section also carries a "Runtime Performance" benchmark table that was omitted at split
 time and is still omitted — machine-dependent numbers, not an API claim.
 -->

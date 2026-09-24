@@ -5,11 +5,11 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: every named member exists and every code block
+API surface audited against the pinned Effect source: every named member exists and every code block
 with imports typechecks. Falsifications corrected inline with trap notes: `Schema.Record`'s
 `keyValueCombiner` option (Record takes exactly two arguments — the whole "combine" example was
 removed), `Schema.asTaggedUnion` in prose (the export is `toTaggedUnion`), `import { Struct } from
-"effect/data"` (no such subpath), and the inferred-type spelling `Schema.Array$<...>` (beta.107 emits
+"effect/data"` (no such subpath), and the inferred-type spelling `Schema.Array$<...>` (the current version emits
 `Schema.$Array<...>`). Restored two accurate sections the split had dropped: the duplicate-discriminant
 throw and the `discriminants` property. PROBED: default-mode messages carry no `, got X` suffix and
 render as `SchemaError(...)`, not `SchemaError: ...` — every expected-output block was corrected.

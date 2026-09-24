@@ -5,7 +5,7 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-REWRITTEN against effect@4.0.0-beta.107 source; every code block in the new text typechecks. The
+REWRITTEN against the pinned Effect source; every code block in the new text typechecks. The
 previous version documented an API that does not exist at this pin — `SchemaRepresentation.fromAST`,
 `fromASTs`, `toSchema`, `toSchemaDefaultReviver`, `DocumentFromJson` and `MultiDocumentFromJson` are all
 `undefined`. The real surface is `Schema.toRepresentation` / `SchemaRepresentation.toRepresentation`
@@ -16,7 +16,7 @@ JSON Schema compilation output blobs.
 
 # Schema Representation
 
-> **Beta trap.** This section was rewritten against `4.0.0-beta.107` source. The
+> **Rewrite note.** This section was rewritten against the pinned Effect source. The
 > previous version described an API that is not reachable: `SchemaRepresentation.fromAST`,
 > `fromASTs`, `toSchema` and `toSchemaDefaultReviver` do not exist in any form.
 > `DocumentFromJson` and `MultiDocumentFromJson` do exist in the source — but as

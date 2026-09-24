@@ -222,7 +222,7 @@ the value path and any tree-walker share it.
 The guidance above is for objects **you** build. When untrusted records flow
 through v4 `Schema.Record` instead, decode is already pollution-safe: a
 `__proto__` key survives decoding as an ordinary **own data property** of the
-output — it is neither dropped nor written to the prototype (probed beta.94 in
+output — it is neither dropped nor written to the prototype (probed in
 the `@effected/lockfiles` hostility suite: a `__proto__` pnpm importer decodes
 into an entry literally named `__proto__` with `Object.prototype` unpolluted).
 Two consequences: don't pre-filter such keys expecting decode to choke on

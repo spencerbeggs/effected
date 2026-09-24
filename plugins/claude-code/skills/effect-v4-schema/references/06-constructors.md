@@ -5,7 +5,7 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: `make`, `makeSync`/`makeOption`, `MakeOptions`,
+API surface audited against the pinned Effect source: `make`, `makeSync`/`makeOption`, `MakeOptions`,
 the default-value and refinement constructor behaviour all check out, and every code block typechecks.
 FALSIFIED and corrected inline: `Schema.makeOption` as a module member (it is a method on the schema,
 plus a standalone `SchemaParser.makeOption`) and `Schema.brand<"a">()` (brand takes the identifier as a

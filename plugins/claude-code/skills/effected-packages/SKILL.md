@@ -154,8 +154,8 @@ Facts about the kit that change how you depend on it:
 release and is at `0.2.0`; nothing is awaiting a debut. `commands`, `templates`, `github`,
 `github-actions` and `sbom` — the github-split five — published for the first
 time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`, `schemastore`
-in the 2026-08-03 wave, `jsonl` reached `0.2.0` in the 27-package
-beta.107 wave (2026-08-11, PR #325), and `memfs` published first at `0.1.0`
+in the 2026-08-03 wave, `jsonl` reached `0.2.0` in a 27-package
+wave (2026-08-11, PR #325), and `memfs` published first at `0.1.0`
 in the 2026-08-14 consumer-unblock wave, and `github-references` was extracted
 from `github` on 2026-08-17 at `0.1.0`. Nothing in the kit sits at `0.0.0`.
 

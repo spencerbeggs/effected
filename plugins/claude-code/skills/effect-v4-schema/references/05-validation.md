@@ -5,11 +5,11 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: the filter factories, `makeFilter`,
+API surface audited against the pinned Effect source: the filter factories, `makeFilter`,
 `makeFilterGroup`, `brand`, `SchemaGetter.checkEffect` and `Schema.FilterOutput`/`FilterIssue` all
 exist as described, and every code block typechecks. FALSIFIED and corrected inline: the claim that
 structural filters are evaluated separately so both a nested and a structural issue surface under
-`{ errors: "all" }` (PROBED on beta.107 — a nested failure suppresses the containing structural
+`{ errors: "all" }` (PROBED — a nested failure suppresses the containing structural
 filter entirely, and only one issue is reported), the `{ title }` annotation on `InvalidValue` (the
 default formatter reads `message`, then `expected`, never `title`; the annotation bag has an index
 signature so the typo compiles), the dropped `options` argument on `InvalidValue`, `Getter.checkEffect`
@@ -337,7 +337,7 @@ but structural filters on the containing value are **not** evaluated, even with
 > **Beta trap.** Earlier drafts of this guide claimed the opposite — that
 > structural filters are evaluated separately from item-level ones so both
 > issues surface together under `{ errors: "all" }` — and showed a two-issue
-> expected output. Probed on `4.0.0-beta.107`: the nested `isNonEmpty` failure
+> expected output. Probed: the nested `isNonEmpty` failure
 > below suppresses the containing `isMinLength(3)` entirely, and only one issue
 > is reported. Do not write a test that asserts on the second issue.
 

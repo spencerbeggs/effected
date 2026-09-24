@@ -5,7 +5,7 @@ pinned effect v4 beta in this repo. Verify any specific API against the installe
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107. Three upstream claims were FALSIFIED and are
+API surface audited against the pinned Effect source. Three upstream claims were FALSIFIED and are
 corrected inline, each marked with a trap note: Schema.asClass (removed — extend the schema directly),
 the `serialization: { json }` annotation key and SchemaUtils.getNativeClassSchema (neither exists),
 and makeFilter's `title` annotation (the default formatter reads `expected`). The class-factory call
@@ -321,10 +321,10 @@ g(A.make({ a: "a" })) // error: Argument of type 'A' is not assignable to parame
 ## Schema as a Class
 
 Naming trap: **`Schema.asClass` does not exist** — it is `undefined` on the
-`Schema` namespace at `effect@4.0.0-beta.107`, and the wrapper it named is gone.
+`Schema` namespace, and the wrapper it named is gone.
 Any schema can now be extended with `extends` **directly**, with no wrapper call.
 Code written against the `asClass` spelling fails with "Schema.asClass is not a
-function". The examples below are corrected to the beta.107 spelling.
+function". The examples below use the current spelling.
 
 Extending a schema this way inherits the full schema API (e.g. `annotate`) and supports static methods that reference `this`.
 
@@ -404,7 +404,7 @@ try {
 } catch (error) {
   if (error instanceof Error) {
     console.log(error.message)
-    // "Schema validation failed" — since beta.102–105 `make` throws the
+    // "Schema validation failed" — `make` throws the
     // generic message with the SchemaIssue.Issue on error.cause; format it:
     console.log(SchemaIssue.makeFormatterDefault()(error.cause as SchemaIssue.Issue))
   }
@@ -416,13 +416,11 @@ Expected a finite number
 */
 ```
 
-Formatting trap: through beta.101 the thrown `error.message` carried the
-constraint text itself; a test asserting on it now sees only
+Formatting trap: a test asserting `error.message` sees only
 `"Schema validation failed"` — format `error.cause` with
-`SchemaIssue.makeFormatterDefault()` instead. (`Schema.decodeUnknownSync` is
-different: it throws a `SchemaError` whose `.message` is still formatted, with
-the structured issue on `.issue`.) Both halves re-probed unchanged at
-beta.107.
+`SchemaIssue.makeFormatterDefault()` instead to get the constraint text.
+(`Schema.decodeUnknownSync` is different: it throws a `SchemaError` whose
+`.message` is still formatted, with the structured issue on `.issue`.)
 
 **Example** (Inheritance)
 
@@ -584,13 +582,13 @@ Two traps in this example, both corrected above — the upstream prose carries t
 uncorrected form:
 
 - **`serialization: { json: ... }` is not an annotation key.** `instanceOf`'s
-  second parameter is an `Annotations.Declaration` (`Schema.ts:6498`, verified at rc.109), whose
+  second parameter is an `Annotations.Declaration` (`Schema.ts:6373`), whose
   serialization hooks are `toCodec`, `toCodecJson`, `toCodecStringTree` and
   `toCodecIso`. There is no `serialization` key anywhere in `Schema.ts`. The
   earlier `Person` examples in this file already use the correct `toCodecJson`
   spelling; this one did not.
 - **`SchemaUtils` does not exist**, and neither does `getNativeClassSchema` —
-  there is no such module in `effect` at `4.0.0-beta.107`, and no such symbol
+  there is no such module in `effect`, and no such symbol
   anywhere in `packages/effect/src`. The upstream snippet's own `// built-in
   helper?` comment marks it as speculative; it was never a real API. The
   `SchemaUtils` import has been dropped from the example above.
@@ -639,8 +637,8 @@ try {
 } catch (error: any) {
   console.log(error.message)
 }
-// "Schema validation failed" — class construction throws the generic message
-// (beta.102–105, re-probed beta.107); the constraint text lives on error.cause:
+// "Schema validation failed" — class construction throws the generic message;
+// the constraint text lives on error.cause:
 // SchemaIssue.makeFormatterDefault()(error.cause) // => "Expected a === b"
 
 try {
@@ -657,7 +655,7 @@ Annotation trap: upstream writes this filter as
 `Schema.makeFilter(({ a, b }) => a === b, { title: "a === b" })` and still
 claims the output `"Expected a === b"`. It is not — **the default formatter
 reads the `expected` annotation, not `title`**, falling back to the literal
-string `<filter>` (`SchemaIssue.ts:1099-1104`). Probed at beta.107, the `title`
+string `<filter>` (`SchemaIssue.ts:1342-1348`). Probed: the `title`
 spelling prints `"Expected <filter>"` from both the `make` path and
 `decodeUnknownSync`. The example above is corrected to `expected`. Returning a
 `string` from the predicate is the other way to get a real message and needs no
@@ -950,7 +948,7 @@ class E extends Schema.Error<E>("E")({
 }) {}
 ```
 
-Naming trap: beta.102–105 renamed `Schema.ErrorClass` back to `Schema.Error` (and `Schema.TaggedErrorClass` back to `Schema.TaggedError`), keeping the same curried call shapes — code written against earlier v4 betas fails with "ErrorClass is not a function". The schema for plain `Error` *instances* (formerly `Schema.Error` in earlier betas) is now `Schema.ErrorInstance`.
+Naming trap: `Schema.ErrorClass` and `Schema.TaggedErrorClass` are both `undefined` — the current names are `Schema.Error` and `Schema.TaggedError`, with the same curried call shapes. Code using the old names fails with "ErrorClass is not a function". The schema for plain `Error` *instances* is `Schema.ErrorInstance`.
 
 ### TaggedError
 
