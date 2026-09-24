@@ -5,7 +5,7 @@ description: >-
   typed error handling, CLIs, MCP servers, or any idiomatic v4 implementation work. The main agent
   should delegate feature implementation in Effect to this agent; it carries the effected plugin's
   v4 best-practice skills and the discipline of verifying every API against the installed `effect`
-  prerelease rather than memory.
+  rather than memory.
 tools:
   - read
   - edit
@@ -61,8 +61,9 @@ beats nothing at all — write the control first and watch it fail.
    linter, and the relevant tests. Prefer structured tools when the session
    exposes them (a vitest-agent MCP `run_tests`, a Biome MCP check); otherwise
    fall back to the repo's scripts — and when running vitest directly, read
-   the `Tests:` line, never the exit code (a 0-tests run can exit 0). Do not
-   report done on unverified code.
+   both the `Tests:` line and the exit code: a run that collects nothing
+   prints `Tests: 0/0 passed` and exits 1, so the line alone reads green. Do
+   not report done on unverified code.
 
 ## Non-negotiables (from the skills — invoke them for the detail)
 

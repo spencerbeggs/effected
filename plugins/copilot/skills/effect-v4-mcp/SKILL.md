@@ -39,6 +39,7 @@ clients.
 ## Footguns
 
 - Hand-wiring `McpServer.layerStdio` without `McpStdio.layer` wedges on one bad line: core's stdio decoder throws on a non-JSON line and never trims it, so every later chunk re-throws and the server stops answering while stdin EOF still exits `0` — see [The stdin guard](./references/server-wiring.md#stdin-guard).
+- One stdio server per memo map: a second `McpStdio.layer` merged into the same graph, or built or provided under the first one's `Effect.provide`, shares its stdio protocol and never reads its own stdin — see [`McpStdio.layer`](./references/server-wiring.md#mcpstdiolayer).
 - `runMain`'s own failure report runs outside anything the program provides and lands on stdout, the wire — see [`McpStdio.launch`](./references/server-wiring.md).
 - Stdin EOF interrupts the main fiber; the default teardown exits `130` — see [`McpStdio.teardown`](./references/server-wiring.md).
 - A declared failure reaches the agent as message text only, never `structuredContent` — see [Failures on the wire](./references/tools.md#failures-on-the-wire).

@@ -323,11 +323,17 @@ that client) is strictly worse. Three parts, not one flag:
   building (a small `Layer.effectDiscard` tapped onto `Main` runs strictly
   after it, since `Layer.provide` builds its dependency to completion before
   the dependent) and exit only while that flag is still `false`.
-- **A `try`/`catch` around every startup `await` exits `1` on its own.**
-  Without it, a rejection before `runMain` owns the process — a dynamic
-  import failing to resolve, the layer graph refusing to build — drains to
-  the `unhandledRejection` handler above, which never exits: the process
-  idles at exit `0` with no server actually listening, silently.
+- **Every startup step is awaited.** A rejected top-level `await` — a
+  dynamic import that fails to resolve — does not reach `unhandledRejection`
+  at all: Node routes it to `uncaughtException`, which still exits because
+  the connected flag is `false`, and with no `uncaughtException` listener
+  installed Node prints the error and exits `1` by itself. The rejection
+  that slips through is one nobody awaits — a startup `import()` or setup
+  promise left un-awaited drains to the `unhandledRejection` handler above,
+  which never exits, so the process carries on with no server listening and
+  exits `0` once its event loop drains. `await` every startup promise (or
+  catch it and exit `1` yourself) so a startup failure takes the exiting
+  path.
 
 Choose **exit-always** when any in-process mutable state could be left
 half-written; choose **survive-once-connected**, with all three parts
@@ -336,7 +342,41 @@ above, only when none can.
 ## Project directory
 
 Resolve a project directory once, in `main.ts`, from caller-supplied
-`argv`/`env`/`cwd` — never by reading `process` anywhere else in the server:
+`argv`/`env`/`cwd` — never by reading `process` anywhere else in the server.
+
+**`argv` takes positional arguments only, never raw `process.argv.slice(2)`.**
+`LaunchContext.projectDir` treats every non-empty `argv` entry as a
+candidate, in order, so a flag is a directory to it. A plugin whose
+`mcpServers` entry launches the server with `args: ["--stdio",
+"${CLAUDE_PROJECT_DIR}"]` hands `main.ts` exactly that list, and an MCP
+server has no command parser to strip the flag first:
+
+~~~ts
+import { LaunchContext } from "@effected/engine"
+
+// The host launched: node server.js --stdio <project dir>
+const args = process.argv.slice(2)
+const keys = ["MY_TOOL_PROJECT_DIR", "CLAUDE_PROJECT_DIR"]
+
+// WRONG: raw argv. "--stdio" is a non-empty candidate, so it wins.
+const wrong = LaunchContext.projectDir({ argv: args, env: process.env, keys, cwd: process.cwd() })
+
+// RIGHT: positionals only. Every flag is dropped before resolving.
+const positionals = args.filter((arg) => !arg.startsWith("-"))
+const right = LaunchContext.projectDir({ argv: positionals, env: process.env, keys, cwd: process.cwd() })
+
+console.log(JSON.stringify({ wrong, right }))
+~~~
+
+Run as `server.js --stdio /work/project`, this prints
+`{"wrong":"--stdio","right":"/work/project"}`: a server wired the wrong
+way resolves every tool's paths against a directory named `--stdio`. With no
+positional at all (`server.js --stdio`), `right` falls through to the `keys`
+in order and then to `cwd`. The filter drops bare flags only — a flag that
+takes a value (`--config a.json`) leaves its value behind as a positional.
+When the launch arguments carry valued flags, or you do not control them,
+pass the directory through an environment variable instead and resolve with
+`argv: []` and the env `keys` alone:
 
 ~~~ts
 import { LaunchContext } from "@effected/engine"

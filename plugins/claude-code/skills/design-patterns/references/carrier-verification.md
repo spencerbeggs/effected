@@ -159,7 +159,8 @@ const program = Effect.gen(function* () {
     managers: ["npm", "pnpm", "yarn", "bun"],
     bins: ["my-tool-mcp"],
     env: process.env,
-    require: "all",
+    // CI provisions every manager, so a missing one fails there; locally it is skipped.
+    require: process.env.CI ? "all" : "any",
     installTimeout: "2 minutes",
   })
   const env = PackedInstall.scrubEnv(process.env)
@@ -187,9 +188,15 @@ other rule here still applies to a real suite built on it:
   [`testing.md#packed-install-proof`](../../effect-v4-mcp/references/testing.md#packed-install-proof)
   for the full assertion shape (`response.error` undefined, empty `stderr`,
   exit `0`).
-- A requested manager that is not installed on the machine lands in
-  `result.unavailable`; pass `require: "all"` to make that a hard failure
-  instead of a silent skip.
+- `PackedInstall` probes every requested manager with `--version` itself,
+  so a test never gates a per-manager block on `PATH`. Under the default
+  `require: "any"` a manager that does not answer lands in
+  `result.unavailable` and the run carries on with the rest (it fails
+  `NoManagerAvailable` only when none answers); `require: "all"` fails
+  `ManagerUnavailable` on the first one missing. Use `"all"` wherever every
+  listed manager is provisioned — CI — so a missing manager is a failure
+  there, and `"any"` on a developer machine, where it is a skip; log
+  `result.unavailable` so the skip is visible.
 - `PackedInstall` is **POSIX-only** and fails `UnsupportedPlatform`
   elsewhere.
 - The installs run one after another, so an outer `Effect.timeout` has to
@@ -203,5 +210,5 @@ other rule here still applies to a real suite built on it:
 
 Gate the whole suite on the carrier's production build existing (skip, not
 fail, when it doesn't — this is an e2e proof layered on a build artifact,
-not a substitute for the build) and each package-manager block on that
-manager being present on `PATH`.
+not a substitute for the build). Manager availability needs no gate of its
+own: `require` above is that policy.

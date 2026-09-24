@@ -532,5 +532,5 @@ same real duration and vitest's own timeout wins — the guard never fires,
 so its own failure message — the one naming what actually hung — never has
 a chance to run. Keep a guard at `3` seconds (as
 used throughout this reference), or pass an explicit, larger vitest timeout
-(the second argument to `it`/`it.live`, as the packed-install example above
+(the third argument to `it`/`it.live`, after the name and the test body, as the packed-install example above
 does with `780_000`).

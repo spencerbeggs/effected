@@ -88,32 +88,63 @@ wrong (raw argv): --verbose
 right (positionals): /expected/project
 ```
 
-Wiring it into a program, using a command framework's own parsed positionals:
+Where the positionals exist decides where `projectDir` is called:
+
+- **An MCP server** has no command parser, so it resolves once in `main.ts`,
+  from `process.argv.slice(2)` with every flag filtered out, or from an env
+  var alone with `argv: []` — `effect-v4-mcp`'s `server-wiring.md`, "Project
+  directory", has the runnable shape.
+- **A CLI on `effect/unstable/cli`** has no parsed positionals in `main.ts`:
+  `Command.run` reads the raw arguments from the platform `Stdio` and parses
+  them after `main.ts` has already handed the program to the runner, so the
+  command's own `Argument` values exist only inside its handler. Call
+  `projectDir` there. `main.ts`, the one file allowed to read `process`,
+  passes `env` and `cwd` down to the command as plain values:
 
 ```ts
-import { CurrentDistribution, LaunchContext } from "@effected/engine";
-import { Effect, Option } from "effect";
+import { CliRuntime } from "@effected/cli";
+import { LaunchContext } from "@effected/engine";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Console, Effect, Option } from "effect";
+import { Argument, Command } from "effect/unstable/cli";
 
-// A CLI's main.ts: `positionals` is the command's own parsed positional
-// arguments, not raw process.argv.
-declare const positionals: ReadonlyArray<string>;
+// index.ts: the command tree. It reads no `process`; the launch facts it
+// needs arrive as plain values.
+interface LaunchFacts {
+ readonly env: Readonly<Record<string, string | undefined>>;
+ readonly cwd: string;
+}
 
-const projectDir = LaunchContext.projectDir({
- argv: positionals,
- env: process.env,
- keys: ["OKFIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"],
- cwd: process.cwd(),
-});
+export const makeCommand = (launch: LaunchFacts) =>
+ Command.make(
+  "mytool",
+  // Argument.String, not Argument.Path: a literal "${CLAUDE_PROJECT_DIR}"
+  // must reach projectDir untouched so it can be recognised and skipped.
+  { project: Argument.String("project").pipe(Argument.optional) },
+  ({ project }) =>
+   Effect.gen(function* () {
+    // The parsed positional exists here, inside the handler, and nowhere earlier.
+    const projectDir = LaunchContext.projectDir({
+     argv: Option.toArray(project),
+     env: launch.env,
+     keys: ["MY_TOOL_PROJECT_DIR", "CLAUDE_PROJECT_DIR"],
+     cwd: launch.cwd,
+    });
+    yield* Console.log(`project: ${projectDir}`);
+   }),
+ );
 
-const program = Effect.gen(function* () {
- const distribution = yield* CurrentDistribution;
- // ... use projectDir and distribution
-});
-
-Effect.runPromise(
- program.pipe(Effect.provideService(CurrentDistribution, Option.none())),
-);
+// main.ts: the one file that reads process.
+const command = makeCommand({ env: process.env, cwd: process.cwd() });
+NodeRuntime.runMain(CliRuntime.main(Command.run(command, { version: "1.0.0" }), { platform: NodeServices.layer }));
 ```
+
+Run as `mytool /work/project` it prints `project: /work/project`; as
+`mytool --verbose` — an unknown flag — the parser rejects it as a usage
+error (exit `64` under `CliRuntime.main`) and the handler never runs; with
+no argument, or with a literal `${CLAUDE_PROJECT_DIR}` the host left
+unexpanded, it falls through to `MY_TOOL_PROJECT_DIR`, then
+`CLAUDE_PROJECT_DIR`, then the working directory.
 
 ## Gotchas
 
@@ -123,6 +154,6 @@ Effect.runPromise(
 - `CurrentDistribution` is a reference, not a service: `yield* CurrentDistribution`
   works with nothing provided (`Option.none()` default) — do not reach for
   `Layer.succeed` to give it a value; use `Effect.provideService`.
-- Purity is pinned by `__test__/purity.test.ts` over `SourceBoundary.scan` from
-  `@effected/workspaces/testing` (a devDependency; engine takes no runtime kit
-  edge).
+- Purity is pinned by the package's own source-boundary test over
+  `SourceBoundary.scan` from `@effected/workspaces/testing` (a devDependency;
+  engine takes no runtime kit edge).

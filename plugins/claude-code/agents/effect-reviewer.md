@@ -106,8 +106,10 @@ holds. Not for writing feature code from scratch — that is the developer.
 5. **Run it.** Run the host repo's own gates: its test suite, its linter, its
    typecheck. Prefer structured tools when the session exposes them (a
    vitest-agent MCP `run_tests`, a Biome MCP check); otherwise the repo's
-   scripts — and when running vitest directly, read the `Tests:` line, never
-   the exit code. Report evidence, not impressions.
+   scripts — and when running vitest directly, read both the `Tests:` line
+   and the exit code: a run that collects nothing prints `Tests: 0/0 passed`
+   and exits 1, so the line alone reads green. Report evidence, not
+   impressions.
 
 ## Test conventions (from `effect-v4-testing`)
 

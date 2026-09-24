@@ -155,8 +155,14 @@ The loader script itself stays shell — resolving the right bin and `exec`ing
 it is a shell problem, not one this pattern hands to the kit. What the kit
 does own is the **other** side: once the bin is running, it resolves which
 directory to treat as the project with `@effected/engine`'s
-`LaunchContext.projectDir`, over whatever `argv`/env var the loader passed
-down. `LaunchContext.isUnsubstituted` is what makes that resolution safe
+`LaunchContext.projectDir`. Have the loader pass the directory down through
+an environment variable, or at a known position among plain positional
+arguments — never mixed into a flag list the bin forwards unfiltered.
+`projectDir`'s `argv` takes positional arguments only: every non-empty
+entry is a candidate, so a loader launching `server --stdio <dir>` whose bin
+hands `process.argv.slice(2)` straight through resolves the project
+directory to `--stdio`. Drop the flags first, or resolve from the env var
+with `argv: []`. `LaunchContext.isUnsubstituted` is what makes that resolution safe
 against a host that passes a literal, unexpanded `${CLAUDE_PLUGIN_ROOT}`-style
 variable through rather than a real path: an empty value and an
 unsubstituted placeholder are both treated as absent, falling through to the

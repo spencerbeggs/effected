@@ -63,9 +63,7 @@ against its services, or test code that uses it.
 | `@effected/mcp` | the MCP boundary: `McpStdio` (`layerStdio` with stderr logging, a launch that never reports on stdout, teardown mapping stdin EOF to 0), `ToolFailure` (remediation folded into the wire message), `ToolInputSchema` (every unknown key at every depth), `McpToolkit` (registers a toolkit strict-by-default, naming every unknown key in one response), plus `@effected/mcp/testing` (`McpHarness`, `McpProcess`, `McpProbe`, `McpToolAudit`, `McpTestFailure`) | an MCP server on `effect/unstable/ai` — `runMain` reports a launch failure on stdout, which is the JSON-RPC wire, and a declared failure reaches the agent as message text only — teaching skill: `effect-v4-mcp` | boundary | [mcp.md](./references/mcp.md) |
 | `@effected/pnpm-plugin-effect` | pnpm catalogs pinning the Effect ecosystem (companion — config, not code) | setting up Effect version pinning in a pnpm workspace | — | [pnpm-plugin-effect.md](./references/pnpm-plugin-effect.md) |
 
-**Every row now has a `references/` file** — the last eight (`spdx`, `cli`,
-`commands`, `templates`, `github`, `github-references`, `github-actions`,
-`sbom`) landed 2026-08-23. Each package's own `CLAUDE.md` remains the
+**Every row has a `references/` file.** Each package's own `CLAUDE.md` remains the
 authority when the two disagree; the reference is the routing layer over it.
 For `github`, `github-actions` and `commands` specifically, depth also lives
 one level up: `building-a-github-action` routes a 14-skill suite (capability

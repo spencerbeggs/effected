@@ -62,17 +62,21 @@ that owns MCP knowledge (see this skill's own **Related skills** line).
 An MCP server's `main.ts` needs one thing no other front end does: its
 `uncaughtException` and `unhandledRejection` handlers must be registered
 **before any static import of the server graph**, then the rest of the
-module loaded with a dynamic `await import(...)`. Reason: MCP servers talk
-over stdio, and a throw during static module evaluation — before those
-handlers exist — dies silently behind the transport instead of reaching
-stderr where anyone can see it. Document this inline wherever it appears —
-the dynamic imports read, at a glance, like something a future edit would
-"tidy" back into static ones. That edit reintroduces the exact silent-crash
-failure mode the pattern exists to close.
+module loaded with a dynamic `await import(...)`. Reason: a static `import`
+runs before any code in the file does, so a throw while the server graph is
+being evaluated happens before those handlers exist. Node still prints that
+throw on stderr and exits `1` by itself; what the guards buy is the server's
+**own** handler — its message prefix, its exit policy — being in place in
+time to run instead of Node's default. Document this inline wherever it
+appears — the dynamic imports read, at a glance, like something a future
+edit would "tidy" back into static ones, and that edit quietly moves every
+startup throw back to Node's default handler, past the policy the server
+chose.
 
 A CLI's `main.ts` has no equivalent need — it owns the process the same
-way, but there is no stdio transport swallowing a stack trace, so a plain
-static import graph is fine.
+way, and Node's own report of a startup throw (the stack on stderr, exit
+`1`) is already what a person at a terminal needs, so a plain static import
+graph is fine.
 
 ## A CLI front end's `main.ts`
 
@@ -89,8 +93,12 @@ hand; the depth for a CLI front end lives there, not in this file.
 
 Both front ends resolve where a tool launched by an agent host should treat
 as its project the same way: `@effected/engine`'s `LaunchContext.projectDir`,
-called once in `main.ts`, over caller-supplied `argv`/`env`/`cwd`. See
-`effect-v4-mcp`'s
+over caller-supplied `argv`/`env`/`cwd`, where `argv` is **positional
+arguments only** — a raw `process.argv.slice(2)` makes the first flag the
+project directory. An MCP front end has no command parser, so its `main.ts`
+filters the flags out or resolves from an env var alone; a CLI front end's
+positionals exist only once its command has parsed them, inside the
+handler (see `effected-packages`' `engine.md`). See `effect-v4-mcp`'s
 [`server-wiring.md#project-directory`](../../effect-v4-mcp/references/server-wiring.md#project-directory)
 for the runnable shape and why `LaunchContext.isUnsubstituted` matters — a
 plugin host can pass a literal, unexpanded `${CLAUDE_PROJECT_DIR}` through,

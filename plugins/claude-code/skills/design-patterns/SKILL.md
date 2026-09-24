@@ -62,9 +62,10 @@ hand-rolling the recipe again.
 - A carrier's front ends belong in `dependencies`, never
   `peerDependencies` — see
   [carrier-package.md](./references/carrier-package.md).
-- An MCP `main.ts` that imports its server graph statically can die
-  silently behind the stdio transport — `McpStdio.launch` does not remove
-  this requirement, it sits around it — see
+- An MCP `main.ts` that imports its server graph statically runs that graph
+  before its crash guards exist: Node prints the throw and exits `1` on its
+  own, but the server's own handler never runs — `McpStdio.launch` does not
+  remove this requirement, it sits around it — see
   [carrier-entry-contract.md](./references/carrier-entry-contract.md) and
   `effect-v4-mcp`'s `server-wiring.md#crash-guards`.
 - A package.json read for "my own version" reports the wrong package's

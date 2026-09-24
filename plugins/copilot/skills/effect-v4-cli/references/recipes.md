@@ -2,7 +2,7 @@
 
 Loaded from `effect-v4-cli`. Patterns worth copying rather than depending on, because each one is a per-consumer choice the kit has no single right answer for — the one-line "why a recipe" under each heading says what that choice is.
 
-## The main assembly {#the-main-assembly}
+## The main assembly
 
 A CLI front end splits across a few small files, each with one job — the
 same `bin.ts`/`main.ts`/`index.ts`/`version.ts` split the carrier pattern
@@ -18,9 +18,9 @@ own version of this layout:
 - `index.ts` — the command tree, `Command.make`/`Command.withSubcommands`,
   and anything a consumer might import.
 - `version.ts` — the one file allowed to reference `process.env` for its
-  bundler-defined version constant (see `#version-constant` — the bundler
+  bundler-defined version constant (see [Version constant](#version-constant) — the bundler
   substitutes the value at build time, so this is not a runtime read) and
-  `process.argv` for distribution identity (see `#process-confinement`).
+  `process.argv` for distribution identity (see [Process confinement](#process-confinement)).
 
 ~~~ts
 import { CliColor, CliRuntime } from "@effected/cli"
@@ -40,7 +40,7 @@ Why a recipe: every consumer's command tree, flag set and platform choice
 differ; there is nothing left to extract beyond `CliRuntime.main` itself,
 which the kit already ships.
 
-## The version constant {#version-constant}
+## Version constant
 
 ~~~ts
 export const CLI_VERSION: string = process.env.__PACKAGE_VERSION__ ?? "0.0.0"
@@ -56,7 +56,7 @@ Why a recipe: the substitution is a build-time define wired into one
 package's own bundler config — the kit cannot perform a consumer's own
 package substitution for it.
 
-## The version formatter {#version-formatter}
+## Version formatter
 
 ~~~ts
 import { CliColor } from "@effected/cli"
@@ -123,7 +123,7 @@ Why a recipe: combining `distributionSuffix` into a formatter is only
 possible for a package willing to take the `@effected/engine` dependency,
 which the kit's own `cli` package is specifically forbidden from taking.
 
-## The JSON failure tap {#json-failure-tap}
+## JSON failure tap
 
 ~~~ts
 import { Console, Effect } from "effect"
@@ -158,7 +158,7 @@ Why a recipe: the envelope's own shape and what counts as an "error" field
 are a consumer's wire contract; only the tap-then-refail combinator
 generalizes.
 
-## Reading stdin {#reading-stdin}
+## Reading stdin
 
 ~~~ts
 import { Cause, Effect, Schema, Stdio, Stream } from "effect"
@@ -199,7 +199,7 @@ synchronously inside `Effect.gen` that becomes an undeclared defect
 Why a recipe: the payload's schema and what a TTY refusal should say are
 per-command; only the `Stdio`-not-`process.stdin` discipline generalizes.
 
-## Process confinement {#process-confinement}
+## Process confinement
 
 Every `process` read — `env`, `argv`, `cwd`, `execPath`, `isTTY` — lives in
 `bin.ts`, `main.ts` or `version.ts` and is passed down into the rest of the
@@ -251,7 +251,7 @@ Why a recipe: `SourceBoundary` is the kit's own check (`@effected/workspaces/tes
 already ships it); which files a given CLI allowlists is per-repo, not
 something the kit can decide for a consumer.
 
-## An injectable "now" {#injectable-now}
+## Injectable "now"
 
 Pin core's own `Clock.Clock`, not a hand-rolled `Now` service — `DateTime.now`
 and everything else that reads the time already resolves through it. Building
