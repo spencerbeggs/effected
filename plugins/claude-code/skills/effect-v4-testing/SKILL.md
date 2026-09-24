@@ -1,6 +1,6 @@
 ---
 name: effect-v4-testing
-description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail — including the discriminating input that is wrong in exactly one way, per-clause and per-path mutation, and the positive control that must expect a non-zero answer before any "nothing found" is believed. Covers the sharp edges (no it.scoped, the native effect/unstable/arbitrary engine behind it.prop/it.effect.prop — the size clamp, -0, exhaustion and dropped-regex traps — vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `Tests: 0/0 passed` summary line that lies while the exit code is honest (a positional filter is a substring match against each path as rendered from the cwd, while --project resolves against the config root and works from anywhere), TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
+description: Use when writing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen as the default runner, asserting on typed errors via Effect.flip or Effect.result (and Exit + Cause for defects), providing test/mock layers with layer(...) for any service in R (owned or consumed; Path.layer + FileSystem.layerNoop need no platform package), fault-injecting one method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic, converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can fail — including the discriminating input that is wrong in exactly one way, per-clause and per-path mutation, and the positive control that must expect a non-zero answer before any "nothing found" is believed. Covers the sharp edges (no it.scoped, the native effect/unstable/arbitrary engine behind it.prop/it.effect.prop — the size clamp, -0, exhaustion and dropped-regex traps — vi.mock must import vi from vitest) and the FALSE GREENS that only surface at test time — layer() memoizing while Effect.provide does not, TestConsole swallowing Effect.log* through the same ConsoleRef, a small real delay in src hanging the virtual clock, a `Tests: 0/0 passed` summary line that lies while the exit code is honest (a positional filter is a substring match against each path, and a run from inside a package does not load the root config), TestClock starting at the epoch so clock reads return 1970, an eagerly-recording layerNoop stub, and a narrowing `if` with no else branch. Also covers structural checks over source text (import walkers, export assertions, comment strippers), the two-latch rule for concurrency-leak tests, and the reporter fields — unhandledErrors, a stray process.exitCode — that make a green suite lie.
 ---
 
 # Effect v4 testing with `@effect/vitest`
@@ -13,7 +13,7 @@ APIs — with one exception (`vi.mock`, below). Effect programs run through
 `effect/testing/*` modules — TestClock, TestConsole, TestSchema — and the
 property engine `effect/unstable/arbitrary` are indexed in
 `effect-v4-module-index`; this skill owns how to use them. There is no
-`FastCheck` module any more.)
+`FastCheck` module.)
 
 **Migrating a plain-Vitest Effect repo? Adopt `@effect/vitest`.** A repo whose
 tests are plain Vitest is not "nothing to migrate on the testing axis": add
@@ -29,26 +29,25 @@ monorepo's own repo-shape checks (layering, source boundaries, packed
 installs) → `@effected/workspaces/testing` (see `effected-packages`).
 
 **Install it by exact version, matching your `effect` pin** — never bare,
-never a floating dist-tag. `@effect/vitest`'s v4 line is published only under
-prerelease versions mirroring `effect`'s own numbering, and no dist-tag can
-be trusted to resolve to your pin: a dist-tag frozen on one prerelease line
-silently goes stale the moment the v4 line moves past it, and a dist-tag that
-tracks "the newest prerelease" floats off your pin the instant upstream
-publishes a new one — either way, the version actually installed can
-silently mismatch the `effect` your code runs against. The shape that avoids
-both failure modes: pin `@effect/vitest` to the *exact same* prerelease
-number your `effect` catalog pins, never a caret or a tag.
+never `@latest`, never `@beta`, never `@rc`. `@effect/vitest`'s v4 line is
+published only under prerelease versions mirroring `effect`'s own numbering,
+and no dist-tag can be trusted to resolve to your pin: a tag frozen on one
+prerelease line goes stale the moment the v4 line moves past it, and a tag that
+tracks the newest prerelease floats off your pin the instant upstream
+publishes. Pin `@effect/vitest` to the *exact same* prerelease your `effect`
+catalog pins, never a caret or a tag.
 
-The bare/`@latest` form is the dangerous one: it installs an older,
-**v3-line** package with no peer warning at all, failing only at runtime on
-the first `it.effect` call with a message naming neither `@effect/vitest`
-nor a version — a module-not-found error deep in `effect`'s own dist output,
-which reads as a broken install rather than a version mismatch. Confirm with
-`npm view @effect/vitest dist-tags` before believing any resolution, and
-check that the installed `vitest` itself satisfies `@effect/vitest`'s own
-peer range — a mismatch there fails the same opaque way. **Inside this
-monorepo** the dependency comes from `catalog:effect`, which already pins
-the matching prerelease.
+The bare/`@latest` form is the dangerous one: `latest` still points at the
+**v3-line** package. pnpm installs it with only a one-line
+`Issues with peer dependencies found` warning; `pnpm peers check` then lists
+unmet `effect ^3` and `vitest ^3` peers from `@effect/vitest`. The runtime
+failure names neither: the test file fails to load with
+`Cannot find module '…/effect/dist/Arbitrary.js'`, because the v3 package
+imports a module the v4 `effect` does not ship. It reads as a broken install
+rather than a version mismatch. Run `npm view @effect/vitest dist-tags` and
+`pnpm peers check` before believing any resolution. **Inside this monorepo**
+the dependency comes from `catalog:effect`, which already pins the matching
+prerelease.
 
 **`vi.mock` is the one import that must NOT come from `@effect/vitest`.** Vitest
 hoists it above all imports, so a `vi` bound through the re-export is not yet
@@ -83,8 +82,8 @@ describe("Jsonc", () => {
 
 - **`it.effect` runs the returned Effect** and provides the default test
   environment — `TestEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())`
-  (`packages/vitest/src/internal/internal.ts:44`), piped through
-  `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:356`). Its type is
+  (`packages/vitest/src/internal/internal.ts:56`), piped through
+  `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:382`). Its type is
   `Tester<R | Scope.Scope>`, so scoped effects (`Effect.acquireRelease`, scoped
   layers) run **directly** under `it.effect`.
 - **There is no `it.scoped`** (zero `scoped` matches in
@@ -92,7 +91,7 @@ describe("Jsonc", () => {
   spells the replacement out — `it.scoped(...)` becomes `it.effect(...)`,
   `it.scopedLive(...)` becomes `it.live(...)`). The Tester surface is
   `skip`/`skipIf`/`runIf`/`only`/`each`/`fails`/`prop` — **`it.effect.skipIf`
-  and `it.effect.runIf` exist and are well-typed** (`packages/vitest/src/index.ts:56-59`);
+  and `it.effect.runIf` exist and are well-typed** (`packages/vitest/src/index.ts:61-62`);
   reach for them instead of hand-rolling a conditional `describe`.
 - **`it.live`** (`Tester<Scope.Scope | R>`) opts into the real `Clock` and live
   runtime services. Use only when a test genuinely needs wall-clock behavior.
@@ -272,7 +271,7 @@ describe("foo", () => {
 ### `layer()` memoizes; plain `Effect.provide` does NOT. That asymmetry is the whole decision
 
 The top-level `layer` builds its layer once per group through a `MemoMap` and an
-`Effect.cached` build (`packages/vitest/src/internal/internal.ts:241,243,245`),
+`Effect.cached` build (`packages/vitest/src/internal/internal.ts:264,266,268`),
 keeps the scope open for the group, and closes it in `afterAll`. A per-test
 `.pipe(Effect.provide(L))` carries no memo map and rebuilds per test.
 
@@ -318,14 +317,16 @@ Where state must vary per test, keep the per-test provide, or use **distinct
 keys per test** and flush explicitly before asserting counts.
 
 Other `layer(...)` mechanics (surface checked against
-`packages/vitest/src/index.ts:100-158`):
+`packages/vitest/src/index.ts:112-127` and `:241-252`):
 
 - The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
   **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the
   group's layer goes **outside** the block as a top-level `it.live(...)` with
   `.pipe(Effect.provide(TheLayer))`.
 - Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })` — the
-  nested form takes **`timeout` only** and reuses the parent's memo map.
+  nested form takes **`concurrent` and `timeout` only** (no `memoMap`, no
+  `excludeTestServices`), forks the parent's memo map and inherits the parent's
+  `excludeTestServices` setting (`internal.ts:300-301`).
 - `layer(L, { excludeTestServices: true })` runs the group **without** the
   `TestClock`/`TestConsole` overrides — the block-wide alternative when every
   test in the group needs the real clock, rather than pulling one wall-clock
@@ -367,13 +368,13 @@ layer(FileSystem.layerNoop({ exists: (p) => Effect.succeed(p === "/a/.rc") }))(
 **`layerNoop`'s unstubbed members answer in THREE different ways, and each way
 is a different bug.** Two half-truths circulate about this and both are wrong:
 "every unstubbed member fails typed `NotFound`" and "every unstubbed member
-dies". `makeNoop` (`FileSystem.ts:825`) splits them:
+dies". `makeNoop` (`FileSystem.ts:636`) splits them:
 
 | members | unstubbed behavior | the trap |
 | --- | --- | --- |
-| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `NotFound` failure (`FileSystem.ts:764`) | a package reading `NotFound` as domain-level "absent" treats it as a legitimate answer, so the stub silently supplies **empty fixtures** |
-| `exists` → `false`, `remove` → `Effect.void` | **silent success** (`:844`, `:885`) | not a failure at all — a delete that never happened reports done |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` | `Effect.die("not implemented")` (`:850`–`:866`) | a **defect**: `Effect.catch` and every typed handler are blind to it |
+| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `NotFound` failure (`FileSystem.ts:575`) | a package reading `NotFound` as domain-level "absent" treats it as a legitimate answer, so the stub silently supplies **empty fixtures** |
+| `exists` → `false`, `remove` → `Effect.void` | **silent success** (`:657`, `:696`) | not a failure at all — a delete that never happened reports done |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` | `Effect.die("not implemented")` (`:663`–`:676`) | a **defect**: `Effect.catch` and every typed handler are blind to it |
 
 The consequence the third row buys you: production code that defensively
 absorbs a filesystem failure —
@@ -392,8 +393,8 @@ only what its author remembered. `MemoryFileSystem` implements all three rows
 honestly — a directory really is created, a removal really removes — so
 misbehaviour is injected as a **fault handler**, not as a stub body. Keep
 `layerNoop` for the one-trivially-stubbed-member case only. Same tier:
-**`readFileString` strips a leading BOM** (`FileSystem.ts:701` decodes
-`impl.readFile` through `TextDecoder` at `:704`, default `ignoreBOM: false`)
+**`readFileString` strips a leading BOM** (`FileSystem.ts:508` decodes
+`impl.readFile` through `TextDecoder` at `:511`, default `ignoreBOM: false`)
 → [references/false-greens.md](./references/false-greens.md).
 
 **Beyond a single trivially-stubbed member, prefer `@effected/memfs` over a
@@ -402,7 +403,7 @@ absolute POSIX path → `string` | `Uint8Array`, parents auto-created — provid
 a real in-memory `FileSystem` whose unseeded reads fail typed `NotFound`,
 where a hand stub answering unarranged reads with `""` produces exactly the
 silent false green above (a phantom file parsing as empty; that stub shipped
-a real dropped-changeset bug, which is why the package exists — 2026-08-14).
+a real dropped-changeset bug, which is why the package exists).
 `layerWith` is a parameterized layer factory: bind the result to a `const`
 (memoization discipline), `Layer.fresh` for per-test isolation.
 
@@ -421,8 +422,8 @@ For "behaves like the real service except this one method fails on demand",
 `layerNoop` is the wrong tool (it stubs everything) and there is still no
 `FileSystem.layerWith` / `Layer.mapService` in the vendored source (no `export const mapService` in `Layer.ts`). The house recipe is
 `Layer.effect` + spread the base + `Layer.provide(base)` — with
-`Layer.updateService` (`Layer.ts:2063`) as the shorter form when the subject is
-itself a layer, and `Layer.mock` (`Layer.ts:2304`) for partial stubs that die
+`Layer.updateService` (`Layer.ts:2067`) as the shorter form when the subject is
+itself a layer, and `Layer.mock` (`Layer.ts:2308`) for partial stubs that die
 loudly. Full scaffold and the three ways to get the spread wrong →
 **[references/fault-injection.md](./references/fault-injection.md)**.
 
@@ -489,7 +490,7 @@ import { Arbitrary } from "effect/unstable/arbitrary";
 
 const Sample = Schema.Struct({
   name: Schema.String,
-  count: Schema.Int.check(Schema.makeFilter((n) => !Object.is(n, -0))), // YAML can't carry -0
+  count: Schema.Int.check(Schema.makeFilter((n) => !Object.is(n, -0))), // Yaml.stringify drops -0's sign
 });
 
 it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
@@ -506,8 +507,8 @@ it.prop("mixed inputs", { name: Name, n: Schema.Int }, ({ name, n }) => typeof n
 
 The options bag is **`arbitrary?: Arbitrary.CheckOptions`** on the
 `timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:104,157`):
-`{ runs, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:166`).
-**`fastCheck: { numRuns }` is gone** — `numRuns` is `runs`, `path` is the
+`{ runs, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:182`).
+There is **no `fastCheck: { numRuns }` option** — `numRuns` is `runs`, `path` is the
 opaque `replay` token, `maxSkipsPerRun` is one absolute `maxDiscards`. A raw
 fast-check arbitrary in the inputs is a type error and a runtime failure;
 compose an `Arbitrary` instead. The module's surface, the fast-check → native
@@ -521,8 +522,8 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 
 - **The `size` clamp silently shrinks a domain.** Every unconstrained string
   and array length is generated up to `min(maxLength, max(minLength, size))`
-  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1124-1125`,
-  `:1366-1367`; `runner.ts:425,566`), ramping from 0 across the runs. A
+  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1037-1038`,
+  `:1252-1253`; `runner.ts:464,605`), ramping from 0 across the runs. A
   `Schema.String.check(Schema.isMaxLength(40_000))` input never exceeded 10
   characters at the default and reached 40 000 with `arbitrary: { size: 40_000 }`.
   A byte-budget or long-input property that does not pass `size: <cap>`
@@ -540,9 +541,13 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 - **The generator emits `-0`.** Always for `Schema.Number`/`Finite`, and for
   `Schema.Int` whenever the effective lower bound is `-1` — which an
   **unbounded** `Schema.Int` has during the early small-size runs
-  (`internal/arbitrary/model.ts:561-565`; `checkEffect(Arbitrary.schema(Schema.Int),
-  (n) => !Object.is(n, -0))` is Falsified after 5 runs). Neither JSON nor
-  YAML can carry `-0` (`JSON.stringify(-0) === "0"`), so a round-trip property
+  (`internal/arbitrary/model.ts:629`, where a lower bound of `-1` yields the
+  range `{ minimum: -0 }`, and `:570`, which returns that bound as-is;
+  `checkEffect(Arbitrary.schema(Schema.Int), (n) => !Object.is(n, -0))` is
+  Falsified within the first ten runs, and `formatCheckFailure` prints the
+  shrunk input as `0`, hiding the sign). Both parsers read `-0` back (`JSON.parse("-0")` and
+  `Yaml.parse("-0")` are both `-0`), but both stringifiers drop the sign
+  (`JSON.stringify(-0) === "0"`, and `Yaml.stringify(-0)` is `"0\n"`), so a round-trip property
   over serialized numbers excludes it —
   `Schema.Int.check(Schema.makeFilter((n) => !Object.is(n, -0)))` — rather
   than letting `deepStrictEqual` fail on `+0`/`-0`
@@ -556,7 +561,7 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 - **`isPattern` regexes must be lookaround-free and flag-free.** The native
   regexp compiler returns `undefined` for lookahead/lookbehind, backreferences
   and the `i`/`m`/`v` flags (`internal/arbitrary/regexp.ts:344,350,832`), and
-  the string node then **silently drops the pattern** (`schema.ts:1111-1112`)
+  the string node then **silently drops the pattern** (`schema.ts:1024-1025`)
   and filters random strings — which exhausts for any selective pattern
   (`/^(?=.*[0-9])[a-f0-9]{8}$/` and `/^[a-f]{8}$/i` both died with
   `discards: 201`). Rewrite `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as
@@ -564,8 +569,8 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
   as **code points** (`Schema.Array(Schema.Int.check(isBetween({ minimum: 0, maximum: 0x10ffff })))`
   mapped through `String.fromCodePoint`), because the native string
-  generator stays in printable ASCII — the `fc.string({ unit: "binary" })`
-  spelling is gone with the bridge.
+  generator stays in printable ASCII and the module has no
+  `fc.string({ unit: "binary" })` equivalent.
 - **Derivation composes through `Schema.Union` of `Schema.Class` members, and
   the generated values are REAL class instances** — `instanceof` holds for
   each member and every element is one of them, verified directly against the
@@ -577,11 +582,11 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   `FastCheck.*` ones.
 
 **Reading a property failure.** `@effect/vitest` dies with
-`Arbitrary.formatCheckFailure` (`Arbitrary.ts:298`): runs, shrinks, the
+`Arbitrary.formatCheckFailure` (`Arbitrary.ts:314`): runs, shrinks, the
 **shrunk input**, the failure and the **replay token**. The vitest-agent
 reporter that owns this repo's CLI output compacts that to its first line —
 `Property falsified after 33 run(s) and 1 shrink(s)` — and drops the input
-and the token (verified 2026-09-12 on a deliberately falsified control).
+and the token (a deliberately falsified control shows it).
 The terminal stays the agent reporter's, but
 `pnpm exec vitest run --project <p> --coverage.enabled=false --reporter=json --outputFile=<path>`
 still writes the full message to the file (`Shrunk input: [5]` /
@@ -626,7 +631,7 @@ that clock*. An effect that interleaves **real filesystem I/O** with sleeps —
 sleep created *after* resuming from the real await is not yet registered when
 `adjust`'s drain loop re-checks, so the test hangs or flakes depending on how
 the real I/O lands (hit live in a two-latch concurrency test over real file
-locks, savvy-web/systems 2026-08). This is not fixable by adjusting harder:
+locks). This is not fixable by adjusting harder:
 virtual time cannot know when un-clocked real work will complete. The escape
 hatch is **`it.live` for exactly those tests** — real clock, real I/O, one
 timeline — placed **outside** the `layer()` block per the `MethodsNonLive`
@@ -823,56 +828,50 @@ it is load-bearing → **[references/structural-checks.md](./references/structur
 
 ## Other false greens, in one place
 
-`Tests: 0/0 passed` is a FAILED run whose **summary line** says passed (three
-producers — a module-level throw, one bad file zeroing a whole package, and a
-positional filter whose substring is absent from the paths as rendered from the
-cwd; plus
-the separate `ERR_LOAD_URL` a repo suffers while its config declares a
-cwd-relative `globalSetup` path, which is a config defect to fix rather than a
-cwd rule to obey); `TestConsole.logLines` accumulation; the eager `layerNoop`
-recorder;
-`PubSub.takeAll` hanging on an empty subscription; timing gates lying by ~18×
-under coverage; a green suite that fails the vitest **process** because a test
-left `process.exitCode` set; a big green count for a surface the suite never
-calls; a helper used on **both sides** of every comparison, which agrees with
-itself however broken it is; a `5`-second-or-longer `Effect.timeout` guard that
-never gets to report, because vitest's own default timeout kills the test
-first; a forked fiber's failure that is never observed anywhere unless the
+`Tests: 0/0 passed` is a FAILED run whose **summary line** says passed (a
+filter that matched no test file; the separate `ERR_LOAD_URL` a repo suffers
+while its config declares a cwd-relative `globalSetup` path is a config defect
+to fix, not a cwd rule to obey); `TestConsole.logLines` accumulation; the eager
+`layerNoop` recorder; `PubSub.takeAll` hanging on an empty subscription; timing
+gates lying under coverage; a green suite that fails the vitest **process**
+because a test left `process.exitCode` set; a big green count for a surface the
+suite never calls; a helper used on **both sides** of every comparison, which
+agrees with itself however broken it is; an `Effect.timeout` guard that never
+fires — under `it.effect` any guard is inert until `TestClock.adjust` passes
+it, and under a real clock a guard of 5 seconds or more loses to vitest's own
+default; a forked fiber's failure that is never observed anywhere unless the
 fiber is joined. Each with its probe →
 **[references/false-greens.md](./references/false-greens.md)**.
 
-**Zero collected tests is never a pass — and READ BOTH the Tests line and the
-exit code, because they lie in complementary situations.** Measured 2026-09-05
-on `vitest@4.1.11`: every zero-collection run exits **1** while printing
-`Tests: 0/0 passed`, so there the *Tests line* is the liar; a passing subset run
-against whole-repo coverage thresholds exits **1** with a genuinely green Tests line, so
-there the *exit code* is — unless the reporter skips thresholds on partial runs, as
-`@vitest-agent/plugin` 4.x does (`Coverage thresholds skipped: partial run`). Treat disagreement between them as the alarm. The
-older rule "read the Tests line, not the exit code" dates from when global
-coverage thresholds failed every subset run; a reporter that skips thresholds on
-partial runs restored the exit code's meaning, and the rule outlived its condition. Read
-`unhandledErrors` alongside both: a `ChildProcess` with no `error` listener
-re-throws asynchronously *after* the failure was correctly reported, and 15
-green tests carried a live defect that only that field showed.
+**Zero collected tests is never a pass — read BOTH the Tests line and the exit
+code.** A filter that matches no test file prints `Tests: 0/0 passed` and exits
+**1**: the Tests line is the liar and the exit code is honest. A test file that
+throws at load time is reported as `✗ test suite failed to load`, naming the
+file and the throw, and exits 1. A passing subset run under `--coverage` exits
+0, because the `@vitest-agent/plugin` reporter skips thresholds on partial runs
+(`Coverage thresholds skipped: partial run`). Treat any disagreement between
+the two signals as the alarm. Read `unhandledErrors` alongside both: a
+`ChildProcess` with no `error` listener re-throws asynchronously *after* the
+failure was correctly reported, and 15 green tests carried a live defect that
+only that field showed.
 
-**A `0/0 passed` summary means "wrong filter", never "no tests".** Measured
-in this repo from inside `packages/<pkg>`: a bare `vitest run` runs the WHOLE
-suite (exit 0), `vitest run --project @effected/<pkg>` runs that project
-(exit 0), and only a **positional** filter collects nothing (exit 1). A positional arg
-is not a path: it is a **substring matched against each test file's path as
-rendered from the cwd**. `packages/<pkg>` therefore matches from the root and
-matches nothing from inside that package, while `__test__` matches every
-project from anywhere, and a partial word like `ckfiles` matches from the root
-— none of which path resolution would predict. So prefer `--project <name>`,
-which works from any directory; filter positionally only from the repo root. Never `--passWithNoTests` — it is the one flag
-that really does turn a zero-collection run green.
+**Run vitest from the repo root.** From inside `packages/<pkg>`, vitest does
+not load the root config: it runs with the package directory as its root, so
+the repo's projects, setup files and reporter are all absent. A bare
+`vitest run` there still runs that package's files under default settings,
+while `vitest run --project @effected/<pkg>` fails at startup with
+`No projects matched the filter` (exit 1). From the root, `--project <name>`
+selects one project. A positional arg is not a path: it is a **substring
+matched against each test file's path**. `ckfiles` selects `@effected/lockfiles`'
+tests from the root, which path resolution would not predict. Never
+`--passWithNoTests` — it is the one flag that turns a zero-match run green
+(exit 0).
 
-An `ERR_LOAD_URL` naming a `vitest.setup.ts` inside a package directory is the
-same fault in an older guise: the root config's `globalSetup` used to be a
-cwd-relative path (effected#455, since fixed to resolve against the config
-file). If you meet it in a repo that has not taken that fix, the setup file it
-names is not one you were meant to create — creating it forks the setup
-permanently.
+An `ERR_LOAD_URL` naming a `vitest.setup.ts` inside a package directory means
+the config declares `globalSetup` as a cwd-relative path. Resolve it against
+the config file (`fileURLToPath(new URL("vitest.setup.ts", import.meta.url))`).
+The setup file it names is not one you were meant to create; creating it forks
+the setup permanently.
 
 **The stale-upstream-dist red herring** (a red that lies rather than a green):
 in a kit monorepo, a downstream package's tests resolve workspace siblings

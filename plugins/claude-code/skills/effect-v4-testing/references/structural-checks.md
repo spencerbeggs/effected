@@ -36,8 +36,7 @@ Raw, unstripped source is:
 So: **strip comments for include-shaped checks; you may keep raw source for
 notInclude-shaped ones**, and say in a comment which direction you relied on,
 because the next reader will otherwise "fix" the inconsistency in the wrong
-direction. A repo-wide sweep on 2026-07-25 found zero remaining silent-pass
-sites; the two alarm-direction sites carry the rule as comments.
+direction.
 
 The same rule stated as a habit: **before writing a structural assertion, ask
 which way it fails when the substrate is wrong.** If the answer is "it passes",
@@ -48,7 +47,7 @@ the substrate must be narrowed first.
 "`index.ts` exports `NpmRegistry`" as a naive `source.includes("NpmRegistry")`
 survives deleting the export three independent ways. Each was found by a
 mutant that survived the *previous* fix
-(`packages/npm/__test__/reachability.test.ts:105-135`):
+(`packages/npm/__test__/reachability.test.ts:123-139`):
 
 1. **A comment naming it** — the doc block above the deleted export still says
    `NpmRegistry`. Closed by stripping comments.

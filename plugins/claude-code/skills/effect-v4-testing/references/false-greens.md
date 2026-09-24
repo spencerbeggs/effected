@@ -59,102 +59,59 @@ re-notice in review.
 
 ## `0 tests passed` is a FAILED run, not an empty one
 
-**`Tests: 0/0 passed` is the lie; the exit code is the honest half — the exact
-reverse of what this file used to say.** Every zero-collection route exits **1**
-while printing a summary line that says *passed*. The old text claimed they exit
-0 and told you to read the Tests line instead, which pointed readers at the only
-signal that still lies.
+**`Tests: 0/0 passed` is the lie; the exit code is the honest half.** A run
+that collects nothing exits **1** while printing a summary line that says
+*passed*. With the `@vitest-agent/plugin` reporter:
 
-Measured 2026-09-05, `vitest@4.1.11` + the `@vitest-agent/plugin` reporter:
-
-| run | Tests line | exit | which half lies |
+| run (from the repo root) | Tests line | exit | which half lies |
 | --- | --- | --- | --- |
-| `--project <name>`, from **anywhere** | `143/143 passed` | 0 | neither |
-| the same, plus `--coverage` (or on CI) | `143/143 passed` | **1** | the **exit code** — global thresholds measure the whole repo, so any subset run fails them by construction |
-| a **path** filter with cwd not the repo root | `0/0 passed` | 1 | the **Tests line** |
+| `--project <name>` | `143/143 passed` | 0 | neither |
+| the same, plus `--coverage` | `143/143 passed`, then `Coverage thresholds skipped: partial run` | 0 | neither — the reporter skips global thresholds on a subset run |
 | any filter matching nothing | `0/0 passed` | 1 | the **Tests line** |
-| a module-level throw in a collected file | `0/0 passed` | 1 | the **Tests line** |
-| one test file with a load-time error | `✗ test suite failed to load` | 1 | neither — the reporter names the file |
+| a test file that throws at load time | `✗ test suite failed to load`, naming the file and the throw | 1 | neither |
 
-**So read BOTH, and treat disagreement as the alarm.** Neither signal is
-trustworthy alone, and they fail in *complementary* situations: the exit code
-lies on a passing subset run under coverage, the Tests line lies on every
-zero-collection run. "Read the Tests line, not the exit code" was written when
-global thresholds were enforced on every run, so the exit code carried no
-information at all; scoping thresholds to CI and explicit `--coverage` gave it
-its meaning back. The rule outlived the condition that justified it — and an
-agent still following it reads `0/0 passed`, ignores the `1`, and reports green.
+**So read BOTH, and treat disagreement as the alarm.** The Tests line lies on
+every zero-match run; a reporter that enforced global coverage thresholds on a
+subset run would make the exit code lie on a green run instead. An agent that
+reads only `0/0 passed` reports green; an agent that reads only the exit code
+cannot tell a zero-match run from a real failure.
 
-### cwd: which invocations actually depend on it
+### Run from the repo root
 
-Vitest **walks up from cwd to find the config** and anchors its root there, so
-far less is cwd-sensitive than folklore claims. Measured from inside
-`packages/lockfiles`:
+From inside `packages/lockfiles`, vitest does **not** load the root config. It
+runs with the package directory as its root, so the repo's projects, setup
+files and reporter are absent:
 
-| invocation | result |
+| invocation, cwd `packages/lockfiles` | result |
 | --- | --- |
-| `vitest run` | the **whole repo** suite — `12298/12298`, exit 0. Correct, just not what you meant. |
-| `vitest run --project @effected/lockfiles` | `143/143`, exit 0 |
-| `vitest run --project @effected/walker` | `75/75`, exit 0 — a **different** package's project, from this one's directory |
-| `vitest run packages/lockfiles` | `0/0 passed`, exit 1 |
+| `vitest run` | that package's 7 files under vitest's default reporter (`Tests 143 passed`), exit 0 — the repo's setup files and plugins never ran |
+| `vitest run --project @effected/lockfiles` | `Startup Error: No projects matched the filter "@effected/lockfiles"`, exit 1 |
+| `vitest run packages/lockfiles` | `No test files found, exiting with code 1` |
+| `vitest run --config ../../vitest.config.ts --project @effected/walker` | a different package's project, green, exit 0 |
 
-**`--project <name>` is the invocation to reach for: it resolves against the
-config root and works from any directory.** The third row is the one that
-settles it — a project filter naming a package you are *not* standing in still
-runs, so this is genuine config-root anchoring, not a coincidence of matching
-the cwd.
+The last row is the escape hatch when you must stay in a package directory:
+point `--config` at the root config explicitly. Otherwise run from the root.
 
-**Only a positional filter is cwd-sensitive — and not as a path.** A positional
-arg is matched as a **substring of each test file's path as rendered from the
-cwd**, which is a different mechanism from path resolution and predicts
-different results:
+**A positional filter is a substring, not a path.** It is matched against each
+test file's path, so from the root `ckfiles` selects `@effected/lockfiles`'
+143 tests: a partial word, neither a path nor a whole path segment. If
+positional args were resolved as paths, or matched per segment, `ckfiles` would
+match nothing. Reach for `--project <name>`, and give a positional filter a
+substring that is actually present in the paths you want.
 
-| positional filter | cwd | result |
-| --- | --- | --- |
-| `packages/lockfiles` | `packages/lockfiles` | `0/0` — that substring appears in no path rendered from here |
-| `__test__` | `packages/lockfiles` | the **whole repo**, `12298/12298`, exit 0 — that substring appears in every project's paths |
-| `ckfiles` | repo root | `143/143`, exit 0 — a partial word, neither a path nor a whole path segment |
-| `lockfiles` | `packages/lockfiles` | `0/0`, exit 1 — the same string that matches from the root |
-
-Each row kills a different plausible explanation, which is why all four are
-here:
-
-- If positional args were resolved as cwd-relative **paths**, `__test__` would
-  have selected this package's own tests. It selected all of them.
-- If they were matched per path **segment** or as a prefix, `ckfiles` would
-  match nothing. It selected lockfiles' 143 — so the match is a plain substring.
-- The last two rows are the same needle against the same tree, differing only in
-  cwd, and they disagree — which is what pins the match to the path **as
-  rendered from the cwd**: `packages/lockfiles/__test__/…` from the root,
-  bare `__test__/…` from inside.
-
-So "cwd-relative" gets the right advice for the wrong reason. Reach for
-`--project <name>`, and give a positional filter a substring that is actually
-present in the paths you want — which from the repo root is what
-`packages/<pkg>` is.
-
-> **This section has now been wrong twice, in two different ways. Recognise
-> both — the second is the subtler and the more tempting.**
->
-> 1. **Generalising across untested cases.** "A path filter needs the repo root"
->    was extrapolated into "vitest must run from the repo root" — true of the one
->    form that had been measured, false of `--project`, which nobody ran.
-> 2. **Substituting a better theory for a measurement.** The correction to that
->    replaced "root-relative" with "cwd-relative". Better reasoning, genuinely
->    closer, still never run — and it predicts the wrong answer for `__test__`.
->
-> A caveat is not evidence, and **neither is a more plausible mechanism**. When a
-> fix or a config change moves the ground a measurement was taken on, re-run it;
-> and when you correct a mechanism, the correction needs its own discriminating
-> input — one the old explanation and the new one answer *differently*. Rewriting
-> an unmeasured word as a better-reasoned word leaves you exactly as unmeasured
-> as before, while feeling like progress.
+> A caveat is not evidence, and **neither is a more plausible mechanism**. When
+> a tool upgrade or a config change moves the ground a measurement was taken
+> on, re-run it. When you correct a mechanism, the correction needs its own
+> discriminating input — one the old explanation and the new one answer
+> *differently*. Rewriting an unmeasured word as a better-reasoned word leaves
+> you exactly as unmeasured as before, while feeling like progress.
 
 ### A relative `globalSetup` path is a CONFIG defect, not a cwd rule
 
 If a repo's config declares `globalSetup: ["vitest.setup.ts"]` — a bare relative
-path — vitest resolves it against **cwd**, so running from `packages/<pkg>` looks
-for `packages/<pkg>/vitest.setup.ts` and dies before collecting anything:
+path — vitest resolves it against **cwd**, so a run from a package directory
+that points `--config` at the root config looks for
+`packages/<pkg>/vitest.setup.ts` and dies before collecting anything:
 
 ```text
 Error: Failed to load url /…/packages/schemastore/vitest.setup.ts
@@ -177,37 +134,32 @@ export default defineConfig({
 });
 ```
 
-This repo shipped that fix (effected#455), so the `ERR_LOAD_URL` symptom is
-**history here** and a bare run from inside a package now succeeds. Expect it in
-any repo that has not — the tell is an `ERR_LOAD_URL` naming a setup file inside
-a *package* directory. Fix the config; do not add a cwd rule to work around it.
+The tell is an `ERR_LOAD_URL` naming a setup file inside a *package*
+directory. Fix the config; do not add a cwd rule to work around it.
 
 **Zero collected tests is never a pass**, whatever either signal says. The
-remaining producers:
+producers to recognise:
 
 - **A module-level throw** — most commonly the `Context.Service` TDZ (see
   `effect-v4-services-layers`). Typechecks clean, so nothing else warns you.
-  Import the file directly and look at the throw before believing anything else
-  the suite says.
-- **One broken file zeroes the whole package.** A single test file with a
-  load-time error — even a scratch/debug file — takes hundreds of sibling tests
-  with it (observed 2026-07-18: a 400-test package zeroed by one bad scratch
-  file). The reporter has since improved: it now prints
-  `✗ test suite failed to load` and names the module, so this producer no longer
-  hides. Still never leave scratch `*.test.ts` files in a test tree — probe with
-  `npx tsx` against a probe file INSIDE the package tree (see
-  `effect-v4-source-lookup` for why `/tmp` cannot resolve `effect`).
+  The reporter prints `✗ test suite failed to load` and names the file; import
+  the file directly and look at the throw before believing anything else the
+  suite says.
+- **A scratch test file left in a test tree** fails to load the same way and
+  turns a whole package's run red. Never leave scratch `*.test.ts` files in a
+  test tree — probe with `npx tsx` against a probe file INSIDE the package tree
+  (see `effect-v4-source-lookup` for why `/tmp` cannot resolve `effect`).
 
 **Do not "fix" a `0/0` by reaching for `--passWithNoTests`.** It is the one flag
-that genuinely does turn these runs green: measured, a zero-match run exits 1 by
-default and **0** with the flag. It exists for a repo where an empty match is
+that genuinely does turn these runs green: a zero-match run exits 1 by default
+and **0** with the flag. It exists for a repo where an empty match is
 legitimately expected; here it converts the last honest signal into a false one.
 
 ## `TestConsole.logLines` accumulates for the whole test
 
-Cumulative, and **never drained by reading it**: two reads
-across one test return 2 lines then 4, and the second read still contains the
-first run's output.
+Cumulative, and **never drained by reading it**: in the test below, which logs
+one line per run, the two reads return 1 line and then 2, and the second read
+still contains the first run's output.
 
 ```ts
 import { assert, it } from "@effect/vitest";
@@ -219,9 +171,13 @@ const runTool = (target: string) => Console.log(`ran ${target}`);
 it.effect("BOTH assertions read the FIRST run's output — the second cannot fail", () =>
   Effect.gen(function* () {
     yield* runTool("a");
-    assert.include(JSON.stringify(yield* TestConsole.logLines), "a");
+    const first = yield* TestConsole.logLines;
+    assert.lengthOf(first, 1);
+    assert.include(JSON.stringify(first), "ran a");
     yield* runTool("b");
-    assert.include(JSON.stringify(yield* TestConsole.logLines), "a"); // still passes!
+    const second = yield* TestConsole.logLines;
+    assert.lengthOf(second, 2); // the buffer grew; reading did not drain it
+    assert.include(JSON.stringify(second), "ran a"); // still passes!
   }),
 );
 ```
@@ -287,7 +243,7 @@ splits its members:
 | --- | --- | --- |
 | `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` | **yes** |
 | `exists` → `false` (`:657`), `remove` → `Effect.void` (`:696`) | silent success | n/a — never fails |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:663`–`:679`) | `Effect.die("not implemented")` — a **defect** | **no** |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:663`–`:676`) | `Effect.die("not implemented")` — a **defect** | **no** |
 
 Three distinct false greens, one per row:
 
@@ -317,7 +273,7 @@ one-trivially-stubbed-member case.
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`
-(`FileSystem.ts:701-712`, the decode itself at `:704`), and `TextDecoder`
+(`FileSystem.ts:508-519`, the decode itself at `:511`), and `TextDecoder`
 defaults to `ignoreBOM: false`,
 which consumes the mark. "Read the file as a string" therefore looks lossless
 and is not. A round-trip test that reads with `readFileString` and writes back
@@ -363,51 +319,77 @@ times out in several places at once, suspect the double before the clock.
 
 ## A dead `Effect.timeout` guard never fires
 
-An `Effect.timeout` of 5 seconds or more, wrapped around a test's own subject
-and run under vitest's default 5000ms test timeout, never gets the chance to
-report its own failure: vitest kills the test first. The failure reads "Test
-timed out in 5000ms" — not the `TimeoutException` the guard was written to
-produce — and nothing about the test's source suggests why one message
-replaced the other.
+An `Effect.timeout` guard fails with `Cause.TimeoutError` (`_tag`
+`"TimeoutError"`, checked by `Cause.isTimeoutError`) — but only if the clock it
+waits on actually reaches the deadline before vitest's own 5000ms default kills
+the test. Which clock that is decides how the guard dies:
 
-WRONG — this is deliberately not run: it demonstrates the trap by actually
-hanging to vitest's own 5000ms default, which would make the gate that
-extracts and runs every example in this file wait out a real timeout on
-every pass.
+- **Under `it.effect` (the virtual `TestClock`), every guard is inert** — of any
+  duration, `"10 millis"` included — until `TestClock.adjust` moves the clock
+  past it. Nothing advances virtual time on its own.
+- **Under a real clock** (`it.live`, or a `layer(..., { excludeTestServices: true })`
+  block), a guard of 5 seconds or more loses the race to vitest's default.
+
+Either way the failure reads `Test timed out in 5000ms.`, not the
+`TimeoutError` the guard was written to produce, and nothing about the test's
+source suggests why one message replaced the other.
+
+WRONG — both are deliberately not run: each demonstrates the trap by hanging to
+vitest's 5000ms default, which would make the gate that extracts and runs every
+example in this file wait out two real timeouts on every pass.
 
 ```text
-// The guard and vitest's own default race at the SAME 5000ms — vitest wins,
-// or the two disagree by a few milliseconds of scheduling jitter either way.
-it.live("never gets to report its own timeout", () =>
+// Virtual clock: a 10-millisecond guard never fires, because nothing
+// advances the TestClock.
+it.effect("never gets to report its own timeout", () =>
   Effect.gen(function* () {
-    const exit = yield* Effect.timeout(Effect.never, "5 seconds").pipe(Effect.exit);
-    assert.isTrue(exit._tag === "Failure"); // never reached
+    const error = yield* Effect.flip(Effect.timeout(Effect.never, "10 millis"));
+    assert.isTrue(Cause.isTimeoutError(error)); // never reached
   }),
 );
-// Observed: "Test timed out in 5000ms." — not an assertion failure.
+
+// Real clock: a 10-second guard loses to vitest's 5000ms default.
+it.live("never gets to report its own timeout either", () =>
+  Effect.gen(function* () {
+    const error = yield* Effect.flip(Effect.timeout(Effect.never, "10 seconds"));
+    assert.isTrue(Cause.isTimeoutError(error)); // never reached
+  }),
+);
+// Observed for both: "Test timed out in 5000ms." — not an assertion failure.
 ```
 
-RIGHT — the guard stays strictly under vitest's own timeout, so it actually
-reports the `TimeoutException` it was written to produce:
+RIGHT — under `it.effect`, fork the guarded effect, drive the clock past the
+deadline, then join. Under a real clock, keep the guard strictly under vitest's
+timeout. Both assert the failure really is a `TimeoutError`, so a subject that
+fails some other way turns the test red:
 
 ```ts
 import { assert, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Cause, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
-it.live("reports its own TimeoutException", () =>
+it.effect("reports its own TimeoutError once the TestClock passes the deadline", () =>
   Effect.gen(function* () {
-    const exit = yield* Effect.timeout(Effect.never, "3 seconds").pipe(Effect.exit);
-    assert.isTrue(exit._tag === "Failure"); // reached; passes
+    const fiber = yield* Effect.forkChild(Effect.flip(Effect.timeout(Effect.never, "10 seconds")));
+    yield* TestClock.adjust("10 seconds");
+    const error = yield* Fiber.join(fiber);
+    assert.isTrue(Cause.isTimeoutError(error));
+  }),
+);
+
+it.live("reports its own TimeoutError when the guard is under vitest's timeout", () =>
+  Effect.gen(function* () {
+    const error = yield* Effect.flip(Effect.timeout(Effect.never, "1 second"));
+    assert.isTrue(Cause.isTimeoutError(error));
   }),
 );
 ```
 
-Measured directly: the 3-second version passes in ~3s under the unmodified
-5000ms default; the 5-second version times out at exactly 5000ms with no
-assertion ever running. Keep every internal `Effect.timeout` guard strictly
-under whichever vitest timeout actually governs the test — the 5000ms
-default for a bare `it.effect`/`it.live`, or the value passed as the test's
-own timeout argument, whichever is smaller.
+The virtual-clock test finishes in milliseconds despite its 10-second guard;
+the live one takes one real second. Under a real clock, keep every internal
+`Effect.timeout` guard strictly under whichever vitest timeout governs the
+test — the 5000ms default, or the value passed as the test's own timeout
+argument, whichever is smaller.
 
 ## A forked fiber's failure is not reported anywhere
 
@@ -419,14 +401,19 @@ suite reports green.
 ```ts
 import { assert, it } from "@effect/vitest";
 import { Effect, Fiber } from "effect";
-import { TestClock } from "effect/testing";
+import { TestClock, TestConsole } from "effect/testing";
 
-// The child fails; the test never notices.
+// The child fails; the test never notices. The control proves the log
+// capture is live: a line logged at Error level does arrive.
 it.effect("passes even though the forked child failed", () =>
   Effect.gen(function* () {
+    yield* Effect.logError("control");
     yield* Effect.forkScoped(Effect.fail(new Error("child blew up")));
     yield* TestClock.adjust("10 millis"); // let the child run
-    assert.isTrue(true); // green — the failure above was never observed
+    const logged = JSON.stringify(yield* TestConsole.logLines);
+    assert.include(logged, "control"); // positive control: capture works
+    assert.notInclude(logged, "child blew up"); // the failure was never logged
+    assert.lengthOf(yield* TestConsole.errorLines, 0); // nor written to stderr
   }),
 );
 
@@ -441,12 +428,16 @@ it.effect("Fiber.join surfaces the same failure", () =>
 );
 ```
 
-Measured directly: the first test's run produces **no output on stdout or
-stderr at all** — the failure is not logged at any level, not merely logged
-below a visible threshold. A test whose only assertions live in code paths
-that never observe a forked child's outcome is exercising nothing about that
-child. Join it, or route its `Exit` into a `Deferred` the test explicitly
-awaits — never assume a green run means every fiber it started behaved.
+The first test is its own evidence: the control `logError` line reaches
+`TestConsole.logLines`, and the child's failure appears in neither
+`logLines` nor `errorLines`. Outside the test services it is the same — run
+under `Effect.runPromise`, the program prints only the control line on stdout
+and nothing on stderr. `References.UnhandledLogLevel` does not change this:
+core reads it only in `Pool.ts:1028`. A test whose only assertions live in
+code paths that never observe a forked child's outcome is exercising nothing
+about that child. Join it, or route its `Exit` into a `Deferred` the test
+explicitly awaits — never assume a green run means every fiber it started
+behaved.
 
 ## Real-clock tests inside a `layer(...)` suite
 
@@ -460,7 +451,7 @@ virtual one.
 
 ```ts
 import { assert, describe, layer } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 
 describe("a suite needing the real clock", () => {
   layer(Layer.empty, { excludeTestServices: true })((it) => {
@@ -470,16 +461,21 @@ describe("a suite needing the real clock", () => {
       { timeout: 3000 },
     );
 
-    it.effect("a second test in the same block still runs, with its own real Clock", () =>
+    it.effect("a second test in the same block also reads the real Clock", () =>
       Effect.gen(function* () {
-        assert.isTrue(true);
+        // The virtual TestClock starts at the epoch (0); a real clock reads
+        // well past 1.7e12 milliseconds.
+        const now = yield* DateTime.now;
+        assert.isAbove(DateTime.toEpochMillis(now), 1.7e12);
       }),
     );
   });
 });
 ```
 
-Both tests pass, each in real time. Reaching for `it.live` inside a
+Both tests pass, each in real time: the first because a real 10-millisecond
+sleep completes, the second because the clock reads the present rather than
+1970. Reaching for `it.live` inside a
 `layer(...)` block is a type error, not a style choice — `excludeTestServices`
 is the block-wide equivalent.
 
@@ -488,22 +484,22 @@ is the block-wide equivalent.
 Three sharp edges, all clock-adjacent:
 
 - **`PubSub.takeAll` suspends on an empty subscription.** Its return type is
-  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1192`) — that *is*
+  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1198`) — that *is*
   the proof. Under the virtual clock it hangs to the vitest timeout. Use
-  `PubSub.takeUpTo(sub, n)` (`PubSub.ts:1270`), which returns what is there.
-- **`PubSub.subscribe` requires a `Scope`** (`PubSub.ts:1077`) and there is no
+  `PubSub.takeUpTo(sub, n)` (`PubSub.ts:1278`), which returns what is there.
+- **`PubSub.subscribe` requires a `Scope`** (`PubSub.ts:1083`) and there is no
   `it.scoped` — but you do **not** need one. `it.effect` already runs its body
   through `Effect.scoped`:
   `makeTester<Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it)`
-  (`@effect/vitest` `internal/internal.ts:356`), and its type is
-  `Tester<R | Scope.Scope>` (`index.ts:101`), so a `Scope` requirement is
+  (`@effect/vitest` `internal/internal.ts:382`), and its type is
+  `Tester<R | Scope.Scope>` (`index.ts:113`), so a `Scope` requirement is
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.
-- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8492`) /
-  `forkIn` (`:8535`) / `forkScoped` (`:8578`) / `forkDetach` (`:8618`). And
+- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8578`) /
+  `forkIn` (`:8621`) / `forkScoped` (`:8664`) / `forkDetach` (`:8704`). And
   `Stream.fromQueue` takes a `Queue.Dequeue`
-  (`Stream.ts:1132`), so it rejects a `Subscription`.
+  (`Stream.ts:1139`), so it rejects a `Subscription`.
 
 The clock-free drain: subscribe, run the operation, then `takeUpTo`.
 
@@ -703,19 +699,18 @@ correctly-reported failure for the very case that produced it. Only the
 reporter's `unhandledErrors` field showed it.
 
 The fix there was a documented no-op listener at the point the parent
-deliberately lets go of the child (`packages/github-actions/src/DetachedProcess.ts:309-315`);
+deliberately lets go of the child (`packages/github-actions/src/DetachedProcess.ts:320-326`);
 the durable lesson is the reading habit. **A run with `unhandledErrors`
 non-empty is not a clean run**, whatever the Tests line says — treat it exactly
 like `0 tests passed`: a signal the reporter is telling you something the pass
 count structurally cannot.
 
-## Timing gates under coverage lie by an order of magnitude
+## Timing gates under coverage lie
 
-v8 coverage instrumentation cost a measured **~18×** on parser-heavy code in
-this repo (63ms clean vs 1126ms instrumented for the same parse; a 4.9s
-pathological case took 114s). A raw-millisecond performance assertion is
-therefore meaningless under coverage: it fails in CI for reasons unrelated to
-the code. The house pattern is **calibrated budgets** — time a small calibration
+v8 coverage instrumentation slows instrumented code by a workload-dependent
+factor, and parser-heavy hot loops pay the most. A raw-millisecond performance
+assertion is therefore meaningless under coverage: it fails in CI for reasons
+unrelated to the code. The house pattern is **calibrated budgets** — time a small calibration
 input through the same code path, divide by its clean-run baseline, and scale
 every budget by that factor. A genuine algorithmic regression still fails
 (quadratic outruns any constant factor), while instrumentation and slow hardware
