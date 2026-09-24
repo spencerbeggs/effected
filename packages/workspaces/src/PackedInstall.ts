@@ -178,8 +178,11 @@ const failure = (
  * each manager that answers `--version` from that directory (so a corepack
  * pin in the repo cannot refuse it), it writes a consumer whose only direct
  * dependency is the carrier tarball, steers the closure to its tarballs
- * through the manager's own override field, pins `packageManager` to the
- * probed version, installs with lifecycle scripts skipped, and checks every
+ * through the manager's own override field, pins the probed version (as
+ * `packageManager`, or for pnpm as `devEngines.packageManager` with `onFail:
+ * "ignore"`, since pnpm resolves a `packageManager` pin from the registry even
+ * when it names the running version), installs with lifecycle scripts skipped,
+ * and checks every
  * expected bin is present and executable. A packed manifest that still
  * carries `workspace:`, `catalog:`, `link:` or a relative `file:` specifier
  * fails `UnresolvedProtocol` before any install.

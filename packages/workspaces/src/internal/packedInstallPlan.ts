@@ -90,7 +90,7 @@ export const closureOf = (
 /** What one consumer project needs. */
 export interface ConsumerInput {
 	readonly manager: PackageManagerName;
-	/** The version `--version` reported, pinned as `packageManager`. */
+	/** The version `--version` reported, pinned so the consumer runs the manager that was probed. */
 	readonly version: string;
 	readonly carrier: { readonly name: string; readonly tarball: string };
 	/** Every packed package except the carrier: name to absolute tarball path. */
@@ -140,7 +140,13 @@ export const consumerFiles = (
 		name: `packed-install-${input.manager}`,
 		version: "0.0.0",
 		private: true,
-		packageManager: `${input.manager}@${input.version}`,
+		// pnpm resolves a `packageManager` pin from the registry even when it names the
+		// running version, which fails an offline install; devEngines with onFail
+		// "ignore" pins the same version without a fetch. Every other manager keeps
+		// `packageManager`, which is what corepack and yarn read.
+		...(input.manager === "pnpm"
+			? { devEngines: { packageManager: { name: "pnpm", version: input.version, onFail: "ignore" } } }
+			: { packageManager: `${input.manager}@${input.version}` }),
 		// dependencies, never devDependencies: a host NODE_ENV=production or omit=dev would skip a dev one.
 		dependencies: { [input.carrier.name]: carrierSpec, ...extra },
 		...(input.manager === "npm" || input.manager === "bun" ? { overrides: specs } : {}),

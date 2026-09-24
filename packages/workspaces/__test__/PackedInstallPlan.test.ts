@@ -116,6 +116,13 @@ describe("consumerFiles", () => {
 		const files = fileMap(consumerFiles({ ...INPUT, manager: "pnpm", version: "12.5.1" }));
 		const manifest = JSON.parse(files["package.json"] ?? "{}") as Record<string, unknown>;
 		assert.isUndefined(manifest.overrides);
+		// pnpm resolves a `packageManager` pin from the registry even when it names
+		// the running version, which fails an offline install; devEngines with
+		// onFail "ignore" declares the same version and never fetches.
+		assert.isUndefined(manifest.packageManager);
+		assert.deepStrictEqual(manifest.devEngines, {
+			packageManager: { name: "pnpm", version: "12.5.1", onFail: "ignore" },
+		});
 		assert.strictEqual(files["pnpm-workspace.yaml"], 'overrides:\n  "@x/lib": "file:/t/lib.tgz"\n');
 		const empty = fileMap(consumerFiles({ ...INPUT, overrides: {}, manager: "pnpm", version: "12.5.1" }));
 		assert.strictEqual(empty["pnpm-workspace.yaml"], "overrides: {}\n");

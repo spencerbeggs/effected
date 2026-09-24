@@ -182,7 +182,14 @@ const assertConsumer = (consumer: InstalledConsumer, tarballs: Readonly<Record<s
 		if (process.platform === "darwin") assert.match(consumer.directory, /^\/private\//, consumer.manager);
 		for (const tarball of Object.values(tarballs)) assert.isTrue(tarball.startsWith(`${scratch}/`), tarball);
 		const manifest = readJson(join(consumer.directory, "package.json"));
-		assert.deepInclude(manifest, { packageManager: `${consumer.manager}@${VERSIONS[consumer.manager]}` });
+		if (consumer.manager === "pnpm") {
+			assert.deepInclude(manifest, {
+				devEngines: { packageManager: { name: "pnpm", version: VERSIONS.pnpm, onFail: "ignore" } },
+			});
+			assert.notProperty(manifest, "packageManager");
+		} else {
+			assert.deepInclude(manifest, { packageManager: `${consumer.manager}@${VERSIONS[consumer.manager]}` });
+		}
 		assert.strictEqual(consumer.managerVersion, VERSIONS[consumer.manager]);
 		// The same manager, run inside the consumer, does not switch versions.
 		const inside = yield* spawn(consumer.manager, ["--version"], consumer.directory);
