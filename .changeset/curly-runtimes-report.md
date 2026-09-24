@@ -15,7 +15,7 @@ Write program output with `Console.log`, never `Effect.log`. Pass the old defaul
 ```ts
 import { CliLogger } from "@effected/cli";
 
-CliLogger.layer({ stderrFrom: "Error" }); // restores the pre-0.x split
+CliLogger.layer({ stderrFrom: "Error" }); // restores the previous default
 ```
 
 ### `reportFailures` no longer double-renders a `UserError`, and `ShowHelp` exit codes changed
