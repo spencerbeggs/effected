@@ -73,7 +73,8 @@ carry `listTools`, `listResources`, `callTool`, `readResource`, `request`,
 - **`McpStdio.layer` guards the server's stdin.** Core's stdio decoder
   throws on a line that is not JSON before it drops that line from its
   buffer, so every later chunk throws on it again and the server stops
-  answering while stdin EOF still exits 0. `McpStdio.layer` provides the
+  answering while stdin EOF still ends the process with a healthy
+  session's status (0 under `McpStdio.teardown`, 130 under core's default). `McpStdio.layer` provides the
   server a `Stdio` (`src/internal/StdinFrames.ts`) that frames stdin the
   way core does (streaming UTF-8 decode, BOM stripped only at stream
   start), answers a non-JSON or over-cap (16 Mi code units) line with a

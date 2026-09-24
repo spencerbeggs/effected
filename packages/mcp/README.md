@@ -156,8 +156,8 @@ below.
 `McpStdio.layer` is core's `McpServer.layerStdio` with every log line sent to
 stderr, and with stdin read through a guard. Core's own stdio decoder throws on
 a line that is not JSON without ever trimming it from its buffer, so one bad
-line wedges the server: every later request goes unanswered while stdin EOF
-still exits 0. The guard frames stdin exactly as core does — one streaming
+line wedges the server: every later request goes unanswered, yet the process
+still ends at stdin EOF exactly as a healthy session does. The guard frames stdin exactly as core does — one streaming
 UTF-8 decoder, a byte-order mark stripped only at the start of the stream,
 lines split on `\n` — and answers each line core would choke on itself, on
 stdout:

@@ -27,7 +27,9 @@ and leave `Stdio` out of the composition entirely; the harness supplies it.
 On the default stateful revision (`McpProtocol.v2025_11_25`), `yield*
 harness.initialize` first: every other request — `ping` included — fails
 `NotInitialized` and is never written, because the server would only answer
-an opaque `Invalid request metadata`. `harness.sendRaw` is never gated by
+an opaque refusal: `-32602 Invalid request metadata` when a stateless adapter
+is listed first, as in `McpStdio.protocols`, or `-32603 Internal error` when
+only stateful revisions are served. `harness.sendRaw` is never gated by
 this check; it writes unconditionally. There is no `awaitResponse(id)` on
 the harness — use `request` (send and wait) or `startRequest` (send now,
 wait later) instead. `strictStdout` (default `true`) dies the wait, rather

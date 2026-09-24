@@ -259,7 +259,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/mcp": {
-							range: "^0.1.0",
+							range: "^0.1.1",
 							peer: "^0.1.0",
 							strategy: "lock-minor",
 							source: "workspace",

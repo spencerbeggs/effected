@@ -90,8 +90,10 @@ interface HarnessParts {
  *   the wire. Assert it empty.
  * - On a stateful revision (the default `2025-11-25`), send `initialize`
  *   first. Every other request before it fails with `NotInitialized` and
- *   is never written: the server would only answer an opaque
- *   `Invalid request metadata`, `ping` included.
+ *   is never written, `ping` included: the server would only answer an
+ *   opaque refusal, `-32602 Invalid request metadata` when a stateless
+ *   adapter is listed first (as in `McpStdio.protocols`), or
+ *   `-32603 Internal error` when only stateful revisions are served.
  *
  * @public
  */
@@ -270,7 +272,8 @@ export class McpHarness {
 					Deferred.isDoneUnsafe(waiter) ? Deferred.await(waiter) : stopAware(Deferred.await(waiter)),
 				);
 			// A stateful revision refuses every request before `initialize`, `ping` included,
-			// with an opaque "Invalid request metadata"; fail those fast, naming the missing step.
+			// with an opaque -32602 or -32603 depending on the protocol list; fail those fast,
+			// naming the missing step.
 			const stateful = !isStateless(protocol);
 			let initializeSent = false;
 			const sendRaw = (message: unknown): Effect.Effect<void> =>
