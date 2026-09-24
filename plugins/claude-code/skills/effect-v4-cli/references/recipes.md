@@ -104,8 +104,9 @@ await Effect.runPromise(
 Prints `mytool 1.2.3 via carrier 0.4.0` — the real `--version` global flag,
 not a hand-called formatter: `GlobalFlag`'s built-in version action calls
 `formatter.formatVersion(command.name, version)` itself, so wiring
-`versionLayer` once at the program boundary (alongside `CliColor`'s own
-`formatterLayer`, never a second formatter built by hand) is enough.
+`versionLayer` once at the program boundary (instead of `CliColor`'s own
+`formatterLayer`, never both — two `CliOutput` layers means one silently
+wins) is enough.
 `CliColor.formatterLayer`'s `formatVersion` override takes exactly
 `(name, version)`, in that order — a replacement with a third required
 parameter fails to typecheck (`TS2322`, not assignable to
@@ -223,7 +224,7 @@ describe("process reads stay in the three entry files", () => {
         const root = yield* fs.makeTempDirectoryScoped()
         yield* fs.writeFileString(path.join(root, "bin.ts"), "process.argv;")
         yield* fs.writeFileString(path.join(root, "main.ts"), "process.env.HOME;")
-        yield* fs.writeFileString(path.join(root, "version.ts"), "process.env.__PACKAGE_VERSION__;")
+        yield* fs.writeFileString(path.join(root, "version.ts"), "process.argv;")
         yield* fs.writeFileString(path.join(root, "index.ts"), "const argv = process.argv;")
 
         assert.deepStrictEqual(SourceBoundary.verifyFixtures(), [])
@@ -257,13 +258,17 @@ and everything else that reads the time already resolves through it. Building
 the override with `{ ...live, currentTimeMillis: ... }` looks right and is
 not: `sleep` and the three `*Unsafe` readers are methods on the live clock's
 prototype, not its own enumerable properties, so an object spread drops them
-silently and the very next `Effect.sleep` in the program hangs on
-`undefined is not a function`. Delegate every member you are not overriding
-explicitly instead:
+silently and the very next `Effect.sleep` in the program dies with
+`TypeError: clock.sleep is not a function`. Delegate every member you are
+not overriding explicitly instead:
 
 ~~~ts
 import { Clock, Config, ConfigProvider, DateTime, Effect } from "effect"
 
+// Deliberately pins only the wall-clock reading. currentTimeNanos and
+// currentTimeNanosUnsafe stay delegated to `live`, unpinned, so a span's
+// duration is still measured against real elapsed time even while
+// DateTime.now reports the pinned instant.
 const pinnedClock = (live: Clock.Clock, epochMillis: number): Clock.Clock => ({
   currentTimeMillisUnsafe: () => epochMillis,
   currentTimeMillis: Effect.succeed(epochMillis),
