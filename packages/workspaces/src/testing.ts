@@ -18,5 +18,7 @@ export {
 	type BoundaryRule,
 	Offence,
 	type ReferenceOptions,
+	type ScanOptions,
 	SourceBoundary,
+	SourceScan,
 } from "./SourceBoundary.js";

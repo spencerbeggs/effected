@@ -1,5 +1,6 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: the shipped fixtures are source text, and a template substitution inside one is the point
-import { Schema } from "effect";
+import { GlobSet } from "@effected/glob";
+import { Effect, FileSystem, Path, Schema } from "effect";
 import { isIdentifierChar, lex, locate, references, specifierLiterals } from "./internal/sourceText.js";
 
 /**
@@ -74,6 +75,48 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 		return `${this.file}:${this.line}:${this.column} ${this.rule} ${this.detail}`;
 	}
 }
+
+/**
+ * What a scan read and found.
+ *
+ * @public
+ */
+export class SourceScan extends Schema.Class<SourceScan>("SourceScan")({
+	/** Every source file visited, relative to the root with `/` separators, sorted. Assert it is non-empty. */
+	files: Schema.Array(Schema.String),
+	/** The visited files an `allow` glob exempted from every rule. */
+	allowed: Schema.Array(Schema.String),
+	/** Every offence, sorted by file, then line, then column. */
+	offences: Schema.Array(Offence),
+}) {
+	/** One `file:line:column rule detail` label per offence: `[]` means clean. */
+	get violations(): ReadonlyArray<string> {
+		return this.offences.map((offence) => offence.label);
+	}
+}
+
+/**
+ * Options for {@link SourceBoundary.scan}.
+ *
+ * @public
+ */
+export interface ScanOptions extends ReferenceOptions {
+	/** The directory to scan. */
+	readonly root: string;
+	/** The rules every non-allowed file must keep. */
+	readonly rules: ReadonlyArray<BoundaryRule>;
+	/** Globs, relative to `root` with `/` separators, naming files exempt from every rule. */
+	readonly allow?: ReadonlyArray<string> | undefined;
+	/**
+	 * File extensions to scan. Defaults to `.ts`, `.mts`, `.cts`, `.js`,
+	 * `.mjs` and `.cjs`; declaration files are always skipped.
+	 */
+	readonly extensions?: ReadonlyArray<string> | undefined;
+}
+
+const DEFAULT_EXTENSIONS: ReadonlyArray<string> = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"];
+const DECLARATION = /\.d\.[cm]?ts$/;
+const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 const EXEMPT: ReadonlyArray<string> = ["process.env.__PACKAGE_VERSION__"];
 const STDOUT_WRITE = /stdout\s*(?:\?\.|\.)\s*write/gu;
@@ -339,6 +382,76 @@ export class SourceBoundary {
 			.sort((a, b) => a.offset - b.offset)
 			.map(({ offset, rule, detail }) => Offence.make({ file, ...at(offset), rule, detail }));
 	};
+
+	/**
+	 * Check every source file under `root` against `rules`.
+	 *
+	 * @remarks
+	 * Walks with an explicit stack, visiting each real directory once (via
+	 * `realPath`), so a symlink loop terminates and a linked directory is not
+	 * scanned twice. `node_modules` is never entered. Paths come back relative
+	 * and `/`-separated whatever the platform's separator, and that is also
+	 * what `allow` globs match against. A missing root fails; it never scans
+	 * nothing.
+	 *
+	 * @example
+	 * ```ts
+	 * import { NodeServices } from "@effect/platform-node";
+	 * import { SourceBoundary } from "@effected/workspaces/testing";
+	 * import { Effect } from "effect";
+	 *
+	 * const scan = SourceBoundary.scan({
+	 *   root: "/repo/packages/engine/src",
+	 *   rules: ["process", "node:process", { forbidImports: ["node:*", "@effect/platform*"] }],
+	 * }).pipe(Effect.provide(NodeServices.layer));
+	 * ```
+	 */
+	static readonly scan = Effect.fn("SourceBoundary.scan")(function* (options: ScanOptions) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const allow = yield* GlobSet.compile(options.allow ?? []);
+		const extensions = options.extensions ?? DEFAULT_EXTENSIONS;
+		const posix = (relative: string): string => relative.split(path.sep).join("/");
+		const files: Array<string> = [];
+		const allowed: Array<string> = [];
+		const offences: Array<Offence> = [];
+		const visited = new Set<string>();
+		const pending: Array<string> = [options.root];
+		while (pending.length > 0) {
+			const directory = pending.pop();
+			if (directory === undefined) break;
+			const real = yield* fs.realPath(directory);
+			if (visited.has(real)) continue;
+			visited.add(real);
+			for (const name of yield* fs.readDirectory(directory)) {
+				const full = path.join(directory, name);
+				const info = yield* fs.stat(full);
+				if (info.type === "Directory") {
+					if (name !== "node_modules") pending.push(full);
+					continue;
+				}
+				if (
+					info.type !== "File" ||
+					DECLARATION.test(name) ||
+					!extensions.some((extension) => name.endsWith(extension))
+				) {
+					continue;
+				}
+				const file = posix(path.relative(options.root, full));
+				files.push(file);
+				if (allow.matches(file)) {
+					allowed.push(file);
+					continue;
+				}
+				offences.push(...SourceBoundary.check(file, yield* fs.readFileString(full), options.rules, options));
+			}
+		}
+		return SourceScan.make({
+			files: files.sort(byCodeUnit),
+			allowed: allowed.sort(byCodeUnit),
+			offences: offences.sort((a, b) => byCodeUnit(a.file, b.file) || a.line - b.line || a.column - b.column),
+		});
+	});
 
 	/** The shipped positive- and negative-control snippets, at least one of each per rule kind. */
 	static readonly fixtures: ReadonlyArray<BoundaryFixture> = FIXTURES;
