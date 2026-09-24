@@ -66,17 +66,23 @@ console.log(error.message);
 `ToolFailure.message` drops any empty part, so an omitted `suggestedTool` or an empty `hint` never leaves a double space:
 
 ```ts
-ToolFailure.message("Config missing.", { hint: "Run init." });
-// => "Config missing. Run init."
+import { ToolFailure } from "@effected/mcp";
+
+console.log(ToolFailure.message("Config missing.", { hint: "Run init." }));
+// => Config missing. Run init.
 ```
 
 `ToolFailure.truncate` caps a caller-supplied value at `ToolFailure.ECHO_LIMIT` (200 UTF-16 code units) before it is echoed into a message, backing off one unit rather than splitting a surrogate pair. A value the engine itself produced — a path, a diagnostic — can take the larger `ToolFailure.ENGINE_ECHO_LIMIT` (2000):
 
 ```ts
-ToolFailure.truncate("a".repeat(500));
-// => "aaaa…aaaa" (200 characters, then "…")
+import { ToolFailure } from "@effected/mcp";
 
-ToolFailure.truncate(enginePath, ToolFailure.ENGINE_ECHO_LIMIT);
+console.log(ToolFailure.truncate("a".repeat(500)).length);
+// => 201 (200 characters, then "…")
+
+const enginePath = `/work/${"deep/".repeat(100)}file.ts`;
+console.log(ToolFailure.truncate(enginePath, ToolFailure.ENGINE_ECHO_LIMIT) === enginePath);
+// => true (under the 2000-unit engine cap)
 ```
 
 `ToolFailure` is a static-namespace class with a private constructor — it is never instantiated.
@@ -145,6 +151,37 @@ is rejected with one `Unrecognized parameter(s): extra. Accepted params:
 id.` before the handler ever runs — see [Strict input](#strict-input)
 below.
 
+## The stdio boundary
+
+`McpStdio.layer` is core's `McpServer.layerStdio` with every log line sent to
+stderr, and with stdin read through a guard. Core's own stdio decoder throws on
+a line that is not JSON without ever trimming it from its buffer, so one bad
+line wedges the server: every later request goes unanswered while stdin EOF
+still exits 0. The guard frames stdin exactly as core does — one streaming
+UTF-8 decoder, a byte-order mark stripped only at the start of the stream,
+lines split on `\n` — and answers each line core would choke on itself, on
+stdout:
+
+- a line that is not JSON gets a JSON-RPC parse error,
+  `{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}`,
+  and the server keeps serving the lines after it;
+- a line longer than core's cap of 16 Mi UTF-16 code units gets the same
+  reply once, as soon as it passes the cap, and the rest of it is discarded
+  up to its newline;
+- a line of JSON whitespace (space, tab, carriage return) is ignored.
+
+Valid JSON that is not a JSON-RPC message still goes to core.
+
+**Give each server a fresh layer memo map.** Core's stdio protocol layer is a
+shared constant, so a second `McpStdio.layer` server whose build sees the
+first one's memo map shares its protocol: only the first server reads stdin,
+and the second never answers. Merging both into one graph does that, and so
+does building or providing the second anywhere under the first one's
+`Effect.provide` — a nested `Layer.build` or `Effect.provide` forks the
+ambient memo map rather than starting a new one. Isolate each server with its
+own `ManagedRuntime`, `Effect.provide(layer, { local: true })`, or its own
+process.
+
 ## Strict input
 
 Two ways to close a tool's input schema against unknown keys, at different
@@ -171,6 +208,11 @@ scopes:
 ```ts
 import { McpToolkit } from "@effected/mcp";
 import { Layer } from "effect";
+import type { Tool, Toolkit } from "effect/unstable/ai";
+
+// The toolkit and its handlers, as built in "Putting it together".
+declare const MyTools: Toolkit.Toolkit<Record<string, Tool.Any>>;
+declare const MyHandlers: Layer.Layer<never>;
 
 // Default: every tool is strict, and every rejection names every unknown key.
 const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
@@ -244,7 +286,11 @@ test machinery into a server's runtime import graph.
 
 ```ts
 import { McpHarness } from "@effected/mcp/testing";
-import { Effect } from "effect";
+import { Effect, type Layer, type Stdio } from "effect";
+import type { McpServer } from "effect/unstable/ai";
+
+// The server layer from "Putting it together" — still requiring Stdio.
+declare const ServerLayer: Layer.Layer<McpServer.McpServer, never, Stdio.Stdio>;
 
 const test = Effect.gen(function* () {
   const client = yield* McpHarness.make(ServerLayer);
@@ -264,7 +310,15 @@ metadata`.
 a test sees the exact served schemas and wire results a real client would,
 with no child process and no sockets. Pass `server` **without** a `Stdio`
 of its own — a `Stdio` the server provides internally would talk to the
-real terminal instead of the test's queues. `McpProcess.spawn` and
+real terminal instead of the test's queues. The harness builds the server
+with a fresh layer memo map, never the ambient one, so a harness made under
+another stdio server's `Effect.provide` still serves its own. For the same
+reason, never pass a server layer that provides a layer the test also
+provides and then reads: `McpHarness.make(server.pipe(Layer.provide(AppLayer)))`
+under `Effect.provide(AppLayer)` builds `AppLayer` twice, so the tools write
+to one instance and the test reads the other. Leave the service in the
+server layer's requirements and provide it once from the test, or build it
+once and pass `Layer.succeed(Tag, value)`. `McpProcess.spawn` and
 `McpProbe.initialize` are the spawned-bin equivalents, for a test that
 must exercise a built artifact rather than a layer — `McpProbe` in
 particular is the MCP half of a packed-install proof: it keeps stdin open
@@ -273,6 +327,58 @@ until the response arrives, and the caller asserts
 server that refuses the handshake still answers, exits 0 and stays quiet.
 `McpToolAudit.check` is a pure sweep over a served `tools/list`, for a
 static policy check with no server at all.
+
+`McpProcess` writes a JSON-encoded message with `send`, and anything at all
+with `sendRaw(text: string | Uint8Array)`, which writes the string or bytes
+verbatim. `sendRaw` is the only way to put genuinely malformed input on a
+server's stdin — `send` and `McpHarness` always encode valid JSON — so it is
+how a test proves the stdin guard against a spawned server:
+
+```ts
+import { unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { NodeServices } from "@effect/platform-node";
+import { McpProcess } from "@effected/mcp/testing";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+// A minimal server, written to disk so it can be spawned as a real process.
+const serverFile = join(import.meta.dirname, "mcp-guard-demo-server.mjs");
+writeFileSync(
+  serverFile,
+  `
+import { McpStdio, McpToolkit } from "@effected/mcp";
+import { NodeRuntime, NodeStdio } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+import { Tool, Toolkit } from "effect/unstable/ai";
+
+const Ping = Tool.make("ping", { description: "Liveness check.", parameters: Tool.EmptyParams });
+const Tools = Toolkit.make(Ping);
+const Handlers = Tools.toLayer({ ping: () => Effect.void });
+const Main = McpToolkit.layer(Tools).pipe(
+  Layer.provide(Handlers),
+  Layer.provideMerge(McpStdio.layer({ name: "guard-demo", version: "0.0.0" })),
+  Layer.provide(NodeStdio.layer),
+);
+
+NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown });
+`,
+);
+
+const program = Effect.gen(function* () {
+  const server = yield* McpProcess.spawn(ChildProcess.make(process.execPath, [serverFile]));
+  yield* server.handshake(); // always id 1
+  // A bad line and a good one, in the same write.
+  yield* server.sendRaw('not json\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n');
+  const { response, seen } = yield* server.readUntilResponse(2);
+  console.log("answered the bad line:", seen.some((frame) => (frame as { id: unknown }).id === null));
+  console.log("kept serving:", Array.isArray((response.result as { tools: unknown }).tools));
+}).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.timeout("5 seconds"));
+
+await Effect.runPromise(program).finally(() => unlinkSync(serverFile));
+// => answered the bad line: true
+// => kept serving: true
+```
 
 ## Tier
 
