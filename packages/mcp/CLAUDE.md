@@ -13,10 +13,10 @@ the user verifies it.
 
 ## Tier: boundary — no exceptions in `src/`
 
-`src/` never reads `process` (not even inside a string literal — the
-guard is `__test__/boundary.test.ts` over `SourceBoundary.scan` from
-`@effected/workspaces/testing`; it ignores comments, strings, template text
-and regex bodies), never imports `node:` or an `@effect/platform*` package,
+`src/` never reads `process` (the guard is `__test__/boundary.test.ts` over
+`SourceBoundary.scan` from `@effected/workspaces/testing`; it skips comments,
+strings, template text and regex bodies, so only a code-level reference
+counts), never imports `node:` or an `@effect/platform*` package,
 and never calls `console.*`. `Console` is reached only through core's
 `Console.Console` reference. stdout is the JSON-RPC wire; any unguarded write
 to it corrupts the protocol.
