@@ -13,8 +13,8 @@ sources:
     resource: ../../turbo.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-14T02:44:47Z
-  body_sha256: 0cf99fa27835efb239be56d5be3c721b0dae95187b6209e199c7b2a3f53f30a9
+  at: 2026-09-24T05:36:02Z
+  body_sha256: 64149521eea6ed5655aeb5288c1858c2a5a8f028764674a2621eaba44da270a5
 ---
 
 # State which count moved and why, whenever a gate's number changes
@@ -26,7 +26,7 @@ Three of this repository's gates work by asserting that a number did
 build](../gotchas/turbo-cache-hit-replays-clean-log.md) and [running the
 bundler script directly](../gotchas/direct-prod-build-fakes-a-clean-gate.md)
 for the two ways that number can lie), the `Tests:` line a vitest run
-reports (see [a vitest positional filter is cwd-relative](../gotchas/vitest-positional-filter-is-cwd-relative.md)
+reports (see [a vitest positional filter is a substring match, and a package-dir run never loads the root config](../gotchas/vitest-positional-filter-is-cwd-relative.md)
 for how a filter miss reports the same `0/0` shape as an empty suite),
 and `packages.length`-style assertions in fixture tests. Each has
 independently caught a silently wrong answer in this repository's

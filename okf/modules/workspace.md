@@ -10,8 +10,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T05:32:50Z
-  body_sha256: 886da4d6891d6b8b5a616298f824c2d946198eff228ce7ce4ca4105d0cedf127
+  at: 2026-09-24T05:36:02Z
+  body_sha256: dfa491cff633d8a2e44d2d53ba32e0753107ebbdf42c4a4baccccc2894333f89
 ---
 
 # workspace
@@ -74,7 +74,7 @@ The build-tooling versions (`typescript`, `@types/node`, the bundler's own stack
 
 Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package's `__test__/` directory, never co-located in `src/`. Effect code is tested with `@effect/vitest`, asserting with `assert.*` rather than `expect`. A test needing `FileSystem` provides `memfs`, never a hand-rolled `FileSystem.layerNoop` double, because `layerNoop` is deny-by-default and a stub encodes only what its author remembered. Full rules and riders → [testing standards](../conventions/testing-standards.md).
 
-The root `globalSetup` (`vitest.setup.ts`) runs `pnpm exec turbo run build:dev --output-logs=errors-only` via `AgentPlugin.runScript` before **every** vitest run — CLI and the MCP `run_tests` tool alike, whichever project — so tests always see fresh `dist/dev` artifacts; turbo's cache makes it a fast no-op when nothing changed. Run vitest from the repo root: from inside a package directory vitest does not load the root config, so `--project @effected/<pkg>` fails with `No projects matched the filter` and the repo's setup, plugins and reporter are all absent. From the root, prefer `vitest run --project @effected/<pkg>`. A bare positional filter is matched as a substring against each test file's path, not as a path selector — see [a vitest positional filter is cwd-relative](../gotchas/vitest-positional-filter-is-cwd-relative.md) for the measured comparison and the `Tests: 0/0 passed` / exit 1 shape a miss produces.
+The root `globalSetup` (`vitest.setup.ts`) runs `pnpm exec turbo run build:dev --output-logs=errors-only` via `AgentPlugin.runScript` before **every** vitest run — CLI and the MCP `run_tests` tool alike, whichever project — so tests always see fresh `dist/dev` artifacts; turbo's cache makes it a fast no-op when nothing changed. Run vitest from the repo root: from inside a package directory vitest does not load the root config, so `--project @effected/<pkg>` fails with `No projects matched the filter` and the repo's setup, plugins and reporter are all absent. From the root, prefer `vitest run --project @effected/<pkg>`. A bare positional filter is matched as a substring against each test file's path, not as a path selector — see [a vitest positional filter is a substring match, and a package-dir run never loads the root config](../gotchas/vitest-positional-filter-is-cwd-relative.md) for the measured comparison and the `Tests: 0/0 passed` / exit 1 shape a miss produces.
 
 `pnpm ci:test` sets `CI=true`. The global coverage thresholds in `vitest.config.ts` are set unconditionally. They measure the whole repository, so a filtered run cannot meet them — but `@vitest-agent/plugin` (4.x) detects a partial run (positional filter, `--project`, `--tags-filter`, `--changed`, `--related`, `--shard`, `-t`) and skips them, printing `Coverage thresholds skipped: partial run`. A filtered run's exit code is therefore a real signal; do not reintroduce a CI-only gate around the thresholds.
 
