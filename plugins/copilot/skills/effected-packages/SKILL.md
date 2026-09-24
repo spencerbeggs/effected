@@ -4,13 +4,12 @@ description: >-
   The @effected package index — what each kit package contains and when to reach for it. Use when working in a
   repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing/editing
   JSONC/YAML/TOML/Markdown, semver, SPDX, glob matching, an in-memory filesystem for tests,
-  package.json/tsconfig/lockfile/config-file handling, monorepo/workspace introspection, peer-dependency
-  detection, git introspection, runtime-version resolution, running commands, managed sections, JSONL journals,
-  the GitHub REST/GraphQL API and Actions runtime, CLI output and failure reporting, cross-front-end primitives
-  for a CLI or MCP boundary, serving or testing an MCP server over stdio, SBOM generation and signing, or
-  publishing SchemaStore JSON Schema or schema.org JSON-LD. Also use when choosing dependencies for a new Effect
-  v4 app or library. Rows route; per-package depth lives in references/; per-construct intent search lives in
-  references/constructs/.
+  package.json/tsconfig/lockfile/config-file handling, monorepo/workspace introspection, git introspection,
+  runtime-version resolution, running commands, managed sections, JSONL journals, the GitHub REST/GraphQL API
+  and Actions runtime, CLI output and failure reporting, cross-front-end primitives for a CLI or MCP boundary,
+  serving or testing an MCP server over stdio, SBOM generation and signing, or publishing SchemaStore JSON
+  Schema or schema.org JSON-LD. Also use when choosing dependencies for a new Effect v4 app or library. Rows
+  route; per-package depth lives in references/; per-construct intent search lives in references/constructs/.
 ---
 
 # The @effected package index

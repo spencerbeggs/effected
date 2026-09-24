@@ -1,13 +1,16 @@
 ---
 name: effect-v4-testing
 description: >-
-  Use when writing, reviewing, or fixing tests for Effect v4 code. Covers @effect/vitest setup, it.effect and
-  it.effect.prop usage, layer-based test/mock doubles for any service in R, fault-injecting one method of a real
-  layer, TestClock/TestConsole/TestRandom semantics, the mutate-the-edges discipline for proving a suite can
-  fail, and known false-green traps: 0/0 vitest runs that exit 0, epoch-based clock assertions, TestConsole
-  swallowing Effect.log* through the same ConsoleRef, layer() memoizing while Effect.provide does not, and
-  assertions that never execute. Also covers structural checks over source text (import walkers, export
-  assertions) and converting a plain-Vitest repo to @effect/vitest.
+  Use when writing, reviewing, or fixing tests for Effect v4 code with @effect/vitest — it.effect + Effect.gen
+  as the default runner, asserting typed errors via Effect.flip or Effect.result (Exit + Cause for defects),
+  providing test/mock layers with layer(...) for any service in R (owned or consumed), fault-injecting one
+  method of a real layer, property tests with it.effect.prop over a Schema, TestClock for time-dependent logic,
+  converting a plain-Vitest repo, and the mutate-the-edges discipline for proving a suite can actually fail —
+  the discriminating input wrong in exactly one way, per-clause and per-path mutation, and the positive control
+  a "nothing found" result needs before it's believed. Also triggers on: Tests: 0/0 passed lying while the exit
+  code is honest, TestClock at the epoch (1970), layer() memoizing while Effect.provide does not, TestConsole
+  swallowing Effect.log* through ConsoleRef, vi.mock must import vi from vitest, structural checks over source
+  text.
 ---
 
 # Effect v4 testing with `@effect/vitest`

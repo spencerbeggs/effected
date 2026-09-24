@@ -35,12 +35,16 @@ and asserts afterward silently skips its own assertions — the test reports
 green having checked nothing. Use `McpHarness` instead of hand-wiring
 `Effect.provide` around a server in a test.
 
-`McpHarness` is meant to build the server it tests under its own fresh memo
-map, never sharing a `Stdio` protocol with a server a calling test (or
-another harness) already provided — a kit fix for exactly this, K2, is
-landing in parallel. This skill teaches current behavior; don't assume a
-harness nested under another already-provided server is safe from the trap
-above until that fix ships.
+`McpHarness` builds the server under its own fresh memo map, never the
+ambient one, so a harness created inside an ambient `Effect.provide` of
+another stdio server still answers on its own `Stdio` — it does not hit the
+nesting trap above. **Never pass a server layer that provides a layer the
+test also provides and then reads** —
+`McpHarness.make(server.pipe(Layer.provide(AppLayer)))` under
+`Effect.provide(AppLayer)` builds `AppLayer` twice, so the tools write to
+one instance and the test reads the other. Leave the service in the server
+layer's requirements and provide it once from the test, or build it once
+and pass `Layer.succeed(Tag, value)`.
 
 ~~~ts
 import { McpStdio, McpToolkit } from "@effected/mcp"
