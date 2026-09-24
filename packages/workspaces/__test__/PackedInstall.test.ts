@@ -102,6 +102,16 @@ describe("PackedInstall.run", () => {
 			}),
 		);
 
+		it.effect("an empty managers list fails NoManagerAvailable saying so, before anything spawns", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({ carrier: "@x/carrier", closure: "auto", managers: [], bins: [], env: ENV }),
+				);
+				assert.strictEqual(error.reason, "NoManagerAvailable");
+				assert.include(error.message, "managers is empty");
+			}),
+		);
+
 		it.effect("require all: a missing manager fails ManagerUnavailable, naming it", () =>
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(
@@ -406,6 +416,49 @@ describe("PackedInstall.run past the pack", () => {
 				);
 				assert.deepStrictEqual([error.reason, error.manager], ["MissingBin", "npm"]);
 				assert.include(error.message, ".bin/ghost", "x is present and passed; ghost is the one reported");
+				// What .bin DOES hold separates a wrong bin name from a link that never happened.
+				assert.strictEqual(error.package, "@x/carrier");
+				assert.strictEqual(error.output, "node_modules/.bin holds: x");
+				assert.include(error.message, "node_modules/.bin holds: x");
+			}),
+		);
+	});
+
+	installSuite(
+		ScriptedSpawner.make(manifests()),
+		seedWith(),
+	)((it) => {
+		it.effect("MissingBin says so when the install linked no .bin directory at all", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({ carrier: "@x/carrier", closure: "auto", managers: ["npm"], bins: ["x"], env: ENV }),
+				);
+				assert.deepStrictEqual([error.reason, error.package], ["MissingBin", "@x/carrier"]);
+				assert.strictEqual(error.output, "node_modules/.bin does not exist or cannot be listed");
+			}),
+		);
+	});
+
+	const twice = ScriptedSpawner.make(manifests());
+	installSuite(
+		twice,
+		seedWith({ "/scratch/consumer-npm/node_modules/.bin/x": BIN }),
+	)((it) => {
+		it.effect("a manager listed twice is probed and installed once, never twice into one directory", () =>
+			Effect.gen(function* () {
+				const result = yield* PackedInstall.run({
+					carrier: "@x/carrier",
+					closure: "auto",
+					managers: ["npm", "npm"],
+					bins: ["x"],
+					env: ENV,
+				});
+				assert.deepStrictEqual(
+					result.consumers.map((consumer) => consumer.manager),
+					["npm"],
+				);
+				assert.strictEqual(twice.spawns.filter((spawn) => spawn.args[0] === "--version").length, 1);
+				assert.strictEqual(twice.spawns.filter((spawn) => spawn.args[0] === "install").length, 1);
 			}),
 		);
 	});

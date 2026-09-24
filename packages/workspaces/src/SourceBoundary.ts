@@ -1,6 +1,6 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: the shipped fixtures are source text, and a template substitution inside one is the point
 import { GlobSet } from "@effected/glob";
-import { Effect, FileSystem, Path, Schema } from "effect";
+import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import { isIdentifierChar, lex, locate, references, specifierLiterals } from "./internal/sourceText.js";
 
 /**
@@ -393,7 +393,8 @@ export class SourceBoundary {
 	 * scanned twice. `node_modules` is never entered. Paths come back relative
 	 * and `/`-separated whatever the platform's separator, and that is also
 	 * what `allow` globs match against. A missing root fails; it never scans
-	 * nothing.
+	 * nothing. A dangling symlink under the root is skipped, having nothing to
+	 * scan; any other entry that cannot be read fails the scan.
 	 *
 	 * @example
 	 * ```ts
@@ -426,7 +427,21 @@ export class SourceBoundary {
 			visited.add(real);
 			for (const name of yield* fs.readDirectory(directory)) {
 				const full = path.join(directory, name);
-				const info = yield* fs.stat(full);
+				// stat follows links, so a dangling one fails NotFound; it has nothing to scan, so skip it.
+				// A NotFound on an entry that is not a link still fails: nothing may drop out of the scan silently.
+				const found = yield* fs.stat(full).pipe(
+					Effect.map(Option.some),
+					Effect.catch((error) =>
+						error.reason._tag === "NotFound"
+							? fs.readLink(full).pipe(
+									Effect.as(Option.none<FileSystem.File.Info>()),
+									Effect.mapError(() => error),
+								)
+							: Effect.fail(error),
+					),
+				);
+				if (Option.isNone(found)) continue;
+				const info = found.value;
 				if (info.type === "Directory") {
 					if (name !== "node_modules") pending.push(full);
 					continue;

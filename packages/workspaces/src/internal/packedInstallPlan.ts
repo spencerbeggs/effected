@@ -168,7 +168,14 @@ export const installArgs = (manager: PackageManagerName, version: string): Reado
 	}
 };
 
-/** Every `workspace:` or `catalog:` specifier left in a packed manifest's runtime maps. */
+/**
+ * A specifier no consumer outside the workspace can resolve: `workspace:`,
+ * `catalog:`, `link:`, or a relative `file:` path. An absolute `file:` path
+ * is left alone: it resolves wherever the file exists.
+ */
+const UNRESOLVABLE = /^(?:workspace:|catalog:|link:|file:(?!\/))/;
+
+/** Every specifier in a packed manifest's runtime maps that only the workspace could resolve (see `UNRESOLVABLE`). */
 export const unresolvedSpecifiers = (manifestJson: string): Result.Result<ReadonlyArray<string>, unknown> => {
 	let manifest: unknown;
 	try {
@@ -183,7 +190,7 @@ export const unresolvedSpecifiers = (manifestJson: string): Result.Result<Readon
 			const block = record[field];
 			if (typeof block !== "object" || block === null) return [];
 			return Object.entries(block as Record<string, unknown>)
-				.filter(([, spec]) => typeof spec === "string" && /^(workspace|catalog):/.test(spec))
+				.filter(([, spec]) => typeof spec === "string" && UNRESOLVABLE.test(spec))
 				.map(([name, spec]) => `${field}.${name}: ${String(spec)}`);
 		}),
 	);

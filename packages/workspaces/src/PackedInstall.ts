@@ -46,7 +46,11 @@ export interface PackedInstallOptions {
 	readonly carrier: string;
 	/** The other workspace packages to pack and override; `"auto"` is the carrier's transitive runtime workspace dependencies. */
 	readonly closure: ReadonlyArray<string> | "auto";
-	/** The package managers to install with; each is used only if it answers `--version`. */
+	/**
+	 * The package managers to install with; each is used only if it answers
+	 * `--version`. A manager listed twice is installed once; an empty list
+	 * fails `NoManagerAvailable`.
+	 */
 	readonly managers: ReadonlyArray<PackageManagerName>;
 	/** `"all"` fails if any listed manager is unavailable; `"any"` (the default) needs one. */
 	readonly require?: "all" | "any" | undefined;
@@ -177,7 +181,8 @@ const failure = (
  * through the manager's own override field, pins `packageManager` to the
  * probed version, installs with lifecycle scripts skipped, and checks every
  * expected bin is present and executable. A packed manifest that still
- * carries `workspace:` or `catalog:` fails before any install.
+ * carries `workspace:`, `catalog:`, `link:` or a relative `file:` specifier
+ * fails `UnresolvedProtocol` before any install.
  *
  * It asserts nothing about what the bins DO: run them from the test through
  * `InstalledConsumer.binPath`, for an MCP bin with `McpProbe` from
@@ -220,6 +225,14 @@ export class PackedInstall {
 				"PackedInstall drives POSIX .bin shims and tar; run it on macOS or Linux",
 			);
 		}
+		// One consumer directory per manager: a manager listed twice is installed once.
+		const managers = [...new Set(options.managers)];
+		if (managers.length === 0) {
+			return yield* failure(
+				"NoManagerAvailable",
+				"managers is empty: name at least one package manager to install with",
+			);
+		}
 		const env = scrubEnv(options.env);
 		const io = (message: string) => (cause: unknown) => failure("Io", message, { cause });
 		const command = (executable: string, args: ReadonlyArray<string>, cwd: string) =>
@@ -230,7 +243,7 @@ export class PackedInstall {
 			Effect.mapError(io("could not create the scratch directory")),
 		);
 
-		const probes = yield* Effect.forEach(options.managers, (manager) =>
+		const probes = yield* Effect.forEach(managers, (manager) =>
 			Run.collect(command(manager, ["--version"], scratch), { timeout: "30 seconds" }).pipe(
 				Effect.map((output) => (output.succeeded ? versionOf(output.stdout) : undefined)),
 				Effect.catch(() => Effect.succeed(undefined)),
@@ -240,10 +253,7 @@ export class PackedInstall {
 		const available = probes.flatMap(({ manager, version }) => (version === undefined ? [] : [{ manager, version }]));
 		const unavailable = probes.flatMap(({ manager, version }) => (version === undefined ? [manager] : []));
 		if (available.length === 0) {
-			return yield* failure(
-				"NoManagerAvailable",
-				`none of ${options.managers.join(", ")} answered --version from ${scratch}`,
-			);
+			return yield* failure("NoManagerAvailable", `none of ${managers.join(", ")} answered --version from ${scratch}`);
 		}
 		const missing = unavailable[0];
 		if (options.require === "all" && missing !== undefined) {
@@ -340,7 +350,7 @@ export class PackedInstall {
 				if (unresolved.success.length > 0) {
 					return yield* failure(
 						"UnresolvedProtocol",
-						`${pkg.name}'s packed manifest still carries ${unresolved.success.join(", ")}; pack from "source" so pnpm rewrites them, or fix the build`,
+						`${pkg.name}'s packed manifest still carries ${unresolved.success.join(", ")}, which no consumer outside the workspace can resolve; pack from "source" so pnpm rewrites workspace: and catalog:, or fix the build`,
 						{ package: pkg.name },
 					);
 				}
@@ -398,10 +408,19 @@ export class PackedInstall {
 				for (const bin of options.bins) {
 					const info = yield* Effect.option(fs.stat(consumer.binPath(bin)));
 					if (Option.isNone(info) || (info.value.mode & 0o111) === 0) {
+						// What .bin DOES hold separates a wrong bin name from a link that never happened.
+						const listing = yield* fs.readDirectory(path.join(directory, "node_modules", ".bin")).pipe(
+							Effect.map((names) =>
+								names.length === 0
+									? "node_modules/.bin is empty"
+									: `node_modules/.bin holds: ${[...names].sort().join(", ")}`,
+							),
+							Effect.catch(() => Effect.succeed("node_modules/.bin does not exist or cannot be listed")),
+						);
 						return yield* failure(
 							"MissingBin",
-							`${manager} installed ${options.carrier} but node_modules/.bin/${bin} is missing or not executable`,
-							{ manager },
+							`${manager} installed ${options.carrier} but node_modules/.bin/${bin} is missing or not executable; ${listing}`,
+							{ manager, package: options.carrier, output: listing },
 						);
 					}
 				}

@@ -189,4 +189,20 @@ describe("unresolvedSpecifiers", () => {
 		);
 		assert.isTrue(Result.isFailure(unresolvedSpecifiers("{ nope")));
 	});
+
+	it("also lists link: and relative file: specifiers, which name a path only the workspace has", () => {
+		const manifest = JSON.stringify({
+			dependencies: { a: "link:../a", b: "file:../b", c: "file:./c.tgz", d: "file:/abs/d.tgz", e: "^1.0.0" },
+			optionalDependencies: { f: "file:f" },
+		});
+		assert.deepStrictEqual(
+			unresolvedSpecifiers(manifest),
+			Result.succeed([
+				"dependencies.a: link:../a",
+				"dependencies.b: file:../b",
+				"dependencies.c: file:./c.tgz",
+				"optionalDependencies.f: file:f",
+			]),
+		);
+	});
 });

@@ -1,6 +1,6 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Path } from "effect";
+import { Effect, FileSystem, Layer, Path, PlatformError } from "effect";
 import { SourceBoundary } from "../src/testing.js";
 
 const SEED = {
@@ -84,6 +84,55 @@ describe("SourceBoundary.scan over a virtual tree", () => {
 				);
 				assert.strictEqual(error._tag, "GlobPatternError");
 			}),
+		);
+	});
+
+	// A dangling link: its target never existed, so stat (which follows links) fails NotFound.
+	const DANGLING = { ...SEED, "/repo/src/dangling.ts": MemoryFileSystem.symlink("/repo/gone.ts") };
+	layer(
+		Layer.mergeAll(MemoryFileSystem.layerWith(DANGLING), Path.layer),
+		LIVE_CLOCK,
+	)((it) => {
+		it.effect("a dangling symlink under the root is skipped, not fatal, and every real file is still scanned", () =>
+			Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem;
+				// Positive control: the seed really is a link whose target stat cannot reach.
+				assert.strictEqual(yield* fs.readLink("/repo/src/dangling.ts"), "/repo/gone.ts");
+				const stat = yield* Effect.flip(fs.stat("/repo/src/dangling.ts"));
+				assert.strictEqual(stat.reason._tag, "NotFound");
+				const scan = yield* SourceBoundary.scan({ root: "/repo/src", rules: RULES });
+				assert.deepStrictEqual(scan.files, ["a.ts", "index.ts", "nested/b.mts", "version.ts"]);
+				assert.deepStrictEqual(scan.violations, [
+					"a.ts:1:18 process process",
+					"nested/b.mts:1:21 node:process node:process",
+				]);
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+	});
+
+	// A NotFound on an entry that is NOT a link (a file removed mid-scan, a broken volume) still fails.
+	const vanished = MemoryFileSystem.layerFaultyWith(SEED, {
+		stat: (path) =>
+			path === "/repo/src/a.ts"
+				? Effect.fail(
+						PlatformError.systemError({
+							_tag: "NotFound",
+							module: "FileSystem",
+							method: "stat",
+							pathOrDescriptor: path,
+						}),
+					)
+				: undefined,
+	});
+	layer(
+		Layer.mergeAll(vanished, Path.layer),
+		LIVE_CLOCK,
+	)((it) => {
+		it.effect("a NotFound stat on an entry that is not a symlink still fails the scan", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(SourceBoundary.scan({ root: "/repo/src", rules: RULES }));
+				assert.strictEqual(error._tag, "PlatformError");
+			}).pipe(Effect.timeout("3 seconds")),
 		);
 	});
 
