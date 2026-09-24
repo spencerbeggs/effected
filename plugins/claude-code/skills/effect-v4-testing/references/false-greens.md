@@ -9,10 +9,21 @@ one-line rules; this file carries the evidence.
 The cheapest false green in the catalogue, and the only one visible by grep:
 
 ```ts
+import { assert, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+let called = false;
+const checkOne = (target: string) =>
+  Effect.sync(() => {
+    called = true;
+    return { blocked: target === "broken" };
+  });
+void called;
+
 // Reports GREEN without evaluating a single assertion.
 it("blocked fires on a gate failure", () =>
   Effect.gen(function* () {
-    const result = yield* SchemaPipeline.checkOne(brokenTarget);
+    const result = yield* checkOne("broken");
     assert.isTrue(result.blocked);
   }),
 );
@@ -156,7 +167,14 @@ and the tempting "fix" is to create a per-package setup file, which forks the
 setup permanently. **The real fix is in the config**, one line:
 
 ```ts
-globalSetup: [fileURLToPath(new URL("vitest.setup.ts", import.meta.url))]
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    globalSetup: [fileURLToPath(new URL("vitest.setup.ts", import.meta.url))],
+  },
+});
 ```
 
 This repo shipped that fix (effected#455), so the `ERR_LOAD_URL` symptom is
@@ -187,16 +205,25 @@ legitimately expected; here it converts the last honest signal into a false one.
 
 ## `TestConsole.logLines` accumulates for the whole test
 
-Cumulative, and **never drained by reading it**. Probed on beta.94: two reads
-across one test returned 2 lines then 4, and the second read still contained the
+Cumulative, and **never drained by reading it**: two reads
+across one test return 2 lines then 4, and the second read still contains the
 first run's output.
 
 ```ts
-// BOTH assertions read the FIRST run's output. The second cannot fail.
-yield* runCli(["--target", "a"]);
-assert.include(JSON.stringify(yield* TestConsole.logLines), "a");
-yield* runCli(["--target", "b"]);
-assert.include(JSON.stringify(yield* TestConsole.logLines), "a"); // still passes!
+import { assert, it } from "@effect/vitest";
+import { Console, Effect } from "effect";
+import { TestConsole } from "effect/testing";
+
+const runTool = (target: string) => Console.log(`ran ${target}`);
+
+it.effect("BOTH assertions read the FIRST run's output — the second cannot fail", () =>
+  Effect.gen(function* () {
+    yield* runTool("a");
+    assert.include(JSON.stringify(yield* TestConsole.logLines), "a");
+    yield* runTool("b");
+    assert.include(JSON.stringify(yield* TestConsole.logLines), "a"); // still passes!
+  }),
+);
 ```
 
 Any test that invokes a CLI (or any logging subject) **twice** asserts against a
@@ -206,38 +233,61 @@ length before the second call and assert only on the new tail.
 ## A `layerNoop` stub records at effect CONSTRUCTION time
 
 ```ts
-// WRONG — pushes when the effect is BUILT, not when it runs.
-FileSystem.layerNoop({
-  readFileString: (p) => { calls.push(p); return Effect.succeed(""); },
-});
+import { Effect, FileSystem } from "effect";
 
-// RIGHT — the push happens only if the effect actually runs.
-FileSystem.layerNoop({
-  readFileString: (p) => Effect.suspend(() => { calls.push(p); return Effect.succeed(""); }),
-});
+const run = (calls: Array<string>, suspend: boolean) => {
+  const fsLayer = FileSystem.layerNoop({
+    // WRONG (suspend: false) — pushes the moment the METHOD IS CALLED, before
+    // the returned Effect ever runs. RIGHT (suspend: true) — the push only
+    // happens if the returned Effect is actually executed.
+    readFileString: suspend
+      ? (p) =>
+          Effect.suspend(() => {
+            calls.push(p);
+            return Effect.succeed("");
+          })
+      : (p) => {
+          calls.push(p);
+          return Effect.succeed("");
+        },
+  });
+  return Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const described = fs.readFileString("/never-executed"); // constructed, never yielded
+    void described;
+  }).pipe(Effect.provide(fsLayer));
+};
+
+const wrongCalls: Array<string> = [];
+await Effect.runPromise(run(wrongCalls, false));
+console.log("WRONG — described but never run:", wrongCalls);
+
+const rightCalls: Array<string> = [];
+await Effect.runPromise(run(rightCalls, true));
+console.log("RIGHT — described but never run:", rightCalls);
 ```
 
-Probed on beta.94: a service that builds its effects once (at layer
-construction, or anywhere the effect is constructed but not yielded) made the
-eager recorder log `/never-executed` for a read that never happened; the
-`Effect.suspend` version recorded nothing. **Wrap every recorder in
-`Effect.suspend`** — otherwise a test asserting "the file was read" passes
-against a code path that was only *described*, never run.
+Prints `WRONG — described but never run: [ '/never-executed' ]` then
+`RIGHT — described but never run: []` — a service that builds its effects
+once (at layer construction, or anywhere the effect is constructed but not
+yielded) makes the eager recorder log `/never-executed` for a read that
+never happened; the `Effect.suspend` version records nothing. **Wrap every
+recorder in `Effect.suspend`** — otherwise a test asserting "the file was
+read" passes against a code path that was only *described*, never run.
 
 ## `layerNoop` answers unimplemented members THREE different ways
 
-**Not one way — and the two blanket statements that circulate are both wrong**:
-"every unstubbed member fails typed `NotFound`" (what this section used to say)
-and "every unstubbed member dies" (the opposite over-correction). Probed at
-`effect@4.0.0-rc.112`; `layerNoop` at `FileSystem.ts:954` is
-`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:825`)
+**Not one way — and two blanket statements circulate, and both are wrong**:
+"every unstubbed member fails typed `NotFound`" and "every unstubbed member
+dies". `layerNoop` at `FileSystem.ts:765` is
+`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:636`)
 splits its members:
 
 | members | behavior | absorbable by `Effect.catch`? |
 | --- | --- | --- |
-| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` (`:764`) | **yes** |
-| `exists` → `false` (`:844`), `remove` → `Effect.void` (`:885`) | silent success | n/a — never fails |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:850`–`:866`) | `Effect.die("not implemented")` — a **defect** | **no** |
+| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` | **yes** |
+| `exists` → `false` (`:657`), `remove` → `Effect.void` (`:696`) | silent success | n/a — never fails |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:663`–`:679`) | `Effect.die("not implemented")` — a **defect** | **no** |
 
 Three distinct false greens, one per row:
 
@@ -285,8 +335,23 @@ One misread fixture presented as *ten unrelated timeouts* in three suites —
 none of them near the actual mistake.
 
 ```ts
+const payload = new TextEncoder().encode(JSON.stringify({ hello: "world" }));
+
+// WRONG — stringifying a Uint8Array produces a comma-joined byte list, which
+// throws in JSON.parse. Inside a fake fetch that throw reads as a transport
+// fault, which a resilient client retries.
+const wrong = () => JSON.parse(String(payload));
+
+try {
+  wrong();
+  console.log("WRONG: did not throw");
+} catch (error) {
+  console.log("WRONG threw:", error instanceof Error ? error.message : String(error));
+}
+
 // RIGHT — `Response` decodes whatever body shape the client sent.
-const body = JSON.parse((await new Response(init?.body ?? "{}").text()) || "{}");
+const body = JSON.parse((await new Response(payload).text()) || "{}");
+console.log("RIGHT:", body);
 // For binary payloads: new Uint8Array(await new Response(init?.body).arrayBuffer())
 ```
 
@@ -296,17 +361,139 @@ that mis-parses looks like the network being unreliable**, and every layer of
 retry between the two makes the diagnosis worse. When a virtual-clock suite
 times out in several places at once, suspect the double before the clock.
 
+## A dead `Effect.timeout` guard never fires
+
+An `Effect.timeout` of 5 seconds or more, wrapped around a test's own subject
+and run under vitest's default 5000ms test timeout, never gets the chance to
+report its own failure: vitest kills the test first. The failure reads "Test
+timed out in 5000ms" — not the `TimeoutException` the guard was written to
+produce — and nothing about the test's source suggests why one message
+replaced the other.
+
+WRONG — this is deliberately not run: it demonstrates the trap by actually
+hanging to vitest's own 5000ms default, which would make the gate that
+extracts and runs every example in this file wait out a real timeout on
+every pass.
+
+```text
+// The guard and vitest's own default race at the SAME 5000ms — vitest wins,
+// or the two disagree by a few milliseconds of scheduling jitter either way.
+it.live("never gets to report its own timeout", () =>
+  Effect.gen(function* () {
+    const exit = yield* Effect.timeout(Effect.never, "5 seconds").pipe(Effect.exit);
+    assert.isTrue(exit._tag === "Failure"); // never reached
+  }),
+);
+// Observed: "Test timed out in 5000ms." — not an assertion failure.
+```
+
+RIGHT — the guard stays strictly under vitest's own timeout, so it actually
+reports the `TimeoutException` it was written to produce:
+
+```ts
+import { assert, it } from "@effect/vitest";
+import { Effect } from "effect";
+
+it.live("reports its own TimeoutException", () =>
+  Effect.gen(function* () {
+    const exit = yield* Effect.timeout(Effect.never, "3 seconds").pipe(Effect.exit);
+    assert.isTrue(exit._tag === "Failure"); // reached; passes
+  }),
+);
+```
+
+Measured directly: the 3-second version passes in ~3s under the unmodified
+5000ms default; the 5-second version times out at exactly 5000ms with no
+assertion ever running. Keep every internal `Effect.timeout` guard strictly
+under whichever vitest timeout actually governs the test — the 5000ms
+default for a bare `it.effect`/`it.live`, or the value passed as the test's
+own timeout argument, whichever is smaller.
+
+## A forked fiber's failure is not reported anywhere
+
+A child forked with `Effect.forkScoped` and never joined runs to completion
+— including a **failure** — with nothing about that failure reaching the
+test. The test body finishes, the assertion it does make passes, and the
+suite reports green.
+
+```ts
+import { assert, it } from "@effect/vitest";
+import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
+
+// The child fails; the test never notices.
+it.effect("passes even though the forked child failed", () =>
+  Effect.gen(function* () {
+    yield* Effect.forkScoped(Effect.fail(new Error("child blew up")));
+    yield* TestClock.adjust("10 millis"); // let the child run
+    assert.isTrue(true); // green — the failure above was never observed
+  }),
+);
+
+// RIGHT — join the fiber (or route its Exit into a Deferred the test awaits)
+// so its Exit becomes something the test can assert on.
+it.effect("Fiber.join surfaces the same failure", () =>
+  Effect.gen(function* () {
+    const fiber = yield* Effect.forkScoped(Effect.fail(new Error("child blew up")));
+    const exit = yield* Effect.exit(Fiber.join(fiber));
+    assert.isTrue(exit._tag === "Failure");
+  }),
+);
+```
+
+Measured directly: the first test's run produces **no output on stdout or
+stderr at all** — the failure is not logged at any level, not merely logged
+below a visible threshold. A test whose only assertions live in code paths
+that never observe a forked child's outcome is exercising nothing about that
+child. Join it, or route its `Exit` into a `Deferred` the test explicitly
+awaits — never assume a green run means every fiber it started behaved.
+
+## Real-clock tests inside a `layer(...)` suite
+
+`layer(...)`'s callback methods are `Vitest.MethodsNonLive` — there is no
+`.live` inside it, only `.effect` (and its siblings), which install the
+virtual `TestClock` by default the same as a bare `it.effect` would. For a
+test inside such a suite that genuinely needs the real clock — timing a
+subprocess, say — pass `excludeTestServices: true` to `layer(...)`: the
+block's `it.effect` calls then run with the real `Clock` instead of the
+virtual one.
+
+```ts
+import { assert, describe, layer } from "@effect/vitest";
+import { Effect, Layer } from "effect";
+
+describe("a suite needing the real clock", () => {
+  layer(Layer.empty, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a real sleep completes under a 3s guard — it would hang under a virtual clock",
+      () => Effect.sleep("10 millis"),
+      { timeout: 3000 },
+    );
+
+    it.effect("a second test in the same block still runs, with its own real Clock", () =>
+      Effect.gen(function* () {
+        assert.isTrue(true);
+      }),
+    );
+  });
+});
+```
+
+Both tests pass, each in real time. Reaching for `it.live` inside a
+`layer(...)` block is a type error, not a style choice — `excludeTestServices`
+is the block-wide equivalent.
+
 ## Draining a `PubSub` under `it.effect`
 
 Three sharp edges, all clock-adjacent:
 
 - **`PubSub.takeAll` suspends on an empty subscription.** Its return type is
-  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1192`, checked at rc.109) — that *is*
+  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1192`) — that *is*
   the proof. Under the virtual clock it hangs to the vitest timeout. Use
   `PubSub.takeUpTo(sub, n)` (`PubSub.ts:1270`), which returns what is there.
 - **`PubSub.subscribe` requires a `Scope`** (`PubSub.ts:1077`) and there is no
   `it.scoped` — but you do **not** need one. `it.effect` already runs its body
-  through `Effect.scoped`: at rc.109 it is
+  through `Effect.scoped`:
   `makeTester<Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it)`
   (`@effect/vitest` `internal/internal.ts:356`), and its type is
   `Tester<R | Scope.Scope>` (`index.ts:101`), so a `Scope` requirement is
@@ -314,20 +501,48 @@ Three sharp edges, all clock-adjacent:
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.
 - **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8492`) /
-  `forkIn` (`:8535`) / `forkScoped` (`:8578`) / `forkDetach` (`:8618`), still
-  the complete set at rc.109. And `Stream.fromQueue` takes a `Queue.Dequeue`
+  `forkIn` (`:8535`) / `forkScoped` (`:8578`) / `forkDetach` (`:8618`). And
+  `Stream.fromQueue` takes a `Queue.Dequeue`
   (`Stream.ts:1132`), so it rejects a `Subscription`.
 
 The clock-free drain: subscribe, run the operation, then `takeUpTo`.
 
 ```ts
+import { assert, it } from "@effect/vitest";
+import { Context, Effect, Layer, PubSub } from "effect";
+
+interface ConfigEvent {
+  readonly _tag: "Discovered" | "Loaded"
+}
+
+class ConfigEvents extends Context.Service<
+  ConfigEvents,
+  { readonly events: PubSub.PubSub<ConfigEvent> }
+>()("ConfigEvents") {
+  static readonly layer = Layer.effect(
+    ConfigEvents,
+    Effect.gen(function* () {
+      const events = yield* PubSub.unbounded<ConfigEvent>();
+      return { events };
+    }),
+  );
+}
+
+const runTheOperation = Effect.gen(function* () {
+  const svc = yield* ConfigEvents;
+  yield* PubSub.publish(svc.events, { _tag: "Discovered" } as const);
+  yield* PubSub.publish(svc.events, { _tag: "Loaded" } as const);
+});
+
+const layers = ConfigEvents.layer;
+
 it.effect("emits the events", () =>
   Effect.gen(function* () {
     const svc = yield* ConfigEvents;
     const sub = yield* PubSub.subscribe(svc.events);
     yield* runTheOperation;
     const events = yield* PubSub.takeUpTo(sub, Number.MAX_SAFE_INTEGER);
-    assert.deepStrictEqual(events.map((e) => e.event._tag), ["Discovered", "Loaded"]);
+    assert.deepStrictEqual(events.map((e) => e._tag), ["Discovered", "Loaded"]);
   }).pipe(Effect.scoped, Effect.provide(layers)),
 );
 ```
@@ -352,28 +567,51 @@ is applied and unrestored** — which only a fiber-local implementation survives
 (`packages/github-actions/__test__/ActionEnvironment.test.ts:277-303`):
 
 ```ts
-const rightApplied = yield* Latch.make();
-const leftDone = yield* Latch.make();
-const [left, right] = yield* Effect.all(
-  [
-    env.withEnv({ VAR: "left" }, Effect.gen(function* () {
-      yield* rightApplied.await;              // right's override is LIVE here
-      const seen = yield* env.get("VAR");
-      yield* leftDone.open;
-      return seen;
-    })),
-    env.withEnv({ VAR: "right" }, Effect.gen(function* () {
-      const seen = yield* env.get("VAR");
-      yield* rightApplied.open;
-      yield* leftDone.await;                  // held open across left's read
-      return seen;
-    })),
-  ],
-  { concurrency: 2 },
+import { assert, it } from "@effect/vitest";
+import { Context, Effect, Latch } from "effect";
+
+// A fiber-local implementation: providing a service only affects the fiber
+// (and its descendants) the provide wraps — two concurrent branches of one
+// Effect.all never see each other's provide.
+const CurrentVar = Context.Reference<string | undefined>("CurrentVar", { defaultValue: () => undefined });
+const env = {
+  withEnv: <A, E, R>(vars: { readonly VAR: string }, effect: Effect.Effect<A, E, R>) =>
+    Effect.provideService(effect, CurrentVar, vars.VAR),
+  get: (_name: "VAR") => CurrentVar,
+};
+
+it.effect("one fiber's override does not leak into a concurrent fiber's read", () =>
+  Effect.gen(function* () {
+    const rightApplied = yield* Latch.make();
+    const leftDone = yield* Latch.make();
+    const [left, right] = yield* Effect.all(
+      [
+        env.withEnv({ VAR: "left" }, Effect.gen(function* () {
+          yield* rightApplied.await;              // right's override is LIVE here
+          const seen = yield* env.get("VAR");
+          yield* leftDone.open;
+          return seen;
+        })),
+        env.withEnv({ VAR: "right" }, Effect.gen(function* () {
+          const seen = yield* env.get("VAR");
+          yield* rightApplied.open;
+          yield* leftDone.await;                  // held open across left's read
+          return seen;
+        })),
+      ],
+      { concurrency: 2 },
+    );
+    assert.strictEqual(left, "left");
+    assert.strictEqual(right, "right");
+  }),
 );
-assert.strictEqual(left, "left");
-assert.strictEqual(right, "right");
 ```
+
+Non-vacuity, confirmed directly: swapping `env` for a shared global save/restore
+implementation (the deliberately-wrong shape this section warns about) makes
+this exact test fail with `expected 'right' to equal 'left'` — the
+discriminator genuinely distinguishes the two implementations, not merely
+runs.
 
 **Latches, not sleeps.** `it.effect` installs a virtual `TestClock`, so an
 `Effect.sleep` used to stage an interleaving hangs to the vitest timeout rather
@@ -395,12 +633,27 @@ Acquire and release the spy instead, so the runtime owns the restore on every
 exit path (`packages/github-actions/__test__/DetachedProcess.test.ts:55-63`):
 
 ```ts
+import { assert, it } from "@effect/vitest";
+import { Effect } from "effect";
+import { vi } from "vitest";
+
 const withKillSpy = <A, E>(impl: () => true, use: (calls: ReadonlyArray<ReadonlyArray<unknown>>) => Effect.Effect<A, E>) =>
   Effect.acquireUseRelease(
     Effect.sync(() => vi.spyOn(process, "kill").mockImplementation(impl as never)),
     (spy) => use(spy.mock.calls),
     (spy) => Effect.sync(() => spy.mockRestore()),
   );
+
+it.effect("the spy is restored even though acquireUseRelease's release always runs", () =>
+  Effect.gen(function* () {
+    const wasSpiedDuring = yield* withKillSpy(
+      () => true,
+      () => Effect.sync(() => vi.isMockFunction(process.kill)),
+    );
+    assert.isTrue(wasSpiedDuring);
+    assert.isFalse(vi.isMockFunction(process.kill));
+  }),
+);
 ```
 
 ## `process.exitCode` set by a test fails the vitest PROCESS
@@ -415,8 +668,24 @@ code, alongside the console spy and any env mutation
 (`packages/github-actions/__test__/Action.test.ts:44-54`):
 
 ```ts
-const previousExit = process.exitCode;
-try { await run(lines); } finally { process.exitCode = previousExit; }
+import { assert, it } from "@effect/vitest";
+
+const run = async (lines: ReadonlyArray<string>): Promise<void> => {
+  if (lines.includes("fail")) process.exitCode = 1;
+};
+
+it("restores process.exitCode to its previous value, not to 0", async () => {
+  process.exitCode = 3; // simulate an earlier test that legitimately set it
+  const previousExit = process.exitCode;
+  try {
+    await run(["fail"]);
+    assert.strictEqual(process.exitCode, 1);
+  } finally {
+    process.exitCode = previousExit;
+  }
+  assert.strictEqual(process.exitCode, 3);
+  process.exitCode = 0; // do not leak this probe's own simulated value
+});
 ```
 
 Restore to the **previous value**, not to `0` or `undefined` — an earlier test
@@ -479,7 +748,7 @@ lists before `deepStrictEqual`.
 The tell is structural, and cheap to check once you know to look: **does any
 test observe the helper's output directly, or only comparisons of it against
 itself?** If only the latter, add one test that asserts the literal output —
-`assert.strictEqual(key(dep), "lodash dependencies")`. One direct
+`assert.strictEqual(key(dep), "lodash\0dependencies")`. One direct
 assertion converts the whole symmetric suite from decoration into a gate.
 
 When the value under test is an escape sequence or any character you cannot see

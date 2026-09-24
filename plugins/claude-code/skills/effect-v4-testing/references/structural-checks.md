@@ -8,6 +8,16 @@ cannot express and a runtime cannot observe — and they fail silently in ways a
 ordinary assertion does not, because the substrate they read is *prose plus
 code*, and prose says everything.
 
+**For `process` reads, `node:` imports, and console or stdout writes, reach
+for `SourceBoundary` from `@effected/workspaces/testing` before hand-rolling
+any of this.** It is a lexer-aware scanner, not a regex over raw text, so it
+does not need the comment-stripping and specifier-removal machinery below,
+and it ships its own positive-control fixtures (`SourceBoundary.verifyFixtures()`)
+rather than asking every consumer to build one. The hand-rolled guidance in
+this file is for what `SourceBoundary` does not cover — an arbitrary
+import-reachability or export-by-name assertion, say — not a substitute for
+it on the checks it already does.
+
 Working examples in this repo: `packages/github/__test__/reachability.test.ts`,
 `packages/github-actions/__test__/reachability.test.ts`,
 `packages/npm/__test__/reachability.test.ts`,
@@ -52,8 +62,22 @@ mutant that survived the *previous* fix
 Only all three together make the test fail when the export is gone:
 
 ```ts
-const code = stripComments(read("index.ts")).replace(/from\s*["'][^"']+["']/g, "");
-assert.match(code, /\bNpmRegistry\b/, "index.ts must export NpmRegistry by name");
+import { assert, it } from "@effect/vitest";
+
+const stripComments = (source: string): string =>
+  source.replace(/(^|\n)\s*\/\/.*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, "");
+
+it("index.ts must export NpmRegistry by name", () => {
+  const indexTs = [
+    "/**",
+    " * Also mentions NpmRegistry in a doc comment above the real export.",
+    " */",
+    'export { NpmRegistry } from "./NpmRegistry.js";',
+  ].join("\n");
+
+  const code = stripComments(indexTs).replace(/from\s*["'][^"']+["']/g, "");
+  assert.match(code, /\bNpmRegistry\b/, "index.ts must export NpmRegistry by name");
+});
 ```
 
 Stripping also buys something else: the prohibition can be **written down in
@@ -70,7 +94,12 @@ it does. For a confinement test ("X must not reach Y") that is the permissive
 direction: a lost edge is a false **pass**. Blocks cannot nest, so once the
 fake openers are gone a real `/*` inside a real block comment is harmless.
 
+The order itself, isolated from a real fixture — the next section's
+`stripComments` is the worked, runnable version against real input:
+
 ```ts
+declare const source: string
+
 const code = source
   .replace(/(^|\n)\s*\/\/.*/g, "$1")   // LINE comments first
   .replace(/\/\*[\s\S]*?\*\//g, "");   // then blocks
@@ -94,19 +123,40 @@ it. Give the stripper a test, and make the fixture discriminate:
   line survives.
 
 ```ts
-// The stripper's own test (packages/github-actions/__test__/Secret.test.ts:244-245)
-assert.notInclude(stripComments("/** mentions Redacted.value in TSDoc */\nconst a = 1;"), "Redacted.value");
-assert.include(stripComments("// a note\nconst t = Redacted.value(s);"), "Redacted.value");
+import { assert, it } from "@effect/vitest";
 
-// The walker's own test (packages/github/__test__/reachability.test.ts) —
-// the /*-bearing token sits in a LINE comment, which is the whole point.
-const fixture = [
-  "// Prose naming a scope like @octokit/* and a glob like src/* here.",
-  'import { Octokit } from "@octokit/core";',
-  "/** A real doc comment, whose close is the phantom's close. */",
-  'import { sign } from "universal-github-app-jwt";',
-].join("\n");
-assert.deepStrictEqual([...runtimeSpecifiers(fixture)], ["@octokit/core", "universal-github-app-jwt"]);
+const stripComments = (source: string): string =>
+  source.replace(/(^|\n)\s*\/\/.*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, "");
+
+function* runtimeSpecifiers(source: string): Generator<string> {
+  const stripped = stripComments(source);
+  const importRe = /from\s*["']([^"']+)["']/g;
+  for (const match of stripped.matchAll(importRe)) {
+    const specifier = match[1];
+    if (specifier !== undefined) yield specifier;
+  }
+}
+
+// The stripper's own test — this repo's real version lives at
+// packages/github-actions/__test__/Secret.test.ts.
+it("strips a mention from a block comment, keeps a real call in a line comment", () => {
+  assert.notInclude(stripComments("/** mentions Redacted.value in TSDoc */\nconst a = 1;"), "Redacted.value");
+  assert.include(stripComments("// a note\nconst t = Redacted.value(s);"), "Redacted.value");
+});
+
+// The walker's own test — this repo's real version lives at
+// packages/github/__test__/reachability.test.ts. The /*-bearing token sits
+// in a LINE comment, which is the whole point: stripping blocks first would
+// let its phantom opener swallow the real doc comment and the import after it.
+it("finds only the real imports, immune to a /*-bearing token in a line comment", () => {
+  const fixture = [
+    "// Prose naming a scope like @octokit/* and a glob like src/* here.",
+    'import { Octokit } from "@octokit/core";',
+    "/** A real doc comment, whose close is the phantom's close. */",
+    'import { sign } from "universal-github-app-jwt";',
+  ].join("\n");
+  assert.deepStrictEqual([...runtimeSpecifiers(fixture)], ["@octokit/core", "universal-github-app-jwt"]);
+});
 ```
 
 ## Always ship the positive control
