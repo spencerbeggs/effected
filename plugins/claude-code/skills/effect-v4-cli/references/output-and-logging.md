@@ -111,3 +111,14 @@ still wins.
 `CliOutput.Formatter` from that same decision, so help text, parse errors and
 any rendered output agree on whether colour is on — never wire a formatter by
 hand next to `CliColor.enabled`, or the two can disagree.
+
+**Every colour decision in the program reads `CliColor.enabled`, not just the
+formatter.** Diagnostic rendering, tables, and anything else a command prints
+in colour are each their own call site outside `CliOutput.Formatter` — for
+the same one-decision-point reason `CliRuntime.main` exists, none of them
+gets to re-derive "is colour on" with its own `isTTY`/`NO_COLOR` check.
+Reading `process.stdout.isTTY` or `process.env.NO_COLOR` directly in a
+command duplicates `CliColor.enabled`'s decision and drifts from it — the
+no-color.org non-empty-string rule and the ambient `ConfigProvider` read are
+easy to get slightly wrong by hand, and a command that does gets its own,
+possibly disagreeing, colour verdict.

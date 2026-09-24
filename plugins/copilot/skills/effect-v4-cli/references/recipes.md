@@ -36,6 +36,12 @@ export const main = (): void => {
 }
 ~~~
 
+`CliColor.formatterLayer()` is the program's one formatter layer — never
+wire a bare `CliOutput.layer(formatter)` beside or instead of it, or the two
+can disagree on whether colour is on. A formatter override, such as
+`formatVersion`, goes through `formatterLayer`'s own `overrides` argument;
+see [Version formatter](#version-formatter) for that override in place.
+
 Why a recipe: every consumer's command tree, flag set and platform choice
 differ; there is nothing left to extract beyond `CliRuntime.main` itself,
 which the kit already ships.

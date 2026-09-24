@@ -122,6 +122,13 @@ and a `Tool.dynamic` tool is never re-annotated: core dies at registration
 on a strict dynamic tool, because it cannot strictly validate a raw JSON
 Schema the way it can an `Effect Schema`.
 
+Moving a toolkit from core's `McpServer.toolkit` to `McpToolkit.layer` is a
+**client-visible wire change**, not a purely internal swap: every
+unannotated tool's served `inputSchema` flips from open to
+`additionalProperties: false`, because `McpToolkit.layer`'s `strict`
+default re-annotates it. If a test pins the served schema's
+`additionalProperties`, it flips with the migration.
+
 `ToolInputSchema.unknownKeys`/`formatUnknownKeys` are for a **`Tool.dynamic`**
 tool's own handler only — core decodes a `Tool.make` tool's payload
 *before* the handler ever runs (`unstable/ai/McpServer.ts:1888`), so by the
