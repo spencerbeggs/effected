@@ -145,8 +145,9 @@ Available via the Skill tool (several also auto-load on trigger):
   the memoization discipline (build-once-by-reference; the layer-function trap).
 - effect-v4-idioms — core Effect: typed errors, Result, generators,
   scope/resources, forking, structural equality.
-- effect-v4-cli — the CLI framework is effect/unstable/cli in core.
-  Command.Environment, tier impact, exit codes.
+- effect-v4-cli — command-line programs: effect/unstable/cli in core plus
+  the @effected/cli boundary (main assembly, exit codes, stdout vs stderr,
+  testing a built bin).
 - effect-v4-mcp — MCP servers on effect/unstable/ai: stdio wiring that keeps
   stdout the wire, tools, failures an agent can read, resources, and the
   in-process and spawned test clients.

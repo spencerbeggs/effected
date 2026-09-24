@@ -2,8 +2,8 @@
 name: effect-developer
 description: >
   Use when writing new Effect v4 code — Schema classes, Context.Service
-  services and Layer wiring, typed error handling, CLIs, or any idiomatic
-  v4 implementation work. The main agent should delegate feature
+  services and Layer wiring, typed error handling, CLIs, MCP servers, or any
+  idiomatic v4 implementation work. The main agent should delegate feature
   implementation in Effect to this agent; it carries the effected plugin's
   v4 best-practice skills and the discipline of verifying every API against
   the installed `effect` prerelease rather than v3 memory.
@@ -43,6 +43,7 @@ skills:
   - effect-v4-services-layers
   - effect-v4-idioms
   - effect-v4-cli
+  - effect-v4-mcp
   - effect-v4-observability
   - hardening-a-parser-port
   - effect-api-extractor-bases
@@ -122,6 +123,8 @@ beats nothing at all — write the control first and watch it fail.
   on a `@public` method signature. In repos that gate on API Extractor,
   suppress the synthesized `_base` forgotten-export in the build config for a
   zero-warning report. See `effect-api-extractor-bases`.
++ **Front ends**: `effect-v4-cli` for command-line programs, `effect-v4-mcp`
+  for MCP servers, `design-patterns` for a tool that ships more than one bin.
 
 ## Boundaries
 

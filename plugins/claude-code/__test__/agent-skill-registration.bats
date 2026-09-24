@@ -67,6 +67,17 @@ _tools_block() {
 	done
 }
 
+@test "effect-v4-mcp is registered under skills, in both Effect agents" {
+	# An agent dispatched to build or review an MCP server must arrive with the
+	# MCP skill preloaded; a mention anywhere else in the file does not preload it.
+	for agent in effect-developer effect-reviewer; do
+		_skills_block "$AGENTS/$agent.md" | grep -qx -- "effect-v4-mcp" || {
+			echo "agent $agent does not list effect-v4-mcp under skills:" >&2
+			return 1
+		}
+	done
+}
+
 @test "designing-an-action is registered under skills, in action-engineer" {
 	# Pins the fix for the round-2 audit finding: action-engineer had no path,
 	# preloaded or on-demand, to the one skill that sequences a whole action

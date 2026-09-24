@@ -44,6 +44,7 @@ skills:
   - effect-v4-schema
   - effect-v4-services-layers
   - effect-v4-cli
+  - effect-v4-mcp
   - effect-v4-observability
   - hardening-a-parser-port
   - effect-api-extractor-bases
@@ -89,7 +90,10 @@ holds. Not for writing feature code from scratch — that is the developer.
    / `Effect.result` (there is no `Either`); `Context.Service` (there is no
    `Context.Tag`);
    layers bound to consts (no layer-returning functions that rebuild resources);
-   `Effect.fn` spans on public *fallible* boundaries only.
+   `Effect.fn` spans on public *fallible* boundaries only; the right front-end
+   skill for the shape under review — `effect-v4-cli` for command-line
+   programs, `effect-v4-mcp` for MCP servers, `design-patterns` for a tool
+   that ships more than one bin.
 3. **Check the API surface.** Every Schema class factory is written inline
    (not a `@public X_base` const); no internal type leaks onto a `@public`
    method signature. In repos that gate on API Extractor, the synthesized

@@ -17,8 +17,8 @@ sources:
     resource: ../../plugins/CLAUDE.md
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-23T17:33:49Z
-  body_sha256: 1ba463b318847e8c811ce16adc5edb940dfa3cc02723303c1583eef009f45fab
+  at: 2026-09-24T05:05:33Z
+  body_sha256: 93bf4a24babe0d2287059d2b2fecb37cbcd7ec259ef00ee5c1c033b82cc2a581
 ---
 
 # claude-code-plugin
@@ -76,9 +76,10 @@ frontmatter `description` is the authoritative trigger. On disk today:
 `building-a-github-action`, `building-schemastore-schemas`,
 `design-patterns`, `designing-an-action`,
 `effect-api-extractor-bases`, `effect-v4-cli`, `effect-v4-house-style`,
-`effect-v4-idioms`, `effect-v4-module-index`, `effect-v4-observability`,
-`effect-v4-planning`, `effect-v4-schema`, `effect-v4-services-layers`,
-`effect-v4-source-lookup`, `effect-v4-testing`, `effected-packages`,
+`effect-v4-idioms`, `effect-v4-mcp`, `effect-v4-module-index`,
+`effect-v4-observability`, `effect-v4-planning`, `effect-v4-schema`,
+`effect-v4-services-layers`, `effect-v4-source-lookup`, `effect-v4-testing`,
+`effected-packages`,
 `github-api`, `github-app-tokens`, `hardening-a-parser-port`,
 `release-and-publish`, `running-commands-and-tools`,
 `structuring-an-action`, `supply-chain-attestation`, `testing-actions`.
@@ -99,7 +100,7 @@ observability, testability) before any implementation code exists.
 
 **Best-practice skills**: `effect-v4-house-style`, `effect-v4-schema`,
 `effect-v4-services-layers`, `effect-v4-idioms`, `effect-v4-cli`,
-`effect-v4-observability`, `effect-v4-testing`.
+`effect-v4-mcp`, `effect-v4-observability`, `effect-v4-testing`.
 
 **The evidence discipline**: `effect-v4-source-lookup`, the evidence
 ladder and probe preconditions — see
@@ -141,7 +142,11 @@ lists. All three preload `effected-packages` and `effect-v4-house-style`,
 verify at capability level by running the host repo's own gates
 (preferring structured session tools over hard-coded pnpm/turbo
 commands), and report `@effected` package improvement suggestions
-alongside skill rough edges.
+alongside skill rough edges. Both Effect agents (`effect-developer`,
+`effect-reviewer`) additionally preload `design-patterns`, `effect-v4-cli`
+and `effect-v4-mcp` — the front-end skills, so a dispatch to build or
+review a CLI or MCP server arrives with the matching skill already loaded
+rather than reached for mid-task.
 
 - `effect-developer` — writes new idiomatic v4 code, starting any
   non-trivial feature with `effect-v4-planning`'s design summary.
@@ -163,9 +168,12 @@ prose a later edit can quietly falsify.
   hook, derived from the directories on disk with a minimum-count guard.
 - `agent-skill-registration.bats` — each agent's frontmatter `skills`
   list, including a membership test naming every Actions skill
-  `action-engineer` must list, and a check that pins the specialist
+  `action-engineer` must list, a check that pins the specialist
   roster at exactly three so a retired migrator agent cannot quietly
-  return.
+  return, and a preload test per front-end skill (`design-patterns`,
+  `effect-v4-cli`, `effect-v4-mcp`) confirming both Effect agents list it
+  under `skills:`, not merely mention it in the body or leak it into
+  `tools:`.
 - `construct-index.bats` — the executable pin on the construct index:
   generator fixture tests, a drift test that regenerates the committed
   index into a temp dir and diffs, and the strict annotation gate.
