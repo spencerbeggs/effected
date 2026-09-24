@@ -320,7 +320,12 @@ metadata`.
 a test sees the exact served schemas and wire results a real client would,
 with no child process and no sockets. Pass `server` **without** a `Stdio`
 of its own — a `Stdio` the server provides internally would talk to the
-real terminal instead of the test's queues. The harness builds the server
+real terminal instead of the test's queues, including one that arrives
+bundled: `@effect/platform-node`'s `NodeServices.layer` brings its own
+`Stdio` along with `FileSystem`, `Path`, `ChildProcessSpawner`, `Crypto`
+and `Terminal`, so composing the server with that bundle loses the harness's
+`Stdio` the same way. Compose the individual platform layers the server
+needs instead and leave `Stdio` out; the harness supplies it. The harness builds the server
 with a fresh layer memo map, never the ambient one, so a harness made under
 another stdio server's `Effect.provide` still serves its own. For the same
 reason, never pass a server layer that provides a layer the test also
@@ -336,7 +341,9 @@ until the response arrives, and the caller asserts
 `result.response.error === undefined`, empty `stderr` and exit 0 — a
 server that refuses the handshake still answers, exits 0 and stays quiet.
 `McpToolAudit.check` is a pure sweep over a served `tools/list`, for a
-static policy check with no server at all.
+static policy check with no server at all. `client.listResources` and
+`client.readResource(uri)` mirror `listTools`/`callTool` for a server's
+`resources/list` and `resources/read`.
 
 `McpProcess` writes a JSON-encoded message with `send`, and anything at all
 with `sendRaw(text: string | Uint8Array)`, which writes the string or bytes

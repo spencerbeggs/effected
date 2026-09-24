@@ -43,13 +43,15 @@ wire message; nothing else in `@effected/engine` is consumed yet.
 `McpStdioOptions`, `McpToolkitOptions`, `UnknownKeysLevel` and
 `FormatUnknownKeysOptions` types.
 
-`@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`),
-`McpProcess` (`spawn`; instances carry `send`, `sendRaw`, `nextLine`,
-`readUntilResponse`, `handshake`, `closeStdin`, `exitCode`, `stderrSoFar`,
-`stderrFinal`), `McpProbe` (`initialize`), `McpTestFailure`,
-`McpToolAudit` (`check`), plus the `McpHarnessOptions`, `McpProbeOptions`,
-`McpProbeResult`, `McpToolAuditPolicy`, `JsonRpcMessage` and `ServedTool`
-types.
+`@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
+carry `listTools`, `listResources`, `callTool`, `readResource`, `request`,
+`startRequest`, `notify`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`,
+`consoleLogSoFar`, `close`), `McpProcess` (`spawn`; instances carry `send`,
+`sendRaw`, `nextLine`, `readUntilResponse`, `handshake`, `closeStdin`,
+`exitCode`, `stderrSoFar`, `stderrFinal`), `McpProbe` (`initialize`),
+`McpTestFailure`, `McpToolAudit` (`check`), plus the `McpHarnessOptions`,
+`McpProbeOptions`, `McpProbeResult`, `McpToolAuditPolicy`, `JsonRpcMessage`,
+`ServedTool` and `ServedResource` types.
 
 ## Load-bearing decisions
 

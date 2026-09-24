@@ -13,7 +13,7 @@ import {
 	requestKey,
 } from "./internal/wire.js";
 import { McpTestFailure } from "./McpTestFailure.js";
-import type { JsonRpcMessage, ServedTool } from "./McpWire.js";
+import type { JsonRpcMessage, ServedResource, ServedTool } from "./McpWire.js";
 import { ToolFailure } from "./ToolFailure.js";
 
 /**
@@ -47,6 +47,7 @@ interface HarnessParts {
 	readonly notify: (method: string, params?: unknown) => Effect.Effect<void>;
 	readonly callTool: (name: string, args?: unknown) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly listTools: Effect.Effect<ReadonlyArray<ServedTool>, McpTestFailure>;
+	readonly listResources: Effect.Effect<ReadonlyArray<ServedResource>, McpTestFailure>;
 	readonly readResource: (uri: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly sendRaw: (message: unknown) => Effect.Effect<void>;
 	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
@@ -63,7 +64,12 @@ interface HarnessParts {
  * server's `Stdio` requirement, so tests see the exact served schemas and wire
  * results a real client would, with no child and no sockets. Pass the server
  * WITHOUT a `Stdio` of its own: a `Stdio` the server provides internally wins,
- * and talks to the real terminal.
+ * and talks to the real terminal. A bundled platform layer such as
+ * `NodeServices.layer` (`@effect/platform-node`) brings its own `Stdio` along
+ * with `FileSystem`, `Path`, `ChildProcessSpawner`, `Crypto` and `Terminal` —
+ * providing it to the server loses `Stdio` the same way, and every wait
+ * hangs to timeout with no error naming why. Compose the individual layers
+ * the server needs instead and leave `Stdio` out; this harness supplies it.
  *
  * The server is built with a fresh layer memo map, never the ambient one, so
  * a harness made under another stdio server's `Effect.provide` still serves
@@ -112,6 +118,8 @@ export class McpHarness {
 	readonly callTool: (name: string, args?: unknown) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** `tools/list`'s tools; a JSON-RPC error fails with `ErrorResponse`. */
 	readonly listTools: Effect.Effect<ReadonlyArray<ServedTool>, McpTestFailure>;
+	/** `resources/list`'s resources; a JSON-RPC error fails with `ErrorResponse`. */
+	readonly listResources: Effect.Effect<ReadonlyArray<ServedResource>, McpTestFailure>;
 	/** `resources/read`, returning the whole response. */
 	readonly readResource: (uri: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** Write any value as one newline-framed line. Never gated; a raw `initialize` counts as sent. */
@@ -134,6 +142,7 @@ export class McpHarness {
 		this.notify = parts.notify;
 		this.callTool = parts.callTool;
 		this.listTools = parts.listTools;
+		this.listResources = parts.listResources;
 		this.readResource = parts.readResource;
 		this.sendRaw = parts.sendRaw;
 		this.awaitOutboundMethod = parts.awaitOutboundMethod;
@@ -304,6 +313,16 @@ export class McpHarness {
 							}),
 						),
 			);
+			const listResources = Effect.flatMap(request("resources/list"), (response) =>
+				response.error === undefined
+					? Effect.succeed((response.result as { readonly resources: ReadonlyArray<ServedResource> }).resources)
+					: Effect.fail(
+							new McpTestFailure({
+								reason: "ErrorResponse",
+								message: `resources/list failed: ${ToolFailure.truncate(JSON.stringify(response.error))}`,
+							}),
+						),
+			);
 			const awaitOutboundMethod = (method: string): Effect.Effect<JsonRpcMessage, McpTestFailure> =>
 				Effect.suspend(() => {
 					const index = retained.findIndex((message) => message.method === method);
@@ -328,6 +347,7 @@ export class McpHarness {
 				notify,
 				callTool: (name, args) => request("tools/call", { name, arguments: args ?? {} }),
 				listTools,
+				listResources,
 				readResource: (uri) => request("resources/read", { uri }),
 				sendRaw,
 				awaitOutboundMethod,

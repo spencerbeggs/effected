@@ -14,4 +14,4 @@ export { McpProbe, type McpProbeOptions, type McpProbeResult } from "./McpProbe.
 export { McpProcess } from "./McpProcess.js";
 export { McpTestFailure } from "./McpTestFailure.js";
 export { McpToolAudit, type McpToolAuditPolicy } from "./McpToolAudit.js";
-export type { JsonRpcMessage, ServedTool } from "./McpWire.js";
+export type { JsonRpcMessage, ServedResource, ServedTool } from "./McpWire.js";

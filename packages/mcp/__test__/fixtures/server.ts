@@ -37,6 +37,14 @@ export const Version = Tool.make("version", { description: "Returns a bare strin
 
 export const FixtureKit = Toolkit.make(Echo, Lookup, Boom, Ping, Hang, Garble, Grow, Version);
 
+export const FixtureResource = McpServer.resource({
+	uri: "fixture://thing",
+	name: "thing",
+	description: "A single fixture resource.",
+	mimeType: "text/plain",
+	content: Effect.succeed("fixture content"),
+});
+
 export const FixtureHandlers = FixtureKit.toLayer({
 	echo: ({ text }) => Effect.succeed({ text }),
 	lookup: ({ id }) =>
@@ -67,10 +75,10 @@ export const FixtureHandlers = FixtureKit.toLayer({
 
 /** The toolkit provided WITH McpStdio.layer — the composition okfit uses. */
 export const fixtureServer = (options: Pick<McpStdioOptions, "protocols"> = {}) =>
-	McpServer.toolkit(FixtureKit).pipe(
-		Layer.provide(FixtureHandlers),
-		Layer.provideMerge(McpStdio.layer({ name: "fixture", version: "0.0.0", ...options })),
-	);
+	Layer.mergeAll(
+		McpServer.toolkit(FixtureKit).pipe(Layer.provide(FixtureHandlers)),
+		FixtureResource,
+	).pipe(Layer.provideMerge(McpStdio.layer({ name: "fixture", version: "0.0.0", ...options })));
 
 const BoomKit = Toolkit.make(Boom);
 

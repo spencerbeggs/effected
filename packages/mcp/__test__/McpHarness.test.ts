@@ -110,6 +110,35 @@ describe("McpHarness", () => {
 		}),
 	);
 
+	it.effect("resources: listResources then readResource round trips the fixture resource", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			yield* harness.initialize;
+			const resources = yield* harness.listResources;
+			assert.deepStrictEqual(
+				resources.map((resource) => resource.uri),
+				["fixture://thing"],
+			);
+			assert.strictEqual(resources[0]?.name, "thing");
+			assert.strictEqual(resources[0]?.mimeType, "text/plain");
+			const response = yield* harness.readResource("fixture://thing");
+			const result = response.result as { readonly contents: ReadonlyArray<{ readonly text?: string }> };
+			assert.strictEqual(result.contents[0]?.text, "fixture content");
+		}),
+	);
+
+	it.effect("resources: reading an unknown uri surfaces whatever core returns", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			yield* harness.initialize;
+			const response = yield* harness.readResource("fixture://missing");
+			assert.isUndefined(response.result);
+			const error = response.error as { readonly code: number; readonly message: string };
+			assert.strictEqual(error.code, -32002);
+			assert.include(error.message, "fixture://missing");
+		}),
+	);
+
 	it.effect("responses are matched by id: a later request resolves while an earlier one is still pending", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(fixtureServer());

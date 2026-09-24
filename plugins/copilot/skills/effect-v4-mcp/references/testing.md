@@ -13,7 +13,16 @@ layer: an in-process, queue-backed `Stdio`, no child process and no sockets.
 Pass the layer **without** its own `Stdio` — a `Stdio` the server provides
 internally wins over the harness's and talks to the real terminal, the same
 rule `server-wiring.md`'s [complete `main.ts`](./server-wiring.md) section
-states for `ServerLayer` vs `Main`.
+states for `ServerLayer` vs `Main`. This bites through a bundled platform
+layer, not only a `Stdio` named directly: `@effect/platform-node`'s
+`NodeServices.layer` (and any house equivalent bundling the same shape)
+brings its own `Stdio` along with `FileSystem`, `Path`,
+`ChildProcessSpawner`, `Crypto` and `Terminal`, and that bundled `Stdio`
+wins the same way — every harness-backed test then hangs to its timeout,
+with no error naming why. Provide the individual layers the server actually
+needs instead — `NodeFileSystem.layer`, `NodePath.layer`,
+`NodeChildProcessSpawner.layer`, `NodeCrypto.layer`, `NodeTerminal.layer` —
+and leave `Stdio` out of the composition entirely; the harness supplies it.
 
 On the default stateful revision (`McpProtocol.v2025_11_25`), `yield*
 harness.initialize` first: every other request — `ping` included — fails

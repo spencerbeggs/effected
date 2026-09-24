@@ -28,3 +28,19 @@ export interface ServedTool {
 	readonly annotations?: { readonly [key: string]: unknown } | undefined;
 	readonly _meta?: { readonly [key: string]: unknown } | undefined;
 }
+
+/**
+ * One entry of a `resources/list` result.
+ *
+ * @public
+ */
+export interface ServedResource {
+	readonly uri: string;
+	readonly name: string;
+	readonly title?: string | undefined;
+	readonly description?: string | undefined;
+	readonly mimeType?: string | undefined;
+	readonly annotations?: { readonly [key: string]: unknown } | undefined;
+	readonly size?: number | undefined;
+	readonly _meta?: { readonly [key: string]: unknown } | undefined;
+}
