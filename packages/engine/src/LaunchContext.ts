@@ -24,8 +24,6 @@ export interface ProjectDirInput {
 	readonly cwd: string;
 }
 
-const PLACEHOLDER = /\$\{[^}]*\}/;
-
 /**
  * Resolves where a tool launched by an agent host should treat as its project.
  *
@@ -41,7 +39,13 @@ export class LaunchContext {
 	 * Claude Code passes `${CLAUDE_PROJECT_DIR}` through unsubstituted in some
 	 * launch paths; a path containing a placeholder is never what was meant.
 	 */
-	static readonly isUnsubstituted = (value: string): boolean => PLACEHOLDER.test(value);
+	static readonly isUnsubstituted = (value: string): boolean => {
+		// A `${` with any `}` after it. The first `${` has the most text after it,
+		// so it alone decides; two scans keep this linear, where the equivalent
+		// unanchored regex rescans from every `${` and goes quadratic.
+		const open = value.indexOf("${");
+		return open !== -1 && value.indexOf("}", open + 2) !== -1;
+	};
 
 	/**
 	 * The first usable argv value, then the first usable env value in `keys`

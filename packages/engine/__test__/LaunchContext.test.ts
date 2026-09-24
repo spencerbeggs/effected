@@ -81,4 +81,18 @@ describe("LaunchContext.isUnsubstituted", () => {
 		assert.isFalse(LaunchContext.isUnsubstituted("/real/path"));
 		assert.isFalse(LaunchContext.isUnsubstituted("$HOME"));
 	});
+
+	it("agrees with the placeholder pattern `${`, any non-`}` run, `}`", () => {
+		const reference = /\$\{[^}]*\}/;
+		for (const value of ["${}", "${A", "A}", "}${", "${A}${", "${${A}", "}${A}", "$ {A}", "${{", "a${b}c", "${\n}"]) {
+			assert.strictEqual(LaunchContext.isUnsubstituted(value), reference.test(value), JSON.stringify(value));
+		}
+	});
+
+	it("stays linear on a long run of unclosed openers", () => {
+		const hostile = "${{".repeat(200_000);
+		const started = performance.now();
+		assert.isFalse(LaunchContext.isUnsubstituted(hostile));
+		assert.isBelow(performance.now() - started, 100);
+	});
 });
