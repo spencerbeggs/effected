@@ -28,6 +28,20 @@ failure check. Closing the harness before reading a request's response
 drops that response, the same "read first, close second" rule
 `server-wiring.md` states for `McpProcess`.
 
+**Code placed after a completed `Effect.provide` of a stdio server never
+runs.** Core's stdio protocol interrupts the fiber that built it once the
+server stops, so a hand-written test that provides a server layer directly
+and asserts afterward silently skips its own assertions — the test reports
+green having checked nothing. Use `McpHarness` instead of hand-wiring
+`Effect.provide` around a server in a test.
+
+`McpHarness` is meant to build the server it tests under its own fresh memo
+map, never sharing a `Stdio` protocol with a server a calling test (or
+another harness) already provided — a kit fix for exactly this, K2, is
+landing in parallel. This skill teaches current behavior; don't assume a
+harness nested under another already-provided server is safe from the trap
+above until that fix ships.
+
 ~~~ts
 import { McpStdio, McpToolkit } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"

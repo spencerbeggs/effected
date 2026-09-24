@@ -79,16 +79,13 @@ merged into **one** graph — one `Layer.mergeAll`/`Layer.build` call — share
 one protocol, built over whichever `Stdio` came first: the second server
 never reads its own stdin, silently. This is core's behaviour with or
 without the guard; `Layer.fresh` around `layerStdio` is not a fix. Nesting
-one `Effect.provide` inside a fiber that another `Effect.provide` already
-wraps is **not** the same trap: each `Effect.provide` builds its own
-independent graph with its own memo map, regardless of nesting — probed
-directly (two `McpStdio.layer` servers, each over its own in-memory
-`Stdio`, the second's `Effect.provide`-equivalent build nested inside the
-fiber the first's already wraps) and the inner server answered on its own
-stdio, correctly, with its own identity. The one real trap is the merge:
-build each server its own graph — its own `Layer.build`, its own
-`ManagedRuntime`, or its own process — never merge two `McpStdio.layer`
-outputs into one.
+does not separate them either: `Effect.provide` and `Layer.build` both
+build through a fork of the memo map already in the fiber's context, so a
+second `McpStdio.layer` provided or built anywhere under the first one's
+`Effect.provide` reuses the first server's stdio protocol and never reads
+its own stdin. Give each server a fresh memo map instead — its own
+`ManagedRuntime`, `Effect.provide(layer, { local: true })`, or its own
+process — and never merge two `McpStdio.layer` outputs into one graph.
 
 ### Stdin guard
 
