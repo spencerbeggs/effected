@@ -174,6 +174,7 @@ interface Throwable {
 	readonly headers: Readonly<Record<string, unknown>> | undefined;
 	readonly reason: string;
 	readonly detailMessages: ReadonlyArray<string>;
+	readonly detailCodes: ReadonlyArray<string>;
 }
 
 /**
@@ -188,7 +189,7 @@ interface Throwable {
  */
 const readThrowable = (error: unknown): Throwable => {
 	if (typeof error !== "object" || error === null) {
-		return { status: undefined, headers: undefined, reason: String(error), detailMessages: [] };
+		return { status: undefined, headers: undefined, reason: String(error), detailMessages: [], detailCodes: [] };
 	}
 	const record = error as Record<string, unknown>;
 	const response = asRecord(record.response);
@@ -198,7 +199,8 @@ const readThrowable = (error: unknown): Throwable => {
 		status: typeof record.status === "number" ? record.status : undefined,
 		headers,
 		reason: sanitizeReason(typeof record.message === "string" ? record.message : String(error)),
-		detailMessages: readDetailMessages(data),
+		detailMessages: readDetailField(data, "message"),
+		detailCodes: readDetailField(data, "code"),
 	};
 };
 
@@ -226,19 +228,28 @@ const sanitizeReason = (message: string): string => {
 
 const MAX_REASON_LENGTH = 500;
 
-/** GitHub's validation failures arrive as `data.errors[].message`. */
-const readDetailMessages = (data: Record<string, unknown> | undefined): ReadonlyArray<string> => {
+/**
+ * GitHub's validation failures arrive as `data.errors[]` entries carrying a
+ * `message`, a structured `code`, or only the code.
+ */
+const readDetailField = (
+	data: Record<string, unknown> | undefined,
+	field: "message" | "code",
+): ReadonlyArray<string> => {
 	const errors = data?.errors;
 	if (!Array.isArray(errors)) return [];
-	const messages: Array<string> = [];
+	const values: Array<string> = [];
 	for (const entry of errors) {
-		const message = asRecord(entry)?.message;
-		if (typeof message === "string") messages.push(message);
+		const value = asRecord(entry)?.[field];
+		if (typeof value === "string") values.push(value);
 	}
-	return messages;
+	return values;
 };
 
 const ALREADY_EXISTS = "already exists";
+
+/** GitHub's documented validation-error code for a duplicate resource. */
+const ALREADY_EXISTS_CODE = "already_exists";
 
 const classify = (
 	facts: Throwable,
@@ -262,8 +273,16 @@ const classify = (
 	return "rejected";
 };
 
+/**
+ * @remarks
+ * The structured code is the authority — the releases endpoint sends it with
+ * no message at all. The underscore form in the reason covers a body octokit
+ * has already flattened into its `message`.
+ */
 const saysAlreadyExists = (facts: Throwable): boolean => {
-	if (facts.reason.toLowerCase().includes(ALREADY_EXISTS)) return true;
+	if (facts.detailCodes.includes(ALREADY_EXISTS_CODE)) return true;
+	const reason = facts.reason.toLowerCase();
+	if (reason.includes(ALREADY_EXISTS) || reason.includes(ALREADY_EXISTS_CODE)) return true;
 	return facts.detailMessages.some((message) => message.toLowerCase().includes(ALREADY_EXISTS));
 };
 

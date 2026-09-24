@@ -134,6 +134,28 @@ describe("GitTag", () => {
 		}),
 	);
 
+	it.effect("upsert resets when already-exists arrives only as a structured code", () =>
+		Effect.gen(function* () {
+			const { script } = yield* drive(
+				[
+					{
+						status: 422,
+						body: {
+							message: "Validation Failed",
+							errors: [{ resource: "Reference", code: "already_exists", field: "ref" }],
+						},
+					},
+					{ status: 200, body: {} },
+				],
+				GitTag,
+				GitTag,
+				(tag) => tag.upsert("v1.0.0", "abc"),
+			);
+			assert.strictEqual(script.calls[1]?.method, "PATCH");
+			assert.include(script.calls[1]?.path ?? "", "/git/refs/tags/v1.0.0");
+		}),
+	);
+
 	it.effect("resolve dereferences an annotated tag", () =>
 		Effect.gen(function* () {
 			const { value } = yield* drive(

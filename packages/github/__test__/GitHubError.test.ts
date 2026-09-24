@@ -6,7 +6,7 @@ const thrown = (options: {
 	status?: number;
 	message?: string;
 	headers?: Record<string, unknown>;
-	errors?: ReadonlyArray<{ message?: string }>;
+	errors?: ReadonlyArray<{ message?: string; code?: string; resource?: string; field?: string }>;
 }): unknown => ({
 	name: "HttpError",
 	message: options.message ?? "boom",
@@ -135,6 +135,46 @@ describe("GitHubError.fromOctokit", () => {
 			NOW,
 		);
 		assert.strictEqual(error.kind, "alreadyExists");
+	});
+
+	it("reads already-exists off a structured already_exists code with no message", () => {
+		// The exact body POST /repos/{owner}/{repo}/releases answers for a tag that
+		// already has a release: no errors[].message, only the documented code.
+		const error = GitHubError.fromOctokit(
+			"Release.create",
+			thrown({
+				status: 422,
+				message: "Validation Failed",
+				errors: [{ resource: "Release", code: "already_exists", field: "tag_name" }],
+			}),
+			NOW,
+		);
+		assert.strictEqual(error.kind, "alreadyExists");
+	});
+
+	it("reads already-exists off a flattened reason carrying the underscore code", () => {
+		const error = GitHubError.fromOctokit(
+			"Release.create",
+			thrown({
+				status: 422,
+				message: 'Validation Failed: {"resource":"Release","code":"already_exists","field":"tag_name"}',
+			}),
+			NOW,
+		);
+		assert.strictEqual(error.kind, "alreadyExists");
+	});
+
+	it("classifies a 422 whose structured code is something else as rejected", () => {
+		const error = GitHubError.fromOctokit(
+			"x",
+			thrown({
+				status: 422,
+				message: "Validation Failed",
+				errors: [{ resource: "Release", code: "invalid", field: "tag_name" }],
+			}),
+			NOW,
+		);
+		assert.strictEqual(error.kind, "rejected");
 	});
 
 	it("classifies a 409 saying so as alreadyExists", () => {

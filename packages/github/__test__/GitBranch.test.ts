@@ -94,6 +94,28 @@ describe("GitBranch.upsert", () => {
 		}),
 	);
 
+	it.effect("resets when already-exists arrives only as a structured code", () =>
+		Effect.gen(function* () {
+			// GitHub's documented validation shape with no message anywhere but the
+			// generic top-level one — the shape the releases endpoint answers with.
+			const { value, script } = yield* run(
+				[
+					{
+						status: 422,
+						body: {
+							message: "Validation Failed",
+							errors: [{ resource: "Reference", code: "already_exists", field: "ref" }],
+						},
+					},
+					{ status: 200, body: {} },
+				],
+				(branch) => branch.upsert("main", "abc"),
+			);
+			assert.strictEqual(value, "reset");
+			assert.strictEqual(script.calls[1]?.method, "PATCH");
+		}),
+	);
+
 	it.effect("does not recover from a failure that is not already-exists", () =>
 		Effect.gen(function* () {
 			const { script, base } = harness([{ status: 422, body: { message: "Object does not exist" } }]);
