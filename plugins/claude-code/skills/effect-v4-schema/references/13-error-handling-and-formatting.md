@@ -1,7 +1,7 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
@@ -38,7 +38,7 @@ if (Result.isFailure(result)) {
 }
 ```
 
-> **Beta trap — the `, got X` suffix.** This is the single most common wrong
+> **Prerelease trap — the `, got X` suffix.** This is the single most common wrong
 > expectation in this guide. Formatted messages carry **no** `, got <value>`
 > suffix unless you opted into `reportInput`. Probed:
 > `Schema.decodeUnknownExit(Schema.NonEmptyString)("")` renders

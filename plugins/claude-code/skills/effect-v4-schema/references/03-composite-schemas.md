@@ -1,7 +1,7 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
@@ -933,7 +933,7 @@ Use `Struct.evolveKeys` to rename field keys while keeping the corresponding val
 
 **Example** (Uppercasing keys in a struct)
 
-> **Beta trap.** `Struct` is a top-level `effect` module. There is no
+> **Prerelease trap.** `Struct` is a top-level `effect` module. There is no
 > `effect/data` subpath — `import { Struct } from "effect/data"` does not
 > resolve.
 
@@ -1359,7 +1359,7 @@ console.log(Schema.decodeUnknownSync(schema)({ a_b: 1, aB: 2 }))
 // { aB: 2 }
 ```
 
-> **Beta trap.** There is no way to customize conflict resolution.
+> **Prerelease trap.** There is no way to customize conflict resolution.
 > `Schema.Record` takes exactly two arguments — `(key, value)` — with no options
 > object and no `keyValueCombiner`. Earlier drafts of this guide showed a
 > `combine` callback that summed conflicting values; passing it is
@@ -1682,7 +1682,7 @@ The result is a tagged union schema with built-in helpers based on the tag value
 
 The `toTaggedUnion` function enhances a tagged union schema by adding helper methods for working with its members.
 
-> **Beta trap.** The name is `Schema.toTaggedUnion`. `Schema.asTaggedUnion` is
+> **Prerelease trap.** The name is `Schema.toTaggedUnion`. `Schema.asTaggedUnion` is
 > `undefined` — the prose here used to say `asTaggedUnion` while the example
 > below correctly called `toTaggedUnion`, so a reader who trusted the sentence
 > got a runtime `TypeError` from the wrong name.

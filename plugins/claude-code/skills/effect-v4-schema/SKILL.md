@@ -28,7 +28,7 @@ Each row is a hard house default; reasoning and worked code in
 
 Naming trap: `Schema.TaggedErrorClass` and `Schema.ErrorClass` are both
 `undefined` on the `Schema` namespace — the current names are
-`Schema.TaggedError` and `Schema.Error` (`Schema.ts:14488`), with the same
+`Schema.TaggedError` (`Schema.ts:14864`) and `Schema.Error` (`:14804`), with the same
 curried call shape. Code written against the older names fails with
 "TaggedErrorClass is not a function".
 
@@ -549,7 +549,7 @@ you now subclass the schema value directly (`class MyString extends Schema.Strin
 ## Reference map
 
 Load the one section you need. Each file carries a provenance banner (upstream
-source + the beta-skew warning).
+source + the prerelease-skew warning).
 
 | Reference | Load when |
 | --- | --- |

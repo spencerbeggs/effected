@@ -1,7 +1,7 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
@@ -39,7 +39,7 @@ Schema.Null
 
 Sometimes you receive data that is not the right type yet — for example, a number that should become a string. You can build a schema that converts (coerces) values to the target type during decoding:
 
-> **Beta trap.** There is no `effect/schema` subpath and no `Getter` / `Parser`
+> **Prerelease trap.** There is no `effect/schema` subpath and no `Getter` / `Parser`
 > module. The `effect` package exports `SchemaGetter` and `SchemaParser` as
 > top-level modules. `import { Getter, Parser } from "effect/schema"` is not a
 > naming preference — it does not resolve.
@@ -145,7 +145,7 @@ Schema.String.pipe(Schema.decode(SchemaTransformation.toLowerCase()))
 Schema.String.pipe(Schema.decode(SchemaTransformation.toUpperCase()))
 ```
 
-> **Beta trap.** `decode` is a standalone combinator applied through `.pipe(...)`,
+> **Prerelease trap.** `decode` is a standalone combinator applied through `.pipe(...)`,
 > not a method on the schema. `Schema.String.decode(...)` does not typecheck —
 > schemas expose `.check`, `.annotate` and `.pipe`, but no `.decode`.
 
@@ -236,7 +236,7 @@ The `Schema.Date` schema matches valid `Date` objects and rejects invalid dates
 such as `new Date(NaN)`. Its guard is `input instanceof Date && !Number.isNaN(input.getTime())`
 and its `expected` annotation is `"a valid Date"`.
 
-> **Beta trap.** There is no separate "valid date" schema. `Schema.DateValid`
+> **Prerelease trap.** There is no separate "valid date" schema. `Schema.DateValid`
 > and `Schema.ValidDate` are both `undefined` — earlier drafts of this guide
 > described `Schema.Date` as accepting invalid dates and pointed at a companion
 > schema to exclude them. `Schema.Date` already excludes them.

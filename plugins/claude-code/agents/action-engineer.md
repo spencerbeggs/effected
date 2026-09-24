@@ -86,7 +86,7 @@ plan file, treat its frozen contract as Phase −1 output and start
 
 ## Prime directive: the source is the authority, never memory
 
-**Effect v4 is a fast-moving beta.** v3 muscle memory is a liability: names
+**Effect v4 is a fast-moving prerelease.** v3 muscle memory is a liability: names
 moved, modules split, APIs were removed. Use `effect-v4-source-lookup` and
 climb only as far as your claim needs — migration notes settle **renames**,
 the vendored source tree (resolved by that skill's ladder) settles

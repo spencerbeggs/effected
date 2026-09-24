@@ -1,7 +1,7 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
@@ -36,7 +36,7 @@ Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(`{"a":1,"b":2}`)
 // => { a: 1, b: 2 }
 ```
 
-> **Beta trap.** `Schema.UnknownFromJsonString` exists at runtime but is marked
+> **Prerelease trap.** `Schema.UnknownFromJsonString` exists at runtime but is marked
 > `@internal` in source, so it is **stripped from the published `.d.ts`**. A
 > TypeScript consumer gets `TS2551: Property 'UnknownFromJsonString' does not
 > exist ... Did you mean 'fromJsonString'?` even though `typeof

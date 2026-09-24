@@ -1,7 +1,7 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
@@ -170,7 +170,7 @@ The parsing function you return from `run` is responsible for:
 2. Recursively decoding inner values using the provided codecs
 3. Returning an `Effect` that succeeds with the decoded value or fails with an issue
 
-> **Beta trap.** Issue constructors take the raw input, not an `Option`:
+> **Prerelease trap.** Issue constructors take the raw input, not an `Option`:
 > `new SchemaIssue.InvalidType(ast, input?, options?)` and
 > `new SchemaIssue.InvalidValue(annotations?, input?, options?)`. Because the
 > `input` parameter is typed `unknown`, `Option.some(u)` compiles — it just

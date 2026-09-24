@@ -8,7 +8,7 @@ description: The @effected package index — what each of the kit's 34 packages 
 `@effected/*` is an Effect v4-first app kit: 34 packages (32 libraries plus
 the `pnpm-plugin-effect` and `schemastore-cli` companions) designed against the
 v4 line, released together, with every
-`effect` dependency pinned to one exact beta via pnpm catalogs. Before
+`effect` dependency pinned to one exact prerelease via pnpm catalogs. Before
 designing lockfile/config/glob/semver/path/state/workspace/git capability by
 hand, check this table — the kit probably ships it, schema-first and with a
 typed error channel.
@@ -160,7 +160,7 @@ in the 2026-08-14 consumer-unblock wave, and `github-references` was extracted
 from `github` on 2026-08-17 at `0.1.0`. Nothing in the kit sits at `0.0.0`.
 
 Releases are changeset-driven: CI builds the appropriate changesets and
-releases the packages they name. That may be the whole kit on a beta advance
+releases the packages they name. That may be the whole kit on a prerelease advance
 or a single package on a patch — a package can be released on its own, and
 solo patches like `workspaces@0.11.1` are ordinary. A downstream repo
 mid-dogfood-loop may still consume unreleased branch work from the local

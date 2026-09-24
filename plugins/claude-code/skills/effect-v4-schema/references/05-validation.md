@@ -1,7 +1,7 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
@@ -334,7 +334,7 @@ nested values parse successfully. If a nested value fails, its issue is reported
 but structural filters on the containing value are **not** evaluated, even with
 `{ errors: "all" }`.
 
-> **Beta trap.** Earlier drafts of this guide claimed the opposite — that
+> **Prerelease trap.** Earlier drafts of this guide claimed the opposite — that
 > structural filters are evaluated separately from item-level ones so both
 > issues surface together under `{ errors: "all" }` — and showed a two-issue
 > expected output. Probed: the nested `isNonEmpty` failure
@@ -397,7 +397,7 @@ const schema = Schema.Finite.pipe(
 )
 ```
 
-> **Beta trap (two of them).** `SchemaIssue.InvalidValue`'s annotation bag is
+> **Prerelease trap (two of them).** `SchemaIssue.InvalidValue`'s annotation bag is
 > `{ expected?, message? }`, but it also carries an index signature, so a
 > misspelled key type-checks and then silently does nothing. `{ title: "not
 > found" }` compiles and formats as `"Expected a valid value"` — the default

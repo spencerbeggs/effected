@@ -14,7 +14,7 @@ already ships (the `effect-v4-planning` contract-inventory gate).
 `packages/effect/src/<Name>.ts` (testing modules under
 `src/testing/`, unstable namespaces under `src/unstable/<ns>/`; resolve the
 tree root via `effect-v4-source-lookup`). The vendored
-submodule is pinned to the installed beta and is the authority on existence,
+submodule is pinned to the installed prerelease and is the authority on existence,
 signatures, and — read alongside a probe — semantics (`effect-v4-source-lookup`
 owns the evidence ladder). It is also the **style oracle**: before building
 anything module-shaped, read how core writes the analogous module.

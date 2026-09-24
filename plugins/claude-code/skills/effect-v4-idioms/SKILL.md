@@ -13,7 +13,7 @@ see `effect-v4-source-lookup`. Every identifier below was verified to exist, and
 every `file:line` citation checked against the vendored tree; when you reach
 past this list, run one runtime probe
 (`node --input-type=module -e "import * as Effect from 'effect/Effect'; console.log(typeof Effect.X)"`)
-before writing — v4 betas move fast and muscle memory lies.
+before writing — v4 prereleases move fast and muscle memory lies.
 
 ## Generators — `Effect.gen` for workflows
 
