@@ -57,3 +57,52 @@ Implementation facts worth knowing even if you write your own:
   runtime's own log ("already reported"); omitted or non-boolean is treated as
   `true` and it logs. The intuitive `true` produces exactly the double report
   you were trying to avoid.
+
+`reportFailures` never renders a `ShowHelp` or the `CliExit` findings
+sentinel — both already said everything there is to say — but it still
+renders any other error whose `errorReported` mark is `false`, such as one
+`CliRuntime.reported` marked at the throw site: the mark means "don't report
+this the way the runtime normally would," not "never render it here."
+
+## The stdout/stderr split and message conventions
+
+**Stdout carries only what the program writes with `Console.log`** — data,
+envelopes, rendered results, help text. **Everything else goes to stderr**:
+every `Effect.log*` call, warnings, summaries and every reported failure
+(`CliLogger`'s default `stderrFrom` is `"All"`). A `--format json` consumer
+piping only stdout therefore never has to filter a stray log line out of its
+document.
+
+Message conventions, so different commands read as one program: lowercase
+the message, prefix with `error:` or `warning:`, no trailing period, and
+render paths relative to the current working directory rather than absolute.
+
+## Colour: `CliColor`
+
+**`CliColor.enabled`** is the no-color.org decision, `Effect<boolean, never,
+Stdio>`: colour is on only when stdout is a terminal *and* `NO_COLOR` is not
+set to a non-empty value. It reads `NO_COLOR` through the ambient `Config`
+(never `process.env` directly), so a test swaps the provider instead of
+mutating a global — `FORCE_COLOR` is ignored, matching core's own formatter.
+
+~~~ts
+import { CliColor } from "@effected/cli"
+import { ConfigProvider, Effect, Stdio } from "effect"
+
+const program = CliColor.enabled.pipe(
+  Effect.provide(ConfigProvider.layer(ConfigProvider.fromUnknown({ NO_COLOR: "1" }))),
+  Effect.provide(Stdio.layerTest({ stdoutIsTerminal: Effect.succeed(true) })),
+)
+
+Effect.runPromise(program).then((enabled) => {
+  console.log(enabled)
+})
+~~~
+
+This prints `false`: stdout is a (faked) terminal, but a non-empty `NO_COLOR`
+still wins.
+
+**`CliColor.formatterLayer(overrides?)`** builds core's own
+`CliOutput.Formatter` from that same decision, so help text, parse errors and
+any rendered output agree on whether colour is on — never wire a formatter by
+hand next to `CliColor.enabled`, or the two can disagree.

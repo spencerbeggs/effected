@@ -1,6 +1,6 @@
 # Core CLI framework: Command, Flag, Argument
 
-Loaded from `effect-v4-cli`. Covers the module inventory, the rc.113 PascalCase rename, `Flag.Boolean`'s missing default, `Command.Environment`, and the two different `Command`s.
+Loaded from `effect-v4-cli`. Covers the module inventory, PascalCase constructors, `Flag.Boolean`'s missing default, `Command.Environment`, and the two different `Command`s.
 
 **Do not install `@effect/cli`.** Its latest release is `0.77.0`, it declares
 `peerDependencies: { effect: "^3.22.1", "@effect/platform": "^0.97.1",
@@ -24,39 +24,27 @@ The CLI framework lives **in core**:
 option is a **`Flag`**, not an `Option` (the name `Option` belongs to the data
 type).
 
-## Constructors are PascalCase — the rc.113 rename (#8121)
+## Constructors are PascalCase
 
 Every `Flag`, `Argument`, `Prompt` and `GlobalFlag` constructor is a
-PascalCase name at rc.115 (`unstable/cli/Flag.ts:57-431`,
-`Argument.ts:59-293`, `Prompt.ts:839-1376`, `GlobalFlag.ts:104,122`), and
-several were renamed rather than merely re-cased. The lowercase spellings
-are **`undefined`** on the namespace — a call type-errors, and a lookup
-probe that prints `typeof Flag.string` and concludes "no string flag" is the
-expensive misread:
+PascalCase name (`unstable/cli/Flag.ts:57-431`, `Argument.ts:59-293`,
+`Prompt.ts:839-1376`, `GlobalFlag.ts:104,122`). The lowercase spellings are
+**`undefined`** on the namespace — a call type-errors, and a lookup probe
+that prints `typeof Flag.string` and concludes "no string flag" is the
+expensive misread. The roster:
 
-| rc.112 | rc.115 |
+| kind | constructors |
 | --- | --- |
-| `Flag.string` / `Argument.string` | `Flag.String` / `Argument.String` |
-| `Flag.integer` / `Argument.integer` | `Flag.Int` / `Argument.Int` |
-| `Flag.float` / `Argument.float` | `Flag.Finite` / `Argument.Finite` |
-| `Flag.choice(["a", "b"])` / `Argument.choice` | `Flag.Literals(["a", "b"])` / `Argument.Literals` (`Primitive.choice` → `Primitive.Choice`) |
-| `Flag.choiceWithValue` | `Flag.ChoiceWithValue` |
-| `Flag.none` | `Flag.Never` (also `Argument.Never`, `Param.Never`, `Primitive.Never`) |
-| `Flag.boolean`, `.date`, `.path`, `.file`, `.directory`, `.redacted`, `.fileText`, `.fileParse`, `.fileSchema`, `.keyValuePair` | `Flag.Boolean`, `Date`, `Path`, `File`, `Directory`, `Redacted`, `FileText`, `FileParse`, `FileSchema`, `KeyValuePair` |
-| `Prompt.text` | `Prompt.String` |
-| `Prompt.integer` / `Prompt.float` | `Prompt.Int` / `Prompt.Number` |
-| `Prompt.confirm`, `.date`, `.file`, `.hidden`, `.list`, `.password`, `.select`, `.multiSelect`, `.autoComplete`, `.toggle` | `Prompt.Confirm`, `Date`, `File`, `Hidden`, `List`, `Password`, `Select`, `MultiSelect`, `AutoComplete`, `Toggle` |
-| `GlobalFlag.action` / `GlobalFlag.setting` | `GlobalFlag.Action` / `GlobalFlag.Setting` |
-| `Primitive.isTrueValue` / `isFalseValue` | `Primitive.isTrueLiteral` / `isFalseLiteral` |
-
-(Before/after read off the vendored tree at the `effect@4.0.0-rc.112` and
-`effect@4.0.0-rc.115` tags.)
+| `Flag` / `Argument` | `String`, `Int`, `Finite`, `Literals(["a", "b"])`, `ChoiceWithValue`, `Never`, `Boolean`\*, `Date`\*, `Path`, `File`, `Directory`, `Redacted`, `FileText`\*, `FileParse`\*, `FileSchema`\*, `KeyValuePair`\* (\* `Flag` only) |
+| `Prompt` | `String`, `Int`, `Number`, `Confirm`, `Date`, `File`, `Hidden`, `List`, `Password`, `Select`, `MultiSelect`, `AutoComplete`, `Toggle` |
+| `GlobalFlag` | `Action`, `Setting` |
+| `Primitive` | `Choice`, `Never`, `isTrueLiteral`, `isFalseLiteral` |
 
 Combinators stay lowercase (`Flag.optional`, `Flag.withHidden`,
 `Argument.optional`, `Prompt.succeed`, `Prompt.makeTheme`). The same
-convention moved `Config` in the same release (`Config.String`/`Int`/
-`Boolean`/`Redacted`/`Array`/`Record`…, `Config.mapOrFail` → `Config.mapEffect`)
-— the `effect-v4-idioms` and `actions-inputs-outputs` skills show it.
+convention applies to `Config` (`Config.String`/`Int`/`Boolean`/`Redacted`/
+`Array`/`Record`…, `Config.mapEffect`) — the `effect-v4-idioms` and
+`actions-inputs-outputs` skills show it.
 
 `effect/unstable/http` carries `HttpClient` and `FetchHttpClient`.
 **`FetchHttpClient.layer` is `Layer<HttpClient>` with no error channel and no
@@ -105,7 +93,7 @@ almost none of them for Node:**
 | service | what core actually ships |
 | --- | --- |
 | `Path` | `Path.layer` — a real implementation (posix), `Path.ts:867` |
-| `FileSystem` | `FileSystem.layerNoop(partial)` — a **stub factory**, for tests (`FileSystem.ts:765` at rc.115) |
+| `FileSystem` | `FileSystem.layerNoop(partial)` — a **stub factory**, for tests (`FileSystem.ts:765`) |
 | `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:152`) |
 | `Terminal` | **no layer at all** — `Terminal.ts` declares no `layer` export |
 | `ChildProcessSpawner` | the contract and the `ChildProcess` command values, but **no layer** — see below |
@@ -129,7 +117,7 @@ modules (`unstable/process/index.ts`):
 
 | you want | v4 |
 | --- | --- |
-| `@effect/platform/Command` (build a command value) | **`effect/unstable/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:609,699,733,798,837` at rc.115). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:409`) |
+| `@effect/platform/Command` (build a command value) | **`effect/unstable/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:609,699,733,798,837`). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:409`) |
 | `@effect/platform/CommandExecutor` (run it) | **`effect/unstable/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:252`) |
 
 > **Do not hand-roll a `node:child_process` layer or a parallel
