@@ -1,10 +1,11 @@
 ---
 name: testing-actions
 description: >-
-  Use when writing or reviewing tests for @effected/github-actions, @effected/github,
-  @effected/sbom or @effected/commands — stubbing the GitHub API, writing a service's layerTest or
-  makeTest double, testing the pre/main/post lifecycle through Action.run, or debugging why a test
-  hits the real network or hangs.
+  Use when writing or reviewing tests for @effected/github-actions, @effected/github, @effected/sbom or
+  @effected/commands — stubbing the GitHub API, writing a service's layerTest or makeTest double, testing the
+  pre/main/post lifecycle through Action.run, or debugging why a test hits the real network or hangs. Also
+  triggers on: makeTest, layerTest, scripted fetch harness, GitHubClient.layerFixture, two-latch withEnv,
+  reachability walker, discriminating mutant, Sigstore stub Signer, mock GitHubClient.
 ---
 
 # Testing GitHub Actions, GitHub API and supply-chain code
@@ -32,11 +33,11 @@ only the instance specific to `@effected/github-actions`, `@effected/github`,
 
 ## Standards
 
-### The `layerFixture` contract, changed 2026-08-13
+### The `layerFixture` contract
 
-Three things changed together, and code written against the older shape is wrong rather than merely dated. They ship in the release that follows that date — the manifest carries the *previous* version until then, so check the behaviour rather than the version number.
+Three parts of the contract matter, and code written against an older shape is wrong rather than merely dated. Check the fixture's behaviour, not a version number.
 
-**`requested` records every call, with params.** It is `Array<RecordedCall>` — `{ kind: "request" | "requestDecoded" | "paginate" | "graphql", route, params, perPage? }` — not the old `{ route, perPage }`. It used to log paginated reads only, so a suite whose methods all go through `request` could assert the route and nothing about what it sent. Assert the whole entry:
+**`requested` records every call, with params.** It is `Array<RecordedCall>` — `{ kind: "request" | "requestDecoded" | "paginate" | "graphql", route, params, perPage? }` — not a `{ route, perPage }` pair — and it covers `request` calls too, so a suite can assert what each call sent, not only its route. Assert the whole entry:
 
 ~~~ts
 assert.deepStrictEqual(requested[0], {
@@ -106,11 +107,11 @@ Absence means unwired; a recorded error means *this route fails, and here is why
   discriminating test, stripping line comments before block comments.**
   Getting the order backwards fails in the *safe* direction, which is the
   *worst* direction for a confinement test.
-- **Run subset suites root-relative, with coverage disabled for parallel
-  agents.** A positional filter from inside a package matches nothing
-  (it is a substring of each path as rendered from the cwd) and reports
-  `0/0 passed` — a failed run, whatever the summary says. Prefer
-  `--project <name>`, which works from any directory.
+- **Run subset suites from the repo root, with coverage disabled for
+  parallel agents.** From inside a package vitest does not load the root
+  config: `--project <name>` fails with `No projects matched the filter` and
+  a positional filter finds no test files. From the root, prefer
+  `--project <name>`; a positional filter is a substring of each test path.
 
 ## Footguns
 

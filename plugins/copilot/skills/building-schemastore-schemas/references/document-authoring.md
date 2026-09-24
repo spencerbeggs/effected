@@ -140,8 +140,8 @@ Consequences:
 
 `StoreDocument.fromSchema` generates under `onExcessProperty: "error"`, so
 every object is emitted `additionalProperties: false` — a published document
-is a contract, and the package does not follow core's open default (which
-flipped at rc.113). `jsonSchema` on a `SchemaTarget` (or a `defineConfig`
+is a contract, and the package does not follow core's open default.
+`jsonSchema` on a `SchemaTarget` (or a `defineConfig`
 entry) is forwarded to generation for that target: pin
 `{ onExcessProperty: "ignore" }` on the one document that was published
 open, because closing it is a contract change the drift policy refuses.

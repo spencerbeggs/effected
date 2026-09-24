@@ -93,27 +93,18 @@ a test, without mutating `process.env`.
 const value = yield* Effect.provide(ActionInput.string("dry-run"), ActionInput.layer({ "INPUT_DRY-RUN": "true" }));
 ```
 
-## The `Config.withDefault` trap — retired in effect beta.102–105
+## The `Config.withDefault` trap that no longer exists
 
 `Config.withDefault` and `Config.option` fall back only for **missing**
-data. Through effect 4.0.0-beta.101, "missing" was judged from the *issue*:
-an `InvalidValue` whose `actual` was `Option.none()` was classified as
-missing data, so a hand-built `Config.ConfigError` that omitted `actual`
-got silently swallowed by any default placed on top of it — a boolean input
-that decoded wrong under `withDefault(false)` silently resolved to `false`,
-and a dry-run flag misread that way ran its mutations for real. The fix
-then was constructing the issue with `Option.some(actual)`.
-
-**beta.102–105 removed both the trap and the fix.** `SchemaIssue`s no
-longer carry an `actual: Option` (`InvalidValue` is now
-`(annotations?, input?, options?)`, input retained only under
-`reportInput: true`), and `Config` judges missing-vs-invalid from its own
-evaluator's input evidence, not the issue. Probed on beta.105: a
-present-but-malformed value **fails** through `withDefault`, and so does a
-hand-built
+data. `Config` judges missing-vs-invalid from its own evaluator's input
+evidence, not from the issue — `SchemaIssue`s carry no `actual: Option`
+(`InvalidValue`'s constructor is `(annotations?, input?, options?)`, input
+retained only under `reportInput: true`). Probed: a present-but-malformed
+value **fails** through `withDefault`, and so does a hand-built
 `new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue({ message })))`
-with no input attached — neither silently defaults. Do not port the
-`Option.some(actual)` construction forward (it no longer type-checks).
+with no input attached — neither silently defaults. Do not construct an
+issue with `Option.some(actual)` to try to force this — that shape does not
+type-check, because the field it targeted does not exist.
 The regression test is still worth keeping: assert that
 `yourConfig.pipe(Config.withDefault(fallback))` still **fails** — not falls
 back — when fed a present-but-malformed value.

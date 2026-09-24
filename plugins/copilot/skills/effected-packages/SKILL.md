@@ -1,21 +1,24 @@
 ---
 name: effected-packages
 description: >-
-  The @effected package index for routing capabilities to the right kit package before
-  reimplementation. Use when selecting dependencies for parsing/editing JSONC, YAML, TOML, or
-  Markdown; SemVer and SPDX handling; glob matching; in-memory filesystem testing; package.json,
-  tsconfig, lockfile, and config-file work; workspace and git introspection; runtime resolution;
-  command execution; managed sections; JSONL journals; GitHub API and Actions runtime
-  integrations; SBOM and attestation workflows; SchemaStore publication; or schema.org JSON-LD
-  emission.
+  The @effected package index — what each kit package contains and when to reach for it. Use when working in a
+  repo that uses @effected/* packages and about to add a capability the kit may already ship — parsing/editing
+  JSONC/YAML/TOML/Markdown, semver, SPDX, glob matching, an in-memory filesystem for tests,
+  package.json/tsconfig/lockfile/config-file handling, monorepo/workspace introspection, peer-dependency
+  detection, git introspection, runtime-version resolution, running commands, managed sections, JSONL journals,
+  the GitHub REST/GraphQL API and Actions runtime, CLI output and failure reporting, cross-front-end primitives
+  for a CLI or MCP boundary, serving or testing an MCP server over stdio, SBOM generation and signing, or
+  publishing SchemaStore JSON Schema or schema.org JSON-LD. Also use when choosing dependencies for a new Effect
+  v4 app or library. Rows route; per-package depth lives in references/; per-construct intent search lives in
+  references/constructs/.
 ---
 
 # The @effected package index
 
-`@effected/*` is an Effect v4-first app kit: 32 packages (30 libraries plus
+`@effected/*` is an Effect v4-first app kit: 34 packages (32 libraries plus
 the `pnpm-plugin-effect` and `schemastore-cli` companions) designed against the
 v4 line, released together, with every
-`effect` dependency pinned to one exact beta via pnpm catalogs. Before
+`effect` dependency pinned to one exact prerelease via pnpm catalogs. Before
 designing lockfile/config/glob/semver/path/state/workspace/git capability by
 hand, check this table — the kit probably ships it, schema-first and with a
 typed error channel.
@@ -47,6 +50,7 @@ against its services, or test code that uses it.
 | `@effected/package-json` | package.json schemas, `Package` model, validation, file IO service; `repository`/`bugs`/`homepage`/`maintainers`/`keywords` now typed | reading/editing/validating package.json | boundary | [package-json.md](./references/package-json.md) |
 | `@effected/tsconfig-json` | tsconfig schemas, tsc-parity `extends` resolution, nearest-config discovery | loading/resolving/discovering tsconfig files | boundary | [tsconfig-json.md](./references/tsconfig-json.md) |
 | `@effected/config-file` | codec × resolver × strategy config loading, 4 codecs, encryption/migration decorators, one-shot `ConfigFile.read(path, { schema, codec })` | any app/tool config-file loading | boundary | [config-file.md](./references/config-file.md) |
+| `@effected/engine` | platform-free primitives shared across a tool's front ends: `Distribution`/`DistributionField`/`CurrentDistribution`/`distributionSuffix` (carrier identity), `Remediation` (what a caller should do after a failure), `LaunchContext.projectDir` (resolving an agent-launched project directory from caller-supplied `argv`/`env`/`cwd` — no `process` read inside) | sharing carrier-distribution identity, a remediation shape, or launch-context resolution between a CLI and an MCP server front end — pattern: `design-patterns` | pure | [engine.md](./references/engine.md) |
 | `@effected/jsonl` | append-only, schema-validated JSONL journals as a definable service: an event registry + envelope contract (`at`/`event`/`scope`/`data`), a pure sync core for runtime-free readers, `Slice`-filtered `query`/`changes`/`projection`, and a watcher so cooperating writers cross-observe each other's appends | an append-only journal/event log on disk, agent-state files, or watching a JSONL file another process appends to | boundary | [jsonl.md](./references/jsonl.md) |
 | `@effected/walker` | upward directory traversal (`ascend`, `firstMatch`, `findUpward`, `findRoot`) | find-nearest-file/marker-based root discovery | boundary | [walker.md](./references/walker.md) |
 | `@effected/xdg` | XDG Base Directory resolution: `Xdg`, `AppDirs`, native dirs, config resolvers | platform-correct config/data/cache/state paths | boundary | [xdg.md](./references/xdg.md) |
@@ -58,13 +62,14 @@ against its services, or test code that uses it.
 | `@effected/schemastore` | Effect Schemas published as SchemaStore-shaped Draft-07 JSON Schema documents: `SchemaPipeline` (the generate → lint → validate → gate → write loop), `StoreDocument` assembly (owning the `#/$defs` restore), versioned/unversioned catalog modes, fileMatch hygiene lint, `DocumentLint`, the declared-family annotation gate, the `SchemaValidator` contract (engine-free; the ajv engine lives in `schemastore-cli`), `HostedSchema` for a derived `$schema`/`$id` identity, `DocumentDiff` change classification, content-comparing `SchemaFile` IO | emitting editor-consumable JSON Schema from Effect Schemas, deriving the `$schema` URL an application writes, or publishing a catalog to SchemaStore | boundary | [references/schemastore.md](references/schemastore.md) |
 | `@effected/schemastore-cli` | the `schemastore` command over `@effected/schemastore`: `schemastore build` / `schemastore check` a `schemastore.config.ts` (`defineConfig`), a per-schema `published` flag, a drift policy (`--drift`, `--on-drift`, `--force`), JSON output, a GitHub step summary, exit codes 0/1/2/3/64; also exports `AjvValidator.layer`, the one shipped ajv engine, for a program driving `SchemaPipeline` itself | publishing SchemaStore documents from a consumer repository without writing a generator script — install as a devDependency; `@effected/schemastore` is the runtime dependency (peers; released as a fixed pair) | companion (no tier) | [references/schemastore-cli.md](references/schemastore-cli.md) |
 | `@effected/store` | migrated SQLite `Store` + TTL `Cache` with tags/eviction/events | durable local state or an on-disk cache | integrated | [store.md](./references/store.md) |
-| `@effected/workspaces` | monorepo discovery, dependency graph, PM detection, catalogs (with four `ConfigDependencyHooks` replay layers — noop / in-process / subprocess / a hermetic `layerFrom` map — every replaying one loading the pnpmfile of the DECLARED config-dependency version — live/subprocess from `.pnpm-config` or the pnpm store, `layerFrom` from its map — so `at(ref)` diffs hook-only catalogs across a config-dependency bump), change detection, snapshots, versioning/tag strategies, `PeerCheck` unsatisfied-peer detection over a parsed lockfile; implements `npm`'s resolvers and `commands`' `LocalExec` | any monorepo/workspace introspection, or asking whether a workspace's peer graph is satisfied (npm/pnpm/bun — not yarn) | integrated | [workspaces.md](./references/workspaces.md) |
+| `@effected/workspaces` | monorepo discovery, dependency graph, PM detection, catalogs (with four `ConfigDependencyHooks` replay layers — noop / in-process / subprocess / a hermetic `layerFrom` map — every replaying one loading the pnpmfile of the DECLARED config-dependency version — live/subprocess from `.pnpm-config` or the pnpm store, `layerFrom` from its map — so `at(ref)` diffs hook-only catalogs across a config-dependency bump), change detection, snapshots, versioning/tag strategies, `PeerCheck` unsatisfied-peer detection over a parsed lockfile; implements `npm`'s resolvers and `commands`' `LocalExec`, plus `@effected/workspaces/testing` (`WorkspaceLayering`, `PackedInstall`, `SourceBoundary`) | any monorepo/workspace introspection, or asking whether a workspace's peer graph is satisfied (npm/pnpm/bun — not yarn), or checking a monorepo's layering, packed install or source boundaries in its own tests | integrated | [workspaces.md](./references/workspaces.md) |
 | `@effected/github` | typed GitHub REST + GraphQL over octokit's core request surface, App auth, resources (branches/tags/commits/releases/PRs/checks), pagination, one error taxonomy — **plus the configuration-WRITE half**: `GitHubRepository` settings (`repositoryPatch` builds a cast-free partial patch, dropping `undefined` fields), `Ruleset`, repo/environment secrets and variables (it owns the sealed-box crypto), `DeploymentEnvironment`, `CodeScanning`, `Attestation` | any GitHub API call — the route literal types params AND response, no casts — **and configuring a repository**: settings, rulesets, secrets, variables, environments | integrated | [github.md](./references/github.md) |
 | `@effected/github-references` | GitHub's issue-reference grammar as PURE functions — the canonical nine closing keywords plus the separate non-closing `ref`/`refs`/`references` set, and three dialects: inline-in-prose (`harvestIssueReferences`, offsets, no colon), bare-line (`parseBareLineReference`, colon optional), closing-list (`parseClosingList`/`parseReferenceList`, `,`/`and`/Oxford `, and`), plus the whole-text sweeps (`parseBareLines`, `parseClosingLists`, `parseReferenceLists`, `harvestReferenceLists`, `collectReferenceLists`) and `keywordFamily` | parsing `Closes #12` out of a commit message, PR body or changelog — instead of hand-rolling a regex, which is the documented way to report a link GitHub never made | pure | [github-references.md](./references/github-references.md) |
 | `@effected/github-actions` | the Actions RUNTIME: inputs/outputs/state/env, workflow commands, logger, cache, artifacts, tool installer, OIDC, the `GitHubToken` bridge; plus the reporting/document suite (`GitHubMarkdown`, `ManagedDocument`, `CheckDocument`/`CheckState`) and the sbom-seam adapters (`ActionsProvenance`, `ActionsIdentityToken`) | writing a GitHub Action — talking to the runner, not the API | integrated | [github-actions.md](./references/github-actions.md) |
 | `@effected/sbom` | owned CycloneDX 1.6 emitter, Sigstore signing, in-toto/SLSA provenance, NTIA minimum-elements validation | generating, signing or attesting an SBOM | integrated | [sbom.md](./references/sbom.md) |
 | `@effected/app` | the application control plane: one layer wiring XDG dirs + Store + Cache + config | wiring an APPLICATION's local state in one move | integrated | [app.md](./references/app.md) |
-| `@effected/cli` | the CLI **boundary**: `CliLogger` (plain rendering, `Error`+ to stderr), `CliRuntime` (report failures through the program's own logger, set the exit code), schema/config issue renderers | a command-line program on `effect/unstable/cli` — Effect's default logger prints `[00:33:56.619] INFO (#2)` at a user, and `runMain` reports failures on **stdout** through a logger outside your layers | boundary | [cli.md](./references/cli.md) |
+| `@effected/cli` | the CLI **boundary**: `CliLogger` (plain rendering, `All` to stderr by default), `CliRuntime` (report failures through the program's own logger, set the exit code; `CliRuntime.main` assembles a whole program), `CliExit` (findings exit non-zero without a crash), `CliColor` (the no-color.org decision), schema/config issue renderers, plus `@effected/cli/testing`'s `CliTest` for spawning a built bin in tests | a command-line program on `effect/unstable/cli` — Effect's default logger prints `[00:33:56.619] INFO (#2)` at a user, and `runMain` reports failures on **stdout** through a logger outside your layers — teaching skill: `effect-v4-cli` | boundary | [cli.md](./references/cli.md) |
+| `@effected/mcp` | the MCP boundary: `McpStdio` (`layerStdio` with stderr logging, a launch that never reports on stdout, teardown mapping stdin EOF to 0), `ToolFailure` (remediation folded into the wire message), `ToolInputSchema` (every unknown key at every depth), `McpToolkit` (registers a toolkit strict-by-default, naming every unknown key in one response), plus `@effected/mcp/testing` (`McpHarness`, `McpProcess`, `McpProbe`, `McpToolAudit`, `McpTestFailure`) | an MCP server on `effect/unstable/ai` — `runMain` reports a launch failure on stdout, which is the JSON-RPC wire, and a declared failure reaches the agent as message text only — teaching skill: `effect-v4-mcp` | boundary | [mcp.md](./references/mcp.md) |
 | `@effected/pnpm-plugin-effect` | pnpm catalogs pinning the Effect ecosystem (companion — config, not code) | setting up Effect version pinning in a pnpm workspace | — | [pnpm-plugin-effect.md](./references/pnpm-plugin-effect.md) |
 
 **Every row now has a `references/` file** — the last eight (`spdx`, `cli`,
@@ -89,11 +94,11 @@ with its kind, TSDoc purpose, and intent keywords ("validate NTIA compliance",
 Before concluding the kit lacks a capability, grep the index by intent words:
 
 ```bash
-grep -ri "table" plugins/copilot/skills/effected-packages/references/constructs/
-grep -ri "oidc\|identity token" plugins/copilot/skills/effected-packages/references/constructs/
+grep -ri "table" plugins/claude-code/skills/effected-packages/references/constructs/
+grep -ri "oidc\|identity token" plugins/claude-code/skills/effected-packages/references/constructs/
 ```
 
-(In a consumer repo replace `plugins/copilot/` with that plugin's install path.) Rows whose
+(In a consumer repo the plugin's install path replaces `plugin/`.) Rows whose
 last column names an `implements` / `implemented by` pair are the kit's
 deliberate contract↔implementation splits — the capability lives in a
 different package than its contract. A no-match result means "not found in
@@ -143,29 +148,31 @@ Facts about the kit that change how you depend on it:
   "deduplicate" it). The engine is vendored from Effect-TS/effect PRs
   #6573/#6555, with a planned sunset when core ships its own in-memory
   `FileSystem`.
-- **`@effected/workspaces` publishability has NO ambient default.** Every
-  composite (`Workspaces.layer`, `layerWithGit`, …) *requires*
-  `PublishabilityDetector` — provide `PublishabilityDetector.layerNpm` for npm
-  semantics, `layerNone`, or your own policy. It used to supply npm semantics
-  itself, and because `Layer.mergeAll` is last-wins, the natural spelling of an
-  override (`Layer.mergeAll(mine, Workspaces.layer())`) silently lost to it.
-  Each shipped policy is also reachable as a **value**
-  (`PublishabilityDetector.npm`), so a policy that wraps npm semantics does not
-  have to re-enter the tag it is replacing.
+- **`@effected/workspaces` publishability has NO ambient default.** No
+  composite (`Workspaces.layer`, `layerWithGit`, …) provides
+  `PublishabilityDetector`, and none *requires* it either — nothing inside a
+  composite asks a publishability question, so its `R` stays `FileSystem |
+  Path`. The requirement surfaces only in the `R` of an operation that does
+  ask (`VersioningStrategy.detect`, e.g.): a program that asks and never wires
+  one fails to compile there, and a program that never asks never needs a
+  policy. Wire one explicitly where needed — `Layer.mergeAll(Workspaces.layer(),
+  PublishabilityDetector.layerNpm)` for npm semantics, `layerNone`, or your own
+  policy. The composite used to bake npm semantics in, and because
+  `Layer.mergeAll` is last-wins, the natural spelling of an override
+  (`Layer.mergeAll(mine, Workspaces.layer())`) silently lost to it. Each
+  shipped policy is also reachable as a **value** (`PublishabilityDetector.npm`),
+  so a policy that wraps npm semantics does not have to re-enter the tag it is
+  replacing.
 
-## Local-build dogfood state (updated 2026-08-14)
+## Local-build dogfood state
 
-**Every package in the kit has published** — `@effected/cli` cleared its first
-release and is at `0.2.0`; nothing is awaiting a debut. `commands`, `templates`, `github`,
-`github-actions` and `sbom` — the github-split five — published for the first
-time in the 2026-07-26 wave (16 packages, PR #181) at `0.1.0`, `schemastore`
-in the 2026-08-03 wave, `jsonl` reached `0.2.0` in the 27-package
-beta.107 wave (2026-08-11, PR #325), and `memfs` published first at `0.1.0`
-in the 2026-08-14 consumer-unblock wave, and `github-references` was extracted
-from `github` on 2026-08-17 at `0.1.0`. Nothing in the kit sits at `0.0.0`.
+**Whether a given package has published is a check, not a roster to
+memorize** — `npm view @effected/<name> version` answers it directly, and a
+package that has not yet published is consumed from the local checkout during
+a dogfood loop instead of from the registry.
 
 Releases are changeset-driven: CI builds the appropriate changesets and
-releases the packages they name. That may be the whole kit on a beta advance
+releases the packages they name. That may be the whole kit on a prerelease advance
 or a single package on a patch — a package can be released on its own, and
 solo patches like `workspaces@0.11.1` are ordinary. A downstream repo
 mid-dogfood-loop may still consume unreleased branch work from the local
@@ -198,11 +205,15 @@ Three standing directives for a downstream repo rebuilding against this kit:
 
 ## Cross-cutting facts
 
-- Every package publishes a single flat CODE entrypoint (`@effected/<pkg>`) —
-  with one exception: `@effected/workspaces` also ships
-  `@effected/workspaces/node-sync`, Node bindings for its synchronous escape
-  hatch. Everywhere else, no code subpath imports (each package also exports
-  its own `./package.json` for tooling; that is metadata, not API).
+- Every package publishes a flat CODE entrypoint (`@effected/<pkg>`), and a
+  few add a code subpath that the main entry never re-exports:
+  `@effected/workspaces/node-sync` (Node bindings for the synchronous escape
+  hatch), `@effected/workspaces/testing` (the repo-shape checks),
+  `@effected/cli/testing` (`CliTest`), `@effected/mcp/testing` (`McpHarness`,
+  `McpProbe` and friends) and `@effected/schema-org/validate` (offline
+  conformance validation). Everywhere else, no code subpath imports (each
+  package also exports its own `./package.json` for tooling; that is
+  metadata, not API).
 - One platform layer at the edge discharges all IO: `NodeFileSystem.layer` +
   `NodePath.layer` for the fs-only packages (walker, xdg, config-file,
   package-json, tsconfig-json, workspaces), `NodeServices.layer` when
@@ -229,7 +240,10 @@ Three standing directives for a downstream repo rebuilding against this kit:
 
 `effect-v4-module-index` routes Effect core; this skill routes the kit. Check
 core first — the kit deliberately requires core contracts (`FileSystem`,
-`ChildProcessSpawner`) rather than re-declaring them.
+`ChildProcessSpawner`) rather than re-declaring them. `effect-v4-cli` and
+`effect-v4-mcp` teach the CLI and MCP boundaries in depth; `design-patterns`
+teaches the carrier pattern shared between a CLI and an MCP front end that
+`@effected/engine` supports.
 
 **Construct-level coverage — does every export get named somewhere in
 `skills/` — is checked, not maintained by hand here.**

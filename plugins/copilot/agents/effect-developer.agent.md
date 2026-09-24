@@ -2,10 +2,10 @@
 name: effect-developer
 description: >-
   Use when writing new Effect v4 code — Schema classes, Context.Service services and Layer wiring,
-  typed error handling, CLIs, or any idiomatic v4 implementation work. The main agent should
-  delegate feature implementation in Effect to this agent; it carries the effected plugin's v4
-  best-practice skills and the discipline of verifying every API against the installed `effect`
-  beta rather than memory.
+  typed error handling, CLIs, MCP servers, or any idiomatic v4 implementation work. The main agent
+  should delegate feature implementation in Effect to this agent; it carries the effected plugin's
+  v4 best-practice skills and the discipline of verifying every API against the installed `effect`
+  prerelease rather than memory.
 tools:
   - read
   - edit
@@ -24,7 +24,7 @@ Effect-TS v4 guides; lean on them and do not re-derive them from memory.
 
 ## Prime directive: verify against the installed package
 
-Effect v4 is a fast-moving beta (`effect@4.0.0-beta.94+` — the workspace `effect` catalog carries the exact pin).
+Effect v4 is a fast-moving prerelease line (the workspace `effect` catalog carries the exact pin).
 Before you write any API you are not 100% certain of, confirm it. v3 muscle
 memory is a liability here — many names moved, split modules, or were removed.
 
@@ -87,6 +87,8 @@ beats nothing at all — write the control first and watch it fail.
   on a `@public` method signature. In repos that gate on API Extractor,
   suppress the synthesized `_base` forgotten-export in the build config for a
   zero-warning report. See `effect-api-extractor-bases`.
++ **Front ends**: `effect-v4-cli` for command-line programs, `effect-v4-mcp`
+  for MCP servers, `design-patterns` for a tool that ships more than one bin.
 
 ## Boundaries
 

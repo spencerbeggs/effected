@@ -1,13 +1,12 @@
 ---
 name: effect-v4-module-index
 description: >-
-  The routing map for Effect v4 core — every module in one table, what it is, when to reach for
-  it, and where to read it in the vendored source. Use FIRST when asking "what module do I reach
-  for", "does Effect have a Sink/Pool/Trie/pattern-matcher", "what is Sink/Channel/Deferred/RcMap
-  for", "where does X live in the source", or before designing ANY capability (the
-  contract-inventory gate greps this map's territory). Opens with a routing-by-task table for the
-  ones people miss by name — spawning a subprocess, a TTL cache with in-flight de-duplication,
-  writing to stdout from a library. Rows route; they do not teach — patterns live in the other
+  The routing map for Effect v4 core — every module in one table, what it is, when to reach for it, and where to
+  read it in the vendored source. Use FIRST when asking "what module do I reach for", "does Effect have a
+  Sink/Pool/Trie/pattern-matcher", "what is Sink/Channel/Deferred/RcMap for", "where does X live in the source",
+  or before designing ANY capability (the contract-inventory gate greps this map's territory). Opens with a
+  routing-by-task table for the ones people miss by name — spawning a subprocess, a TTL cache with in-flight de-
+  duplication, writing to stdout from a library. Rows route; they do not teach — patterns live in the other
   effect-v4-* skills, and the source is the authority on signatures and semantics.
 ---
 
@@ -22,7 +21,7 @@ already ships (the `effect-v4-planning` contract-inventory gate).
 `packages/effect/src/<Name>.ts` (testing modules under
 `src/testing/`, unstable namespaces under `src/unstable/<ns>/`; resolve the
 tree root via `effect-v4-source-lookup`). The vendored
-submodule is pinned to the installed beta and is the authority on existence,
+submodule is pinned to the installed prerelease and is the authority on existence,
 signatures, and — read alongside a probe — semantics (`effect-v4-source-lookup`
 owns the evidence ladder). It is also the **style oracle**: before building
 anything module-shaped, read how core writes the analogous module.
@@ -52,7 +51,7 @@ phrasing and missed on its module name.
 | `BigInt` | helpers over native `bigint`: arithmetic, comparison, safe parsing to `Option` | working with `bigint` values and needing safe parse/aggregate/order |
 | `Boolean` | helpers over `boolean`: logical ops, lazy branching, ordering, reducing | combining booleans or choosing between lazy branches |
 | `Brand` | compile-time nominal tags on structurally-identical values, optionally validating | keeping `Positive`/`UserId`-style values from mixing without runtime cost |
-| `ByteSize` | a branded non-negative `bigint` byte count (`ByteSize.ts:30`) with unit constructors (`bytes`, `kilobytes`/`kibibytes` … `quettabytes`), `fromInput`/`fromInputUnsafe` over `ByteSize.Input = ByteSize \| bigint \| number \| string`, `toBigInt`/`toNumber` (Option)/`toNumberUnsafe`, `sum`/`subtract`/`times`/`divide`, `Order`/`Equivalence`/`between`/`clamp`, `format` | any byte quantity — since rc.113 (#7525) it **replaces `FileSystem.Size`/`SizeInput`**: `File.Info.size` and `blksize` are `ByteSize` (`FileSystem.ts:962-963`), `FileSystem.stream`'s `bytesToRead`/`offset` are `ByteSize.Input` (`:324-326`), `File.seek` takes a `bigint` and returns one (`:863`), `read`/`write` return `number`, `readAlloc`/`truncate` take `number` (`:866-867`). Reach for `ByteSize.toNumberUnsafe(info.size)` at a `Buffer` boundary, never `Number(info.size)` spelled by hand |
+| `ByteSize` | a branded non-negative `bigint` byte count (`ByteSize.ts:30`) with unit constructors (`bytes`, `kilobytes`/`kibibytes` … `quettabytes`), `fromInput`/`fromInputUnsafe` over `ByteSize.Input = ByteSize \| bigint \| number \| string`, `toBigInt`/`toNumber` (Option)/`toNumberUnsafe`, `sum`/`subtract`/`times`/`divide`, `Order`/`Equivalence`/`between`/`clamp`, `format` | any byte quantity — it **replaces `FileSystem.Size`/`SizeInput`**, which do not exist: `File.Info.size` and `blksize` are `ByteSize` (`FileSystem.ts:962-963`), `FileSystem.stream`'s `bytesToRead`/`offset` are `ByteSize.Input` (`:324-326`), `File.seek` takes a `bigint` and returns one (`:863`), `read`/`write` return `number`, `readAlloc`/`truncate` take `number` (`:866-867`). Reach for `ByteSize.toNumberUnsafe(info.size)` at a `Buffer` boundary, never `Number(info.size)` spelled by hand |
 | `Cache` | concurrent cache of Effect lookup results with capacity/TTL and in-flight sharing (`make` = fixed TTL, `makeWith` = per-entry TTL from the `Exit`) | memoizing an effectful lookup by key with dedupe/expiry — this is the whole feature; do not hand-roll an in-flight promise map |
 | `Cause` | full structured failure record: typed errors, defects, interruptions, annotations | inspecting or formatting why an Effect failed without collapsing it |
 | `Channel` | low-level bidirectional streaming primitive underlying Stream and Sink | implementing custom stream operators; app code uses Stream/Sink instead |
@@ -83,7 +82,7 @@ phrasing and missed on its module name.
 | `FiberHandle` | scope-bound holder of at most one fiber, replacing/interrupting prior | tracking a single swappable background fiber tied to a scope |
 | `FiberMap` | scope-bound map of fibers keyed by K, auto-removed on completion | managing keyed background fibers under one scope |
 | `FiberSet` | scope-bound set of many fibers, all interrupted when scope closes | managing a dynamic group of background fibers under one scope |
-| `FileSystem` | portable file system service (read/write/stream/glob/watch), fails `PlatformError`; sizes are `ByteSize` since rc.113 (see that row), and `File.seek` before the start of the file fails `BadArgument` and leaves the cursor unchanged (`FileSystem.ts:861-863`; the Node implementation is `@effect/platform-node-shared`, which the vendored tree does not carry — `effect-v4-source-lookup` says where to read it) | file IO; contract, platform layer provides implementation |
+| `FileSystem` | portable file system service (read/write/stream/glob/watch), fails `PlatformError`; sizes are `ByteSize` (see that row), and `File.seek` before the start of the file fails `BadArgument` and leaves the cursor unchanged (`FileSystem.ts:861-863`; the Node implementation is `@effect/platform-node-shared`, which the vendored tree does not carry — `effect-v4-source-lookup` says where to read it) | file IO; contract, platform layer provides implementation |
 | `Filter` | composable check returning `Result` (pass/fail) that can also narrow/transform | selective matching/recovery where a predicate must also refine or transform |
 | `Formatter` | renders arbitrary JS values to readable strings with redaction/cycle handling | formatting values for logs, diagnostics, or error messages |
 | `Function` | core composition helpers: `pipe`, `flow`, `dual`, identity/const/memoize | composing functions or writing dual direct/pipe APIs |
@@ -97,7 +96,7 @@ phrasing and missed on its module name.
 | `Iterable` | lazy combinators over any `[Symbol.iterator]` value | transform/search/group iterables without materializing arrays |
 | `JsonPatch` | computes/applies deterministic RFC6902 add/remove/replace patches | diffing two JSON docs or replaying JSON changes |
 | `JsonPointer` | RFC6901 token escape/unescape helpers | escaping `~`/`/` in JSON Pointer path segments |
-| `JsonSchema` | normalize/convert JSON Schema & OpenAPI dialect documents | converting between Draft-07/2020-12/OpenAPI schemas, `$ref` resolution. **Generation lives in `Schema`**: `Schema.toJsonSchemaDocument` (2020-12; `includeAnnotationKey` admits custom keys) then `JsonSchema.toDocumentDraft07` to lower. Since rc.112 **the lowering carries unknown and custom keywords through as opaque values**, in place — so an annotation admitted at 2020-12 reaches draft-07 unchanged, and there is nothing to re-graft (it dropped everything outside a fixed copy-list before rc.112; if you learned that, unlearn it — the failure is publishing a key you assumed could not escape). The `$defs` pool maps key-for-key, and annotations move with their node across the coordinate moves (`prefixItems[i]`→`items[i]`, trailing `items`→`additionalItems`). Filtering is the caller's job, upstream of the lowering. Probe evidence: `@effected/schemastore`'s `__test__/annotation-carrying.test.ts`, which asserts on raw core output. |
+| `JsonSchema` | normalize/convert JSON Schema & OpenAPI dialect documents | converting between Draft-07/2020-12/OpenAPI schemas, `$ref` resolution. **Generation lives in `Schema`**: `Schema.toJsonSchemaDocument` (2020-12; `includeAnnotationKey` admits custom keys) then `JsonSchema.toDocumentDraft07` to lower. **The lowering carries unknown and custom keywords through as opaque values**, in place — so an annotation admitted at 2020-12 reaches draft-07 unchanged, and there is nothing to re-graft — the failure to guard against is publishing a key you assumed could not escape. The `$defs` pool maps key-for-key, and annotations move with their node across the coordinate moves (`prefixItems[i]`→`items[i]`, trailing `items`→`additionalItems`). Filtering is the caller's job, upstream of the lowering. Probe evidence: `@effected/schemastore`'s `__test__/annotation-carrying.test.ts`, which asserts on raw core output. |
 | `Latch` | reusable open/closed fiber coordination primitive | gating fibers until an explicit open/release signal |
 | `Layer` | describes acquiring/wiring services with deps and errors | constructing and composing service dependencies |
 | `LayerMap` | keyed cache of scoped layer-built service contexts | per-tenant/per-region resource families built on demand |
@@ -187,7 +186,7 @@ phrasing and missed on its module name.
 | `Utils` | internal generator machinery behind `Effect.gen`/HKT | internal — skip |
 | `testing/TestClock` | controllable `Clock` service driving virtual time | make sleep/timeout/schedule/retry tests deterministic by advancing time |
 | `testing/TestConsole` | test `Console` capturing log/error calls in memory | assert on console output deterministically in tests |
-| `testing/TestSchema` | assertions for schema construct/decode/encode/arbitrary/round-trip (its arbitrary assertions run `unstable/arbitrary`'s `checkEffect`, `TestSchema.ts:22-25`) | testing that a schema decodes, encodes, and round-trips correctly. **There is no `testing/FastCheck` any more** — removed in rc.113 with the fast-check bridge; property generation is `unstable/arbitrary` |
+| `testing/TestSchema` | assertions for schema construct/decode/encode/arbitrary/round-trip (its arbitrary assertions run `unstable/arbitrary`'s `checkEffect`, `TestSchema.ts:22-25`) | testing that a schema decodes, encodes, and round-trips correctly. **There is no `testing/FastCheck`** — there is no fast-check bridge; property generation is `unstable/arbitrary` |
 
 ## The unstable namespaces (`effect/unstable/<ns>`)
 
@@ -203,14 +202,14 @@ follows from it.
 | Namespace | What it is | When to reach for it |
 | --- | --- | --- |
 | `ai` | provider-neutral AI: `LanguageModel`, `Chat`, `Tool`/`Toolkit`, MCP schema/server | building AI features against a provider-agnostic surface (`@effect/ai-*` provides) |
-| `arbitrary` | the native property-testing engine, one module `Arbitrary`: `schema`, `Constant`, `map`/`filter`/`filterMap`/`flatMap`/`all`, `sampleEffect`, `checkEffect`, `formatCheckFailure`, `CheckOptions` | deriving generators from a Schema for `it.prop`/`it.effect.prop`, or running a property outside vitest — replaced `effect/testing/FastCheck` and `Schema.toArbitrary` in rc.113 (#7254). It has **no** `oneof`/`constantFrom`/`array`; choice and collections are Schemas. Traps and translations → `effect-v4-testing`, surface → `effect-v4-schema/references/11-generation-and-tooling.md` |
+| `arbitrary` | the native property-testing engine, one module `Arbitrary`: `schema`, `Constant`, `map`/`filter`/`filterMap`/`flatMap`/`all`, `sampleEffect`, `checkEffect`, `formatCheckFailure`, `CheckOptions` | deriving generators from a Schema for `it.prop`/`it.effect.prop`, or running a property outside vitest — replaced `effect/testing/FastCheck` and `Schema.toArbitrary`. It has **no** `oneof`/`constantFrom`; choice and collections are Schemas — see `effect-v4-schema/references/11-generation-and-tooling.md` for the one collection combinator (`Arbitrary.array`) that does exist independent of Schema. Traps and translations → `effect-v4-testing`, surface → `effect-v4-schema/references/11-generation-and-tooling.md` |
 | `cli` | the v4 CLI framework: `Command`, `Flag`, `Argument`, `Prompt`, completions | building a command-line tool — see `effect-v4-cli` |
 | `cluster` | entity sharding runtime: `Sharding`, `Entity`, runners, message storage | distributing stateful entities across machines |
 | `devtools` | client/server wiring an Effect runtime to the devtools tracer | connecting a program to Effect devtools |
 | `encoding` | channel codecs: `Msgpack`, `Ndjson`, `Sse` | framing streams as NDJSON/MsgPack/server-sent events |
 | `eventlog` | typed, replicated (optionally encrypted) event journal with SQL backends | event-sourced state that syncs/replicates |
-| `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below; MIME lookup is `unstable/http/Mime` (`getType`/`getExtension`/`getAllExtensions`) — the `mime` npm dependency was dropped in rc.113 |
-| `net` | `IpInterface`, `IpNetwork`, `NetAddress` — pure, canonical IPv4/IPv6 addresses and CIDR prefixes (present at rc.115, three modules) | parsing/normalizing an address or network prefix without a third-party `ipaddr`-style library |
+| `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below; MIME lookup is `unstable/http/Mime` (`getType`/`getExtension`/`getAllExtensions`) — there is no `mime` npm dependency |
+| `net` | `IpInterface`, `IpNetwork`, `NetAddress` — pure, canonical IPv4/IPv6 addresses and CIDR prefixes (three modules) | parsing/normalizing an address or network prefix without a third-party `ipaddr`-style library |
 | `httpapi` | schema-first declarative HTTP APIs with OpenAPI/Swagger output | defining a typed HTTP API contract shared by server and client |
 | `observability` | OTLP + Prometheus exporters for traces/metrics/logs | exporting telemetry without the `@effect/opentelemetry` SDK |
 | `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter` | durable KV, request-level durable caching, rate limiting |
@@ -236,10 +235,10 @@ follows from it.
   needs `Option`.
 - Testing utilities live in core under `effect/testing/*` — no separate
   test-support package.
-- **"Core has `Crypto`" is a dependency decision, so read the shape first.** At
-  rc.109 the contract covers secure random (`randomBytes`, `random`,
+- **"Core has `Crypto`" is a dependency decision, so read the shape first.**
+  The contract covers secure random (`randomBytes`, `random`,
   `randomInt`, `randomShuffle`), UUIDv4/v7 and SHA **digests**
-  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:38`, `Crypto.ts:76-154`) —
+  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:40`, `Crypto.ts:78-154`) —
   and stops there. There is **no HMAC, no signing, no key derivation, no
   `subtle`-style surface**. A design that reads the module name and concludes
   "hashing is handled" is right; one that concludes "crypto is handled" and then
@@ -248,7 +247,7 @@ follows from it.
   package after all — after the tier and peer decisions were already made on the
   wrong premise.
 - **`Crypto.digest` is one-shot, and that is a second dependency decision.** The
-  signature is `digest(algorithm, data: Uint8Array)` (`Crypto.ts:98-101`) — it
+  signature is `digest(algorithm, data: Uint8Array)` (`Crypto.ts:100-103`) — it
   takes the whole payload at once and there is **no incremental/streaming form**,
   no `update`/`digest` accumulator pair. So hashing a file, a tarball or any
   input without a known upper bound means buffering all of it in memory to use
@@ -261,7 +260,7 @@ follows from it.
   only awaiter **discards** the in-flight entry and the next `get` re-runs the
   lookup; concurrent gets still de-dupe to one lookup. So the `Effect.cached`
   poisoning trap (a memoized `Exit` carrying an interrupt, permanently outside
-  the declared error channel) does **not** transfer here. Probed at beta.101 with
+  the declared error channel) does **not** transfer here. Probed with
   a poisoning control that fired.
 - **…but a default-TTL `Cache` memoizes a FAILED lookup for the process
   lifetime.** `defaultTimeToLive` is `Duration.infinity` (`Cache.ts:323`), and
@@ -301,7 +300,7 @@ A client failure is one `HttpClientError` whose top-level `_tag` is always
 `"HttpClientError"`, so branch on `error.reason._tag`. The values are the trap.
 The reason type is declared in two layers, and **both layer names are
 themselves unions, so neither ever appears as a `_tag`** (verified against
-`unstable/http/HttpClientError.ts:277,285,293` at rc.112):
+`unstable/http/HttpClientError.ts:277,285,293`):
 
 ```ts
 export type RequestError = TransportError | EncodeError | InvalidUrlError

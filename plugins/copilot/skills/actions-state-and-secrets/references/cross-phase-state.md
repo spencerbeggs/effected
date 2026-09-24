@@ -28,7 +28,7 @@ worked example, below).
 `Schema.OptionFromNullOr`, never `Schema.Option`.** An `Option` field's
 encoded form under `Schema.Option` is an `Option` *instance*, not a JSON
 primitive; `JSON.stringify` serializes it through its own `toJSON` into a
-shape the matching decode then rejects. Probed at beta.107: the field
+shape the matching decode then rejects. Probed: the field
 encodes to `{"_id":"Option","_tag":"Some","value":"abc"}` and re-decoding
 that after a `JSON.stringify`/`parse` fails with `Expected Option`, while
 the same field under `Schema.OptionFromNullOr` encodes to plain `"abc"` and

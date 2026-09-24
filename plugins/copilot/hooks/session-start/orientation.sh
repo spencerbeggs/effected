@@ -107,10 +107,10 @@ Available via the Skill tool (several also auto-load on trigger):
 - effect-v4-module-index — the routing map for Effect core: every core module
   (plus the unstable namespaces) in one what-it-is / when-to-reach-for-it
   table. Consult FIRST when deciding which module a task needs.
-- effected-packages — the routing map for the @effected kit: what each of the
-  27 packages contains, when to reach for it, and a per-package reference
-  (services, usage, testing machinery). Consult before building lockfile/
-  config/glob/semver/XDG/workspace/git capability the kit already ships.
+- effected-packages — the routing map for the @effected kit: what each package
+  contains, when to reach for it, and a per-package reference (services, usage,
+  testing machinery). Consult before building lockfile/config/glob/semver/XDG/
+  workspace/git capability the kit already ships.
 - effect-v4-source-lookup — the evidence ladder for confirming a v4 API before
   relying on it: migration notes settle renames, vendored source settles
   existence and signature, only a probe settles semantics.
@@ -125,7 +125,12 @@ Available via the Skill tool (several also auto-load on trigger):
   the memoization discipline (build-once-by-reference; the layer-function trap).
 - effect-v4-idioms — core Effect: typed errors, Result, generators,
   scope/resources, forking, structural equality.
-- effect-v4-cli — the CLI framework is effect/unstable/cli in core. Command.Environment, tier impact, exit codes.
+- effect-v4-cli — command-line programs: effect/unstable/cli in core plus
+  the @effected/cli boundary (main assembly, exit codes, stdout vs stderr,
+  testing a built bin).
+- effect-v4-mcp — MCP servers on effect/unstable/ai: stdio wiring that keeps
+  stdout the wire, tools, failures an agent can read, resources, and the
+  in-process and spawned test clients.
 - effect-v4-observability — spans/logging/metrics; OTel composed at the edge,
   libraries telemetry-agnostic, named spans on public fallible boundaries only.
 - effect-v4-testing — @effect/vitest, it.effect, test layers, property tests,
@@ -143,6 +148,10 @@ Available via the Skill tool (several also auto-load on trigger):
   suppression for a zero-warning API (no @public X_base const).
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
   malformed-input-fails-as-a-typed-error-never-a-defect invariant.
+- design-patterns — proven architecture patterns for building on Effect v4 /
+  the @effected kit, indexed as loadable references; the first entry is the
+  carrier package pattern (core/engine/front ends -> carrier) for a tool
+  shipping more than one bin.
 
 The GitHub Actions / API suite — fifteen skills over @effected/github-actions,
 github, commands, npm and sbom. START at the router; the rest are named by it

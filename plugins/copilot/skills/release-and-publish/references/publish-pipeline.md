@@ -19,7 +19,7 @@ import { Effect } from "effect";
 
 const check = Effect.gen(function* () {
   const registry = yield* NpmRegistry;
-  const published = yield* registry.version("effect", "4.0.0-beta.101");
+  const published = yield* registry.version("some-package", "1.2.3");
   // published: Option<PublishedVersion> — None when that version isn't there
 });
 ```

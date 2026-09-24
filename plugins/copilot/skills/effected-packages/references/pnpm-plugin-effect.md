@@ -30,7 +30,7 @@ Two constraints on the kit pair that are load-bearing rather than incidental:
 - **`@effected/pnpm-plugin-effect` is deliberately absent from its own catalog and must stay absent.** Catalogue it and every rewrite bumps the plugin, which invalidates the catalog and writes another changeset — a release loop with no termination condition. The omission *is* the termination condition.
 - **Membership is `publishConfig.access === "public"`, never `private === false`.** Every source manifest in the kit is `"private": true`; a check written against `private` classifies the whole kit as unpublishable and silently emits an empty catalog.
 
-The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCase `effectPeers` alias were **removed** on the rc.109 advance. Do not reach for them and do not reintroduce them.
+The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCase `effectPeers` alias are gone. Do not reach for them and do not reintroduce them.
 
 ## Usage (in a consuming workspace's package manifests)
 

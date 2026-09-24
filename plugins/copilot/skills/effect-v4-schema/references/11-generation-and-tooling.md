@@ -1,24 +1,25 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: `toJsonSchemaDocument`, `JsonSchema.toDocumentDraft07`,
+API surface audited against the pinned Effect source: `toJsonSchemaDocument`, `JsonSchema.toDocumentDraft07`,
 `toEquivalence`, `toIso`/`Optic` and `toDifferJsonPatch` all exist as described, and every code block
 typechecks. FALSIFIED and corrected inline: `Schema.toJsonSchema` in prose (the entry point is
 `toJsonSchemaDocument`) and `new SchemaIssue.InvalidType(ast, Option.some(input))`. PROBED and restored:
 the Iso and Differ conversion failures do throw a bare `Error("Schema validation failed")` carrying a
 `SchemaIssue.Issue` in `cause`.
 
-rc.115 (2026-09-12): the "Generating an Arbitrary from a Schema" section was REWRITTEN — the fast-check
-bridge (`Schema.toArbitrary`, `effect/testing/FastCheck`, the `toArbitrary`/`arbitrary` annotations) was
-removed in rc.113 (Effect-TS/effect#7254) for the native `effect/unstable/arbitrary` module; the
-section's claims are settled against `unstable/arbitrary/Arbitrary.ts`, `ARBITRARY.md`,
-`ARBITRARY-MIGRATION.md` and the probes named inline. Also at rc.113 `ToJsonSchemaOptions.additionalProperties`
-became `onExcessProperty: "ignore" | "error"` with the DEFAULT NOW OPEN — every object blob below shows
-`"additionalProperties": true`, which is what a bare `toJsonSchemaDocument` emits at rc.115 (probed;
+The "Generating an Arbitrary from a Schema" section was REWRITTEN — there is no
+fast-check bridge (`Schema.toArbitrary`, `effect/testing/FastCheck`, the
+`toArbitrary`/`arbitrary` annotations); generation goes through the native
+`effect/unstable/arbitrary` module; the section's claims are settled against
+`unstable/arbitrary/Arbitrary.ts`, `ARBITRARY.md`,
+`ARBITRARY-MIGRATION.md` and the probes named inline. `ToJsonSchemaOptions.additionalProperties`
+is `onExcessProperty: "ignore" | "error"`, defaulting OPEN — every object blob below shows
+`"additionalProperties": true`, which is what a bare `toJsonSchemaDocument` emits (probed;
 `{ onExcessProperty: "error" }` gives `false`, and the retired `additionalProperties: false` option is
 silently ignored at runtime — only the type-checker catches the stale spelling). The JSON Schema output blobs were otherwise NOT re-probed.
 -->
@@ -475,7 +476,7 @@ console.log(JSON.stringify(document, null, 2))
 
 ### Generating an Arbitrary from a Schema
 
-Property-based generation is native to core since rc.113 (Effect-TS/effect#7254):
+Property-based generation is native to core:
 the module is **`effect/unstable/arbitrary`**, and it starts from a Schema.
 
 ```ts
@@ -494,39 +495,40 @@ const samples = await Effect.runPromise(
 )
 ```
 
-> **The fast-check bridge is gone — every one of these is `undefined` or
-> `ERR_MODULE_NOT_FOUND` at rc.115** (probed; the control printed
-> `resolved effect: 4.0.0-rc.115`): `effect/testing/FastCheck`, `FastCheck`
+> **There is no fast-check bridge — every one of these is `undefined` or
+> `ERR_MODULE_NOT_FOUND`** (probed; the control printed the resolved `effect`
+> version): `effect/testing/FastCheck`, `FastCheck`
 > from `effect/testing`, `Schema.toArbitrary`, `Schema.Arbitrary`, the
 > `fastCheck: { numRuns }` option of `it.prop`/`it.effect.prop`, the legacy
 > `toArbitrary` declaration annotation and the `arbitrary: { constraint,
 > candidate }` filter annotation. The upstream migration guide is
 > `packages/effect/ARBITRARY-MIGRATION.md` in the vendored tree; the module's
-> own guide is `packages/effect/ARBITRARY.md`. fast-check is no longer a
+> own guide is `packages/effect/ARBITRARY.md`. fast-check is not a
 > dependency of `effect` — a test that genuinely needs it installs it directly
-> and keeps it out of `@effect/vitest`, which no longer accepts raw fast-check
+> and keeps it out of `@effect/vitest`, which does not accept raw fast-check
 > arbitraries.
 
-The whole public surface is twelve names (`unstable/arbitrary/Arbitrary.ts`,
-re-verified at rc.115):
+The public surface (`unstable/arbitrary/Arbitrary.ts`):
 
 | name | what it is |
 | --- | --- |
-| `Arbitrary.schema(S, { shrink? })` (`:346`) | derive a generator of `S["Type"]` — decoded values, so `NumberFromString` yields numbers. Derivation is eager and **throws** for a Schema it cannot compile (no finite path through a recursion, a declaration with no representation) |
-| `Arbitrary.Constant(value)` (`:368`) | always that value, no shrinking; the branch value inside `flatMap` |
-| `map` / `filter` / `filterMap` (`:383`–`:428`) | transform, keep, or transform-and-reject generated values (and their shrinks); rejections spend `maxDiscards` |
-| `flatMap` (`:459`) | dependent generation — a generated value chooses the next `Arbitrary` |
-| `all(tuple \| iterable \| record)` (`:485`) | independent members combined shape-for-shape |
-| `sampleEffect(arb, { count, size, maxDiscards, seed })` (`:510`) | `Effect<ReadonlyArray<A>, SampleError>` — fails typed when discards exhaust the budget |
-| `checkEffect(arb, property, CheckOptions)` (`:543`) | runs a pure or Effectful property and returns a **`CheckResult`** (`Passed \| Falsified \| Exhausted \| ReplayMismatch`) — it never throws for an ordinary falsification |
-| `formatCheckFailure(result)` (`:298`) | the string `@effect/vitest` dies with: runs, shrinks, shrunk input, failure, **replay token** |
-| `isArbitrary`, `CheckOptions`, `SampleOptions`, `Replay` | guard, option bags (`{ runs, size, maxDiscards, maxShrinks, seed, replay }` at `:166`), the opaque replay token |
+| `Arbitrary.schema(S, { shrink? })` (`:362`) | derive a generator of `S["Type"]` — decoded values, so `NumberFromString` yields numbers. Derivation is eager and **throws** for a Schema it cannot compile (no finite path through a recursion, a declaration with no representation) |
+| `Arbitrary.Constant(value)` (`:384`) | always that value, no shrinking; the branch value inside `flatMap` |
+| `Arbitrary.array(item, options?)` (`:435`) | a variable-length array generator over an existing `Arbitrary`, independent of Schema — bound its length with `ArrayOptions`; use `Arbitrary.schema` when the shape is described by a Schema instead |
+| `map` / `filter` / `filterMap` (`:448`–`:493`) | transform, keep, or transform-and-reject generated values (and their shrinks); rejections spend `maxDiscards` |
+| `flatMap` (`:524`) | dependent generation — a generated value chooses the next `Arbitrary` |
+| `all(tuple \| iterable \| record)` (`:551`) | independent members combined shape-for-shape |
+| `sampleEffect(arb, { count, size, maxDiscards, seed })` (`:576`) | `Effect<ReadonlyArray<A>, SampleError>` — fails typed when discards exhaust the budget |
+| `checkEffect(arb, property, CheckOptions)` (`:609`) | runs a pure or Effectful property and returns a **`CheckResult`** (`Passed \| Falsified \| Exhausted \| ReplayMismatch`) — it never throws for an ordinary falsification |
+| `formatCheckFailure(result)` (`:314`) | the string `@effect/vitest` dies with: runs, shrinks, shrunk input, failure, **replay token** |
+| `isArbitrary`, `CheckOptions`, `SampleOptions`, `Replay` | guard, option bags (`{ runs, size, maxDiscards, maxShrinks, seed, replay }` at `:182`), the opaque replay token |
 
-**What it does NOT have, so stop looking:** no `oneof`, `constantFrom`,
-`array`, `record`, `string`, `integer`, `option`, `weighted`/`frequency`, no
-`sample`-that-throws and no `assert`. Choice, collections and scalars are all
-expressed as **Schemas** and derived. The house translations, each taken from
-a property test migrated on the rc.115 advance:
+**What it otherwise does NOT have, so stop looking:** no `oneof`,
+`constantFrom`, `record`, `string`, `integer`, `option`,
+`weighted`/`frequency`, no `sample`-that-throws and no `assert`. Choice,
+records and scalars are all expressed as **Schemas** and derived; `array` is
+the one collection combinator that exists independent of Schema (above). The
+house translations, each taken from a migrated property test:
 
 | fast-check habit | native spelling |
 | --- | --- |
@@ -544,12 +546,12 @@ a property test migrated on the rc.115 advance:
 
 #### The size clamp — the trap that silently shrinks a domain
 
-`size` (default **10** for both `sampleEffect` and `checkEffect`, `internal/arbitrary/runner.ts:425,566`)
+`size` (default **10** for both `sampleEffect` and `checkEffect`, `internal/arbitrary/runner.ts:464,605`)
 is a *local complexity scale*: every unconstrained string, array and record
 length is generated up to `min(maxLength, max(minLength, size))`
 (`internal/arbitrary/schema.ts:1124-1125` for strings, `:1366-1367` for
 arrays), and `checkEffect` ramps it from 0 toward `size` across the runs.
-Probed at rc.115: `Schema.String.check(Schema.isMaxLength(40_000))` never
+Probed: `Schema.String.check(Schema.isMaxLength(40_000))` never
 produced a string longer than **10** characters at the default size, and
 produced a 40 000-character one with `{ size: 40_000 }`; `isMinLength(25)` is
 still honored above the clamp. A property whose domain has a large cap
@@ -563,7 +565,7 @@ magnitude `size²` (`schema.ts:1170`).
 Generated values are always validated by the schema's checks before they are
 returned. Built-in checks (`isBetween`, `isMinLength`/`isMaxLength`/
 `isLengthBetween`, `isPattern`, `isUnique`, `isInt`, …) carry an
-`arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7458`, `isMinLength` at `:8046`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
+`arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7458`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
 matching values **constructively**. Any other check is a *residual filter*:
 values are generated without it and rejected when they fail. Rejections are
 budgeted (`maxDiscards`, default `max(100, count * 10)` / `max(100, runs * 10)`),
@@ -575,7 +577,7 @@ SampleError { generated: 0, discards: 101, seed: 1 }   // sampleEffect
 Exhausted   { runs, discards, seed }                    // checkEffect / it.prop
 ```
 
-Probed at rc.115 against `@effected/npm`'s `IntegrityHash` — a brand whose
+Probed against `@effected/npm`'s `IntegrityHash` — a brand whose
 check is a `makeFilter` over three hash grammars with no
 `arbitraryConstraint`: `Arbitrary.sampleEffect(Arbitrary.schema(IntegrityHash))`
 fails with `SampleError { generated: 0, discards: 101 }` in under a
@@ -598,8 +600,8 @@ constructive generator. When it **cannot** — lookahead and lookbehind
 (`regexp.ts:344` for `(?<=`/`(?<!`, `:350` for `(?=`/`(?!`), backreferences, the `i`/`m`/`v` flags
 (`regexp.ts:832`) — `compile` returns `undefined` and the string node
 **silently skips the pattern** (`schema.ts:1111-1112`), generating plain
-random strings and leaving the regex as a residual filter. Probed at
-rc.115, `{ count: 20, seed: 1 }` each:
+random strings and leaving the regex as a residual filter. Probed,
+`{ count: 20, seed: 1 }` each:
 
 | pattern | result |
 | --- | --- |
@@ -622,8 +624,8 @@ The native generator emits **`-0`**: always as a legitimate double for
 lower bound is `-1` — which is exactly what an **unbounded** `Schema.Int` has
 during `checkEffect`'s early small-size runs (`numberBiasRanges`,
 `internal/arbitrary/model.ts:561-565`: the near-zero bias range is
-`{ minimum: -floor(log2(-min)), … }`, and `-floor(log2(1))` is `-0`). Probed
-at rc.115: `checkEffect(Arbitrary.schema(Schema.Int), (n) => !Object.is(n, -0))`
+`{ minimum: -floor(log2(-min)), … }`, and `-floor(log2(1))` is `-0`). Probed:
+`checkEffect(Arbitrary.schema(Schema.Int), (n) => !Object.is(n, -0))`
 is **Falsified after 5 runs**; `Schema.Int.check(isBetween({ minimum: -1, maximum: 1 }))`
 likewise; a domain bounded at `-(2 ** 31)` passed 100 runs. `JSON.stringify(-0)`
 is `"0"` and YAML has no `-0` either, so a round-trip property over serialized
@@ -635,7 +637,7 @@ count: Schema.Int.check(Schema.makeFilter((n) => !Object.is(n, -0)))
 ```
 
 (`packages/jsonc/__test__/Jsonc.test.ts` and `packages/yaml/__test__/Yaml.test.ts`
-on the rc.115 advance carry this filter.)
+carry this filter.)
 
 #### Records, dictionaries and unique keys
 
@@ -657,7 +659,7 @@ const dictionary = <V extends Schema.Top>(keys: ReadonlyArray<string>, value: V)
 
 `Arbitrary.schema(Schema.Array(Schema.Union([A, B])))` over two `Schema.Class`es
 generates **real instances** — `instanceof A` / `instanceof B` both hold and
-every element is one or the other (probed at rc.115). Code under test that
+every element is one or the other (probed). Code under test that
 branches on `instanceof` takes the real branch; no manual wiring.
 
 #### Declaration Schemas: `toCodecArbitrary` returns a `Link`

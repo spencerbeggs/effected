@@ -1,15 +1,15 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: every named member exists and every code block
+API surface audited against the pinned Effect source: every named member exists and every code block
 with imports typechecks. Falsifications corrected inline with trap notes: `Schema.Record`'s
 `keyValueCombiner` option (Record takes exactly two arguments — the whole "combine" example was
 removed), `Schema.asTaggedUnion` in prose (the export is `toTaggedUnion`), `import { Struct } from
-"effect/data"` (no such subpath), and the inferred-type spelling `Schema.Array$<...>` (beta.107 emits
+"effect/data"` (no such subpath), and the inferred-type spelling `Schema.Array$<...>` (the current version emits
 `Schema.$Array<...>`). Restored two accurate sections the split had dropped: the duplicate-discriminant
 throw and the `discriminants` property. PROBED: default-mode messages carry no `, got X` suffix and
 render as `SchemaError(...)`, not `SchemaError: ...` — every expected-output block was corrected.
@@ -568,11 +568,14 @@ Failure(Cause([Fail(SchemaError(Custom message
 */
 ```
 
-### Preserve unexpected keys
+### Keeping unexpected keys
 
-You can preserve unexpected keys by setting `onExcessProperty` to `preserve`.
+`onExcessProperty` takes only `"ignore"` (the default, which strips unexpected
+keys) and `"error"`. There is no `"preserve"` option: it does not typecheck,
+and forced past the compiler it strips exactly like `"ignore"`. To keep
+unexpected keys, declare them with an index signature (next section).
 
-**Example** (Preserving unexpected keys)
+**Example** (The default strips an unexpected key)
 
 ```ts
 import { Schema } from "effect"
@@ -581,10 +584,10 @@ const schema = Schema.Struct({
   a: Schema.String
 })
 
-console.log(String(Schema.decodeUnknownExit(schema)({ a: "a", b: "b" }, { onExcessProperty: "preserve" })))
+console.log(String(Schema.decodeUnknownExit(schema)({ a: "a", b: "b" })))
 /*
 Output:
-Success({"b":"b","a":"a"})
+Success({"a":"a"})
 */
 ```
 
@@ -819,7 +822,7 @@ import { Schema, Struct } from "effect"
 const original = Schema.Struct({
   a: Schema.String,
   b: Schema.String
-}).check(Schema.makeFilter(({ a, b }) => a === b, { title: "a === b" }))
+}).check(Schema.makeFilter(({ a, b }) => a === b, { expected: "a === b" }))
 
 const schema = original.mapFields(Struct.assign({ c: Schema.String }), {
   unsafePreserveChecks: true
@@ -933,7 +936,7 @@ Use `Struct.evolveKeys` to rename field keys while keeping the corresponding val
 
 **Example** (Uppercasing keys in a struct)
 
-> **Beta trap.** `Struct` is a top-level `effect` module. There is no
+> **Trap.** `Struct` is a top-level `effect` module. There is no
 > `effect/data` subpath — `import { Struct } from "effect/data"` does not
 > resolve.
 
@@ -1057,6 +1060,12 @@ const equivalent = Schema.Struct({
 **Example** (Accessing the literal value of the tag)
 
 ```ts
+import { Schema } from "effect"
+
+const tagged = Schema.TaggedStruct("A", {
+  a: Schema.String
+})
+
 // The `_tag` field is a schema with a known literal value
 const literal = tagged.fields._tag.schema.literal
 // literal: "A"
@@ -1359,10 +1368,10 @@ console.log(Schema.decodeUnknownSync(schema)({ a_b: 1, aB: 2 }))
 // { aB: 2 }
 ```
 
-> **Beta trap.** There is no way to customize conflict resolution.
+> **Trap.** There is no way to customize conflict resolution.
 > `Schema.Record` takes exactly two arguments — `(key, value)` — with no options
-> object and no `keyValueCombiner`. Earlier drafts of this guide showed a
-> `combine` callback that summed conflicting values; passing it is
+> object and no `keyValueCombiner`. Passing a third `combine` callback that
+> sums conflicting values fails with
 > `TS2554: Expected 2 arguments, but got 3`. Selection order, or completion
 > order under concurrency, is the only resolution there is.
 
@@ -1670,6 +1679,8 @@ const schema = Schema.TaggedUnion({
 This is equivalent to writing:
 
 ```ts
+import { Schema } from "effect"
+
 const schema = Schema.Union([
   Schema.TaggedStruct("A", { a: Schema.String }),
   Schema.TaggedStruct("B", { b: Schema.Finite })
@@ -1682,10 +1693,8 @@ The result is a tagged union schema with built-in helpers based on the tag value
 
 The `toTaggedUnion` function enhances a tagged union schema by adding helper methods for working with its members.
 
-> **Beta trap.** The name is `Schema.toTaggedUnion`. `Schema.asTaggedUnion` is
-> `undefined` — the prose here used to say `asTaggedUnion` while the example
-> below correctly called `toTaggedUnion`, so a reader who trusted the sentence
-> got a runtime `TypeError` from the wrong name.
+> **Trap.** The name is `Schema.toTaggedUnion`. `Schema.asTaggedUnion` is
+> `undefined`, so calling it throws a runtime `TypeError`.
 
 You need to specify the name of the tag field used to differentiate between variants.
 
@@ -1726,6 +1735,14 @@ The `cases` property gives direct access to each member schema of the union.
 **Example** (Getting a member schema from a tagged union)
 
 ```ts
+import { Schema } from "effect"
+
+const tagged = Schema.Union([
+  Schema.Struct({ type: Schema.tag("A"), a: Schema.String }),
+  Schema.Struct({ type: Schema.tag("B"), b: Schema.Finite }),
+  Schema.Struct({ type: Schema.tag("C"), c: Schema.Boolean })
+]).pipe(Schema.toTaggedUnion("type"))
+
 const A = tagged.cases.A
 const B = tagged.cases.B
 const C = tagged.cases.C
@@ -1738,6 +1755,14 @@ The `discriminants` property contains the decoded discriminant values in the sam
 **Example** (Deriving a literal schema from discriminants)
 
 ```ts
+import { Schema } from "effect"
+
+const tagged = Schema.Union([
+  Schema.Struct({ type: Schema.tag("A"), a: Schema.String }),
+  Schema.Struct({ type: Schema.tag("B"), b: Schema.Finite }),
+  Schema.Struct({ type: Schema.tag("C"), c: Schema.Boolean })
+]).pipe(Schema.toTaggedUnion("type"))
+
 const Tags = Schema.Literals(tagged.discriminants)
 
 // Schema.Literals<readonly ["A", "B", "C"]>
@@ -1750,6 +1775,14 @@ The `isAnyOf` method lets you check if a value belongs to a selected subset of t
 **Example** (Checking membership in a subset of union tags)
 
 ```ts
+import { Schema } from "effect"
+
+const tagged = Schema.Union([
+  Schema.Struct({ type: Schema.tag("A"), a: Schema.String }),
+  Schema.Struct({ type: Schema.tag("B"), b: Schema.Finite }),
+  Schema.Struct({ type: Schema.tag("C"), c: Schema.Boolean })
+]).pipe(Schema.toTaggedUnion("type"))
+
 console.log(tagged.isAnyOf(["A", "B"])({ type: "A", a: "a" })) // true
 console.log(tagged.isAnyOf(["A", "B"])({ type: "B", b: 1 })) // true
 
@@ -1763,6 +1796,14 @@ The `guards` property provides a type guard for each tag.
 **Example** (Using type guards for tagged members)
 
 ```ts
+import { Schema } from "effect"
+
+const tagged = Schema.Union([
+  Schema.Struct({ type: Schema.tag("A"), a: Schema.String }),
+  Schema.Struct({ type: Schema.tag("B"), b: Schema.Finite }),
+  Schema.Struct({ type: Schema.tag("C"), c: Schema.Boolean })
+]).pipe(Schema.toTaggedUnion("type"))
+
 console.log(tagged.guards.A({ type: "A", a: "a" })) // true
 console.log(tagged.guards.B({ type: "B", b: 1 })) // true
 
@@ -1776,6 +1817,14 @@ You can define a matcher function using the `match` method. This is a concise wa
 **Example** (Handling union members with `match`)
 
 ```ts
+import { Schema } from "effect"
+
+const tagged = Schema.Union([
+  Schema.Struct({ type: Schema.tag("A"), a: Schema.String }),
+  Schema.Struct({ type: Schema.tag("B"), b: Schema.Finite }),
+  Schema.Struct({ type: Schema.tag("C"), c: Schema.Boolean })
+]).pipe(Schema.toTaggedUnion("type"))
+
 const matcher = tagged.match({
   A: (a) => `This is an A: ${a.a}`,
   B: (b) => `This is a B: ${b.b}`,

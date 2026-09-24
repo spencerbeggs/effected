@@ -46,7 +46,7 @@ plan file, treat its frozen contract as Phase −1 output and start
 
 ## Prime directive: the source is the authority, never memory
 
-**Effect v4 is a fast-moving beta.** v3 muscle memory is a liability: names
+**Effect v4 is a fast-moving prerelease.** v3 muscle memory is a liability: names
 moved, modules split, APIs were removed. Use `effect-v4-source-lookup` and
 climb only as far as your claim needs — migration notes settle **renames**,
 the vendored source tree (resolved by that skill's ladder) settles
@@ -92,9 +92,10 @@ source wins and the concept is a finding to report.
    linter, the relevant tests. Prefer structured tools when the session
    exposes them (`run_tests`, `biome_check`); otherwise use the repo's
    scripts. When running vitest directly, run it **from the repo root** with
-   `--coverage.enabled=false` for a subset, and read the `Tests:` line rather
-   than the exit code — a project-filtered run from inside a package prints
-   `0/0 passed` and exits 0.
+   `--coverage.enabled=false` for a subset, and read both the `Tests:` line
+   and the exit code — from inside a package vitest does not load the root
+   config, so a project-filtered run fails with `No projects matched the
+   filter`.
 4. **Mutate the edges before declaring green.** A test that cannot fail is
    worse than no test. `testing-actions` lists the recorded discriminating
    mutants for this domain.

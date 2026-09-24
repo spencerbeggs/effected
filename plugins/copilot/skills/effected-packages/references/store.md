@@ -46,7 +46,7 @@ import { Effect } from "effect";
 
 const program = Effect.gen(function* () {
  const cache = yield* Cache;
- yield* cache.set({ key: "pkg:effect", value: new TextEncoder().encode("4.0.0-beta.98"), tags: ["registry"] });
+ yield* cache.set({ key: "pkg:some-package", value: new TextEncoder().encode("1.2.3"), tags: ["registry"] });
  const { count, keys } = yield* cache.invalidateByTag("registry", (result) =>
   Effect.log(`evicting ${result.count} entries: ${result.keys.join(", ")}`),
  );

@@ -77,10 +77,10 @@ provide them per call — do not reach for a Layer:
 
 - `FileSystem.makeNoop({ exists, readFileString })` overrides only the ops the
   pipeline uses; every non-overridden member fails **typed `NotFound`** (core
-  behavior, `FileSystem.ts:825` — still so at rc.109) — document that
-  asymmetry if your hand-rolled counterparts throw defects instead.
-- Core `Path` has **no `makeNoop`/`layerNoop` analog** (re-checked at rc.109:
-  `Path.ts` exports `layer` at `:867` and nothing noop-shaped) — hand-roll a
+  behavior, `FileSystem.ts:825`) — document that asymmetry if your hand-rolled
+  counterparts throw defects instead.
+- Core `Path` has **no `makeNoop`/`layerNoop` analog** (`Path.ts` exports
+  `layer` at `:867` and nothing noop-shaped) — hand-roll a
   `Path.Path` value (`Path.Path.of` with `[Path.TypeId]`, `Path.ts:32`), back
   the members you use with the consumer's ops, and throw an informative defect
   from the rest.
@@ -91,9 +91,66 @@ provide them per call — do not reach for a Layer:
   `Cause.findDefect` (returns a `Result`) → rethrow the defect. Never leak a
   fiber-failure wrapper to a sync caller.
 
-Worked example: `@effected/tsconfig-json`'s `TsconfigLoaderSync` (probed
-beta.98). The async pipeline stays the single implementation; the facade only
-adapts ops and unwraps.
+Worked example: `@effected/tsconfig-json`'s `TsconfigLoaderSync`. The async
+pipeline stays the single implementation; the facade only adapts ops and
+unwraps.
+
+## A layer that must be fresh on every provide
+
+**Layers memoize by reference across provides.** When the same layer object
+is required at two places in one layer graph — two sibling layers that both
+depend on it, a nested `CliRuntime.main` and a test helper, two `it.effect`
+cases a `layer()` block shares — Effect builds it **once** and hands the
+same built service to every consumer, exactly the sharing that makes a pure
+service cheap to depend on repeatedly. A layer holding **per-run mutable
+state** — a findings cell, a counter, anything that should start over each
+time it is provided — breaks under that memoization: two logically separate
+"provides" quietly read and write the one cell the first provide built.
+
+`Layer.fresh(Layer.sync(...))` is the fix: it opts the layer out of
+reference memoization, so every site that provides it gets its own build.
+`@effected/cli`'s `CliExit.layer` is exactly this shape — a fresh
+`MutableRef` cell per provide, so a nested run or a test never inherits a
+prior run's exit code.
+
+```ts
+import { Context, Effect, Layer } from "effect"
+
+class Counter extends Context.Service<Counter, { readonly next: () => number }>()(
+  "edge-cases/Counter",
+) {}
+class A extends Context.Service<A, { readonly useA: () => number }>()("edge-cases/A") {}
+class B extends Context.Service<B, { readonly useB: () => number }>()("edge-cases/B") {}
+
+const makeCounterLayer = (): Layer.Layer<Counter> =>
+  Layer.sync(Counter, () => {
+    let n = 0
+    return { next: () => ++n }
+  })
+
+const layerA = (counter: Layer.Layer<Counter>) =>
+  Layer.effect(A, Effect.map(Counter, (c) => ({ useA: () => c.next() }))).pipe(Layer.provide(counter))
+const layerB = (counter: Layer.Layer<Counter>) =>
+  Layer.effect(B, Effect.map(Counter, (c) => ({ useB: () => c.next() }))).pipe(Layer.provide(counter))
+
+const readBoth = (counter: Layer.Layer<Counter>) =>
+  Effect.gen(function* () {
+    const a = yield* A
+    const b = yield* B
+    return [a.useA(), b.useB()] as const
+  }).pipe(Effect.provide(Layer.mergeAll(layerA(counter), layerB(counter))))
+
+const shared = makeCounterLayer()
+console.log("shared, no Layer.fresh:", await Effect.runPromise(readBoth(shared)))
+
+const fresh = Layer.fresh(makeCounterLayer())
+console.log("Layer.fresh:", await Effect.runPromise(readBoth(fresh)))
+```
+
+Prints `shared, no Layer.fresh: [ 1, 2 ]` then `Layer.fresh: [ 1, 1 ]`. Without
+`Layer.fresh`, `A` and `B` share one built `Counter`, so the second read
+continues the first's count. With it, each site's `Counter` starts at zero —
+the shape a per-run cell needs.
 
 ## Heterogeneous requirement unions: annotate the collection up front
 
@@ -103,21 +160,31 @@ parameter — TypeScript pins the type parameter from the **first** element and
 rejects the later, wider elements instead of widening the union:
 
 ```ts
-declare const takeChain: <RR>(rs: ReadonlyArray<ConfigResolver<RR>>) => RR;
-takeChain([
-  XdgConfig.resolver({ filename }),       // RR pinned: AppDirs | FileSystem | Path
-  XdgConfig.nativeResolver({ ... }),      // ERROR — Xdg not assignable; the union never widens
-]);
+import type { ConfigResolver } from "@effected/config-file"
+import { AppDirs, Xdg, XdgConfig } from "@effected/xdg"
+import type { FileSystem, Path } from "effect"
 
-// Fix: state the full union where the collection is BUILT:
-const chain: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path>> = [ ... ];
-takeChain(chain);                         // compiles
+declare const takeChain: <RR>(rs: ReadonlyArray<ConfigResolver<RR>>) => RR
+
+// WRONG — RR pins from the first element (AppDirs | FileSystem.FileSystem |
+// Path.Path); the second, wider element is rejected instead of widening the union.
+takeChain([
+  XdgConfig.resolver({ filename: "config.json" }),
+  // @ts-expect-error — Xdg is not assignable to the pinned AppDirs|FileSystem|Path union
+  XdgConfig.nativeResolver({ namespace: "mytool", filename: "config.json" }),
+])
+
+// RIGHT — state the full union where the collection is BUILT:
+const chain: ReadonlyArray<ConfigResolver<AppDirs | Xdg | FileSystem.FileSystem | Path.Path>> = [
+  XdgConfig.resolver({ filename: "config.json" }),
+  XdgConfig.nativeResolver({ namespace: "mytool", filename: "config.json" }),
+]
+takeChain(chain) // compiles
 ```
 
 The annotation looks redundant — each element is individually assignable to
 it — but deleting it re-breaks inference at the call site; leave a comment
-saying so. Probed 2026-07-12 from inside `packages/app` against
-`effect@4.0.0-beta.97` (control `Effect.catchAll` failed to compile; the bare
-two-element chain failed on its second element; the annotated chain compiled
-clean). Surfaced by `AppConfig.layer` wrapping `ConfigFile.layer` in the
-`@effected/app` port.
+saying so. Probed from inside `packages/app` (control `Effect.catchAll`
+failed to compile; the bare two-element chain failed on its second element;
+the annotated chain compiled clean). Surfaced by `AppConfig.layer` wrapping
+`ConfigFile.layer` in the `@effected/app` port.

@@ -1,35 +1,31 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-REWRITTEN against effect@4.0.0-beta.107 source; every code block in the new text typechecks. The
-previous version documented an API that does not exist at this pin — `SchemaRepresentation.fromAST`,
-`fromASTs`, `toSchema`, `toSchemaDefaultReviver`, `DocumentFromJson` and `MultiDocumentFromJson` are all
-`undefined`. The real surface is `Schema.toRepresentation` / `SchemaRepresentation.toRepresentation`
-(+ `toRepresentations`), `toJson` / `fromJson`, `fromRepresentation` / `fromRepresentations` with
-explicit revivers, and `toJsonSchemaDocument` / `toCodeDocument`. NOT PROBED: the code-generation and
-JSON Schema compilation output blobs.
+Checked against the pinned Effect source. `SchemaRepresentation.fromAST`, `fromASTs`, `toSchema`,
+`toSchemaDefaultReviver`, `DocumentFromJson` and `MultiDocumentFromJson` are not exported. The surface
+is `Schema.toRepresentation` / `SchemaRepresentation.toRepresentation` (+ `toRepresentations`),
+`toJson` / `fromJson`, `fromRepresentation` / `fromRepresentations` with explicit revivers, and
+`toJsonSchemaDocument` / `toCodeDocument`. NOT PROBED: the code-generation and JSON Schema
+compilation output blobs.
 -->
 
 # Schema Representation
 
-> **Beta trap.** This section was rewritten against `4.0.0-beta.107` source. The
-> previous version described an API that is not reachable: `SchemaRepresentation.fromAST`,
-> `fromASTs`, `toSchema` and `toSchemaDefaultReviver` do not exist in any form.
+> **Trap.** `SchemaRepresentation.fromAST`, `fromASTs`, `toSchema` and
+> `toSchemaDefaultReviver` do not exist in any form.
 > `DocumentFromJson` and `MultiDocumentFromJson` do exist in the source — but as
 > module-private `const`s that implement `toJson`/`fromJson`, never exported, so
 > they resolve in neither value nor type space for a consumer. Grepping the
-> source finds them and can make this correction look wrong; it is not. The real
-> entry points are
+> source finds them, but a consumer cannot import them. The entry points are
 > `Schema.toRepresentation` / `SchemaRepresentation.toRepresentation` (and
 > `toRepresentations`), `toJson` / `fromJson` for the persistence boundary, and
 > `fromRepresentation` / `fromRepresentations` with explicit revivers built by
-> `makeDeclarationReviver` / `makeFilterReviver` / `makeFilterGroupReviver`.
-> The old text also claimed transformations and custom checks simply cannot be
-> represented; that closed set is gone — a custom declaration or check is
+> `makeReviverDeclaration` / `makeReviverFilter` / `makeReviverFilterGroup`.
+> The set of representable checks is open: a custom declaration or check is
 > persistable once it carries a representation identity and the consumer supplies
 > a matching reviver.
 
@@ -137,6 +133,8 @@ make bigint or symbol values valid generic annotations.
 Opaque declarations and checks need a stable identity before they can be persisted:
 
 ```ts
+import type { Schema } from "effect"
+
 interface RepresentationAnnotation {
   readonly id: string
   readonly payload: Schema.Json
@@ -148,7 +146,7 @@ interface CheckRepresentationAnnotation<S> extends RepresentationAnnotation {
 ```
 
 `id` selects a reviver, `payload` contains its JSON configuration, and a check can use `schemas` for schema dependencies.
-This replaces the previous closed set of check metadata. Custom declarations and checks are therefore persistable when
+The set of check identities is open, so custom declarations and checks are persistable when
 they provide a representation identity and the consumer provides a matching reviver.
 
 An unannotated custom declaration or leaf filter can still exist in a live representation, but `toJson` rejects it because
@@ -235,7 +233,7 @@ const json = SchemaRepresentation.toJson(
 
 const document = SchemaRepresentation.fromJson(json)
 const rebuilt = SchemaRepresentation.fromRepresentation(document, {
-  revivers: [Schema.isMinLengthReviver]
+  revivers: [SchemaRepresentation.isMinLengthReviver]
 })
 
 console.log(Schema.is(rebuilt)("abc"))
@@ -244,8 +242,9 @@ console.log(Schema.is(rebuilt)("a"))
 // false
 ```
 
-Effect exports individual revivers next to the built-in declarations and checks they reconstruct, such as
-`Schema.OptionReviver`, `Schema.DateReviver`, and `Schema.isMinLengthReviver`. Supply every reviver required by the
+`SchemaRepresentation` exports a reviver for each built-in declaration and check, such as
+`SchemaRepresentation.OptionReviver`, `SchemaRepresentation.DateReviver`, and
+`SchemaRepresentation.isMinLengthReviver`. Supply every reviver required by the
 document; a missing or duplicate `id`, or a payload that does not satisfy its reviver's `payloadSchema`, is an error.
 
 `fromRepresentations` rebuilds the ordered roots of a `MultiDocument` in a shared reference environment. Only references
@@ -259,7 +258,7 @@ There are separate reviver contracts for opaque declarations, leaf filters, and 
 - `FilterReviver<P>`
 - `FilterGroupReviver<P>`
 
-Use `makeDeclarationReviver`, `makeFilterReviver`, and `makeFilterGroupReviver` to infer `P` from `payloadSchema`.
+Use `makeReviverDeclaration`, `makeReviverFilter`, and `makeReviverFilterGroup` to infer `P` from `payloadSchema`.
 
 ```ts
 import { Schema, SchemaRepresentation } from "effect"
@@ -276,7 +275,7 @@ function minLength(
   })
 }
 
-const minLengthReviver = SchemaRepresentation.makeFilterReviver(
+const minLengthReviver = SchemaRepresentation.makeReviverFilter(
   id,
   Schema.Struct({ minimum: Schema.Number }),
   ({ annotations, payload }) => minLength(payload.minimum, annotations)

@@ -1,16 +1,16 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107. The Elysia example cannot be typechecked
+API surface audited against the pinned Effect source. The Elysia example cannot be typechecked
 end-to-end (external modules), so its Effect-side members were checked individually. FALSIFIED and
 corrected inline: `Schema.toJsonSchema` with `{ target, referenceStrategy }` (the entry point is
 `toJsonSchemaDocument`, whose only options are `onExcessProperty` / `generateDescriptions` /
-`includeAnnotationKey` (rc.113 renamed `additionalProperties` to `onExcessProperty: "ignore" | "error"`
-and flipped the default OPEN — verified at rc.115, `Schema.ts:14350-14368`); the draft is always 2020-12 and draft-07 is reached afterwards via
+`includeAnnotationKey` (the option is `onExcessProperty: "ignore" | "error"`, not
+`additionalProperties`, and the default is OPEN — `Schema.ts:15031-15079`); the draft is always 2020-12 and draft-07 is reached afterwards via
 `JsonSchema.toDocumentDraft07`) and `Schema.ValidDate` (does not exist — `Schema.Date` is already the
 valid-date schema). NOT PROBED: the TanStack Form and Elysia integrations were not run.
 -->
@@ -223,12 +223,12 @@ export default function App() {
 
 #### Elysia
 
-> **Beta trap (two of them).** `Schema.toJsonSchema` does not exist — the entry
+> **Two traps.** `Schema.toJsonSchema` does not exist — the entry
 > point is `Schema.toJsonSchemaDocument(schema, options?)`, and its options are
 > only `{ onExcessProperty?, generateDescriptions?, includeAnnotationKey? }` — and
 > `onExcessProperty` defaults to `"ignore"`, so the generated object schema is
-> **open** (`additionalProperties: true`) unless you pass `"error"`; the pre-rc.113
-> `additionalProperties` option is gone and is silently ignored at runtime.
+> **open** (`additionalProperties: true`) unless you pass `"error"`; an
+> `additionalProperties` option is not one of them and is silently ignored at runtime.
 > There is no `target` and no `referenceStrategy`; the draft is always
 > 2020-12, and draft-07 is reached afterwards through
 > `JsonSchema.toDocumentDraft07(document)`. And `Schema.ValidDate` does not

@@ -1,11 +1,11 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: `Schema.Top`, `Schema.Codec`, the type-hierarchy
+API surface audited against the pinned Effect source: `Schema.Top`, `Schema.Codec`, the type-hierarchy
 members and `Optic.Iso` all exist as described, and every code block typechecks (one illustrative
 `declare function` fragment lacks a return-type annotation, which is an extraction artifact, not an API
 claim). Nothing was changed.

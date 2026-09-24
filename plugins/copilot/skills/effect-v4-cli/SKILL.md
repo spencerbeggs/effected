@@ -1,307 +1,77 @@
 ---
 name: effect-v4-cli
 description: >-
-  Use when building a command-line tool on Effect v4 — there is no v4 @effect/cli package (its
-  releases still peer on effect ^3.x), and the CLI framework lives in core as
-  effect/unstable/cli (Command, Flag, Argument, Primitive, Prompt), with HTTP as
-  effect/unstable/http (HttpClient, FetchHttpClient). Covers Command.Environment and why a CLI
-  package is integrated tier rather than pure, the exit-code contract (a usage error must fail, a
-  no-match must not), and the two different `Command`s (spawning is core's
-  effect/unstable/process, NOT unstable/cli). Constructors are PascalCase since rc.113 (Flag.String/Int/Finite/Literals/Never, Prompt.String, GlobalFlag.Action/Setting). Surface verified against effect@4.0.0-rc.115 and unchanged at rc.117.
+  Use when building or reviewing a command-line program on Effect v4 — effect/unstable/cli in core, its exit-
+  code contract, and the @effected/cli boundary that keeps stdout clean and failures on stderr. Also triggers
+  on: effect/unstable/cli, Command, Flag, Argument, @effect/cli, exit code, findings exit code, usage error,
+  --format json, --version, stdout vs stderr, stdin, CliLogger, CliRuntime, CliExit, CliColor, CliTest,
+  @effected/cli/testing, NO_COLOR, bin-only package, emitDts false, Command.Environment, ChildProcess vs
+  Command.
 ---
 
 # Effect v4 CLIs
 
-**Do not install `@effect/cli`.** Its latest release is `0.77.0`, it declares
-`peerDependencies: { effect: "^3.22.1", "@effect/platform": "^0.97.1",
-"@effect/printer": "^0.51.0", "@effect/printer-ansi": "^0.51.0" }`, and its
-only dist-tags are `latest` and `snapshot` — **no `beta` tag, so there is no v4
-line**. It keeps shipping releases, so "it was updated recently" is not evidence
-of v4 support; check the `effect` peer range, which has never crossed to `^4`.
-Installing it drags an `effect@3` and the `@effect/platform` / `@effect/printer`
-peer chain into a v4 package.
+Core owns parsing: `effect/unstable/cli` is the whole framework — `Command`,
+`Flag`, `Argument`, help, exit-code mapping. It owns nothing about how output
+reaches a person. `@effected/cli` is the boundary that fixes that: it plugs a
+terminal-appropriate logger, a runtime wrapper that reports failures through
+your own layers, and typed renderers for schema and config issues into the
+gap core leaves open.
 
-The CLI framework lives **in core**:
+| construct | import | reach for it when |
+| --- | --- | --- |
+| `Command`, `Flag`, `Argument` | `effect/unstable/cli` | declaring the command tree, its flags and positional arguments |
+| `ChildProcess`, `ChildProcessSpawner` | `effect/unstable/process` | building or running a spawned command — **not** `effect/unstable/cli`'s `Command`, which only declares your own CLI |
+| `CliLogger` | `@effected/cli` | replacing the default `[00:33:56.619] INFO (#2)` logger with plain, level-routed output |
+| `CliRuntime.main`, `CliRuntime.reportFailures` | `@effected/cli` | assembling `main`, reporting failures through your own logger, and setting the process exit code |
+| `CliExit` | `@effected/cli` | a findings command (a linter that found problems) exiting non-zero by succeeding, never by failing |
+| `CliColor` | `@effected/cli` | deciding once whether output carries ANSI colour, and handing help/errors/results the same formatter |
+| `CliTest` | `@effected/cli/testing` | spawning a built bin hermetically and reading its exit code and streams as data |
+| `CurrentDistribution`, `distributionSuffix` | `@effected/engine` | a consumer front end's `--version` line needs the carrier it was installed through |
+| `SourceBoundary` | `@effected/workspaces/testing` | pinning which files may read `process` in a CLI's own tests |
 
-| you might reach for | what actually exists |
-| --- | --- |
-| `@effect/cli` | **`effect/unstable/cli`** |
-| `@effect/platform` `HttpClient` | **`effect/unstable/http`** |
+## Standards
 
-`effect/unstable/cli` exports twelve modules: `Argument`, `CliConfig`,
-`CliError`, `CliOutput`, `Command`, `Completions`, `Flag`, `GlobalFlag`,
-`HelpDoc`, `Param`, `Primitive`, `Prompt`. Note the vocabulary: an
-option is a **`Flag`**, not an `Option` (the name `Option` belongs to the data
-type).
+- Build the CLI on `effect/unstable/cli`, never `@effect/cli` — its releases still peer on `effect ^3.x`.
+- Give every `Flag.Boolean` an explicit `Flag.withDefault` or `Flag.optional` — omission is a usage error, not `false`.
+- Provide `@effect/platform-node`'s `NodeServices.layer` once, at the program boundary, to satisfy `Command.Environment`.
+- Fail a usage error (`Effect.fail(new CliError.UserError(...))`); succeed a query that legitimately matches nothing.
+- Write program output with `Console.log` and diagnostics with `Effect.log*` — the two streams must never trade places.
+- Set `emitDts: false` in `savvy.build.ts` for a package whose `exports` is `"./package.json"` only.
+- Assemble `main.ts` with `CliRuntime.main`, not a hand-rolled `runMain` wrapper.
+- Report findings by succeeding and calling `CliExit.set(code)`, never by failing or calling `process.exit` in a handler.
+- Confine every `process` read (`env`, `argv`, `cwd`, `execPath`, `isTTY`) to `bin.ts`, `main.ts` or `version.ts`; pass it down as a plain value.
 
-## Constructors are PascalCase — the rc.113 rename (#8121)
+## Footguns
 
-Every `Flag`, `Argument`, `Prompt` and `GlobalFlag` constructor is a
-PascalCase name at rc.115 (`unstable/cli/Flag.ts:57-431`,
-`Argument.ts:59-293`, `Prompt.ts:839-1376`, `GlobalFlag.ts:104,122`), and
-several were renamed rather than merely re-cased. The lowercase spellings
-are **`undefined`** on the namespace — a call type-errors, and a lookup
-probe that prints `typeof Flag.string` and concludes "no string flag" is the
-expensive misread:
+- No v4 line of `@effect/cli` exists — see `core-framework.md`.
+- `Flag.Boolean` has no implicit `false`; omission is `MissingOption` — see `core-framework.md`.
+- The default logger and `runMain`'s failure report both land on stdout, not stderr — see `output-and-logging.md`.
+- `errorReported: false` is what SUPPRESSES the runtime's own log, not what causes it — see `output-and-logging.md`.
+- `Cannot merge zero API models` means the package needs `emitDts: false`, not an `index.ts` — see `bin-only-package.md`.
+- A no-match result must succeed; only a usage error may fail — see `exit-codes.md`.
+- `it.effect` starts `TestClock` at the epoch, and `TestConsole.logLines` accumulates across a whole test — see `testing-a-cli.md`.
+- `Command.provide` builds its layer before the handler runs — a handler cannot pre-flight the value the layer depends on — see `gotchas.md`.
+- `Flag.File(name, { mustExist: true })` fails at parse time (a usage error, exit `1` under a bare `runMain`, `64` under `CliRuntime.main`), not as your own infrastructure error — see `gotchas.md`.
+- Two optional positionals bind in declaration order — the first one gets a lone argument, not whichever one "makes sense" — see `gotchas.md`.
+- `Schema.decodeUnknownSync` in a handler throws a defect, invisible to `catchTag` — use `Schema.decodeUnknownEffect` — see `gotchas.md`.
+- `Runtime.getErrorExitCode` returns `1` for both "marked 1" and "unmarked" — test the marker with `Runtime.errorExitCode in error` — see `gotchas.md`.
+- `Argument.Path` resolves a relative value against the process's own cwd, at parse time — `Flag.Path`/`File`/`Directory` share the same behavior — see `gotchas.md`.
+- The built-in global flags (`--help`, `--version`, `--wizard`, `--completions`, `--log-level`) are on by default, program-wide — trim them with `CliConfig.layer({ builtIns: [] })`, not per command — see `gotchas.md`.
 
-| rc.112 | rc.115 |
-| --- | --- |
-| `Flag.string` / `Argument.string` | `Flag.String` / `Argument.String` |
-| `Flag.integer` / `Argument.integer` | `Flag.Int` / `Argument.Int` |
-| `Flag.float` / `Argument.float` | `Flag.Finite` / `Argument.Finite` |
-| `Flag.choice(["a", "b"])` / `Argument.choice` | `Flag.Literals(["a", "b"])` / `Argument.Literals` (`Primitive.choice` → `Primitive.Choice`) |
-| `Flag.choiceWithValue` | `Flag.ChoiceWithValue` |
-| `Flag.none` | `Flag.Never` (also `Argument.Never`, `Param.Never`, `Primitive.Never`) |
-| `Flag.boolean`, `.date`, `.path`, `.file`, `.directory`, `.redacted`, `.fileText`, `.fileParse`, `.fileSchema`, `.keyValuePair` | `Flag.Boolean`, `Date`, `Path`, `File`, `Directory`, `Redacted`, `FileText`, `FileParse`, `FileSchema`, `KeyValuePair` |
-| `Prompt.text` | `Prompt.String` |
-| `Prompt.integer` / `Prompt.float` | `Prompt.Int` / `Prompt.Number` |
-| `Prompt.confirm`, `.date`, `.file`, `.hidden`, `.list`, `.password`, `.select`, `.multiSelect`, `.autoComplete`, `.toggle` | `Prompt.Confirm`, `Date`, `File`, `Hidden`, `List`, `Password`, `Select`, `MultiSelect`, `AutoComplete`, `Toggle` |
-| `GlobalFlag.action` / `GlobalFlag.setting` | `GlobalFlag.Action` / `GlobalFlag.Setting` |
-| `Primitive.isTrueValue` / `isFalseValue` | `Primitive.isTrueLiteral` / `isFalseLiteral` |
+## Additional resources
 
-(Before/after read off the vendored tree at the `effect@4.0.0-rc.112` and
-`effect@4.0.0-rc.115` tags.)
+- [core-framework.md](./references/core-framework.md) — the module inventory, PascalCase constructors, `Flag.Boolean`'s missing default, `Command.Environment`, and the two different `Command`s. Load when: writing or reviewing the `Command`/`Flag`/`Argument` declaration itself.
+- [output-and-logging.md](./references/output-and-logging.md) — the three defaults core gets wrong at a terminal and the `@effected/cli` implementation facts behind `CliLogger` and exit-code reporting. Load when: wiring a logger, formatting output, or debugging a duplicate or missing failure report.
+- [bin-only-package.md](./references/bin-only-package.md) — `emitDts: false`, the `exports: "./package.json"` shape, and why `Cannot merge zero API models` is not an extractor bug. Load when: building a package whose only surface is a `bin`.
+- [exit-codes.md](./references/exit-codes.md) — the exit-code contract, `CliRuntime.main`'s assembly order, the code table, and how a findings command exits non-zero by succeeding. Load when: deciding whether a code path should fail or succeed, assembling `main.ts`, or handling `CliError` exhaustively.
+- [testing-a-cli.md](./references/testing-a-cli.md) — the two false-green traps specific to testing a CLI, and `CliTest` for spawning a built bin hermetically. Load when: writing a test that asserts on CLI output, time-dependent behavior, or a real subprocess's exit code and streams.
+- [gotchas.md](./references/gotchas.md) — seven traps that pass a type-check and a casual run: `Command.provide`'s build order, `Flag.File`'s parse-time existence check, positional binding order, `decodeUnknownSync`'s defect, the exit-code marker, `Argument.Path`/`Flag.Path` resolution, and the on-by-default global flags. Load when: a handler isn't seeing the value you expect, or an exit code doesn't match what the handler did.
+- [recipes.md](./references/recipes.md) — patterns the kit deliberately does not package: the main-assembly file layout, the version constant and formatter, the JSON failure tap, reading stdin safely, process confinement, and an injectable clock. Load when: wiring up a new CLI front end from scratch.
 
-Combinators stay lowercase (`Flag.optional`, `Flag.withHidden`,
-`Argument.optional`, `Prompt.succeed`, `Prompt.makeTheme`). The same
-convention moved `Config` in the same release (`Config.String`/`Int`/
-`Boolean`/`Redacted`/`Array`/`Record`…, `Config.mapOrFail` → `Config.mapEffect`)
-— the `effect-v4-idioms` and `actions-inputs-outputs` skills show it.
-
-`effect/unstable/http` carries `HttpClient` and `FetchHttpClient`.
-**`FetchHttpClient.layer` is `Layer<HttpClient>` with no error channel and no
-requirements** — it needs no platform package at all, so an HTTP-calling CLI does
-not become integrated tier on the HTTP client's account.
-
-## `Flag.Boolean` has no implicit `false` — omission is `MissingOption`
-
-A boolean flag is **not** "false unless `--x` is passed". `Flag.Boolean(name)`
-is `Param.Boolean(Param.flagKind, name)` with no fallback (`unstable/cli/Flag.ts:76`;
-its own docstring at `:69` says *"Omission fails unless the flag is made
-optional or given a fallback"*), and the shared flag parser fails with
-`CliError.MissingOption({ option: name })` the moment the flag is absent from
-the parsed args (`unstable/cli/Param.ts:1949`) — the primitive's type never
-enters into it. So a bare `Flag.Boolean("force")` turns every invocation that
-*omits* `--force` into a usage error, which is the opposite of what a
-boolean flag is for. Spell the default:
-
-~~~ts
-import { Flag } from "effect/unstable/cli"
-
-const force = Flag.Boolean("force").pipe(
-  Flag.withDefault(false),               // or Flag.optional for Option<boolean>
-  Flag.withDescription("Shorthand for --drift=allow"),
-)
-~~~
-
-The trap this replaces: a plan and its first implementation both assumed the
-default and shipped a CLI whose happy path — no flags at all — failed with
-`MissingOption`. The test that pins it is the one that runs the command with
-**no** flags and expects success.
-
-## `Command.Environment` — the fact that decides your package tier
-
-~~~ts
-// effect/unstable/cli/Command.ts:391
-export type Environment =
-  FileSystem.FileSystem | Path.Path | Terminal.Terminal | ChildProcessSpawner | Stdio.Stdio
-~~~
-
-Running a `Command` requires all five. **Core declares all five and implements
-almost none of them for Node:**
-
-| service | what core actually ships |
-| --- | --- |
-| `Path` | `Path.layer` — a real implementation (posix), `Path.ts:867` |
-| `FileSystem` | `FileSystem.layerNoop(partial)` — a **stub factory**, for tests (`FileSystem.ts:765` at rc.115) |
-| `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:152`) |
-| `Terminal` | **no layer at all** — `Terminal.ts` declares no `layer` export |
-| `ChildProcessSpawner` | the contract and the `ChildProcess` command values, but **no layer** — see below |
-
-So a CLI you actually intend to run needs `@effect/platform-node` for the real
-`Terminal` / `FileSystem` / `Stdio` implementations. **That is what makes a CLI
-package integrated tier**, not pure — and it is a structural fact about core, not
-a naming detail you can design around. Budget for the dependency at design time;
-do not discover it when the first `Effect.provide` fails to typecheck.
-
-The corollary: **do not put a CLI in the same package as a pure library.** Split
-the CLI into its own package so the library keeps its `effect`-only peer closure.
-
-## Two different `Command`s — spawning lives in `effect/unstable/process`
-
-`effect/unstable/cli`'s `Command` is the **CLI command declaration**. It is not
-the process-spawning `Command`, and the shared name is the whole trap.
-
-Spawning is **in core**, at `effect/unstable/process`, which exports exactly two
-modules (`unstable/process/index.ts`):
-
-| you want | v4 |
-| --- | --- |
-| `@effect/platform/Command` (build a command value) | **`effect/unstable/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:609,699,733,798,837` at rc.115). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:409`) |
-| `@effect/platform/CommandExecutor` (run it) | **`effect/unstable/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:252`) |
-
-> **Do not hand-roll a `node:child_process` layer or a parallel
-> `Command`/`CommandRunner` vocabulary.** One did survive four review gates in
-> this repo before a source check found `effect/unstable/process` already
-> declared the entire surface; the package was deleted the same day it was built.
-
-What core does **not** ship is a **layer** for `ChildProcessSpawner` — the
-contract is declared, the Node implementation is not (it arrives with
-`NodeServices.layer` from `@effect/platform-node`). That is the same structural
-class of gap as `Terminal`, with the same tier consequence for a CLI that
-actually shells out. Requiring `ChildProcessSpawner` in `R` is free; taking
-`@effect/platform-node` as a dependency edge is not.
-
-## The boundary core does not give you — reach for `@effected/cli`
-
-`effect/unstable/cli` owns parsing, flags, the command tree and help. It owns
-**nothing** about how output reaches a person, and the three defaults you get
-are all wrong at a terminal. Each is invisible from the code and only shows up
-when a user looks at the output:
-
-1. **Effect's default logger emits `[00:33:56.619] INFO (#2): message`** — right
-   for a scraped service, wrong for a tool someone is watching. It will destroy
-   any formatted table you print.
-2. **An unhandled failure is reported by `runMain` through the DEFAULT logger,
-   on stdout** — outside the layers your program installed. So a program that
-   carefully installs a CLI logger still prints its failures in the shape that
-   logger exists to replace, on the one stream errors must not use
-   (`mytool run > log.txt` must still show failures on the terminal).
-3. **A `SchemaIssue` tree is not a sentence.** Core *does* ship formatters —
-   `SchemaIssue.makeFormatterStandardSchemaV1` — but they live in `SchemaIssue`
-   rather than `Schema` or `SchemaError`, are named `makeFormatter*` rather than
-   anything containing "render", and `SchemaError.message` does not use them, so
-   the obvious probe hints at nothing. Two engineers searched for two rounds and
-   concluded they did not exist.
-
-**`@effected/cli` is the boundary for all three** — `CliLogger`, `CliRuntime`
-and the schema/config issue renderers. It is deliberately not a second
-framework: parsing stays core's.
-
-Two implementation facts worth knowing even if you write your own:
-
-- **A logger cannot write through `Stdio`'s sinks.** `Logger.make` takes a
-  *synchronous* callback and a `Sink` write is an `Effect`. The path that works
-  is the one core's own `defaultLogger` takes: read the **`Console` reference off
-  the fiber** (`Console.Console` is a public `Context.Reference` with a default,
-  so nothing enters `R`), then `console.error` vs `console.log` by level. It is
-  also the only design that is *testable* — a `process.stdout` write cannot be
-  asserted without stubbing globals, which is why nobody notices when the
-  stderr/stdout split regresses. **Compare levels ordinally**
-  (`LogLevel.isGreaterThanOrEqualTo`), never by string equality against `"Error"`.
-- **`CliLogger.layer()` routes to stderr from `"Error"` up, by default.**
-  `stderrFrom` defaults to `"Error"` (`CliLogger.make`: `options.stderrFrom ??
-  "Error"`), so `Info`/`Warning` go to **stdout** as program output. That is
-  right for a tool whose output *is* its log lines and wrong the moment stdout
-  is a machine-readable document: a `--format=json` command that leaves the
-  default in place interleaves its warnings into the JSON stream. Install
-  `CliLogger.layer({ stderrFrom: "All" })` for any CLI whose stdout is a
-  document, and write the document with `Console.log`, not `Effect.log`. The
-  trap this replaces is assuming the logger already splits "output" from
-  "diagnostics" by level — it does, but the split point is a *policy* you set.
-- **Exit code and duplicate-report suppression are markers on the error**, read
-  off the squashed failure: `Runtime.errorExitCode` and `Runtime.errorReported`.
-  Beware the polarity — **`errorReported: false` is what SUPPRESSES** the
-  runtime's own log ("already reported"); omitted or non-boolean is treated as
-  `true` and it logs. The intuitive `true` produces exactly the double report
-  you were trying to avoid.
-
-## A bin-only CLI package: `emitDts: false`, `exports` = `./package.json`
-
-A CLI that exports nothing for import — `bin` only — is a legitimate package
-shape, and the build pipeline has an opinion about it. With `exports` limited
-to `"./package.json"` and no `index.ts`, the default `@savvy-web/bundler`
-build still runs the declaration pass and then the prod meta (API Extractor)
-pass over **zero** entry points, and dies with the opaque
-`Cannot merge zero API models`. The switch is `emitDts: false` in
-`savvy.build.ts` — documented on `BuildConfigInput.emitDts` as *"intended for
-JS-only artifacts that never consume declarations (e2e fixtures, bins,
-internal tools)"* — which skips the dts pass and, with nothing to read, the
-meta pass, while still emitting JS, the byte-variant targets and the
-transformed `package.json`:
-
-~~~ts
-// savvy.build.ts of a bin-only package
-import { build } from "@savvy-web/bundler";
-
-await build({ emitDts: false });
-~~~
-
-Three consequences follow, and each looks like a gap until you know why:
-
-- **No `_base` suppression, no `tsdoc.json`, no api-extractor model, no
-  website page.** There is no `.d.ts` to extract from. The documentation is
-  `--help`, the README and the library page of the package the bin fronts.
-- **Every type a consumer's config file needs comes from the library
-  package**, never from the bin — a bin-only package has no import surface,
-  so `defineConfig`-style helpers live in the sibling library.
-- **Tooling that enumerates packages by their doc model must exclude it**,
-  or it reports the bin as a perpetually missing build. The test is the
-  `exports` map: every key is `"./package.json"`.
-
-The trap this replaces: reading `Cannot merge zero API models` as an
-extractor bug, or as a sign the bin needs an `index.ts` to satisfy the gate.
-See `effect-api-extractor-bases` for how the gate reads for the *other* case.
-
-## The exit-code contract
-
-`effect/unstable/cli` never calls `process.exit`. The non-zero exit comes from
-the **program failing** — the runtime maps a failed effect to a non-zero status.
-Everything follows from that one fact:
-
-> **A usage error must FAIL. A no-match result must NOT.**
-
-`CliError.UserError` is the general-purpose failure for "the user asked for
-something invalid". The full `CliError` union is nine members
-(`CliError.ts:74`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
-`MissingArgument`, `UnexpectedArgument`, `InvalidValue`, `UnknownSubcommand`,
-`ShowHelp`, `UserError`. An exhaustive `catchTags` or `Match` that omits
-`UnexpectedArgument` will not compile — and one written before it existed is
-exactly the shape that breaks on a beta advance.
-
-~~~ts
-import { CliError } from "effect/unstable/cli"
-
-// WRONG — logs the problem and returns void. The effect SUCCEEDS, so the
-// process exits 0 and CI treats the broken invocation as a pass.
-Effect.gen(function* () {
-  if (!isValid(input)) {
-    yield* Effect.logError(`bad --target: ${input}`)
-    return
-  }
-  …
-})
-
-// RIGHT — a usage error is a FAILURE.
-Effect.gen(function* () {
-  if (!isValid(input)) {
-    return yield* Effect.fail(new CliError.UserError({ cause: `bad --target: ${input}` }))
-  }
-  …
-})
-~~~
-
-This is not a hypothetical: a review found usage errors exiting 0 in exactly this
-shape. Logging feels like reporting; to the shell it is silence.
-
-The other half of the rule is just as load-bearing. **A query that legitimately
-matches nothing is a success, not a usage error.** "No versions satisfied the
-range" is a *result* — print it and exit 0. Failing it teaches users' CI to treat
-an honest empty answer as a broken invocation. Ask: did the *user* do something
-wrong (fail), or did the *world* simply not contain what they asked for (succeed)?
-
-## Testing a CLI
-
-Two false-green traps bite CLIs specifically. Both are covered in
-`effect-v4-testing`, and both have cost this repo a bug:
-
-- **`it.effect` installs `TestClock` at the epoch**, so anything reading
-  `DateTime.now` computes against **1970**. A CLI that filters releases by date
-  resolves *zero* of them, because every release is "in the future". Set the clock
-  before asserting on anything time-dependent.
-- **`TestConsole.logLines` accumulates for the whole test.** A test that invokes
-  the CLI twice and asserts on `logLines` both times is asserting against the
-  first run's output both times — the second assertion cannot fail.
+Anchors in this skill and its references cite the vendored tag at
+`.repos/effect/packages/effect/src/`; a consumer without that tree searches
+`node_modules/effect/src` by symbol name instead of by line number.
 
 ## Related skills
 

@@ -131,9 +131,9 @@ disabled:
 pnpm vitest run <package-dir> --coverage.enabled=false
 ```
 
-Run the positional form from the workspace root: from **inside** a package
-the filter matches nothing and prints a zero-tests-run line — a failed run,
-not a pass (`--project <name>` works from anywhere). Concurrent
+Run it from the workspace root: from **inside** a package vitest does not
+load the root config, so the filter finds no test files and
+`--project <name>` fails with `No projects matched the filter`. Concurrent
 agents collide on a shared coverage-reports directory without the flag.
 
 **Known rough edge, so nobody chases it as a regression:** a config error

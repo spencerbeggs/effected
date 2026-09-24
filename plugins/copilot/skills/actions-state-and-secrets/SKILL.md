@@ -1,10 +1,12 @@
 ---
 name: actions-state-and-secrets
 description: >-
-  Use when persisting values across a GitHub Action's pre/main/post phase boundary, handling a
-  Redacted secret anywhere in @effected/github-actions, deciding whether a value belongs in
-  ActionState or ActionOutputs, framing a blob with metadata for a cache or object store, reaping
-  a detached child process, or rendering an Action's top-level failure.
+  Use when persisting values across a GitHub Action's pre/main/post phase boundary, handling a Redacted secret
+  anywhere in @effected/github-actions, deciding whether a value belongs in ActionState or ActionOutputs,
+  framing a blob with metadata for a cache or object store, reaping a detached child process, or rendering an
+  Action's top-level failure. Also triggers on: ActionState, Redacted secret, BlobEnvelope, Secret.forChildEnv,
+  Secret.forRunnerFile, Secret.forSigning, Secret.adopt, DryRun, DetachedProcess, GITHUB_STATE, ChildEnv PATH
+  prepend.
 ---
 
 # Actions state and secrets
@@ -41,7 +43,7 @@ For general Effect v4 service/layer shape, typed errors, `Cause`, and `Scope`, s
 - `DetachedProcess.reap` takes a plain `number`: an absent state key, a truncated file, or a bad parse all decode to `0`, and `process.kill(0, …)` signals the caller's entire process group. See `references/detached-processes.md`.
 - `env` passed to a spawn call without `extendEnv: true` replaces the child's whole environment, including the `PATH` a caller meant to extend. See `references/detached-processes.md`.
 - `BlobEnvelope`'s wire format, five-reason error union, and why a legacy raw blob decodes as a clean miss rather than garbage live in `actions-cache-and-artifacts`, not here — don't re-derive the frame shape from this skill's description alone.
-- **A `Schema.Redacted` field persisted as JSON round-trips to the literal string `<redacted>`.** This is core Effect behavior, not a kit choice, and it is silent — the write succeeds, the read succeeds, and the value is garbage. Re-probed against beta.107 (`Schema.Redacted` encode → an object whose `JSON.stringify` is `"<redacted>"`; `Schema.RedactedFromValue` encode → `"s3cret"`):
+- **A `Schema.Redacted` field persisted as JSON round-trips to the literal string `<redacted>`.** This is core Effect behavior, not a kit choice, and it is silent — the write succeeds, the read succeeds, and the value is garbage. Probed (`Schema.Redacted` encode → an object whose `JSON.stringify` is `"<redacted>"`; `Schema.RedactedFromValue` encode → `"s3cret"`):
 
   ```text
   Schema.Redacted(Schema.String)      encode -> a Redacted object

@@ -1,11 +1,11 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: `decodeTo`, `decode`, `encodeTo`, the
+API surface audited against the pinned Effect source: `decodeTo`, `decode`, `encodeTo`, the
 `SchemaTransformation` constructors and the passthrough helpers all exist as described, and every code
 block typechecks. FALSIFIED and corrected inline: `new Issue.InvalidValue(...)` with nothing named
 `Issue` in scope (the module is `SchemaIssue`) and the dropped `options` argument — `transformEffect`
@@ -19,25 +19,8 @@ Transformations convert values from one type to another during decoding or encod
 
 ## Transformations as First-Class
 
-In previous versions, transformations were directly embedded in schemas. In the current version, they are defined as independent values that can be reused across schemas.
-
-**Example** (Previous approach: inline transformation)
-
-```ts
-const Trim = transform(
-  String,
-  Trimmed,
-  // non re-usable transformation
-  {
-    decode: (i) => i.trim(),
-    encode: identity
-  }
-) {}
-```
-
-This style made it difficult to reuse logic across different schemas.
-
-Now, transformations like `trim` are declared once and reused wherever needed.
+Transformations are independent values, not logic embedded in a schema, so a
+transformation like `trim` is declared once and reused wherever it is needed.
 
 **Example** (The `trim` built-in transformation)
 
@@ -63,9 +46,9 @@ console.log(Schema.decodeUnknownSync(schema)("  123"))
 
 ## The Transformation Type
 
-A `Transformation` carries four type parameters:
+A `Transformation` carries four type parameters (a type shape, shown as text):
 
-```ts
+```text
 Transformation<T, E, RD, RE>
 ```
 
@@ -81,15 +64,13 @@ A `Transformation` consists of two `Getter` functions:
 
 Each `Getter` receives an input and an optional context and returns either a value or an error. Getters can be composed to build more complex logic.
 
-**Example** (Implementation of `Transformation.trim`)
+**Example** (Implementation of `SchemaTransformation.trim`)
 
 ```ts
-/**
- * @category String transformations
- * @since 4.0.0
- */
-export function trim(): Transformation<string, string> {
-  return new Transformation(Getter.trim(), Getter.passthrough())
+import { SchemaGetter, SchemaTransformation } from "effect"
+
+export function trim(): SchemaTransformation.Transformation<string, string> {
+  return new SchemaTransformation.Transformation(SchemaGetter.trim(), SchemaGetter.passthrough())
 }
 ```
 
@@ -100,7 +81,7 @@ In this case:
 
 ## Composing Transformations
 
-You can combine transformations using `SchemaTransformation.composeTransformation` (a dual standalone function since rc.116 — the `Transformation#compose` method is gone). The resulting transformation applies the `decode` and `encode` logic of both transformations in sequence.
+You can combine transformations using `SchemaTransformation.composeTransformation` (a dual standalone function — there is no `Transformation#compose` method). The resulting transformation applies the `decode` and `encode` logic of both transformations in sequence.
 
 **Example** (Trim and lowercase a string)
 
@@ -123,7 +104,7 @@ In this example:
 - The `decode` logic applies `SchemaGetter.trim()` followed by `SchemaGetter.toLowerCase()`, producing a string that is trimmed and lowercased.
 - The `encode` logic is `SchemaGetter.passthrough()`, which returns the input unchanged.
 
-A `Getter` value exposes only `pipe` since rc.116: run one with the standalone `SchemaGetter.run`, and build one with `SchemaGetter.map` / `SchemaGetter.compose` or the `transform*` constructors — `new SchemaGetter.Getter`, `onSome` and `onNone` no longer exist.
+A `Getter` value exposes only `pipe`: run one with the standalone `SchemaGetter.run`, and build one with `SchemaGetter.map` / `SchemaGetter.compose` or the `transform*` constructors — `new SchemaGetter.Getter`, `onSome` and `onNone` no longer exist.
 
 ## Transforming One Schema into Another
 
@@ -228,9 +209,9 @@ const URLFromString = Schema.String.pipe(
 )
 ```
 
-> **Beta trap.** The module is `SchemaIssue`; there is no bare `Issue` module to
-> import. An earlier draft of this example wrote `new Issue.InvalidValue(...)`
-> with nothing named `Issue` in scope — `TS2304: Cannot find name 'Issue'`. The
+> **Trap.** The module is `SchemaIssue`; there is no bare `Issue` module to
+> import, and `new Issue.InvalidValue(...)` with nothing named `Issue` in scope
+> fails with `TS2304: Cannot find name 'Issue'`. The
 > constructor's third parameter is the effective parse options; `transformEffect`
 > hands them to the callback as `(input, options)` so you can pass them on.
 

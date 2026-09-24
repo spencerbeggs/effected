@@ -1,15 +1,15 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: the filter factories, `makeFilter`,
+API surface audited against the pinned Effect source: the filter factories, `makeFilter`,
 `makeFilterGroup`, `brand`, `SchemaGetter.checkEffect` and `Schema.FilterOutput`/`FilterIssue` all
 exist as described, and every code block typechecks. FALSIFIED and corrected inline: the claim that
 structural filters are evaluated separately so both a nested and a structural issue surface under
-`{ errors: "all" }` (PROBED on beta.107 — a nested failure suppresses the containing structural
+`{ errors: "all" }` (PROBED — a nested failure suppresses the containing structural
 filter entirely, and only one issue is reported), the `{ title }` annotation on `InvalidValue` (the
 default formatter reads `message`, then `expected`, never `title`; the annotation bag has an index
 signature so the typo compiles), the dropped `options` argument on `InvalidValue`, `Getter.checkEffect`
@@ -334,12 +334,11 @@ nested values parse successfully. If a nested value fails, its issue is reported
 but structural filters on the containing value are **not** evaluated, even with
 `{ errors: "all" }`.
 
-> **Beta trap.** Earlier drafts of this guide claimed the opposite — that
-> structural filters are evaluated separately from item-level ones so both
-> issues surface together under `{ errors: "all" }` — and showed a two-issue
-> expected output. Probed on `4.0.0-beta.107`: the nested `isNonEmpty` failure
-> below suppresses the containing `isMinLength(3)` entirely, and only one issue
-> is reported. Do not write a test that asserts on the second issue.
+> **Trap.** Structural filters are not evaluated separately from item-level
+> ones, so the two issues do not surface together under `{ errors: "all" }`.
+> The nested `isNonEmpty` failure below suppresses the containing
+> `isMinLength(3)` entirely, and only one issue is reported. Do not write a
+> test that asserts on the second issue.
 
 **Example** (A nested failure prevents the structural filter from running)
 
@@ -397,7 +396,7 @@ const schema = Schema.Finite.pipe(
 )
 ```
 
-> **Beta trap (two of them).** `SchemaIssue.InvalidValue`'s annotation bag is
+> **Trap (two of them).** `SchemaIssue.InvalidValue`'s annotation bag is
 > `{ expected?, message? }`, but it also carries an index signature, so a
 > misspelled key type-checks and then silently does nothing. `{ title: "not
 > found" }` compiles and formats as `"Expected a valid value"` — the default

@@ -1,13 +1,12 @@
 ---
 name: hardening-a-parser-port
 description: >-
-  Use when porting or writing a recursive-descent parser, lexer, or tree-walker over untrusted
-  text in the @effected monorepo — the class of hardening the cloud reviewer scans for on every
-  migration. Covers stack-overflow depth guards (on EVERY recursion surface, which a facade has N
-  of — not two), numeric bound guards that must reject NaN and non-integers, code-point range
-  checks scoped to formats with wide escapes, prototype-pollution, control-character rejection,
-  and the invariant that malformed input must fail through the typed error channel, never as an
-  unhandled defect.
+  Use when porting or writing a recursive-descent parser, lexer, or tree-walker over untrusted text in the
+  @effected monorepo — the class of hardening the cloud reviewer scans for on every migration. Covers stack-
+  overflow depth guards (on EVERY recursion surface, which a facade has N of — not two), numeric bound guards
+  that must reject NaN and non-integers, code-point range checks scoped to formats with wide escapes, prototype-
+  pollution, control-character rejection, and the invariant that malformed input must fail through the typed
+  error channel, never as an unhandled defect.
 ---
 
 # Hardening a parser port
@@ -229,7 +228,7 @@ the value path and any tree-walker share it.
 The guidance above is for objects **you** build. When untrusted records flow
 through v4 `Schema.Record` instead, decode is already pollution-safe: a
 `__proto__` key survives decoding as an ordinary **own data property** of the
-output — it is neither dropped nor written to the prototype (probed beta.94 in
+output — it is neither dropped nor written to the prototype (probed in
 the `@effected/lockfiles` hostility suite: a `__proto__` pnpm importer decodes
 into an entry literally named `__proto__` with `Object.prototype` unpolluted).
 Two consequences: don't pre-filter such keys expecting decode to choke on

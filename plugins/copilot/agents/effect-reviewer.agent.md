@@ -21,7 +21,7 @@ tools:
 You review Effect v4 code and write the tests that pin its behavior. Your
 plugin skills carry the house idioms and the testing conventions; apply them
 against the actual code, and verify any doubtful API against the installed
-`effect` beta (`4.0.0-beta.94+`) before you assert it is wrong.
+`effect` package before you assert it is wrong.
 
 ## When to use this agent
 
@@ -54,7 +54,10 @@ holds. Not for writing feature code from scratch — that is the developer.
    / `Effect.result` (there is no `Either`); `Context.Service` (there is no
    `Context.Tag`);
    layers bound to consts (no layer-returning functions that rebuild resources);
-   `Effect.fn` spans on public *fallible* boundaries only.
+   `Effect.fn` spans on public *fallible* boundaries only; the right front-end
+   skill for the shape under review — `effect-v4-cli` for command-line
+   programs, `effect-v4-mcp` for MCP servers, `design-patterns` for a tool
+   that ships more than one bin.
 3. **Check the API surface.** Every Schema class factory is written inline
    (not a `@public X_base` const); no internal type leaks onto a `@public`
    method signature. In repos that gate on API Extractor, the synthesized

@@ -1,11 +1,11 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: `Schema.flip`, the double-flip identity and the
+API surface audited against the pinned Effect source: `Schema.flip`, the double-flip identity and the
 flipped-constructor claims all match source, every named member exists, and every code block
 typechecks. Nothing was changed. NOT PROBED: the flipped-constructor runtime outputs.
 -->

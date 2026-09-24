@@ -294,12 +294,11 @@ Field-level prose that a human or an LLM reads to understand a value goes in
 `description`, annotated at the **definition site** of the schema (a
 usage-site annotation on a hoisted schema reaches nothing, even before
 lowering).
-Since effect rc.112 the Draft-07 lowering **carries unknown and custom
+The Draft-07 lowering **carries unknown and custom
 keywords through as opaque values**, so an *undeclared* custom `x-` key on
 an output contract **is published** — do not rely on the lowering filtering
-it out. (It dropped every keyword outside a fixed copy-list before rc.112;
-if you learned the old behavior, unlearn it — the failure mode is shipping a
-key you assumed could not escape.) Whether an undeclared key can reach the
+it out; the failure mode is shipping a key you assumed could not escape.
+Whether an undeclared key can reach the
 document at all is decided upstream of the lowering, by whatever admits it:
 `@effected/schemastore`'s `StoreDocument.fromSchema` refuses one outright
 with `UndeclaredAnnotationKeyError` rather than emitting it. Prefer the

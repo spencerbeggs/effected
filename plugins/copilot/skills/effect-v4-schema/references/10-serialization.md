@@ -1,11 +1,11 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: the JSON / string / FormData / URLSearchParams
+API surface audited against the pinned Effect source: the JSON / string / FormData / URLSearchParams
 codecs and the canonical codecs all exist as described, and every code block typechecks after one fix.
 FALSIFIED and corrected inline: `Schema.UnknownFromJsonString`. It exists at RUNTIME but is marked
 `@internal` in source and is therefore stripped from the published `.d.ts` — a runtime probe passes
@@ -36,7 +36,7 @@ Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown))(`{"a":1,"b":2}`)
 // => { a: 1, b: 2 }
 ```
 
-> **Beta trap.** `Schema.UnknownFromJsonString` exists at runtime but is marked
+> **Trap.** `Schema.UnknownFromJsonString` exists at runtime but is marked
 > `@internal` in source, so it is **stripped from the published `.d.ts`**. A
 > TypeScript consumer gets `TS2551: Property 'UnknownFromJsonString' does not
 > exist ... Did you mean 'fromJsonString'?` even though `typeof
@@ -347,6 +347,14 @@ const PointSchema = Schema.instanceOf(Point)
 Even if encoding produces something JSON-looking, decoding cannot rebuild a `Point` instance (including its prototype and methods) from plain JSON data.
 
 ```ts
+import { Schema } from "effect"
+
+class Point {
+  constructor(public readonly x: number, public readonly y: number) {}
+}
+
+const PointSchema = Schema.instanceOf(Point)
+
 // Encode a Point instance using the schema, then stringify it.
 // This produces a plain JSON object, not a class instance.
 const json = JSON.stringify(Schema.encodeUnknownSync(PointSchema)(new Point(1, 2)))
@@ -363,11 +371,19 @@ try {
 }
 ```
 
-The same issue shows up when generating a JSON Schema document: since the schema represents a class instance and there is no JSON representation for it, the generator falls back to a placeholder.
+The same issue shows up when generating a JSON Schema document: since the schema represents a class instance and there is no JSON representation for it, the generator falls back to an empty schema, which accepts any value.
 
 ```ts
+import { Schema } from "effect"
+
+class Point {
+  constructor(public readonly x: number, public readonly y: number) {}
+}
+
+const PointSchema = Schema.instanceOf(Point)
+
 console.log(Schema.toJsonSchemaDocument(PointSchema))
-// { dialect: 'draft-2020-12', schema: { type: 'null' }, definitions: {} }
+// { dialect: 'draft-2020-12', schema: {}, definitions: {} }
 ```
 
 #### Configuring the Codec

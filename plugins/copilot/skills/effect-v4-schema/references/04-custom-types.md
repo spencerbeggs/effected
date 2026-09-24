@@ -1,11 +1,11 @@
 <!--
 Vendored from the Effect canonical Schema guide (Effect-TS/effect, packages/effect/SCHEMA.md, main branch).
 Reference material for the effect-v4-schema skill. Tracks upstream main, which may run AHEAD of the
-pinned effect v4 beta in this repo. Verify any specific API against the installed package before
+pinned Effect v4 prerelease in this repo. Verify any specific API against the installed package before
 relying on it (node --input-type=module -e "import * as S from 'effect/Schema'; console.log(typeof S.X)").
 Source: https://github.com/Effect-TS/effect/blob/main/packages/effect/SCHEMA.md
 
-API surface audited against effect@4.0.0-beta.107: `Schema.declare`, `declareConstructor`,
+API surface audited against the pinned Effect source: `Schema.declare`, `declareConstructor`,
 `instanceOf`, `link`, `toCodecJson` and the SchemaIssue constructors all exist as described, and every
 code block typechecks. FALSIFIED and corrected inline: `new SchemaIssue.InvalidType(ast, Option.some(u))`
 and the two-argument `InvalidValue(annotations, input)` form. Both constructors take
@@ -20,9 +20,10 @@ When none of the built-in schema combinators fit your data type, use `Schema.dec
 
 ## `Schema.declare` (non-parametric types)
 
-`Schema.declare` creates a schema from a **type guard** — a function that checks whether an unknown value is of a given type. This is useful when you have a type that doesn't fit the built-in combinators (like `Struct`, `Array`, etc.) and you need to teach Schema how to recognize it.
+`Schema.declare` creates a schema from a **type guard** — a function that checks whether an unknown value is of a given type. This is useful when you have a type that doesn't fit the built-in combinators (like `Struct`, `Array`, etc.) and you need to teach Schema how to recognize it. Its shape, shown as a signature
+rather than compilable code:
 
-```ts
+```text
 Schema.declare<T>(
   is: (u: unknown) => u is T,
   annotations?: { expected?: string; toCodecJson?: ...; ... }
@@ -72,7 +73,7 @@ console.log(String(Schema.decodeUnknownExit(URLSchema)(null)))
 
 ### Adding JSON support with `toCodecJson`
 
-`Schema.toCodecJson` derives a codec that can convert your type **to and from JSON**. By default, declared schemas have no JSON representation — encoding produces `null`:
+`Schema.toCodecJson` derives a codec that can convert your type **to and from JSON**. By default, declared schemas have no JSON representation, so encoding fails:
 
 ```ts
 import { Schema } from "effect"
@@ -85,10 +86,10 @@ const URLSchema = Schema.declare(
 // Derive a JSON codec from the schema
 const codec = Schema.toCodecJson(URLSchema)
 
-// Encoding a URL produces null because Schema doesn't know
+// Encoding a URL fails because Schema doesn't know
 // how to serialize a URL to JSON yet
 console.log(String(Schema.encodeUnknownExit(codec)(new URL("https://example.com"))))
-// Success(null)
+// Failure(Cause([Fail(SchemaError(Expected JSON value))]))
 ```
 
 To fix this, provide a `toCodecJson` annotation. This annotation is a function that returns an `AST.Link`, a bridge that describes how to convert between your custom type and a JSON-friendly representation.
@@ -148,9 +149,10 @@ While `Schema.declare` works for fixed types like `URL` or `File`, some types ar
 
 ### How the two-step call works
 
-`declareConstructor` uses a curried (two-step) call pattern:
+`declareConstructor` uses a curried (two-step) call pattern, shown here as a
+shape rather than compilable code:
 
-```ts
+```text
 Schema.declareConstructor<Type, Encoded>()(
   typeParameters, // array of schemas, one per type parameter
   run, // factory that produces the parsing function
@@ -170,7 +172,7 @@ The parsing function you return from `run` is responsible for:
 2. Recursively decoding inner values using the provided codecs
 3. Returning an `Effect` that succeeds with the decoded value or fails with an issue
 
-> **Beta trap.** Issue constructors take the raw input, not an `Option`:
+> **Trap.** Issue constructors take the raw input, not an `Option`:
 > `new SchemaIssue.InvalidType(ast, input?, options?)` and
 > `new SchemaIssue.InvalidValue(annotations?, input?, options?)`. Because the
 > `input` parameter is typed `unknown`, `Option.some(u)` compiles — it just
@@ -220,7 +222,7 @@ const Box = <A extends Schema.Top>(item: A) =>
 const schema = Box(Schema.FiniteFromString)
 
 console.log(String(Schema.decodeUnknownExit(schema)({ value: "1" })))
-// Success({ value: 1 })
+// Success({"value":1})
 
 console.log(String(Schema.decodeUnknownExit(schema)({ value: "a" })))
 // Failure(Cause([Fail(SchemaError(Expected a finite number
