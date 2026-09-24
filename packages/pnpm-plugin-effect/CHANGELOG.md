@@ -1,5 +1,17 @@
 # @effected/pnpm-plugin-effect
 
+## 0.10.1
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/runtimes` ^0.8.0 -> ^0.8.1 (peer ^0.8.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.10.0
 
 ### Features
