@@ -164,7 +164,7 @@ const corepackRestricted = brandedIntegrity.pipe(
 // Why this is hand-rolled rather than core's `Encoding`, which this package
 // already uses elsewhere (`PackageTarball`, `RegistryCredential`): the two
 // disagree in both directions, and for an integrity value the disagreement is
-// load-bearing. Probed against effect@4.0.0-rc.109:
+// load-bearing:
 //
 //   Encoding.decodeBase64("QQ==")     -> [65]
 //   Encoding.decodeBase64("QR==")     -> [65]   non-zero trailing bits
@@ -176,7 +176,10 @@ const corepackRestricted = brandedIntegrity.pipe(
 // two `integrity` strings that differ as text can decode to identical bytes —
 // precisely the ambiguity an integrity check exists to deny. Core is also
 // *stricter* where this codec is deliberately lenient: it rejects the unpadded
-// form. Neither direction is a drop-in. Do not "fix" this to `Encoding`.
+// form. Neither direction is a drop-in. Do not "fix" this to `Encoding`. The
+// codec's own strictness on exactly this class of input is pinned by
+// __test__/IntegrityHash.test.ts's "rejects malformed and non-canonical
+// base64"; core's leniency above is not pinned by an in-repo test.
 //
 // Canonical base64 alphabet; index = 6-bit value.
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

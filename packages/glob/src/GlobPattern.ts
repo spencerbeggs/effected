@@ -23,8 +23,9 @@ import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape
  */
 export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("GlobPatternError", {
 	pattern: Schema.String,
-	// Schema.Literals, not Schema.Literal: the v3 variadic Literal silently
-	// ignores every argument after the first in beta.94.
+	// Schema.Literals, not Schema.Literal: Schema.Literal takes ONE argument —
+	// called with several, it silently keeps only the first and rejects every
+	// other value.
 	reason: Schema.Literals(["PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded"]),
 	limit: Schema.Number,
 	actual: Schema.Number,

@@ -236,9 +236,10 @@ const make = Effect.fnUntraced(function* () {
 	//
 	// The key is (name, version probe) — exactly what the evidence depends on —
 	// as a `Schema.Class`, whose structural `Equal`/`Hash` the cache's
-	// `MutableHashMap` uses (verified against beta.101, nested union members
-	// included). Two tools differing only in policy share one probe; two
-	// differing in how they ask for a version do not.
+	// `MutableHashMap` uses, nested union members included. Two tools differing
+	// only in policy share one probe; two differing in how they ask for a
+	// version do not — pinned by "the cache stores EVIDENCE, so a second Tool
+	// with different constraints is answered correctly".
 	//
 	// `timeToLive` is not decoration: with a fixed TTL, core `Cache` memoizes a
 	// FAILED lookup for the entry's lifetime (probed 2026-07-25), so one
@@ -261,12 +262,13 @@ const make = Effect.fnUntraced(function* () {
 			// only the first:
 			//
 			// 1. A failed lookup (the LocalExec mechanism erroring) is memoized for
-			//    the entry's whole TTL by default — probed against beta.101 — so a
-			//    transient failure would stick for the process lifetime.
+			//    the entry's whole TTL by default, so a transient failure would
+			//    stick for the process lifetime.
 			// 2. "Not found" is a SUCCESSFUL lookup carrying negative evidence. Left
 			//    memoized, a tool installed mid-process (an action that provisions a
 			//    runtime and then uses it) stays absent forever, with nothing to
-			//    suggest why.
+			//    suggest why — pinned by "ABSENCE is not memoized — a tool installed
+			//    mid-process is found".
 			//
 			// A tool that exists does not stop existing; a tool that does not exist
 			// very often starts to.

@@ -10,10 +10,11 @@ import { sha256Hex } from "./digest.js";
  * algorithm over strings and HMACs; the SDK around it exists to manage
  * credentials, retries and a service catalogue this package does not want.
  *
- * `node:crypto` rather than core `Crypto` because core's `Crypto` is
- * random-number generation only at beta.101 — no digest, no HMAC. This package
- * is the one place in the kit where a `node:` import is sanctioned, and this is
- * one of the four reasons.
+ * `node:crypto` rather than core `Crypto` because core's `Crypto` offers only
+ * one-shot SHA digests over bytes already in memory — no HMAC, no incremental
+ * hasher (see `internal/digest.ts`, this package's other `node:crypto`
+ * licence). This package is the one place in the kit where a `node:` import
+ * is sanctioned, and this is one of the four reasons.
  *
  * @internal
  */

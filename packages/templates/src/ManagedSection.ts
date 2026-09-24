@@ -111,12 +111,13 @@ const notFound = (error: PlatformError.PlatformError): boolean => error.reason._
  *
  * @remarks
  * `FileSystem.readFileString` decodes through a default `TextDecoder`, which
- * strips a leading BOM — verified against `@effect/platform-node@4.0.0-beta.101`.
- * Reading through it would make the first sync of a BOM-carrying file silently
- * delete the BOM, which violates this package's central promise that every byte
- * outside a managed span survives. Reading bytes and decoding with
- * `ignoreBOM: true` keeps the mark in the leading text span, where it is
- * preserved like any other content.
+ * strips a leading BOM. Reading through it would make the first sync of a
+ * BOM-carrying file silently delete the BOM, which violates this package's
+ * central promise that every byte outside a managed span survives. Reading
+ * bytes and decoding with `ignoreBOM: true` keeps the mark in the leading
+ * text span, where it is preserved like any other content — pinned by
+ * `__test__/integration/ManagedSection.int.test.ts`'s "preserves a
+ * byte-order mark through a sync".
  */
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 

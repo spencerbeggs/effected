@@ -47,18 +47,17 @@ interface Edges {
 // for the cycle payload, and `directed`/`addNode`/`addEdge`/`toMermaid` over the
 // `materialize` helper below. What stays local is the *substrate* (the
 // string-keyed forward/reverse index) plus `levels`, `affectedBy` and
-// `sortSubset`. Re-confirmed against effect@4.0.0-rc.109; recorded here so the
-// next audit does not re-run it, in both directions.
+// `sortSubset`.
 //
 // Why those three do not move onto core:
 //
-//   1. Core's `topo` **throws** `GraphError` on a cyclic graph (`Graph.ts:5425`)
+//   1. Core's `topo` **throws** `GraphError` on a cyclic graph (`Graph.ts:8084`)
 //      rather than failing typed, and carries only a message — no cycle members.
 //      `levels()` fails with `CyclicDependencyError` naming the offending
 //      packages, so adopting `topo` would mean catching a defect and recomputing
 //      the members anyway. Note this is a reason to pick call sites, not to avoid
 //      the module: `stronglyConnectedComponents` throws only for *undirected*
-//      graphs (`Graph.ts:3866`) and `materialize` builds `Graph.directed`, so the
+//      graphs (`Graph.ts:5640`) and `materialize` builds `Graph.directed`, so the
 //      adopted site above cannot throw on any graph this class can hold.
 //   2. Core's `topo` yields a **flat** order. The product here is parallel build
 //      *levels* — level n depends only on levels below it — which is the whole

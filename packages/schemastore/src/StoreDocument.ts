@@ -88,8 +88,8 @@ export interface StoreDocumentOptions {
 	 *
 	 * `onExcessProperty` defaults to `"error"` here — every object is
 	 * emitted closed (`additionalProperties: false`) because a published
-	 * document is a contract — where core's own default has been `"ignore"`
-	 * (open) since rc.113. Pass `{ onExcessProperty: "ignore" }` to reopen
+	 * document is a contract — where core's own default is `"ignore"`
+	 * (open). Pass `{ onExcessProperty: "ignore" }` to reopen
 	 * one document's objects. Omitting `jsonSchema` altogether reproduces
 	 * byte-for-byte what the CLI writes for a target that declares none — a
 	 * consumer test may call `fromSchemaResult(schema, { $id })` and compare.
@@ -382,8 +382,8 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 			// let core's own lowering throw first and bury the real cause.
 			const undeclared = new Set<string>();
 			// A published document is a contract, so objects are closed unless a
-			// caller reopens them: core's own default flipped to "ignore" (open)
-			// at rc.113, and this package does not follow it.
+			// caller reopens them: core's own default is "ignore" (open), and this
+			// package does not follow it.
 			const document = Schema.toJsonSchemaDocument(source, {
 				onExcessProperty: "error",
 				...options.jsonSchema,

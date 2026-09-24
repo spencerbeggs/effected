@@ -77,18 +77,17 @@ export class Position extends Schema.Class<Position>("Position")({
 // constructs in one line — `Text.make({ value: "shipped" })`. Constructor
 // defaults apply only to `make`, never to decode or encode.
 //
-// Resolved at effect@4.0.0-beta.101 (Effect-TS/effect#6491): `recurDefaults`
-// now appends the default link instead of replacing the field's class
-// construction link, so an explicit `position` may be a plain literal again —
-// `make` promotes it to real `Position`/`Point` instances. The beta.99
-// tripwire in frontmatter.test.ts is retired.
+// A constructor-defaulted class field accepts a plain-object literal, not
+// only a matching instance — `make` promotes a literal to real
+// `Position`/`Point` instances, pinned by __test__/frontmatter.test.ts's
+// "make accepts a plain-object position and promotes it to instances".
 //
-// Consequence of the same fix: the field's construction link always runs, so
-// `make` RE-CONSTRUCTS a nested class value rather than passing it through by
-// reference. `Text.make({ position: p }).position !== p` (structurally equal,
-// distinct instance). Nothing here depends on that identity — `Position` is an
-// immutable value class with structural equality — but never assert a
-// synthesized node's position by reference.
+// An ALREADY-CONSTRUCTED `Position` instance passed as `position` is passed
+// through by reference (`Text.make({ position: p }).position === p`); a
+// plain literal is always promoted to a fresh instance instead. Nothing here
+// depends on which happened — `Position` is an immutable value class with
+// structural equality — but never assert a synthesized node's position by
+// reference; use `deepStrictEqual`/`Equal.equals`.
 const NodePosition = Position.pipe(Schema.withConstructorDefault(Effect.succeed(Position.synthetic)));
 
 /**

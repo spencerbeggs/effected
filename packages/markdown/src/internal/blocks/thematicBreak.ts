@@ -26,7 +26,8 @@ export const thematicBreakConstruct: BlockConstruct = {
 		return ThematicBreak.make({
 			position: context.position(block.startOffset, block.endOffset),
 			// Conditional spread: an absent optionalKey must be genuinely
-			// absent, never an explicit `undefined` (beta.98 throws on one).
+			// absent, never an explicit `undefined` — passing one throws at
+			// construction.
 			...(marker === undefined ? {} : { markerChar: marker }),
 		});
 	},

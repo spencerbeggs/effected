@@ -5,21 +5,20 @@
 // collapse only in the numeric-enum codec (Task 4's TsEnumCodec). watchOptions/
 // typeAcquisition/references are Task 3's — this module owns compilerOptions only.
 //
-// Probe (2026-07-13, effect@4.0.0-beta.97, packages/tsconfig-json/probe.ts,
-// deleted per protocol) settled both spellings this module depends on, at
-// rung 3 (behavioral), against a non-first-literal control per the source-
-// lookup skill's multi-value probing rule:
+// Two spellings this module depends on, pinned by __test__/CompilerOptions.test.ts:
 //
 // (a) struct + passthrough — `Schema.StructWithRest(Schema.Struct({...}),
-//     [Schema.Record(Schema.String, Schema.Unknown)])`. Verified round-
-//     tripping a typed field alongside an unknown passthrough key through
-//     both `Schema.decodeUnknownEffect` and `Schema.encodeUnknownEffect`.
+//     [Schema.Record(Schema.String, Schema.Unknown)])` round-trips a typed
+//     field alongside an unknown passthrough key through both
+//     `Schema.decodeUnknownEffect` and `Schema.encodeUnknownEffect` ("passes
+//     unknown option keys through and preserves them across encode").
 //
 // (b) case-insensitive literal union — `Schema.String.pipe(Schema.decodeTo(
 //     Schema.Literals(literals), SchemaTransformation.transform({ decode: (s)
-//     => s.toLowerCase(), encode: (s) => s })))`. Verified against a
-//     NON-first literal ("es2015", third of three) decoding correctly from
-//     "ES2015", and an unrecognized literal ("es9999") failing decode.
+//     => s.toLowerCase(), encode: (s) => s })))` decodes a non-first literal
+//     ("es2015", third of three) from "ES2015" and rejects an unrecognized
+//     one ("decodes enum values case-insensitively" / "rejects an unknown
+//     enum value").
 
 import { Schema, SchemaTransformation } from "effect";
 

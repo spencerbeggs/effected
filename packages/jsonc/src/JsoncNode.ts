@@ -151,12 +151,11 @@ export class JsoncNode extends Schema.Class<JsoncNode>("JsoncNode")({
  * parser guarantees validity by construction — every field comes straight off
  * a scanner token — so it skips schema construction entirely.
  *
- * A `Schema.Class` instance is its props assigned onto the class prototype:
- * the base `Data.Class` constructor is exactly `Object.assign(this, props)`,
- * and the prototype chain carries the methods, the class brand getter and
- * structural equality (verified against effect@4.0.0-beta.97). Mirroring that
- * with `Object.create` + `Object.assign` yields an instance identical to a
- * `make`-built one, minus the validating parse.
+ * A `Schema.Class` instance is its props assigned onto the class prototype,
+ * which carries the methods, the class brand getter and structural equality.
+ * Mirroring that with `Object.create` + `Object.assign` yields an instance
+ * identical to a `make`-built one — same `instanceof`, same `Equal.equals` —
+ * minus the validating parse.
  *
  * Contract: absent optional fields must be OMITTED, never passed as an
  * explicit `undefined` (a present `undefined` would create an own property
