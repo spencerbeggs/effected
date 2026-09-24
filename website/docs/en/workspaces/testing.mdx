@@ -106,7 +106,7 @@ console.log(report.offenders.map(({ edge, reason }) => `${reason} ${edge.label}`
 | --- | --- |
 | `"process"` | a read of the global `process`, including through `globalThis`, a spread, `typeof` or computed access |
 | `"node:process"` | an import of `node:process` or `process` |
-| `"stdout-write"` | a `stdout.write` call on anything |
+| `"stdout-write"` | a `stdout.write`, or a `stdout.end` passing a final chunk, on anything named `stdout`; a renamed receiver is left to `"process"` |
 | `"console"` | any reference to the global `console` |
 | `"console-stdout"` | a reference to the global `console`, except a member access to a method Node writes to stderr (`error`, `warn`, `trace`, `assert`); a bare or aliased reference such as `const c = console` is flagged, since it can reach `log` |
 | `{ forbidImports }` | an import whose specifier equals an entry, is a subpath of one, or starts with an entry that ends in `*` |

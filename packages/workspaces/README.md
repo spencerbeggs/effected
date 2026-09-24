@@ -343,7 +343,7 @@ describe("source boundary", () => {
 | --- | --- |
 | `"process"` | a read of the global `process`; `process.env.__PACKAGE_VERSION__` is exempt |
 | `"node:process"` | an import of `node:process` or `process` |
-| `"stdout-write"` | a `stdout.write` call on anything |
+| `"stdout-write"` | a `stdout.write`, or a `stdout.end` passing a final chunk, on anything named `stdout`; a renamed receiver is left to `"process"` |
 | `"console"` | any reference to the global `console` |
 | `"console-stdout"` | a reference to the global `console`, except a member access to a method Node writes to stderr: `error`, `warn`, `trace`, `assert`. A bare or aliased reference (`const c = console`, `f(console)`, `console[m]`) is flagged, since it can reach `log` |
 | `{ forbidImports }` | an import equal to an entry, a subpath of one, or starting with an entry's text before a trailing `*` |

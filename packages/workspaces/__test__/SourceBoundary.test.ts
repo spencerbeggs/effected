@@ -184,6 +184,16 @@ describe("SourceBoundary.check", () => {
 		assert.deepStrictEqual(lines(text, "stdout-write"), [1, 3]);
 	});
 
+	it("stdout-write flags an end that writes a final chunk, never an end without one", () => {
+		const text =
+			'process.stdout.end("x");\nprocess.stdout.end();\nstdout?.end( line );\nstdout.end( );\nconst endless = stdout.ending;';
+		assert.deepStrictEqual(lines(text, "stdout-write"), [1, 3]);
+		assert.deepStrictEqual(
+			SourceBoundary.check("main.ts", 'process.stdout.end("x");', ["stdout-write"]).map((offence) => offence.detail),
+			["stdout.end"],
+		);
+	});
+
 	it("console flags every reference to the global console, never core's Console service", () => {
 		const text =
 			'console.log("a");\nglobalThis.console.error(e);\nconst c = yield* Console.Console;\nlogger.console;\n// console.log';

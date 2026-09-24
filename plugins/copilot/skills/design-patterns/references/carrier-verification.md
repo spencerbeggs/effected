@@ -156,6 +156,12 @@ const scan = yield* SourceBoundary.scan({
 // scan.waived: main.ts's `process` reads only.
 ```
 
+`"stdout-write"` flags `stdout.write` and `stdout.end(chunk)`, matching the
+name `stdout`. A renamed receiver (`const { stdout: o } = process; o.write(x)`)
+is not seen; elsewhere the `process` rule catches the read, but in a file
+where `process` is waived nothing does. Keep that file's stdout use to the
+bare hand-off.
+
 Two console rules exist. `"console"` flags every reference to the global
 `console`. `"console-stdout"` spares a member access to a method Node writes
 to stderr (`error`, `warn`, `trace`, `assert`), so it fits a stdio server that

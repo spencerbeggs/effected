@@ -9,7 +9,11 @@ import { isIdentifierChar, lex, locate, references, specifierLiterals } from "./
  * @remarks
  * `"process"` forbids a read of the global `process`. `"node:process"` forbids
  * importing `node:process` or `process`. `"stdout-write"` forbids a
- * `stdout.write` call on anything. `"console"` forbids any reference to the
+ * `stdout.write` on anything, and a `stdout.end(chunk)`, which writes its
+ * chunk before closing; an `end()` with no chunk is spared. It matches the
+ * name `stdout`, so a renamed receiver (`const { stdout: o } = process`) is
+ * not seen: the `"process"` rule is what backstops it, so waiving `"process"`
+ * for a file waives that backstop too. `"console"` forbids any reference to the
  * global `console`. `"console-stdout"` forbids a reference to the global
  * `console` except a member access to one of the methods Node's console
  * writes to stderr: `error`, `warn`, `trace` and `assert`. A bare or aliased
@@ -167,7 +171,10 @@ const EXEMPT: ReadonlyArray<string> = ["process.env.__PACKAGE_VERSION__"];
  * `time`) writes to stdout.
  */
 const STDERR_METHODS: ReadonlySet<string> = new Set(["error", "warn", "trace", "assert"]);
-const STDOUT_WRITE = /stdout\s*(?:\?\.|\.)\s*write/gu;
+const STDOUT_WRITE = /stdout\s*(?:\?\.|\.)\s*(write|end)/gu;
+
+/** An `end(` call that passes a final chunk, which `Writable.end` writes before closing. */
+const END_WITH_CHUNK = /^\s*\(\s*[^\s)]/u;
 
 /** Whether the reference at `at` is itself a member access (`globalThis.process`), which no ignore token exempts. */
 const isMemberAccess = (code: string, at: number): boolean => {
@@ -183,11 +190,16 @@ const processReads = (code: string, ignoreTokens: ReadonlyArray<string>): Readon
 			!ignoreTokens.some((token) => code.startsWith(token, at) && !isIdentifierChar(code[at + token.length])),
 	);
 
-const stdoutWrites = (code: string): ReadonlyArray<number> =>
+const stdoutWrites = (code: string): ReadonlyArray<{ readonly at: number; readonly method: string }> =>
 	[...code.matchAll(STDOUT_WRITE)]
-		.map((match) => ({ at: match.index ?? 0, end: (match.index ?? 0) + match[0].length }))
+		.map((match) => ({
+			at: match.index ?? 0,
+			end: (match.index ?? 0) + match[0].length,
+			method: match[1] ?? "write",
+		}))
 		.filter(({ at, end }) => !isIdentifierChar(code[at - 1]) && code[at - 1] !== "#" && !isIdentifierChar(code[end]))
-		.map(({ at }) => at);
+		.filter(({ end, method }) => method === "write" || END_WITH_CHUNK.test(code.slice(end)))
+		.map(({ at, method }) => ({ at, method }));
 
 /** The member name directly after the reference at `at` (`console.log` → `"log"`, `console?.log` too), or `undefined` when it is not a named member access. */
 const memberAfter = (code: string, at: number, name: string): string | undefined => {
@@ -323,6 +335,18 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 		flagged: false,
 	},
 	{ name: "stdout-write: a direct write", source: 'process.stdout.write("x");', rule: "stdout-write", flagged: true },
+	{
+		name: "stdout-write: an end with a chunk",
+		source: 'process.stdout.end("x");',
+		rule: "stdout-write",
+		flagged: true,
+	},
+	{
+		name: "stdout-write: an end without a chunk",
+		source: "process.stdout.end();",
+		rule: "stdout-write",
+		flagged: false,
+	},
 	{ name: "stdout-write: a string", source: 'const s = "stdout.write";', rule: "stdout-write", flagged: false },
 	{ name: "console: console.log", source: 'console.log("x");', rule: "console", flagged: true },
 	{ name: "console: console.error", source: "console.error(e);", rule: "console", flagged: true },
@@ -453,7 +477,8 @@ export class SourceBoundary {
 						found.push({ offset: literal.start, rule, detail: literal.value });
 				}
 			} else if (rule === "stdout-write") {
-				for (const offset of stdoutWrites(lexed.code)) found.push({ offset, rule, detail: "stdout.write" });
+				for (const { at, method } of stdoutWrites(lexed.code))
+					found.push({ offset: at, rule, detail: `stdout.${method}` });
 			} else if (rule === "console") {
 				for (const offset of references(lexed.code, "console")) found.push({ offset, rule, detail: "console" });
 			} else if (rule === "console-stdout") {
