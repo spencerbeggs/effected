@@ -16,6 +16,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-24T01:41:28Z
   body_sha256: 6c56e28c0ca5287c0424caac8399e07e6262c6b97c65d4a046aaa097657dc595
+verified:
+  - by: human:spencer
+    at: 2026-09-24T06:10:09Z
 ---
 
 # PackedInstall packs the prod npm directory by default
