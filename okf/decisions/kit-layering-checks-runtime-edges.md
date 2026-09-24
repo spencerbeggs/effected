@@ -2,7 +2,7 @@
 type: Decision
 title: The kit's layering check forbids runtime edges only
 description: The front-end kit's forbidden package edges are runtime edges, so this repository's layers.json checks dependencies, peerDependencies and optionalDependencies, and test-only devDependencies may point up.
-status: draft
+status: stable
 tags:
   - architecture
 sources:

@@ -2,7 +2,7 @@
 type: Decision
 title: PackedInstall packs the prod npm directory by default
 description: "Probe P3 compared pnpm-packing a package's source against npm-packing its dist/prod/npm/pkg build, and PackedInstall's default packFrom became { directory: \"dist/prod/npm/pkg\" }."
-status: draft
+status: stable
 tags:
   - architecture
 sources:
