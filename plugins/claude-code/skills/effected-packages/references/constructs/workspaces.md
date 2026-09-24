@@ -46,6 +46,7 @@
 | `LockfileReaderShape` | Interface | The `LockfileReader` service shape. | |
 | `NoPeerDependencyRules` | Variable | The empty `PeerDependencyRules`: every axis present and empty. | empty peer-dependency suppression rules, assert a workspace declares no peerDependencyRules |
 | `Offence` | Class | One place a source file breaks a `BoundaryRule`. | from `@effected/workspaces/testing` — one boundary violation with file line column and rule |
+| `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
 | `PackSource` | TypeAlias | Where each closure package is packed from. | from `@effected/workspaces/testing` |
 | `PackageManagerDetectionError` | Class | Raised when a directory carries no lockfile and no workspace configuration, so no package manager can be attributed to it. | handle no package manager could be detected at a workspace root |
 | `PackageManagerDetectionFailure` | TypeAlias | Every failure `PackageManagerDetector` can surface: no manager could be attributed to the root, or the root's `package.json` exists but cannot be read or parsed. | |

@@ -20,6 +20,7 @@
 | `McpToolAuditPolicy` | Interface | The policy `McpToolAudit.check` enforces. | from `@effected/mcp/testing` |
 | `McpToolkit` | Class | Register a toolkit exactly as core's `McpServer.toolkit` does, except that a strict tool's unknown arguments are all named, at every depth, in one response. | name every unknown tool argument in one InvalidParams, strict by default |
 | `McpToolkitOptions` | Interface | Options for `McpToolkit.layer`. | |
+| `ServedResource` | Interface | One entry of a `resources/list` result. | from `@effected/mcp/testing` |
 | `ServedTool` | Interface | One entry of a `tools/list` result. | from `@effected/mcp/testing` |
 | `ToolFailure` | Class | How a tool's declared failure should read on the wire. | fold remediation into tool error message, truncate echoed caller values |
 | `ToolInputSchema` | Class | Pure walkers over a tool's served JSON Schema: every unknown key at every depth, a message naming them all, and an object-rooted form of a union. | find unknown tool arguments at every depth, object-root a union input |
