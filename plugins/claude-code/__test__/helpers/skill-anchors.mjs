@@ -104,7 +104,7 @@ for (const path of inScope) {
 	}
 }
 for (const k of [...listed.keys(), ...ignored]) {
-	if (!seen.has(k)) fail(`manifest entry ${k.replace("\t", ": ")} does not occur in an in-scope skill file`);
+	if (!seen.has(k)) fail(`manifest entry ${k.replaceAll("\t", ": ")} does not occur in an in-scope skill file`);
 }
 
 // 3: every cited line lands on its symbol.
