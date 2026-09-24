@@ -10,6 +10,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 6c7a6bc94313aeb951a2966f407c75e82b477932643878e71e5eb277057b633a
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:25.629Z
 ---
 
 # @effected/github App authentication

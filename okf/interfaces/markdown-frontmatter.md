@@ -11,6 +11,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 19b597f45e46ef74068cee189c30d760160566ed21147f04c8854344a0a556c9
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:41.636Z
 ---
 
 # `@effected/markdown` frontmatter

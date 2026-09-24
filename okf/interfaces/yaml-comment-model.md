@@ -10,6 +10,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: b39905119a7ba522df95840c1d3d18d5c7bf307d8405cd6abb040c89bf383643
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:12:07.272Z
 ---
 
 # @effected/yaml comment model

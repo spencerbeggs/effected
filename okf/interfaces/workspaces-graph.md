@@ -14,6 +14,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: a675cd9d0ab8017ed30251661b95a771ad50d6525e2be375a0ceb03a44bf2fb8
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:46.601Z
 ---
 
 # @effected/workspaces dependency graph

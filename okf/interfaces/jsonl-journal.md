@@ -11,6 +11,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 856809c198b8e41e09770866bbaf2b3e57ecc2926a950579c7ce4ddd561ff19e
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:37.064Z
 ---
 
 # `@effected/jsonl` journal service

@@ -18,6 +18,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
   body_sha256: 381b34d786cede51177ac591c84248979ac415258b256f609babb3e9612fa44a
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:12:06.249Z
 ---
 
 # @effected/workspaces snapshots

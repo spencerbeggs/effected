@@ -17,6 +17,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
   body_sha256: 33b6fe038d8922d8b7ad5535d8ad1aad0267932301641a0fc5edbe23322c7312
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:52.590Z
 ---
 
 # @effected/workspaces peer-dependency checking

@@ -19,6 +19,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: 27046855d658d76c1de4163abfd42643c165345adbecc7d3e8252f53d129f2f7
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:12:14.366Z
 ---
 
 # The catalog:sync / catalog:check CLI

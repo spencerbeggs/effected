@@ -24,6 +24,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-22T01:21:07Z
   body_sha256: 4638344c8824e788fda2b83ac63e088b030525bb480e791f3249357b919ba0eb
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:49.503Z
 ---
 
 # @effected/workspaces discovery and detection

@@ -10,6 +10,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: ae2a903ac75d1d3610f7f16085e14425f16dd37ab23fc7cc820e79a7183fe862
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:42.785Z
 ---
 
 # @effected/schema-org validate entrypoint

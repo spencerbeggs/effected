@@ -12,6 +12,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: f606ab142ffe8e597522ba87e6e02b5b9b461ffa907ea7fc738c7232257a4052
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:40.582Z
 ---
 
 # `@effected/markdown` MDX vocabulary

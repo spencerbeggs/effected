@@ -12,6 +12,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
   body_sha256: cd784c7d451cdcdbd6779963f76d4818e69ba7850d48c135549e8286a8cdc1ab
+verified:
+  - by: human:spencer
+    at: 2026-09-24T00:11:38.223Z
 ---
 
 # `@effected/jsonl` read surfaces
