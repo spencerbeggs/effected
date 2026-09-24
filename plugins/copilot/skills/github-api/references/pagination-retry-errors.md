@@ -98,9 +98,21 @@ nowMillis)` — nothing else in the package inspects a status code.
 
 Ergonomic statics cover every hand-construction site: `GitHubError.notFound(operation,
 subject)` (status 404), `.alreadyExists(operation, subject)` (status 422),
-`.rejected(operation, status, reason)`, `.decode(operation, reason, cause?)`,
-`.hasKind(...kinds)` (a predicate for `Effect.catchIf`/`Effect.catchTag`
-guards).
+`.rejected(operation, status, reason)`, `.decode(operation, reason, cause?)`.
+Two predicate builders serve `Effect.catchIf` guards: `.hasKind(...kinds)`
+routes on `kind`, and `.hasValidationCode(...codes)` routes on a 422's
+validation entries.
+
+A 422 carries GitHub's `data.errors[]` as `validation:
+ReadonlyArray<GitHubValidationEntry>` (`resource`, `field`, `code`,
+`message`, all optional), absent when GitHub sent none. `GitHubValidationCode`
+names the six documented codes — `missing`, `missing_field`, `invalid`,
+`already_exists`, `unprocessable`, `custom`. Only `already_exists` has a
+`kind` of its own (`alreadyExists`); the other five classify as `rejected`,
+so branch on `hasValidationCode` when the distinction matters, never on
+`reason`. `missing` is not `notFound`: it names a resource the request
+referred to (a commit sha, an assignee), not the one it acted on. Some 422s
+("Update is not a fast forward") are prose only and carry no `validation`.
 
 `GitHubGraphQLError` mirrors the same `kind` vocabulary plus `notFound` and
 keeps `errors: ReadonlyArray<{message, type?}>`. `GitHubAppError` (auth) and

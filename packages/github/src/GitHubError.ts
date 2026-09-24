@@ -69,8 +69,9 @@ export const GitHubValidationCode = Schema.Literals([
  * Every field is optional because GitHub's entries vary by endpoint: the
  * releases endpoint sends `resource`, `code` and `field` with no `message`,
  * while a `custom` entry may carry only a `message`. `code` is a plain string
- * rather than {@link GitHubValidationCode} so a code GitHub adds later is
- * carried, not dropped.
+ * rather than {@link GitHubValidationCode} so an unexpected code cannot make
+ * the error itself fail to construct: a refused request must still surface as
+ * a `GitHubError`, never as a defect.
  *
  * @public
  */
@@ -375,13 +376,13 @@ const classify = (
 /**
  * @remarks
  * The structured code is the authority — the releases endpoint sends it with
- * no message at all. The underscore form in the reason covers a body octokit
- * has already flattened into its `message`.
+ * no message at all. The prose checks cover endpoints that say so only in
+ * words, such as `/git/refs` answering "Reference already exists".
  */
 const saysAlreadyExists = (facts: Throwable): boolean => {
 	if (facts.validation.some((entry) => entry.code === ALREADY_EXISTS_CODE)) return true;
 	const reason = facts.reason.toLowerCase();
-	if (reason.includes(ALREADY_EXISTS) || reason.includes(ALREADY_EXISTS_CODE)) return true;
+	if (reason.includes(ALREADY_EXISTS)) return true;
 	return facts.validation.some((entry) => entry.message?.toLowerCase().includes(ALREADY_EXISTS) ?? false);
 };
 

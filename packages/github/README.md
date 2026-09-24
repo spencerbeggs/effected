@@ -238,6 +238,21 @@ const program = upsertBranch.pipe(
 );
 ```
 
+A 422 also carries GitHub's validation entries as `validation`, each a `GitHubValidationEntry` with the `resource`, `field`, `code` and `message` GitHub sent. Only `already_exists` gets a `kind` of its own; for the other documented codes (`GitHubValidationCode`), branch with `hasValidationCode` rather than reading `reason`:
+
+```ts
+import { GitHubError } from "@effected/github";
+import { Effect } from "effect";
+
+declare const createRelease: Effect.Effect<void, GitHubError>;
+
+const program = createRelease.pipe(
+  Effect.catchIf(GitHubError.hasValidationCode("missing_field", "invalid"), (error) =>
+    Effect.logError(`bad release parameters: ${error.validation?.map((entry) => entry.field).join(", ")}`),
+  ),
+);
+```
+
 Retrying is handled once, in the client: `RetryPolicy.default` retries a `transport` or `rateLimited` failure with full-jitter backoff, honoring GitHub's `retry-after` header up to a configurable ceiling. `RetryPolicy.none` disables it. A `notFound`, `rejected` or `unauthorized` failure never retries — it cannot change its mind between attempts.
 
 ## Testing
@@ -282,7 +297,7 @@ const TestClient = GitHubClient.layerFixture(fixtures);
 - `Repo` / `RepoRef` — the `{ owner, repo }` coordinate, resolved per call through `R`, with `Repo.provide` for multi-repository programs.
 - `GitHubRepository` — the repository's settings as GitHub's own generated type, plus `defaultBranch`, `nodeId`, `ownerType` for gating organization-only fields, and `applySettings` reporting the keys it actually sent.
 - `repositoryPatch` / `RepositoryPatchDraft` — build an `updateSettings` patch from fields that may be `undefined`, under `exactOptionalPropertyTypes`, without a cast.
-- `GitHubError` / `GitHubGraphQLError` — one error per transport, `kind`-routed with `hasKind` for `Effect.catchIf`.
+- `GitHubError` / `GitHubGraphQLError` — one error per transport, `kind`-routed with `hasKind` for `Effect.catchIf`; a REST 422's validation entries ride on `validation`, matched with `hasValidationCode`.
 - `RetryPolicy` — the client's one retry policy: full-jitter backoff, server-advised delays honored up to a ceiling.
 - `GitHubApp` — App JWT signing, installation token minting/revocation, app and installation identity, and `clientLayer` for an App-authenticated `GitHubClient`.
 - `GitBranch` / `GitTag` — Git Database API refs, with `upsert` collapsing the create-or-reset dance to one call and `GitTag.latestSemver` picking the newest version-shaped tag in one pass.

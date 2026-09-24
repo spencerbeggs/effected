@@ -152,18 +152,6 @@ describe("GitHubError.fromOctokit", () => {
 		assert.strictEqual(error.kind, "alreadyExists");
 	});
 
-	it("reads already-exists off a flattened reason carrying the underscore code", () => {
-		const error = GitHubError.fromOctokit(
-			"Release.create",
-			thrown({
-				status: 422,
-				message: 'Validation Failed: {"resource":"Release","code":"already_exists","field":"tag_name"}',
-			}),
-			NOW,
-		);
-		assert.strictEqual(error.kind, "alreadyExists");
-	});
-
 	it("classifies a 422 whose structured code is something else as rejected", () => {
 		const error = GitHubError.fromOctokit(
 			"x",
@@ -222,7 +210,7 @@ describe("GitHubError.fromOctokit", () => {
 		assert.isUndefined(error.validation);
 	});
 
-	it("carries a code GitHub has not documented rather than dropping it", () => {
+	it("classifies an undocumented code as rejected rather than failing to build the error", () => {
 		const error = GitHubError.fromOctokit(
 			"x",
 			thrown({ status: 422, message: "Validation Failed", errors: [{ code: "too_many" }] }),

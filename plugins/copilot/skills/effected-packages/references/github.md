@@ -91,10 +91,14 @@ tempted to reach for `as`.
   that is precisely what makes the scoped override work.
 - **`GitHubError`** — one error for every REST resource: `kind` (`notFound |
   alreadyExists | rejected | unauthorized | rateLimited | transport | decode`),
-  `operation`, `reason`, optional `status`, `retryAfterMillis`, `cause`.
-  Classification happens **once**, in `GitHubError.fromOctokit`; nothing else in
-  the package reads a status code. `GitHubError.hasKind(...kinds)` builds a
-  predicate for `Effect.catchIf`. GraphQL fails with `GitHubGraphQLError`
+  `operation`, `reason`, optional `status`, `retryAfterMillis`, `validation`,
+  `cause`. Classification happens **once**, in `GitHubError.fromOctokit`;
+  nothing else in the package reads a status code. `GitHubError.hasKind(...kinds)`
+  builds a predicate for `Effect.catchIf`, and
+  `GitHubError.hasValidationCode(...codes)` does the same over a 422's
+  `validation` entries (`GitHubValidationEntry`, codes named by
+  `GitHubValidationCode`) — only `already_exists` gets its own `kind`, so the
+  other codes are read there, never out of `reason`. GraphQL fails with `GitHubGraphQLError`
   (carries `errors: GraphQLErrorEntry[]`), App auth with `GitHubAppError`
   (`kind: jwt | token | revoke | identity | installation`), and the pure
   comparator with `TokenPermissionError`.
