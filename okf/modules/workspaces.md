@@ -23,10 +23,12 @@ sources:
     resource: ../../packages/workspaces/savvy.build.ts
   - id: workspaces-ts
     resource: ../../packages/workspaces/src/Workspaces.ts
+  - id: testing-ts
+    resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
-  body_sha256: 8c7d77c5197278c8e3cf2c6e2fab3b68f5ab9391507151a5225c7eaa37e65964
+  at: 2026-09-24T01:41:28Z
+  body_sha256: 67cb74c1471c728fa33935ebd938f32a9e210d4b30ecece1e2effd6d2ca14f3f
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -134,7 +136,8 @@ mechanics:
 - `src/ReleaseTag.ts` is a leaf importing nothing else in the package, which
   is what keeps the release-tag vocabulary pure.
 - `src/node-sync.ts` is a second package entry point, not a module of the
-  first.
+  first, and `src/testing.ts` is a third. Only `src/index.ts`,
+  `src/node-sync.ts` and `src/testing.ts` re-export.
 - `CatalogAssemblyError` is not this package's module; it lives in
   `@effected/npm` beside the contract that names it.
 - Lockfile framing is not this package's job. `@effected/lockfiles` owns
@@ -172,20 +175,106 @@ object, because an `as const` object's member types are inferred in the
 built `.d.ts` and lose their TSDoc, while `static readonly` members keep it
 with unaffected call syntax.
 
-## Planned: `./testing` subpath (phase 3)
+## The `./testing` subpath
 
-A `@effected/workspaces/testing` subpath is planned to hold three repo-shape
-checks currently hand-rolled per consumer repo: `WorkspaceLayering` (a
-ranked dependency-layering check over the discovered package graph, pure
-at its core), `PackedInstall` (a multi-package-manager packed-install e2e
-reusing `@effected/npm`'s `PackagePublish`/`PackageTarball` and
-`@effected/commands`' `Run`), and `SourceBoundary` (a pure source scanner
-flagging a `process` read or a forbidden import leaking into a module
-meant to stay clean of it). All three reuse this package's existing
-dependencies rather than adding new ones. See
-[D5: the layering, packed-install and boundary checks live in `@effected/workspaces/testing`](../decisions/repo-shape-checks-live-in-workspaces-testing.md)
-for why this subpath is the home for them rather than a dedicated package
-or an `engine/testing` subpath.
+`@effected/workspaces/testing` is the third entry point, beside `.` and
+`./node-sync`. It holds three repo-shape checks consumer repositories used to
+hand-roll, each a static class with a private
+constructor:[^testing-ts]
+
+- `SourceBoundary` (with `Offence`, `SourceScan`, `BoundaryRule`,
+  `BoundaryFixture`, `ReferenceOptions` and `ScanOptions`): a lexer-backed
+  scanner that flags a `process` read, a forbidden import, a `stdout.write`
+  or a console write, with pure `check` and `referencesProcess`, a `scan`
+  over `FileSystem`, and shipped positive controls behind `verifyFixtures`.
+- `WorkspaceLayering` (with `LayerPolicy`, `LayerPolicyError`, `LayerEdge`,
+  `LayeringGraph` and `LayeringReport`): a pure check of a per-field edge
+  graph against a committed layer policy, plus `checkWorkspace` over
+  discovery.
+- `PackedInstall` (with `PackedInstallError`, `PackedInstallResult`,
+  `InstalledConsumer`, `PackSource` and `PackedInstallOptions`): packs a
+  carrier and its closure, then installs it into a scratch consumer under
+  every available package manager.
+
+The contracts are
+[the repo-shape checks interface](../interfaces/workspaces-repo-shape-checks.md).
+Why they live here is
+[D5](../decisions/repo-shape-checks-live-in-workspaces-testing.md); why the
+default pack source is the prod npm directory is
+[the pack-source decision](../decisions/packed-install-pack-source.md); and
+why this repository's own layering check reads runtime fields only is
+[the runtime-edge decision](../decisions/kit-layering-checks-runtime-edges.md).
+
+`src/index.ts` never re-exports `./testing`, and the reachability test in
+`__test__/entrypoints.test.ts` pins that. No new dependency came with it: the
+subpath uses `@effected/glob`, `@effected/npm`, `@effected/commands` and core
+`effect` only. None of its modules reads `process`, imports `node:` or writes
+to the console; every `process` value arrives as a parameter from the
+consumer's test file, and the package's self-scan enforces it with the
+scanner it ships.
+
+The built modules' raw byte sizes, measured on 2026-09-24 with `wc -c` over
+`dist/prod/npm/pkg` after a clean `pnpm build --filter @effected/workspaces`
+(unminified ESM, TSDoc comments kept):
+
+| Module | Bytes |
+| --- | --- |
+| `testing.js` | 1,151 |
+| `SourceBoundary.js` | 14,582 |
+| `LayerPolicy.js` | 3,885 |
+| `WorkspaceLayering.js` | 7,855 |
+| `PackedInstall.js` | 12,307 |
+| `internal/sourceText.js` | 10,369 |
+| `internal/packedInstallPlan.js` | 6,613 |
+| `internal/dependencyFields.js` | 496 |
+
+`PackedInstall.js` imports only `@effected/commands`, `effect`,
+`effect/unstable/process` and local modules (`WorkspaceDiscovery.js`,
+`PackageManagerName.js`, `internal/packedInstallPlan.js`), all of which `.`
+already loads, so D5's "a consumer that only needs the pure check must not pay
+to load `PackedInstall`" is honoured at the `.`/`./testing` boundary rather
+than inside `./testing`.
+
+### Spec amendments (phase 3)
+
+The front-end kit design's §8 was amended during phase 3. The amendments
+continue phase 2's A1–A10:
+
+- **B1**: `WorkspaceLayering.check` takes a `LayeringGraph` of names and
+  per-field edges instead of a node list, because `DependencyGraph` merges
+  the four fields (`DependencyGraph.ts:114-120`).
+- **B2**: `LayerPolicy` gains `decode` and `load` and a `LayerPolicyError`
+  (`read`, `json`, `decode`), because `SchemaError` never escapes a decode
+  boundary (this concept's "Error handling"); unknown keys are ignored.
+- **B3**: `LayeringReport.offenders` carries `{ edge, reason }` over five
+  reasons, and edges are drawn by dependency name, not protocol
+  (`WorkspaceLayering.ts`).
+- **B4**: `SourceBoundary.scan` returns a `SourceScan` of `files`, `allowed`
+  and `offences`, so an empty or mistyped root cannot read as clean, and
+  gains `check`, `fixtures` and `verifyFixtures` (`SourceBoundary.ts`).
+- **B5**: `referencesProcess` never counts strings, template text, regex
+  bodies, comments or other objects' members, always counts `globalThis`,
+  spread and computed access, exempts `process.env.__PACKAGE_VERSION__`, and
+  documents its misses (`SourceBoundary.ts`).
+- **B6**: `PackedInstall` reuses neither `PackagePublish.pack`, which writes
+  into the package directory (`PackagePublish.ts:317`), nor
+  `PackageTarball`, which fetches a published version
+  (`PackageTarball.ts:75`).
+- **B7**: `run` returns `PackedInstallResult { consumers, unavailable,
+  tarballs }` with `require`, `consumerDependencies` and `installTimeout`,
+  because a bare consumer array cannot show an all-skipped run
+  (`PackedInstall.ts`).
+- **B8**: `PackedInstall` is POSIX-only and fails `UnsupportedPlatform`
+  otherwise, because `.bin` entries are shell shims and the manifest read
+  shells out to `tar`.
+- **B9**: the design's forbidden edges are runtime edges, so test-only
+  devDependencies may point up
+  ([the runtime-edge decision](../decisions/kit-layering-checks-runtime-edges.md)).
+- **B10**: D5's cost clause is honoured at the `.`/`./testing` boundary, as
+  the byte record and import list above show (`__test__/entrypoints.test.ts`).
+- **B11**: `packFrom` defaults to probe P3's outcome, `{ directory:
+  "dist/prod/npm/pkg" }`
+  ([the pack-source decision](../decisions/packed-install-pack-source.md)).
 
 ## WorkspacesSync — the escape hatch
 
@@ -307,6 +396,20 @@ for real, which is the proof the stack composes against a real pnpm
 workspace and is what originally surfaced the config-dependencies
 lockfile-framing shape now owned by `@effected/lockfiles`.
 
+Three `./testing` suites run against real things by design:
+
+- `__test__/integration/SourceBoundarySelf.int.test.ts` scans this package's
+  own `src/` with `SourceBoundary`, holding the `./testing` modules to the
+  no-`process`, no-`node:`, no-console rule while finding the real reads
+  elsewhere in the package.
+- `__test__/integration/layering.int.test.ts` checks this repository's
+  package graph against `lib/configs/layers.json`, with a positive control
+  for every design-forbidden edge and an all-field acyclicity assertion.
+- `__test__/e2e/PackedInstall.e2e.test.ts` drives the real npm, pnpm and bun
+  (and yarn where present) against a fixture workspace it generates, with
+  every spawn behind a dead proxy and corepack's network off. It is the only
+  suite allowed to run a live package manager.
+
 An unstubbed service-double member dies as a defect rather than being
 absorbed by `Effect.catch` or any typed-error handler — code under test with
 a best-effort catch around discovery or snapshot reads would otherwise make
@@ -339,6 +442,10 @@ suppressed.
 - [The sync-facade escape-hatch decision](../decisions/workspaces-sync-facade-escape-hatch.md)
 - [The contract-inversion decision](../decisions/contract-inversion-default.md)
 - [The second-published-entrypoint decision](../decisions/second-published-entrypoint.md)
+- [The repo-shape checks](../interfaces/workspaces-repo-shape-checks.md)
+- [D5: the repo-shape checks live in `@effected/workspaces/testing`](../decisions/repo-shape-checks-live-in-workspaces-testing.md)
+- [The pack-source decision](../decisions/packed-install-pack-source.md)
+- [The runtime-edge layering decision](../decisions/kit-layering-checks-runtime-edges.md)
 - [Gotcha: ReleaseTag's strict-SemVer default](../gotchas/releasetag-strict-semver-default.md)
 - [Gotcha: the publishability detector diagnoses late](../gotchas/publishability-detector-diagnoses-late.md)
 - [Gotcha: PeerCheck never joins a link:-resolved parent's peers and still reports verified](../gotchas/peer-check-link-parent-reports-verified.md)
@@ -361,3 +468,5 @@ suppressed.
 [^workspaces-ts]: `packages/workspaces/src/Workspaces.ts` —
     `WorkspacesGitOptions`, and `resolverLayer` and `resolveManifest`
     (`static readonly` members near the end of the file).
+[^testing-ts]: `packages/workspaces/src/testing.ts` — the third entry point
+    and its re-exports.

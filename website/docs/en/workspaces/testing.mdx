@@ -1,0 +1,237 @@
+---
+title: Repo-shape checks
+description: Hold a monorepo's package layering, source boundaries and packed install to account from its own test suite, with @effected/workspaces/testing.
+---
+
+# Repo-shape checks
+
+A monorepo's shape drifts in ways no unit test sees. A package meant to stay platform-free starts reading `process`. A low-level package grows an edge up into an application. A bin resolves fine inside the workspace and is missing once a user installs it from its tarball. `@effected/workspaces/testing` holds three checks you run from your own test suite to catch each of these:
+
+- **`WorkspaceLayering`** proves the package graph honours a committed `layers.json`.
+- **`SourceBoundary`** proves a source tree reads no `process`, imports nothing forbidden and writes to no console.
+- **`PackedInstall`** proves a carrier's bins install from its packed tarballs, outside the workspace, under every package manager that is available.
+
+It is a separate subpath: the main `@effected/workspaces` entry never re-exports it, so a consumer of `.` never loads a scanner or package-manager orchestration it does not use. Nothing under it reads `process`; every environment value comes in as a parameter from your test file.
+
+Every check refuses to pass vacuously. A scan reports the files it read, a layering report counts the edges it checked, and a packed install reports the managers it skipped. So every example below pairs "nothing wrong" with "something was checked".
+
+## Layering
+
+### What it proves
+
+`WorkspaceLayering.checkWorkspace(policy)` discovers the workspace and checks every dependency edge between its packages against the policy. An edge is drawn wherever a dependency's **name** is a workspace package, whatever its specifier (`workspace:`, a plain range, a linked version), and once per declaring field, so the policy can check only some fields. Each offending edge carries one of five reasons:
+
+| Reason | The edge |
+| --- | --- |
+| `upward` | points into a higher layer |
+| `sameLayer` | stays inside one layer |
+| `toolingReachesLayer` | leaves a `tooling` package for a layer |
+| `intoUnconstrained` | points into a package an `unconstrained` glob matches |
+| `intoUnclassified` | points into a package the policy does not classify |
+
+An edge *from* an unconstrained or unclassified package is not checked, but an unclassified package is still reported, and an edge *into* either kind is an offender. `report.violations` also lists duplicates, cycles, declared packages the workspace lacks, missing required edges, and an `edgeCount` of 0 as a vacuous check.
+
+### The policy file
+
+```json
+{
+  "layers": [["my-tool"], ["my-tool-cli", "my-tool-mcp"], ["my-tool-engine"]],
+  "tooling": [],
+  "unconstrained": ["my-monorepo"],
+  "fields": ["dependencies", "peerDependencies", "optionalDependencies"],
+  "requiredEdges": ["my-tool-mcp -> my-tool-engine"]
+}
+```
+
+- `layers` is top-down: a package may depend only on a layer **below** its own, or on `tooling`.
+- `tooling` packages may depend on each other but never on a layer.
+- `unconstrained` holds globs for packages whose own edges are not checked. The workspace's root package is always discovered (at `relativePath` `"."`) and must be classified, usually here.
+- `fields` picks the dependency maps that count. Absent, all four count.
+- `requiredEdges` lists edges, written `"a -> b"`, that must exist in a checked field: the guard against a discovery that quietly drops real edges.
+
+A cycle closed only by a devDependency is invisible when `fields` leaves out `devDependencies`. If your layers are about runtime edges, check runtime fields, and pin acyclicity across every field separately with `DependencyGraph.make({ packages }).hasCycle`.
+
+### Adopting it
+
+```ts
+// __test__/layering.test.ts, one level below the workspace root
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { Workspaces } from "@effected/workspaces";
+import { LayerPolicy, WorkspaceLayering } from "@effected/workspaces/testing";
+import { Effect, Layer } from "effect";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
+
+describe("package layering", () => {
+  layer(Live)((it) => {
+    it.effect("the workspace honours layers.json, over real edges", () =>
+      Effect.gen(function* () {
+        const policy = yield* LayerPolicy.load(join(ROOT, "layers.json"));
+        const report = yield* WorkspaceLayering.checkWorkspace(policy);
+        assert.deepStrictEqual(report.violations, []);
+        assert.isAbove(report.edgeCount, 0, "the check read real edges");
+      }),
+    );
+  });
+});
+```
+
+`check` itself is pure, so a positive control needs no filesystem: plant the edge you forbid and assert it is reported.
+
+```ts
+import { LayerEdge, LayerPolicy, WorkspaceLayering } from "@effected/workspaces/testing";
+
+const policy = LayerPolicy.make({ layers: [["app"], ["lib"]], tooling: [], unconstrained: ["root"] });
+const planted = LayerEdge.make({ from: "lib", to: "app", field: "dependencies" });
+const report = WorkspaceLayering.check({ names: ["root", "app", "lib"], edges: [planted] }, policy);
+console.log(report.offenders.map(({ edge, reason }) => `${reason} ${edge.label}`));
+// => [ 'upward lib -> app (dependencies)' ]
+```
+
+## Source boundaries
+
+### What it proves
+
+`SourceBoundary.scan` walks a source tree and checks every `.ts`, `.mts`, `.cts`, `.js`, `.mjs` and `.cjs` file (declaration files and `node_modules` excluded) against a list of rules:
+
+| Rule | Flags |
+| --- | --- |
+| `"process"` | a read of the global `process`, including through `globalThis`, a spread, `typeof` or computed access |
+| `"node:process"` | an import of `node:process` or `process` |
+| `"stdout-write"` | a `stdout.write` call on anything |
+| `"console-write"` | any reference to the global `console` |
+| `{ forbidImports }` | an import whose specifier equals an entry, is a subpath of one, or starts with an entry that ends in `*` |
+
+Every file is lexed first, so `process` in a comment, a string, template text or a regex body never counts, and a `/*` inside a string never hides the code behind it. `process.env.__PACKAGE_VERSION__` is exempt by default, because the bundler substitutes it at build time; `ignoreTokens` adds more exact tokens.
+
+### Adopting it
+
+```ts
+// __test__/boundary.test.ts, one level below the package root
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { SourceBoundary } from "@effected/workspaces/testing";
+import { Effect } from "effect";
+
+const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+
+describe("source boundary", () => {
+  layer(NodeServices.layer)((it) => {
+    it.effect("the scanner still flags and spares what its fixtures say", () =>
+      Effect.sync(() => assert.deepStrictEqual(SourceBoundary.verifyFixtures(), [])),
+    );
+
+    it.effect("no module reads process, writes to the console, or imports node: or a platform package", () =>
+      Effect.gen(function* () {
+        const scan = yield* SourceBoundary.scan({
+          root: SRC,
+          rules: ["process", "node:process", "console-write", { forbidImports: ["node:*", "@effect/platform*"] }],
+        });
+        assert.isNotEmpty(scan.files, "the scan read the tree");
+        assert.deepStrictEqual(scan.violations, []);
+      }),
+    );
+  });
+});
+```
+
+`scan.files` is the handle that stops a mistyped root from reading as clean, and `SourceBoundary.verifyFixtures()` proves the scanner still flags and spares what its shipped fixtures say.
+
+### Known limits
+
+The scanner is a lexer, not a type checker:
+
+- There is no scope analysis, so a local binding named `console` is still flagged. Exempt that file with an `allow` glob, and assert `scan.allowed` names exactly it.
+- `globalThis["process"]` and `const { process: p } = globalThis` are not seen.
+- A regex literal directly after a block-closing `}` reads as a division.
+- JSX text reads as code, which is why `.tsx` and `.jsx` are not scanned by default.
+
+## Packed install
+
+### What it proves
+
+`PackedInstall.run` packs the carrier and every workspace package it needs, then installs the carrier into a fresh project outside the workspace, once per package manager that answers `--version`. It checks every bin you list is linked into `node_modules/.bin` and executable, and returns the consumers, the managers it skipped and the tarballs it made.
+
+It does not run the bins: your test does, inside the same scope, because the scratch directory is removed when the scope closes. For an MCP server bin, `McpProbe` from `@effected/mcp/testing` is the proof.
+
+### Adopting it
+
+```ts
+// __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { McpProbe } from "@effected/mcp/testing";
+import { Workspaces } from "@effected/workspaces";
+import { PackedInstall } from "@effected/workspaces/testing";
+import { Effect, Layer } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
+
+describe("packed install", () => {
+  // The real clock: installs and the probe are real processes.
+  layer(Live, { excludeTestServices: true })((it) => {
+    it.effect(
+      "my-tool's MCP bin boots from a packed install under every available manager",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* PackedInstall.run({
+            carrier: "my-tool",
+            closure: "auto",
+            managers: ["npm", "pnpm", "yarn", "bun"],
+            bins: ["my-tool-mcp"],
+            env: process.env,
+          });
+          assert.isAbove(result.consumers.length, 0, `nothing installed; unavailable: ${result.unavailable.join(", ")}`);
+          const env = PackedInstall.scrubEnv(process.env);
+          for (const consumer of result.consumers) {
+            const bin = ChildProcess.make(consumer.binPath("my-tool-mcp"), [], {
+              cwd: consumer.directory,
+              env,
+              extendEnv: false,
+            });
+            const { response, stderr, exitCode } = yield* McpProbe.initialize(bin).pipe(Effect.timeout("30 seconds"));
+            assert.isUndefined(response.error, `${consumer.manager}: initialize was refused`);
+            assert.strictEqual(stderr, "", `${consumer.manager}: stderr`);
+            assert.strictEqual(exitCode, 0, `${consumer.manager}: exit code`);
+          }
+        }).pipe(Effect.timeout("5 minutes")),
+      360_000,
+    );
+  });
+});
+```
+
+Build first: by default each package is packed from its built `dist/prod/npm/pkg`, byte-for-byte the artifact a release publishes. `packFrom: "source"` runs `pnpm pack` in the package directory instead, which packs whatever `publishConfig.directory` names and needs a workspace that has been `pnpm install`ed.
+
+### The traps it carries
+
+Each of these was found the hard way by a repository that hand-rolled this check:
+
+| Trap | What `PackedInstall` does |
+| --- | --- |
+| The parent run's `npm_*`, `pnpm_config_*`, `YARN_*`, `CI` and `INIT_CWD` leak into the child manager | `scrubEnv` strips them; reuse it to run the bins |
+| `NODE_V8_COVERAGE` makes a spawned manager race vitest's coverage files | stripped |
+| pnpm 10+ reads overrides only from `pnpm-workspace.yaml` | pnpm consumers get a settings-only `pnpm-workspace.yaml` |
+| Yarn Berry defaults to Plug'n'Play and never writes `node_modules/.bin` | Berry consumers get `nodeLinker: node-modules` |
+| macOS `/var` is a symlink to `/private/var`, so `file:` specs and the install cwd disagree | the scratch directory is realpath'd |
+| Outside the repo, corepack falls back to whatever version it cached | `packageManager` is pinned to the probed version |
+| pnpm 12 fails an install that ignored a dependency build script | lifecycle scripts are skipped, the way each manager spells it |
+| A repository's `packageManager` pin makes corepack refuse any other manager inside it | each manager is probed from the scratch directory |
+| pnpm 12 only warns on a mismatched `packageManager` pin, and neither refuses nor switches | assert `<pm> --version` inside a consumer equals `consumer.managerVersion` if you need proof no switch happened |
+| pnpm links only a project's declared dependencies at its top level | declare every package your consumer code imports in `consumerDependencies` |
+
+A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure. No manager at all fails `NoManagerAvailable`, never an empty success. An install that outlives `installTimeout` fails `InstallFailed` with a message naming the manager and the ceiling. User-level configuration under `HOME` (registry, auth, proxy) is inherited, as a real install on that machine would inherit it. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
+
+## API reference
+
+Every export, with full signatures, lives in the [API reference](/workspaces/api).

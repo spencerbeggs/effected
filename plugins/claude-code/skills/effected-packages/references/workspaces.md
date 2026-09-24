@@ -17,7 +17,16 @@ import {
 } from "@effected/workspaces";
 ```
 
-**Not single-entrypoint**: the package ships a real second export, `@effected/workspaces/node-sync` — deliberate, so the main entry never imports `node:*`.
+**Not single-entrypoint**: the package ships two more exports. `@effected/workspaces/node-sync` holds the Node bindings for the sync escape hatch, so the main entry never imports `node:*`. `@effected/workspaces/testing` holds the repo-shape checks a monorepo runs in its own tests (`WorkspaceLayering`, `SourceBoundary`, `PackedInstall`), so a consumer of `.` never loads them. Neither is re-exported from `.`.
+
+```ts
+// The repo-shape checks — a separate subpath, never re-exported from the main entry.
+import { LayerPolicy, PackedInstall, SourceBoundary, WorkspaceLayering } from "@effected/workspaces/testing";
+
+const offences = SourceBoundary.check("src/a.ts", "const argv = process.argv;", ["process"]);
+console.log(offences.length, typeof LayerPolicy.load, typeof WorkspaceLayering.check, typeof PackedInstall.run);
+// => 1 function function function
+```
 
 ```ts
 // Node bindings for the sync escape hatch — a separate subpath, not the main entry.
@@ -62,6 +71,12 @@ Every layer answers the **same three-output contract** — `inject` returns one 
 - **`LockfileReader`** — root → PM detection → file read → `Lockfile.parse`.
 - **`PeerCheck`** — unsatisfied peer-dependency detection as a **pure value class**, not a service: no IO, nothing in `R`, no error channel. `PeerCheck.run(lockfile, options?)` reads a parsed `@effected/lockfiles` `Lockfile` — `instanceId`/`resolved`/`peerDependencies` — and past a single `lockfile.format` support gate the traversal is format-free, which is the point: shelling out to each manager's own peer command cannot deliver bun (no such command exists, and its one warning line appears only on the install that changes the tree), so the answer has to come from the resolved graph. Returns `{ supported, unsatisfied, unresolvedImporters, unverified }` plus a `required` getter (the non-optional rows). `UnsatisfiedPeer` — `{ importer, dependency, wanted, found: string | null, optional, parents: PeerParent[] }`; `parents` is *a* route to the declaring package, and a package an importer reaches by several routes yields ONE row, as pnpm reports it. Reach for this over hand-rolling a peer check, or over shelling out to `npm`/`pnpm`/`bun`, for anything asking "is this workspace's peer graph satisfied".
 - **Sync escape hatch (bare consts, NOT a `WorkspacesSync` namespace)** — `findWorkspaceRootSync(cwd, options)` / `getWorkspacePackagesSync(root, options)`, both re-exported from the MAIN entrypoint and platform-agnostic. There is no `WorkspacesSync` namespace object; each is a free-standing const taking the path positionally first, then a required options bag that carries a consumer-supplied `SyncFileSystem`/`SyncPath` — nothing defaults to Node, and nothing reads `process.cwd()` ambiently. Pass `nodeSyncOps` from `@effected/workspaces/node-sync` as shown above. For config-time discovery that cannot `await` (e.g. a vitest config). Both are **total** — an unenumerable pattern or unreadable manifest is skipped, never raised, and only truncate at a depth/budget bound where the async surface fails typed. That totality makes them the tolerant-enumeration path as well as the sync one (see above). **A skip is never silent**: pass `onSkip` in the options bag and `getWorkspacePackagesSync` reports every manifest it leaves out as a `WorkspaceDiscoverySkip` — `{ root, path, kind, cause }`, where `kind` is `WorkspaceDiscoverySkipKind` (`"read" | "invalidJson" | "invalidShape" | "missingName"`, the `WorkspaceDiscoveryError` vocabulary minus `invalidYaml`). A manifest with no `version` is NOT a skip — it is a member with `version` absent. When an enumeration comes back suspiciously empty, wire `onSkip` before concluding the workspace is empty; it was the silent version-less drop that once made `{ "name": "demo" }` look like "no workspaces configured" (#605).
+
+- **`@effected/workspaces/testing`** — the repo-shape checks, each a static class:
+  - **`SourceBoundary`** — `check(file, text, rules, options?)` (pure, returns `Offence[]`), `referencesProcess`, `importSpecifiers`, `importsNode`, `stripComments`, `scan(options)` over `FileSystem`/`Path` returning a `SourceScan { files, allowed, offences }` with a `violations` getter, and the shipped positive controls `fixtures` / `verifyFixtures()`. Rules (`BoundaryRule`): `"process"`, `"node:process"`, `"stdout-write"`, `"console-write"`, `{ forbidImports }` (a trailing `*` is a prefix).
+  - **`WorkspaceLayering`** — `check(graph: LayeringGraph, policy)` (pure, returns `LayeringReport`), `edgesOf(packages)` (one `LayerEdge` per declaring field), `checkWorkspace(policy)` over `WorkspaceDiscovery`. `LayeringReport` has `duplicates`, `unclassified`, `offenders` (`{ edge, reason }`, reason `upward` / `sameLayer` / `toolingReachesLayer` / `intoUnconstrained` / `intoUnclassified`), `cycle`, `missingDeclared`, `missingRequiredEdges`, `edgeCount` and a `violations` getter that also flags `edgeCount === 0`.
+  - **`LayerPolicy`** — the `layers.json` schema (`layers`, `tooling`, `unconstrained` globs, optional `fields` and `requiredEdges`), with `decode(input, path?)` and `load(path)` failing `LayerPolicyError` (`read` / `json` / `decode`).
+  - **`PackedInstall`** — `run(options)` packs the carrier and its closure (`"auto"` = transitive runtime workspace deps), installs it into a scratch consumer per available manager, and returns `PackedInstallResult { consumers: InstalledConsumer[], unavailable, tarballs }`; `InstalledConsumer.binPath(name)`; `scrubEnv(env)`. Requires `FileSystem | Path | Scope | ChildProcessSpawner | WorkspaceDiscovery`; fails `PackedInstallError` with a `reason`. `packFrom` defaults to `{ directory: "dist/prod/npm/pkg" }`.
 
 ## Usage
 
@@ -110,11 +125,15 @@ const publishableNames = (packages: ReadonlyArray<WorkspacePackage>) =>
 Composing `Workspaces.layerWithGit` for a downstream service that needs several kit services at once — build the graph ONCE and reuse it, since layers memoize by reference:
 
 ```ts
+import type { WorkspaceSnapshotWorktreeFailure } from "@effected/workspaces";
 import { WorkspaceDiscovery, Workspaces, WorkspaceSnapshots } from "@effected/workspaces";
 import { NodeServices } from "@effect/platform-node";
 import { Context, Effect, Layer } from "effect";
 
-class Reporter extends Context.Service<Reporter, { readonly run: () => Effect.Effect<unknown> }>()("Reporter") {}
+class Reporter extends Context.Service<
+ Reporter,
+ { readonly run: () => Effect.Effect<unknown, WorkspaceSnapshotWorktreeFailure> }
+>()("Reporter") {}
 
 // Bind once — calling layerWithGit again mints an independent graph.
 const KitGraph = Workspaces.layerWithGit();
@@ -155,9 +174,51 @@ const program = Effect.gen(function* () {
 });
 ```
 
+### Repo-shape checks in a consumer's own tests
+
+```ts
+// __test__/repo-shape.test.ts, one level below the workspace root
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { Workspaces } from "@effected/workspaces";
+import { LayerPolicy, SourceBoundary, WorkspaceLayering } from "@effected/workspaces/testing";
+import { Effect, Layer } from "effect";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
+
+describe("repo shape", () => {
+ layer(Live)((it) => {
+  it.effect("the package graph honours layers.json, over real edges", () =>
+   Effect.gen(function* () {
+    const report = yield* WorkspaceLayering.checkWorkspace(yield* LayerPolicy.load(join(ROOT, "layers.json")));
+    assert.deepStrictEqual(report.violations, []);
+    assert.isAbove(report.edgeCount, 0);
+   }),
+  );
+
+  it.effect("the engine's source reads no process and imports no node: module", () =>
+   Effect.gen(function* () {
+    assert.deepStrictEqual(SourceBoundary.verifyFixtures(), []);
+    const scan = yield* SourceBoundary.scan({
+     root: join(ROOT, "packages", "engine", "src"),
+     rules: ["process", { forbidImports: ["node:*", "@effect/platform*"] }],
+    });
+    assert.isNotEmpty(scan.files);
+    assert.deepStrictEqual(scan.violations, []);
+   }),
+  );
+ });
+});
+```
+
+For `PackedInstall` plus `McpProbe` on an MCP bin, see the package README's "Packed install" example: run each bin through `consumer.binPath(name)` under `PackedInstall.scrubEnv(process.env)`, inside the same scope as `run`.
+
 ## Testing machinery
 
-None exported by this package. Unit-test consumers with core's `Path.layer` + `FileSystem.layerNoop`; stub git-backed services with `@effected/git`'s own shipped `Git.layerTest({ … })` (unstubbed members die named — never hand-enumerate `GitShape`, which breaks on every growth of that service) and publishability with `Layer.succeed(PublishabilityDetector, ...)` — no real repo or platform package needed.
+No service doubles are exported under `./testing` — that subpath holds the repo-shape checks above, not test doubles. Unit-test consumers with core's `Path.layer` + `FileSystem.layerNoop`; stub git-backed services with `@effected/git`'s own shipped `Git.layerTest({ … })` (unstubbed members die named — never hand-enumerate `GitShape`, which breaks on every growth of that service) and publishability with `Layer.succeed(PublishabilityDetector, ...)` — no real repo or platform package needed.
 
 ## Gotchas
 
@@ -171,3 +232,8 @@ None exported by this package. Unit-test consumers with core's `Path.layer` + `F
 - **Presence of the `peerDependencyRules` option key is the assertion, not its contents.** Omitting the key entirely means "nobody looked" and always yields `"peerRulesNotApplied"`; passing `NoPeerDependencyRules` means "I looked, there are none" and yields a verified report. The two are deliberately different results — never normalize an omitted option to `NoPeerDependencyRules` before calling `run`, and never treat the two as equivalent.
 - `PeerCheck` is unsupported for yarn (`supported: false`) — yarn resolves peers virtually and the lockfile does not record which virtual instance satisfied which peer, so the answer is not recoverable rather than merely unimplemented.
 - `PeerCheck.run` applies all three `peerDependencyRules` axes. `allowedVersions` keys are `parent>peer` (parent version ignored) or a bare peer name; `ignoreMissing` and `allowAny` are **`@pnpm/matcher` peer-name patterns** (`*` wildcard, lone `*` matches all, leading `!` negates, an all-negation list matches everything not excluded), NOT `parent>peer` keys — those match nothing on the two list axes. `ignoreMissing` hides only a required peer that resolved to nothing; `allowAny` hides only a peer that resolved outside its range; they never cross. `"peerRulesNotApplied"` fires only when the `peerDependencyRules` option KEY is omitted.
+- **A devDependency-only cycle is invisible** to a `LayerPolicy` whose `fields` are runtime-only: `edgesOf` draws one edge per declaring field and `check` reads only the policy's fields. Pin all-field acyclicity separately with `DependencyGraph.make({ packages }).hasCycle`.
+- **`SourceBoundary` has no scope analysis.** A local binding named `console` (or a class field named `process`) is flagged like the global. Exempt that one file with an `allow` glob and assert `scan.allowed` names exactly it — do not drop the rule. `globalThis["process"]`, a regex right after a block-closing `}`, and JSX text are known misses.
+- **The root package must be classified.** Discovery always returns it (`relativePath` `"."`); a policy that forgets it reports it in `unclassified`. Usually an `unconstrained` glob.
+- **`PackedInstall` is POSIX-only** (`UnsupportedPlatform` otherwise), and its scratch directory lives only as long as the scope: run the installed bins inside the same scope, never after it closes.
+- **Pass `process.env` in** — nothing under `./testing` reads `process` — and run the installed bins under `PackedInstall.scrubEnv(process.env)`, the environment the installs ran under. Declare every package the consumer's own code imports in `consumerDependencies`: pnpm links only declared dependencies at a project's top level.

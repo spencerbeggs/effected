@@ -146,6 +146,10 @@ Every failure is a tagged error class with structured fields you branch on. A `W
 
 A malformed `package.json`, an unenumerable pattern, a missing lockfile and a failed git command all fail through the typed channel. A developer wiring mistake — an uncompilable glob literal, a fractional depth cap — is a defect, so the typed channel stays the domain errors a caller actually branches on.
 
+## Repo-shape checks
+
+The `@effected/workspaces/testing` subpath holds three checks a monorepo runs from its own test suite: `WorkspaceLayering` holds the package graph to a committed `layers.json`, `SourceBoundary` keeps `process` reads, forbidden imports and console writes out of a source tree, and `PackedInstall` proves a carrier's bins install from packed tarballs under every available package manager. The main entry never re-exports it. See [Repo-shape checks](/workspaces/testing).
+
 ## API reference
 
 Every export, with full signatures, lives in the [API reference](/workspaces/api).

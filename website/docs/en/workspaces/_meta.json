@@ -19,6 +19,11 @@
 		"label": "Advanced"
 	},
 	{
+		"type": "file",
+		"name": "testing.mdx",
+		"label": "Repo-shape checks"
+	},
+	{
 		"type": "dir",
 		"name": "api",
 		"label": "API Reference"

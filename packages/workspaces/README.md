@@ -75,6 +75,22 @@ Effect.runPromise(program.pipe(Effect.provide(WorkspacesLayer))).then(console.lo
 `toMermaid()` renders the same graph for a job summary, an issue or a design doc. It is total, deterministic (nodes and edges both in sorted order) and safe for scoped names, which appear only inside quoted labels:
 
 ```ts
+import { DependencyGraph, WorkspacePackage } from "@effected/workspaces";
+
+const member = (name: string, dependencies: Record<string, string> = {}) =>
+  WorkspacePackage.make({
+    name,
+    version: "1.0.0",
+    path: `/repo/packages/${name.slice(6)}`,
+    packageJsonPath: `/repo/packages/${name.slice(6)}/package.json`,
+    relativePath: `packages/${name.slice(6)}`,
+    workspaceRoot: "/repo",
+    dependencies,
+  });
+
+const graph = DependencyGraph.make({
+  packages: [member("@acme/app", { "@acme/utils": "workspace:^" }), member("@acme/utils")],
+});
 console.log(graph.toMermaid());
 // flowchart TD
 //   0["@acme/app"]
@@ -239,6 +255,149 @@ For a test fake, `@effected/memfs`' `MemoryFileSystem.syncFileSystem(volume)` sa
 
 Windows correctness is therefore the operations you pass, and nothing else. Both entry points drive one traversal state machine (the same dequeue order, depth rule, visit budget and `node_modules` prune), so the sync and Effect surfaces can never disagree about what a pattern means. The one deliberate difference is at a bound: the Effect enumerator fails typed, the sync one truncates. Prefer the Effect API everywhere you can run one.
 
+## Repo-shape checks (`@effected/workspaces/testing`)
+
+A monorepo's shape drifts in ways no unit test sees: a package that should stay platform-free starts reading `process`, a low-level package grows an edge up into an application, or a bin resolves fine inside the workspace and is missing once installed from its tarball. The `@effected/workspaces/testing` subpath holds three checks you run from your own test suite to catch each one. The main entry never re-exports it, so a consumer of `.` never loads a scanner or package-manager orchestration it does not use.
+
+Every check refuses to pass vacuously, so every example below pairs "nothing wrong" with "something was checked".
+
+### Layering
+
+`WorkspaceLayering` holds the discovered package graph to a committed `layers.json`. `layers` is top-down: a package may depend only on a layer below its own, or on `tooling`. `unconstrained` globs name packages whose own edges are not checked, such as the private root, which must be classified like any other package. `fields` picks the dependency maps that count, and `requiredEdges` lists edges that must exist, so a discovery that silently drops edges fails.
+
+```json
+{
+  "layers": [["my-tool"], ["my-tool-cli", "my-tool-mcp"], ["my-tool-engine"]],
+  "tooling": [],
+  "unconstrained": ["my-monorepo"],
+  "fields": ["dependencies", "peerDependencies", "optionalDependencies"],
+  "requiredEdges": ["my-tool-mcp -> my-tool-engine"]
+}
+```
+
+```ts
+// __test__/layering.test.ts, one level below the workspace root
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { Workspaces } from "@effected/workspaces";
+import { LayerPolicy, WorkspaceLayering } from "@effected/workspaces/testing";
+import { Effect, Layer } from "effect";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
+
+describe("package layering", () => {
+  layer(Live)((it) => {
+    it.effect("the workspace honours layers.json, over real edges", () =>
+      Effect.gen(function* () {
+        const policy = yield* LayerPolicy.load(join(ROOT, "layers.json"));
+        const report = yield* WorkspaceLayering.checkWorkspace(policy);
+        assert.deepStrictEqual(report.violations, []);
+        assert.isAbove(report.edgeCount, 0, "the check read real edges");
+      }),
+    );
+  });
+});
+```
+
+An edge is drawn wherever a dependency's name is a workspace package, whatever its specifier, and once per declaring field. A cycle closed only by a devDependency is therefore invisible to a policy that checks runtime fields only: pin acyclicity across every field separately, with `DependencyGraph.make({ packages }).hasCycle`.
+
+### Source boundaries
+
+`SourceBoundary.scan` walks a source tree and reports every read of the global `process`, forbidden import, `stdout.write` or console write. It lexes each file first, so the word `process` in a comment, a string, template text or a regex is never a read, and a `/*` inside a string never hides the code after it. Assert `verifyFixtures()` beside your scan: it proves the scanner still flags and spares what its shipped fixtures say.
+
+```ts
+// __test__/boundary.test.ts, one level below the package root
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { SourceBoundary } from "@effected/workspaces/testing";
+import { Effect } from "effect";
+
+const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
+
+describe("source boundary", () => {
+  layer(NodeServices.layer)((it) => {
+    it.effect("the scanner still flags and spares what its fixtures say", () =>
+      Effect.sync(() => assert.deepStrictEqual(SourceBoundary.verifyFixtures(), [])),
+    );
+
+    it.effect("no module reads process, writes to the console, or imports node: or a platform package", () =>
+      Effect.gen(function* () {
+        const scan = yield* SourceBoundary.scan({
+          root: SRC,
+          rules: ["process", "node:process", "console-write", { forbidImports: ["node:*", "@effect/platform*"] }],
+        });
+        assert.isNotEmpty(scan.files, "the scan read the tree");
+        assert.deepStrictEqual(scan.violations, []);
+      }),
+    );
+  });
+});
+```
+
+The scanner is a lexer, not a type checker. It has no scope analysis, so a local binding named `console` is still flagged: exempt that file with an `allow` glob and assert `scan.allowed` names exactly it. `globalThis["process"]`, a regex literal straight after a block-closing `}`, and JSX text are known misses.
+
+### Packed install
+
+`PackedInstall.run` packs a carrier and every workspace package it needs, then installs the carrier into a fresh project outside the workspace under each package manager that answers `--version`, and checks every expected bin is linked and executable. It carries the traps each manager sets: the parent run's `npm_*` and `pnpm_config_*` context is scrubbed, pnpm's overrides go in `pnpm-workspace.yaml`, Yarn Berry gets the `node-modules` linker, `packageManager` is pinned to the probed version, and lifecycle scripts are skipped. By default it packs each package's built `dist/prod/npm/pkg`, the artifact a release publishes; build first.
+
+It does not run the bins; the test does, inside the same scope, because the scratch directory is removed when the scope closes. For an MCP server bin, `McpProbe` from `@effected/mcp/testing` is the proof:
+
+```ts
+// __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, layer } from "@effect/vitest";
+import { McpProbe } from "@effected/mcp/testing";
+import { Workspaces } from "@effected/workspaces";
+import { PackedInstall } from "@effected/workspaces/testing";
+import { Effect, Layer } from "effect";
+import { ChildProcess } from "effect/unstable/process";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
+
+describe("packed install", () => {
+  // The real clock: installs and the probe are real processes.
+  layer(Live, { excludeTestServices: true })((it) => {
+    it.effect(
+      "my-tool's MCP bin boots from a packed install under every available manager",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* PackedInstall.run({
+            carrier: "my-tool",
+            closure: "auto",
+            managers: ["npm", "pnpm", "yarn", "bun"],
+            bins: ["my-tool-mcp"],
+            env: process.env,
+          });
+          assert.isAbove(result.consumers.length, 0, `nothing installed; unavailable: ${result.unavailable.join(", ")}`);
+          const env = PackedInstall.scrubEnv(process.env);
+          for (const consumer of result.consumers) {
+            const bin = ChildProcess.make(consumer.binPath("my-tool-mcp"), [], {
+              cwd: consumer.directory,
+              env,
+              extendEnv: false,
+            });
+            const { response, stderr, exitCode } = yield* McpProbe.initialize(bin).pipe(Effect.timeout("30 seconds"));
+            assert.isUndefined(response.error, `${consumer.manager}: initialize was refused`);
+            assert.strictEqual(stderr, "", `${consumer.manager}: stderr`);
+            assert.strictEqual(exitCode, 0, `${consumer.manager}: exit code`);
+          }
+        }).pipe(Effect.timeout("5 minutes")),
+      360_000,
+    );
+  });
+});
+```
+
+Pass `process.env` in: nothing in the subpath reads `process` itself. Run the bins under `PackedInstall.scrubEnv(process.env)`, the same environment the installs ran under. A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure instead. Declare in `consumerDependencies` every package the consumer's own code imports besides the carrier: pnpm links only declared dependencies at a project's top level. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
+
 ## Error handling
 
 Every failure is a `Schema.TaggedError` with structured fields you can branch on, not a prose string:
@@ -278,6 +437,7 @@ const TestDiscovery = WorkspaceDiscovery.layerTest({
         path: "/repo/packages/utils",
         packageJsonPath: "/repo/packages/utils/package.json",
         relativePath: "packages/utils",
+        workspaceRoot: "/repo",
       }),
     ]),
 });
@@ -305,6 +465,7 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `ReleaseTag` / `TrackingTag` — release-tag formatting (`ReleaseTag.single` / `.scoped`, strict SemVer by default with no `v` prefix) and the floating major/minor alias derivation GitHub Actions-style consumers expect (`v1`, `v1.2`), plus `classifyTag` to tell a release tag from a tracking alias.
 - `VersioningStrategy` — classify a workspace as `single`, `fixed-group` or `independent` from package names and fixed groups, or detect it live against `PublishabilityDetector`, and produce the release tags for a batch with `tagsFor`.
 - `findWorkspaceRootSync` / `getWorkspacePackagesSync` — the synchronous escape hatch for config-time callers that cannot await, over file and path operations you supply.
+- `@effected/workspaces/testing` — a third entry point holding the repo-shape checks: `WorkspaceLayering` and `LayerPolicy` (the package graph against a committed `layers.json`), `SourceBoundary` (a lexer-backed scanner for `process` reads, forbidden imports and console writes, with shipped positive controls) and `PackedInstall` (the carrier's bins installed from packed tarballs under every available package manager).
 - `@effected/workspaces/node-sync` — a second entry point holding the Node bindings for those operations (`nodeFileSystem`, `nodePath` and the `nodeSyncOps` bag), kept off the main entry so `node:*` never reaches a consumer that supplies its own. `nodeFileSystem` implements the optional `readDirectoryWithTypes` fast path, so the bindings enumerate a workspace in one `readdirSync` per directory.
 
 ## License
