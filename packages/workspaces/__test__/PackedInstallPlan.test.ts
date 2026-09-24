@@ -26,9 +26,12 @@ const PACKAGES = [
 		peerDependencies: { "@x/peer": "workspace:^" },
 		devDependencies: { "@x/tool": "workspace:*" },
 	}),
-	pkg("@x/lib"),
+	// lib -> deep is transitive-only, deep -> lib closes a cycle, lib -> devonly is dev-only.
+	pkg("@x/lib", { dependencies: { "@x/deep": "workspace:^" }, devDependencies: { "@x/devonly": "workspace:*" } }),
 	pkg("@x/peer"),
 	pkg("@x/tool"),
+	pkg("@x/deep", { peerDependencies: { "@x/lib": "workspace:^" } }),
+	pkg("@x/devonly"),
 ];
 const INPUT = {
 	version: "0.0.0",
@@ -50,9 +53,15 @@ describe("scrubEnv", () => {
 				NODE_V8_COVERAGE: "/cov",
 				npm_config_user_agent: "pnpm/12",
 				NPM_CONFIG_REGISTRY: "https://x",
+				pnpm_config_verify_deps_before_run: "false",
+				PNPM_SCRIPT_SRC_DIR: "/repo/packages/x",
+				PNPM_PACKAGE_NAME: "@x/carrier",
+				YARN_NODE_LINKER: "pnp",
+				yarn_enable_immutable_installs: "true",
+				PNPM_HOME: "/home/u/.pnpm",
 				EMPTY: undefined,
 			}),
-			{ PATH: "/usr/bin", HOME: "/home/u" },
+			{ PATH: "/usr/bin", HOME: "/home/u", PNPM_HOME: "/home/u/.pnpm" },
 		);
 	});
 });
@@ -69,13 +78,13 @@ describe("versionOf", () => {
 });
 
 describe("closureOf", () => {
-	it("auto walks runtime edges from the carrier, carrier first, never devDependencies", () => {
+	it("auto walks runtime edges transitively from the carrier, carrier first, through cycles, never devDependencies", () => {
 		const closure = closureOf(PACKAGES, "@x/carrier", "auto");
 		assert.isTrue(Result.isSuccess(closure));
 		if (Result.isSuccess(closure)) {
 			assert.deepStrictEqual(
 				closure.success.map((p) => p.name),
-				["@x/carrier", "@x/lib", "@x/peer"],
+				["@x/carrier", "@x/lib", "@x/peer", "@x/deep"],
 			);
 		}
 	});
@@ -92,12 +101,13 @@ describe("closureOf", () => {
 });
 
 describe("consumerFiles", () => {
-	it("npm: overrides in the manifest, the carrier a devDependency not an override, the probed version pinned", () => {
+	it("npm: overrides in the manifest, the carrier a dependency (never dev, never an override), the probed version pinned", () => {
 		const files = fileMap(consumerFiles({ ...INPUT, manager: "npm", version: "11.19.1" }));
 		assert.deepStrictEqual(Object.keys(files), ["package.json"]);
 		const manifest = JSON.parse(files["package.json"] ?? "{}") as Record<string, unknown>;
 		assert.strictEqual(manifest.packageManager, "npm@11.19.1");
-		assert.deepStrictEqual(manifest.devDependencies, { "@x/carrier": "file:/t/carrier.tgz", effect: "4.0.0-rc.117" });
+		assert.deepStrictEqual(manifest.dependencies, { "@x/carrier": "file:/t/carrier.tgz", effect: "4.0.0-rc.117" });
+		assert.isUndefined(manifest.devDependencies, "omit=dev or NODE_ENV=production would skip a devDependency");
 		assert.deepStrictEqual(manifest.overrides, { "@x/lib": "file:/t/lib.tgz" });
 		assert.isUndefined(manifest.resolutions);
 	});

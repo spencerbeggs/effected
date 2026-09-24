@@ -9,19 +9,38 @@ import type { WorkspacePackage } from "../WorkspacePackage.js";
 import { RUNTIME_DEPENDENCY_FIELDS } from "./dependencyFields.js";
 
 /** Variables that carry the PARENT run's context into a child package manager. */
-const TRAPS = new Set(["CI", "INIT_CWD", "NODE_V8_COVERAGE"]);
+const TRAPS = new Set(["CI", "INIT_CWD", "NODE_V8_COVERAGE", "PNPM_SCRIPT_SRC_DIR", "PNPM_PACKAGE_NAME"]);
+
+/** Prefixes of whole families of parent-run context: npm's, pnpm's config, and Yarn's. */
+const TRAP_PREFIXES = /^(npm_|pnpm_config_|yarn_)/i;
 
 /**
  * `env` without undefined values and without the parent's context: every
- * `npm_*` variable (a pnpm-run vitest leaks `npm_config_user_agent`), `CI`
- * (Yarn Berry turns on immutable installs), `INIT_CWD`, and
- * `NODE_V8_COVERAGE` (a spawned manager writes coverage files that race
+ * `npm_*` variable (a pnpm-run vitest leaks `npm_config_user_agent`), every
+ * `pnpm_config_*` variable plus `PNPM_SCRIPT_SRC_DIR` and `PNPM_PACKAGE_NAME`
+ * (a `pnpm exec` child carries all three, `pnpm_config_verify_deps_before_run`
+ * among them), every `YARN_*` variable (Berry lets them override
+ * `.yarnrc.yml`, so `YARN_NODE_LINKER=pnp` would defeat the consumer's
+ * `nodeLinker`), `CI` (Yarn Berry turns on immutable installs), `INIT_CWD`,
+ * and `NODE_V8_COVERAGE` (a spawned manager writes coverage files that race
  * vitest's V8 provider).
+ *
+ * Stripping `CI` does not make the child believe it runs locally: ci-info
+ * also reads provider variables such as `GITHUB_ACTIONS`, which stay. That is
+ * harmless today, because the only CI-conditional behaviour a consumer
+ * install trips on (Berry's immutable installs, pnpm's frozen lockfile) keys
+ * on a lockfile the fresh consumer does not have, or is switched off in the
+ * files `consumerFiles` writes.
+ *
+ * User-level configuration is inherited by design: `HOME` stays, so each
+ * manager still reads the user's `~/.npmrc`, `~/.yarnrc.yml` and friends, and
+ * with them the registry, auth and proxy a real install on this machine
+ * would use.
  */
 export const scrubEnv = (env: Readonly<Record<string, string | undefined>>): Record<string, string> => {
 	const out: Record<string, string> = {};
 	for (const [key, value] of Object.entries(env)) {
-		if (value !== undefined && !/^npm_/i.test(key) && !TRAPS.has(key)) out[key] = value;
+		if (value !== undefined && !TRAP_PREFIXES.test(key) && !TRAPS.has(key)) out[key] = value;
 	}
 	return out;
 };
@@ -93,8 +112,9 @@ const pnpmWorkspaceYaml = (specs: Readonly<Record<string, string>>): string => {
 };
 
 /**
- * The files of one scratch consumer. The carrier is its only direct
- * dependency (npm rejects an override that conflicts with a direct spec);
+ * The files of one scratch consumer. The carrier and the caller's extra
+ * dependencies are its only direct dependencies (npm rejects an override
+ * that conflicts with a direct spec);
  * every other packed package is steered to its tarball through the field
  * this manager reads: `overrides` (npm, bun), `resolutions` (yarn), or a
  * settings-only `pnpm-workspace.yaml` (pnpm 10+ reads overrides there, and
@@ -109,7 +129,8 @@ export const consumerFiles = (
 		version: "0.0.0",
 		private: true,
 		packageManager: `${input.manager}@${input.version}`,
-		devDependencies: { [input.carrier.name]: `file:${input.carrier.tarball}`, ...input.dependencies },
+		// dependencies, never devDependencies: a host NODE_ENV=production or omit=dev would skip a dev one.
+		dependencies: { [input.carrier.name]: `file:${input.carrier.tarball}`, ...input.dependencies },
 		...(input.manager === "npm" || input.manager === "bun" ? { overrides: specs } : {}),
 		...(input.manager === "yarn" ? { resolutions: specs } : {}),
 	};

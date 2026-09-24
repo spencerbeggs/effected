@@ -43,7 +43,7 @@ export type PackSource = "source" | { readonly directory: string };
  * @public
  */
 export interface PackedInstallOptions {
-	/** The carrier: the only direct dependency of each scratch consumer. */
+	/** The carrier: a direct dependency of each scratch consumer, beside only `consumerDependencies`. */
 	readonly carrier: string;
 	/** The other workspace packages to pack and override; `"auto"` is the carrier's transitive runtime workspace dependencies. */
 	readonly closure: ReadonlyArray<string> | "auto";
@@ -61,7 +61,7 @@ export interface PackedInstallOptions {
 	/** The environment for every spawn: pass `process.env` from the test file. The parent manager's context is stripped. */
 	readonly env: Readonly<Record<string, string | undefined>>;
 	/**
-	 * Extra consumer devDependencies, name to range or `file:` tarball spec.
+	 * Extra consumer dependencies, name to range or `file:` tarball spec.
 	 *
 	 * @remarks
 	 * Declare here every package the consumer's own code imports directly
@@ -293,7 +293,8 @@ export class PackedInstall {
 						notInstalled
 							? `pnpm pack could not rewrite the workspace: specifiers of ${pkg.name} because the workspace is not installed; run pnpm install in the workspace first`
 							: `${packer} pack exited ${output.exitCode} for ${pkg.name}`,
-						{ package: pkg.name, output: tail(output.stderr === "" ? output.stdout : output.stderr) },
+						// Both streams: a pnpm WARN banner on stderr must not hide the real error on stdout.
+						{ package: pkg.name, output: tail(`${output.stdout}\n${output.stderr}`) },
 					);
 				}
 				const found = (yield* fs
