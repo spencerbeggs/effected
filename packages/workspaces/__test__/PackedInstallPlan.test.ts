@@ -133,6 +133,31 @@ describe("consumerFiles", () => {
 		assert.isUndefined(fileMap(consumerFiles({ ...INPUT, manager: "yarn", version: "1.22.22" }))[".yarnrc.yml"]);
 	});
 
+	it("a consumer dependency naming a packed package is written as that package's tarball, for every manager", () => {
+		// npm refuses an override that differs from a direct spec (EOVERRIDE); the same file: spec in both is accepted.
+		for (const [manager, version] of [
+			["npm", "11.19.1"],
+			["pnpm", "12.5.1"],
+			["yarn", "4.5.0"],
+			["bun", "1.4.2"],
+		] as const) {
+			const files = fileMap(
+				consumerFiles({
+					...INPUT,
+					manager,
+					version,
+					dependencies: { "@x/lib": "^1.0.0", "@x/carrier": "1.0.0", effect: "4.0.0-rc.117" },
+				}),
+			);
+			const manifest = JSON.parse(files["package.json"] ?? "{}") as Record<string, unknown>;
+			assert.deepStrictEqual(
+				manifest.dependencies,
+				{ "@x/carrier": "file:/t/carrier.tgz", "@x/lib": "file:/t/lib.tgz", effect: "4.0.0-rc.117" },
+				manager,
+			);
+		}
+	});
+
 	it("bun: overrides in the manifest", () => {
 		const files = fileMap(consumerFiles({ ...INPUT, manager: "bun", version: "1.4.2" }));
 		assert.deepStrictEqual((JSON.parse(files["package.json"] ?? "{}") as Record<string, unknown>).overrides, {

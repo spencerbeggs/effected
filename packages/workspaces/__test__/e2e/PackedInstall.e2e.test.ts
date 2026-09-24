@@ -341,14 +341,18 @@ describe("PackedInstall against a real fixture workspace", () => {
 				consumer.directory,
 			);
 
-		it.effect.skipIf(!HAS_PNPM)(
-			"P3 S1 under pnpm: a peer the consumer imports is declared through consumerDependencies",
+		// Every available manager, npm included: a consumerDependencies range for a
+		// packed package once met npm's EOVERRIDE (a direct spec that differs from
+		// the override), which a pnpm-only run could not see.
+		const s1Managers = (["npm", "pnpm", "bun"] as const).filter((pm) => VERSIONS[pm] !== undefined);
+		it.effect.skipIf(!HAS_NPM)(
+			"P3 S1 under every available manager: a peer the consumer imports is declared through consumerDependencies",
 			() =>
 				Effect.gen(function* () {
 					const result = yield* PackedInstall.run({
 						carrier: PLUGIN,
 						closure: "auto",
-						managers: ["pnpm"],
+						managers: s1Managers,
 						require: "all",
 						bins: [],
 						env: OFFLINE,
@@ -356,13 +360,27 @@ describe("PackedInstall against a real fixture workspace", () => {
 						installTimeout: "90 seconds",
 					});
 					assert.deepStrictEqual(Object.keys(result.tarballs).sort(), [LIB, PLUGIN].sort());
-					const [pnpm] = result.consumers;
-					assert.strictEqual(pnpm?.manager, "pnpm");
-					if (pnpm === undefined) return;
-					const out = yield* importFromRoot(pnpm);
-					assert.strictEqual(out.stdout.trim(), `${GREETING}|${GREETING.toUpperCase()}`, out.stderr);
-				}).pipe(Effect.timeout("100 seconds"), Effect.scoped),
-			120_000,
+					assert.deepStrictEqual(
+						result.consumers.map((consumer) => consumer.manager),
+						[...s1Managers],
+					);
+					for (const consumer of result.consumers) {
+						// The range the caller passed became the packed tarball: the one spec npm accepts beside the override.
+						const manifest = readJson(join(consumer.directory, "package.json"));
+						assert.deepInclude(
+							manifest.dependencies as Record<string, string>,
+							{ [LIB]: `file:${result.tarballs[LIB]}` },
+							consumer.manager,
+						);
+						const out = yield* importFromRoot(consumer);
+						assert.strictEqual(
+							out.stdout.trim(),
+							`${GREETING}|${GREETING.toUpperCase()}`,
+							`${consumer.manager}: ${out.stderr}`,
+						);
+					}
+				}).pipe(Effect.timeout("150 seconds"), Effect.scoped),
+			180_000,
 		);
 
 		it.effect.skipIf(!HAS_PNPM)(

@@ -396,7 +396,7 @@ describe("packed install", () => {
 });
 ```
 
-Pass `process.env` in: nothing in the subpath reads `process` itself. Run the bins under `PackedInstall.scrubEnv(process.env)`, the same environment the installs ran under. A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure instead. Declare in `consumerDependencies` every package the consumer's own code imports besides the carrier: pnpm links only declared dependencies at a project's top level. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
+Pass `process.env` in: nothing in the subpath reads `process` itself. Run the bins under `PackedInstall.scrubEnv(process.env)`, the same environment the installs ran under. A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure instead. Declare in `consumerDependencies` every package the consumer's own code imports besides the carrier: pnpm links only declared dependencies at a project's top level. An entry that names a packed package is written as its `file:` tarball whatever spec you pass, so any range will do; npm fails `EOVERRIDE` when a direct spec differs from its override. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
 
 ## Error handling
 

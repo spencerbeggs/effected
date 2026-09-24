@@ -113,24 +113,36 @@ const pnpmWorkspaceYaml = (specs: Readonly<Record<string, string>>): string => {
 
 /**
  * The files of one scratch consumer. The carrier and the caller's extra
- * dependencies are its only direct dependencies (npm rejects an override
- * that conflicts with a direct spec);
- * every other packed package is steered to its tarball through the field
- * this manager reads: `overrides` (npm, bun), `resolutions` (yarn), or a
- * settings-only `pnpm-workspace.yaml` (pnpm 10+ reads overrides there, and
- * pnpm 11+ no longer reads `package.json#pnpm`).
+ * dependencies are its only direct dependencies; every other packed package
+ * is steered to its tarball through the field this manager reads:
+ * `overrides` (npm, bun), `resolutions` (yarn), or a settings-only
+ * `pnpm-workspace.yaml` (pnpm 10+ reads overrides there, and pnpm 11+ no
+ * longer reads `package.json#pnpm`).
+ *
+ * An extra dependency that names a packed package (the carrier or a closure
+ * member) is written as that package's `file:` tarball spec, whatever the
+ * caller passed: the packed tarball always wins. npm fails an install whose
+ * override differs from a direct spec for the same package (`EOVERRIDE`), and
+ * accepts one that is identical; and a caller's range must never silently
+ * replace the tarball the run exists to prove.
  */
 export const consumerFiles = (
 	input: ConsumerInput,
 ): ReadonlyArray<{ readonly file: string; readonly content: string }> => {
 	const specs = Object.fromEntries(Object.entries(input.overrides).map(([name, tarball]) => [name, `file:${tarball}`]));
+	const carrierSpec = `file:${input.carrier.tarball}`;
+	const extra = Object.fromEntries(
+		Object.entries(input.dependencies)
+			.filter(([name]) => name !== input.carrier.name)
+			.map(([name, spec]) => [name, Object.hasOwn(specs, name) ? (specs[name] ?? spec) : spec]),
+	);
 	const manifest = {
 		name: `packed-install-${input.manager}`,
 		version: "0.0.0",
 		private: true,
 		packageManager: `${input.manager}@${input.version}`,
 		// dependencies, never devDependencies: a host NODE_ENV=production or omit=dev would skip a dev one.
-		dependencies: { [input.carrier.name]: `file:${input.carrier.tarball}`, ...input.dependencies },
+		dependencies: { [input.carrier.name]: carrierSpec, ...extra },
 		...(input.manager === "npm" || input.manager === "bun" ? { overrides: specs } : {}),
 		...(input.manager === "yarn" ? { resolutions: specs } : {}),
 	};

@@ -228,7 +228,8 @@ Each of these was found the hard way by a repository that hand-rolled this check
 | pnpm 12 fails an install that ignored a dependency build script | lifecycle scripts are skipped, the way each manager spells it |
 | A repository's `packageManager` pin makes corepack refuse any other manager inside it | each manager is probed from the scratch directory |
 | pnpm 12 only warns on a mismatched `packageManager` pin, and neither refuses nor switches | assert `<pm> --version` inside a consumer equals `consumer.managerVersion` if you need proof no switch happened |
-| pnpm links only a project's declared dependencies at its top level | declare every package your consumer code imports in `consumerDependencies` |
+| pnpm links only a project's declared dependencies at its top level | declare every package your consumer code imports in `consumerDependencies`; an entry naming a packed package is written as its tarball, whatever spec you pass |
+| npm fails `EOVERRIDE` when a direct dependency's spec differs from its override | a `consumerDependencies` entry naming a packed package gets the same `file:` spec as the override |
 
 A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure. No manager at all fails `NoManagerAvailable`, never an empty success. An install that outlives `installTimeout` fails `InstallFailed` with a message naming the manager and the ceiling. User-level configuration under `HOME` (registry, auth, proxy) is inherited, as a real install on that machine would inherit it. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
 

@@ -42,8 +42,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T01:49:30Z
-  body_sha256: 90c5e2bbafa1a07e7b73b130f39b1645d65fcc61bdbff738f5ad55fabc69841e
+  at: 2026-09-24T02:08:16Z
+  body_sha256: 0874f60d5f200aa13ac17920b9b015d4739e69a756ae5231947f43cf4a1e813b
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -298,6 +298,13 @@ Declare every package the consumer's own code imports through
 declared dependencies at its top level, so a peer reached only through the
 carrier resolves inside the carrier but fails `ERR_MODULE_NOT_FOUND` from the
 consumer root, while npm and bun hoist it and pass.
+
+An entry naming a packed package, the carrier or a closure member, is
+written as that package's `file:` tarball whatever spec the caller passes,
+so any range will do. The tarball always wins, for two reasons. npm fails an
+install whose direct spec differs from its override with `EOVERRIDE`, and
+accepts an identical one. And a caller's range must never silently replace
+the tarball the run exists to prove.[^packed-install-plan-ts]
 
 An install that outlives `installTimeout` (four minutes by default) fails
 `InstallFailed` with a message naming the manager and the ceiling, distinct

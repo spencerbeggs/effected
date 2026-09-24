@@ -70,6 +70,12 @@ export interface PackedInstallOptions {
 	 * but fails `ERR_MODULE_NOT_FOUND` when imported from the consumer root,
 	 * while npm and bun hoist it and pass. That is a property of the consumer,
 	 * not of the pack.
+	 *
+	 * An entry naming a packed package (the carrier or a closure member) is
+	 * written as that package's `file:` tarball, whatever spec you pass, so
+	 * any range will do: the packed tarball always wins. npm fails an install
+	 * whose direct spec differs from its override (`EOVERRIDE`), so a range
+	 * written through unchanged would break every npm consumer.
 	 */
 	readonly consumerDependencies?: Readonly<Record<string, string>> | undefined;
 	/** Ceiling on each install. Defaults to four minutes. Expiry fails `InstallFailed` with a message naming the manager and this duration. */
