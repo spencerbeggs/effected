@@ -272,12 +272,15 @@ When an agent needs **structured** remediation for an error it should
 handle programmatically — not just read as a sentence — put the expected
 domain errors inside the tool's own **success** schema instead of its
 declared failure channel. Root that schema in an object, not a top-level
-`Schema.Union`: a union root means `tools/list` serves **no**
-`outputSchema` at all, the same registration-shape rule as
-[Failures on the wire](#failures-on-the-wire)'s `Schema.Struct({})` and
-top-level-union cases, just for the success side instead of `parameters`. An
-`ok: Schema.Boolean` field with optional `value`/`error` fields keeps one
-object root while still discriminating:
+`Schema.Union`: unlike [Failures on the wire](#failures-on-the-wire)'s
+`Schema.Struct({})` and top-level-union `parameters` cases, which kill the
+server at **registration**, a union success root is not a registration-time
+defect — the `outputSchema` is simply **silently omitted** from
+`tools/list`, and the server keeps serving. An `ok: Schema.Boolean` field
+with optional `value`/`error` fields keeps one object root while still
+discriminating, at the cost of giving up discriminated typing on the
+result — a consumer narrows on `ok` at runtime rather than the type system
+narrowing a tagged union for them:
 
 ~~~ts
 import { Remediation } from "@effected/engine"

@@ -88,8 +88,8 @@ better: `failMaxBufferSize` clears the buffer before throwing, so the rest of
 that line arrives as an unanswered fresh line and the client never gets a
 reply either way.
 
-`McpStdio.layer` provides the server a `Stdio` (`src/internal/StdinFrames.ts`)
-that frames stdin exactly as core's decoder does — one streaming UTF-8
+`McpStdio.layer` provides the server a `Stdio` wrapped by an internal
+stdin-framing guard that frames stdin exactly as core's decoder does — one streaming UTF-8
 decoder, the same BOM-at-stream-start rule, the same 16 Mi-code-unit cap —
 and answers every line core would choke on itself, on `stdout`, before core
 ever sees it:
@@ -101,8 +101,8 @@ ever sees it:
 - valid JSON that is not a JSON-RPC message — `null`, for instance — still
   reaches core, which logs an error and re-subscribes to stdin; any other
   already-parsed frame from that same read still in core's decode batch is
-  lost with it, so a client that pipelines several requests in one write
-  should keep at most one JSON value per line that could ever be `null`.
+  lost with it. Never send a bare `null` frame; if a client might, don't
+  pipeline other requests in the same write.
 
 The guard's own state — the held partial line — lives once per `Stdio`, not
 per subscription, so it survives core's re-subscription after a decode
@@ -315,10 +315,9 @@ that client) is strictly worse. Three parts, not one flag:
   the `unhandledRejection` handler above, which never exits: the process
   idles at exit `0` with no server actually listening, silently.
 
-Choose **exit-always** when there is no such state to protect at all, and
-refusing to guess about a corrupted process is the simpler default. Choose
-**survive-once-connected**, with all three parts above, only once the
-in-process-mutable-state condition is actually true.
+Choose **exit-always** when any in-process mutable state could be left
+half-written; choose **survive-once-connected**, with all three parts
+above, only when none can.
 
 ## Project directory
 
@@ -352,19 +351,5 @@ entry and finally to `cwd`, rather than resolving to the literal string
 
 ## Resources
 
-A future reference (`resources.md`) will cover resource wiring in the same
-depth as tools; this section is a pointer to the wire-safe subset until then.
-
-`McpServer.resource({ uri, name, description, mimeType, content })` returns
-a `Layer`. `content` can be a bare string or a **whole**
-`ReadResourceResult` — `{ contents: [{ uri, mimeType, text }] }`. Prefer the
-whole shape: a bare string loses `mimeType` on the read itself, even though
-the declared `mimeType` still appears correctly in `resources/list`. A
-resource read failure is `new McpSchema.InternalError({ message })`.
-
-A dynamic resource set (one entry per item in a collection loaded at boot)
-is built as `Layer.unwrap(Effect.gen(...))`, loading the collection once and
-reduce-merging one `McpServer.resource` layer per item from `Layer.empty`;
-on a load failure, `tapError(Effect.logError)` then `orElseSucceed(() =>
-Layer.empty)` so the rest of the server — its tools included — still comes
-up even when the resource collection itself failed to load.
+Resource registration, the `mimeType` trap, and the URI-template `/` limit
+have their own reference: [resources.md](./resources.md).

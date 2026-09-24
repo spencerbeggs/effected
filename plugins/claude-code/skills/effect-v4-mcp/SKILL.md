@@ -42,12 +42,15 @@ clients.
 - A top-level union `parameters` schema dies the server at registration, not at the first call — see [Failures on the wire](./references/tools.md#failures-on-the-wire).
 - `Schema.Struct({})` is not `Tool.EmptyParams` — it fails server registration outright — see [Defining a tool](./references/tools.md#defining-a-tool).
 - Closing stdin with a request in flight drops that response — see [`McpStdio.teardown`](./references/server-wiring.md).
-- A bare-string resource `content` loses its `mimeType` — see [Resources](./references/server-wiring.md).
+- A bare-string resource `content` loses its `mimeType` on the read itself, even though it still appears in `resources/list` — see [The `mimeType` trap](./references/resources.md#the-mimetype-trap).
+- A resource URI template variable cannot span a slash — an id containing one needs a static resource per id, not a template — see [A template variable cannot span a slash](./references/resources.md#a-template-variable-cannot-span-a-slash).
 
 ## Additional resources
 
 - [server-wiring.md](./references/server-wiring.md) — the complete `main.ts`, `McpStdio.layer`/`launch`/`teardown`, protocol ordering, crash guards, and launch-context project-directory resolution. Load when: assembling or reviewing a server's `main.ts`, or debugging why a failure or a log line reached the wire.
 - [tools.md](./references/tools.md) — defining a tool, strict input reporting, failures on the wire, and the `ok: false` structured-remediation envelope. Load when: declaring a `Tool.make`, wiring a `Toolkit`, or a client is seeing the wrong failure shape.
+- [resources.md](./references/resources.md) — `McpServer.resource`'s single and URI-template forms, the `mimeType` trap, and why a slash-containing id needs a static resource instead of a template. Load when: registering an MCP resource, or a client's read is missing a `mimeType` it expects.
+- [testing.md](./references/testing.md) — the in-process harness, the protocol matrix, spawned clients, the packed-install proof, and the tool audit. Load when: writing a test against an MCP server, or choosing between `McpHarness`, `McpProcess`, `McpProbe` and `McpToolAudit`.
 - `effected-packages`' [mcp.md](../effected-packages/references/mcp.md) — the `@effected/mcp` package surface as a routing reference (import table, full API, Usage block). Load when: you need the package-level index rather than the teaching depth here.
 
 Anchors in this skill and its references cite the vendored tag at
