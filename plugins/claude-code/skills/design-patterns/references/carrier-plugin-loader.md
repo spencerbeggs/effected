@@ -149,6 +149,22 @@ loader avoids for the server case. Name this explicitly as the anti-pattern
 when reviewing a hook resolution path, not as a stylistic difference from
 the MCP loader.
 
+## What the resolved bin does with the project directory
+
+The loader script itself stays shell — resolving the right bin and `exec`ing
+it is a shell problem, not one this pattern hands to the kit. What the kit
+does own is the **other** side: once the bin is running, it resolves which
+directory to treat as the project with `@effected/engine`'s
+`LaunchContext.projectDir`, over whatever `argv`/env var the loader passed
+down. `LaunchContext.isUnsubstituted` is what makes that resolution safe
+against a host that passes a literal, unexpanded `${CLAUDE_PLUGIN_ROOT}`-style
+variable through rather than a real path: an empty value and an
+unsubstituted placeholder are both treated as absent, falling through to the
+next candidate rather than resolving to the literal template string as if it
+were a directory. See `effect-v4-mcp`'s
+[`server-wiring.md#project-directory`](../../effect-v4-mcp/references/server-wiring.md#project-directory)
+for the runnable shape.
+
 ## Kill switches
 
 Every hook checks a project-owned environment variable before doing

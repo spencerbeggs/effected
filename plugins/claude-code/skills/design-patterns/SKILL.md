@@ -20,6 +20,23 @@ More rows land here as more patterns are distilled. A pattern earns a row
 once it has shipped in more than one real tool and the trade-offs are
 settled, not on first use.
 
+## Kit exports
+
+The carrier pattern's references teach the shape; where a piece of that
+shape has shipped as a kit export, reach for the export instead of
+hand-rolling the recipe again.
+
+| construct | import | reach for it when |
+| --- | --- | --- |
+| `CurrentDistribution`, `DistributionField`, `distributionSuffix` | `@effected/engine` | threading which meta-package a front end was installed through |
+| `LaunchContext` | `@effected/engine` | resolving an agent-launched project directory from `argv`/`env`/`cwd` |
+| `CliRuntime.main` | `@effected/cli` | assembling a CLI front end's `main.ts` |
+| `McpStdio` | `@effected/mcp` | assembling an MCP front end's `main.ts` — launch, stdio boundary, teardown |
+| `WorkspaceLayering`, `LayerPolicy` | `@effected/workspaces/testing` | the manifest DAG test that holds the package graph to a committed policy |
+| `SourceBoundary` | `@effected/workspaces/testing` | a package's own `process`/import boundary test |
+| `PackedInstall` | `@effected/workspaces/testing` | the cross-package-manager packed-install e2e |
+| `McpProbe` | `@effected/mcp/testing` | the MCP half of a packed-install proof |
+
 ## Standards
 
 - **Name the layer, not the file.** "Front end", "engine", "carrier" are
@@ -46,16 +63,20 @@ settled, not on first use.
   `peerDependencies` — see
   [carrier-package.md](./references/carrier-package.md).
 - An MCP `main.ts` that imports its server graph statically can die
-  silently behind the stdio transport — see
-  [carrier-entry-contract.md](./references/carrier-entry-contract.md).
+  silently behind the stdio transport — `McpStdio.launch` does not remove
+  this requirement, it sits around it — see
+  [carrier-entry-contract.md](./references/carrier-entry-contract.md) and
+  `effect-v4-mcp`'s `server-wiring.md#crash-guards`.
 - A package.json read for "my own version" reports the wrong package's
-  version once code moves to a shared engine — see
-  [carrier-version-threading.md](./references/carrier-version-threading.md).
+  version once code moves to a shared engine — `CurrentDistribution` fixes
+  the identity-threading half of this, not the build-time-literal half —
+  see [carrier-version-threading.md](./references/carrier-version-threading.md).
 - A plugin loader that dispatches through `pnpm exec` / `yarn exec` /
   `bunx` resolves bins differently per package manager — see
   [carrier-plugin-loader.md](./references/carrier-plugin-loader.md).
 - A manifest DAG test with no positive-control fixture can pass while
-  checking nothing — see
+  checking nothing — `WorkspaceLayering`'s own `edgeCount` guard is that
+  control; a hand-rolled `LAYER_RANKS` table has to add it itself — see
   [carrier-verification.md](./references/carrier-verification.md).
 
 ## Additional resources
@@ -83,8 +104,9 @@ settled, not on first use.
   project's own CLI.
 - [references/carrier-verification.md](./references/carrier-verification.md)
   — the manifest DAG test with non-vacuity, source boundary tests, and the
-  packed-install e2e across package managers. Load when: writing or
-  reviewing the tests that keep a multi-package tool's shape honest.
+  packed-install e2e across package managers. Load when: adding the
+  repo-shape checks to a multi-package tool — uses the kit's checks, not
+  copied tests.
 - [references/carrier-app-and-schemas.md](./references/carrier-app-and-schemas.md)
   — the OPTIONAL extension: where the app layer (platform + config
   discovery) and a published config-file JSON Schema belong — core owns
@@ -97,3 +119,11 @@ settled, not on first use.
   — okfit, vitest-agent and systems: what each does best, what each is
   missing, and the deviations each made and why. Load when: you want a
   worked, citable example instead of the prescriptive rule alone.
+
+## Related skills
+
+- **`effect-v4-cli`** and **`effect-v4-mcp`** own each front end's own depth
+  — assembling `main.ts`, exit codes, protocol wiring, tool definitions and
+  testing. This skill teaches the shape a multi-front-end tool takes; the
+  two front-end skills teach what happens inside each front end. Knowledge
+  stays split rather than duplicated across all three.

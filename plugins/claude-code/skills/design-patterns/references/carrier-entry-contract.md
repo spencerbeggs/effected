@@ -33,7 +33,31 @@ registers process handlers and sets exit codes the moment it runs. Splitting
 them into two export paths means "give me the program's shape" and "run the
 program" are never the same import.
 
-## The MCP crash-guard requirement
+## An MCP front end's `main.ts`
+
+`@effected/mcp`'s `McpStdio.launch` and `McpStdio.teardown` are the whole
+assembly — a front end no longer hand-rolls the launch/report/teardown
+sequence:
+
+```ts
+import { McpStdio } from "@effected/mcp"
+import { NodeRuntime } from "@effect/platform-node"
+import type { Layer } from "effect"
+
+// A consumer's own fully-composed server layer.
+declare const Main: Layer.Layer<never, Error>
+
+NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown })
+```
+
+The crash-guard requirement below still applies and is not something
+`McpStdio` replaces — it is a `main.ts`-authoring discipline that sits
+**around** `McpStdio.launch`, not inside it. Full detail, including both
+shipped crash-guard policies and when to choose each, lives in
+`effect-v4-mcp`'s
+[`server-wiring.md#crash-guards`](../../effect-v4-mcp/references/server-wiring.md#crash-guards) —
+this file only names the requirement, since the depth belongs to the skill
+that owns MCP knowledge (see this skill's own **Related skills** line).
 
 An MCP server's `main.ts` needs one thing no other front end does: its
 `uncaughtException` and `unhandledRejection` handlers must be registered
@@ -41,43 +65,36 @@ An MCP server's `main.ts` needs one thing no other front end does: its
 module loaded with a dynamic `await import(...)`. Reason: MCP servers talk
 over stdio, and a throw during static module evaluation — before those
 handlers exist — dies silently behind the transport instead of reaching
-stderr where anyone can see it.
-
-okfit's `packages/mcp/src/main.ts` states the rule directly in its own
-doc comment and both okfit and vitest-agent implement it the same way:
-
-```ts
-// This module deliberately carries NO static imports of the server graph:
-// the `uncaughtException` and `unhandledRejection` handlers are registered
-// before `NodeRuntime`, the logger and `ServerLayer` are ever evaluated, so
-// a throw during module evaluation is still reported on stderr rather than
-// crashing silently.
-export const main = async (options: MainOptions = {}): Promise<void> => {
-  process.on("uncaughtException", (error) => fatal("uncaught exception", error));
-  process.on("unhandledRejection", (reason) => fatal("unhandled rejection", reason));
-
-  const NodeRuntime = await import("@effect/platform-node/NodeRuntime");
-  const { OkfitPlatform } = await import("@okfit/engine");
-  // ...the rest of the server graph, all dynamically imported
-};
-```
-
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/mcp/src/main.ts>)
-
-Document this inline wherever it appears — the dynamic imports read, at a
-glance, like something a future edit would "tidy" back into static ones.
-That edit reintroduces the exact silent-crash failure mode the pattern
-exists to close.
+stderr where anyone can see it. Document this inline wherever it appears —
+the dynamic imports read, at a glance, like something a future edit would
+"tidy" back into static ones. That edit reintroduces the exact silent-crash
+failure mode the pattern exists to close.
 
 A CLI's `main.ts` has no equivalent need — it owns the process the same
 way, but there is no stdio transport swallowing a stack trace, so a plain
-static import graph is fine. okfit's `packages/cli/src/main.ts` is a
-representative shape: it resolves a `Now` test hook once, provides the
-`Distribution` reference (see
-[carrier-version-threading.md](./carrier-version-threading.md)), maps a
-`ShowHelp` result to the right exit code, and calls `NodeRuntime.runMain`
-last, after every layer is composed
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/cli/src/main.ts>).
+static import graph is fine.
+
+## A CLI front end's `main.ts`
+
+`@effected/cli`'s `CliRuntime.main` is the equivalent whole-assembly move
+for a CLI: a fresh `CliExit`, the platform layer inside failure reporting,
+and the logger outermost, in the one order that reports every failure well.
+`effect-v4-cli`'s
+[`recipes.md#the-main-assembly`](../../effect-v4-cli/references/recipes.md#the-main-assembly)
+is the full file layout (`bin.ts`/`main.ts`/`index.ts`/`version.ts`) built
+around it — reach for that reference rather than assembling `main.ts` by
+hand; the depth for a CLI front end lives there, not in this file.
+
+## Resolving the project directory
+
+Both front ends resolve where a tool launched by an agent host should treat
+as its project the same way: `@effected/engine`'s `LaunchContext.projectDir`,
+called once in `main.ts`, over caller-supplied `argv`/`env`/`cwd`. See
+`effect-v4-mcp`'s
+[`server-wiring.md#project-directory`](../../effect-v4-mcp/references/server-wiring.md#project-directory)
+for the runnable shape and why `LaunchContext.isUnsubstituted` matters — a
+plugin host can pass a literal, unexpanded `${CLAUDE_PROJECT_DIR}` through,
+and treating that as a real path is the bug the resolver exists to avoid.
 
 ## The carrier's shims
 
@@ -103,11 +120,11 @@ Each shim is a few lines: import the front end's `./main` export, pass its
 own identity down, call it.
 
 ```ts
-#!/usr/bin/env node
-import { main } from "@scope/cli/main";
-import { PLUGIN_VERSION } from "../version.js";
+// A consumer's own front end and version constant.
+declare const main: (options: { readonly distribution?: { readonly name: string; readonly version: string } }) => void
+declare const PLUGIN_VERSION: string
 
-main({ distribution: { name: "@scope/plugin", version: PLUGIN_VERSION } });
+main({ distribution: { name: "@scope/plugin", version: PLUGIN_VERSION } })
 ```
 
 okfit's `packages/plugin/src/bin/okfit.ts` is exactly this shape

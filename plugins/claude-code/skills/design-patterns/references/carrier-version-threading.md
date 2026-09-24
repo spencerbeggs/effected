@@ -7,11 +7,14 @@ does not fail loudly: it produces reports that look internally
 inconsistent, and a reader who compares two version numbers wrongly
 concludes two different builds are running when only one ever was.
 
-This threading discipline is the **best-of-three** answer: of the reference
-repos, only one built it out fully. Treat it as the composite target, not
-as "how every tool already does it" — see
-[carrier-case-studies.md](./carrier-case-studies.md) for which repos have
-which pieces.
+`@effected/engine` ships the carrier-identity half of this discipline —
+`Distribution`, `DistributionField`, `CurrentDistribution` and
+`distributionSuffix` — so a front end no longer hand-rolls its own
+`Context.Reference` for it. What still has no kit export, and stays a
+recipe: each package inlining its own version at build time, `engine_version`
+as the comparable version, and the `--version` line's own format (which
+`effect-v4-cli`'s `recipes.md#version-formatter` already teaches — this file
+only threads the carrier identity into it).
 
 ## Each package inlines its own version, at build time
 
@@ -39,66 +42,60 @@ A carrier's bin shim knows which meta-package it is, so it passes that
 identity to `main()` as an option:
 
 ```ts
-main({ distribution: { name: "@okfit/plugin", version: PLUGIN_VERSION } });
+declare const main: (options: { readonly distribution?: { readonly name: string; readonly version: string } }) => void
+declare const PLUGIN_VERSION: string
+
+main({ distribution: { name: "@okfit/plugin", version: PLUGIN_VERSION } })
 ```
 
 A direct install of the front end (no carrier involved) calls `main()` with
 no `distribution` option at all — the option is optional at every layer for
 exactly that reason.
 
-## `Distribution`: a `Context.Reference`, not a service
+## `CurrentDistribution`: `@effected/engine`'s `Context.Reference`
 
 The front end receives `options.distribution` as a plain optional value and
-converts it once, at the top of the command tree, with `Option.fromNullishOr`
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/cli/src/main.ts>):
+converts it once, at the top of the program, with `Option.fromNullishOr`
+and `@effected/engine`'s `CurrentDistribution`:
 
 ```ts
-const distribution = Option.fromNullishOr(options.distribution);
-// ...
-Effect.provideService(DistributionRef, distribution),
-```
+import { CurrentDistribution, distributionSuffix } from "@effected/engine"
+import { Effect, Option } from "effect"
 
-`Option.fromNullishOr` treats both `null` and `undefined` as absent and
-wraps anything else in `Option.some` (`Option.ts:773`). Its siblings are
-narrower: `fromUndefinedOr` (`Option.ts:807`) treats only `undefined` as
-absent and `fromNullOr` (`Option.ts:841`) only `null`. The nullish form is
-right here because a shim may pass `distribution: undefined` explicitly.
-
-`DistributionRef` itself is declared once, in the front end's `internal/`
-tree, as a `Context.Reference` — deliberately **not** a `Context.Service`:
-
-```ts
-export const Distribution: Context.Reference<Option.Option<DistributionShape>> = Context.Reference(
-  "@okfit/cli/Distribution",
-  { defaultValue: () => Option.none() },
-);
-```
-
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/cli/src/internal/distribution.ts>)
-
-`Context.Reference` carries `defaultValue` and reads back without any
-explicit provision — confirmed in the vendored source's `Context.ts`,
-where `Reference` is defined as taking a key plus a `{ defaultValue: () =>
-Service }` options object. That is exactly the shape a piece of packaging
-metadata wants: every command in the tree can read `Distribution` and get
-`Option.none()` for a direct install, with zero ceremony, rather than every
-call site needing to provide a fake value just to satisfy a service
-requirement it doesn't otherwise care about.
-
-The shape being threaded — `{ name, version }` plus its schema — lives in
-the **engine**, not in any one front end, so every front end shares one
-definition:
-
-```ts
-// packages/engine/src/render/distribution.ts
-export interface Distribution {
-  readonly name: string;
-  readonly version: string;
+interface MainOptions {
+  readonly distribution?: { readonly name: string; readonly version: string }
 }
-export const DistributionField = Schema.NullOr(Schema.Struct({ name: Schema.String, version: Schema.String }));
+
+const main = (options: MainOptions = {}) =>
+  Effect.gen(function* () {
+    const distribution = yield* CurrentDistribution
+    return `mytool 1.2.3${distributionSuffix(distribution)}`
+  }).pipe(Effect.provideService(CurrentDistribution, Option.fromNullishOr(options.distribution)))
+
+console.log(await Effect.runPromise(main({ distribution: { name: "@scope/plugin", version: "1.2.3" } })))
+console.log(await Effect.runPromise(main()))
 ```
 
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/engine/src/render/distribution.ts>)
+Prints `mytool 1.2.3 via @scope/plugin 1.2.3` for the carrier-launched case
+and `mytool 1.2.3` (no suffix) for a direct install. `Option.fromNullishOr`
+treats both `null` and `undefined` as absent and wraps anything else in
+`Option.some` — the nullish form is right here because a shim may pass
+`distribution: undefined` explicitly rather than omitting the option. Its
+siblings are narrower: `fromUndefinedOr` treats only `undefined` as absent,
+`fromNullOr` only `null`.
+
+`CurrentDistribution` is a `Context.Reference`, not a `Context.Service` — it
+carries its own default (`Option.none()`), so nothing has to provide it at
+all for a direct install; only the carrier-launched path needs the one
+`Effect.provideService` call, made once, at the top of the program. Every
+command or handler further down reads `CurrentDistribution` and gets
+`Option.none()` for a direct install with zero ceremony, instead of every
+call site needing to provide a fake value just to satisfy a service
+requirement it doesn't otherwise care about. The shape being threaded —
+`{ name, version }` — is `@effected/engine`'s `Distribution`, one
+definition every front end shares instead of each hand-rolling its own
+`Schema.Struct`; `DistributionField` is the `null`-or-`Distribution` shape
+for a JSON envelope field.
 
 ## `engine_version` is THE comparable version
 
@@ -123,31 +120,14 @@ of misleading.
 
 ## The `--version` format
 
-okfit's CLI formats its version line as:
-
-```text
-okfit <CLI_VERSION>[ via @okfit/plugin X] (engine <ENGINE_VERSION>, okf <SPEC>, config-schema <V>)
-```
-
-implemented as a custom `formatVersion` override on the CLI framework's
-formatter:
-
-```ts
-export const versionFormatter = (distribution: Distribution | undefined): CliOutput.Formatter => ({
-  ...CliOutput.defaultFormatter({ colors: useColor() }),
-  formatVersion: (name: string, version: string): string => {
-    const via = distribution === undefined ? "" : ` via ${distribution.name} ${distribution.version}`;
-    return `${name} ${version}${via} (engine ${ENGINE_VERSION}, okf ${OKF_SPEC_VERSION}, config-schema ${CONFIG_SCHEMA_VERSION})`;
-  },
-});
-```
-
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/cli/src/internal/versionFormatter.ts>)
-
-Only `formatVersion` is overridden — every other formatter method (help
-text, error rendering) stays the framework's own default, so overriding the
-version line never risks drifting help or error output from the rest of
-the CLI ecosystem.
+Formatting the version line itself — combining `distributionSuffix` with
+core's own `formatVersion` hook — is `effect-v4-cli`'s
+[`recipes.md#version-formatter`](../../effect-v4-cli/references/recipes.md#version-formatter),
+not re-taught here: that reference covers the exact `(name, version)` arity
+`formatVersion` takes and the ruling that only a *consumer* front end may
+depend on `@effected/engine`, never the kit's own `cli` package. This file
+supplies the identity `CurrentDistribution` carries down to that formatter;
+the formatter is the front end's job.
 
 ## MCP and LSP threading
 
@@ -160,7 +140,11 @@ The LSP server instead puts it in its own startup log line rather than a
 structured field:
 
 ```ts
-: `okfit-lsp ${LSP_VERSION} via ${distribution.name} ${distribution.version}`,
+const LSP_VERSION = "1.0.0"
+const distribution = { name: "@scope/plugin", version: "1.2.3" }
+
+const startupLine = `okfit-lsp ${LSP_VERSION} via ${distribution.name} ${distribution.version}`
+console.log(startupLine)
 ```
 
 (<https://github.com/spencerbeggs/okfit/blob/main/packages/lsp/src/server.ts>)

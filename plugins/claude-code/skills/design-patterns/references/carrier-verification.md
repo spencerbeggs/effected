@@ -1,195 +1,207 @@
-# Carrier verification
+# Carrier verification: use the kit
 
-Three tests keep the carrier pattern honest as the package graph evolves.
-Each answers a different question, and none substitutes for the others.
+Three checks keep the carrier pattern honest as the package graph evolves.
+Each answers a different question, none substitutes for the others, and
+`@effected/workspaces/testing` ships all three — a multi-package tool no
+longer hand-rolls any of them.
 
-## 1. Manifest DAG test — with non-vacuity
+## 1. Manifest DAG test: `LayerPolicy` + `WorkspaceLayering`
 
-Read every workspace package's `package.json` across `dependencies`,
-`devDependencies`, `peerDependencies` and `optionalDependencies`; classify
-every package into a layer; assert every edge points to a strictly lower
-layer (or into tooling); assert no same-layer edges (a front end cannot
-depend on another front end); detect cycles.
-
-A layer-ranked variant declares the ranking as a lookup table and asserts
-against it directly:
+A committed `layers.json`, decoded with `LayerPolicy.load` (or, for a fixture
+with no file on disk, `LayerPolicy.decode`), checked against the live
+workspace with `WorkspaceLayering.checkWorkspace` — or, for a hand-built
+graph, the pure `WorkspaceLayering.check(graph, policy)`. Assert **both**
+`report.violations` empty and `report.edgeCount > 0`: the second half is the
+non-vacuity guard, since a discovery bug that silently finds zero edges
+would otherwise report a spotless graph for the wrong reason.
 
 ```ts
-it("every workspace package has a declared rank", () => {
-  const missing = graph.map((n) => n.name).filter((n) => !(n in LAYER_RANKS));
-  expect(missing).toEqual([]);
-});
+import { LayerEdge, LayerPolicy, WorkspaceLayering } from "@effected/workspaces/testing"
+import { Effect } from "effect"
 
-it("every workspace edge points to a strictly lower rank", () => {
-  const violations = graph.flatMap((n) =>
-    n.edges.filter((e) => LAYER_RANKS[e.to] >= LAYER_RANKS[n.name]).map((e) => `${n.name} -> ${e.to} (${e.kind})`),
-  );
-  expect(violations).toEqual([]);
-});
-
-it("the two front ends never depend on each other", () => {
-  const cli = graph.find((n) => n.name === "@vitest-agent/cli");
-  const mcp = graph.find((n) => n.name === "@vitest-agent/mcp");
-  expect(cli?.edges.map((e) => e.to)).not.toContain("@vitest-agent/mcp");
-  expect(mcp?.edges.map((e) => e.to)).not.toContain("@vitest-agent/cli");
-});
-```
-
-(<https://github.com/spencerbeggs/vitest-agent/blob/main/packages/plugin/__test__/workspace-layering.test.ts>)
-
-That test is plain Vitest. In an Effect repo, write new tests with
-`assert.*` from `@effect/vitest` (see the `effect-v4-testing` skill) and
-adapt the checks rather than copying the `expect` matchers.
-
-A second style declares the ranking as an external `layers.json` and reads
-the live workspace off disk each run:
-
-```json
-{
-  "layers": [
-    ["@savvy-web/silk"],
-    ["@savvy-web/cli", "@savvy-web/mcp", "@savvy-web/changelog"],
-    ["@savvy-web/silk-effects"],
-    ["@savvy-web/silk-core"]
+// A hand-built graph, top layer first (an edge may only point to a
+// strictly LOWER index — this is what `LayerPolicy`'s own doc comment
+// means by "top-down").
+const graph = {
+  names: ["@scope/carrier", "@scope/cli", "@scope/mcp", "@scope/core"],
+  edges: [
+    LayerEdge.make({ from: "@scope/cli", to: "@scope/core", field: "dependencies" }),
+    LayerEdge.make({ from: "@scope/mcp", to: "@scope/core", field: "dependencies" }),
+    LayerEdge.make({ from: "@scope/carrier", to: "@scope/cli", field: "dependencies" }),
+    LayerEdge.make({ from: "@scope/carrier", to: "@scope/mcp", field: "dependencies" }),
   ],
-  "tooling": ["@savvy-web/bundler", "..."],
-  "harness": ["@e2e/*"]
 }
+
+const program = Effect.gen(function* () {
+  const policy = yield* LayerPolicy.decode({
+    layers: [["@scope/carrier"], ["@scope/cli", "@scope/mcp"], ["@scope/core"]],
+    tooling: [],
+    unconstrained: [],
+  })
+  const report = WorkspaceLayering.check(graph, policy)
+  return { violations: report.violations, edgeCount: report.edgeCount }
+})
+
+console.log(await Effect.runPromise(program))
 ```
 
-(<https://github.com/savvy-web/systems/blob/main/e2e/workspace/layers.json>)
+Prints `{ violations: [], edgeCount: 4 }` — a clean graph, and the
+non-vacuity guard confirms the check actually looked at something.
 
-### Non-vacuity: prove the checker can actually fail
+`LayeringReport.offenders` names **five** offence reasons: `upward` (an edge
+into a strictly higher layer), `sameLayer` (a front end depending on
+another front end), `toolingReachesLayer` (a tooling package reaching into a
+real layer, the wrong direction), `intoUnconstrained` and `intoUnclassified`
+(an edge into a package the policy does not classify at all — see below).
+`LayeringReport.cycle` reports a genuine dependency cycle separately from
+any of the five reasons.
 
-A DAG test that never triggers on a broken fixture is worthless — it can
-pass because there is nothing wrong, or because the check itself is
-silently short-circuited (an empty glob, a typo'd field name, a discovery
-bug that finds zero edges). `systems`' suite adds explicit non-vacuity
-controls alongside the real assertion:
+**A devDependency-only cycle is invisible to a policy whose `fields` are
+runtime-only.** `WorkspaceLayering.edgesOf` draws one edge per declaring
+field, and `check` reads only the policy's own `effectiveFields` (`fields`,
+or all four by default). Either include `devDependencies` in the policy's
+`fields`, or run a second, separate all-field acyclicity check —
+`DependencyGraph.make({ packages }).hasCycle` — alongside the layering
+policy rather than folding both concerns into one check.
+
+**The root package must be classified.** Workspace discovery always
+returns it (its `relativePath` is `"."`); a policy that forgets it reports
+the root in `unclassified`. Usually an `unconstrained` glob covers it.
+
+Remove any hand-rolled `LAYER_RANKS` lookup table and its own from-scratch
+edge-direction assertions — `WorkspaceLayering.check` already is that table,
+plus the five-reason classification and the non-vacuity guard, over a
+policy format every kit-based tool shares.
+
+## 2. Source boundary tests: `SourceBoundary`
+
+Scan a package's `src/` tree for the things its layer promises not to do —
+`process` reads, a platform import leaking into core, front ends importing
+each other — with `SourceBoundary.scan({ root, allow, rules })`, and prove
+the scanner itself can fail before trusting a clean result:
 
 ```ts
-// (a) every name layers.json declares must actually have been discovered on disk
-const missingDeclaredNames = declaredNames.filter((name) => !discoveredNames.has(name));
-expect(missingDeclaredNames).toEqual([]);
+import { resolve } from "node:path"
+import { NodeServices } from "@effect/platform-node"
+import { SourceBoundary } from "@effected/workspaces/testing"
+import { Cause, Effect, Exit } from "effect"
 
-// (c) edge extraction must have actually found edges
-expect(edges.length, `expected to discover workspace:* edges, found ${edges.length}`).toBeGreaterThan(0);
+const ROOT = resolve(process.cwd(), "..")
 
-// (b) a handful of known load-bearing edges must be present
-const loadBearingEdges = [
-  "@savvy-web/silk-effects -> @savvy-web/silk-core (dependencies)",
-  "@savvy-web/cli -> @savvy-web/silk-effects (dependencies)",
-  "@savvy-web/silk -> @savvy-web/cli (dependencies)",
-];
-const missingLoadBearingEdges = loadBearingEdges.filter((label) => !edgeLabels.has(label));
-expect(missingLoadBearingEdges).toEqual([]);
+const happy = await Effect.runPromise(
+  Effect.gen(function* () {
+    const fixtureFailures = SourceBoundary.verifyFixtures()
+    const scan = yield* SourceBoundary.scan({
+      root: resolve(ROOT, "packages", "engine", "src"),
+      rules: ["process", { forbidImports: ["node:*", "@effect/platform*"] }],
+    })
+    return { fixtureFailures, files: scan.files.length, violations: scan.violations }
+  }).pipe(Effect.provide(NodeServices.layer)),
+)
+console.log(happy)
+
+// Malformed input: a root that does not exist must fail typed, never die.
+const badExit = await Effect.runPromiseExit(
+  SourceBoundary.scan({ root: resolve(ROOT, "does-not-exist"), rules: ["process"] }).pipe(
+    Effect.provide(NodeServices.layer),
+  ),
+)
+console.log(Exit.isFailure(badExit) && Cause.hasDies(badExit.cause) ? "Die" : "Fail")
 ```
 
-(<https://github.com/savvy-web/systems/blob/main/e2e/workspace/__test__/e2e/package-graph.e2e.test.ts>)
+Prints `{ fixtureFailures: [], files: 4, violations: [] }` then `Fail` — the
+bad root fails as a typed `PlatformError`, never a defect. `verifyFixtures()`
+is the shipped **positive control**: it runs the scanner against fixtures it
+already knows must and must not trigger, and returns the mismatches — `[]`
+means the scanner itself is still discriminating, not merely silent.
+Asserting `scan.files` non-empty is the same non-vacuity discipline as the
+DAG test's `edgeCount > 0`: an empty `root` glob or a typo'd path would
+otherwise report a spotless boundary because nothing was scanned at all.
 
-Plus two **positive-control fixtures** — hand-built graphs the checker must
-reject, run alongside the live-workspace assertion:
+An engine's own allowlist can be **truly empty** — no per-file exception —
+because `process.env.__PACKAGE_VERSION__` in a build-time version constant
+is a bundler `define`, not a runtime environment read, and `SourceBoundary`
+does not flag it.
 
-```ts
-it("flags exactly one offender for a hand-built sideways L3 edge", () => {
-  // a fixture graph, not the live workspace — one edge points sideways
-  expect(findOffenders(fixtureLayers, fixtureEdges)).toEqual(["@fixture/l3-b -> @fixture/l3-a (dependencies)"]);
-});
+Three documented misses to design a scan around, not "fix" by widening a
+rule: **any local binding named `process` or `console`** — a parameter, a
+variable, an unannotated class field — is flagged exactly like the global,
+with no scope analysis (`globalThis["process"]` is a known miss in the
+other direction); **`forbidImports: ["node:*"]` misses a bare built-in**
+such as `"fs"` — spread `builtinModules` from `node:module` in the test file
+to actually mean "no Node built-ins."
 
-it("detects a cycle in a hand-built fixture graph", () => {
-  // a fixture graph with a genuine 3-node cycle
-  expect(topoSortSucceeds(fixtureNodes, fixtureEdges)).toBe(false);
-});
-```
+Remove any hand-rolled `stripComments` + regex scanner — `SourceBoundary`
+already tokenizes correctly enough to spare a comment or a string literal
+that merely mentions `process`, and ships the fixtures that prove it.
 
-Without these, "the DAG test passes" and "the DAG test would ever fail on
-a real violation" are two different claims — okfit currently has no
-manifest DAG test at all, which is a gap, not merely a style difference
-(see [carrier-case-studies.md](./carrier-case-studies.md)).
-
-### The subtle back-edge to watch for
-
-A **lower** package listing a **higher** one in `devDependencies` purely
-for test fixtures breaks the layering model just as much as a production
-back-edge does, and it blocks safely extracting the lower package into its
-own repository later, once it needs to be. If a lower package's tests need
-fixtures that live in a higher one, give the fixtures their own package
-instead of reaching up for them.
-
-## 2. Source boundary tests, per package
-
-Scan a package's `src/` tree for the things its layer promises not to do:
-`process` reads (none at all in the engine — no allowlist except a
-package's own `version.ts`, which reads a bundler-injected define, not a
-runtime environment variable; a narrow allowlist of `bin`/`main`/
-`version`/exit-tty helpers in a CLI), platform imports leaking into core,
-front ends importing each other.
-
-```ts
-const isAllowedToReadProcess = (relativePath: string): boolean => relativePath === "version.ts";
-
-it("no file under src/ reads `process` -- exactly one allowlisted file (version.ts)", () => {
-  const offenders = walk(SRC_ROOT).filter(
-    (file) =>
-      !isAllowedToReadProcess(relative(SRC_ROOT, file)) &&
-      /\bprocess\s*\./.test(stripComments(readFileSync(file, "utf8"))),
-  );
-  assert.deepStrictEqual(offenders.map((file) => relative(SRC_ROOT, file)), []);
-});
-```
-
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/engine/__test__/boundaries.test.ts>)
-
-**Probe it against a planted violation** before trusting it — add a
-`process.env` read to a fixture file under the scanned tree and confirm the
-test fails, the same discipline any regex-based static check needs, since
-a broken pattern that matches nothing passes silently forever.
-
-## 3. Packed-install e2e, across package managers
+## 3. Packed-install e2e: `PackedInstall`
 
 Neither of the first two tests proves a consumer *outside* the monorepo
-actually gets working bins — only a real pack-and-install does. The shape:
-
-1. Pack the carrier (and, in a workspace-isolated setup, every front end it
-   depends on) to a tarball with `npm pack`.
-2. Create a scratch project **outside** the workspace, one per package
-   manager under test (npm, pnpm, yarn, bun), each with its own manager-
-   specific override mechanism (`overrides` for npm/bun, `pnpm.overrides` /
-   a `pnpm-workspace.yaml` for pnpm, a Yarn Berry resolution field) pointing
-   every family package at its own tarball.
-3. Run that manager's install.
-4. Assert:
-   - `node_modules/.bin/<tool>` and `node_modules/.bin/<tool>-mcp` exist and
-     are executable;
-   - `<tool> --version` exits 0 with a semver on stdout;
-   - **`<tool>-mcp` answers a JSON-RPC `initialize` request on stdout, with
-     completely empty stderr**, and exits 0 on stdin close.
+actually gets working bins — only a real pack-and-install does.
+`PackedInstall.run` packs the carrier and its dependency closure, installs
+into a scratch project per available package manager, and returns which
+bins are where; the test still has to run those bins itself, **inside the
+same scope** the install used, since the scratch directory is removed when
+the scope closes.
 
 ```ts
-it("vitest-agent-mcp answers a JSON-RPC initialize on stdout with empty stderr", () => {
-  const initialize = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", /* ...params */ });
-  const result = /* spawn the installed bin, write `${initialize}\n` to stdin, close it */;
-  expect(result.stderr).toBe("");
-});
+import { NodeServices } from "@effect/platform-node"
+import { McpProbe } from "@effected/mcp/testing"
+import { PackedInstall } from "@effected/workspaces/testing"
+import { Effect } from "effect"
+import { ChildProcess } from "effect/unstable/process"
+
+const program = Effect.gen(function* () {
+  const result = yield* PackedInstall.run({
+    carrier: "my-tool",
+    closure: "auto",
+    managers: ["npm", "pnpm", "yarn", "bun"],
+    bins: ["my-tool-mcp"],
+    env: process.env,
+    require: "all",
+    installTimeout: "2 minutes",
+  })
+  const env = PackedInstall.scrubEnv(process.env)
+  for (const consumer of result.consumers) {
+    const bin = ChildProcess.make(consumer.binPath("my-tool-mcp"), [], {
+      cwd: consumer.directory,
+      env,
+      extendEnv: false,
+    })
+    const { response, stderr, exitCode } = yield* McpProbe.initialize(bin).pipe(Effect.timeout("30 seconds"))
+    yield* Effect.log(`${consumer.manager}: initialize error=${response.error !== undefined}, stderr="${stderr}", exit=${exitCode}`)
+  }
+  // Four managers x installTimeout, plus pack and probes.
+}).pipe(Effect.timeout("12 minutes"), Effect.provide(NodeServices.layer))
+
+void program
 ```
 
-(<https://github.com/spencerbeggs/vitest-agent/blob/main/packages/plugin/__test__/bins-packed-install.e2e.test.ts>)
+Typecheck-only: this packs and installs into scratch directories under real
+package managers, which this reference cannot run as a doc example. Every
+other rule here still applies to a real suite built on it:
 
-Abridged from that suite, which is deliberately plain Vitest because it
-tests package managers and published manifests, not Effect code. In an
-Effect repo's own suite, assert with `assert.*` from `@effect/vitest` (see
-`effect-v4-testing`) and keep the shape of the test, not its matchers.
+- The MCP half of the proof is `McpProbe.initialize`, not a hand-rolled
+  spawn-and-write-JSON-RPC harness — see `effect-v4-mcp`'s
+  [`testing.md#packed-install-proof`](../../effect-v4-mcp/references/testing.md#packed-install-proof)
+  for the full assertion shape (`response.error` undefined, empty `stderr`,
+  exit `0`).
+- A requested manager that is not installed on the machine lands in
+  `result.unavailable`; pass `require: "all"` to make that a hard failure
+  instead of a silent skip.
+- `PackedInstall` is **POSIX-only** and fails `UnsupportedPlatform`
+  elsewhere.
+- The installs run one after another, so an outer `Effect.timeout` has to
+  be at least the number of managers times `installTimeout`, plus the pack
+  and the probes — a tighter guard fires first as a `TimeoutError` naming no
+  manager, which reads like a hang rather than a configuration mistake.
+- Pass `process.env` in explicitly: nothing under `./testing` reads
+  `process` itself. Declare every package the consumer's own code imports
+  besides the carrier in `consumerDependencies` — pnpm links only declared
+  dependencies at a project's top level.
 
-The empty-stderr assertion is not incidental — it is the packed-install
-proof of the MCP crash-guard contract in
-[carrier-entry-contract.md](./carrier-entry-contract.md): if a static
-import anywhere in the server graph throws before the guards are
-registered, this is the test that catches it, because nothing else spawns
-a *really installed* binary the way a plugin host does.
-
-Gate the whole suite on the carrier's production build existing (skip, do
-not fail, when it doesn't — this is an e2e proof layered on a build
-artifact, not a substitute for the build) and gate each package-manager
-block on that manager being present on `PATH`. Pair the cross-manager e2e
-with an in-repo e2e that spawns the built bins directly from `dist/` for a
-faster signal that does not depend on any package manager being installed.
+Gate the whole suite on the carrier's production build existing (skip, not
+fail, when it doesn't — this is an e2e proof layered on a build artifact,
+not a substitute for the build) and each package-manager block on that
+manager being present on `PATH`.

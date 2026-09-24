@@ -41,6 +41,9 @@ What it does best:
 - The MCP crash-guard convention is documented in the module's own doc
   comment, not just tribal knowledge
   (<https://github.com/spencerbeggs/okfit/blob/main/packages/mcp/src/main.ts>).
+- **What the kit now ships in its place:** the hand-rolled `Distribution`
+  `Context.Reference` is `@effected/engine`'s `CurrentDistribution` — see
+  [carrier-version-threading.md](./carrier-version-threading.md).
 
 Gaps:
 
@@ -89,6 +92,10 @@ What it does best:
   deviation from [carrier-package.md](./carrier-package.md), applied
   cleanly: the plugin's own library surface never imports a front end
   directly, only its bin shims do.
+- **What the kit now ships in its place:** the hand-rolled
+  `register-toolkit.ts` port (strict-by-default registration, naming every
+  unknown key) is `@effected/mcp`'s `McpToolkit` — see `effect-v4-mcp`'s
+  [tools.md](../../effect-v4-mcp/references/tools.md#strict-input).
 
 Gaps and notable deviations:
 
@@ -150,6 +157,11 @@ What it does best:
   This is a **weaker** boundary than okfit's engine, which allows `process`
   in exactly zero files — worth naming as a deliberate trade-off for a
   package with real host-adapter entry points, not an oversight.
+- **What the kit now ships in its place:** the hand-rolled `layers.json` +
+  non-vacuity DAG test is `@effected/workspaces/testing`'s `LayerPolicy` +
+  `WorkspaceLayering`, which already carries the five offence reasons and
+  the `edgeCount > 0` guard this suite hand-built — see
+  [carrier-verification.md](./carrier-verification.md).
 
 Gaps and deviations:
 
