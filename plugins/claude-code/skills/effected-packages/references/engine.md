@@ -61,13 +61,45 @@ Single entrypoint; `src/index.ts` is the only re-exporting module.
 
 ## Usage
 
+`argv` takes **parsed positional arguments only, never raw `process.argv.slice(2)`** —
+every non-empty value counts as a candidate, so a leading `--flag` would become
+the project directory:
+
+```ts
+import { LaunchContext } from "@effected/engine";
+
+// WRONG — raw argv, unfiltered: a leading flag is a non-empty candidate and wins.
+const rawArgv = ["--verbose", "/expected/project"];
+console.log(
+  "wrong (raw argv):",
+  LaunchContext.projectDir({ argv: rawArgv, env: {}, keys: [], cwd: "/fallback" }),
+);
+
+// RIGHT — only the command's own parsed positionals reach projectDir.
+const positionals = ["/expected/project"];
+console.log(
+  "right (positionals):",
+  LaunchContext.projectDir({ argv: positionals, env: {}, keys: [], cwd: "/fallback" }),
+);
+```
+
+```text
+wrong (raw argv): --verbose
+right (positionals): /expected/project
+```
+
+Wiring it into a program, using a command framework's own parsed positionals:
+
 ```ts
 import { CurrentDistribution, LaunchContext } from "@effected/engine";
 import { Effect, Option } from "effect";
 
-// A CLI's main.ts, after parsing --distribution-name/--distribution-version:
+// A CLI's main.ts: `positionals` is the command's own parsed positional
+// arguments, not raw process.argv.
+declare const positionals: ReadonlyArray<string>;
+
 const projectDir = LaunchContext.projectDir({
- argv: process.argv.slice(2),
+ argv: positionals,
  env: process.env,
  keys: ["OKFIT_PROJECT_DIR", "CLAUDE_PROJECT_DIR"],
  cwd: process.cwd(),
