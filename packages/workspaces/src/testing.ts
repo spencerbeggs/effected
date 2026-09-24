@@ -1,7 +1,8 @@
 /**
  * Repo-shape checks for a monorepo's own test suite: `SourceBoundary` keeps
  * `process`, `node:` imports and console writes out of modules meant to be
- * free of them.
+ * free of them, and `WorkspaceLayering` holds the package graph to a
+ * committed `LayerPolicy`.
  *
  * @remarks
  * A separate subpath, never re-exported from `.`, so the main entry's
@@ -12,7 +13,13 @@
  */
 
 // This module is an ENTRY POINT: api-extractor models it as its own surface,
-// so every kit type its signatures name is re-exported here.
+// so every kit type its signatures name is re-exported here. That includes
+// the discovery closure WorkspaceLayering's signatures reach (edgesOf's
+// parameter, checkWorkspace's requirement and error channel): the
+// WorkspaceDiscovery service's shape, options and failures, the WorkspaceRoot
+// service its layer requires, and WorkspacePackage's field and method types
+// (the second-published-entrypoint decision).
+export { LayerPolicy, LayerPolicyError } from "./LayerPolicy.js";
 export {
 	type BoundaryFixture,
 	type BoundaryRule,
@@ -22,3 +29,22 @@ export {
 	SourceBoundary,
 	SourceScan,
 } from "./SourceBoundary.js";
+export {
+	PackageNotFoundError,
+	WorkspaceDiscovery,
+	WorkspaceDiscoveryError,
+	type WorkspaceDiscoveryFailure,
+	type WorkspaceDiscoveryOptions,
+	type WorkspaceDiscoveryShape,
+	WorkspaceInfo,
+	type WorkspaceLookupFailure,
+	WorkspacePatternError,
+} from "./WorkspaceDiscovery.js";
+export { LayerEdge, type LayeringGraph, LayeringReport, WorkspaceLayering } from "./WorkspaceLayering.js";
+export { type DependencyDiff, PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
+export {
+	type FindWorkspaceRootOptions,
+	WorkspaceRoot,
+	WorkspaceRootNotFoundError,
+	type WorkspaceRootShape,
+} from "./WorkspaceRoot.js";
