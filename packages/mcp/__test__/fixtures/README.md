@@ -49,3 +49,14 @@
 
 - **Regenerating:** there is nothing to regenerate. Edit by hand, and keep
   one failure shape per flag.
+
+## `stdio-main.ts` and `ts-resolve.mjs`
+
+- **Producing tool:** none. `stdio-main.ts` is the one-line `main.ts`
+  (`NodeRuntime.runMain(McpStdio.launch(...), { teardown: McpStdio.teardown })`)
+  over `fixtureServer()` and the real `NodeStdio.layer`, for tests that need
+  a real process's stdin and stdout.
+- **How it runs:** `node --import ./ts-resolve.mjs stdio-main.ts`. Node
+  strips the types itself; `ts-resolve.mjs` maps a relative `./x.js` import
+  to `./x.ts` when no `.js` file exists, so the sources run unbuilt.
+- **Regenerating:** there is nothing to regenerate. Edit by hand.

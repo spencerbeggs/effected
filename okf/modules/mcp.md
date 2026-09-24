@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T23:21:20Z
-  body_sha256: dcb2f486cc07d8e732abcd0ec4eadeaae9fa8699472847b882267788ab2bb448
+  at: 2026-09-24T04:08:05Z
+  body_sha256: 11a762a61388f8cda1bef50d2a59ee7a995527a94b6e67e48b2912cff12eabd7
 ---
 
 # @effected/mcp
@@ -38,7 +38,7 @@ from `cli` to `mcp`, none from `mcp` to `workspaces`.
 | Export | Contract |
 | --- | --- |
 | `McpStdio.protocols` | `[McpProtocol.v2026_07_28, v2025_11_25, v2025_06_18]`. Stateless first; never a single entry; `initialize` only matches stateful adapters; a request with no session and no `_meta` falls to `protocols[0]`; at most one stateless adapter. |
-| `McpStdio.layer` | `(options: { name; version; instructions?; description?; protocols? }) => Layer<McpServer \| McpServerClient, never, Stdio>`. `McpServer.layerStdio` with `LogToStderr` **merged into its own output** (`Layer.provideMerge`, not `Layer.provide`) and `Layer.orDie`, because an `IllegalArgumentError` from `protocols` is the implementer's own defect (A2). |
+| `McpStdio.layer` | `(options: { name; version; instructions?; description?; protocols? }) => Layer<McpServer \| McpServerClient, never, Stdio>`. `McpServer.layerStdio` with `LogToStderr` **merged into its own output** (`Layer.provideMerge`, not `Layer.provide`) and `Layer.orDie`, because an `IllegalArgumentError` from `protocols` is the implementer's own defect (A2). The server's `Stdio` is wrapped so that a stdin line that is not JSON is answered with a JSON-RPC `-32700` parse error (`id: null`) and never reaches core's decoder, and a whitespace-only line is ignored; the server keeps serving after either. |
 | `McpStdio.launch` | `<ROut, E, R>(layer: Layer.Layer<ROut, E, R>) => Effect.Effect<never, Error, R>`. Catches every non-interrupt cause itself and logs it inside the `LogToStderr` scope, then re-fails with a private `LaunchFailed` sentinel carrying `Runtime.errorReported = false` (so `runMain` stays silent) and `Runtime.errorExitCode` copied from the original error (so the exit code survives) (A1). |
 | `McpStdio.teardown` | `Runtime.Teardown`. A success or an interrupt-only exit maps to 0 — stdin reaching EOF would otherwise exit 130. Anything else goes to `Runtime.defaultTeardown`. |
 | `ToolFailure` | `message(raw, remediation)` gives `"<raw> <hint>[ Try <suggestedTool>.]"`, dropping any empty part so an empty hint never leaves a double space (A10). `truncate(value, limit?)` echoes caller values safely, never splitting a UTF-16 surrogate pair (A10); `ECHO_LIMIT = 200`, `ENGINE_ECHO_LIMIT = 2000`. `fields` is `{ message: Schema.String, remediation: Remediation }` to spread into a consumer's `Schema.TaggedError`. Folded into the message because core sends an `Error`-instance declared failure as `isError` with message text only (`McpServer.ts:1842-1845`). |
@@ -124,9 +124,10 @@ implementation-driven refinements the later tasks made on top of them.
 
 ## Upstream gaps and their kit workarounds
 
-Two core gaps drove this design (D2) and remain open upstream as of this
-writing; the upstream issue drafts are on hold, by user directive, until
-`@effected/mcp` publishes:
+The first two core gaps drove this design (D2); the third was found in the
+phase-4 review. All three remain open upstream as of this writing; the
+upstream issue drafts are on hold, by user directive, until `@effected/mcp`
+publishes:
 
 - **`Tool.Strict` reports only the first unknown key**, because
   `McpServer.ts`'s strict decode path does not set `errors: "all"`.
@@ -137,6 +138,21 @@ writing; the upstream issue drafts are on hold, by user directive, until
   with `orDie`. Workaround: `ToolInputSchema.objectRooted`, which rewrites
   a raw JSON Schema discriminated union to an object root, registered as a
   `Tool.dynamic` tool whose handler runs `unknownKeys` on the raw payload.
+- **One stdin line that is not JSON stops a stdio server reading for
+  good**, and no `-32700` is sent. `McpServer.layerStdio`'s NDJSON decoder
+  (`RpcSerialization.makeNdjson`) runs `JSON.parse` on each line inside its
+  read loop and throws before it trims the consumed lines from its buffer.
+  The bad line stays at the buffer's head, and the parser is built once per
+  protocol, outside the stdin stream that `RpcServer.makeProtocolStdio`
+  retries. So each later chunk re-throws on the same line: the error is
+  logged once per chunk, no request after it is answered, and stdin EOF
+  still exits 0. A blank line does the same, since `JSON.parse("")` throws.
+  Workaround: `McpStdio.layer` provides the server a `Stdio` whose `stdin`
+  forwards only complete lines that parse as JSON. It answers each
+  unparseable line with the `-32700` frame on `stdout`, drops blank lines,
+  and forwards a line longer than core's 16 MiB frame cap unexamined, so
+  core's own cap still applies. The serialization cannot be swapped
+  instead: `layerStdio` provides it internally.
 
 ## `InvalidParams` per protocol revision
 

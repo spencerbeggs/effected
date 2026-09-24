@@ -66,6 +66,14 @@ types.
   `Layer.provideMerge`, not `Layer.provide` — so every layer composed WITH
   it logs to stderr too, not only the wiring `McpStdio.layer` builds
   internally.
+- **`McpStdio.layer` guards the server's stdin.** Core's stdio decoder
+  throws on a line that is not JSON before it drops that line from its
+  buffer, so every later chunk throws on it again and the server stops
+  answering while stdin EOF still exits 0. `McpStdio.layer` provides the
+  server a `Stdio` (`src/internal/StdinFrames.ts`) that answers such a line
+  with a `-32700` parse error and forwards only lines that parse; blank
+  lines are dropped. Toolkit handlers still see the ambient `Stdio`: the
+  guard is `Layer.provide`d to `layerStdio` alone.
 - **The harness never hangs.** Every `McpHarness` response wait and
   `awaitOutboundMethod` races a stop signal and a corruption signal, so a
   server that stops before responding, or writes a non-JSON-RPC line under

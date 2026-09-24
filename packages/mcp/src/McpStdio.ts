@@ -3,6 +3,7 @@ import { Cause, Effect, Exit, Layer, References, Runtime } from "effect";
 import type { McpSchema } from "effect/unstable/ai";
 import { McpProtocol, McpServer } from "effect/unstable/ai";
 import { LaunchFailed } from "./internal/LaunchFailed.js";
+import { GuardedStdio } from "./internal/StdinFrames.js";
 
 /**
  * Options for {@link McpStdio.layer}.
@@ -34,7 +35,9 @@ export interface McpStdioOptions {
  * ```
  *
  * - {@link McpStdio.layer} is `McpServer.layerStdio` with `LogToStderr`
- *   provided and merged into its output, and `Layer.orDie`.
+ *   provided and merged into its output, and `Layer.orDie`. It answers a
+ *   stdin line that is not JSON with a JSON-RPC `-32700` parse error and
+ *   keeps serving.
  * - {@link McpStdio.launch} reports a launch failure itself, on stderr, and
  *   hides it from `runMain`, whose own report is written outside anything
  *   the program can provide.
@@ -84,6 +87,14 @@ export class McpStdio {
 	 * with `Layer.mergeAll` is not provided by it, so its build logs still
 	 * go through `console.log`, onto the wire.
 	 *
+	 * The server reads stdin through a guard. A complete line that is not
+	 * JSON is answered on stdout with a JSON-RPC parse error, code `-32700`
+	 * and `id: null`, and never reaches core's decoder, which would otherwise
+	 * throw on that line again for every later chunk and stop answering. A
+	 * whitespace-only line is ignored. A line longer than core's 16 MiB frame
+	 * cap passes through unexamined, so core's cap still applies to it. Valid
+	 * JSON that is not a JSON-RPC message still goes to core.
+	 *
 	 * Each call mints a fresh layer; bind the result to a `const` or the
 	 * server builds twice.
 	 */
@@ -96,7 +107,7 @@ export class McpStdio {
 			instructions: options.instructions,
 			description: options.description,
 			protocols: options.protocols ?? McpStdio.protocols,
-		}).pipe(Layer.provideMerge(Layer.succeed(References.LogToStderr, true)), Layer.orDie);
+		}).pipe(Layer.provide(GuardedStdio), Layer.provideMerge(Layer.succeed(References.LogToStderr, true)), Layer.orDie);
 
 	/**
 	 * `Layer.launch`, with any failure other than an interrupt logged on

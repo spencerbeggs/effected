@@ -1,6 +1,11 @@
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it, vi } from "@effect/vitest";
-import { Cause, Context, Effect, Exit, Layer, References, Runtime, Stdio, Stream } from "effect";
+import type { Scope } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Queue, References, Runtime, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/unstable/ai";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { McpStdio } from "../src/index.js";
 
 /** Run an effect exactly as a platform runMain does — its outer failure report included — and resolve the exit code. */
@@ -32,6 +37,59 @@ const captured = async (run: () => Promise<number>) => {
 		error.mockRestore();
 	}
 };
+
+/** The one-line `main.ts` over the fixture server, run by Node's own type stripping through the fixture resolve hook. */
+const STDIO_MAIN = ChildProcess.make(
+	process.execPath,
+	[
+		"--import",
+		pathToFileURL(join(import.meta.dirname, "fixtures", "ts-resolve.mjs")).href,
+		join(import.meta.dirname, "fixtures", "stdio-main.ts"),
+	],
+	{ env: { PATH: process.env.PATH ?? "" } },
+);
+
+const INITIALIZE = JSON.stringify({
+	jsonrpc: "2.0",
+	id: 1,
+	method: "initialize",
+	params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "t", version: "0" } },
+});
+const PARSE_ERROR = { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } };
+
+/** A real server process driven with raw stdin writes, which `McpProcess.send` cannot make: it always writes valid JSON. */
+const spawnRaw: Effect.Effect<
+	{
+		readonly write: (text: string) => Effect.Effect<void>;
+		readonly readUntilId: (id: number) => Effect.Effect<ReadonlyArray<unknown>, Cause.Done>;
+	},
+	unknown,
+	ChildProcessSpawner.ChildProcessSpawner | Scope.Scope
+> = Effect.gen(function* () {
+	const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+	const handle = yield* spawner.spawn(STDIO_MAIN);
+	const stdin = yield* Queue.unbounded<Uint8Array, Cause.Done>();
+	yield* Stream.run(Stream.fromQueue(stdin), handle.stdin).pipe(Effect.forkScoped);
+	const lines = yield* Queue.unbounded<string, Cause.Done>();
+	yield* Stream.splitLines(Stream.decodeText(handle.stdout)).pipe(
+		Stream.runForEach((line) => Queue.offer(lines, line)),
+		Effect.ensuring(Queue.end(lines)),
+		Effect.forkScoped,
+	);
+	const encoder = new TextEncoder();
+	return {
+		write: (text: string) => Effect.asVoid(Queue.offer(stdin, encoder.encode(text))),
+		readUntilId: (id: number) =>
+			Effect.gen(function* () {
+				const seen: Array<unknown> = [];
+				while (true) {
+					const frame = JSON.parse(yield* Queue.take(lines)) as { readonly id?: unknown };
+					seen.push(frame);
+					if (frame.id === id) return seen;
+				}
+			}),
+	};
+});
 
 class ConfigMissing extends Error {
 	readonly [Runtime.errorExitCode] = 3;
@@ -110,4 +168,24 @@ describe("McpStdio.launch under runMain semantics", () => {
 		const { out } = await captured(() => runMainFor(naive, Runtime.defaultTeardown));
 		assert.isTrue(out.some((line) => line.includes("config missing")));
 	});
+});
+
+describe("McpStdio.layer over a real process's stdio", () => {
+	it.live("answers an unparseable frame with a -32700 parse error, ignores a blank line, and keeps serving", () =>
+		Effect.gen(function* () {
+			const server = yield* spawnRaw;
+			// A blank line, the bad frame and a good one in one write, then another request in a later write.
+			// A blank line is not a frame: it gets no answer, and it too stopped the server before the guard.
+			yield* server.write(`\n{not json\n${INITIALIZE}\n`);
+			const first = yield* server.readUntilId(1);
+			assert.deepStrictEqual(
+				first.filter((frame) => (frame as { readonly id?: unknown }).id === null),
+				[PARSE_ERROR],
+			);
+			yield* server.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
+			yield* server.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" })}\n`);
+			const second = yield* server.readUntilId(2);
+			assert.isArray((second.at(-1) as { readonly result: { readonly tools: unknown } }).result.tools);
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+	);
 });
