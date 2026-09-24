@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T01:49:30Z
-  body_sha256: 3e5b6460d6321d6dee0a26eb5cc8361373955d1bb4f8cee9d2d07e91b2ce53ae
+  at: 2026-09-24T02:11:10Z
+  body_sha256: dc009075126c571a31a1343007babaed2f4902f840416857efee4ca2ed2530bc
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -246,7 +246,10 @@ continue phase 2's A1–A10:
   the four fields (`DependencyGraph.ts:114-120`).
 - **B2**: `LayerPolicy` gains `decode` and `load` and a `LayerPolicyError`
   (`read`, `json`, `decode`), because `SchemaError` never escapes a decode
-  boundary (this concept's "Error handling"); unknown keys are ignored.
+  boundary (this concept's "Error handling"). Decoding is strict (reversed
+  from the original B2 leniency in the final review): an unknown key fails
+  `decode` naming it, `$schema` is always accepted, and a file's own keys
+  (systems' `harness`) pass through `allowKeys`.
 - **B3**: `LayeringReport.offenders` carries `{ edge, reason }` over five
   reasons, and edges are drawn by dependency name, not protocol
   (`WorkspaceLayering.ts`).

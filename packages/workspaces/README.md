@@ -263,7 +263,7 @@ Every check refuses to pass vacuously, so every example below pairs "nothing wro
 
 ### Layering
 
-`WorkspaceLayering` holds the discovered package graph to a committed `layers.json`. `layers` is top-down: a package may depend only on a layer below its own, or on `tooling`. `unconstrained` globs name packages whose own edges are not checked, such as the private root, which must be classified like any other package. `fields` picks the dependency maps that count, and `requiredEdges` lists edges that must exist, so a discovery that silently drops edges fails.
+`WorkspaceLayering` holds the discovered package graph to a committed `layers.json`. `layers` is top-down: a package may depend only on a layer below its own, or on `tooling`. `unconstrained` globs name packages whose own edges are not checked, such as the private root, which must be classified like any other package. `fields` picks the dependency maps that count, and `requiredEdges` lists edges that must exist, so a discovery that silently drops edges fails. Decoding is strict: any other key fails `LayerPolicyError` naming the key, so a typo such as `requiredEdge` cannot silently drop that guard. `$schema` is always accepted, and keys a policy file carries for its own use go in `LayerPolicy.load(path, { allowKeys: [...] })`.
 
 ```json
 {

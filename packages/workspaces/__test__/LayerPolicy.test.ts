@@ -20,10 +20,27 @@ describe("LayerPolicy.decode", () => {
 		}),
 	);
 
-	it.effect("ignores keys it does not model (systems' harness)", () =>
+	it.effect("rejects every key it does not model, naming each one, so a typo cannot drop a guard", () =>
 		Effect.gen(function* () {
-			const policy = yield* LayerPolicy.decode({ ...VALID, harness: ["@e2e/*"] });
-			assert.deepStrictEqual(policy.layers, [["app"], ["core"]]);
+			// requiredEdge (singular) would otherwise vanish, and the non-vacuity guard with it.
+			const error = yield* Effect.flip(
+				LayerPolicy.decode({ ...VALID, requiredEdge: ["app -> core"], feilds: ["dependencies"] }),
+			);
+			assert.strictEqual(error.reason, "decode");
+			assert.include(error.message, "requiredEdge");
+			assert.include(error.message, "feilds");
+		}),
+	);
+
+	it.effect("accepts $schema, and a foreign key only when the caller allows it (systems' harness)", () =>
+		Effect.gen(function* () {
+			const withSchema = yield* LayerPolicy.decode({ ...VALID, $schema: "./layers.schema.json" });
+			assert.deepStrictEqual(withSchema.layers, [["app"], ["core"]]);
+			const allowed = yield* LayerPolicy.decode({ ...VALID, harness: ["@e2e/*"] }, { allowKeys: ["harness"] });
+			assert.deepStrictEqual(allowed.unconstrained, ["@e2e/*"]);
+			// Control: the same input without the allowance fails.
+			const refused = yield* Effect.flip(LayerPolicy.decode({ ...VALID, harness: ["@e2e/*"] }));
+			assert.include(refused.message, "harness");
 		}),
 	);
 
@@ -47,6 +64,7 @@ describe("LayerPolicy.load", () => {
 		MemoryFileSystem.layerWith({
 			"/repo/layers.json": JSON.stringify(VALID),
 			"/repo/broken.json": "{ not json",
+			"/repo/foreign.json": JSON.stringify({ ...VALID, harness: ["@e2e/*"] }),
 		}),
 	)((it) => {
 		it.effect("reads and decodes a committed policy", () =>
@@ -62,6 +80,15 @@ describe("LayerPolicy.load", () => {
 				assert.deepStrictEqual([missing.reason, missing.path], ["read", "/repo/nope.json"]);
 				const broken = yield* Effect.flip(LayerPolicy.load("/repo/broken.json"));
 				assert.deepStrictEqual([broken.reason, broken.path], ["json", "/repo/broken.json"]);
+			}),
+		);
+
+		it.effect("passes allowKeys through to decode, and names the file when a key is refused", () =>
+			Effect.gen(function* () {
+				const refused = yield* Effect.flip(LayerPolicy.load("/repo/foreign.json"));
+				assert.deepStrictEqual([refused.reason, refused.path], ["decode", "/repo/foreign.json"]);
+				const policy = yield* LayerPolicy.load("/repo/foreign.json", { allowKeys: ["harness"] });
+				assert.deepStrictEqual(policy.layers, [["app"], ["core"]]);
 			}),
 		);
 	});

@@ -48,6 +48,7 @@ An edge *from* an unconstrained or unclassified package is not checked, but an u
 - `unconstrained` holds globs for packages whose own edges are not checked. The workspace's root package is always discovered (at `relativePath` `"."`) and must be classified, usually here.
 - `fields` picks the dependency maps that count. Absent, all four count.
 - `requiredEdges` lists edges, written `"a -> b"`, that must exist in a checked field: the guard against a discovery that quietly drops real edges.
+- Any other key fails `LayerPolicyError` (`decode`), naming the key, so a typo such as `requiredEdge` cannot silently drop a guard. `$schema` is always accepted; keys of your own go in `LayerPolicy.load(path, { allowKeys: [...] })`.
 
 A cycle closed only by a devDependency is invisible when `fields` leaves out `devDependencies`. If your layers are about runtime edges, check runtime fields, and pin acyclicity across every field separately with `DependencyGraph.make({ packages }).hasCycle`.
 

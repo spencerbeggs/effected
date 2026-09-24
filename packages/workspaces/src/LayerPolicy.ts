@@ -5,6 +5,12 @@ import { ALL_DEPENDENCY_FIELDS } from "./internal/dependencyFields.js";
 
 const REQUIRED_EDGE = /^\S+ -> \S+$/;
 
+/** `input` without `keys`, when it is a plain object; anything else passes through for the schema to reject. */
+const withoutKeys = (input: unknown, keys: ReadonlyArray<string>): unknown => {
+	if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+	return Object.fromEntries(Object.entries(input).filter(([key]) => !keys.includes(key)));
+};
+
 /**
  * Raised when a layer policy cannot be read, parsed or decoded.
  *
@@ -26,8 +32,11 @@ export class LayerPolicyError extends Schema.TaggedError<LayerPolicyError>()("La
 				return `Could not read the layer policy${at}`;
 			case "json":
 				return `The layer policy${at} is not valid JSON`;
-			default:
-				return `The layer policy${at} does not match the LayerPolicy shape`;
+			default: {
+				// The schema issue names every offending key and field; a bare "wrong shape" sends the reader hunting.
+				const detail = this.cause instanceof Error && this.cause.message !== "" ? `: ${this.cause.message}` : "";
+				return `The layer policy${at} does not match the LayerPolicy shape${detail}`;
+			}
 		}
 	}
 }
@@ -44,6 +53,12 @@ export class LayerPolicyError extends Schema.TaggedError<LayerPolicyError>()("La
  * defaulting to all four. `requiredEdges` (`"a -> b"`) are edges that must
  * exist in a checked field: the non-vacuity guard against a discovery that
  * quietly drops real edges.
+ *
+ * Decoding is strict: a key the policy does not model fails `decode`, and the
+ * message names every such key. A typo on an optional key would otherwise be
+ * silently dropped: `requiredEdge` would remove the non-vacuity guard and
+ * leave the report green. `$schema` is always accepted. A file that carries
+ * keys of its own, such as systems' `harness`, passes them in `allowKeys`.
  *
  * @example
  * ```ts
@@ -77,18 +92,36 @@ export class LayerPolicy extends Schema.Class<LayerPolicy>("LayerPolicy")({
 		return this.fields ?? ALL_DEPENDENCY_FIELDS;
 	}
 
-	/** Decode a policy from a parsed JSON value. */
+	/**
+	 * Decode a policy from a parsed JSON value.
+	 *
+	 * @remarks
+	 * Every key the policy does not model fails, except `$schema` and the
+	 * keys named in `options.allowKeys`, which are dropped before decoding.
+	 * `options.path` names the file in the error.
+	 */
 	static readonly decode = Effect.fn("LayerPolicy.decode")(
-		(input: unknown, path?: string): Effect.Effect<LayerPolicy, LayerPolicyError> =>
-			Schema.decodeUnknownEffect(LayerPolicy)(input).pipe(
+		(
+			input: unknown,
+			options?: { readonly path?: string | undefined; readonly allowKeys?: ReadonlyArray<string> | undefined },
+		): Effect.Effect<LayerPolicy, LayerPolicyError> => {
+			const path = options?.path;
+			return Schema.decodeUnknownEffect(LayerPolicy)(withoutKeys(input, ["$schema", ...(options?.allowKeys ?? [])]), {
+				onExcessProperty: "error",
+				errors: "all",
+			}).pipe(
 				Effect.mapError(
 					(cause) => new LayerPolicyError({ reason: "decode", cause, ...(path === undefined ? {} : { path }) }),
 				),
-			),
+			);
+		},
 	);
 
-	/** Read, parse and decode the policy file at `path`. */
-	static readonly load = Effect.fn("LayerPolicy.load")(function* (path: string) {
+	/** Read, parse and decode the policy file at `path`; `options.allowKeys` is passed to `decode`. */
+	static readonly load = Effect.fn("LayerPolicy.load")(function* (
+		path: string,
+		options?: { readonly allowKeys?: ReadonlyArray<string> | undefined },
+	) {
 		const fs = yield* FileSystem.FileSystem;
 		const text = yield* fs
 			.readFileString(path)
@@ -97,6 +130,6 @@ export class LayerPolicy extends Schema.Class<LayerPolicy>("LayerPolicy")({
 			try: () => JSON.parse(text) as unknown,
 			catch: (cause) => new LayerPolicyError({ reason: "json", path, cause }),
 		});
-		return yield* LayerPolicy.decode(json, path);
+		return yield* LayerPolicy.decode(json, { path, allowKeys: options?.allowKeys });
 	});
 }

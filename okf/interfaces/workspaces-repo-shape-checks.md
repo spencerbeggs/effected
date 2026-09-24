@@ -42,8 +42,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T02:08:16Z
-  body_sha256: 0874f60d5f200aa13ac17920b9b015d4739e69a756ae5231947f43cf4a1e813b
+  at: 2026-09-24T02:11:10Z
+  body_sha256: 825920d7a2d0bbe313164a64fcba4bf2a906a40f378eebee95ab7ef852d54ab8
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -184,6 +184,18 @@ from its dependents by leaving it out.
 `LayeringReport.violations` also reports duplicates, a cycle, a declared name
 the workspace lacks, a missing `requiredEdges` entry, and an `edgeCount` of 0
 as a vacuous check.
+
+### Strict decoding
+
+`LayerPolicy.decode` and `load` reject every key the policy does not model,
+and the `decode` error's message names each one.[^layer-policy-ts] A typo on
+an optional key would otherwise be dropped in silence: `requiredEdge`
+(singular) would remove the non-vacuity guard and leave the report green,
+and `feilds` would widen the check to all four fields. `$schema` is always
+accepted. A policy file that carries keys of its own, such as systems'
+`harness`, names them in `allowKeys`
+(`LayerPolicy.load(path, { allowKeys: ["harness"] })`), and those keys are
+dropped before decoding.
 
 ### Edges by name, one per field
 
