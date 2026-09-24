@@ -6,6 +6,15 @@
 * Updated @effected/workspaces: monorepo tooling
 * Added PackedInstall packs the prod npm directory by default
 * Added The kit's layering check forbids runtime edges only
+* Updated @effected/commands
+* Updated @effected/mcp
+* Updated A plugin skill is a lean index over references
+* Updated A vitest positional filter is a substring match, and a run from inside a package never loads the root config
+* Added Consumer-facing text states current Effect behaviour, never versions
+* Updated State which count moved and why, whenever a gate's number changes
+* Updated claude-code-plugin
+* Updated scratchpad
+* Updated workspace
 
 ## 2026-09-23
 
