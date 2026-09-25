@@ -62,7 +62,9 @@ const resolveExpectation = (expectation: Expectation, implementation: Implementa
 	if (expectation === "success" || "tag" in expectation) return expectation;
 	if ("memory" in expectation) return expectation[implementation];
 	// memfs models Linux; the node run asserts the platform it runs on.
-	return implementation === "node" && process.platform === "darwin" ? expectation.darwin : expectation.linux;
+	if (implementation === "memory" || process.platform === "linux") return expectation.linux;
+	if (process.platform === "darwin") return expectation.darwin;
+	throw new Error(`no errno expectation for platform ${process.platform}`);
 };
 
 const bytes = new Uint8Array([1, 2, 3, 4]);

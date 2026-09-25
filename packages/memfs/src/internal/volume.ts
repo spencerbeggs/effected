@@ -224,7 +224,9 @@ const invalidData = (method: string, path: string, description: string): Platfor
 // reading the node adapter's error finds it. Where the platforms disagree the
 // Linux errno is the one modelled (the per-case table lives in the design doc).
 type ErrnoCode =
+	| "EACCES"
 	| "EBADF"
+	| "EBUSY"
 	| "EEXIST"
 	| "EINVAL"
 	| "EISDIR"
@@ -239,7 +241,9 @@ type ErrnoCode =
 	| "ERR_FS_EISDIR";
 
 const errnoMessages: { readonly [Code in ErrnoCode]: string } = {
+	EACCES: "permission denied",
 	EBADF: "bad file descriptor",
+	EBUSY: "resource busy or locked",
 	EEXIST: "file already exists",
 	EINVAL: "invalid argument",
 	EISDIR: "illegal operation on a directory",
@@ -260,12 +264,16 @@ const errnoTag = (code: ErrnoCode): SystemErrorTag => {
 	switch (code) {
 		case "ENOENT":
 			return "NotFound";
+		case "EACCES":
+			return "PermissionDenied";
 		case "EEXIST":
 			return "AlreadyExists";
 		case "EISDIR":
 		case "ENOTDIR":
 		case "ELOOP":
 			return "BadResource";
+		case "EBUSY":
+			return "Busy";
 		default:
 			return "Unknown";
 	}
