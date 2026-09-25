@@ -354,6 +354,39 @@ describe("McpGuard.run in a real process", () => {
 		}).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
 	);
 
+	// --genuine-crash: a REAL crash once connected (a timer throw, or a rejection nothing handles), routed by Node.
+	const genuine = [
+		{ kind: "uncaughtException", flags: ["--policy=exitBeforeConnect"], serves: true },
+		{ kind: "uncaughtException", flags: ["--policy=exit"], serves: false },
+		{ kind: "unhandledRejection", flags: ["--rejection=log"], serves: true },
+		{ kind: "unhandledRejection", flags: ["--rejection=exitBeforeConnect"], serves: true },
+		{ kind: "unhandledRejection", flags: ["--rejection=exit"], serves: false },
+	] as const;
+	for (const { kind, flags, serves } of genuine) {
+		it.live(
+			`${flags.join(" ")}: a genuine ${kind} once connected ${serves ? "is logged and the server keeps serving" : "exits 1"}`,
+			() =>
+				Effect.gen(function* () {
+					const server = yield* McpProcess.spawn(guardMain(...flags, `--genuine-crash=${kind}`));
+					const report =
+						kind === "uncaughtException"
+							? "guard-fixture: uncaughtException (uncaughtException): formatted([genuine] uncaughtException)"
+							: "guard-fixture: unhandledRejection: formatted([genuine] unhandledRejection)";
+					if (serves) {
+						yield* stderrShows(server, report);
+						assert.isDefined((yield* server.handshake()).result);
+						yield* server.closeStdin;
+						assert.strictEqual(yield* server.exitCode, 0);
+					} else {
+						assert.strictEqual(yield* server.exitCode, 1);
+					}
+					const stderr = yield* server.stderrFinal;
+					assert.include(stderr, report);
+					assert.notInclude(stderr, "[injected]");
+				}).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
+		);
+	}
+
 	// injectCrash at "load": raised before load() is called, so the pre-connect half of every policy applies.
 	const atLoad = [
 		{ kind: "uncaughtException", flags: ["--policy=exitBeforeConnect"] },

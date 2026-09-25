@@ -90,11 +90,12 @@ export interface McpGuardRunOptions<ROut, E> {
 	 *   serving, where `"exitBeforeConnect"` logs and keeps serving. A throw
 	 *   from a test double's `exit` there is dropped.
 	 *
-	 * Either is raised through `host.emit` on a `setTimeout(0)` tick, so the
-	 * guard's own listeners handle it the same way under the real `process`
-	 * and under a test double, and nothing reaches a listener the guard did
-	 * not install on `host`. It carries an `[injected]` message; a rejection
-	 * is emitted with an already-handled rejected promise. `undefined`, or
+	 * Either is raised only through `host.emit`, on a `setTimeout(0)` tick,
+	 * never as a real throw or rejection, so the guard's listeners handle it
+	 * the same way under the real `process` and under a test double. Under
+	 * `process`, every listener registered for the event sees it, not only
+	 * the guard's. It carries an `[injected]` message; a rejection is emitted
+	 * with an already-handled rejected promise. `undefined`, or
 	 * an `at` or `kind` outside these values, does nothing at all. Wire it to
 	 * an environment variable only a test sets.
 	 */
