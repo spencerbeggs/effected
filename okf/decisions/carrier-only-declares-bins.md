@@ -35,13 +35,15 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T21:15:01Z
-  body_sha256: 1cf3a863cb11081563c4fc16fe086594887f2a355adea4518930e53471315837
+  at: 2026-09-25T21:24:18Z
+  body_sha256: 40a373a0829945fb786a51006eb33248527943916d949140962196079d621aac
 verified:
   - by: human:spencer
     at: 2026-09-25T20:39:50Z
   - by: human:spencer
     at: 2026-09-25T20:47:50Z
+  - by: human:spencer
+    at: 2026-09-25T21:18:59Z
 ---
 
 # Carrier-only bins are recommended; shared bins are a supported choice
@@ -57,7 +59,8 @@ over the carrier's shim, so `--version` lost its `via @vitest-agent/plugin`
 suffix; only pnpm's isolated layout kept the carrier's shim.[^vitest-agent-findings]
 The kit's own e2e narrowed the cause: npm 11 and bun 1.4 link the package
 whose name sorts first, so a `cli` front end beats a `plugin` carrier, and
-the same pair named the other way round let the carrier win.[^packed-install-e2e]
+the same pair named the other way round let the carrier win; Yarn 1.22 and
+4.18 kept the carrier's bin, the consumer's direct dependency.[^packed-install-e2e]
 The tool runs either way; what depends on the package manager is the carrier
 identity.
 
@@ -77,8 +80,9 @@ the distribution identity) must hold under flat installs.[^reframe-ruling]
 The design-patterns skill teaches both shapes.[^carrier-entry-contract]
 
 Shared bins are a **supported, permanent alternative** for a carrier whose
-front ends also stand alone. Its cost, stated plainly: under npm, Yarn and
-bun a front end's bin can win the `.bin` slot, and then provenance is lost;
+front ends also stand alone. Its cost, stated plainly: under npm and bun
+(and possibly Yarn, though Yarn 1 and 4 were observed keeping the carrier's)
+a front end's bin can win the `.bin` slot, and then provenance is lost;
 behaviour is otherwise the same when every bin calls the same `main()`.
 
 `PackedInstall.run` makes the choice explicit. Its `BinConflict` check stays

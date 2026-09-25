@@ -1309,6 +1309,29 @@ describe("PackedInstall.timeoutBudgetFor", () => {
 	});
 });
 
+describe("PackedInstall.timeoutBudgetFor with overrides", () => {
+	layer(Layer.mergeAll(MemoryFileSystem.layerWith({ "/ext/y-1.0.0.tgz": "" }), Path.layer, Discovery))((it) => {
+		it.effect("counts an override package, because it plans with the run's options, overrides included", () =>
+			Effect.gen(function* () {
+				const options = {
+					carrier: "@x/carrier",
+					closure: "auto",
+					managers: ["npm"],
+					bins: [],
+					env: ENV,
+					overrides: { "@y/pkg": "/ext/y-1.0.0.tgz" },
+				} as const;
+				const budget = yield* PackedInstall.timeoutBudgetFor(options);
+				assert.deepStrictEqual(
+					budget,
+					PackedInstall.timeoutBudget({ managers: ["npm"], packages: ["@x/carrier", "@x/lib", "@y/pkg"] }),
+				);
+				assert.notDeepEqual(budget, PackedInstall.timeoutBudget({ managers: ["npm"], packages: 2 }));
+			}),
+		);
+	});
+});
+
 describe("InstalledConsumer.carrierCommand and runCarrierBin", () => {
 	const DIR = "/scratch/consumer-npm";
 	const NM = `${DIR}/node_modules`;
@@ -1376,7 +1399,6 @@ describe("InstalledConsumer.carrierCommand and runCarrierBin", () => {
 					[at(undefined), "tool"],
 					[at("@x/absent"), "tool"],
 					[at("@x/carrier"), "other"],
-					[at("@x/carrier"), "gone"],
 				] as const) {
 					const error = yield* Effect.flip(consumer.carrierCommand(name));
 					reasons.push([error.reason, error.message]);
@@ -1385,8 +1407,23 @@ describe("InstalledConsumer.carrierCommand and runCarrierBin", () => {
 					["MissingBin", "npm: the carrier's bin tool cannot be found: this consumer records no carrier"],
 					["MissingBin", `npm: the carrier's bin tool cannot be found: @x/absent is not installed at ${NM}/@x/absent`],
 					["MissingBin", "npm: the carrier's bin other is not declared by @x/carrier"],
-					["MissingBin", `npm: the carrier's bin gone points at ${NM}/@x/carrier/dist/gone.js, which does not exist`],
 				]);
+			}),
+		);
+
+		it.effect("a bin the carrier declares whose file is not there fails MissingBin, and spawns nothing", () =>
+			Effect.gen(function* () {
+				const before = runs.spawns.length;
+				const error = yield* Effect.flip(at("@x/carrier").runCarrierBin("gone"));
+				assert.deepStrictEqual(
+					[error.reason, error.package, error.message],
+					[
+						"MissingBin",
+						"@x/carrier",
+						`npm: the carrier's bin gone points at ${NM}/@x/carrier/dist/gone.js, which does not exist`,
+					],
+				);
+				assert.strictEqual(runs.spawns.length, before);
 			}),
 		);
 

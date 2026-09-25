@@ -150,8 +150,10 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	 * carrier-only bins. Its cost is provenance: under npm, bun and Yarn's
 	 * `node-modules` linker, either package can take the `.bin` slot (npm and
 	 * bun were observed to link the package whose name sorts first, which for
-	 * a `cli` front end and a `plugin` carrier is the front end), and the bin
-	 * that runs then carries no distribution identity: no `--version` suffix.
+	 * a `cli` front end and a `plugin` carrier is the front end; Yarn 1 and 4
+	 * were observed to keep the carrier's, the consumer's direct dependency),
+	 * and the bin that runs then carries no distribution identity: no
+	 * `--version` suffix.
 	 * When every shared bin calls the same `main()`, nothing else changes.
 	 *
 	 * Every expected bin in `bins` is still verified present and executable,
@@ -477,8 +479,15 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * This reads the carrier's installed `node_modules/<carrier>/package.json`,
 	 * takes `name` from its `bin` map (a `bin` string answers to the unscoped
 	 * package name), and returns `node <that file> ...args`: the carrier's shim
-	 * itself, run by the `node` on the environment's `PATH`, so it assumes the
-	 * bin is a Node script. Environment and working directory are built as
+	 * itself, run by the `node` on the environment's `PATH`.
+	 *
+	 * Running it through `node` has three limits. It assumes a Node script, so
+	 * a non-Node shim misruns. It drops any flags in the shim's shebang (a
+	 * `#!/usr/bin/env -S node --enable-source-maps` runs without them). And it
+	 * bypasses the file's executable bit, so under shared bins it does not
+	 * prove the carrier's shim is executable, only that it runs: the manager
+	 * that linked a front end's bin into the slot may never have made the
+	 * carrier's target executable. Environment and working directory are built as
 	 * {@link InstalledConsumer.command} builds them, stdin left open for a probe
 	 * such as `McpProbe.initialize`.
 	 *
@@ -546,7 +555,9 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * result, and a bin that cannot spawn or outlives `options.timeout` (one
 	 * minute by default) fails `BinFailed`. Use it beside `runBin` under
 	 * `allowSharedBins`: `runBin` proves what a user typing the bin name gets,
-	 * this proves the carrier's shim itself works.
+	 * this proves the carrier's shim itself works, within `carrierCommand`'s
+	 * limits (a Node script, shebang flags dropped, executable bit not
+	 * checked).
 	 *
 	 * @param name - The bin, as the carrier's `bin` map names it.
 	 * @param args - Its arguments.

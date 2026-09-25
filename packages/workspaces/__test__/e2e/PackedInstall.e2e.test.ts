@@ -583,16 +583,16 @@ describe("PackedInstall against a real fixture workspace", () => {
 					}
 					// Observed with npm 11.19 and bun 1.4: the package whose name sorts first takes the slot, so
 					// shared-cli (the front end) beats shared-plugin (the carrier), as @vitest-agent/cli beats
-					// @vitest-agent/plugin. Named the other way round, the carrier won both. pnpm links only the
-					// direct dependency. yarn is not asserted: it was not available to observe.
-					assert.deepStrictEqual(
-						seen,
-						Object.fromEntries(
-							sharedManagers.flatMap((pm) =>
-								pm === "yarn" ? [] : [[pm, pm === "pnpm" ? "carrier" : "front"] as const],
-							),
-						),
-					);
+					// @vitest-agent/plugin; named the other way round, the carrier won both. Yarn 1.22 and 4.18
+					// (node-modules linker) gave the slot to the carrier, the consumer's direct dependency. pnpm
+					// links only the direct dependency. Every manager on PATH is asserted, yarn included.
+					const winner: Record<PackageManagerName, string> = {
+						npm: "front",
+						bun: "front",
+						yarn: "carrier",
+						pnpm: "carrier",
+					};
+					assert.deepStrictEqual(seen, Object.fromEntries(sharedManagers.map((pm) => [pm, winner[pm]])));
 				}).pipe(Effect.timeout("200 seconds"), Effect.scoped),
 			240_000,
 		);

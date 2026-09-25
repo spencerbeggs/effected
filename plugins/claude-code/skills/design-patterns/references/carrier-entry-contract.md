@@ -166,7 +166,8 @@ front end that declares a bin of the same name can take the carrier's
 `.bin` slot, and which one wins is the manager's choice, not yours:
 packed-install runs observed npm and bun linking whichever package's name
 sorts first, which for a `cli` front end and a `plugin` carrier is the front
-end. Both call the same `main()`, so the tool still works, but the carrier
+end, while Yarn 1 and 4 kept the carrier's, the consumer's direct
+dependency. Both call the same `main()`, so the tool still works, but the carrier
 identity is lost: the front end runs without the distribution the shim
 passes down, and `--version` drops its `via @scope/plugin <version>` suffix.
 Only pnpm's isolated layout, which links nothing transitive at the top
@@ -192,7 +193,7 @@ Front ends keep declaring their own bins, with the carrier's names, because
 each front end is also useful installed on its own: `npx @scope/mcp` keeps
 working, no front end needs a major, and a loader's `npx` fallback does not
 download the whole carrier. vitest-agent chose this shape. The cost is only
-provenance: under npm, Yarn and bun the front end's bin can win the `.bin`
+provenance: under npm and bun (and possibly Yarn) the front end's bin can win the `.bin`
 slot, and then no `--version` suffix or distribution identity. Behaviour is
 otherwise identical, since every bin calls the same `main()`.
 

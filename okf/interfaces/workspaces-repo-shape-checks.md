@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T21:15:01Z
-  body_sha256: 416f9b89553eefd81b9646e922166462c7fa272cdbcf1e28dcc772e8c3a3c791
+  at: 2026-09-25T21:24:18Z
+  body_sha256: 098c6f30ddc20604aeac990465d473e24863352cecdde9e9d5153e8f224de08e
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -515,7 +515,10 @@ Under a flat npm, Yarn or bun layout, a hoisted bin of the same name from
 another package can take the carrier's `.bin` slot, and running it cannot tell
 which one ran. npm 11 and bun 1.4 were observed to link the package whose name
 sorts first; the e2e pins that with a `cli` front end beating a `plugin`
-carrier, and the same pair named the other way round let the carrier win.[^packed-install-e2e]
+carrier, and the same pair named the other way round let the carrier win.
+Yarn 1.22 and 4.18 (the `node-modules` linker) kept the carrier's bin, the
+consumer's direct dependency, and the e2e asserts that wherever yarn is on
+`PATH`.[^packed-install-e2e]
 The run therefore fails `BinConflict`, before any install, when
 a packed package other than the carrier (a closure member or an override)
 declares one of the carrier's bin names, read from the packed manifests it
@@ -530,7 +533,9 @@ a front end's. `InstalledConsumer.runCarrierBin(name, args?, options?)` runs
 the carrier's own bin regardless: it reads `node_modules/<carrier>/package.json`
 (the consumer's `carrier` field, which `run` sets), takes `name` from its
 `bin` map, and runs that file with `node` under `runBin`'s environment,
-stdin ignored. `carrierCommand` returns the same command with stdin open for
+stdin ignored. Through `node` it assumes a Node script, drops any flags in
+the shim's shebang, and bypasses the executable bit, so it proves the
+carrier's shim runs, not that it is executable. `carrierCommand` returns the same command with stdin open for
 `McpProbe`. A consumer with no carrier, a carrier not installed or not
 declaring the bin, or a declared file that is missing fails `MissingBin`;
 an unreadable or non-JSON manifest fails `Io`.[^packed-install-ts]

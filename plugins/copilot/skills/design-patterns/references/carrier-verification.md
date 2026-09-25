@@ -323,7 +323,9 @@ other rule here still applies to a real suite built on it:
   alone, passes `allowSharedBins: true`: the bins are still checked
   present, but `runBin` may run a front end's. `consumer.runCarrierBin(name)`
   then proves the carrier's own shim, resolving it through the carrier's
-  installed `bin` map whichever package took the slot, and
+  installed `bin` map whichever package took the slot and running it with
+  `node` (so a Node script, shebang flags dropped, and its executable bit
+  not proven), and
   `consumer.carrierCommand(name)` yields the same command, stdin open, for
   `McpProbe`. `consumer.binProvenance(name)` reads the `.bin` symlink and
   names the package it resolves into: assert the carrier under carrier-only
