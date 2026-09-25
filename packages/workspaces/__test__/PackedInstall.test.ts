@@ -3,7 +3,7 @@ import type { SpawnScript } from "@effected/commands";
 import { ScriptedSpawner } from "@effected/commands";
 import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Duration, Effect, FileSystem, Layer, Path, Redacted } from "effect";
+import { Duration, Effect, FileSystem, Layer, Path, PlatformError, Redacted } from "effect";
 import { WorkspaceDiscovery, WorkspacePackage } from "../src/index.js";
 import { InstalledConsumer, PackedInstall } from "../src/testing.js";
 
@@ -573,14 +573,15 @@ describe("InstalledConsumer.runBin", () => {
 		manager: "npm",
 		managerVersion: "11.19.1",
 		directory: BIN_DIR,
-		env: Redacted.make({ PATH: "/usr/bin", HOME: "/home/u", XDG_DATA_HOME: "/home/u/.local/share" }),
+		// A trap left in a hand-made consumer's env is still scrubbed from the base.
+		env: Redacted.make({ PATH: "/usr/bin", HOME: "/home/u", XDG_DATA_HOME: "/home/u/.local/share", INIT_CWD: "/repo" }),
 	});
 	const runs = ScriptedSpawner.make((command) =>
 		command.endsWith("/tool") ? { stdout: "1.2.3\n", stderr: "warn\n", exit: 3 } : ScriptedSpawner.notFound(command),
 	);
 	layer(runs.layer)((it) => {
 		it.effect(
-			"runs the bin from the consumer under the install env, extra env layered over, a non-zero exit a result",
+			"runs the bin from the consumer under the install env, the caller's env winning over the scrub, a non-zero exit a result",
 			() =>
 				Effect.gen(function* () {
 					const output = yield* consumer.runBin("tool", ["--version"], {
@@ -593,7 +594,13 @@ describe("InstalledConsumer.runBin", () => {
 						[`${BIN_DIR}/node_modules/.bin/tool`, "--version"],
 					);
 					assert.strictEqual(spawn?.cwd, BIN_DIR);
-					assert.deepStrictEqual(spawn?.env, { PATH: "/usr/bin", XDG_DATA_HOME: "/scratch/xdg" });
+					// HOME: undefined deletes; CI and npm_config_* are explicit, so they survive the scrub.
+					assert.deepStrictEqual(spawn?.env, {
+						PATH: "/usr/bin",
+						XDG_DATA_HOME: "/scratch/xdg",
+						CI: "true",
+						npm_config_user_agent: "pnpm/12",
+					});
 					assert.strictEqual(spawn?.extendEnv, false);
 					assert.strictEqual(spawn?.options.stdin, "ignore");
 				}),
@@ -635,42 +642,54 @@ describe("InstalledConsumer.runBin", () => {
 describe("PackedInstall.timeoutBudget", () => {
 	const minutes = (duration: Duration.Duration): number => Duration.toMillis(duration) / 60_000;
 
-	it("sums every manager's probe, install and perConsumer, every package's pack and manifest read, and the slack", () => {
+	it("sums every manager's probe, install and perConsumer, every package's pack and manifest read, the slack and cleanup", () => {
 		const budget = PackedInstall.timeoutBudget({
 			managers: ["npm", "pnpm", "yarn", "bun"],
 			installTimeout: "3 minutes",
 			packages: 3,
 			perConsumer: "2 minutes",
 		});
-		// 4 x (0.5 + 3 + 2) + 3 x (2 + 0.5) + 0.5
-		assert.strictEqual(minutes(budget), 30);
-		assert.strictEqual(Duration.format(budget), "30m");
+		// 4 x (0.5 + 3 + 2) + 3 x (2 + 0.5) + 0.5 untimed + 1 cleanup
+		assert.strictEqual(minutes(budget), 31);
+		assert.strictEqual(Duration.format(budget), "31m");
 	});
 
 	it("defaults installTimeout to the run's four minutes and perConsumer to zero, and counts a repeated manager once", () => {
 		const budget = PackedInstall.timeoutBudget({ managers: ["npm", "npm"], packages: 1 });
-		// 1 x (0.5 + 4) + 1 x 2.5 + 0.5
-		assert.strictEqual(minutes(budget), 7.5);
+		// 1 x (0.5 + 4) + 1 x 2.5 + 0.5 untimed + 1 cleanup
+		assert.strictEqual(minutes(budget), 8.5);
 	});
 });
 
 describe("InstalledConsumer.binProvenance", () => {
 	const DIR = "/scratch/consumer-npm";
 	const NM = `${DIR}/node_modules`;
-	const at = (manager: "npm" | "pnpm") => InstalledConsumer.make({ manager, managerVersion: "1.0.0", directory: DIR });
+	const at = (manager: "npm" | "pnpm", directory = DIR) =>
+		InstalledConsumer.make({ manager, managerVersion: "1.0.0", directory });
 	const SEED: MemoryFileSystemSeed = {
+		// A named manifest AT the bound: a walk that passed the consumer directory would claim the orphan for it.
+		[`${DIR}/package.json`]: JSON.stringify({ name: "the-consumer", private: true }),
 		[`${NM}/@x/carrier/package.json`]: JSON.stringify({ name: "@x/carrier", version: "1.0.0" }),
 		[`${NM}/@x/carrier/dist/package.json`]: JSON.stringify({ type: "module" }),
 		[`${NM}/@x/carrier/dist/bin.js`]: "#!/usr/bin/env node\n",
 		[`${NM}/@x/cli/package.json`]: JSON.stringify({ name: "@x/cli", version: "1.0.0" }),
 		[`${NM}/@x/cli/bin.js`]: "#!/usr/bin/env node\n",
+		[`${NM}/@x/nulled/package.json`]: JSON.stringify({ name: "@x/nulled", version: "1.0.0" }),
+		[`${NM}/@x/nulled/lib/package.json`]: "null",
+		[`${NM}/@x/nulled/lib/cli.js`]: "#!/usr/bin/env node\n",
+		[`${NM}/@x/broken/package.json`]: "{ not json",
+		[`${NM}/@x/broken/cli.js`]: "#!/usr/bin/env node\n",
 		[`${NM}/loose.js`]: "#!/usr/bin/env node\n",
 		[`${NM}/.bin/tool`]: MemoryFileSystem.symlink("../@x/carrier/dist/bin.js"),
 		[`${NM}/.bin/shadowed`]: MemoryFileSystem.symlink("../@x/cli/bin.js"),
+		[`${NM}/.bin/nulled`]: MemoryFileSystem.symlink("../@x/nulled/lib/cli.js"),
+		[`${NM}/.bin/broken`]: MemoryFileSystem.symlink("../@x/broken/cli.js"),
 		[`${NM}/.bin/orphan`]: MemoryFileSystem.symlink("../loose.js"),
+		[`${NM}/.bin/dangling`]: MemoryFileSystem.symlink("../@x/gone/bin.js"),
 		[`${NM}/.bin/shim`]: MemoryFileSystem.file('#!/bin/sh\nexec node "$basedir/../@x/carrier/dist/bin.js" "$@"\n', {
 			mode: 0o755,
 		}),
+		"/alias": MemoryFileSystem.symlink("/scratch"),
 	};
 	layer(Layer.mergeAll(MemoryFileSystem.layerWith(SEED), Path.layer))((it) => {
 		it.effect("names the package a .bin symlink resolves into, past a nameless nested package.json", () =>
@@ -688,23 +707,87 @@ describe("InstalledConsumer.binProvenance", () => {
 			}),
 		);
 
-		it.effect("a shim that is not a symlink (pnpm's) is undefined, not a guess", () =>
+		it.effect("passes over a package.json that is valid JSON but not an object", () =>
+			Effect.gen(function* () {
+				assert.strictEqual((yield* at("npm").binProvenance("nulled"))?.package, "@x/nulled");
+			}),
+		);
+
+		it.effect("realpaths the consumer directory first, so an alias or a trailing slash keeps the bound", () =>
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* at("npm", "/alias/consumer-npm/").binProvenance("tool"), {
+					package: "@x/carrier",
+					target: `${NM}/@x/carrier/dist/bin.js`,
+				});
+			}),
+		);
+
+		it.effect("undefined means only an existing entry that is not a symlink (pnpm's shim)", () =>
 			Effect.gen(function* () {
 				assert.isUndefined(yield* at("pnpm").binProvenance("shim"));
 			}),
 		);
 
-		it.effect("a link into no named package inside the consumer is undefined", () =>
+		it.effect("a link into no named package inside the consumer fails UnownedBin, never the consumer's own name", () =>
 			Effect.gen(function* () {
-				assert.isUndefined(yield* at("npm").binProvenance("orphan"));
+				const error = yield* Effect.flip(at("npm").binProvenance("orphan"));
+				assert.deepStrictEqual([error.reason, error.manager], ["UnownedBin", "npm"]);
+				assert.strictEqual(
+					error.message,
+					`npm: node_modules/.bin/orphan links to ${NM}/loose.js, which lies in no named package inside ${DIR}`,
+				);
 			}),
 		);
 
-		it.effect("a missing entry fails MissingBin naming the manager", () =>
+		it.effect("a missing entry and a dangling link both fail MissingBin", () =>
 			Effect.gen(function* () {
-				const error = yield* Effect.flip(at("npm").binProvenance("absent"));
-				assert.deepStrictEqual([error.reason, error.manager], ["MissingBin", "npm"]);
-				assert.strictEqual(error.message, "npm: node_modules/.bin/absent does not exist");
+				const absent = yield* Effect.flip(at("npm").binProvenance("absent"));
+				assert.deepStrictEqual(
+					[absent.reason, absent.message],
+					["MissingBin", "npm: node_modules/.bin/absent does not exist"],
+				);
+				const dangling = yield* Effect.flip(at("npm").binProvenance("dangling"));
+				assert.deepStrictEqual(
+					[dangling.reason, dangling.message],
+					["MissingBin", "npm: node_modules/.bin/dangling is a link to nothing"],
+				);
+			}),
+		);
+
+		it.effect("a package.json that is not JSON fails Io saying so", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(at("npm").binProvenance("broken"));
+				assert.deepStrictEqual([error.reason, error.message], ["Io", `${NM}/@x/broken/package.json is not JSON`]);
+			}),
+		);
+	});
+
+	// Node reports "not a link" as EINVAL, tagged Unknown with the errno on the cause; anything else is a real failure.
+	const readLinkFails = (tag: "Unknown" | "PermissionDenied", code: string) =>
+		MemoryFileSystem.layerFaultyWith(SEED, {
+			readLink: (path) =>
+				Effect.fail(
+					PlatformError.systemError({
+						_tag: tag,
+						module: "FileSystem",
+						method: "readLink",
+						pathOrDescriptor: path,
+						cause: Object.assign(new Error(code), { code }),
+					}),
+				),
+		});
+	layer(Layer.mergeAll(readLinkFails("Unknown", "EINVAL"), Path.layer))((it) => {
+		it.effect("a Node-style EINVAL from readLink on an existing entry is a shim: undefined", () =>
+			Effect.gen(function* () {
+				assert.isUndefined(yield* at("pnpm").binProvenance("shim"));
+			}),
+		);
+	});
+	layer(Layer.mergeAll(readLinkFails("PermissionDenied", "EACCES"), Path.layer))((it) => {
+		it.effect("an EACCES from readLink propagates as Io, never read as a shim", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(at("npm").binProvenance("tool"));
+				assert.deepStrictEqual([error.reason, error.message], ["Io", `could not read the link ${NM}/.bin/tool`]);
 			}),
 		);
 	});

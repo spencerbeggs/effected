@@ -294,17 +294,20 @@ other rule here still applies to a real suite built on it:
 - Run a CLI bin with `consumer.runBin`: a non-zero exit is a result
   (`exitCode`), and a bin that cannot spawn or outlives its ceiling (one
   minute by default) fails `BinFailed` naming the manager. It runs under
-  the environment the install used, with `options.env` layered over it, so
-  the test needs no `@effected/commands` import and no second `scrubEnv`.
+  the environment the install used, with `options.env` layered over it after
+  the scrub, so an explicit entry such as `CI: "true"` wins and `undefined`
+  removes a variable. The test needs no `@effected/commands` import and no
+  second `scrubEnv`.
   Put state such as `XDG_DATA_HOME` under `result.scratch` instead of a
   second temporary directory.
 - Under npm, Yarn and bun the layout is flat, and a dependency that ships a
   bin of the same name can take the carrier's `.bin` slot — running it
   cannot tell you which one ran. `consumer.binProvenance(name)` reads the
   `.bin` symlink and names the package it resolves into; assert it is the
-  carrier. pnpm writes shell shims, for which it returns `undefined`, and
-  pnpm's isolated layout links only the consumer's direct dependencies at
-  the top level anyway.
+  carrier. pnpm writes shell shims, for which it returns `undefined` — the
+  only meaning `undefined` has — and pnpm's isolated layout links only the
+  consumer's direct dependencies at the top level anyway. A link into no
+  named package fails `UnownedBin`, and a dangling one `MissingBin`.
 - Pass `process.env` in explicitly: nothing under `./testing` reads
   `process` itself. A bin spawned outside `runBin`, such as `McpProbe`'s,
   takes `PackedInstall.scrubEnv(...)` for the same environment. Declare every package the consumer's own code imports

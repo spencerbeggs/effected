@@ -190,7 +190,7 @@ describe("SourceBoundary.check", () => {
 			"eval(code); evaluate(code);",
 		].join("\n");
 		const found = SourceBoundary.check("f.ts", text, [
-			{ forbidTokens: ["process.env.__PACKAGE_VERSION__", "eval(", ""] },
+			{ forbidTokens: ["process.env.__PACKAGE_VERSION__", "eval(", "", "eval("] },
 		]);
 		assert.deepStrictEqual(
 			found.map((offence) => offence.label),

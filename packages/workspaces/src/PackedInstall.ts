@@ -1,5 +1,6 @@
 import type { CommandOutput } from "@effected/commands";
 import { Run } from "@effected/commands";
+import type { PlatformError } from "effect";
 import { Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChildProcess } from "effect/unstable/process";
@@ -106,6 +107,7 @@ export class PackedInstallError extends Schema.TaggedError<PackedInstallError>()
 		"InstallFailed",
 		"MissingBin",
 		"BinFailed",
+		"UnownedBin",
 		"Discovery",
 		"Io",
 	]),
@@ -130,8 +132,9 @@ export interface RunBinOptions {
 	/**
 	 * Variables layered over the environment the install ran under, such as an
 	 * `XDG_DATA_HOME` inside `PackedInstallResult.scratch`. A key set to
-	 * `undefined` removes that variable. The parent manager's context is
-	 * stripped from the result, as it is for the install.
+	 * `undefined` removes that variable. They are applied after the parent
+	 * manager's context is stripped, so an explicit entry always wins: pass
+	 * `CI: "true"` to run a bin as if under CI.
 	 */
 	readonly env?: Readonly<Record<string, string | undefined>> | undefined;
 	/** The working directory. Defaults to the consumer's `directory`. */
@@ -141,6 +144,19 @@ export interface RunBinOptions {
 }
 
 const DEFAULT_BIN_TIMEOUT: Duration.Input = "1 minute";
+
+/**
+ * Whether a failed `readLink` means "this entry is not a symlink". Node reports
+ * that as `EINVAL`, which its platform layer tags `Unknown` with the errno on
+ * the cause; an in-memory filesystem may tag it `BadResource`. Anything else,
+ * `PermissionDenied` included, is a real failure.
+ */
+const isNotALink = (error: PlatformError.PlatformError): boolean =>
+	error.reason._tag === "BadResource" ||
+	(error.reason._tag === "Unknown" &&
+		typeof error.reason.cause === "object" &&
+		error.reason.cause !== null &&
+		(error.reason.cause as { readonly code?: unknown }).code === "EINVAL");
 
 /**
  * Which installed package a `node_modules/.bin` symlink resolves into.
@@ -188,16 +204,21 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * can shadow the carrier's, and running it cannot tell you which one ran.
 	 * Those managers write each `.bin` entry as a symlink, so this reads the
 	 * link, realpaths its target, and walks up to the nearest `package.json`
-	 * with a string `name`, staying inside the consumer directory. Assert
-	 * `package` is your carrier.
+	 * with a string `name`, staying inside the consumer directory (itself
+	 * realpath'd first, so a `/var` alias of `/private/var` or a trailing
+	 * slash does not move the bound). A manifest that is valid JSON but not an
+	 * object, or has no string `name` (a `dist/package.json` carrying only
+	 * `type`), is passed over. Assert `package` is your carrier.
 	 *
-	 * Returns `undefined` when the entry is not a symlink: pnpm writes `.bin`
-	 * entries as shell shims, whose target this does not parse. pnpm's
-	 * isolated layout links only the consumer's direct dependencies at the top
-	 * level, so a shadowing bin needs a direct dependency there. It also
-	 * returns `undefined` when no named `package.json` lies between the target
-	 * and the consumer directory. An entry that does not exist fails
-	 * `MissingBin`; a read that fails, `Io`.
+	 * `undefined` means one thing: the entry exists and is not a symlink.
+	 * pnpm writes `.bin` entries as shell shims, whose target this does not
+	 * parse; its isolated layout links only the consumer's direct dependencies
+	 * at the top level, so a shadowing bin needs a direct dependency there.
+	 *
+	 * An entry that does not exist, or a link whose target does not, fails
+	 * `MissingBin`. A link into no named package inside the consumer fails
+	 * `UnownedBin`, naming the target. Any other read failure, a
+	 * `package.json` that is not JSON included, fails `Io`.
 	 *
 	 * @param name - The bin, as named in `node_modules/.bin`.
 	 */
@@ -207,34 +228,55 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 		const bin = this.binPath(name);
 		const directory = this.directory;
 		const manager = this.manager;
+		const entry = `node_modules/.bin/${name}`;
 		return Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
 			const io = (message: string) => (cause: unknown) => failure("Io", message, { manager, cause });
+			const missing = (why: string) => failure("MissingBin", `${manager}: ${entry} ${why}`, { manager });
 			const linked = yield* fs.readLink(bin).pipe(
 				Effect.as(true),
-				Effect.catch(() => Effect.succeed(false)),
+				Effect.catch((error) =>
+					isNotALink(error)
+						? Effect.succeed(false)
+						: error.reason._tag === "NotFound"
+							? Effect.fail(missing("does not exist"))
+							: Effect.fail(io(`could not read the link ${bin}`)(error)),
+				),
 			);
 			if (!linked) {
 				const present = yield* fs.exists(bin).pipe(Effect.mapError(io(`could not inspect ${bin}`)));
-				if (!present) {
-					return yield* failure("MissingBin", `${manager}: node_modules/.bin/${name} does not exist`, { manager });
-				}
+				if (!present) return yield* missing("does not exist");
 				// A shim, not a link (pnpm writes these): its target is inside a script this does not parse.
 				return undefined;
 			}
-			const target = yield* fs.realPath(bin).pipe(Effect.mapError(io(`could not resolve ${bin}`)));
-			for (let dir = path.dirname(target); dir.startsWith(`${directory}/`); dir = path.dirname(dir)) {
+			const target = yield* fs
+				.realPath(bin)
+				.pipe(
+					Effect.catch((error) =>
+						error.reason._tag === "NotFound"
+							? Effect.fail(missing("is a link to nothing"))
+							: Effect.fail(io(`could not resolve ${bin}`)(error)),
+					),
+				);
+			const root = yield* fs.realPath(directory).pipe(Effect.mapError(io(`could not resolve ${directory}`)));
+			for (let dir = path.dirname(target); dir.startsWith(`${root}/`); dir = path.dirname(dir)) {
 				const manifest = path.join(dir, "package.json");
 				if (!(yield* fs.exists(manifest).pipe(Effect.mapError(io(`could not inspect ${manifest}`))))) continue;
 				const text = yield* fs.readFileString(manifest).pipe(Effect.mapError(io(`could not read ${manifest}`)));
-				const named = yield* Effect.try({
-					try: () => (JSON.parse(text) as { readonly name?: unknown }).name,
+				const parsed: unknown = yield* Effect.try({
+					try: () => JSON.parse(text),
 					catch: io(`${manifest} is not JSON`),
 				});
+				const named =
+					typeof parsed === "object" && parsed !== null ? (parsed as { readonly name?: unknown }).name : undefined;
 				if (typeof named === "string") return { package: named, target };
 			}
-			return undefined;
+			return yield* failure(
+				"UnownedBin",
+				`${manager}: ${entry} links to ${target}, which lies in no named package inside ${root}`,
+				{ manager },
+			);
 		});
 	}
 
@@ -244,7 +286,8 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * @remarks
 	 * Spawns {@link InstalledConsumer.binPath} from the consumer's directory,
 	 * stdin ignored, under the install's scrubbed environment with
-	 * `options.env` layered over it, and nothing inherited beyond that. A
+	 * `options.env` layered over it after the scrub, and nothing inherited
+	 * beyond that. A
 	 * non-zero exit is a result, read from `exitCode`, never a failure. A bin
 	 * that cannot spawn, outlives `options.timeout` or floods its output fails
 	 * `BinFailed` naming the manager and the bin. Run it inside the scope that
@@ -260,7 +303,12 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 		args: ReadonlyArray<string> = [],
 		options: RunBinOptions = {},
 	): Effect.Effect<CommandOutput, PackedInstallError, ChildProcessSpawner.ChildProcessSpawner> {
-		const env = scrubEnv({ ...(this.env === undefined ? {} : Redacted.value(this.env)), ...options.env });
+		// The caller's explicit entries go on after the scrub: a deliberate CI=true must survive it.
+		const env = scrubEnv(this.env === undefined ? {} : Redacted.value(this.env));
+		for (const [key, value] of Object.entries(options.env ?? {})) {
+			if (value === undefined) delete env[key];
+			else env[key] = value;
+		}
 		const timeout = options.timeout ?? DEFAULT_BIN_TIMEOUT;
 		const manager = this.manager;
 		return Run.collect(
@@ -338,6 +386,12 @@ const PACK_TIMEOUT: Duration.Input = "2 minutes";
 const MANIFEST_TIMEOUT: Duration.Input = "30 seconds";
 /** The untimed steps a budget allows for: discovery, the consumer files and the bin checks. */
 const UNTIMED_SLACK: Duration.Input = "30 seconds";
+/**
+ * Cleanup a budget allows for: removing the scratch root, every consumer's
+ * `node_modules` included, when the scope closes, and killing and reaping a
+ * child after its ceiling interrupts it.
+ */
+const CLEANUP_ALLOWANCE: Duration.Input = "1 minute";
 /** A ceiling as a person reads it: `"4m"` for `"4 minutes"`, the raw input if it does not decode. */
 const describeDuration = (input: Duration.Input): string =>
 	Option.match(Duration.fromInput(input), { onNone: () => String(input), onSome: Duration.format });
@@ -420,8 +474,10 @@ export class PackedInstall {
 	 * takes them: each manager's `--version` probe (30 seconds), install
 	 * (`installTimeout`) and `perConsumer`, plus each package's pack (two
 	 * minutes) and manifest read (30 seconds), plus 30 seconds for the untimed
-	 * steps. A vitest test timeout must sit above it, since vitest's own guard
-	 * should not pre-empt the Effect's.
+	 * steps and one minute for cleanup: removing the scratch root when the
+	 * scope closes, and killing a child whose ceiling interrupted it. A vitest
+	 * test timeout must sit above it, since vitest's own guard should not
+	 * pre-empt the Effect's.
 	 *
 	 * @example
 	 * ```ts
@@ -435,7 +491,7 @@ export class PackedInstall {
 	 *   perConsumer: "2 minutes",
 	 * });
 	 * console.log(Duration.format(budget));
-	 * // => 30m
+	 * // => 31m
 	 * ```
 	 */
 	static readonly timeoutBudget = (budget: PackedInstallBudget): Duration.Duration => {
@@ -448,7 +504,7 @@ export class PackedInstall {
 				Duration.times(perManager, new Set(budget.managers).size),
 				Duration.times(perPackage, Math.max(1, budget.packages)),
 			),
-			Duration.fromInputUnsafe(UNTIMED_SLACK),
+			Duration.sum(Duration.fromInputUnsafe(UNTIMED_SLACK), Duration.fromInputUnsafe(CLEANUP_ALLOWANCE)),
 		);
 	};
 

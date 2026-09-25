@@ -450,6 +450,18 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
 		flagged: false,
 	},
+	{
+		name: "forbidTokens: the tail of a longer identifier",
+		source: "const v = xprocess.env.__PACKAGE_VERSION__;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: false,
+	},
+	{
+		name: "forbidTokens: a private field",
+		source: "const v = this.#process.env.__PACKAGE_VERSION__;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: false,
+	},
 ];
 
 /**
@@ -533,7 +545,10 @@ export class SourceBoundary {
 	 * character does not match inside a longer identifier or after `#`, and one
 	 * that ends with one does not match when an identifier character follows.
 	 * A member access is still a match: `globalThis.process.env.X` contains the
-	 * token `process.env.X`.
+	 * token `process.env.X`. A token listed twice is reported once. A token with
+	 * no identifier character at either end (`"=>"`, `"?."`) has no edge guard,
+	 * so it matches inside longer punctuation, and consecutive matches of it can
+	 * overlap.
 	 */
 	static readonly check = (
 		file: string,
@@ -567,7 +582,7 @@ export class SourceBoundary {
 					found.push({ offset, rule, detail: member === undefined ? "console" : `console.${member}` });
 				}
 			} else if ("forbidTokens" in rule) {
-				for (const token of rule.forbidTokens) {
+				for (const token of new Set(rule.forbidTokens)) {
 					for (const offset of tokenOccurrences(lexed.code, token))
 						found.push({ offset, rule: "forbidTokens", detail: token });
 				}

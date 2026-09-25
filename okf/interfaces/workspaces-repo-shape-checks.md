@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T19:35:03Z
-  body_sha256: 0195cb8d3f54b3a93f538711e13b4b5a8609ade10aed60edc4f9162d8b094b1e
+  at: 2026-09-25T19:46:51Z
+  body_sha256: ac4f4db8548c36cbce2999d0cf70db4b7a3f8a775a64b659d037e8c6d9589c00
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -426,7 +426,9 @@ afterwards. A tighter guard fires first, as a `TimeoutError` that names no
 manager. `PackedInstall.timeoutBudget({ managers, installTimeout, packages,
 perConsumer })` returns that sum as a `Duration`. It adds each manager's probe
 (30 seconds), install and `perConsumer`, each package's pack (two minutes) and
-manifest read (30 seconds), and 30 seconds for the untimed steps. It reads the
+manifest read (30 seconds), 30 seconds for the untimed steps, and one minute
+for cleanup: removing the scratch root when the scope closes, and killing a
+child after its ceiling interrupts it. It reads the
 same constants the run does, so the two cannot drift. `packages` is an explicit
 count, because `closure: "auto"` is only resolved by discovery inside the run.[^packed-install-ts]
 
@@ -457,8 +459,9 @@ directory with stdin ignored and returns `{ stdout, stderr, exitCode }`; a
 non-zero exit is a result. A spawn failure, an expired ceiling (one minute by
 default) or flooded output fails `BinFailed`. The environment is the one the
 install ran under, which the consumer carries as a redacted `env` field so
-printing it never prints a token. `options.env` is layered over it, with an
-`undefined` value removing a variable, and the result is scrubbed again. A
+printing it never prints a token. `options.env` is layered over it after the
+scrub, with an `undefined` value removing a variable, so a caller's explicit
+entry wins: `CI: "true"` runs a bin as if under CI. A
 consumer's test therefore needs no direct `@effected/commands` dependency to
 run a bin.[^packed-install-ts]
 
@@ -486,8 +489,16 @@ pnpm writes `.bin` entries as shell shims, and `binProvenance` returns
 `undefined` for them rather than parsing a script. We declined shim parsing:
 pnpm's isolated layout links only the consumer's direct dependencies at the
 top level, so the shadowing it would detect needs a direct dependency there.
-It also returns `undefined` for a link into no named package, and fails
-`MissingBin` for an entry that does not exist. The e2e asserts the carrier
+`undefined` means only that: the entry exists and is not a symlink. Node
+reports "not a link" from `readLink` as `EINVAL`, which its platform layer tags
+`Unknown` with the errno on the cause, while `@effected/memfs` tags it
+`BadResource`; both mean a shim, and any other `readLink` failure, such as
+`EACCES`, fails `Io`. An entry that does not exist, or a link whose target
+does not, fails `MissingBin`, consistent with the run's own bin check. A
+link into no named package inside the consumer fails `UnownedBin` naming the
+target, and the walk's bound is the consumer directory realpath'd first, so a
+`/var` alias of `/private/var` or a trailing slash cannot move it. A manifest
+that is valid JSON but not an object is passed over like a nameless one. The e2e asserts the carrier
 under npm and bun, and `undefined` under pnpm, against real installs.[^packed-install-e2e]
 
 [^testing-ts]: `packages/workspaces/src/testing.ts` — the entry point and its
