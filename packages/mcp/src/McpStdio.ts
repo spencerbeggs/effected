@@ -138,8 +138,12 @@ export class McpStdio {
 	 * one graph does that, and so does building or providing the second
 	 * anywhere under the first one's `Effect.provide`: nested `Layer.build`
 	 * and `Effect.provide` fork the ambient memo map rather than starting a
-	 * new one. Isolate each server with its own `ManagedRuntime`,
-	 * `Effect.provide(layer, { local: true })` or its own process.
+	 * new one. The tool registry is shared the same way. Isolate each server
+	 * by wrapping its whole bundle (its toolkit layers together with this
+	 * layer) in `Layer.fresh`, or with its own `ManagedRuntime`,
+	 * `Effect.provide(layer, { local: true })` or its own process. Never put
+	 * the `Layer.fresh` boundary between a toolkit and this layer: the server
+	 * would serve an empty registry.
 	 *
 	 * Code after a completed `Effect.provide` of a stdio server never runs:
 	 * core's stdio protocol interrupts the fiber that built it when its stdin

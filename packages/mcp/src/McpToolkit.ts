@@ -161,6 +161,8 @@ const strictened = <Tools extends Record<string, Tool.Any>>(
  * shared by reference with `McpStdio.layer`'s own copy — provide both into
  * the same graph, as with `McpServer.toolkit`. Never wrap that layer in
  * `Layer.fresh`: tools would register into a second registry nobody serves.
+ * To give two servers separate registries, wrap each whole bundle (this
+ * layer together with `McpStdio.layer`) in `Layer.fresh` instead.
  *
  * Each call mints a fresh layer; bind the result to a `const` or the
  * registration runs twice.

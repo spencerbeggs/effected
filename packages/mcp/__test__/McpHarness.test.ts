@@ -228,6 +228,44 @@ describe("McpHarness", () => {
 		}),
 	);
 
+	it.effect("initializeWith sends notifications/initialized after an accepted initialize", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			yield* harness.initializeWith("2025-06-18");
+			const methods = (yield* harness.sentSoFar).map((frame) => (frame as { readonly method?: string }).method);
+			assert.deepStrictEqual(methods, ["initialize", "notifications/initialized"]);
+		}),
+	);
+
+	it.effect("initializeWith the stateless revision is counter-offered the latest stateful one", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			const response = yield* harness.initializeWith("2026-07-28");
+			assert.strictEqual((response.result as { readonly protocolVersion: string }).protocolVersion, "2025-11-25");
+		}),
+	);
+
+	it.effect("initializeWith on a stateless harness: -32601, and no notifications/initialized after it", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer(), { protocol: McpProtocol.v2026_07_28 });
+			const response = yield* harness.initializeWith("2025-11-25");
+			assert.strictEqual((response.error as { readonly code: number }).code, -32601);
+			assert.isUndefined(response.result);
+			const methods = (yield* harness.sentSoFar).map((frame) => (frame as { readonly method?: string }).method);
+			assert.deepStrictEqual(methods, ["initialize"]);
+		}),
+	);
+
+	it.effect("sentSoFar records sendRaw values and requests in order", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			yield* harness.sendRaw({ jsonrpc: "2.0", method: "notifications/whatever" });
+			yield* harness.initialize;
+			const methods = (yield* harness.sentSoFar).map((frame) => (frame as { readonly method?: string }).method);
+			assert.deepStrictEqual(methods, ["notifications/whatever", "initialize", "notifications/initialized"]);
+		}),
+	);
+
 	it.effect("stateful: a request before initialize fails fast with NotInitialized, naming the revision", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(fixtureServer(), { protocol: McpProtocol.v2025_06_18 });

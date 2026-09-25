@@ -40,7 +40,8 @@ export class ToolOutputSchema {
 	 * Order against `.annotate({ identifier })` does not matter. A check added
 	 * after an identifier starts a new node that would drop the definition
 	 * name, so the identifier the schema already resolves is carried onto the
-	 * new check, and the served document is the same either way. Applying it
+	 * new check, and the served documents are equal either way (key order
+	 * can differ when the schema carries a title or description). Applying it
 	 * twice is a no-op.
 	 *
 	 * Every union member must be an object shape: the added `type: "object"`

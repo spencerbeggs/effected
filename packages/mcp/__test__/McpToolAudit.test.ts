@@ -63,7 +63,14 @@ describe("McpToolAudit.check fixtures, each wrong in exactly one way", () => {
 			strictest,
 			[],
 		],
-		["a missing outputSchema", { ...clean, outputSchema: undefined }, strictest, ["get_thing: no outputSchema"]],
+		[
+			"a missing outputSchema",
+			{ ...clean, outputSchema: undefined },
+			strictest,
+			[
+				"get_thing: no outputSchema (a union success schema is dropped on stateful revisions; see ToolOutputSchema.objectRooted)",
+			],
+		],
 		[
 			"a non-object output root, by default (D10)",
 			{ ...clean, outputSchema: { type: "string" } },
@@ -73,6 +80,14 @@ describe("McpToolAudit.check fixtures, each wrong in exactly one way", () => {
 		[
 			"a union output root names the ToolOutputSchema.objectRooted fix",
 			{ ...clean, outputSchema: { anyOf: [{ type: "object" }, { type: "object" }] } },
+			{ input: "any" },
+			[
+				"get_thing: outputSchema is not object-rooted (root type: none); wrap the union success schema in ToolOutputSchema.objectRooted",
+			],
+		],
+		[
+			"a oneOf output root names the ToolOutputSchema.objectRooted fix too",
+			{ ...clean, outputSchema: { oneOf: [{ type: "object" }, { type: "object" }] } },
 			{ input: "any" },
 			[
 				"get_thing: outputSchema is not object-rooted (root type: none); wrap the union success schema in ToolOutputSchema.objectRooted",

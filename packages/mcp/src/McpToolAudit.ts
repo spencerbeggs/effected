@@ -11,9 +11,19 @@ export interface McpToolAuditPolicy {
 	readonly input: "open" | "closed" | "any";
 	/** Every tool must carry a non-empty `title`, top-level or in `annotations.title`. */
 	readonly requireTitle?: boolean | undefined;
-	/** Every tool must serve an `outputSchema`. The stateful revisions drop a non-object one, so check the revision you serve. */
+	/**
+	 * Every tool must serve an `outputSchema`. The stateful revisions drop a
+	 * non-object one, so check the revision you serve; the violation names
+	 * the likely cause, a union success schema, and `ToolOutputSchema.objectRooted`.
+	 */
 	readonly requireOutputSchema?: boolean | undefined;
-	/** A served `outputSchema` must be rooted at `type: "object"`; a union root names `ToolOutputSchema.objectRooted` as the fix. Defaults to `true` (D10). */
+	/**
+	 * A served `outputSchema` must be rooted at `type: "object"`. Defaults to
+	 * `true` (D10). Only the stateless revision serves a non-object root, so
+	 * only there does this fire; a union root (`anyOf` or `oneOf`) names
+	 * `ToolOutputSchema.objectRooted` as the fix. On a stateful revision the
+	 * same schema is dropped, and `requireOutputSchema` reports it instead.
+	 */
 	readonly objectRootedOutput?: boolean | undefined;
 	/** The longest `description` allowed, in UTF-16 code units; a missing description counts as 0. */
 	readonly maxDescription?: number | undefined;
@@ -136,7 +146,10 @@ export class McpToolAudit {
 
 			const title = tool.title ?? tool.annotations?.title;
 			if (policy.requireTitle === true && (typeof title !== "string" || title === "")) report("no title");
-			if (policy.requireOutputSchema === true && tool.outputSchema === undefined) report("no outputSchema");
+			if (policy.requireOutputSchema === true && tool.outputSchema === undefined)
+				report(
+					"no outputSchema (a union success schema is dropped on stateful revisions; see ToolOutputSchema.objectRooted)",
+				);
 			if (
 				(policy.objectRootedOutput ?? true) &&
 				tool.outputSchema !== undefined &&

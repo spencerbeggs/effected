@@ -250,9 +250,14 @@ can still drive that refusal on purpose. The stateless `2026-07-28`
 revision needs no handshake.
 
 `client.initializeWith(protocolVersion)` sends `initialize` asking for a
-different revision than the harness was made with, and returns the whole
-response. Use it to test version negotiation: assert the negotiated
-`result.protocolVersion`, or the JSON-RPC `error`.
+different stateful revision than the harness was made with, and returns
+the whole response. Use it to test version negotiation by asserting the
+negotiated `result.protocolVersion`. A stateful server never refuses a
+version: an unknown one, or the stateless `2026-07-28`, is counter-offered
+`2025-11-25`. On a harness made with the stateless revision, `initialize`
+is not served at all: the response is a JSON-RPC `-32601` error, and no
+`notifications/initialized` follows it. `client.sentSoFar` lists every
+frame the harness has written, in order.
 
 ### A spawned bin, with `McpProcess`
 

@@ -213,9 +213,12 @@ first one's memo map shares its protocol: only the first server reads stdin,
 and the second never answers. Merging both into one graph does that, and so
 does building or providing the second anywhere under the first one's
 `Effect.provide` — a nested `Layer.build` or `Effect.provide` forks the
-ambient memo map rather than starting a new one. Isolate each server with its
-own `ManagedRuntime`, `Effect.provide(layer, { local: true })`, or its own
-process.
+ambient memo map rather than starting a new one. The tool registry is shared
+the same way. Isolate each server by wrapping its whole bundle (its toolkit
+layers together with `McpStdio.layer`) in `Layer.fresh`, or give it its own
+`ManagedRuntime`, `Effect.provide(layer, { local: true })`, or its own
+process. Never put the `Layer.fresh` boundary between a toolkit and
+`McpStdio.layer`: the server would serve an empty registry.
 
 ## Crash guards
 
@@ -399,7 +402,7 @@ const Missing = Schema.Struct({ kind: Schema.Literal("missing"), reason: Schema.
 const Result = ToolOutputSchema.objectRooted(Schema.Union([Found, Missing])).annotate({ identifier: "Result" });
 ```
 
-It can go before or after `.annotate({ identifier })`: the identifier the schema already carries moves onto the new check, so the served document is the same either way. Every union member must be an object shape. `McpToolAudit`'s `objectRootedOutput` check names this helper when it finds a union root.
+It can go before or after `.annotate({ identifier })`: the identifier the schema already carries moves onto the new check, so the served documents are equal either way. Every union member must be an object shape. `McpToolAudit`'s `objectRootedOutput` check names this helper when it finds a union root.
 
 ## Testing
 
@@ -426,7 +429,7 @@ const test = Effect.gen(function* () {
 On a stateful revision (the default is `2025-11-25`), `initialize` comes
 first: any other request sent before it fails fast with `McpTestFailure`
 reason `NotInitialized` instead of the server's opaque `Invalid request
-metadata`. `client.initializeWith("2025-06-18")` asks for a different revision than the harness speaks and returns the whole response, so a test can assert the negotiated `protocolVersion`.
+metadata`. `client.initializeWith("2025-06-18")` asks for a different stateful revision than the harness speaks and returns the whole response, so a test can assert the negotiated `protocolVersion`. A stateful server never refuses a version: an unknown one, or the stateless `2026-07-28`, is counter-offered `2025-11-25`. On a harness made with the stateless revision, `initialize` itself is not served, and the response is a JSON-RPC `-32601` error with no `notifications/initialized` sent after it. `client.sentSoFar` holds every frame the harness has written, in order.
 
 `McpHarness.make` runs the server in-process over queue-backed `Stdio`, so
 a test sees the exact served schemas and wire results a real client would,
