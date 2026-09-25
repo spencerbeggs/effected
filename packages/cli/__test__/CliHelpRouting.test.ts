@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Console, Effect, Exit, Layer, Runtime } from "effect";
-import { CliOutput, Command, Flag } from "effect/unstable/cli";
+import { CliError, CliOutput, Command, Flag } from "effect/unstable/cli";
 import { CliRuntime } from "../src/index.js";
 
 const sub = Command.make("sub", { count: Flag.Int("count").pipe(Flag.withDefault(1)) }, ({ count }) =>
@@ -10,15 +10,21 @@ const sub = Command.make("sub", { count: Flag.Int("count").pipe(Flag.withDefault
 const app = Command.make("app").pipe(Command.withSubcommands([sub]));
 const HELP_MARK = "USAGE";
 
+/** A console double recording each stream, and every call in one shared sequence so order ACROSS streams is visible. */
 const capturing = () => {
 	const out: string[] = [];
 	const err: string[] = [];
+	const seq: Array<readonly ["out" | "err", string]> = [];
+	const record = (stream: "out" | "err", line: string) => {
+		(stream === "out" ? out : err).push(line);
+		seq.push([stream, line]);
+	};
 	const double: Console.Console = Object.assign(Object.create(console) as Console.Console, {
-		log: (...args: ReadonlyArray<unknown>) => out.push(args.map(String).join(" ")),
-		error: (...args: ReadonlyArray<unknown>) => err.push(args.map(String).join(" ")),
-		warn: (...args: ReadonlyArray<unknown>) => err.push(`warn:${args.map(String).join(" ")}`),
+		log: (...args: ReadonlyArray<unknown>) => record("out", args.map(String).join(" ")),
+		error: (...args: ReadonlyArray<unknown>) => record("err", args.map(String).join(" ")),
+		warn: (...args: ReadonlyArray<unknown>) => record("err", `warn:${args.map(String).join(" ")}`),
 	});
-	return { double, out, err };
+	return { double, out, err, seq };
 };
 
 const codeOf = (exit: Exit.Exit<unknown, unknown>): number =>
@@ -148,23 +154,92 @@ describe("CliRuntime.main helpOnUsageError", () => {
 		}),
 	);
 
-	it.effect("a held help document is released before any other console output, in order", () =>
-		Effect.gen(function* () {
-			const { double, out, err } = capturing();
-			const program = Effect.gen(function* () {
-				const formatter = yield* CliOutput.Formatter;
-				const help = formatter.formatHelpDoc({ description: "", usage: "USAGE x", flags: [], args: [] } as never);
-				yield* Console.log(help);
-				yield* Console.warn("after");
-				yield* Console.log("plain");
+	describe("held help, driven directly (order across both streams)", () => {
+		/** Run `body` under main with routing on; `help`/`errors` are strings the recording Formatter produced. */
+		const drive = (
+			body: (text: { readonly help: string; readonly errors: string }) => Effect.Effect<void>,
+		): Effect.Effect<ReadonlyArray<readonly ["out" | "err", string]>> =>
+			Effect.gen(function* () {
+				const { double, seq } = capturing();
+				const program = Effect.gen(function* () {
+					const formatter = yield* CliOutput.Formatter;
+					const help = formatter.formatHelpDoc({ description: "", usage: "USAGE x", flags: [], args: [] } as never);
+					const errors = formatter.formatErrors([new CliError.UserError({ cause: "bad flag" })]);
+					yield* body({ help, errors });
+				});
+				yield* CliRuntime.main(program, { platform: NodeServices.layer, helpOnUsageError: "stderr" }).pipe(
+					Effect.exit,
+					Effect.provideService(Console.Console, double),
+				);
+				return seq;
 			});
-			yield* CliRuntime.main(program, { platform: NodeServices.layer, helpOnUsageError: "stderr" }).pipe(
-				Effect.exit,
-				Effect.provideService(Console.Console, double),
-			);
-			assert.isTrue(helpIn(out));
-			assert.strictEqual(out.at(-1), "plain");
-			assert.deepStrictEqual(err, ["warn:after"]);
-		}),
-	);
+
+		it.effect("help then its recorded errors: both on stderr, help first", () =>
+			Effect.gen(function* () {
+				let text = { help: "", errors: "" };
+				const seq = yield* drive((t) => {
+					text = t;
+					return Effect.andThen(Console.log(t.help), Console.error(t.errors));
+				});
+				assert.deepStrictEqual(seq, [
+					["err", text.help],
+					["err", text.errors],
+				]);
+			}),
+		);
+
+		it.effect("help then another console method: help is released to stdout FIRST", () =>
+			Effect.gen(function* () {
+				let help = "";
+				const seq = yield* drive((t) => {
+					help = t.help;
+					return Console.log(t.help).pipe(Effect.andThen(Console.warn("after")), Effect.andThen(Console.log("plain")));
+				});
+				assert.deepStrictEqual(seq, [
+					["out", help],
+					["err", "warn:after"],
+					["out", "plain"],
+				]);
+			}),
+		);
+
+		it.effect("help then an unrelated error(): help stays on stdout, ahead of the error", () =>
+			Effect.gen(function* () {
+				let help = "";
+				const seq = yield* drive((t) => {
+					help = t.help;
+					return Effect.andThen(Console.log(t.help), Console.error("something else broke"));
+				});
+				assert.deepStrictEqual(seq, [
+					["out", help],
+					["err", "something else broke"],
+				]);
+			}),
+		);
+
+		it.effect("only recorded help is held: a plain log before recorded errors stays on stdout", () =>
+			Effect.gen(function* () {
+				let errors = "";
+				const seq = yield* drive((t) => {
+					errors = t.errors;
+					return Effect.andThen(Console.log("plain line"), Console.error(t.errors));
+				});
+				assert.deepStrictEqual(seq, [
+					["out", "plain line"],
+					["err", errors],
+				]);
+			}),
+		);
+
+		it.effect("help at the very end of the program is released to stdout", () =>
+			Effect.gen(function* () {
+				let help = "";
+				const seq = yield* drive((t) => {
+					help = t.help;
+					return Console.log(t.help);
+				});
+				assert.deepStrictEqual(seq, [["out", help]]);
+			}),
+		);
+	});
 });
