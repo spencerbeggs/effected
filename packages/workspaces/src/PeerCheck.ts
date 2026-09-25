@@ -36,8 +36,10 @@ import { indexInstances, rootInstances } from "./internal/roots.js";
  *   `allowedVersions`, `ignoreMissing` and `allowAny` — are applied with
  *   pnpm's measured semantics.
  * - `"unresolvedEdge"` — some instance records an edge this model could not
- *   name (`ResolvedPackage.unresolvedEdges`), so a peer that edge satisfies
- *   cannot be verified either way.
+ *   name (`ResolvedPackage.unresolvedEdges`), or an importer dependency
+ *   resolved through `link:`, whose target's manifest peers the lockfile
+ *   never records. Either way the peers that edge involves are neither
+ *   confirmed satisfied nor confirmed unmet.
  *
  * Both mean **fail closed**: a gate should treat an unverified report as "not
  * proven clean" rather than as a pass.
@@ -143,6 +145,14 @@ const PEER_RESOLVING_FORMATS: ReadonlySet<Lockfile["format"]> = new Set(["npm", 
 
 /** @internal */
 const supportsPeerResolution = (format: Lockfile["format"]): boolean => PEER_RESOLVING_FORMATS.has(format);
+
+/**
+ * The protocol pnpm records a workspace-directory resolution under, passed
+ * through verbatim on `ImporterDependency.version` by `@effected/lockfiles`.
+ *
+ * @internal
+ */
+const LINK_PREFIX = "link:";
 
 interface Walk {
 	readonly instance: ResolvedPackage;
@@ -259,7 +269,11 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	 * bun root importer (see `unresolvedImporters`), and pnpm recording no peer
 	 * declarations for workspace projects themselves — under pnpm a workspace
 	 * package's *own* unsatisfied peers are not in the lockfile at all, and
-	 * `pnpm peers check` does not report them either.
+	 * `pnpm peers check` does not report them either. A `link:`-resolved
+	 * importer dependency is the same blind spot from the other side, and there
+	 * `pnpm peers check` DOES report the linked parent's peers (it reads the
+	 * manifest on disk): every `link:` edge therefore fails the report closed
+	 * rather than letting the invisible parent pass as checked (effected#800).
 	 *
 	 * @param lockfile - a lockfile parsed by `@effected/lockfiles`
 	 * @returns the report; never fails
@@ -304,7 +318,23 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 		// An edge the lockfile records but the model could not name means some
 		// peer may be satisfied by something invisible here — so the report is
 		// incomplete, and says so rather than presenting its rows as the answer.
-		if (lockfile.packages.some((pkg) => pkg.unresolvedEdges.length > 0)) unverified.push("unresolvedEdge");
+		//
+		// A `link:`-resolved importer dependency is the same gap from the other
+		// side (effected#800): pnpm records no peer declarations for workspace
+		// projects, so a parent reached through `link:` joins at best to a row
+		// whose peers are empty BY DESIGN, and at worst — the root importer —
+		// to nothing at all, while `pnpm peers check` reads the linked manifest
+		// on disk and reports those peers. The model cannot see them, so every
+		// `link:` edge fails the report closed. `version` is the normalized
+		// model's own field, documented to carry a non-registry `link:`
+		// resolution verbatim, and populated by pnpm only — npm and bun never
+		// reach the branch, so the scan stays format-free.
+		const linkImporterEdge = lockfile.importers.some((importer) =>
+			importer.dependencies.some((dep) => dep.version?.startsWith(LINK_PREFIX) === true),
+		);
+		if (linkImporterEdge || lockfile.packages.some((pkg) => pkg.unresolvedEdges.length > 0)) {
+			unverified.push("unresolvedEdge");
+		}
 
 		return PeerCheck.make({
 			supported: true,

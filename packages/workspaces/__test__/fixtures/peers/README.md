@@ -117,6 +117,35 @@ importer and the edge resolves to a workspace row. Oracle: clean. A workspace ro
 carries the placeholder version `0.0.0`, so a checker that version-compared it
 against `^18.0 || ^19` would invent a finding pnpm does not have.
 
+## `linkdeep/`
+
+Real pnpm 12.5.1 output, generated 2026-09-22 by the same recipe
+(`pnpm install --lockfile-only`, `autoInstallPeers: false`) over the probe
+workspace from effected#800: `linkWorkspacePackages: deep`, package
+`probe-a` declaring a `react: ^18.0.0` peer nothing satisfies, package
+`probe-b` depending on `probe-a: workspace:*` — which pnpm records as
+`version: link:../a`. The peer range is literal rather than a catalog read
+because pnpm/pnpm#15049 (still open) limits the oracle for packages that
+read `catalog:` peers through a workspace edge.
+
+The oracle is the divergence this fixture exists to record: `pnpm peers
+check --json` READS THE LINKED MANIFEST on disk and reports the missing
+`react` row for `packages/b` (parents `probe-a@1.0.0`). The lockfile
+records no peer declarations for the linked parent, so `PeerCheck` cannot
+see the row — it declines to fabricate one and instead fails the report
+closed with `unresolvedEdge` (effected#800, the issue's minimum ask). The
+two sides therefore do NOT agree row-for-row here, and the tests pin both
+halves: no fabricated finding, and the unverified marker. If the
+join-from-disk route (the issue's option 1) ever lands, the committed
+oracle is what turns the test into a full agreement check.
+
+A published-parent control (the same graph with `probe-a` carrying a real
+`packages:` row, where the row appears today) could not be generated
+without publishing it: an `injectWorkspacePackages: true` variant still
+recorded `version: link:../a` and no row. The control is pinned instead by
+the registry-parent fixtures — `missing/` and `mixed/`, where the
+declaring parent has a real row and its unsatisfied peers appear.
+
 ## `npm-root/`
 
 Real npm 11.19.0 output, copied verbatim from `@effected/lockfiles`'

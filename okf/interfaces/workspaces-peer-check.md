@@ -210,7 +210,11 @@ place.
 
 The union is closed at exactly two by measurement: with all three rule axes
 now applied, no supplied configuration leaves a suppression unreplicated,
-so there is nothing left for a third reason to name.
+so there is nothing left for a third reason to name. The `link:` importer
+decline folds into `unresolvedEdge` rather than growing the union; whether
+consumers need a separate member distinguishing the structural pnpm
+`link:` case from an unnameable edge is an open design question tracked
+on issue 800.
 
 - **`peerRulesNotApplied`** — no suppression policy was supplied, so
   pnpm's suppression could not be replicated and some rows may be ones
@@ -219,11 +223,17 @@ so there is nothing left for a third reason to name.
   none, while omitting the key says nobody looked. Collapsing those two
   would tell a gate that an unchecked workspace is clean. Supplied rules
   never produce it, whatever their contents — all three axes are applied.
-- **`unresolvedEdge`** — some instance records an edge the model could not
-  name, so a peer that edge satisfies cannot be verified. Such a peer is
-  declined rather than reported: reporting it would be a false positive,
-  declining it silently would be a false negative, and only doing both
-  halves is honest.
+- **`unresolvedEdge`** — two triggers. Some instance records an edge the
+  model could not name, so a peer that edge satisfies cannot be verified.
+  Such a peer is declined rather than reported: reporting it would be a
+  false positive, declining it silently would be a false negative, and
+  only doing both halves is honest. Second, an importer dependency
+  resolved through `link:` raises it too: a linked parent has no
+  `packages:` row, so its manifest peers are never in the lockfile and
+  are declined rather than fabricated. Under pnpm every `workspace:`
+  dependency is recorded `link:`, so this second trigger is structural
+  for pnpm monorepos with internal dependencies, not a finding about a
+  particular workspace.
 
 `PeerCheck` reads `resolved` from `@effected/lockfiles`, which omits any
 edge whose identity it cannot compose and verify — a rule that keeps this
@@ -232,10 +242,14 @@ carries two different meanings, "nothing resolved" and "something resolved
 that could not be named", and this package treats the first as a positive
 finding.
 
-One known hole in the fail-closed posture is open: a parent reached through
-a `link:` edge has no package row, so its peers are never joined and the
-report still says verified. See
-[the link-parent gotcha](../gotchas/peer-check-link-parent-reports-verified.md).
+The `link:` hole this posture once had is closed on the declining side: a
+parent reached through a `link:` edge still has no package row and its
+peers are still never joined, but every `link:` importer dependency now
+raises `unresolvedEdge`, so the report says unverified instead of
+verified. The joining side remains open as issue 800's option 1 — reading
+a linked parent's manifest from disk would make `PeerCheck` no longer a
+pure value over the lockfile alone, which is a design decision rather
+than a report change.
 
 ## The differential oracle
 

@@ -534,6 +534,52 @@ describe("PeerCheck.run — peerDependencyRules and the unverified states", () =
 		}),
 	);
 
+	it.effect("fails closed on a link:-resolved parent whose peers the lockfile never records", () =>
+		Effect.gen(function* () {
+			// effected#800, the probe fixture from the issue: packages/b depends on
+			// probe-a via workspace:*, which pnpm records as `version: link:../a`,
+			// and probe-a declares a `react` peer nothing satisfies. `pnpm peers
+			// check` reads the LINKED MANIFEST on disk and reports the row — the
+			// committed oracle carries it. This model sees only a workspace row
+			// whose peers are empty by design, so it declines to fabricate the row
+			// and fails the report closed instead of presenting the silence as a
+			// clean, verified bill of health.
+			const report = PeerCheck.run(yield* parse("linkdeep"), {
+				peerDependencyRules: NoPeerDependencyRules,
+			});
+			assert.isTrue(report.supported);
+			// No fabricated finding: the linked parent's peer declarations are
+			// invisible in the lockfile, and a guessed row would be a false answer.
+			assert.deepStrictEqual(report.unsatisfied, []);
+			assert.deepStrictEqual(report.unresolvedImporters, []);
+			// Fail closed: the marker is the whole fix. Rules were supplied, so
+			// peerRulesNotApplied must NOT ride along.
+			assert.deepStrictEqual(report.unverified, ["unresolvedEdge"]);
+			// And the divergence is KNOWN, not missed: pnpm does report the row,
+			// committed verbatim beside the lockfile. If the join-from-disk route
+			// (the issue's option 1) ever lands, these assertions are what turn
+			// the oracle into a full agreement test.
+			const oracle = theirs("linkdeep");
+			assert.strictEqual(oracle.length, 1);
+			assert.strictEqual(oracle[0]?.importer, "packages/b");
+			assert.strictEqual(oracle[0]?.dependency, "react");
+			assert.strictEqual(oracle[0]?.wanted, "^18.0.0");
+			assert.strictEqual(oracle[0]?.found, null);
+			assert.deepStrictEqual(oracle[0]?.parents, ["probe-a@1.0.0"]);
+		}),
+	);
+
+	it.effect("a link: edge fails the report closed even when the rules are absent from the picture", () =>
+		Effect.gen(function* () {
+			// Omitting the rules yields peerRulesNotApplied on every lockfile; the
+			// link: marker must STILL be there too, or a gate that supplies rules
+			// later would read the same tree as verified. Both reasons, one report.
+			const report = PeerCheck.run(yield* parse("linkdeep"));
+			assert.include(report.unverified, "peerRulesNotApplied");
+			assert.include(report.unverified, "unresolvedEdge");
+		}),
+	);
+
 	it.effect("accepts a peer satisfied by a WORKSPACE package without version-comparing it", () =>
 		Effect.gen(function* () {
 			// react-redux wants react `^18.0 || ^19` and pnpm resolved it to the
@@ -544,17 +590,23 @@ describe("PeerCheck.run — peerDependencyRules and the unverified states", () =
 			// `found: "0.0.0"` against a real range — a false answer dressed as a
 			// finding. An edge exists and a provider exists, so nothing indicates
 			// dissatisfaction; the check declines rather than inventing a verdict.
-			// This is why it is not a hole.
+			//
+			// The report is NOT verified, though (effected#800): the satisfying edge
+			// is a `link:`, and a linked package's own manifest peers are invisible
+			// to this model while `pnpm peers check` reads them from disk. Declining
+			// the false row and failing closed on completeness are the two halves of
+			// the honest answer, and this test pins both.
 			const report = PeerCheck.run(yield* parse("workspacepeer"), {
 				peerDependencyRules: NoPeerDependencyRules,
 			});
 
 			assert.isUndefined(report.required.find((r) => r.dependency === "react"));
-			assert.deepStrictEqual(report.unverified, []);
-			// pnpm calls this workspace clean, and so do we. Agreement here is
-			// agreement by silence — that both sides emit nothing — which is why the
-			// `unverified` assertion above sits next to it: the interesting claim is
-			// that we are silent for a reason, not merely silent.
+			assert.deepStrictEqual(report.unverified, ["unresolvedEdge"]);
+			// pnpm calls this workspace clean, and we emit no row either. Agreement
+			// on the rows is agreement by silence — that both sides emit nothing —
+			// which is why the `unverified` assertion above sits next to it: the
+			// interesting claim is that we are silent for a reason, not merely
+			// silent.
 			assert.deepStrictEqual(ours(report.unsatisfied), theirs("workspacepeer"));
 			// The edge really does point at a workspace row at the placeholder
 			// version — without that, the assertion above could pass for the wrong
