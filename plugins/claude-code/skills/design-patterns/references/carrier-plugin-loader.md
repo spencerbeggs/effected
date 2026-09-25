@@ -41,27 +41,38 @@ The loader script's job, in order:
    package manager (from the `packageManager` field, then lockfile
    presence, defaulting to npm) and the exact install command for it —
    `<pm> add -D @scope/plugin`.
-3. **Then fall back to `npx --yes @scope/mcp@<MAJOR>`** — a **major-pinned**
-   fallback, so the fallback path cannot silently drift onto a breaking
-   release the plugin was never tested against:
+3. **Then fall back to `npx --yes -p @scope/plugin@<MAJOR> <tool>-mcp`** —
+   the **carrier**, **major-pinned**, running the bin by name. Naming the
+   carrier is required, not a style choice: only the carrier declares a bin
+   (see
+   [carrier-entry-contract.md](./carrier-entry-contract.md#only-the-carrier-declares-a-bin)),
+   and `npx <package>` runs a package's *own* bin, so `npx @scope/mcp` has
+   nothing to run once the front end stops declaring one. `-p` installs the
+   carrier and the trailing name picks its bin. It also means the fallback
+   carries the distribution identity, as a local install does. The major pin
+   keeps the fallback from silently drifting onto a breaking release the
+   plugin was never tested against:
 
 ```sh
-BIN="$ROOT/node_modules/.bin/vitest-agent-mcp"
+BIN="$ROOT/node_modules/.bin/tool-mcp"
 if [ -x "$BIN" ]; then
   exec "$BIN" "$@"
 fi
 
 PM="$(detect_pm)"
 {
-  printf 'vitest-agent plugin: vitest-agent-mcp is not installed in this project.\n'
+  printf 'tool plugin: tool-mcp is not installed in this project.\n'
   # ...install hint...
-  printf 'Falling back to `npx --yes @vitest-agent/mcp@4`, which will download it.\n'
+  printf 'Falling back to `npx --yes -p @scope/plugin@4 tool-mcp`, which will download it.\n'
 } >&2
 
-exec npx --yes @vitest-agent/mcp@4 "$@"
+exec npx --yes -p @scope/plugin@4 tool-mcp "$@"
 ```
 
-(<https://github.com/spencerbeggs/vitest-agent/blob/main/plugins/claude-code/bin/start-mcp.sh>)
+vitest-agent's loader is the model for the rest of the script
+(<https://github.com/spencerbeggs/vitest-agent/blob/main/plugins/claude-code/bin/start-mcp.sh>);
+its fallback is moving from the front end (`@vitest-agent/mcp@<MAJOR>`) to
+this carrier form.
 
 **Never dispatch through `pnpm exec` / `yarn exec` / `bunx` / `npm exec`.**
 Each resolves bins under a different mechanism (workspace-aware exec vs.
@@ -87,17 +98,19 @@ exec npx --yes @savvy-web/mcp "$@"
 
 (<https://github.com/savvy-web/systems/blob/main/plugins/silk/bin/start-mcp.sh>)
 
-That means a consumer who never installs the front end locally gets
-whatever `latest` happens to be at the moment Claude Code invokes the
-loader — a plugin release can be tested against one front-end major and
-have its fallback path silently start running a different one. Pin the
-fallback the way vitest-agent does (`@vitest-agent/mcp@4`) whenever a
-front end has shipped a breaking major; treat an unpinned fallback as
+That means a consumer who never installs the tool locally gets whatever
+`latest` happens to be at the moment Claude Code invokes the loader — a
+plugin release can be tested against one major and have its fallback path
+silently start running a different one. Pin the fallback's major whenever
+the carrier has shipped a breaking major; treat an unpinned fallback as
 latent skew waiting to happen, not as "it hasn't broken yet."
 
-The npx fallback also runs the bare front end with no meta-package
-identity, so any report it produces carries `distribution: null` — see
-[carrier-version-threading.md](./carrier-version-threading.md).
+Both also name the front end rather than the carrier, so they stop working
+the moment the front end drops its own bin, and until then they run the
+bare front end with no meta-package identity: any report it produces
+carries `distribution: null` — see
+[carrier-version-threading.md](./carrier-version-threading.md). The carrier
+form above fixes both.
 
 ## Hook CLI resolution order
 

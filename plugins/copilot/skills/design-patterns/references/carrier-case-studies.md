@@ -84,7 +84,9 @@ What it does best:
   contract end to end
   (<https://github.com/spencerbeggs/vitest-agent/blob/main/packages/plugin/__test__/bins-packed-install.e2e.test.ts>).
 - **Its plugin loader is the only one with a major-pinned `npx` fallback**
-  (`npx --yes @vitest-agent/mcp@4`) — see
+  (`npx --yes @vitest-agent/mcp@<MAJOR>`, moving to the carrier form
+  `npx --yes -p @vitest-agent/plugin@<MAJOR> vitest-agent-mcp` as its front
+  ends drop their own bins) — see
   [carrier-plugin-loader.md](./carrier-plugin-loader.md).
 - `@vitest-agent/plugin` is the carrier **and** a library — it is the
   actual Vitest plugin a consumer's `vitest.config` imports, while also
@@ -100,6 +102,13 @@ What it does best:
 Gaps and notable deviations:
 
 - **No LSP front end at all** — only `cli` and `mcp`.
+- **Its front ends declare the carrier's bin names too** (`@vitest-agent/cli`
+  declares `vitest-agent`, `@vitest-agent/mcp` declares `vitest-agent-mcp`).
+  In its packed-install e2e, `binProvenance` showed npm and bun linking the
+  front end's bin over the carrier's, so the carrier suffix was lost there;
+  only pnpm kept the carrier's shim. Being removed under the
+  [only the carrier declares a bin](./carrier-entry-contract.md#only-the-carrier-declares-a-bin)
+  rule, which `PackedInstall.run` now enforces as `BinConflict`.
 - **No version threading** — no `Distribution` equivalent anywhere in the
   graph. A lockstep runtime-version-drift check was built and then
   removed after producing false positives; no replacement exists.

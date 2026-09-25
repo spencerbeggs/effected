@@ -6,7 +6,7 @@ with one job:
 
 | File | Role | Exported as |
 | --- | --- | --- |
-| `src/bin.ts` | shebang; import `main`; call it. Nothing else. | `bin` in `package.json` |
+| `src/bin.ts` | shebang; import `main`; call it. Nothing else. A workspace-local entry for running the front end directly during development | **not** declared as a `bin`: only the carrier declares bins (see [below](#only-the-carrier-declares-a-bin)) |
 | `src/main.ts` | the assembled program: crash guards, environment resolution, exit-code mapping, runtime teardown, `runMain`. **Owns the process.** | `./main` subpath export |
 | `src/index.ts` | the programmatic barrel — side-effect free, never exports `main` | `.` (package root) |
 | `src/version.ts` | `export const X_VERSION = process.env.__PACKAGE_VERSION__ ?? "0.0.0"` — a bundler `define`, not a runtime read | not exported directly; consumed internally |
@@ -19,10 +19,11 @@ A front end's `package.json` exports map is:
     ".": "./src/index.ts",
     "./main": "./src/main.ts",
     "./package.json": "./package.json"
-  },
-  "bin": { "the-tool": "./src/bin.ts" }
+  }
 }
 ```
+
+No `bin` field: the carrier's shim is the only published way to run it.
 
 ## Why `./main`, not `.`
 
@@ -108,8 +109,8 @@ and treating that as a real path is the bug the resolver exists to avoid.
 
 The carrier's own `package.json` takes a **regular** `dependencies` edge on
 every front end (never `peerDependencies` — see
-[carrier-package.md](./carrier-package.md)) and ships one bin per front end
-that mirrors it:
+[carrier-package.md](./carrier-package.md)) and ships one bin per front end,
+the only bins any package in the tool declares:
 
 ```json
 {
@@ -145,15 +146,32 @@ behavior with a dedicated `externals.test.ts` so a future bundler config
 change that starts inlining front ends fails a test instead of silently
 bloating every shim.
 
-## The mirror-bin wart
+## Only the carrier declares a bin
 
-Front ends keep their **own** bins too — `@scope/cli`'s `package.json` still
-declares `"tool": "./src/bin.ts"`. These are mirrors, not alternatives to
-the carrier's shims: both ultimately call the same `main()`. The wart is
-that under npm/yarn/bun **flat** installs, a front end's own bin can shadow
-the carrier's shim in `.bin` depending on install order — this is harmless
-precisely because both paths call the same `main()` and produce identical
-behavior. Only a **pnpm isolated** install proves unambiguously that the
-carrier's own shim is the one that ran, because pnpm's isolated `node_modules`
-does not let a transitive front end's bin land in the top-level `.bin` at
-all.
+Front ends declare **no** `bin` — above all none with a name the carrier
+declares. The carrier's shim is the one executable a consumer installs.
+
+Why: under npm, Yarn (`node-modules` linker) and bun **flat** installs, a
+transitive front end that declared a bin of the same name could take the
+carrier's `.bin` slot, and which one wins is the manager's choice, not
+yours: packed-install runs observed npm and bun linking the front end's bin
+over the carrier's. Both call the same `main()`, so the tool still works,
+but the carrier identity is lost — the front end runs without the
+distribution the shim passes down, and `--version` drops its
+`via @scope/plugin <version>` suffix. Only pnpm's isolated layout, which
+links nothing transitive at the top level, kept the carrier's shim. With
+one declaration there is nothing to shadow, and the identity holds under
+every manager.
+
+Consequences:
+
+- Running a front end without installing the tool goes through the
+  carrier: `npx --yes -p @scope/plugin@<MAJOR> tool-mcp`, never
+  `npx @scope/mcp` (see
+  [carrier-plugin-loader.md](./carrier-plugin-loader.md)).
+- `src/bin.ts` stays as the workspace-local development entry; it is simply
+  not published as a bin.
+- `PackedInstall.run` (`@effected/workspaces/testing`) enforces the rule: a
+  packed package other than the carrier declaring one of the carrier's bin
+  names fails `BinConflict` before any install (see
+  [carrier-verification.md](./carrier-verification.md)).

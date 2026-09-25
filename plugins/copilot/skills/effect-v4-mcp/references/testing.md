@@ -345,8 +345,11 @@ runnable example in this reference does.
 Composed with `PackedInstall.run` (`@effected/workspaces/testing`) in the
 consumer's own end-to-end test — this is typecheck-only here: it really
 packs each package and installs into a scratch project per available
-manager, too heavy for this skill's own gate, and reused verbatim from
-`@effected/workspaces`' own README:
+manager, too heavy for this skill's own gate, and adapted from
+`@effected/workspaces`' own README. `consumer.command(name, args?, options?)`
+is the command `runBin` would spawn (the install's scrubbed environment,
+the consumer's directory) with stdin left open, which is what the probe
+writes `initialize` to:
 
 ~~~ts
 // __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
@@ -358,7 +361,6 @@ import { McpProbe } from "@effected/mcp/testing"
 import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
 import { Duration, Effect, Layer } from "effect"
-import { ChildProcess } from "effect/unstable/process"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer))
@@ -367,11 +369,12 @@ const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const
 const INSTALL_TIMEOUT = "2 minutes"
 // The installs run one after another. timeoutBudget sums the run's own ceilings
 // (every manager's probe and install, every package's pack) plus the probe per
-// consumer, so a named PackedInstallError fires before this guard does.
+// consumer, so a named PackedInstallError fires before this guard does. The
+// packages come from PackedInstall.closure: the run's own planner, not a hand count.
 const BUDGET = PackedInstall.timeoutBudget({
   managers: MANAGERS,
   installTimeout: INSTALL_TIMEOUT,
-  packages: 2, // the carrier and its closure: result.tarballs has one entry each
+  packages: await Effect.runPromise(PackedInstall.closure("my-tool").pipe(Effect.provide(Live))),
   perConsumer: "30 seconds",
 })
 
@@ -391,14 +394,9 @@ describe("packed install", () => {
             installTimeout: INSTALL_TIMEOUT,
           })
           assert.isAbove(result.consumers.length, 0, `nothing installed; unavailable: ${result.unavailable.join(", ")}`)
-          const env = PackedInstall.scrubEnv(process.env)
           for (const consumer of result.consumers) {
-            const bin = ChildProcess.make(consumer.binPath("my-tool-mcp"), [], {
-              cwd: consumer.directory,
-              env,
-              extendEnv: false,
-            })
-            const { response, stderr, exitCode } = yield* McpProbe.initialize(bin).pipe(Effect.timeout("30 seconds"))
+            const probe = McpProbe.initialize(consumer.command("my-tool-mcp"))
+            const { response, stderr, exitCode } = yield* probe.pipe(Effect.timeout("30 seconds"))
             assert.isUndefined(response.error, `${consumer.manager}: initialize was refused`)
             assert.strictEqual(stderr, "", `${consumer.manager}: stderr`)
             assert.strictEqual(exitCode, 0, `${consumer.manager}: exit code`)

@@ -160,6 +160,90 @@ afterAll(() => rmSync(ROOT, { recursive: true, force: true }));
 
 const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
 
+const LINKED = "@effected/packed-install-fixture-linked";
+const BRIDGE = "@effected/packed-install-fixture-bridge";
+/** Outside the workspace, and at a version no registry has: only an override can install it. */
+const EXTERNAL = "@effected/packed-install-fixture-external";
+const EXTERNAL_VERSION = "7.7.7-unpublished";
+const LINKED_BIN = "fixture-linked";
+const BRIDGED = "bridged from the unpublished external";
+
+/**
+ * A second workspace for `overrides`: carrier `linked` -> closure member
+ * `bridge` -> `external@7.7.7-unpublished`, which lives beside the workspace,
+ * not in it. The root's `pnpm-workspace.yaml` links it the dogfood way,
+ * `"<name>": "file:../external"`, and `externalTarball` is the same package
+ * packed with npm. Nothing here is ever installed in the workspace itself.
+ */
+const writeLinkedFixture = (): { readonly base: string; readonly root: string; readonly externalTarball: string } => {
+	const base = realpathSync(mkdtempSync(join(tmpdir(), "packed-install-linked-")));
+	const root = join(base, "workspace");
+	write(root, "package.json", json({ name: "packed-install-linked-root", version: "0.0.0", private: true }));
+	write(
+		root,
+		"pnpm-workspace.yaml",
+		`packages:\n  - packages/*\noverrides:\n  ${JSON.stringify(EXTERNAL)}: "file:../external"\n`,
+	);
+	const external = {
+		name: EXTERNAL,
+		version: EXTERNAL_VERSION,
+		type: "module",
+		exports: { ".": "./index.js" },
+		files: ["index.js"],
+	};
+	write(base, "external/package.json", json(external));
+	write(base, "external/index.js", 'export const origin = () => "from the unpublished external";\n');
+
+	const bridge = {
+		name: BRIDGE,
+		version: VERSION,
+		type: "module",
+		exports: { ".": "./index.js" },
+		files: ["index.js"],
+		dependencies: { [EXTERNAL]: EXTERNAL_VERSION },
+	};
+	const bridged = `import { origin } from "${EXTERNAL}";\nexport const bridge = () => "bridged " + origin();\n`;
+	for (const dir of ["packages/bridge", `packages/bridge/${PROD}`]) {
+		write(root, `${dir}/package.json`, json(bridge));
+		write(root, `${dir}/index.js`, bridged);
+	}
+	const linked = (dependency: string) => ({
+		name: LINKED,
+		version: VERSION,
+		type: "module",
+		bin: { [LINKED_BIN]: "./bin.js" },
+		files: ["bin.js"],
+		dependencies: { [BRIDGE]: dependency },
+	});
+	for (const [dir, dependency] of [
+		["packages/linked", "workspace:^"],
+		[`packages/linked/${PROD}`, VERSION],
+	] as const) {
+		write(root, `${dir}/package.json`, json(linked(dependency)));
+		write(
+			root,
+			`${dir}/bin.js`,
+			`#!/usr/bin/env node\nimport { bridge } from "${BRIDGE}";\nconsole.log(bridge());\n`,
+			0o755,
+		);
+	}
+
+	const tarballs = join(base, "tarballs");
+	mkdirSync(tarballs, { recursive: true });
+	const packed = HAS_NPM
+		? spawnSync("npm", ["pack", "--ignore-scripts", "--pack-destination", tarballs], {
+				cwd: join(base, "external"),
+				env: CHILD_ENV,
+				encoding: "utf8",
+			})
+		: undefined;
+	const externalTarball = packed?.status === 0 ? join(tarballs, packed.stdout.trim().split("\n").at(-1) ?? "") : "";
+	return { base, root, externalTarball };
+};
+const LINKED_FIXTURE = writeLinkedFixture();
+afterAll(() => rmSync(LINKED_FIXTURE.base, { recursive: true, force: true }));
+const LinkedLive = Workspaces.layer({ cwd: LINKED_FIXTURE.root }).pipe(Layer.provideMerge(NodeServices.layer));
+
 const spawn = (executable: string, args: ReadonlyArray<string>, cwd?: string) =>
 	Run.collect(
 		ChildProcess.make(executable, args, {
@@ -469,6 +553,119 @@ describe("PackedInstall against a real fixture workspace", () => {
 					assert.deepStrictEqual([error.reason, error.manager], ["MissingBin", "npm"]);
 				}).pipe(Effect.timeout("100 seconds"), Effect.scoped),
 			120_000,
+		);
+	});
+});
+
+describe("PackedInstall overrides: a dependency no registry has, supplied from outside the workspace", () => {
+	/** Every manager on this machine: yarn joins wherever it is on PATH. */
+	const linkedManagers = (["npm", "pnpm", "yarn", "bun"] as const).filter((pm) => VERSIONS[pm] !== undefined);
+
+	/** The bin reaches external through bridge, by runBin and by the command runBin builds, under every consumer. */
+	const assertLinked = (consumers: ReadonlyArray<InstalledConsumer>) =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(
+				consumers.map((consumer) => consumer.manager),
+				[...linkedManagers],
+			);
+			for (const consumer of consumers) {
+				const ran = yield* consumer.runBin(LINKED_BIN);
+				assert.deepStrictEqual([ran.stdout.trim(), ran.exitCode], [BRIDGED, 0], `${consumer.manager}: ${ran.stderr}`);
+				const direct = yield* Run.collect(consumer.command(LINKED_BIN), { timeout: "30 seconds" });
+				assert.deepStrictEqual([direct.stdout.trim(), direct.exitCode], [BRIDGED, 0], `${consumer.manager}: command`);
+				// The external the bridge resolves is the supplied one, at the version no registry has.
+				const resolved = yield* spawn(
+					process.execPath,
+					[
+						"--input-type=module",
+						"-e",
+						[
+							'import { createRequire } from "node:module";',
+							'import { readFileSync } from "node:fs";',
+							'import { dirname, join } from "node:path";',
+							`const carrier = createRequire(process.cwd() + "/").resolve("${LINKED}/package.json");`,
+							`const bridge = createRequire(carrier).resolve("${BRIDGE}");`,
+							`const external = createRequire(bridge).resolve("${EXTERNAL}");`,
+							'console.log(JSON.parse(readFileSync(join(dirname(external), "package.json"), "utf8")).version);',
+						].join(" "),
+					],
+					consumer.directory,
+				);
+				assert.strictEqual(resolved.stdout.trim(), EXTERNAL_VERSION, `${consumer.manager}: ${resolved.stderr}`);
+			}
+		});
+
+	// bun gives up on the dead proxy at once; npm and pnpm retry until installTimeout fires (about 90 seconds).
+	const CONTROL = VERSIONS.bun === undefined ? "npm" : "bun";
+
+	layer(LinkedLive, { excludeTestServices: true })((it) => {
+		it.effect.skipIf(!HAS_NPM)(
+			"the fixture really is unresolvable: without an override the install fails behind the dead proxy",
+			() =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(
+						PackedInstall.run({
+							carrier: LINKED,
+							closure: "auto",
+							managers: [CONTROL],
+							require: "all",
+							bins: [LINKED_BIN],
+							env: OFFLINE,
+							installTimeout: "90 seconds",
+						}),
+					);
+					assert.deepStrictEqual([error.reason, error.manager], ["InstallFailed", CONTROL]);
+					// It failed on the external, not on something else.
+					assert.include(`${error.message}\n${error.output ?? ""}`, CONTROL === "bun" ? EXTERNAL : "timed out");
+				}).pipe(Effect.timeout("100 seconds"), Effect.scoped),
+			120_000,
+		);
+
+		it.effect.skipIf(!HAS_NPM)(
+			"overrides: a supplied .tgz installs for the closure's transitive reference under every available manager",
+			() =>
+				Effect.gen(function* () {
+					assert.isTrue(LINKED_FIXTURE.externalTarball.endsWith(".tgz"), "the fixture packed external");
+					const options = {
+						carrier: LINKED,
+						closure: "auto",
+						managers: linkedManagers,
+						require: "all",
+						bins: [LINKED_BIN],
+						env: OFFLINE,
+						installTimeout: "90 seconds",
+						overrides: { [EXTERNAL]: LINKED_FIXTURE.externalTarball },
+					} as const;
+					const planned = yield* PackedInstall.closure(LINKED, options);
+					assert.deepStrictEqual(planned, [LINKED, BRIDGE, EXTERNAL]);
+					const result = yield* PackedInstall.run(options);
+					assert.deepStrictEqual(Object.keys(result.tarballs), planned, "closure names exactly what the run packed");
+					assert.strictEqual(result.tarballs[EXTERNAL], LINKED_FIXTURE.externalTarball, "a tarball is used as it is");
+					yield* assertLinked(result.consumers);
+				}).pipe(Effect.timeout("200 seconds"), Effect.scoped),
+			240_000,
+		);
+
+		it.effect.skipIf(!HAS_NPM)(
+			"workspaceOverrides: the workspace's own file: link to a directory installs under every available manager",
+			() =>
+				Effect.gen(function* () {
+					const result = yield* PackedInstall.run({
+						carrier: LINKED,
+						closure: "auto",
+						managers: linkedManagers,
+						require: "all",
+						bins: [LINKED_BIN],
+						env: OFFLINE,
+						installTimeout: "90 seconds",
+						workspaceOverrides: true,
+					});
+					assert.deepStrictEqual(Object.keys(result.tarballs), [LINKED, BRIDGE, EXTERNAL]);
+					// The directory was npm-packed into the scratch root, not used in place.
+					assert.isTrue(result.tarballs[EXTERNAL]?.startsWith(`${result.scratch}/`), result.tarballs[EXTERNAL]);
+					yield* assertLinked(result.consumers);
+				}).pipe(Effect.timeout("200 seconds"), Effect.scoped),
+			240_000,
 		);
 	});
 });

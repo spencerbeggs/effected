@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T08:04:45Z
-  body_sha256: 407266c8f6be64811d046774a9c24d60fc32c3137398e6b635ddd69b4105511d
+  at: 2026-09-25T20:38:38Z
+  body_sha256: 7e6646f0e90eb11c8ff92c971de002cfd14d352b0397d2d0b4962d61001bf7b7
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -194,9 +194,11 @@ constructor:[^testing-ts]
   graph against a committed layer policy, plus `checkWorkspace` over
   discovery.
 - `PackedInstall` (with `PackedInstallError`, `PackedInstallResult`,
-  `InstalledConsumer`, `PackSource` and `PackedInstallOptions`): packs a
-  carrier and its closure, then installs it into a scratch consumer under
-  every available package manager.
+  `InstalledConsumer`, `PackSource`, `PackedInstallOptions`,
+  `PackedInstallClosureOptions`, `PackedInstallBudget`, `BinCommandOptions`
+  and `RunBinOptions`): packs a carrier, its closure and any `overrides`,
+  then installs it into a scratch consumer under every available package
+  manager; `closure` names what a run will pack without packing it.
 
 The contracts are
 [the repo-shape checks interface](../interfaces/workspaces-repo-shape-checks.md).
@@ -209,15 +211,17 @@ why this repository's own layering check reads runtime fields only is
 
 `src/index.ts` never re-exports `./testing`, and the reachability test in
 `__test__/entrypoints.test.ts` pins that. No new dependency came with it: the
-subpath uses `@effected/glob`, `@effected/npm`, `@effected/commands` and core
-`effect` only. None of its modules reads `process`, imports `node:` or writes
+subpath uses `@effected/glob`, `@effected/npm`, `@effected/commands`,
+`@effected/yaml` and core `effect` only. None of its modules reads `process`, imports `node:` or writes
 to the console; every `process` value arrives as a parameter from the
 consumer's test file, and the package's self-scan enforces it with the
 scanner it ships.
 
 The built modules' raw byte sizes, measured on 2026-09-24 with `wc -c` over
 `dist/prod/npm/pkg` after a clean `pnpm build --filter @effected/workspaces`
-(unminified ESM, TSDoc comments kept):
+(unminified ESM, TSDoc comments kept); the two `PackedInstall` rows were
+re-measured the same way on 2026-09-25, after overrides, `closure` and
+`command` landed:
 
 | Module | Bytes |
 | --- | --- |
@@ -225,12 +229,12 @@ The built modules' raw byte sizes, measured on 2026-09-24 with `wc -c` over
 | `SourceBoundary.js` | 18,272 |
 | `LayerPolicy.js` | 5,576 |
 | `WorkspaceLayering.js` | 7,855 |
-| `PackedInstall.js` | 13,662 |
+| `PackedInstall.js` | 30,796 |
 | `internal/sourceText.js` | 10,369 |
-| `internal/packedInstallPlan.js` | 7,501 |
+| `internal/packedInstallPlan.js` | 9,621 |
 | `internal/dependencyFields.js` | 496 |
 
-`PackedInstall.js` imports `@effected/commands`, `effect`,
+`PackedInstall.js` imports `@effected/commands`, `@effected/yaml`, `effect`,
 `effect/unstable/process` and three local modules. The external imports,
 `WorkspaceDiscovery.js` and `PackageManagerName.js` are already loaded by `.`;
 `internal/packedInstallPlan.js` is `./testing`-only, and

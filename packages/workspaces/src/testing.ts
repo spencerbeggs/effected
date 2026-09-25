@@ -23,11 +23,13 @@
 export { LayerPolicy, LayerPolicyError } from "./LayerPolicy.js";
 export { PackageManagerName } from "./PackageManagerName.js";
 export {
+	type BinCommandOptions,
 	type BinProvenance,
 	InstalledConsumer,
 	type PackSource,
 	PackedInstall,
 	type PackedInstallBudget,
+	type PackedInstallClosureOptions,
 	PackedInstallError,
 	type PackedInstallOptions,
 	PackedInstallResult,

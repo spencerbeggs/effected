@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T19:46:51Z
-  body_sha256: ac4f4db8548c36cbce2999d0cf70db4b7a3f8a775a64b659d037e8c6d9589c00
+  at: 2026-09-25T20:38:38Z
+  body_sha256: bc668c2a64cdd1ef27f60714f6a28a24c640a1a6a836451024b3e0a2e8153d2d
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -425,12 +425,38 @@ managers times `installTimeout`, plus the pack and whatever the test runs
 afterwards. A tighter guard fires first, as a `TimeoutError` that names no
 manager. `PackedInstall.timeoutBudget({ managers, installTimeout, packages,
 perConsumer })` returns that sum as a `Duration`. It adds each manager's probe
-(30 seconds), install and `perConsumer`, each package's pack (two minutes) and
-manifest read (30 seconds), 30 seconds for the untimed steps, and one minute
-for cleanup: removing the scratch root when the scope closes, and killing a
-child after its ceiling interrupts it. It reads the
-same constants the run does, so the two cannot drift. `packages` is an explicit
-count, because `closure: "auto"` is only resolved by discovery inside the run.[^packed-install-ts]
+(30 seconds), install and `perConsumer`, each package's pack (`packTimeout`,
+two minutes by default; a pack past it fails `PackFailed` naming the package
+and the ceiling) and manifest read (30 seconds), 30 seconds for the untimed
+steps, and one minute for cleanup: removing the scratch root when the scope
+closes, and killing a child after its ceiling interrupts it. It reads the
+same constants the run does, so the two cannot drift. `packages` is a count
+or the names `PackedInstall.closure(carrier, options?)` returns: the packages
+the run will pack, in order, computed without packing by the same planner the
+run calls, so they equal `Object.keys(result.tarballs)`. It takes the run's
+own options object, and fails as the run would before packing.[^packed-install-ts]
+
+### Overrides: packages from outside the workspace
+
+A closure member can depend on a package version the registry does not have
+yet, typically a sibling checkout's unreleased build that the workspace itself
+links through a dogfood `pnpm-workspace.yaml` override. The scratch consumers
+would resolve it from the registry and miss the new surface. `overrides` maps
+a package name to a publish-ready package directory, which is `npm pack`ed,
+or to a `.tgz`, which is used as it is; a relative path resolves against the
+workspace root. `workspaceOverrides: true` also takes every bare-name
+`"<name>": "file:<path>"` entry of the root `pnpm-workspace.yaml`'s
+`overrides:`, and an explicit `overrides` entry wins over one read there.
+Each supplied package joins `result.tarballs` after the closure, sorted by
+name, and every consumer steers it to its tarball through the same override
+field as the closure, so the closure's transitive references install it
+whatever range they ask for. An override naming the carrier or a closure
+member (the workspace copy is what the run proves), a path that is neither a
+package directory nor a `.tgz`, a tarball whose manifest carries another name,
+or an unreadable or non-YAML `pnpm-workspace.yaml` fails `InvalidOverride`.
+The e2e proves it under every available manager against a package no
+registry has, with a control that fails the same install without the
+override.[^packed-install-e2e]
 
 ### POSIX only
 
@@ -469,15 +495,23 @@ run a bin.[^packed-install-ts]
 state such as `XDG_DATA_HOME` can live inside it and be removed with it
 rather than in a second temporary directory.
 
-For an MCP bin, `McpProbe.initialize` from `@effected/mcp/testing` at
-`InstalledConsumer.binPath` is the proof, and the consumer's test composes
-it with `PackedInstall.scrubEnv` for the environment: there is no runtime
-edge between `workspaces` and `mcp`. The scratch directory is removed when
-the scope closes.
+For an MCP bin, `McpProbe.initialize` from `@effected/mcp/testing` is the
+proof. `InstalledConsumer.command(name, args?, options?)` returns the
+`ChildProcess` command `runBin` builds, with the same environment layering and
+scrub, and leaves stdin as the spawner's default pipe so the probe can write
+to it; `runBin` spawns that command with stdin ignored. There is no runtime
+edge between `workspaces` and `mcp`: the consumer's test passes one to the
+other. The scratch directory is removed when the scope closes.
 
+Only the carrier may declare its bins
+([the carrier-only bins decision](../decisions/carrier-only-declares-bins.md)).
 Under a flat npm, Yarn or bun layout, a hoisted bin of the same name from
 another package can take the carrier's `.bin` slot, and running it cannot tell
-which one ran. `InstalledConsumer.binProvenance(name)` answers that for the
+which one ran. The run therefore fails `BinConflict`, before any install, when
+a packed package other than the carrier (a closure member or an override)
+declares one of the carrier's bin names, read from the packed manifests it
+already inspects: a `bin` object's keys, or for a `bin` string the unscoped
+package name. `InstalledConsumer.binProvenance(name)` answers that for the
 managers that write `.bin` entries as symlinks: npm, bun, and Yarn under the
 `node-modules` linker the run configures. It reads the link, realpaths the
 target, and walks up to the nearest `package.json` with a string `name`,
@@ -519,9 +553,10 @@ under npm and bun, and `undefined` under pnpm, against real installs.[^packed-in
     — the merged adjacency.
 [^layers-json]: `lib/configs/layers.json` — this repository's layer policy.
 [^packed-install-plan-ts]: `packages/workspaces/src/internal/packedInstallPlan.ts`
-    — `scrubEnv`, `closureOf`, `consumerFiles` and `installArgs`.
-[^packed-install-ts]: `packages/workspaces/src/PackedInstall.ts` — `PackSource`
-    and `run`.
+    — `scrubEnv`, `closureOf`, `consumerFiles`, `installArgs`,
+    `readPackedManifest`, `binConflict` and `fileOverridesOf`.
+[^packed-install-ts]: `packages/workspaces/src/PackedInstall.ts` — `PackSource`,
+    `run`, `closure` and the shared planner behind both.
 [^package-publish-ts]: `packages/npm/src/PackagePublish.ts:317,453-457` — the
     pack destination and the service requirements.
 [^package-tarball-ts]: `packages/npm/src/PackageTarball.ts:75,117` — the

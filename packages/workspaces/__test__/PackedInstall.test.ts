@@ -4,7 +4,7 @@ import { ScriptedSpawner } from "@effected/commands";
 import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Duration, Effect, FileSystem, Layer, Path, PlatformError, Redacted } from "effect";
-import { WorkspaceDiscovery, WorkspacePackage } from "../src/index.js";
+import { WorkspaceDiscovery, WorkspaceInfo, WorkspacePackage } from "../src/index.js";
 import { InstalledConsumer, PackedInstall } from "../src/testing.js";
 
 const carrier = WorkspacePackage.make({
@@ -565,6 +565,352 @@ describe("PackedInstall.run past the pack", () => {
 			}),
 		);
 	});
+
+	// Overrides: packages from outside the workspace, a directory packed like the closure and a tarball used as it is.
+	const DIR_TGZ = "/scratch/tarballs/2/y-dir-9.0.0.tgz";
+	const EXT_TGZ = "/ext/y-tgz-9.0.0.tgz";
+	const overrideSeed = (extra: MemoryFileSystemSeed = {}) =>
+		seedWith({
+			"/ext/dir/package.json": "{}",
+			"/repo/vendor/y-dir/package.json": "{}",
+			[EXT_TGZ]: "",
+			[DIR_TGZ]: "",
+			"/scratch/consumer-npm/node_modules/.bin/x": BIN,
+			"/scratch/consumer-pnpm/node_modules/.bin/x": BIN,
+			...extra,
+		});
+	/** Each tarball's packed manifest; the carrier declares the bin x. */
+	const packedManifests = (overrides: Record<string, unknown> = {}): SpawnScript =>
+		script((command, args) => {
+			if (command !== "tar") return {};
+			const manifests: Record<string, unknown> = {
+				[CARRIER_TGZ]: { name: "@x/carrier", bin: { x: "./x.js" }, dependencies: { "@x/lib": "^1.0.0" } },
+				[LIB_TGZ]: { name: "@x/lib", dependencies: { "@y/dir": "^9.0.0" } },
+				[DIR_TGZ]: { name: "@y/dir", bin: { "y-dir": "./y.js" }, dependencies: { "@y/tgz": "^9.0.0" } },
+				[EXT_TGZ]: { name: "@y/tgz" },
+				...overrides,
+			};
+			return { stdout: JSON.stringify(manifests[args[1] ?? ""] ?? {}) };
+		});
+	const WithRoot = (root: string) =>
+		WorkspaceDiscovery.layerTest({
+			listPackages: () => Effect.succeed([carrier, lib]),
+			info: () => Effect.succeed(WorkspaceInfo.make({ root, patterns: ["packages/*"] })),
+		});
+	const rootedSuite = (spawner: ScriptedSpawner, seed: MemoryFileSystemSeed, root = "/repo") =>
+		layer(
+			Layer.mergeAll(
+				MemoryFileSystem.layerFaultyWith(seed, { makeTempDirectoryScoped: () => Effect.succeed(SCRATCH) }),
+				Path.layer,
+				spawner.layer,
+				WithRoot(root),
+			),
+		);
+	const readManifest = (file: string) =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			return JSON.parse(yield* fs.readFileString(file)) as Record<string, Record<string, string>>;
+		});
+
+	const overridden = ScriptedSpawner.make(packedManifests());
+	rootedSuite(
+		overridden,
+		overrideSeed(),
+	)((it) => {
+		it.effect(
+			"overrides: a directory is npm-packed, a tarball used as it is, and every manager steers both to the tarball",
+			() =>
+				Effect.gen(function* () {
+					const options = {
+						carrier: "@x/carrier",
+						closure: "auto",
+						managers: ["npm", "pnpm"],
+						bins: ["x"],
+						env: ENV,
+						// A relative path resolves against the workspace root (/repo), never /; a file: prefix is accepted.
+						overrides: { "@y/tgz": EXT_TGZ, "@y/dir": "file:vendor/y-dir" },
+						consumerDependencies: { "@y/tgz": "^9.0.0" },
+					} as const;
+					const planned = yield* PackedInstall.closure(options.carrier, options);
+					assert.strictEqual(overridden.spawns.length, 0, "closure spawns nothing");
+					const result = yield* PackedInstall.run(options);
+					assert.deepStrictEqual(result.tarballs, {
+						"@x/carrier": CARRIER_TGZ,
+						"@x/lib": LIB_TGZ,
+						"@y/dir": DIR_TGZ,
+						"@y/tgz": EXT_TGZ,
+					});
+					assert.deepStrictEqual(
+						planned,
+						Object.keys(result.tarballs),
+						"closure names exactly what the run packed, in order",
+					);
+
+					const packs = overridden.spawns.filter((spawn) => spawn.args[0] === "pack");
+					assert.deepStrictEqual(
+						packs.map((spawn) => [spawn.command, spawn.cwd, spawn.args[3]]),
+						[
+							["npm", "/repo/packages/carrier/dist/prod/npm/pkg", "/scratch/tarballs/0"],
+							["npm", "/repo/packages/lib/dist/prod/npm/pkg", "/scratch/tarballs/1"],
+							["npm", "/repo/vendor/y-dir", "/scratch/tarballs/2"],
+						],
+						"the directory is packed in place, the tarball is not packed at all",
+					);
+					const tars = overridden.spawns.filter((spawn) => spawn.command === "tar");
+					assert.deepStrictEqual(
+						tars.at(-1)?.args,
+						["-xzOf", EXT_TGZ, "package/package.json"],
+						"its manifest is still read",
+					);
+
+					const specs = {
+						"@x/lib": `file:${LIB_TGZ}`,
+						"@y/dir": `file:${DIR_TGZ}`,
+						"@y/tgz": `file:${EXT_TGZ}`,
+					};
+					const npm = yield* readManifest("/scratch/consumer-npm/package.json");
+					assert.deepStrictEqual(npm.overrides, specs);
+					assert.deepStrictEqual(npm.dependencies, {
+						"@x/carrier": `file:${CARRIER_TGZ}`,
+						"@y/tgz": `file:${EXT_TGZ}`,
+					});
+					const fs = yield* FileSystem.FileSystem;
+					assert.strictEqual(
+						yield* fs.readFileString("/scratch/consumer-pnpm/pnpm-workspace.yaml"),
+						`overrides:\n${Object.entries(specs)
+							.map(([name, spec]) => `  "${name}": "${spec}"`)
+							.join("\n")}\n`,
+					);
+				}),
+		);
+	});
+
+	const fromWorkspace = ScriptedSpawner.make(packedManifests());
+	rootedSuite(
+		fromWorkspace,
+		overrideSeed({
+			"/repo/pnpm-workspace.yaml": [
+				"packages:",
+				"  - packages/*",
+				"overrides:",
+				'  "@y/dir": "file:../ext/dir"',
+				'  "@y/tgz": "file:/ext/stale.tgz"',
+				'  "@y/registry": "^1.0.0"',
+				'  "parent>@y/child": "file:../ext/child"',
+				"",
+			].join("\n"),
+		}),
+	)((it) => {
+		it.effect("workspaceOverrides takes the root's file: overrides, and an explicit entry wins over one", () =>
+			Effect.gen(function* () {
+				const result = yield* PackedInstall.run({
+					carrier: "@x/carrier",
+					closure: "auto",
+					managers: ["npm"],
+					bins: ["x"],
+					env: ENV,
+					workspaceOverrides: true,
+					overrides: { "@y/tgz": EXT_TGZ },
+				});
+				const npm = yield* readManifest("/scratch/consumer-npm/package.json");
+				assert.deepStrictEqual(npm.overrides, {
+					"@x/lib": `file:${LIB_TGZ}`,
+					"@y/dir": `file:${DIR_TGZ}`,
+					"@y/tgz": `file:${EXT_TGZ}`,
+				});
+				assert.deepStrictEqual(Object.keys(result.tarballs), ["@x/carrier", "@x/lib", "@y/dir", "@y/tgz"]);
+			}),
+		);
+
+		it.effect("a workspace override whose path does not exist fails InvalidOverride naming it", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(PackedInstall.closure("@x/carrier", { workspaceOverrides: true }));
+				assert.deepStrictEqual([error.reason, error.package], ["InvalidOverride", "@y/tgz"]);
+				assert.strictEqual(error.message, "override @y/tgz: /ext/stale.tgz does not exist");
+			}),
+		);
+	});
+
+	const invalid = ScriptedSpawner.make(packedManifests());
+	rootedSuite(
+		invalid,
+		overrideSeed({
+			"/ext/readme.md": "",
+			"/ext/empty": MemoryFileSystem.directory(),
+			"/broken/pnpm-workspace.yaml": "overrides: [unclosed\n",
+		}),
+	)((it) => {
+		const reject = (overrides: Record<string, string>, message: string) =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(PackedInstall.closure("@x/carrier", { overrides }));
+				assert.deepStrictEqual([error.reason, error.message], ["InvalidOverride", message]);
+			});
+
+		it.effect(
+			"an override naming the carrier or a closure member fails InvalidOverride: the workspace copy is proven",
+			() =>
+				Effect.gen(function* () {
+					yield* reject(
+						{ "@x/lib": "/ext/dir" },
+						"override @x/lib: a closure member is always packed from the workspace; overrides replace only packages outside it",
+					);
+					yield* reject(
+						{ "@x/carrier": "/ext/dir" },
+						"override @x/carrier: the carrier is always packed from the workspace; overrides replace only packages outside it",
+					);
+				}),
+		);
+
+		it.effect(
+			"a path that is neither a package directory nor a .tgz fails InvalidOverride, before anything spawns",
+			() =>
+				Effect.gen(function* () {
+					yield* reject(
+						{ "@y/doc": "/ext/readme.md" },
+						"override @y/doc: /ext/readme.md is neither a package directory nor a .tgz",
+					);
+					yield* reject({ "@y/empty": "/ext/empty" }, "override @y/empty: /ext/empty has no package.json to pack");
+					yield* reject({ "@y/gone": "/ext/gone" }, "override @y/gone: /ext/gone does not exist");
+					assert.strictEqual(invalid.spawns.length, 0);
+				}),
+		);
+
+		it.effect("closure defaults to auto and lists the overrides after the closure, by name", () =>
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* PackedInstall.closure("@x/carrier"), ["@x/carrier", "@x/lib"]);
+				assert.deepStrictEqual(
+					yield* PackedInstall.closure("@x/carrier", {
+						closure: [],
+						overrides: { "@y/tgz": EXT_TGZ, "@y/dir": "/ext/dir" },
+					}),
+					["@x/carrier", "@y/dir", "@y/tgz"],
+				);
+			}),
+		);
+	});
+
+	rootedSuite(
+		ScriptedSpawner.make(packedManifests()),
+		overrideSeed(),
+		"/norepo",
+	)((it) => {
+		it.effect("workspaceOverrides at a root with no pnpm-workspace.yaml fails InvalidOverride", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(PackedInstall.closure("@x/carrier", { workspaceOverrides: true }));
+				assert.deepStrictEqual(
+					[error.reason, error.message],
+					["InvalidOverride", "workspaceOverrides reads /norepo/pnpm-workspace.yaml, which could not be read"],
+				);
+			}),
+		);
+	});
+
+	rootedSuite(
+		ScriptedSpawner.make(packedManifests()),
+		overrideSeed({ "/broken/pnpm-workspace.yaml": "overrides: [unclosed\n" }),
+		"/broken",
+	)((it) => {
+		it.effect("workspaceOverrides over a pnpm-workspace.yaml that is not YAML fails InvalidOverride", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(PackedInstall.closure("@x/carrier", { workspaceOverrides: true }));
+				assert.deepStrictEqual(
+					[error.reason, error.message],
+					["InvalidOverride", "/broken/pnpm-workspace.yaml is not valid YAML"],
+				);
+			}),
+		);
+	});
+
+	const misnamed = ScriptedSpawner.make(packedManifests({ [EXT_TGZ]: { name: "@y/other" } }));
+	rootedSuite(
+		misnamed,
+		overrideSeed(),
+	)((it) => {
+		it.effect("an override whose tarball packs another name fails InvalidOverride before any install", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({
+						carrier: "@x/carrier",
+						closure: "auto",
+						managers: ["npm"],
+						bins: [],
+						env: ENV,
+						overrides: { "@y/tgz": EXT_TGZ },
+					}),
+				);
+				assert.deepStrictEqual([error.reason, error.package], ["InvalidOverride", "@y/tgz"]);
+				assert.strictEqual(error.message, `override @y/tgz: ${EXT_TGZ} packs @y/other, not @y/tgz`);
+				assert.isFalse(misnamed.spawns.some((spawn) => spawn.args[0] === "install"));
+			}),
+		);
+	});
+
+	// Only the carrier declares its bins: a closure member declaring one of them could take the .bin slot.
+	const conflicting = ScriptedSpawner.make(
+		packedManifests({ [LIB_TGZ]: { name: "@x/lib", bin: { "lib-only": "./l.js", x: "./mirror.js" } } }),
+	);
+	rootedSuite(
+		conflicting,
+		overrideSeed(),
+	)((it) => {
+		it.effect("a closure member declaring the carrier's bin fails BinConflict before any install", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({ carrier: "@x/carrier", closure: "auto", managers: ["npm"], bins: [], env: ENV }),
+				);
+				assert.deepStrictEqual([error.reason, error.package], ["BinConflict", "@x/lib"]);
+				assert.include(error.message, "@x/lib declares the bin x, which the carrier @x/carrier declares");
+				assert.isFalse(conflicting.spawns.some((spawn) => spawn.args[0] === "install"));
+			}),
+		);
+	});
+
+	// A string bin links under the unscoped package name: @y/x's "./x.js" is the bin x.
+	const conflictingOverride = ScriptedSpawner.make(packedManifests({ [EXT_TGZ]: { name: "@y/x", bin: "./x.js" } }));
+	rootedSuite(
+		conflictingOverride,
+		overrideSeed(),
+	)((it) => {
+		it.effect("an override package declaring the carrier's bin fails BinConflict too", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({
+						carrier: "@x/carrier",
+						closure: [],
+						managers: ["npm"],
+						bins: [],
+						env: ENV,
+						overrides: { "@y/x": EXT_TGZ },
+					}),
+				);
+				assert.deepStrictEqual([error.reason, error.package], ["BinConflict", "@y/x"]);
+				assert.isFalse(conflictingOverride.spawns.some((spawn) => spawn.args[0] === "install"));
+			}),
+		);
+	});
+
+	// The real clock: packTimeout is a real ceiling.
+	const hungPack = ScriptedSpawner.make((command, args) =>
+		args[0] === "pack" ? { hang: true } : manifests()(command, args),
+	);
+	installSuite(hungPack, seedWith(), { excludeTestServices: true })((it) => {
+		it.effect("a pack that outlives packTimeout fails PackFailed naming the package and the ceiling", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({
+						carrier: "@x/carrier",
+						closure: "auto",
+						managers: ["npm"],
+						bins: [],
+						env: ENV,
+						packTimeout: "50 millis",
+					}),
+				).pipe(Effect.timeout("3 seconds"));
+				assert.deepStrictEqual([error.reason, error.package], ["PackFailed", "@x/carrier"]);
+				assert.strictEqual(error.message, "npm pack timed out after 50ms for @x/carrier");
+			}),
+		);
+	});
 });
 
 describe("InstalledConsumer.runBin", () => {
@@ -604,6 +950,34 @@ describe("InstalledConsumer.runBin", () => {
 					assert.strictEqual(spawn?.extendEnv, false);
 					assert.strictEqual(spawn?.options.stdin, "ignore");
 				}),
+		);
+
+		it("command is the Command runBin spawns, stdin left to the spawner so a probe can write to it", () => {
+			const command = consumer.command("tool", ["--version"], {
+				env: { XDG_DATA_HOME: "/scratch/xdg", HOME: undefined, CI: "true" },
+				cwd: "/elsewhere",
+			});
+			assert.strictEqual(command.command, `${BIN_DIR}/node_modules/.bin/tool`);
+			assert.deepStrictEqual(command.args, ["--version"]);
+			assert.strictEqual(command.options.cwd, "/elsewhere");
+			assert.deepStrictEqual(command.options.env, { PATH: "/usr/bin", XDG_DATA_HOME: "/scratch/xdg", CI: "true" });
+			assert.strictEqual(command.options.extendEnv, false);
+			assert.isUndefined(command.options.stdin);
+			assert.strictEqual(consumer.command("tool").options.cwd, BIN_DIR, "the cwd defaults to the consumer");
+		});
+
+		it.effect("runBin spawns command's bin, arguments, cwd and environment, with stdin ignored", () =>
+			Effect.gen(function* () {
+				const options = { env: { XDG_DATA_HOME: "/scratch/xdg", INIT_CWD: "/kept" }, cwd: "/work" };
+				yield* consumer.runBin("tool", ["a", "b"], options);
+				const spawn = runs.spawns.at(-1);
+				const command = consumer.command("tool", ["a", "b"], options);
+				assert.deepStrictEqual(
+					[spawn?.command, spawn?.args, spawn?.cwd, spawn?.env, spawn?.extendEnv],
+					[command.command, command.args, command.options.cwd, command.options.env, command.options.extendEnv],
+				);
+				assert.strictEqual(spawn?.options.stdin, "ignore");
+			}),
 		);
 
 		it.effect("a bin that cannot spawn fails BinFailed naming the manager and the bin", () =>
@@ -658,6 +1032,22 @@ describe("PackedInstall.timeoutBudget", () => {
 		const budget = PackedInstall.timeoutBudget({ managers: ["npm", "npm"], packages: 1 });
 		// 1 x (0.5 + 4) + 1 x 2.5 + 0.5 untimed + 1 cleanup
 		assert.strictEqual(minutes(budget), 8.5);
+	});
+
+	it("takes the run's packTimeout per package, and the names closure returns as the package count", () => {
+		const budget = PackedInstall.timeoutBudget({
+			managers: ["npm", "pnpm", "yarn", "bun"],
+			installTimeout: "3 minutes",
+			packTimeout: "30 seconds",
+			packages: ["my-tool", "my-tool-cli", "my-tool-core"],
+			perConsumer: "2 minutes",
+		});
+		// 4 x (0.5 + 3 + 2) + 3 x (0.5 + 0.5) + 0.5 untimed + 1 cleanup
+		assert.strictEqual(Duration.format(budget), "26m 30s");
+		assert.strictEqual(
+			minutes(PackedInstall.timeoutBudget({ managers: ["npm"], packages: ["a", "b"] })),
+			minutes(PackedInstall.timeoutBudget({ managers: ["npm"], packages: 2 })),
+		);
 	});
 });
 

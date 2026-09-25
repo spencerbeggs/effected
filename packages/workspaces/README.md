@@ -396,7 +396,7 @@ The scanner is a lexer, not a type checker. Its known limits:
 
 `PackedInstall.run` packs a carrier and every workspace package it needs, then installs the carrier into a fresh project outside the workspace under each package manager that answers `--version`, and checks every expected bin is linked and executable. It carries the traps each manager sets: the parent run's `npm_*` and `pnpm_config_*` context is scrubbed, pnpm's overrides go in `pnpm-workspace.yaml`, Yarn Berry gets the `node-modules` linker, `packageManager` is pinned to the probed version, and lifecycle scripts are skipped. By default it packs each package's built `dist/prod/npm/pkg`, the artifact a release publishes; build first.
 
-It does not run the bins; the test does, inside the same scope, because the scratch directory (`result.scratch`) is removed when the scope closes. `consumer.runBin(name, args, options?)` runs one to completion and returns `{ stdout, stderr, exitCode }`, with no direct `@effected/commands` dependency. `consumer.binProvenance(name)` names the package a `.bin` symlink resolves into. `PackedInstall.timeoutBudget` sizes the outer timeout from the run's own ceilings. For an MCP server bin, `McpProbe` from `@effected/mcp/testing` is the proof:
+It does not run the bins; the test does, inside the same scope, because the scratch directory (`result.scratch`) is removed when the scope closes. `consumer.runBin(name, args, options?)` runs one to completion and returns `{ stdout, stderr, exitCode }`, with no direct `@effected/commands` dependency. `consumer.command(name, args?, options?)` returns the `ChildProcess` command `runBin` builds, same environment and working directory, with stdin left open, so a probe that writes to the bin can spawn it. `consumer.binProvenance(name)` names the package a `.bin` symlink resolves into. `PackedInstall.closure(carrier, options?)` names every package the run will pack before it runs, and `PackedInstall.timeoutBudget` sizes the outer timeout from those names and the run's own ceilings. For an MCP server bin, `McpProbe` from `@effected/mcp/testing` is the proof:
 
 ```ts
 // __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
@@ -408,20 +408,23 @@ import { McpProbe } from "@effected/mcp/testing";
 import { Workspaces } from "@effected/workspaces";
 import { PackedInstall } from "@effected/workspaces/testing";
 import { Duration, Effect, Layer } from "effect";
-import { ChildProcess } from "effect/unstable/process";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
 
 const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const;
 const INSTALL_TIMEOUT = "2 minutes";
+const PACK_TIMEOUT = "1 minute";
 const BIN_TIMEOUT = "30 seconds";
+// The packages the run will pack, known before the test is declared.
+const PACKAGES = await Effect.runPromise(PackedInstall.closure("my-tool").pipe(Effect.provide(Live)));
 // Every ceiling the run sets, plus the two bin runs per consumer. The vitest
 // timeout sits above it, so a named PackedInstallError fires before either guard.
 const BUDGET = PackedInstall.timeoutBudget({
   managers: MANAGERS,
   installTimeout: INSTALL_TIMEOUT,
-  packages: 3, // the carrier and its closure: result.tarballs has one entry each
+  packTimeout: PACK_TIMEOUT,
+  packages: PACKAGES,
   perConsumer: "1 minute",
 });
 
@@ -439,23 +442,21 @@ describe("packed install", () => {
             bins: ["my-tool", "my-tool-mcp"],
             env: process.env,
             installTimeout: INSTALL_TIMEOUT,
+            packTimeout: PACK_TIMEOUT,
           });
+          assert.deepStrictEqual(Object.keys(result.tarballs), [...PACKAGES]);
           assert.isAbove(result.consumers.length, 0, `nothing installed; unavailable: ${result.unavailable.join(", ")}`);
           // The tool's data lives inside the scratch root and is removed with it.
-          const extra = { XDG_DATA_HOME: `${result.scratch}/xdg` };
+          const env = { XDG_DATA_HOME: `${result.scratch}/xdg` };
           for (const consumer of result.consumers) {
-            const version = yield* consumer.runBin("my-tool", ["--version"], { env: extra, timeout: BIN_TIMEOUT });
+            const version = yield* consumer.runBin("my-tool", ["--version"], { env, timeout: BIN_TIMEOUT });
             assert.strictEqual(version.exitCode, 0, `${consumer.manager}: ${version.stderr}`);
-            // Under a flat layout a dependency's same-named bin can take the .bin slot.
-            // pnpm writes shell shims, which are not read: undefined there.
+            // Only the carrier declares my-tool (the run fails BinConflict otherwise), so the
+            // .bin link is the carrier's. pnpm writes shell shims, which are not read: undefined there.
             const provenance = yield* consumer.binProvenance("my-tool");
             if (consumer.manager !== "pnpm") assert.strictEqual(provenance?.package, "my-tool", consumer.manager);
-            const bin = ChildProcess.make(consumer.binPath("my-tool-mcp"), [], {
-              cwd: consumer.directory,
-              env: PackedInstall.scrubEnv({ ...process.env, ...extra }),
-              extendEnv: false,
-            });
-            const { response, stderr, exitCode } = yield* McpProbe.initialize(bin).pipe(Effect.timeout(BIN_TIMEOUT));
+            const probe = McpProbe.initialize(consumer.command("my-tool-mcp", [], { env }));
+            const { response, stderr, exitCode } = yield* probe.pipe(Effect.timeout(BIN_TIMEOUT));
             assert.isUndefined(response.error, `${consumer.manager}: initialize was refused`);
             assert.strictEqual(stderr, "", `${consumer.manager}: stderr`);
             assert.strictEqual(exitCode, 0, `${consumer.manager}: exit code`);
@@ -467,9 +468,13 @@ describe("packed install", () => {
 });
 ```
 
-Pass `process.env` in: nothing in the subpath reads `process` itself. `runBin` runs under the environment the install ran under, with `options.env` layered over it after the parent manager's context is stripped, so an explicit entry such as `CI: "true"` wins and a key set to `undefined` removes a variable; a non-zero exit is a result, and a bin that cannot spawn or outlives its ceiling (one minute by default) fails `BinFailed`. A bin run outside `runBin`, such as `McpProbe`'s, takes `PackedInstall.scrubEnv(...)` for the same environment. A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure instead. Declare in `consumerDependencies` every package the consumer's own code imports besides the carrier: pnpm links only declared dependencies at a project's top level. An entry that names a packed package is written as its `file:` tarball whatever spec you pass, so any range will do; npm fails `EOVERRIDE` when a direct spec differs from its override.
+Pass `process.env` in: nothing in the subpath reads `process` itself. `runBin` and `command` run under the environment the install ran under, with `options.env` layered over it after the parent manager's context is stripped, so an explicit entry such as `CI: "true"` wins and a key set to `undefined` removes a variable; a non-zero exit is a result, and a bin that cannot spawn or outlives its ceiling (one minute by default) fails `BinFailed`. `PackedInstall.scrubEnv(...)` returns the same scrubbed environment for any other spawn. A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure instead. Declare in `consumerDependencies` every package the consumer's own code imports besides the carrier: pnpm links only declared dependencies at a project's top level. An entry that names a packed package is written as its `file:` tarball whatever spec you pass, so any range will do; npm fails `EOVERRIDE` when a direct spec differs from its override.
 
-The installs run one after another. `timeoutBudget` adds each manager's `--version` probe (30 seconds), install (`installTimeout`, four minutes by default) and `perConsumer`, each package's pack (two minutes) and manifest read (30 seconds), 30 seconds for the untimed steps, and one minute for cleanup (removing the scratch root when the scope closes, and killing a child after its ceiling interrupts it); a tighter outer guard fires first, as a `TimeoutError` that names no manager. `packages` is an explicit count, because `closure: "auto"` is resolved only inside the run.
+Only the carrier may declare its bins. If any other packed package declares one of the carrier's bin names, the run fails `BinConflict` before installing: under npm, bun and Yarn's flat layouts either package can take the `.bin` slot, so the bin check and every bin run could pass on the wrong one.
+
+When a closure member needs a dependency the registry does not have yet, for example a sibling checkout's unreleased build linked through a dogfood `file:` override, pass it in `overrides`: package name to a publish-ready package directory, which is `npm pack`ed, or to a `.tgz`, which is used as it is. A relative path resolves against the workspace root. Every consumer steers that package to its tarball through the same override field as the closure, so the carrier's transitive references install it whatever range they ask for, and it joins `result.tarballs`. `workspaceOverrides: true` also takes every `"<name>": "file:<path>"` entry of the root `pnpm-workspace.yaml`'s `overrides:`, which is the link shape a dogfood loop writes; an explicit `overrides` entry wins over one read there. An override naming the carrier or a closure member, a path that is neither a package directory nor a `.tgz`, or a tarball whose manifest has another name fails `InvalidOverride`.
+
+The installs run one after another. `timeoutBudget` adds each manager's `--version` probe (30 seconds), install (`installTimeout`, four minutes by default) and `perConsumer`, each package's pack (`packTimeout`, two minutes by default) and manifest read (30 seconds), 30 seconds for the untimed steps, and one minute for cleanup (removing the scratch root when the scope closes, and killing a child after its ceiling interrupts it); a tighter outer guard fires first, as a `TimeoutError` that names no manager. `packages` is a count or the names `PackedInstall.closure` returns for the run's options: pass the run's own options object as the second argument when it sets `closure`, `overrides` or `workspaceOverrides`, and the names equal `Object.keys(result.tarballs)` in order.
 
 `binProvenance` reads the `.bin` entry as a symlink, which npm, bun and Yarn (under the `node-modules` linker the run configures) write, realpaths it, and walks up to the nearest `package.json` with a string `name`, inside the (realpath'd) consumer directory. `undefined` means only that the entry exists and is not a symlink, which is a pnpm shim. An entry that does not exist, or a link to nothing, fails `MissingBin`; a link into no named package inside the consumer fails `UnownedBin`; any other read failure fails `Io`. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
 
