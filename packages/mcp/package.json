@@ -1,6 +1,6 @@
 {
 	"name": "@effected/mcp",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"private": true,
 	"description": "The boundary layer of an effect/unstable/ai MCP server: stdio wiring that keeps stdout the wire, tool-failure shaping, strict-input walkers, and test clients",
 	"keywords": ["effect", "mcp", "model-context-protocol", "stdio", "json-rpc", "effected"],
