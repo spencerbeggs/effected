@@ -172,6 +172,7 @@ The scanner is a lexer, not a type checker:
 - There is no scope analysis, so any local binding named `process` or `console` is flagged like the global: a parameter (`(process: Handle) => process.kill()`), a variable, a label, or an unannotated class field (`process = 1`). An annotated class field (`process: T`) reads as a type member and is spared. Prefer renaming the binding; failing that, waive that one rule for the file with `allowRules` and assert `scan.waived` names exactly it.
 - `globalThis["process"]` and `const { process: p } = globalThis` are not seen.
 - A regex literal directly after a block-closing `}` reads as a division.
+- A variable named `yield` or `await` in a sloppy-mode script reads as the keyword, so a `/` after it opens a regex. Module and strict code reserve both words, so a module never hits this.
 - JSX text reads as code, which is why `.tsx` and `.jsx` are not scanned by default.
 - `forbidImports: ["node:*"]` matches only the `node:` spelling, not a bare `"fs"`. To forbid both, spread Node's list in the test file: `{ forbidImports: ["node:*", ...builtinModules] }`, with `builtinModules` from `node:module`. That also forbids npm packages named like a built-in (`events`, `buffer`).
 

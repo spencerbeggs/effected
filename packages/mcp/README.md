@@ -395,7 +395,7 @@ Registered through `McpToolkit.layer`, a union tool is checked like a strict `To
 
 ## Union success schemas
 
-MCP requires a tool's `outputSchema` to be rooted in an object, and a top-level `Schema.Union` emits a bare `anyOf`. Core drops such an `outputSchema` from `tools/list` on the stateful revisions, and serves it verbatim on the stateless one, where strict clients reject it. `ToolOutputSchema.objectRooted` adds `type: "object"` beside the `anyOf` through a check that always passes, so decoding and the schema's type stay the same:
+MCP requires a tool's `outputSchema` to be rooted in an object, and a top-level `Schema.Union` emits a bare `anyOf`. Core drops such an `outputSchema` from `tools/list` on the stateful revisions, and serves it verbatim on the stateless one, where strict clients reject it. When every member of the union is an object shape, `ToolOutputSchema.objectRooted` adds `type: "object"` beside the `anyOf` through a check that always passes, so decoding and the schema's type stay the same:
 
 ```ts
 import { ToolOutputSchema } from "@effected/mcp";
@@ -407,7 +407,7 @@ const Missing = Schema.Struct({ kind: Schema.Literal("missing"), reason: Schema.
 const Result = ToolOutputSchema.objectRooted(Schema.Union([Found, Missing])).annotate({ identifier: "Result" });
 ```
 
-It can go before or after `.annotate({ identifier })`: the identifier the schema already carries moves onto the new check, so the served documents are equal either way. Every union member must be an object shape. `McpToolAudit`'s `objectRootedOutput` check names this helper when it finds a union root.
+It can go before or after `.annotate({ identifier })`: the identifier the schema already carries moves onto the new check, so the served documents are equal either way. Every union member must be an object shape: do not use it on a union with a primitive or array member, because the added `type: "object"` is a claim about the whole union that nothing checks, and the served schema would then contradict what the tool returns — give that tool an object envelope instead. `McpToolAudit`'s `objectRootedOutput` check names this helper when it finds a union root.
 
 ## Testing
 

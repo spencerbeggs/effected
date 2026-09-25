@@ -276,13 +276,17 @@ const BARE_NAME = /^(?:@[^/@\s>]+\/)?[^/@\s>]+$/;
  * The `file:` entries of a parsed `pnpm-workspace.yaml`'s `overrides:` map,
  * name to the path after `file:` (relative paths are the caller's to resolve,
  * against the workspace root, as pnpm does). Entries that are not strings,
- * not `file:`, or keyed by anything but a bare package name are skipped.
+ * not `file:`, or keyed by anything but a bare package name are skipped, and
+ * so is `__proto__`, which no npm package can be named. The map has no
+ * prototype, so a package named `constructor` or `prototype` is an ordinary
+ * own entry and a missing name never resolves to an inherited member.
  */
 export const fileOverridesOf = (document: unknown): Record<string, string> => {
+	const out: Record<string, string> = Object.create(null);
 	if (!Predicate.isObject(document) || !Predicate.isObject(document.overrides) || Array.isArray(document.overrides))
-		return {};
-	const out: Record<string, string> = {};
+		return out;
 	for (const [name, spec] of Object.entries(document.overrides)) {
+		if (name === "__proto__") continue;
 		if (typeof spec === "string" && spec.startsWith("file:") && BARE_NAME.test(name)) out[name] = spec.slice(5);
 	}
 	return out;

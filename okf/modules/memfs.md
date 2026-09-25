@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T20:16:08Z
-  body_sha256: 09cea4360b78077973b4f8c6d11a018d4392168c8216a8e5f737a82e680f1ca0
+  at: 2026-09-25T22:33:35Z
+  body_sha256: d75af96070faaba5f5c6bb1efa32666c2f1a5025b9ec234b5fda20c476b5295a
 ---
 
 # @effected/memfs
@@ -337,7 +337,11 @@ re-exporting module.
   `ENOENT` → `NotFound`, `EEXIST` → `AlreadyExists`,
   `EISDIR`/`ENOTDIR`/`ELOOP` → `BadResource`, anything else → `Unknown`.
   A site names the errno node raises, never a tag, so tag parity holds
-  by construction. `reason.syscall` is never set. Where Linux and macOS
+  by construction. Unlike node's `ErrnoException`, the `cause` carries
+  only `code` (and `path` for a path operation) — no `errno` number, no
+  `syscall`, no `dest` — and `reason.syscall` is never set on an Effect
+  failure; only the synchronous port's thrown errors carry `syscall`.
+  Where Linux and macOS
   disagree, the Linux errno is modelled. Limits of the in-memory model
   (nesting depth, allocation, position range) fail `BadResource` with no
   `cause`: no real errno corresponds to them.

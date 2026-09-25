@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T21:24:18Z
-  body_sha256: 098c6f30ddc20604aeac990465d473e24863352cecdde9e9d5153e8f224de08e
+  at: 2026-09-25T22:33:35Z
+  body_sha256: 275d056e1e6041299f8c223fac707f61e98fbfed11c4a3a74ac6319beb53189e
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -147,6 +147,9 @@ The known misses:
   `const { process: p } = globalThis`.
 - A regex literal directly after a block-closing `}`. It reads as a division,
   so a quote or `/*` inside it can hide the code after it.
+- A variable named `yield` or `await` in a sloppy-mode script, which reads as
+  the keyword, so a `/` after it opens a regex. Module and strict code reserve
+  both words.
 - JSX text, which reads as code. `.tsx` and `.jsx` are not among the default
   extensions for this reason.
 - A bare built-in under `forbidImports: ["node:*"]`: the entry matches only
@@ -425,7 +428,9 @@ managers times `installTimeout`, plus the pack and whatever the test runs
 afterwards. A tighter guard fires first, as a `TimeoutError` that names no
 manager. `PackedInstall.timeoutBudget({ managers, installTimeout, packages,
 perConsumer })` returns that sum as a `Duration`. It adds each manager's probe
-(30 seconds), install and `perConsumer`, each package's pack (`packTimeout`,
+(30 seconds), install and `perConsumer` (one minute by default: one `runBin`
+at its default ceiling; `"0 seconds"` for a test that only installs), each
+package's pack (`packTimeout`,
 two minutes by default; a pack past it fails `PackFailed` naming the package
 and the ceiling) and manifest read (30 seconds), 30 seconds for the untimed
 steps, and one minute for cleanup: removing the scratch root when the scope

@@ -146,7 +146,7 @@ export class McpHarness {
 	readonly sendRaw: (message: unknown) => Effect.Effect<void>;
 	/** The next server-initiated frame with this method, skipping and keeping others; fails with `ServerStopped` once the server stops. */
 	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
-	/** Every frame written to the server's stdin so far, in order, as sent: requests, notifications and `sendRaw` values. */
+	/** Every frame written to the server's stdin so far, in order, as the JSON-parsed bytes written (a snapshot the caller's later mutations cannot reach): requests, notifications and `sendRaw` values. */
 	readonly sentSoFar: Effect.Effect<ReadonlyArray<unknown>>;
 	/** Everything written to stderr, plus every captured log line. */
 	readonly stderrSoFar: Effect.Effect<string>;
@@ -301,9 +301,12 @@ export class McpHarness {
 			const sent: Array<unknown> = [];
 			const sendRaw = (message: unknown): Effect.Effect<void> =>
 				Effect.suspend(() => {
-					sent.push(message);
-					if (isJsonRpcMessage(message) && message.method === "initialize") initializeSent = true;
-					return Effect.asVoid(Queue.offer(stdin, encoder.encode(`${JSON.stringify(message)}\n`)));
+					const line = JSON.stringify(message);
+					// Recorded from the bytes written, so mutating the caller's object afterwards changes nothing.
+					const written: unknown = line === undefined ? undefined : JSON.parse(line);
+					sent.push(written);
+					if (isJsonRpcMessage(written) && written.method === "initialize") initializeSent = true;
+					return Effect.asVoid(Queue.offer(stdin, encoder.encode(`${line}\n`)));
 				});
 			const startRequest = (method: string, params?: unknown) =>
 				Effect.gen(function* () {

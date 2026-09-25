@@ -25,11 +25,11 @@ import { dirname, join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { afterAll, assert, describe, layer } from "@effect/vitest";
 import { Run } from "@effected/commands";
-import { Effect, Layer } from "effect";
+import { Duration, Effect, Layer } from "effect";
 import { ChildProcess } from "effect/unstable/process";
 import type { PackageManagerName } from "../../src/index.js";
 import { Workspaces } from "../../src/index.js";
-import type { InstalledConsumer } from "../../src/testing.js";
+import type { InstalledConsumer, PackedInstallBudget } from "../../src/testing.js";
 import { PackedInstall } from "../../src/testing.js";
 
 const CARRIER = "@effected/packed-install-fixture-carrier";
@@ -279,6 +279,15 @@ const spawn = (executable: string, args: ReadonlyArray<string>, cwd?: string) =>
 		}),
 		{ timeout: "30 seconds" },
 	);
+
+/**
+ * An outer `Effect.timeout` sized by the run's own ceilings, and vitest's guard a
+ * minute above it, so a named PackedInstallError fires before either guard does.
+ */
+const guards = (...runs: ReadonlyArray<PackedInstallBudget>) => {
+	const effect = runs.map(PackedInstall.timeoutBudget).reduce(Duration.sum, Duration.zero);
+	return { effect, vitest: Duration.toMillis(effect) + 60_000 };
+};
 
 const readJson = (file: string): Record<string, unknown> => JSON.parse(readFileSync(file, "utf8"));
 
@@ -544,6 +553,12 @@ describe("PackedInstall against a real fixture workspace", () => {
 		// A front end sharing the carrier's bin name: BinConflict by default; with allowSharedBins
 		// a flat layout can hand the .bin slot to the front end, and runCarrierBin still reaches the carrier.
 		const sharedManagers = (["npm", "pnpm", "yarn", "bun"] as const).filter((pm) => VERSIONS[pm] !== undefined);
+		const SHARED_GUARDS = guards(
+			// The refused run probes and packs, then stops before any install.
+			{ managers: sharedManagers, installTimeout: "0 seconds", packages: 2, perConsumer: "0 seconds" },
+			// The allowed run: runBin and runCarrierBin per consumer, a minute each.
+			{ managers: sharedManagers, installTimeout: "90 seconds", packages: 2, perConsumer: "2 minutes" },
+		);
 		it.effect.skipIf(!HAS_NPM)(
 			"allowSharedBins: .bin may run the front end under a flat layout, runCarrierBin always runs the carrier",
 			() =>
@@ -593,8 +608,8 @@ describe("PackedInstall against a real fixture workspace", () => {
 						pnpm: "carrier",
 					};
 					assert.deepStrictEqual(seen, Object.fromEntries(sharedManagers.map((pm) => [pm, winner[pm]])));
-				}).pipe(Effect.timeout("200 seconds"), Effect.scoped),
-			240_000,
+				}).pipe(Effect.timeout(SHARED_GUARDS.effect), Effect.scoped),
+			SHARED_GUARDS.vitest,
 		);
 
 		it.effect.skipIf(!HAS_NPM)(
@@ -678,6 +693,20 @@ describe("PackedInstall overrides: a dependency no registry has, supplied from o
 
 	// bun gives up on the dead proxy at once; npm and pnpm retry until installTimeout fires (about 90 seconds).
 	const CONTROL = VERSIONS.bun === undefined ? "npm" : "bun";
+	// The probe, both packs, the install to its ceiling, and the kill of the child it interrupts.
+	const CONTROL_GUARDS = guards({
+		managers: [CONTROL],
+		installTimeout: "90 seconds",
+		packages: [LINKED, BRIDGE],
+		perConsumer: "0 seconds",
+	});
+	// Per consumer: runBin (a minute), the direct command and the resolve spawn (30 seconds each).
+	const LINKED_GUARDS = guards({
+		managers: linkedManagers,
+		installTimeout: "90 seconds",
+		packages: [LINKED, BRIDGE, EXTERNAL],
+		perConsumer: "2 minutes",
+	});
 
 	layer(LinkedLive, { excludeTestServices: true })((it) => {
 		it.effect.skipIf(!HAS_NPM)(
@@ -698,8 +727,8 @@ describe("PackedInstall overrides: a dependency no registry has, supplied from o
 					assert.deepStrictEqual([error.reason, error.manager], ["InstallFailed", CONTROL]);
 					// It failed on the external, not on something else.
 					assert.include(`${error.message}\n${error.output ?? ""}`, CONTROL === "bun" ? EXTERNAL : "timed out");
-				}).pipe(Effect.timeout("100 seconds"), Effect.scoped),
-			120_000,
+				}).pipe(Effect.timeout(CONTROL_GUARDS.effect), Effect.scoped),
+			CONTROL_GUARDS.vitest,
 		);
 
 		it.effect.skipIf(!HAS_NPM)(
@@ -723,8 +752,8 @@ describe("PackedInstall overrides: a dependency no registry has, supplied from o
 					assert.deepStrictEqual(Object.keys(result.tarballs), planned, "closure names exactly what the run packed");
 					assert.strictEqual(result.tarballs[EXTERNAL], LINKED_FIXTURE.externalTarball, "a tarball is used as it is");
 					yield* assertLinked(result.consumers);
-				}).pipe(Effect.timeout("200 seconds"), Effect.scoped),
-			240_000,
+				}).pipe(Effect.timeout(LINKED_GUARDS.effect), Effect.scoped),
+			LINKED_GUARDS.vitest,
 		);
 
 		it.effect.skipIf(!HAS_NPM)(
@@ -745,8 +774,8 @@ describe("PackedInstall overrides: a dependency no registry has, supplied from o
 					// The directory was npm-packed into the scratch root, not used in place.
 					assert.isTrue(result.tarballs[EXTERNAL]?.startsWith(`${result.scratch}/`), result.tarballs[EXTERNAL]);
 					yield* assertLinked(result.consumers);
-				}).pipe(Effect.timeout("200 seconds"), Effect.scoped),
-			240_000,
+				}).pipe(Effect.timeout(LINKED_GUARDS.effect), Effect.scoped),
+			LINKED_GUARDS.vitest,
 		);
 	});
 });

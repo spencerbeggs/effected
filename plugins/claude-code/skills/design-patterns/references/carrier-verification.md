@@ -400,7 +400,7 @@ const BUDGET = PackedInstall.timeoutBudget({
   installTimeout: RUN.installTimeout,
   packTimeout: RUN.packTimeout,
   packages: PACKED,
-  perConsumer: "2 minutes", // two bin runs per consumer
+  perConsumer: "3 minutes", // two one-minute bin runs plus a 30-second probe, with headroom
 })
 
 describe.skipIf(!RUNNABLE)("packed install", () => {

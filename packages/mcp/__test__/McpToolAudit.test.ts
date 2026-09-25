@@ -82,7 +82,7 @@ describe("McpToolAudit.check fixtures, each wrong in exactly one way", () => {
 			{ ...clean, outputSchema: { anyOf: [{ type: "object" }, { type: "object" }] } },
 			{ input: "any" },
 			[
-				"get_thing: outputSchema is not object-rooted (root type: none); wrap the union success schema in ToolOutputSchema.objectRooted",
+				"get_thing: outputSchema is not object-rooted (root type: none); if every union member is an object, wrap the union success schema in ToolOutputSchema.objectRooted",
 			],
 		],
 		[
@@ -90,7 +90,7 @@ describe("McpToolAudit.check fixtures, each wrong in exactly one way", () => {
 			{ ...clean, outputSchema: { oneOf: [{ type: "object" }, { type: "object" }] } },
 			{ input: "any" },
 			[
-				"get_thing: outputSchema is not object-rooted (root type: none); wrap the union success schema in ToolOutputSchema.objectRooted",
+				"get_thing: outputSchema is not object-rooted (root type: none); if every union member is an object, wrap the union success schema in ToolOutputSchema.objectRooted",
 			],
 		],
 		[

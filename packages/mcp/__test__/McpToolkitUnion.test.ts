@@ -4,6 +4,7 @@ import { Context, Effect, Layer, Schema } from "effect";
 import { McpProtocol, McpSchema, McpServer, Tool, Toolkit } from "effect/unstable/ai";
 import type { UnionTool } from "../src/index.js";
 import { McpStdio, McpToolkit, ToolInputSchema, ToolOutputSchema, ToolRefusal } from "../src/index.js";
+import { guardRegistration } from "../src/McpToolkit.js";
 import { McpHarness } from "../src/testing.js";
 
 class Clock extends Context.Service<Clock, { readonly now: () => string }>()("test/UnionClock") {}
@@ -281,6 +282,46 @@ describe("McpToolkit.unionHandler", () => {
 			const handler = McpToolkit.unionHandler(Note, (params) => Effect.succeed(params.action));
 			const error = yield* Effect.flip(handler(undefined));
 			assert.instanceOf(error, McpSchema.InvalidParams);
+		}),
+	);
+});
+
+describe("McpToolkit.layer's union guard", () => {
+	type Registration = Parameters<typeof guardRegistration>[0];
+	const recordingRegistration = () => {
+		const built: Array<unknown> = [];
+		const registration: Registration = {
+			tool: { name: "note", inputSchema: referenceInputJsonSchema(NoteInput) } as unknown as Registration["tool"],
+			annotations: Note.annotations,
+			handle: (payload) => {
+				// Records at construction, before any effect runs: an eager guard trips it.
+				built.push(payload);
+				return Effect.succeed(new McpSchema.CallToolResult({ content: [] }));
+			},
+		};
+		const guarded = guardRegistration(registration, ToolInputSchema.formatUnknownKeys);
+		// The recorder never reads the request context; an empty one satisfies the requirement.
+		const call = (payload: unknown) =>
+			guarded.handle(payload).pipe(Effect.provideService(McpSchema.McpRequestContext, {} as never));
+		return { built, call };
+	};
+
+	it.effect("never constructs the handler for a payload the check rejects", () =>
+		Effect.gen(function* () {
+			const { built, call } = recordingRegistration();
+			const unknownKey = yield* Effect.flip(call({ action: "list", extra: 1 }));
+			const noMember = yield* Effect.flip(call({ action: "nope" }));
+			assert.instanceOf(unknownKey, McpSchema.InvalidParams);
+			assert.instanceOf(noMember, McpSchema.InvalidParams);
+			assert.deepStrictEqual(built, []);
+		}),
+	);
+
+	it.effect("constructs the handler once the check passes", () =>
+		Effect.gen(function* () {
+			const { built, call } = recordingRegistration();
+			yield* call({ action: "list" });
+			assert.deepStrictEqual(built, [{ action: "list" }]);
 		}),
 	);
 });

@@ -303,9 +303,12 @@ defect — the `outputSchema` is simply **silently omitted** from
 with optional `value`/`error` fields keeps one object root while still
 discriminating, at the cost of giving up discriminated typing on the
 result — a consumer narrows on `ok` at runtime rather than the type system
-narrowing a tagged union for them. (To keep the tagged union instead, wrap
-it in `ToolOutputSchema.objectRooted`, which adds `type: "object"` beside
-the `anyOf` so the `outputSchema` is served.) The envelope:
+narrowing a tagged union for them. (To keep the tagged union instead, when
+every member is an object shape, wrap it in `ToolOutputSchema.objectRooted`,
+which adds `type: "object"` beside the `anyOf` so the `outputSchema` is
+served. Never on a union with a primitive or array member: the added
+`type: "object"` is an unchecked claim about every member, and the served
+schema would contradict what the tool returns.) The envelope:
 
 ~~~ts
 import { Remediation } from "@effected/engine"

@@ -9,8 +9,14 @@
 // Parentheses are tracked so a `/` after the `)` of an `if`/`while`/`for`/
 // `with` condition opens a regex while one after any other `)` divides; a `/`
 // after a postfix `++`/`--` or a TypeScript non-null `!` divides.
+// Keywords decide too, but only where they are keywords: a property name
+// (`x.of`, `a?.return`) is always an operand, and the contextual `of` is a
+// keyword only between a `for (` binding and its iterable, so a variable named
+// `of` divides like any other.
 // Documented misreads: a regex literal directly after a block-closing `}`
-// reads as division, and JSX text reads as code.
+// reads as division, JSX text reads as code, and `yield`/`await` always read
+// as keywords — right in module and strict code, where they are reserved,
+// wrong only for a sloppy-mode script that names a variable either word.
 
 /** A string literal, or a template literal with no substitutions, as written in the source. */
 export interface SourceLiteral {
@@ -52,6 +58,9 @@ const REGEX_AFTER = new Set([
 	"await",
 ]);
 
+/** Declaration keywords: the word after one is a binding name, so a `for (const of of xs)` binding named `of` is not the keyword. */
+const DECLARATIONS = new Set(["const", "let", "var", "using"]);
+
 /** Keywords whose parenthesized condition may be followed directly by a statement, so a `/` after its `)` opens a regex. */
 const CONTROL = new Set(["if", "while", "for", "with"]);
 
@@ -68,8 +77,8 @@ export const lex = (text: string): LexedSource => {
 	const literals: Array<SourceLiteral> = [];
 	// One brace-depth counter per open template substitution, innermost last.
 	const substitutions: Array<number> = [];
-	// One entry per open `(`: whether it opened an if/while/for/with condition.
-	const parens: Array<boolean> = [];
+	// One entry per open `(`: the if/while/for/with keyword whose condition it opened, if any.
+	const parens: Array<string | undefined> = [];
 	// Offsets in the code view of every `)` that closed such a condition.
 	const controlCloses = new Set<number>();
 	const length = text.length;
@@ -96,10 +105,33 @@ export const lex = (text: string): LexedSource => {
 		return code.slice(start + 1, end + 1).join("");
 	};
 
+	/**
+	 * Whether the code at offset `j` ends a binding a `for...of` head iterates
+	 * into: a destructuring pattern, or a name that is neither a declaration
+	 * keyword nor itself a keyword (`for (x in of / 2)` divides).
+	 */
+	const endsBinding = (j: number): boolean => {
+		const char = code[j] ?? "";
+		if (char === "]" || char === "}") return true;
+		return isIdentifierChar(char) && !DECLARATIONS.has(wordAt(j)) && !isRegexKeyword(j);
+	};
+
+	/** Whether the identifier ending at code offset `j` is a keyword after which a `/` opens a regex. */
+	const isRegexKeyword = (j: number): boolean => {
+		const word = wordAt(j);
+		if (!REGEX_AFTER.has(word)) return false;
+		const before = lastCode(j - word.length);
+		// A property name (`x.of`, `a?.return`) is never a keyword; a spread (`...new`) still is.
+		if (code[before] === "." && !(code[before - 1] === "." && code[before - 2] === ".")) return false;
+		// `of` is contextual: the keyword only between a `for (` binding and its iterable.
+		if (word === "of") return parens.at(-1) === "for" && before >= 0 && endsBinding(before);
+		return true;
+	};
+
 	/** Whether the code at offset `j` ends an operand (a value a postfix operator or a `/` division can follow). */
 	const endsOperand = (j: number): boolean => {
 		const char = code[j] ?? "";
-		return char === ")" || char === "]" || (isIdentifierChar(char) && !REGEX_AFTER.has(wordAt(j)));
+		return char === ")" || char === "]" || (isIdentifierChar(char) && !isRegexKeyword(j));
 	};
 
 	/** Whether a `/` here opens a regex, judged by the last code token. */
@@ -107,7 +139,7 @@ export const lex = (text: string): LexedSource => {
 		const j = lastCode(code.length - 1);
 		if (j < 0) return true;
 		const last = code[j] ?? "";
-		if (isIdentifierChar(last)) return REGEX_AFTER.has(wordAt(j));
+		if (isIdentifierChar(last)) return isRegexKeyword(j);
 		// `x!` is a TypeScript non-null assertion: an operand, so `/` divides.
 		if (last === "!") return !endsOperand(j - 1);
 		// `i++` / `i--` is a postfix update: an operand, so `/` divides.
@@ -116,10 +148,10 @@ export const lex = (text: string): LexedSource => {
 		return !"]}\"'`".includes(last);
 	};
 
-	/** Whether the `(` about to be emitted opens an if/while/for/with condition. */
-	const opensCondition = (): boolean => {
+	/** The if/while/for/with keyword whose condition the `(` about to be emitted opens, if any. */
+	const opensCondition = (): string | undefined => {
 		const j = lastCode(code.length - 1);
-		if (j < 0 || !isIdentifierChar(code[j])) return false;
+		if (j < 0 || !isIdentifierChar(code[j])) return undefined;
 		let word = wordAt(j);
 		let end = j - word.length;
 		// `for await (`: the keyword sits one word further back.
@@ -128,7 +160,7 @@ export const lex = (text: string): LexedSource => {
 			word = end < 0 ? "" : wordAt(end);
 			end -= word.length;
 		}
-		return CONTROL.has(word) && code[lastCode(end)] !== ".";
+		return CONTROL.has(word) && code[lastCode(end)] !== "." ? word : undefined;
 	};
 
 	/** Consume a regex literal at `i` if one closes on this line; `false` leaves `i` untouched. */
@@ -258,7 +290,7 @@ export const lex = (text: string): LexedSource => {
 			emit(char, true, true);
 			i++;
 		} else if (char === ")") {
-			if (parens.pop() === true) controlCloses.add(code.length);
+			if (parens.pop() !== undefined) controlCloses.add(code.length);
 			emit(char, true, true);
 			i++;
 		} else if (char === "{") {

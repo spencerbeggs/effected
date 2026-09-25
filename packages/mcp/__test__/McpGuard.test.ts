@@ -83,7 +83,7 @@ describe("McpGuard.run with a host double", () => {
 
 	it("default policy: both exit 1, after connect too, and report on stderr", async () => {
 		const { host, stderr, exits, fire } = fakeHost();
-		const { runMain } = forkingRunMain();
+		const { runMain, fibers } = forkingRunMain();
 		await McpGuard.run({ label: "srv", host, load: async () => ({ layer: Layer.empty, runMain }) });
 		await settle();
 		fire("uncaughtException", new Error("boom"));
@@ -91,11 +91,12 @@ describe("McpGuard.run with a host double", () => {
 		assert.deepStrictEqual(exits, [1, 1]);
 		assert.match(stderr[0] ?? "", /^srv: uncaughtException \(uncaughtException\): Error: boom/);
 		assert.match(stderr[1] ?? "", /^srv: unhandledRejection: Error: nope/);
+		await stop(fibers);
 	});
 
 	it("exitBeforeConnect: exits while loading, logs and keeps going once serving", async () => {
 		const { host, stderr, exits, fire } = fakeHost();
-		const { runMain } = forkingRunMain();
+		const { runMain, fibers } = forkingRunMain();
 		await McpGuard.run({
 			label: "srv",
 			host,
@@ -111,11 +112,12 @@ describe("McpGuard.run with a host double", () => {
 		fire("unhandledRejection", new Error("late rejection"));
 		assert.deepStrictEqual(exits, [1], "no exit once the server is serving");
 		assert.strictEqual(stderr.length, 3);
+		await stop(fibers);
 	});
 
 	it("a server that never finishes building never counts as connected (negative control)", async () => {
 		const { host, exits, fire } = fakeHost();
-		const { runMain } = forkingRunMain();
+		const { runMain, fibers } = forkingRunMain();
 		await McpGuard.run({
 			label: "srv",
 			host,
@@ -125,11 +127,12 @@ describe("McpGuard.run with a host double", () => {
 		await settle();
 		fire("uncaughtException", new Error("still building"));
 		assert.deepStrictEqual(exits, [1]);
+		await stop(fibers);
 	});
 
 	it("onRejection log never exits", async () => {
 		const { host, exits, fire } = fakeHost();
-		const { runMain } = forkingRunMain();
+		const { runMain, fibers } = forkingRunMain();
 		await McpGuard.run({
 			label: "srv",
 			host,
@@ -138,6 +141,7 @@ describe("McpGuard.run with a host double", () => {
 		});
 		fire("unhandledRejection", "a string reason");
 		assert.deepStrictEqual(exits, []);
+		await stop(fibers);
 	});
 
 	it("a load rejection is reported as startup failed and exits 1, whatever the policy", async () => {
@@ -255,7 +259,7 @@ describe("McpGuard.run with a host double", () => {
 
 	it("uses the server's formatter once loaded, and falls back if it throws", async () => {
 		const { host, stderr, fire } = fakeHost();
-		const { runMain } = forkingRunMain();
+		const { runMain, fibers } = forkingRunMain();
 		let throwing = false;
 		await McpGuard.run({
 			label: "srv",
@@ -274,6 +278,7 @@ describe("McpGuard.run with a host double", () => {
 		throwing = true;
 		fire("unhandledRejection", "y");
 		assert.deepStrictEqual(stderr, ["srv: unhandledRejection: fmt:x\n", "srv: unhandledRejection: y\n"]);
+		await stop(fibers);
 	});
 });
 

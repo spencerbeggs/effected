@@ -3,25 +3,29 @@ import { CliOutput } from "effect/unstable/cli";
 
 type Method = Exclude<keyof Console.Console, "log" | "error">;
 
-const OTHER_METHODS: ReadonlyArray<Method> = [
-	"assert",
-	"clear",
-	"count",
-	"countReset",
-	"debug",
-	"dir",
-	"dirxml",
-	"group",
-	"groupCollapsed",
-	"groupEnd",
-	"info",
-	"table",
-	"time",
-	"timeEnd",
-	"timeLog",
-	"trace",
-	"warn",
-];
+// A `Record` over `Method`, so a Console method this list misses — or one it
+// names that no longer exists — is a compile error, not an unrouted write.
+const OTHER_METHOD_SET: Record<Method, true> = {
+	assert: true,
+	clear: true,
+	count: true,
+	countReset: true,
+	debug: true,
+	dir: true,
+	dirxml: true,
+	group: true,
+	groupCollapsed: true,
+	groupEnd: true,
+	info: true,
+	table: true,
+	time: true,
+	timeEnd: true,
+	timeLog: true,
+	trace: true,
+	warn: true,
+};
+
+const OTHER_METHODS = Object.keys(OTHER_METHOD_SET) as ReadonlyArray<Method>;
 
 /**
  * Run `program` so a help document printed together with parse errors goes to

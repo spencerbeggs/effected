@@ -22,7 +22,9 @@ const isObjectRooted = (ast: SchemaAST.AST): boolean =>
  * verbatim on the stateless one, where strict clients reject it.
  * `McpToolAudit`'s `objectRootedOutput` check reports it either way.
  *
- * {@link ToolOutputSchema.objectRooted} is the fix. It works on the Effect
+ * {@link ToolOutputSchema.objectRooted} is the fix when every member of the
+ * union is an object shape; never apply it to a union with a primitive or
+ * array member. It works on the Effect
  * schema, not on JSON Schema — unlike `ToolInputSchema.objectRooted`, which
  * rewrites the served input document of a `Tool.dynamic`.
  *
@@ -45,7 +47,10 @@ export class ToolOutputSchema {
 	 * twice is a no-op.
 	 *
 	 * Every union member must be an object shape: the added `type: "object"`
-	 * is a claim about the whole union, and nothing checks it.
+	 * is a claim about the whole union, and nothing checks it. Do not use it
+	 * on a union with a primitive or array member — the served schema would
+	 * contradict the values the tool returns; give such a tool an object
+	 * envelope instead.
 	 *
 	 * @example
 	 * ```ts

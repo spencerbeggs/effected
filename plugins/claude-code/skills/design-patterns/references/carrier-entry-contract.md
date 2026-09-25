@@ -171,8 +171,13 @@ dependency. Both call the same `main()`, so the tool still works, but the carrie
 identity is lost: the front end runs without the distribution the shim
 passes down, and `--version` drops its `via @scope/plugin <version>` suffix.
 Only pnpm's isolated layout, which links nothing transitive at the top
-level, always kept the carrier's shim. With one declaration there is
-nothing to shadow, and the identity holds under every manager.
+level, always kept the carrier's shim. With one declaration in the kit
+there is nothing of yours to shadow, and the identity holds under every
+manager — provided no other dependency of the consumer declares the same
+bin name. That part is outside your control and outside the proof:
+`PackedInstall`'s `BinConflict` check compares the packages it packs, not
+the consumer's other dependencies, so pick a bin name no common package
+already ships.
 
 Consequences:
 

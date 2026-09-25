@@ -80,7 +80,7 @@ export interface UnionToolOptions<
 	readonly description?: string | undefined;
 	/** A `Schema.Union` of object schemas, discriminated by an `action`, `kind`, `_tag` or `type` literal. */
 	readonly parameters: P;
-	/** The success schema. Defaults to `Schema.Void`; object-root a union with `ToolOutputSchema.objectRooted`. */
+	/** The success schema. Defaults to `Schema.Void`; object-root a union whose members are all objects with `ToolOutputSchema.objectRooted`. */
 	readonly success?: S | undefined;
 	/** Declared failures besides `InvalidParams`, such as `ToolRefusal`. Defaults to `Schema.Never`. */
 	readonly failure?: F | undefined;
@@ -151,6 +151,47 @@ const decodeUnionPayload = <A>(
 				Effect.mapError((error) => invalidParameters(name, error.message)),
 			);
 		});
+};
+
+type Registration = Parameters<McpServer.McpServer["Service"]["addTool"]>[0];
+
+/**
+ * The registration `McpToolkit.layer` hands core in place of `registration`:
+ * a union tool gets its payload decoded first, a strict tool its unknown keys
+ * refused first, and anything else passes through untouched. The wrapped
+ * handler is built only after the check passes, so a rejected payload never
+ * reaches it.
+ *
+ * @internal
+ */
+export const guardRegistration = (
+	registration: Registration,
+	format: (levels: ReadonlyArray<UnknownKeysLevel>) => string,
+): Registration => {
+	const union = Context.get(registration.annotations, UnionParameters);
+	if (union !== undefined) {
+		// Outside core's handler, so an InvalidParams here lands where core's own
+		// parameter failure does: -32602 on 2025-06-18, isError on later revisions.
+		const check = decodeUnionPayload(registration.tool.name, union, registration.tool.inputSchema, format);
+		return {
+			...registration,
+			handle: (payload) => check(payload).pipe(Effect.flatMap(() => registration.handle(payload))),
+		};
+	}
+	// Same predicate core uses to pick strict decoding (`Tool.getStrictMode(tool) === true`):
+	// a tool core decodes leniently is never rejected here, whatever its schema looks like.
+	return Context.get(registration.annotations, Tool.Strict) === true
+		? {
+				...registration,
+				handle: (payload) =>
+					Effect.suspend(() => {
+						const levels = ToolInputSchema.unknownKeys(payload ?? {}, registration.tool.inputSchema);
+						return levels.length > 0
+							? Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }))
+							: registration.handle(payload);
+					}),
+			}
+		: registration;
 };
 
 // Set from probe P2: Claude Code 2.1.281 sends a tool call's `arguments` with
@@ -343,32 +384,7 @@ export class McpToolkit {
 				const format = options.unknownKeyMessage ?? defaultUnknownKeyMessage;
 				const decorated = McpServer.McpServer.of({
 					...registry,
-					addTool: (registration) => {
-						const union = Context.get(registration.annotations, UnionParameters);
-						if (union !== undefined) {
-							// Outside core's handler, so an InvalidParams here lands where core's own
-							// parameter failure does: -32602 on 2025-06-18, isError on later revisions.
-							const check = decodeUnionPayload(registration.tool.name, union, registration.tool.inputSchema, format);
-							return registry.addTool({
-								...registration,
-								handle: (payload) => check(payload).pipe(Effect.andThen(registration.handle(payload))),
-							});
-						}
-						// Same predicate core uses to pick strict decoding (`Tool.getStrictMode(tool) === true`):
-						// a tool core decodes leniently is never rejected here, whatever its schema looks like.
-						return Context.get(registration.annotations, Tool.Strict) === true
-							? registry.addTool({
-									...registration,
-									handle: (payload) =>
-										Effect.suspend(() => {
-											const levels = ToolInputSchema.unknownKeys(payload ?? {}, registration.tool.inputSchema);
-											return levels.length > 0
-												? Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }))
-												: registration.handle(payload);
-										}),
-								})
-							: registry.addTool(registration);
-					},
+					addTool: (registration) => registry.addTool(guardRegistration(registration, format)),
 				});
 				yield* McpServer.registerToolkit(strictened(toolkit, options.strict ?? DEFAULT_STRICT)).pipe(
 					Effect.provideService(McpServer.McpServer, decorated),

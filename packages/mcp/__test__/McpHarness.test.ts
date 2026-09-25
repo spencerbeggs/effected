@@ -266,6 +266,23 @@ describe("McpHarness", () => {
 		}),
 	);
 
+	it.effect("sentSoFar records the frame as written, not the caller's object", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			const message: { jsonrpc: string; method: string; params: { tag: string } } = {
+				jsonrpc: "2.0",
+				method: "notifications/whatever",
+				params: { tag: "before" },
+			};
+			yield* harness.sendRaw(message);
+			message.method = "notifications/mutated";
+			message.params.tag = "after";
+			const [recorded] = yield* harness.sentSoFar;
+			assert.deepStrictEqual(recorded, { jsonrpc: "2.0", method: "notifications/whatever", params: { tag: "before" } });
+			assert.notStrictEqual(recorded, message);
+		}),
+	);
+
 	it.effect("stateful: a request before initialize fails fast with NotInitialized, naming the revision", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(fixtureServer(), { protocol: McpProtocol.v2025_06_18 });

@@ -457,6 +457,12 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 		flagged: false,
 	},
 	{
+		name: "forbidTokens: after a variable named of, divided",
+		source: "const of = 8; const x = of / 2; const v = process.env.__PACKAGE_VERSION__; const y = 8 / 2;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: true,
+	},
+	{
 		name: "forbidTokens: a private field",
 		source: "const v = this.#process.env.__PACKAGE_VERSION__;",
 		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
@@ -496,6 +502,10 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  *   a quote or `/*` inside it can hide the code after it;
  *
  * - JSX text reads as code;
+ *
+ * - a variable named `yield` or `await` in a sloppy-mode script reads as the
+ *   keyword, so a `/` after it opens a regex (module and strict code reserve
+ *   both words);
  *
  * - `forbidImports: ["node:*"]` does not catch a bare built-in such as
  *   `"fs"` (see {@link BoundaryRule}).

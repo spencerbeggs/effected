@@ -1079,10 +1079,15 @@ describe("PackedInstall.timeoutBudget", () => {
 		assert.strictEqual(Duration.format(budget), "31m");
 	});
 
-	it("defaults installTimeout to the run's four minutes and perConsumer to zero, and counts a repeated manager once", () => {
+	it("defaults installTimeout to the run's four minutes and perConsumer to one runBin's minute, and counts a repeated manager once", () => {
 		const budget = PackedInstall.timeoutBudget({ managers: ["npm", "npm"], packages: 1 });
-		// 1 x (0.5 + 4) + 1 x 2.5 + 0.5 untimed + 1 cleanup
-		assert.strictEqual(minutes(budget), 8.5);
+		// 1 x (0.5 + 4 + 1) + 1 x 2.5 + 0.5 untimed + 1 cleanup
+		assert.strictEqual(minutes(budget), 9.5);
+		// An install-only test passes zero explicitly.
+		assert.strictEqual(
+			minutes(PackedInstall.timeoutBudget({ managers: ["npm"], packages: 1, perConsumer: "0 seconds" })),
+			8.5,
+		);
 	});
 
 	it("takes the run's packTimeout per package, and the names closure returns as the package count", () => {

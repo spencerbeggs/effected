@@ -54,6 +54,11 @@ describe("SourceBoundary.referencesProcess", () => {
 		["code after a postfix decrement divided", "const y = xs[0]-- / 2; const a = process.argv; const b = 1 / 4;"],
 		["code after a regex that follows an if condition", "if (x) /\\/*/.test(s);\nconst a = process.argv;\n/* c */"],
 		[
+			"code after a variable named of, divided",
+			"const of = 8; const x = of / 2; const a = process.argv; const y = 8 / 2;",
+		],
+		["code after a property named of, divided", "const x = o.of / 2; const a = process.argv; const y = 8 / 2;"],
+		[
 			"code after a regex that follows a while condition",
 			"while (f(x)) /\\/*/.test(s);\nconst a = process.argv;\n/* c */",
 		],

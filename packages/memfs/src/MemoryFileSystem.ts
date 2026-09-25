@@ -687,8 +687,13 @@ const wrapFaulty = (base: FileSystem.FileSystem, faults: MemoryFileSystemFaults)
  *   renaming onto a non-empty directory `Unknown` with `ENOTEMPTY`, and
  *   removing any directory without `recursive` `Unknown` with
  *   `ERR_FS_EISDIR`. Match on `_tag` and `cause.code` exactly as you would
- *   against the node adapter. `reason.syscall` is never set, and where Linux
- *   and macOS report different errnos the Linux one is modelled. Limits of
+ *   against the node adapter. Unlike node's `ErrnoException`, an Effect
+ *   failure's `cause` carries only `code` (and `path` for a path operation):
+ *   no `errno` number, no `syscall` and no `dest`, and `reason.syscall` is
+ *   never set. The thrown errors of the synchronous
+ *   {@link MemoryFileSystem.syncFileSystem} port are the exception: they do
+ *   carry `syscall`. Where Linux and macOS report different errnos the Linux
+ *   one is modelled. Limits of
  *   the in-memory model itself (nesting depth, allocation) fail
  *   `BadResource` with no `cause`.
  *

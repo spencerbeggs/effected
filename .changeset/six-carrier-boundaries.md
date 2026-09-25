@@ -28,7 +28,8 @@
   - `PackedInstall.closure(carrier, options)` returns the packages a run
     would pack, in order, without packing anything, and
     `PackedInstall.timeoutBudget` / `timeoutBudgetFor` size a test's timeout
-    from a run's managers, packages and per-consumer work.
+    from a run's managers, packages and per-consumer work (one bin run's
+    minute unless the test says otherwise).
   - `overrides` and `workspaceOverrides` steer a scratch consumer's
     dependency resolution to a local directory or tarball outside the
     workspace — the dogfood case, where a closure member needs a sibling

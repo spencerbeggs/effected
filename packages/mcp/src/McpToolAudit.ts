@@ -21,7 +21,9 @@ export interface McpToolAuditPolicy {
 	 * A served `outputSchema` must be rooted at `type: "object"`. Defaults to
 	 * `true` (D10). Only the stateless revision serves a non-object root, so
 	 * only there does this fire; a union root (`anyOf` or `oneOf`) names
-	 * `ToolOutputSchema.objectRooted` as the fix. On a stateful revision the
+	 * `ToolOutputSchema.objectRooted` as the fix for a union whose members are
+	 * all objects (a union with a primitive member needs an object envelope
+	 * instead). On a stateful revision the
 	 * same schema is dropped, and `requireOutputSchema` reports it instead.
 	 */
 	readonly objectRootedOutput?: boolean | undefined;
@@ -158,7 +160,9 @@ export class McpToolAudit {
 				const union = Array.isArray(tool.outputSchema.anyOf) || Array.isArray(tool.outputSchema.oneOf);
 				report(
 					`outputSchema is not object-rooted (root type: ${String(tool.outputSchema.type ?? "none")})${
-						union ? "; wrap the union success schema in ToolOutputSchema.objectRooted" : ""
+						union
+							? "; if every union member is an object, wrap the union success schema in ToolOutputSchema.objectRooted"
+							: ""
 					}`,
 				);
 			}

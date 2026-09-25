@@ -649,7 +649,12 @@ export interface PackedInstallBudget {
 	 * `PackedInstallResult.tarballs`.
 	 */
 	readonly packages: number | ReadonlyArray<string>;
-	/** What the test does with each consumer afterwards, such as its bin runs' ceilings. Defaults to zero. */
+	/**
+	 * What the test does with each consumer afterwards, such as its bin runs'
+	 * ceilings. Defaults to one minute: one {@link InstalledConsumer.runBin}
+	 * at its default ceiling. Add a minute per further `runBin`, and pass
+	 * `"0 seconds"` for a test that only installs.
+	 */
 	readonly perConsumer?: Duration.Input | undefined;
 }
 
@@ -854,7 +859,8 @@ export class PackedInstall {
 	 * @remarks
 	 * The worst case of the run's own ceilings, taken in sequence as the run
 	 * takes them: each manager's `--version` probe (30 seconds), install
-	 * (`installTimeout`) and `perConsumer`, plus each package's pack
+	 * (`installTimeout`) and `perConsumer` (one minute by default, one `runBin`
+	 * at its default ceiling), plus each package's pack
 	 * (`packTimeout`, two minutes by default) and manifest read (30 seconds),
 	 * plus 30 seconds for the untimed steps and one minute for cleanup:
 	 * removing the scratch root when the scope closes, and killing a child
@@ -880,7 +886,11 @@ export class PackedInstall {
 	 * ```
 	 */
 	static readonly timeoutBudget = (budget: PackedInstallBudget): Duration.Duration => {
-		const perManager = [PROBE_TIMEOUT, budget.installTimeout ?? DEFAULT_INSTALL_TIMEOUT, budget.perConsumer ?? 0]
+		const perManager = [
+			PROBE_TIMEOUT,
+			budget.installTimeout ?? DEFAULT_INSTALL_TIMEOUT,
+			budget.perConsumer ?? DEFAULT_BIN_TIMEOUT,
+		]
 			.map(Duration.fromInputUnsafe)
 			.reduce((total, step) => Duration.sum(total, step), Duration.zero);
 		const perPackage = Duration.sum(

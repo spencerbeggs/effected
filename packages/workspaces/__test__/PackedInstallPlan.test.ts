@@ -283,6 +283,21 @@ describe("fileOverridesOf", () => {
 		);
 	});
 
+	it("skips __proto__ and keeps constructor and prototype as own entries of a prototype-free map", () => {
+		// JSON.parse makes `__proto__` an own key, as a YAML parse of the workspace file can.
+		const document: unknown = JSON.parse(
+			'{"overrides":{"__proto__":"file:../evil","constructor":"file:../ctor","prototype":"file:../proto"}}',
+		);
+		const out = fileOverridesOf(document);
+		assert.deepStrictEqual(Object.entries(out), [
+			["constructor", "../ctor"],
+			["prototype", "../proto"],
+		]);
+		assert.isNull(Object.getPrototypeOf(out));
+		assert.isFalse(Object.hasOwn(out, "__proto__"));
+		assert.isUndefined(fileOverridesOf({ overrides: {} }).constructor);
+	});
+
 	it("a document without an overrides map has none", () => {
 		assert.deepStrictEqual(fileOverridesOf({ packages: [] }), {});
 		assert.deepStrictEqual(fileOverridesOf({ overrides: ["file:a"] }), {});

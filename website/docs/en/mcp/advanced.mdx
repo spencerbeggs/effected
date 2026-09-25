@@ -359,10 +359,14 @@ against your own source schemas — the served document is what a client
 actually sees, and it can differ by protocol revision.
 
 A union success schema fails `objectRootedOutput`: a top-level
-`Schema.Union` emits a bare `anyOf`. Wrap it in
-`ToolOutputSchema.objectRooted` (from `@effected/mcp`), which adds
-`type: "object"` beside the `anyOf` without changing decoding. It works
-before or after `.annotate({ identifier })`.
+`Schema.Union` emits a bare `anyOf`. When every member of the union is an
+object shape, wrap it in `ToolOutputSchema.objectRooted` (from
+`@effected/mcp`), which adds `type: "object"` beside the `anyOf` without
+changing decoding. It works before or after `.annotate({ identifier })`.
+Do not use it on a union with a primitive or array member: the added
+`type: "object"` is a claim about every member that nothing checks, so the
+served schema would contradict the values the tool returns. Give such a
+tool an object envelope instead.
 
 ## `InvalidParams` per protocol revision
 
