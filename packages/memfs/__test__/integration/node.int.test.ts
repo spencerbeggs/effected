@@ -8,6 +8,8 @@
 // expectation — the platform layer is the reference implementation.
 
 import { NodeFileSystem } from "@effect/platform-node";
+import { errnoSuite } from "../ErrnoParityContract.js";
 import { suite } from "../FileSystemContract.js";
 
 suite("node", NodeFileSystem.layer);
+errnoSuite("node", NodeFileSystem.layer);

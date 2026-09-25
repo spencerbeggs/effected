@@ -147,7 +147,9 @@ layer(MemoryFileSystem.layer)("FileSystem (memory-specific)", (it) => {
 			yield* file.seek(BigInt(Number.MAX_SAFE_INTEGER), "start");
 			assert.isTrue(Result.isFailure(yield* Effect.result(file.writeAll(new Uint8Array([1])))));
 
-			for (const size of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+			// A negative length is NOT invalid: node clamps it to 0 (pinned in
+			// ErrnoParityContract.ts), so only non-integers and unsafe integers stay here.
+			for (const size of [1.5, Number.MAX_SAFE_INTEGER + 1]) {
 				const result = yield* Effect.result(file.truncate(size));
 				assert.isTrue(Result.isFailure(result));
 				if (Result.isFailure(result)) {

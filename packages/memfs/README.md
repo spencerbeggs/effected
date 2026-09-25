@@ -131,6 +131,23 @@ const Faulty = MemoryFileSystem.layerFaulty({
 
 Modes set by seeding, `chmod`, `makeDirectory` or `writeFile` are recorded faithfully and readable via `stat`, but no operation checks them: the volume models no process identity (no uid/gid/umask), so nothing ever fails `PermissionDenied` on its own — `access` checks existence only. To exercise a permission-failure code path, inject the failure with `layerFaulty` instead of arranging modes.
 
+## Errors look like the Node adapter's
+
+A test that passes against the volume should pass against `NodeFileSystem.layer` for the same reason, so failures take the shape `@effect/platform-node` gives them. Every failure the real platform would raise carries node's errno as `reason.cause.code`, and the `_tag` is derived from that code by the node adapter's own mapping:
+
+| `cause.code` | `_tag` |
+| --- | --- |
+| `ENOENT` | `NotFound` |
+| `EEXIST` | `AlreadyExists` |
+| `EISDIR`, `ENOTDIR`, `ELOOP` | `BadResource` |
+| anything else — `EINVAL`, `ENOTEMPTY`, `EBADF`, `EPERM`, `ERR_FS_EISDIR`, `ERR_FS_CP_*` | `Unknown` |
+
+So `readLink` on a regular file fails `Unknown` with `EINVAL`, not `BadResource`; renaming onto a non-empty directory is `Unknown`/`ENOTEMPTY`; removing a directory without `recursive` — even an empty one — is `Unknown`/`ERR_FS_EISDIR`; hard-linking a directory is `Unknown`/`EPERM`; a closed or wrong-mode file handle is `Unknown`/`EBADF`. A NUL byte in a path is a `BadArgument`, and `glob` from a missing or non-directory root matches nothing rather than failing.
+
+Where Linux and macOS disagree, the Linux errno is modelled: `copyFile` from a directory and creating a file at a new `path/` both fail `BadResource`/`EISDIR` (macOS: `Unknown`/`ENOTSUP` and `NotFound`/`ENOENT`). `reason.syscall` is never set. A limit of the in-memory model itself (nesting depth, allocation) fails `BadResource` with no `cause`.
+
+Three divergences are deliberate and pinned by the differential test: `copy` without `overwrite` fails `AlreadyExists` where node silently keeps the existing destination, `copy` does not create a missing destination parent, and opening a directory read-only fails at `open` (`BadResource`/`EISDIR`) where node fails at the first read with the same tag. For a two-path operation (`rename`, `copy`, `copyFile`, `link`, `symlink`) node reports the first path as `pathOrDescriptor`, and memfs reports the path the conflict concerns.
+
 ## What the volume does not see
 
 memfs implements one thing: Effect's `FileSystem` service. It installs no hooks, patches no module registry and intercepts nothing globally, so the volume is visible to code that *asks for the service* and invisible to everything else. Four boundaries follow, and each is a property of the design rather than a gap to be closed:

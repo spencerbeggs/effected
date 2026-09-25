@@ -33,6 +33,12 @@
 //   `overwrite: false` onto an existing destination reported the SOURCE path
 //   on its AlreadyExists error while every sibling conflict arm reports the
 //   destination; the port reports the destination.
+// - Errno fidelity: errors are built from the errno node raises (`errnoError`),
+//   the `_tag` derived by @effect/platform-node's own errno mapping and the
+//   code carried as `cause.code`; sites whose upstream tag or success/failure
+//   disagreed with node were corrected (readLink EINVAL, non-recursive remove
+//   of any directory, ENOTEMPTY, EBADF, fs.cp codes, trailing slashes, NUL
+//   bytes, glob roots, negative truncate). Ledger entry 10 has the table.
 
 import type { Cause } from "effect";
 import {
@@ -209,20 +215,112 @@ const fileSystemError = (options: {
 const invalidData = (method: string, path: string, description: string): PlatformError =>
 	fileSystemError({ _tag: "InvalidData", method, pathOrDescriptor: path, description });
 
-const alreadyExists = (method: string, path: string): PlatformError =>
-	fileSystemError({ _tag: "AlreadyExists", method, pathOrDescriptor: path });
+// KIT EXTENSION (errno fidelity — adaptation ledger entry 10). Every failure the
+// host kernel (or node's own fs layer) would report carries the errno code the
+// real platform adapter reports, and the `_tag` is DERIVED from that code by the
+// exact switch `@effect/platform-node`'s `handleErrnoException` uses. Tag parity
+// with the node adapter therefore holds by construction: a site names the errno
+// node raises, never a tag. The code rides on `cause.code`, where a consumer
+// reading the node adapter's error finds it. Where the platforms disagree the
+// Linux errno is the one modelled (the per-case table lives in the design doc).
+type ErrnoCode =
+	| "EBADF"
+	| "EEXIST"
+	| "EINVAL"
+	| "EISDIR"
+	| "ELOOP"
+	| "ENOENT"
+	| "ENOTDIR"
+	| "ENOTEMPTY"
+	| "EPERM"
+	| "ERR_FS_CP_DIR_TO_NON_DIR"
+	| "ERR_FS_CP_EINVAL"
+	| "ERR_FS_CP_NON_DIR_TO_DIR"
+	| "ERR_FS_EISDIR";
+
+const errnoMessages: { readonly [Code in ErrnoCode]: string } = {
+	EBADF: "bad file descriptor",
+	EEXIST: "file already exists",
+	EINVAL: "invalid argument",
+	EISDIR: "illegal operation on a directory",
+	ELOOP: "too many symbolic links encountered",
+	ENOENT: "no such file or directory",
+	ENOTDIR: "not a directory",
+	ENOTEMPTY: "directory not empty",
+	EPERM: "operation not permitted",
+	ERR_FS_CP_DIR_TO_NON_DIR: "cannot overwrite non-directory with directory",
+	ERR_FS_CP_EINVAL: "invalid src or dest",
+	ERR_FS_CP_NON_DIR_TO_DIR: "cannot overwrite directory with non-directory",
+	ERR_FS_EISDIR: "path is a directory",
+};
+
+// Mirrors `handleErrnoException` in @effect/platform-node-shared: only these
+// codes map to a specific tag, everything else is "Unknown".
+const errnoTag = (code: ErrnoCode): SystemErrorTag => {
+	switch (code) {
+		case "ENOENT":
+			return "NotFound";
+		case "EEXIST":
+			return "AlreadyExists";
+		case "EISDIR":
+		case "ENOTDIR":
+		case "ELOOP":
+			return "BadResource";
+		default:
+			return "Unknown";
+	}
+};
+
+/** The `cause` of an errno-backed failure: an `Error` carrying node's `code` (and `path` for path operations). */
+class ErrnoException extends Error {
+	readonly code: ErrnoCode;
+	readonly path: string | undefined;
+	constructor(code: ErrnoCode, pathOrDescriptor: string | number | undefined) {
+		super(`${code}: ${errnoMessages[code]}${typeof pathOrDescriptor === "string" ? `, '${pathOrDescriptor}'` : ""}`);
+		this.code = code;
+		this.path = typeof pathOrDescriptor === "string" ? pathOrDescriptor : undefined;
+	}
+}
+
+const errnoError = (
+	method: string,
+	pathOrDescriptor: string | number,
+	code: ErrnoCode,
+	description?: string,
+): PlatformError =>
+	fileSystemError({
+		_tag: errnoTag(code),
+		method,
+		pathOrDescriptor,
+		description,
+		cause: new ErrnoException(code, pathOrDescriptor),
+	});
+
+const alreadyExists = (method: string, path: string): PlatformError => errnoError(method, path, "EEXIST");
 
 const permissionDenied = (method: string, path: string, description: string): PlatformError =>
 	fileSystemError({ _tag: "PermissionDenied", method, pathOrDescriptor: path, description });
 
-const badResource = (method: string, pathOrDescriptor: string | number, description?: string): PlatformError =>
+const badResource = (
+	method: string,
+	pathOrDescriptor: string | number,
+	code: "EISDIR" | "ELOOP" | "ENOTDIR",
+	description?: string,
+): PlatformError => errnoError(method, pathOrDescriptor, code, description);
+
+// A limit of the in-memory model itself (nesting depth, allocation, position
+// range), with no errno the real platform would raise: BadResource, no cause.
+const volumeLimit = (method: string, pathOrDescriptor: string | number, description: string): PlatformError =>
 	fileSystemError({ _tag: "BadResource", method, pathOrDescriptor, description });
 
-const notFound = (method: string, path: string): PlatformError =>
-	fileSystemError({ _tag: "NotFound", method, pathOrDescriptor: path });
+const notFound = (method: string, path: string): PlatformError => errnoError(method, path, "ENOENT");
 
 const argumentError = (method: string, description: string): PlatformError =>
 	badArgument({ module: "FileSystem", method, description });
+
+// node rejects a NUL byte in any path argument before touching the filesystem,
+// as a BadArgument (ERR_INVALID_ARG_VALUE), not a system error.
+const nullBytePath = (method: string): PlatformError => argumentError(method, "path must not contain null bytes");
 
 const findInode = (state: State, inode: Inode): InodeEntry | undefined =>
 	Option.getOrUndefined(HashMap.get(state.inodes, inode));
@@ -254,7 +352,7 @@ const validateEntryName = Effect.fnUntraced(function* (method: string, name: str
 const getDirectory = Effect.fnUntraced(function* (state: State, inode: Inode, method: string, path: string) {
 	const entry = yield* getInode(state, inode, method, path);
 	if (entry._tag !== "Directory") {
-		return yield* badResource(method, path);
+		return yield* badResource(method, path, "ENOTDIR");
 	}
 	return entry;
 });
@@ -476,7 +574,7 @@ const linkInode = Effect.fnUntraced(function* (
 	}
 	const entry = yield* getInode(state, inode, method, name);
 	if (entry._tag === "Directory") {
-		return yield* permissionDenied(method, name, "Cannot create a hard link to a directory");
+		return yield* errnoError(method, name, "EPERM", "Cannot create a hard link to a directory");
 	}
 	const now = yield* DateTime.now;
 	const nextParent = { ...parentEntry, entries: HashMap.set(parentEntry.entries, name, inode) };
@@ -493,7 +591,10 @@ const linkInode = Effect.fnUntraced(function* (
 const resolve = Effect.fnUntraced(function* (state: State, path: string, options?: ResolveOptions) {
 	const method = options?.method ?? "resolve";
 	const originalPath = path;
-	if (path.length === 0 || path.includes("\0")) {
+	if (path.includes("\0")) {
+		return yield* nullBytePath(method);
+	}
+	if (path.length === 0) {
 		return yield* notFound(method, path);
 	}
 	let components = path.split("/");
@@ -536,7 +637,7 @@ const resolve = Effect.fnUntraced(function* (state: State, path: string, options
 		if (shouldFollow) {
 			symbolicLinkTraversals += 1;
 			if (symbolicLinkTraversals > MAX_LINK_TRAVERSAL) {
-				return yield* badResource(method, originalPath, "Too many symbolic links");
+				return yield* badResource(method, originalPath, "ELOOP", "Too many symbolic links");
 			}
 			if (entry.target.length === 0) {
 				return yield* notFound(method, originalPath);
@@ -597,13 +698,20 @@ const openMode = (flag: FileSystem.OpenFlag): OpenMode => ({
 	truncate: flag.startsWith("w"),
 });
 
-const descriptorError = (fd: FileDescriptor, method: string, description?: string): PlatformError =>
-	badResource(method, fd, description);
+// node reports a closed descriptor, or one lacking the access an operation
+// needs, as EBADF — except `ftruncate` on a descriptor not open for writing,
+// which is EINVAL on both Linux and macOS.
+const descriptorError = (
+	fd: FileDescriptor,
+	method: string,
+	code: "EBADF" | "EINVAL" | "EISDIR",
+	description: string,
+): PlatformError => errnoError(method, fd, code, description);
 
 const allocateBytes = (length: number, fd: FileDescriptor, method: string) =>
 	Effect.try({
 		try: () => new Uint8Array(length),
-		catch: () => descriptorError(fd, method, "Unable to allocate file bytes"),
+		catch: () => volumeLimit(method, fd, "Unable to allocate file bytes"),
 	});
 
 const getOpenFile = (
@@ -615,14 +723,15 @@ const getOpenFile = (
 	Effect.suspend(() => {
 		const descriptor = Option.getOrUndefined(HashMap.get(state.descriptors, fd));
 		if (descriptor === undefined) {
-			return Effect.fail(descriptorError(fd, method, "File descriptor is closed"));
+			return Effect.fail(descriptorError(fd, method, "EBADF", "File descriptor is closed"));
 		}
 		if (access !== undefined && !descriptor[access]) {
-			return Effect.fail(descriptorError(fd, method, `File descriptor is not ${access}`));
+			const code = method === "truncate" ? "EINVAL" : "EBADF";
+			return Effect.fail(descriptorError(fd, method, code, `File descriptor is not ${access}`));
 		}
 		const entry = findInode(state, descriptor.inode);
 		if (entry === undefined || entry._tag !== "File") {
-			return Effect.fail(descriptorError(fd, method, "File descriptor does not refer to a file"));
+			return Effect.fail(descriptorError(fd, method, "EISDIR", "File descriptor does not refer to a file"));
 		}
 		return Effect.succeed([descriptor, entry]);
 	});
@@ -636,7 +745,10 @@ const withSystemErrorPath = (error: PlatformError, method: string, path: string)
 				pathOrDescriptor: path,
 				description: error.reason.description,
 				syscall: error.reason.syscall,
-				cause: error.reason.cause,
+				cause:
+					error.reason.cause instanceof ErrnoException
+						? new ErrnoException(error.reason.cause.code, path)
+						: error.reason.cause,
 			});
 
 const withOperationError = (error: PlatformError, method: string, path: string): PlatformError =>
@@ -662,19 +774,46 @@ const symbolicLinkTargetPath = (linkPath: string, target: string): string => {
 // entry resolution and removal
 // =============================================================================
 
+// KIT EXTENSION (errno fidelity): a trailing slash asserts "this is a
+// directory". On an existing directory it is harmless and the entry is
+// addressed without it; on an existing non-directory it is ENOTDIR; on a
+// missing entry it is ENOENT, except where Linux reports otherwise for the
+// calling operation (EISDIR when creating a file, ENOTDIR when renaming a
+// non-directory onto it) — the caller passes that code.
 const resolveParent = Effect.fnUntraced(function* (
 	state: State,
 	path: string,
 	method: string,
 	errorPath: string = path,
+	missingWithTrailingSlash: ErrnoCode = "ENOENT",
 ) {
-	if (path.length === 0 || path === "/" || path.endsWith("/") || path.includes("\0")) {
-		return yield* badResource(method, errorPath);
+	if (path.includes("\0")) {
+		return yield* nullBytePath(method);
 	}
-	const components = path.split("/").filter((component) => component.length > 0);
+	if (path.length === 0) {
+		return yield* notFound(method, errorPath);
+	}
+	let entryPath = path;
+	if (path.endsWith("/")) {
+		const trimmed = path.replace(/\/+$/, "");
+		if (trimmed.length === 0) {
+			return yield* badResource(method, errorPath, "EISDIR");
+		}
+		const existing = yield* Effect.result(resolve(state, trimmed, { method }));
+		if (existing._tag === "Failure") {
+			return yield* existing.failure.reason._tag === "NotFound"
+				? errnoError(method, errorPath, missingWithTrailingSlash)
+				: withSystemErrorPath(existing.failure, method, errorPath);
+		}
+		if (existing.success.entry._tag !== "Directory") {
+			return yield* badResource(method, errorPath, "ENOTDIR");
+		}
+		entryPath = trimmed;
+	}
+	const components = entryPath.split("/").filter((component) => component.length > 0);
 	const name = components.pop();
 	if (name === undefined) {
-		return yield* badResource(method, errorPath);
+		return yield* badResource(method, errorPath, "EISDIR");
 	}
 	yield* validateEntryName(method, name, errorPath);
 	const parentPath = components.length === 0 ? "/" : `${path.startsWith("/") ? "/" : ""}${components.join("/")}`;
@@ -682,7 +821,7 @@ const resolveParent = Effect.fnUntraced(function* (
 		Effect.mapError((error) => withSystemErrorPath(error, method, errorPath)),
 	);
 	if (parent.entry._tag !== "Directory") {
-		return yield* badResource(method, errorPath);
+		return yield* badResource(method, errorPath, "ENOTDIR");
 	}
 	return { inode: parent.inode, entry: parent.entry, name, path: parent.path };
 });
@@ -726,10 +865,10 @@ const detachEntry: (
 	depth = 0,
 ) {
 	if (depth > MAX_NESTING_DEPTH) {
-		return yield* badResource(method, path, "Directory tree exceeds the maximum nesting depth");
+		return yield* volumeLimit(method, path, "Directory tree exceeds the maximum nesting depth");
 	}
 	if (target.entry._tag === "Directory" && HashMap.size(target.entry.entries) > 0 && !recursive) {
-		return yield* badResource(method, path, "Directory is not empty");
+		return yield* errnoError(method, path, "ENOTEMPTY", "Directory is not empty");
 	}
 	let nextState = state;
 	if (target.entry._tag === "Directory") {
@@ -783,8 +922,16 @@ const makeDirectory = (volume: Volume) =>
 				let nextState = state;
 				const recursive = options?.recursive === true;
 				const pieces = path.split("/").filter((piece) => piece.length > 0);
-				if (pieces.length === 0 || path.includes("\0")) {
-					return yield* badResource(method, path);
+				if (path.includes("\0")) {
+					return yield* nullBytePath(method);
+				}
+				if (path.length === 0) {
+					return yield* notFound(method, path);
+				}
+				if (pieces.length === 0) {
+					// The root always exists: node answers `mkdir("/")` EEXIST, and a
+					// recursive `mkdir -p /` succeeds as a no-op.
+					return recursive ? transitionResult(nextState, undefined) : yield* alreadyExists(method, path);
 				}
 				const prefix = path.startsWith("/") ? "/" : "";
 				const createdPaths: Array<string> = [];
@@ -793,7 +940,11 @@ const makeDirectory = (volume: Volume) =>
 					const existing = yield* Effect.result(resolve(nextState, candidate, { method }));
 					if (existing._tag === "Success") {
 						if (existing.success.entry._tag !== "Directory") {
-							return yield* alreadyExists(method, path);
+							// A non-directory as the FINAL component is EEXIST; one
+							// earlier in the path cannot hold children — ENOTDIR.
+							return yield* index === pieces.length - 1
+								? alreadyExists(method, path)
+								: badResource(method, path, "ENOTDIR");
 						}
 						if (index === pieces.length - 1) {
 							return recursive ? transitionResult(nextState, undefined) : yield* alreadyExists(method, path);
@@ -882,7 +1033,7 @@ const readLink = (volume: Volume) =>
 			Effect.gen(function* () {
 				const resolved = yield* resolve(state, path, { followFinalSymbolicLink: false, method: "readLink" });
 				if (resolved.entry._tag !== "SymbolicLink") {
-					return yield* badResource("readLink", path);
+					return yield* errnoError("readLink", path, "EINVAL", "Not a symbolic link");
 				}
 				return resolved.entry.target;
 			}),
@@ -908,6 +1059,12 @@ const remove = (volume: Volume) =>
 						return transitionResult(state, undefined);
 					}
 					return yield* target.failure;
+				}
+				// KIT EXTENSION (errno fidelity): node's `fs.rm` refuses ANY directory
+				// without `recursive` — empty or not, `force` or not — with
+				// ERR_FS_EISDIR before it touches the entry.
+				if (target.success.entry._tag === "Directory" && options?.recursive !== true) {
+					return yield* errnoError(method, path, "ERR_FS_EISDIR", "Path is a directory");
 				}
 				const now = yield* DateTime.now;
 				const nextState = yield* detachEntry(state, target.success, now, options?.recursive === true, method, path);
@@ -941,12 +1098,17 @@ const rename = (volume: Volume) =>
 		return yield* volume.mutate((state) =>
 			Effect.gen(function* () {
 				const source = yield* resolveEntry(state, oldPath, method);
-				const destinationParent = yield* resolveParent(state, newPath, method);
+				// A directory may be renamed onto a trailing-slash path that does not
+				// exist yet; a non-directory cannot (ENOTDIR on Linux).
+				const destinationParent =
+					source.entry._tag === "Directory" && /[^/]\/+$/.test(newPath)
+						? yield* resolveParent(state, newPath.replace(/\/+$/, ""), method, newPath)
+						: yield* resolveParent(state, newPath, method, newPath, "ENOTDIR");
 				if (source.parent.ino === destinationParent.inode && source.name === destinationParent.name) {
 					return transitionResult(state, undefined);
 				}
 				if (source.entry._tag === "Directory" && containsDirectory(state, source.entry.ino, destinationParent.inode)) {
-					return yield* badResource(method, newPath, "Cannot move a directory into itself");
+					return yield* errnoError(method, newPath, "EINVAL", "Cannot move a directory into itself");
 				}
 				const destinationInode = findEntry(destinationParent.entry, destinationParent.name);
 				if (destinationInode === source.entry.ino) return transitionResult(state, undefined);
@@ -959,13 +1121,13 @@ const rename = (volume: Volume) =>
 						path: childPath(destinationParent.path, destinationParent.name),
 					};
 					if (source.entry._tag === "Directory" && destination.entry._tag !== "Directory") {
-						return yield* badResource(method, newPath, "Cannot replace a non-directory with a directory");
+						return yield* badResource(method, newPath, "ENOTDIR", "Cannot replace a non-directory with a directory");
 					}
 					if (source.entry._tag !== "Directory" && destination.entry._tag === "Directory") {
-						return yield* badResource(method, newPath, "Cannot replace a directory with a non-directory");
+						return yield* badResource(method, newPath, "EISDIR", "Cannot replace a directory with a non-directory");
 					}
 					if (destination.entry._tag === "Directory" && HashMap.size(destination.entry.entries) > 0) {
-						return yield* badResource(method, newPath, "Directory is not empty");
+						return yield* errnoError(method, newPath, "ENOTEMPTY", "Directory is not empty");
 					}
 				}
 				const now = yield* DateTime.now;
@@ -1028,7 +1190,7 @@ const cloneInode: (
 ) {
 	const { method, sourcePath: path, preserveTimestamps } = context;
 	if (depth > MAX_NESTING_DEPTH) {
-		return yield* badResource(method, path, "Directory tree exceeds the maximum nesting depth");
+		return yield* volumeLimit(method, path, "Directory tree exceeds the maximum nesting depth");
 	}
 	const applyMetadata = (state: State, entry: InodeEntry): State =>
 		setInode(state, {
@@ -1089,7 +1251,7 @@ const validateCopyDirectoryContents: (
 	depth = 0,
 ) {
 	if (depth > MAX_NESTING_DEPTH) {
-		return yield* badResource(method, path, "Directory tree exceeds the maximum nesting depth");
+		return yield* volumeLimit(method, path, "Directory tree exceeds the maximum nesting depth");
 	}
 	for (const [name, sourceInode] of source.entries) {
 		const sourceEntry = yield* getInode(state, sourceInode, method, path);
@@ -1100,10 +1262,26 @@ const validateCopyDirectoryContents: (
 			yield* validateCopyDirectoryContents(state, sourceEntry, destinationEntry, overwrite, method, path, depth + 1);
 			continue;
 		}
-		if (!overwrite) return yield* alreadyExists(method, path);
-		if (sourceEntry._tag === "Directory" || destinationEntry._tag === "Directory") {
-			return yield* badResource(method, path, "Cannot replace a directory with a non-directory");
+		// KIT EXTENSION (errno fidelity): node's `fs.cp` checks entry kinds before
+		// it consults `force`, so a kind mismatch fails even without overwrite.
+		if (sourceEntry._tag === "Directory") {
+			return yield* errnoError(
+				method,
+				path,
+				"ERR_FS_CP_DIR_TO_NON_DIR",
+				"Cannot replace a non-directory with a directory",
+			);
 		}
+		if (destinationEntry._tag === "Directory") {
+			return yield* errnoError(
+				method,
+				path,
+				"ERR_FS_CP_NON_DIR_TO_DIR",
+				"Cannot replace a directory with a non-directory",
+			);
+		}
+		// A file-onto-file conflict without overwrite is left to the caller's
+		// top-level AlreadyExists, so a kind mismatch anywhere in the tree wins.
 	}
 });
 
@@ -1127,7 +1305,7 @@ const copyDirectoryContents: (
 	depth = 0,
 ) {
 	if (depth > MAX_NESTING_DEPTH) {
-		return yield* badResource(method, path, "Directory tree exceeds the maximum nesting depth");
+		return yield* volumeLimit(method, path, "Directory tree exceeds the maximum nesting depth");
 	}
 	let nextState = state;
 	const cloneContext = { method, sourcePath: path, preserveTimestamps } satisfies CloneContext;
@@ -1190,7 +1368,7 @@ const resolveCopyFileDestination = Effect.fnUntraced(function* (state: State, pa
 		);
 		if (unresolved._tag === "Failure") {
 			if (unresolved.failure.reason._tag === "NotFound") {
-				return yield* resolveParent(state, candidate, method, path);
+				return yield* resolveParent(state, candidate, method, path, "EISDIR");
 			}
 			return yield* withSystemErrorPath(unresolved.failure, method, path);
 		}
@@ -1214,7 +1392,7 @@ const copyFileUnlocked = Effect.fnUntraced(function* (state: State, fromPath: st
 		Effect.mapError((error) => withSystemErrorPath(error, method, fromPath)),
 	);
 	if (source.entry._tag !== "File") {
-		return yield* badResource(method, fromPath, "Source is not a file");
+		return yield* badResource(method, fromPath, "EISDIR", "Source is not a file");
 	}
 	const sourceFile = source.entry;
 	const destination = yield* resolveCopyFileDestination(state, toPath, method);
@@ -1224,11 +1402,11 @@ const copyFileUnlocked = Effect.fnUntraced(function* (state: State, fromPath: st
 	if (existingInode !== undefined) {
 		const existing = yield* getInode(state, existingInode, method, toPath);
 		if (existing._tag !== "File") {
-			return yield* badResource(method, toPath, "Destination is a directory");
+			return yield* badResource(method, toPath, "EISDIR", "Destination is a directory");
 		}
 		const data = yield* Effect.try({
 			try: () => sourceFile.data.slice(),
-			catch: () => badResource(method, toPath, "Unable to allocate file bytes"),
+			catch: () => volumeLimit(method, toPath, "Unable to allocate file bytes"),
 		});
 		const now = yield* DateTime.now;
 		return [
@@ -1266,35 +1444,41 @@ const copyEntryUnlocked = Effect.fnUntraced(function* (
 	}).pipe(Effect.mapError((error) => withSystemErrorPath(error, method, fromPath)));
 	const destination = yield* resolveParent(state, toPath, method);
 	if (source.entry._tag === "Directory" && containsDirectory(state, source.inode, destination.inode)) {
-		return yield* badResource(method, toPath, "Cannot copy a directory into itself");
+		return yield* errnoError(method, toPath, "ERR_FS_CP_EINVAL", "Cannot copy a directory into itself");
 	}
 
 	const existingInode = findEntry(destination.entry, destination.name);
 	let existing: InodeEntry | undefined;
 	if (existingInode !== undefined) {
+		existing = yield* getInode(state, existingInode, method, toPath);
+		// KIT EXTENSION (errno fidelity): node's `fs.cp` rejects a source and
+		// destination that are one inode (the same path, or two hard links) and
+		// a directory/non-directory mismatch BEFORE it consults `force`, with its
+		// own ERR_FS_CP_* codes (tag Unknown).
+		if (existingInode === source.inode) {
+			return yield* errnoError(method, toPath, "ERR_FS_CP_EINVAL", "Source and destination are the same entry");
+		}
+		if (source.entry._tag === "Directory" && existing._tag !== "Directory") {
+			return yield* errnoError(method, toPath, "ERR_FS_CP_DIR_TO_NON_DIR", "Destination is not a directory");
+		}
+		if (source.entry._tag !== "Directory" && existing._tag === "Directory") {
+			return yield* errnoError(method, toPath, "ERR_FS_CP_NON_DIR_TO_DIR", "Destination is a directory");
+		}
+		if (source.entry._tag === "Directory" && existing._tag === "Directory") {
+			yield* validateCopyDirectoryContents(state, source.entry, existing, overwrite, method, toPath);
+		}
 		// PORT NOTE: upstream reported `fromPath` here — the one conflict arm in
 		// this function blaming the SOURCE while every sibling arm reports the
 		// destination. The conflict is the existing DESTINATION entry, so the
 		// error names `toPath` (upstream 6573 bug, fixed in this port).
+		// Known divergence, kept: node's `fs.cp` without `force` silently keeps
+		// an existing destination instead of failing.
 		if (!overwrite) return yield* alreadyExists(method, toPath);
-		existing = yield* getInode(state, existingInode, method, toPath);
-		if (existingInode === source.inode) {
-			return source.entry._tag === "Directory"
-				? yield* badResource(method, toPath, "Cannot copy a directory onto itself")
-				: ([state, false] as const);
-		}
 	}
 
-	if (source.entry._tag === "Directory" && existing !== undefined) {
-		if (existing._tag !== "Directory") {
-			return yield* badResource(method, toPath, "Destination is not a directory");
-		}
-		yield* validateCopyDirectoryContents(state, source.entry, existing, overwrite, method, toPath);
+	if (source.entry._tag === "Directory" && existing?._tag === "Directory") {
 		const nextState = yield* copyDirectoryContents(state, source.entry, existing, method, toPath, preserveTimestamps);
 		return [nextState, true] as const;
-	}
-	if (source.entry._tag !== "Directory" && existing?._tag === "Directory") {
-		return yield* badResource(method, toPath, "Destination is a directory");
 	}
 
 	let [nextState, inode] = yield* cloneInode(state, source.entry, {
@@ -1428,7 +1612,7 @@ const openDescriptorUnlocked: (
 					return yield* withSystemErrorPath(resolved.failure, "open", path);
 				}
 				if (resolved.success.entry._tag !== "File") {
-					return yield* badResource("open", path);
+					return yield* badResource("open", path, "EISDIR");
 				}
 				entry = resolved.success.entry;
 				if (mode.truncate) {
@@ -1447,7 +1631,7 @@ const openDescriptorUnlocked: (
 			if (unresolved.failure.reason._tag !== "NotFound" || !mode.create) {
 				return yield* withSystemErrorPath(unresolved.failure, "open", path);
 			}
-			const parent = yield* resolveParent(nextState, candidatePath, "open", path);
+			const parent = yield* resolveParent(nextState, candidatePath, "open", path, "EISDIR");
 			if (HashMap.has(parent.entry.entries, parent.name)) {
 				continue;
 			}
@@ -1587,7 +1771,7 @@ const readDescriptorUnlocked = Effect.fnUntraced(function* (
 	}
 	const position = Number(descriptor.position);
 	if (!Number.isSafeInteger(position) || position < 0) {
-		return yield* descriptorError(fd, method, "Invalid file position");
+		return yield* volumeLimit(method, fd, "Invalid file position");
 	}
 	const now = yield* DateTime.now;
 	const bytesRead = Math.min(length, Math.max(0, entry.data.length - position));
@@ -1625,11 +1809,11 @@ const writeDescriptorUnlocked = Effect.fnUntraced(function* (
 	}
 	const position = descriptor.append ? entry.data.length : Number(descriptor.position);
 	if (!Number.isSafeInteger(position) || position < 0) {
-		return yield* descriptorError(fd, method, "Invalid file position");
+		return yield* volumeLimit(method, fd, "Invalid file position");
 	}
 	const length = position + buffer.length;
 	if (!Number.isSafeInteger(length)) {
-		return yield* descriptorError(fd, method, "File is too large");
+		return yield* volumeLimit(method, fd, "File is too large");
 	}
 	const now = yield* DateTime.now;
 	const data = length > entry.data.length ? yield* allocateBytes(length, fd, method) : entry.data;
@@ -1837,7 +2021,7 @@ const readDirectory = (volume: Volume) =>
 			Effect.gen(function* () {
 				const resolved = yield* resolve(state, path, { method: "readDirectory" });
 				if (resolved.entry._tag !== "Directory") {
-					return yield* badResource("readDirectory", path);
+					return yield* badResource("readDirectory", path, "ENOTDIR");
 				}
 				const nextState = setInode(state, { ...resolved.entry, atime: yield* DateTime.now });
 				return transitionResult(
@@ -1854,7 +2038,7 @@ const readFile = (volume: Volume) =>
 			Effect.gen(function* () {
 				const resolved = yield* resolve(state, path, { method: "readFile" });
 				if (resolved.entry._tag !== "File") {
-					return yield* badResource("readFile", path);
+					return yield* badResource("readFile", path, "EISDIR");
 				}
 				const nextState = setInode(state, { ...resolved.entry, atime: yield* DateTime.now });
 				return transitionResult(nextState, resolved.entry.data.slice());
@@ -1893,17 +2077,19 @@ const writeFile =
 			)
 			.pipe(Effect.mapError((error) => withOperationError(error, "writeFile", path)));
 
+// node validates the length as an integer, then clamps a negative one to 0
+// (`truncate(path, -1)` empties the file rather than failing).
 const validateSize = (method: string, size: number | undefined) => {
 	const value = size ?? 0;
-	return Number.isSafeInteger(value) && value >= 0
-		? Effect.succeed(value)
-		: Effect.fail(argumentError(method, "size must be a non-negative safe integer"));
+	return Number.isSafeInteger(value)
+		? Effect.succeed(Math.max(0, value))
+		: Effect.fail(argumentError(method, "size must be a safe integer"));
 };
 
 const allocatePathBytes = (length: number, method: string, path: string) =>
 	Effect.try({
 		try: () => new Uint8Array(length),
-		catch: () => badResource(method, path, "Unable to allocate file bytes"),
+		catch: () => volumeLimit(method, path, "Unable to allocate file bytes"),
 	});
 
 const truncate = (volume: Volume) =>
@@ -1913,7 +2099,7 @@ const truncate = (volume: Volume) =>
 			Effect.gen(function* () {
 				const resolved = yield* resolve(state, path, { method: "truncate" });
 				if (resolved.entry._tag !== "File") {
-					return yield* badResource("truncate", path);
+					return yield* badResource("truncate", path, "EISDIR");
 				}
 				const data = yield* allocatePathBytes(size, "truncate", path);
 				const now = yield* DateTime.now;
@@ -1990,11 +2176,11 @@ const dateTimeInput = (method: string, name: string, value: Date | number) => {
 
 const utimes = (volume: Volume) =>
 	Effect.fnUntraced(function* (path: string, atime: Date | number, mtime: Date | number) {
-		const accessTime = yield* dateTimeInput("utimes", "atime", atime);
-		const modificationTime = yield* dateTimeInput("utimes", "mtime", mtime);
+		const accessTime = yield* dateTimeInput("utime", "atime", atime);
+		const modificationTime = yield* dateTimeInput("utime", "mtime", mtime);
 		return yield* volume.mutate((state) =>
 			Effect.gen(function* () {
-				const resolved = yield* resolve(state, path, { method: "utimes" });
+				const resolved = yield* resolve(state, path, { method: "utime" });
 				const now = yield* DateTime.now;
 				const nextState = setInode(state, {
 					...resolved.entry,
@@ -2029,7 +2215,7 @@ const allocateTempDirectory = Effect.fnUntraced(function* (
 ) {
 	const parent = yield* resolve(state, parentPath, { method });
 	if (parent.entry._tag !== "Directory") {
-		return yield* badResource(method, parentPath);
+		return yield* badResource(method, parentPath, "ENOTDIR");
 	}
 	let nextState = state;
 	while (true) {
@@ -2470,10 +2656,17 @@ const glob = (volume: Volume) =>
 		const rootPath = options?.root ?? "/";
 		return yield* volume.withState((state) =>
 			Effect.gen(function* () {
-				const resolved = yield* resolve(state, rootPath, { method: "glob" });
-				if (resolved.entry._tag !== "Directory") {
-					return yield* badResource("glob", rootPath);
+				// KIT EXTENSION (errno fidelity): node's `fs.glob` answers an empty
+				// match set for a root that is missing, not a directory, or
+				// unresolvable — it never fails on the root. A malformed root (a NUL
+				// byte) is still a BadArgument.
+				const root = yield* Effect.result(resolve(state, rootPath, { method: "glob" }));
+				if (root._tag === "Failure") {
+					if (root.failure.reason._tag === "BadArgument") return yield* root.failure;
+					return [];
 				}
+				const resolved = root.success;
+				if (resolved.entry._tag !== "Directory") return [];
 				const rootExcluded = excludes.some((pattern) => matchesGlob(pattern, [], true));
 				if (rootExcluded) return [];
 				const matches: Array<string> = includes.some((pattern) => matchesGlob(pattern, [], true)) ? ["."] : [];

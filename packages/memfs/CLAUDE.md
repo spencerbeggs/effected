@@ -17,6 +17,7 @@ In-memory implementation of core Effect's `FileSystem` service: one module, `Mem
 - **Honest absence (the #249 contract)**: any read/stat/open-without-create of an unseeded path fails typed `NotFound`. Nothing may fabricate content — the package exists because a hand stub answering `""` caused a real silent-changeset-drop bug.
 - **Typed errors always**: malformed input is `badArgument`/`systemError`, never a defect; the only `Effect.die` sites are inherited internal-invariant violations.
 - **Deltas from the pinned upstream live in the design doc's adaptation ledger** (watch honors `recursive`; depth guards at `MAX_NESTING_DEPTH = 256`; seeding API; `access` options documented as ignored). Anything else diverging from `c0528bd5` is drift, not design.
+- **Errno fidelity (ledger entry 10)**: every failure the real platform raises is built by `errnoError(method, path, code)` from the errno node reports; the `_tag` is derived from the code by the node adapter's own mapping and the code rides on `cause.code`. Never hand-pick a tag at a new site — name the errno, and add the case to `__test__/ErrnoParityContract.ts`, which runs against both implementations.
 - **Never edit the attribution/license notice text** in the ported file headers.
 - **Ledger entry 10 (0.5.0)**: `VolumeEntrySnapshot` carries `mtime`, and `collectEntrySnapshots` now emits the **root** entry — released 0.4.0 answered `has("/") === false`.
 
