@@ -280,7 +280,12 @@ make it with `McpToolkit.unionTool` and write its handler with
 `McpToolkit.unionHandler`: the tool is a `Tool.dynamic` served with the
 union's strict, object-rooted JSON Schema, and under `McpToolkit.layer` a
 bad call is rejected exactly as a `Tool.make` decode failure is (`-32602` on
-`2025-06-18`, `isError` later). For a hand-written `Tool.dynamic` whose raw
+`2025-06-18`, `isError` later). `unionHandler` runs the same unknown-keys
+check and strict decode itself, so a handler called directly from a test,
+or registered through core's `McpServer.toolkit`, fails with the identical
+per-level `ToolInputSchema.formatUnknownKeys` message (a declared `isError`
+there); give it the same `unknownKeyMessage` as the layer if you customise
+one. For a hand-written `Tool.dynamic` whose raw
 JSON Schema is a union, rewrite it with `ToolInputSchema.objectRooted`
 before registering.
 

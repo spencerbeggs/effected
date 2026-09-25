@@ -155,6 +155,31 @@ describe("McpGuard.run with a host double", () => {
 		assert.match(stderr[0] ?? "", /^srv: startup failed: Error: cannot load/);
 	});
 
+	it("an injectCrash with an unknown kind or phase raises nothing and still loads", async () => {
+		const { host, exits, stderr } = fakeHost();
+		const { runMain, fibers } = forkingRunMain();
+		let loads = 0;
+		for (const injectCrash of [
+			{ at: "load", kind: "bogus" },
+			{ at: "later", kind: "uncaughtException" },
+		] as unknown as ReadonlyArray<McpGuardRunOptions<never, never>["injectCrash"]>) {
+			await McpGuard.run({
+				label: "srv",
+				host,
+				injectCrash,
+				load: async () => {
+					loads += 1;
+					return { layer: Layer.empty, runMain };
+				},
+			});
+		}
+		await settle();
+		assert.strictEqual(loads, 2);
+		assert.deepStrictEqual(exits, []);
+		assert.deepStrictEqual(stderr, []);
+		await stop(fibers);
+	});
+
 	it("uses the server's formatter once loaded, and falls back if it throws", async () => {
 		const { host, stderr, fire } = fakeHost();
 		const { runMain } = forkingRunMain();
@@ -200,7 +225,9 @@ const stderrShows = (server: McpProcess, text: string) =>
 describe("McpGuard.run in a real process", () => {
 	it.live("exitBeforeConnect: an uncaught exception after connect is logged and the server keeps serving", () =>
 		Effect.gen(function* () {
-			const server = yield* McpProcess.spawn(guardMain("--policy=exitBeforeConnect", "--inject=uncaughtException"));
+			const server = yield* McpProcess.spawn(
+				guardMain("--policy=exitBeforeConnect", "--inject=connected:uncaughtException"),
+			);
 			yield* stderrShows(server, "uncaughtException");
 			const response = yield* server.handshake();
 			assert.isDefined(response.result);
@@ -215,7 +242,7 @@ describe("McpGuard.run in a real process", () => {
 
 	it.live("exit: the same injected exception ends the process with 1 (control)", () =>
 		Effect.gen(function* () {
-			const server = yield* McpProcess.spawn(guardMain("--policy=exit", "--inject=uncaughtException"));
+			const server = yield* McpProcess.spawn(guardMain("--policy=exit", "--inject=connected:uncaughtException"));
 			assert.strictEqual(yield* server.exitCode, 1);
 			assert.include(yield* server.stderrFinal, "guard-fixture: uncaughtException");
 		}).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
@@ -223,7 +250,7 @@ describe("McpGuard.run in a real process", () => {
 
 	it.live("onRejection log: an injected rejection is logged and the server keeps serving", () =>
 		Effect.gen(function* () {
-			const server = yield* McpProcess.spawn(guardMain("--rejection=log", "--inject=unhandledRejection"));
+			const server = yield* McpProcess.spawn(guardMain("--rejection=log", "--inject=connected:unhandledRejection"));
 			yield* stderrShows(server, "unhandledRejection");
 			assert.isDefined((yield* server.handshake()).result);
 			yield* server.closeStdin;
@@ -233,12 +260,62 @@ describe("McpGuard.run in a real process", () => {
 
 	it.live("onRejection default: an injected rejection exits 1", () =>
 		Effect.gen(function* () {
-			const server = yield* McpProcess.spawn(guardMain("--inject=unhandledRejection"));
+			const server = yield* McpProcess.spawn(guardMain("--inject=connected:unhandledRejection"));
 			assert.strictEqual(yield* server.exitCode, 1);
 			assert.include(
 				yield* server.stderrFinal,
 				"guard-fixture: unhandledRejection: formatted([injected] unhandledRejection)",
 			);
+		}).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
+	it.live("exitBeforeConnect: an injected rejection once connected is logged and the server keeps serving", () =>
+		Effect.gen(function* () {
+			const server = yield* McpProcess.spawn(
+				guardMain("--rejection=exitBeforeConnect", "--inject=connected:unhandledRejection"),
+			);
+			yield* stderrShows(server, "unhandledRejection");
+			assert.isDefined((yield* server.handshake()).result);
+			yield* server.closeStdin;
+			assert.strictEqual(yield* server.exitCode, 0);
+		}).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
+	// injectCrash at "load": raised before load() is called, so the pre-connect half of every policy applies.
+	const atLoad = [
+		{ kind: "uncaughtException", flags: ["--policy=exitBeforeConnect"] },
+		{ kind: "uncaughtException", flags: ["--policy=exit"] },
+		{ kind: "unhandledRejection", flags: ["--rejection=exitBeforeConnect"] },
+		{ kind: "unhandledRejection", flags: ["--rejection=exit"] },
+	] as const;
+	for (const { kind, flags } of atLoad) {
+		it.live(`${flags.join(" ")}: an injected ${kind} at load exits 1 before load() runs`, () =>
+			Effect.gen(function* () {
+				const server = yield* McpProcess.spawn(guardMain(...flags, `--inject=load:${kind}`, "--trace-load"));
+				assert.strictEqual(yield* server.exitCode, 1);
+				const stderr = yield* server.stderrFinal;
+				// Reported by the guard's own formatter: no server `format` is loaded yet.
+				assert.include(stderr, `guard-fixture: ${kind}`);
+				assert.include(stderr, `Error: [injected] ${kind}`);
+				assert.notInclude(stderr, "formatted(");
+				assert.notInclude(stderr, "load ran");
+			}).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
+		);
+	}
+
+	it.live("onRejection log: an injected rejection at load is logged, then the server loads and serves", () =>
+		Effect.gen(function* () {
+			const server = yield* McpProcess.spawn(
+				guardMain("--policy=exitBeforeConnect", "--rejection=log", "--inject=load:unhandledRejection", "--trace-load"),
+			);
+			yield* stderrShows(server, "load ran");
+			assert.isDefined((yield* server.handshake()).result);
+			yield* server.closeStdin;
+			assert.strictEqual(yield* server.exitCode, 0);
+			const stderr = yield* server.stderrFinal;
+			const report = stderr.indexOf("guard-fixture: unhandledRejection: Error: [injected] unhandledRejection");
+			assert.isAtLeast(report, 0);
+			assert.isBelow(report, stderr.indexOf("guard-fixture: load ran"), "the crash is handled before load() is called");
 		}).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(NodeServices.layer)),
 	);
 

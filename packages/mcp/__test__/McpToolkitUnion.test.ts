@@ -205,7 +205,13 @@ describe("McpToolkit.unionTool", () => {
 				assert.isUndefined(response.error);
 				const result = response.result as ToolResult;
 				assert.isTrue(result.isError);
-				assert.include(result.content[0]?.text ?? "", "Invalid parameters for tool 'note':");
+				assert.strictEqual(
+					result.content[0]?.text,
+					"Unrecognized parameter(s): extra. Accepted params: action, content, citations.",
+				);
+				const badValue = (yield* harness.callTool("note", { action: "record", content: 42 })).result as ToolResult;
+				assert.isTrue(badValue.isError);
+				assert.include(badValue.content[0]?.text ?? "", "Invalid parameters for tool 'note':");
 				assert.deepStrictEqual(
 					((yield* harness.callTool("note", { action: "list", limit: 3 })).result as ToolResult).structuredContent,
 					{ kind: "listed", limit: 3 },
@@ -215,16 +221,60 @@ describe("McpToolkit.unionTool", () => {
 	}
 });
 
+/** Unknown keys at the root and inside an array item: core's own decode names only the first. */
+const TWO_LEVELS = { action: "record", content: "hi", extra: 1, citations: [{ id: "a", line: 1, typo: true }] };
+
 describe("McpToolkit.unionHandler", () => {
-	it.effect("fails InvalidParams in core's wording on an excess key", () =>
+	it.effect("names every unknown key, per level, in the formatUnknownKeys report", () =>
 		Effect.gen(function* () {
 			const handler = McpToolkit.unionHandler(Note, (params) => Effect.succeed(params.action));
-			const error = yield* Effect.flip(handler({ action: "list", nope: 1 }));
+			const error = yield* Effect.flip(handler(TWO_LEVELS));
 			assert.instanceOf(error, McpSchema.InvalidParams);
-			assert.include(error.message, "Invalid parameters for tool 'note':");
+			const expected = ToolInputSchema.formatUnknownKeys(ToolInputSchema.unknownKeys(TWO_LEVELS, Note.jsonSchema));
+			assert.strictEqual(error.message, expected);
+			assert.include(error.message, "extra");
+			assert.include(error.message, "citations.0.typo");
+			assert.notInclude(error.message, "Invalid parameters for tool");
 			assert.strictEqual(yield* handler({ action: "list" }), "list");
 		}),
 	);
+
+	it.effect("a bad value with no unknown key still fails in core's Tool.make wording", () =>
+		Effect.gen(function* () {
+			const handler = McpToolkit.unionHandler(Note, (params) => Effect.succeed(params.action));
+			const error = yield* Effect.flip(handler({ action: "record", content: 42 }));
+			assert.instanceOf(error, McpSchema.InvalidParams);
+			assert.include(error.message, "Invalid parameters for tool 'note':");
+		}),
+	);
+
+	it.effect("honours a custom unknownKeyMessage", () =>
+		Effect.gen(function* () {
+			const handler = McpToolkit.unionHandler(Note, (params) => Effect.succeed(params.action), {
+				unknownKeyMessage: (levels) =>
+					`custom:${levels.map((level) => [...level.path, ...level.unknown].join(".")).join("|")}`,
+			});
+			const error = yield* Effect.flip(handler(TWO_LEVELS));
+			assert.strictEqual(error.message, "custom:extra|citations.0.typo");
+		}),
+	);
+
+	for (const protocol of PROTOCOLS) {
+		it.effect(
+			`${protocol.protocolVersion}: a direct call, McpServer.toolkit and McpToolkit.layer report identically`,
+			() =>
+				Effect.gen(function* () {
+					const handler = McpToolkit.unionHandler(Note, (params) => Effect.succeed(params.action));
+					const direct = (yield* Effect.flip(handler(TWO_LEVELS))).message;
+					const viaCore = yield* McpHarness.make(coreServer, { protocol });
+					yield* viaCore.initialize;
+					const viaLayer = yield* McpHarness.make(kitServer, { protocol });
+					yield* viaLayer.initialize;
+					assert.strictEqual(rejection(yield* viaCore.callTool("note", TWO_LEVELS)).text, direct);
+					assert.strictEqual(rejection(yield* viaLayer.callTool("note", TWO_LEVELS)).text, direct);
+				}),
+		);
+	}
 
 	it.effect("treats a missing payload as an empty object", () =>
 		Effect.gen(function* () {

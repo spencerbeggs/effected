@@ -252,7 +252,12 @@ Some behaviour worth knowing:
 - Carrying on after a crash works because the platform `runMain` holds the process open while the server fiber lives.
 - A layer that fails to build is still reported by `McpStdio.launch`, on stderr.
 
-To test the guards themselves, pass `injectCrashAfterConnect: "uncaughtException"` (or `"unhandledRejection"`). It raises one on a timer just after the server is serving. Wire it to an environment variable only your test sets.
+To test the guards themselves, pass `injectCrash: { at, kind }`, with `kind` either `"uncaughtException"` or `"unhandledRejection"`. Wire it to an environment variable only your test sets; unset, it does nothing.
+
+- `at: "load"` raises it once both listeners are installed and before `load()` is called, and `load()` waits until the guard has handled it. The pre-connect half of the policy applies: `"exitBeforeConnect"` and `"exit"` both exit 1 here, and only `onRejection: "log"` lets the process go on to load and serve. The report uses the guard's own formatter, because no `format` is loaded yet.
+- `at: "connected"` raises it on a timer just after the server is serving, where `"exitBeforeConnect"` logs and keeps serving.
+
+Together they drive both halves of `"exitBeforeConnect"` in a real child process.
 
 ## Strict input
 
@@ -386,7 +391,7 @@ const Handlers = Kit.toLayer({
 
 `annotate` and `addDependency` keep the union on the tool, so a chained `.annotate(Tool.Title, …)` still hands `unionHandler` the decoded type.
 
-Registered through `McpToolkit.layer`, a union tool is checked like a strict `Tool.make` tool: every unknown key at every depth is named in one `InvalidParams`, then the union is decoded strictly, both before the handler runs. Bad arguments therefore answer as a `Tool.make` decode failure does: a JSON-RPC `-32602` on `2025-06-18`, an `isError` result on the later revisions. Registered through core's `McpServer.toolkit` instead, the handler still decodes strictly, but its `InvalidParams` is then a declared failure, an `isError` result on every revision. Never annotate a union tool `Tool.Strict` true: core dies at registration on a strict tool with a raw JSON Schema.
+Registered through `McpToolkit.layer`, a union tool is checked like a strict `Tool.make` tool: every unknown key at every depth is named in one `InvalidParams`, then the union is decoded strictly, both before the handler runs. Bad arguments therefore answer as a `Tool.make` decode failure does: a JSON-RPC `-32602` on `2025-06-18`, an `isError` result on the later revisions. Registered through core's `McpServer.toolkit` instead, or called directly (a test helper, say), `unionHandler` runs the same check itself, so the message is identical: every unknown key named per level in the `ToolInputSchema.formatUnknownKeys` report, then core's `Tool.make` wording for a bad value. Under `McpServer.toolkit` that `InvalidParams` is a declared failure, an `isError` result on every revision. A custom rendering goes in `unionHandler`'s third argument, `{ unknownKeyMessage }`, as it does in `McpToolkit.layer`'s options: pass the same function to both. Never annotate a union tool `Tool.Strict` true: core dies at registration on a strict tool with a raw JSON Schema.
 
 ## Union success schemas
 

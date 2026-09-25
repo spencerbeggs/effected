@@ -69,13 +69,49 @@ export interface McpGuardRunOptions<ROut, E> {
 	 */
 	readonly load: () => Promise<McpGuardedServer<ROut, E>>;
 	/**
-	 * For a test of the guards themselves: `"uncaughtException"` or
-	 * `"unhandledRejection"` raises one on a timer right after the server is
-	 * serving. Any other value, or `undefined`, does nothing. Wire it to an
-	 * environment variable only a test sets.
+	 * For a test of the guards themselves: raise one stray `kind` at `at`, so
+	 * both halves of a policy can be driven end to end in a real process.
+	 *
+	 * @remarks
+	 * - `"load"` raises it once both listeners are installed and before
+	 *   `load()` is called, then waits for the guard to handle it: `load()`
+	 *   is not called until the listener has run. The pre-connect half of
+	 *   the policy applies, so `"exitBeforeConnect"` exits 1 here, and only
+	 *   an `onRejection` of `"log"` lets the process go on to load and serve.
+	 *   The report uses the guard's own formatter, since no `format` is
+	 *   loaded yet.
+	 * - `"connected"` raises it on a timer right after the server is
+	 *   serving, where `"exitBeforeConnect"` logs and keeps serving.
+	 *
+	 * An uncaught exception is thrown from a timer callback; a rejection is
+	 * a `Promise.reject` nothing handles. Either carries an `[injected]`
+	 * message. `undefined`, or an `at` or `kind` outside these values, does
+	 * nothing at all. Wire it to an environment variable only a test sets.
 	 */
-	readonly injectCrashAfterConnect?: string | undefined;
+	readonly injectCrash?:
+		| {
+				readonly at: "load" | "connected";
+				readonly kind: "uncaughtException" | "unhandledRejection";
+		  }
+		| undefined;
 }
+
+/** Raise one stray crash of `kind` for the host's listener to catch; anything else does nothing. */
+const raise = (kind: unknown): boolean => {
+	if (kind === "uncaughtException") {
+		setTimeout(() => {
+			throw new Error("[injected] uncaughtException");
+		}, 0);
+		return true;
+	}
+	if (kind === "unhandledRejection") {
+		setTimeout(() => {
+			void Promise.reject(new Error("[injected] unhandledRejection"));
+		}, 0);
+		return true;
+	}
+	return false;
+};
 
 const fallbackFormat = (error: unknown): string =>
 	error instanceof Error ? (error.stack ?? error.message) : String(error);
@@ -94,6 +130,8 @@ const fallbackFormat = (error: unknown): string =>
  *
  * - "Connected" means the whole server layer has built, so stdin is being
  *   read. That is before any client sends `initialize`.
+ * - `injectCrash` drives either half of the policy from a test, before
+ *   `load()` or once connected; unset, it does nothing.
  * - A `load()` that rejects is reported as `startup failed` and exits 1
  *   whatever the policy. Left to a log-only rejection listener, it would
  *   let the event loop drain and exit 0 with no server.
@@ -146,27 +184,31 @@ export class McpGuard {
 		const exits = (mode: "exit" | "exitBeforeConnect" | "log"): boolean =>
 			mode === "exit" || (mode === "exitBeforeConnect" && !connected);
 
+		// Set only while an injected "load" crash is awaited; a listener that did not exit releases it.
+		let handled: (() => void) | undefined;
+
 		host.on("uncaughtException", (error, origin) => {
 			host.stderr.write(`${label}: uncaughtException (${origin}): ${describe(error)}\n`);
 			if (exits(onUncaught)) host.exit(1);
+			handled?.();
 		});
 		host.on("unhandledRejection", (reason) => {
 			host.stderr.write(`${label}: unhandledRejection: ${describe(reason)}\n`);
 			if (exits(onRejection)) host.exit(1);
+			handled?.();
 		});
 
-		const inject = options.injectCrashAfterConnect;
+		const inject = options.injectCrash;
+		if (inject?.at === "load") {
+			await new Promise<void>((resolve) => {
+				handled = resolve;
+				if (!raise(inject.kind)) resolve();
+			});
+			handled = undefined;
+		}
 		const onReady = (): void => {
 			connected = true;
-			if (inject === "uncaughtException") {
-				setTimeout(() => {
-					throw new Error("[injected] uncaughtException");
-				}, 0);
-			} else if (inject === "unhandledRejection") {
-				setTimeout(() => {
-					void Promise.reject(new Error("[injected] unhandledRejection"));
-				}, 0);
-			}
+			if (inject?.at === "connected") raise(inject.kind);
 		};
 
 		try {

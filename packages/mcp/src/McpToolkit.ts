@@ -88,6 +88,20 @@ export interface UnionToolOptions<
 	readonly dependencies?: Dependencies | undefined;
 }
 
+/**
+ * Options for {@link McpToolkit.unionHandler}.
+ *
+ * @public
+ */
+export interface UnionHandlerOptions {
+	/**
+	 * Replaces the default `ToolInputSchema.formatUnknownKeys` rendering, as
+	 * {@link McpToolkitOptions.unknownKeyMessage} does for the layer. Pass the
+	 * same function to both for one report on every path.
+	 */
+	readonly unknownKeyMessage?: ((levels: ReadonlyArray<UnknownKeysLevel>) => string) | undefined;
+}
+
 /** The union a {@link McpToolkit.unionTool} decodes with; read by the `McpToolkit.layer` decorator. */
 const UnionParameters = Context.Reference<Schema.Decoder<unknown> | undefined>("@effected/mcp/UnionParameters", {
 	defaultValue: () => undefined,
@@ -109,6 +123,35 @@ const unionInputJsonSchema = (parameters: Schema.Decoder<unknown>): JsonSchema.J
 const invalidParameters = (name: string, message: string): McpSchema.InvalidParams =>
 	// Core's own wording for a `Tool.make` decode failure (`AiError.ToolParameterValidationError`).
 	new McpSchema.InvalidParams({ message: `Invalid parameters for tool '${name}': ${message}` });
+
+/** The rendering both union paths use when the caller names none: `ToolInputSchema.formatUnknownKeys`. */
+const defaultUnknownKeyMessage = (levels: ReadonlyArray<UnknownKeysLevel>): string =>
+	ToolInputSchema.formatUnknownKeys(levels);
+
+/**
+ * The one decode a union tool's payload gets, shared by the `McpToolkit.layer`
+ * decorator and {@link McpToolkit.unionHandler}: every unknown key at every
+ * depth named in one `InvalidParams` (walked over the served `inputSchema`),
+ * then the union's strict decode, whose failure is worded as core words a
+ * `Tool.make` one. Suspended, so a throwing `format` dies inside the call.
+ */
+const decodeUnionPayload = <A>(
+	name: string,
+	union: Schema.Decoder<A>,
+	inputSchema: JsonSchema.JsonSchema,
+	format: (levels: ReadonlyArray<UnknownKeysLevel>) => string,
+): ((payload: unknown) => Effect.Effect<A, McpSchema.InvalidParams>) => {
+	const decode = Schema.decodeUnknownEffect(union);
+	return (payload) =>
+		Effect.suspend(() => {
+			const raw = payload ?? {};
+			const levels = ToolInputSchema.unknownKeys(raw, inputSchema);
+			if (levels.length > 0) return Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }));
+			return decode(raw, { onExcessProperty: "error" }).pipe(
+				Effect.mapError((error) => invalidParameters(name, error.message)),
+			);
+		});
+};
 
 // Set from probe P2: Claude Code 2.1.281 sends a tool call's `arguments` with
 // exactly the declared keys and keeps every extra under `params._meta`, so
@@ -243,15 +286,21 @@ export class McpToolkit {
 	};
 
 	/**
-	 * The handler for a {@link McpToolkit.unionTool}: decodes the raw payload
-	 * with the tool's union, `onExcessProperty: "error"`, and passes the
+	 * The handler for a {@link McpToolkit.unionTool}: checks and decodes the
+	 * raw payload exactly as {@link McpToolkit.layer} does, and passes the
 	 * decoded member to `handler`.
 	 *
 	 * @remarks
-	 * A payload that does not decode fails with `McpSchema.InvalidParams`,
-	 * worded as core words a `Tool.make` decode failure. Under
-	 * {@link McpToolkit.layer} that never happens here: the layer has
-	 * already rejected the call before the handler runs.
+	 * A payload carrying unknown keys fails with one `McpSchema.InvalidParams`
+	 * naming every one of them, at every depth, in the
+	 * `ToolInputSchema.formatUnknownKeys` report (or `options.unknownKeyMessage`'s),
+	 * walked over the tool's served input schema. A payload that then does
+	 * not decode fails `InvalidParams` worded as core words a `Tool.make`
+	 * decode failure. It is the same implementation the layer runs, so a
+	 * handler called directly (a test helper, or a toolkit registered through
+	 * core's `McpServer.toolkit`) reports what a client of the layer sees.
+	 * Under {@link McpToolkit.layer} the layer has already rejected a bad
+	 * call before the handler runs, and its own `unknownKeyMessage` wins.
 	 */
 	static readonly unionHandler = <
 		Name extends string,
@@ -265,13 +314,15 @@ export class McpToolkit {
 	>(
 		tool: UnionTool<Name, P, S, F, R>,
 		handler: (params: P["Type"]) => Effect.Effect<A, E, RH>,
+		options: UnionHandlerOptions = {},
 	): ((payload: unknown) => Effect.Effect<A, E | McpSchema.InvalidParams, RH>) => {
-		const decode = Schema.decodeUnknownEffect(tool.unionParameters);
-		return (payload) =>
-			decode(payload ?? {}, { onExcessProperty: "error" }).pipe(
-				Effect.mapError((error) => invalidParameters(tool.name, error.message)),
-				Effect.flatMap(handler),
-			);
+		const check = decodeUnionPayload(
+			tool.name,
+			tool.unionParameters,
+			tool.jsonSchema,
+			options.unknownKeyMessage ?? defaultUnknownKeyMessage,
+		);
+		return (payload) => check(payload).pipe(Effect.flatMap(handler));
 	};
 
 	/**
@@ -289,9 +340,7 @@ export class McpToolkit {
 		Layer.effectDiscard(
 			Effect.gen(function* () {
 				const registry = yield* McpServer.McpServer;
-				const format =
-					options.unknownKeyMessage ??
-					((levels: ReadonlyArray<UnknownKeysLevel>) => ToolInputSchema.formatUnknownKeys(levels));
+				const format = options.unknownKeyMessage ?? defaultUnknownKeyMessage;
 				const decorated = McpServer.McpServer.of({
 					...registry,
 					addTool: (registration) => {
@@ -299,20 +348,10 @@ export class McpToolkit {
 						if (union !== undefined) {
 							// Outside core's handler, so an InvalidParams here lands where core's own
 							// parameter failure does: -32602 on 2025-06-18, isError on later revisions.
-							const decode = Schema.decodeUnknownEffect(union);
-							const name = registration.tool.name;
+							const check = decodeUnionPayload(registration.tool.name, union, registration.tool.inputSchema, format);
 							return registry.addTool({
 								...registration,
-								handle: (payload) =>
-									Effect.suspend(() => {
-										const raw = payload ?? {};
-										const levels = ToolInputSchema.unknownKeys(raw, registration.tool.inputSchema);
-										if (levels.length > 0) return Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }));
-										return decode(raw, { onExcessProperty: "error" }).pipe(
-											Effect.mapError((error) => invalidParameters(name, error.message)),
-											Effect.andThen(registration.handle(payload)),
-										);
-									}),
+								handle: (payload) => check(payload).pipe(Effect.andThen(registration.handle(payload))),
 							});
 						}
 						// Same predicate core uses to pick strict decoding (`Tool.getStrictMode(tool) === true`):

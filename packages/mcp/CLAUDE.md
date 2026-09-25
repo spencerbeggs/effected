@@ -41,7 +41,7 @@ wire message; nothing else in `@effected/engine` is consumed yet.
 `truncate`, `ECHO_LIMIT`, `ENGINE_ECHO_LIMIT`), `ToolInputSchema`
 (`unknownKeys`, `formatUnknownKeys`, `objectRooted`), `ToolOutputSchema`
 (`objectRooted`), `ToolRefusal` (`refuse`), plus the
-`McpStdioOptions`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionTool`,
+`McpStdioOptions`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionHandlerOptions`, `UnionTool`,
 `UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
 types. `McpToolkit` also carries `unionTool` and `unionHandler`.
 

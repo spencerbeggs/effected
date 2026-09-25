@@ -408,10 +408,22 @@ await McpGuard.run({
 })
 ~~~
 
-Both policy fields default to `"exit"`. `injectCrashAfterConnect` raises an
-exception or rejection on a timer just after the server is serving, for an
-end-to-end test of the guards; wire it to an environment variable only the
-test sets.
+Both policy fields default to `"exit"`. `injectCrash: { at, kind }` raises
+an `"uncaughtException"` or an `"unhandledRejection"` for an end-to-end test
+of the guards; wire it to an environment variable only the test sets, and
+leave it unset everywhere else, where it does nothing.
+
+- `at: "load"` raises it after both listeners are installed and before
+  `load()` is called, and `load()` waits until the guard has handled it.
+  The pre-connect half of the policy applies, so `"exitBeforeConnect"`
+  exits 1; only `onRejection: "log"` goes on to load and serve. The report
+  uses the guard's own formatter, since no `format` is loaded yet.
+- `at: "connected"` raises it on a timer just after the server is serving,
+  where `"exitBeforeConnect"` logs and keeps serving.
+
+Test both phases under the same `"exitBeforeConnect"` policy: exit 1 at
+`"load"` and a handshake that still succeeds at `"connected"` is the pair
+that proves the policy switches on the connect signal.
 
 ## Project directory
 

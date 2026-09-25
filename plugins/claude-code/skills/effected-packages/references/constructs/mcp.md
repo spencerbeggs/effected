@@ -32,6 +32,7 @@
 | `ToolInputSchema` | Class | Pure walkers over a tool's served JSON Schema: every unknown key at every depth, a message naming them all, and an object-rooted form of a union. | find unknown tool arguments at every depth, object-root a union input |
 | `ToolOutputSchema` | Class | Shaping for a tool's `success` schema, so the `outputSchema` core serves is one every client accepts. | object-root a union tool success schema so outputSchema is served |
 | `ToolRefusal` | Class | A tool call refused for a reason the caller can fix: the kit's ready-made declared failure, built on `ToolFailure.fields`. | declared tool refusal with remediation in the message, survives error scrubbing |
+| `UnionHandlerOptions` | Interface | Options for `McpToolkit.unionHandler`. | |
 | `UnionTool` | Interface | A `Tool.dynamic` made by `McpToolkit.unionTool`: served with the strict, object-rooted JSON Schema of a `Schema.Union` of objects, and carrying that union so `McpToolkit.unionHandler` can decode it. | |
 | `UnionToolOptions` | Interface | Options for `McpToolkit.unionTool`. | |
 | `UnknownKeysLevel` | Interface | The unknown keys found at one object level of a tool-call payload. | |
