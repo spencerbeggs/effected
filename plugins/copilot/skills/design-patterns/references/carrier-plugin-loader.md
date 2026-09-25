@@ -47,8 +47,12 @@ The loader script's job, in order:
    (see
    [carrier-entry-contract.md](./carrier-entry-contract.md#only-the-carrier-declares-a-bin)),
    and `npx <package>` runs a package's *own* bin, so `npx @scope/mcp` has
-   nothing to run once the front end stops declaring one. `-p` installs the
-   carrier and the trailing name picks its bin. It also means the fallback
+   nothing to run once the front end stops declaring one: npm fails
+   `could not determine executable to run`. Plain `npx @scope/plugin` fails
+   the same way, because the carrier declares several bins and none named
+   after the package. `-p` installs the carrier and the trailing name picks
+   its bin, arguments passed through (checked with npm 11 against packed
+   tarballs; a name the carrier lacks exits 127). It also means the fallback
    carries the distribution identity, as a local install does. The major pin
    keeps the fallback from silently drifting onto a breaking release the
    plugin was never tested against:

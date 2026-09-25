@@ -2,7 +2,7 @@
 type: Decision
 title: Only the carrier declares a bin
 description: In the carrier pattern, front ends declare no bin of the carrier's names, so the carrier identity survives every package manager's layout; PackedInstall enforces it as BinConflict.
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -23,6 +23,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-25T20:38:38Z
   body_sha256: 4f23cbf334b48bb3c1d5a321f1e856252fd550e73f2bf7d52c1d57290d02019d
+verified:
+  - by: human:spencer
+    at: 2026-09-25T20:39:50Z
 ---
 
 # Only the carrier declares a bin

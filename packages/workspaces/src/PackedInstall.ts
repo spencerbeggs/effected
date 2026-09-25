@@ -235,15 +235,14 @@ const DEFAULT_BIN_TIMEOUT: Duration.Input = "1 minute";
 /**
  * Whether a failed `readLink` means "this entry is not a symlink". Node reports
  * that as `EINVAL`, which its platform layer tags `Unknown` with the errno on
- * the cause; an in-memory filesystem may tag it `BadResource`. Anything else,
- * `PermissionDenied` included, is a real failure.
+ * the cause, and `@effected/memfs` raises the same shape. Anything else,
+ * `PermissionDenied` and `BadResource` included, is a real failure.
  */
 const isNotALink = (error: PlatformError.PlatformError): boolean =>
-	error.reason._tag === "BadResource" ||
-	(error.reason._tag === "Unknown" &&
-		typeof error.reason.cause === "object" &&
-		error.reason.cause !== null &&
-		(error.reason.cause as { readonly code?: unknown }).code === "EINVAL");
+	error.reason._tag === "Unknown" &&
+	typeof error.reason.cause === "object" &&
+	error.reason.cause !== null &&
+	(error.reason.cause as { readonly code?: unknown }).code === "EINVAL";
 
 /**
  * Which installed package a `node_modules/.bin` symlink resolves into.

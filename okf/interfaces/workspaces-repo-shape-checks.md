@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T20:38:38Z
-  body_sha256: bc668c2a64cdd1ef27f60714f6a28a24c640a1a6a836451024b3e0a2e8153d2d
+  at: 2026-09-25T20:41:35Z
+  body_sha256: 60fe831a39f8d03786ff4bc0757ca685364f64c45c4a57bbf56ab88f4044c66b
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -525,9 +525,9 @@ pnpm's isolated layout links only the consumer's direct dependencies at the
 top level, so the shadowing it would detect needs a direct dependency there.
 `undefined` means only that: the entry exists and is not a symlink. Node
 reports "not a link" from `readLink` as `EINVAL`, which its platform layer tags
-`Unknown` with the errno on the cause, while `@effected/memfs` tags it
-`BadResource`; both mean a shim, and any other `readLink` failure, such as
-`EACCES`, fails `Io`. An entry that does not exist, or a link whose target
+`Unknown` with the errno on the cause, and `@effected/memfs` raises the same
+shape. Only that means a shim; any other `readLink` failure, such as
+`EACCES`, `BadResource` or an `Unknown` with another errno, fails `Io`. An entry that does not exist, or a link whose target
 does not, fails `MissingBin`, consistent with the run's own bin check. A
 link into no named package inside the consumer fails `UnownedBin` naming the
 target, and the walk's bound is the consumer directory realpath'd first, so a

@@ -1153,7 +1153,7 @@ describe("InstalledConsumer.binProvenance", () => {
 	});
 
 	// Node reports "not a link" as EINVAL, tagged Unknown with the errno on the cause; anything else is a real failure.
-	const readLinkFails = (tag: "Unknown" | "PermissionDenied", code: string) =>
+	const readLinkFails = (tag: "Unknown" | "PermissionDenied" | "BadResource", code: string) =>
 		MemoryFileSystem.layerFaultyWith(SEED, {
 			readLink: (path) =>
 				Effect.fail(
@@ -1178,6 +1178,24 @@ describe("InstalledConsumer.binProvenance", () => {
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(at("npm").binProvenance("tool"));
 				assert.deepStrictEqual([error.reason, error.message], ["Io", `could not read the link ${NM}/.bin/tool`]);
+			}),
+		);
+	});
+	// memfs once tagged "not a link" BadResource; it now raises Node's shape, so BadResource is a real failure.
+	layer(Layer.mergeAll(readLinkFails("BadResource", "EBADF"), Path.layer))((it) => {
+		it.effect("a BadResource from readLink propagates as Io, never read as a shim", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(at("pnpm").binProvenance("shim"));
+				assert.deepStrictEqual([error.reason, error.message], ["Io", `could not read the link ${NM}/.bin/shim`]);
+			}),
+		);
+	});
+	// An Unknown whose errno is not EINVAL is a real failure too: the errno, not the tag, decides.
+	layer(Layer.mergeAll(readLinkFails("Unknown", "EIO"), Path.layer))((it) => {
+		it.effect("an Unknown readLink failure with another errno propagates as Io", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(at("pnpm").binProvenance("shim"));
+				assert.strictEqual(error.reason, "Io");
 			}),
 		);
 	});
