@@ -12,6 +12,10 @@ export interface McpGuardHost {
 	on(event: "uncaughtException", listener: (error: Error, origin: string) => void): unknown;
 	/** Register the `unhandledRejection` listener. */
 	on(event: "unhandledRejection", listener: (reason: unknown) => void): unknown;
+	/** Raise an `uncaughtException` to the registered listeners. Used only by {@link McpGuardRunOptions.injectCrash}. */
+	emit(event: "uncaughtException", error: Error, origin: "uncaughtException" | "unhandledRejection"): unknown;
+	/** Raise an `unhandledRejection` to the registered listeners. Used only by {@link McpGuardRunOptions.injectCrash}. */
+	emit(event: "unhandledRejection", reason: unknown, promise: Promise<unknown>): unknown;
 	/** Where every guard report is written. Never stdout: that is the JSON-RPC wire. */
 	readonly stderr: { write(chunk: string): unknown };
 	/** End the process at once. */
@@ -75,18 +79,24 @@ export interface McpGuardRunOptions<ROut, E> {
 	 * @remarks
 	 * - `"load"` raises it once both listeners are installed and before
 	 *   `load()` is called, then waits for the guard to handle it: `load()`
-	 *   is not called until the listener has run. The pre-connect half of
+	 *   is not called until the listener has run. If a test double's `exit`
+	 *   throws instead of ending the process, `run` rejects with what it
+	 *   threw and never calls `load()`. The pre-connect half of
 	 *   the policy applies, so `"exitBeforeConnect"` exits 1 here, and only
 	 *   an `onRejection` of `"log"` lets the process go on to load and serve.
 	 *   The report uses the guard's own formatter, since no `format` is
 	 *   loaded yet.
 	 * - `"connected"` raises it on a timer right after the server is
-	 *   serving, where `"exitBeforeConnect"` logs and keeps serving.
+	 *   serving, where `"exitBeforeConnect"` logs and keeps serving. A throw
+	 *   from a test double's `exit` there is dropped.
 	 *
-	 * An uncaught exception is thrown from a timer callback; a rejection is
-	 * a `Promise.reject` nothing handles. Either carries an `[injected]`
-	 * message. `undefined`, or an `at` or `kind` outside these values, does
-	 * nothing at all. Wire it to an environment variable only a test sets.
+	 * Either is raised through `host.emit` on a `setTimeout(0)` tick, so the
+	 * guard's own listeners handle it the same way under the real `process`
+	 * and under a test double, and nothing reaches a listener the guard did
+	 * not install on `host`. It carries an `[injected]` message; a rejection
+	 * is emitted with an already-handled rejected promise. `undefined`, or
+	 * an `at` or `kind` outside these values, does nothing at all. Wire it to
+	 * an environment variable only a test sets.
 	 */
 	readonly injectCrash?:
 		| {
@@ -96,21 +106,22 @@ export interface McpGuardRunOptions<ROut, E> {
 		| undefined;
 }
 
-/** Raise one stray crash of `kind` for the host's listener to catch; anything else does nothing. */
-const raise = (kind: unknown): boolean => {
+type InjectedKind = "uncaughtException" | "unhandledRejection";
+
+const isInjectedKind = (kind: unknown): kind is InjectedKind =>
+	kind === "uncaughtException" || kind === "unhandledRejection";
+
+/** Emit one injected crash through the host, to the listeners the guard installed there. */
+const emitInjected = (host: McpGuardHost, kind: InjectedKind): void => {
+	const error = new Error(`[injected] ${kind}`);
 	if (kind === "uncaughtException") {
-		setTimeout(() => {
-			throw new Error("[injected] uncaughtException");
-		}, 0);
-		return true;
+		host.emit("uncaughtException", error, "uncaughtException");
+		return;
 	}
-	if (kind === "unhandledRejection") {
-		setTimeout(() => {
-			void Promise.reject(new Error("[injected] unhandledRejection"));
-		}, 0);
-		return true;
-	}
-	return false;
+	const promise = Promise.reject(error);
+	// Handled, so only the emitted event reaches a listener, never a real unhandled rejection.
+	promise.catch(() => undefined);
+	host.emit("unhandledRejection", error, promise);
 };
 
 const fallbackFormat = (error: unknown): string =>
@@ -184,31 +195,41 @@ export class McpGuard {
 		const exits = (mode: "exit" | "exitBeforeConnect" | "log"): boolean =>
 			mode === "exit" || (mode === "exitBeforeConnect" && !connected);
 
-		// Set only while an injected "load" crash is awaited; a listener that did not exit releases it.
-		let handled: (() => void) | undefined;
-
 		host.on("uncaughtException", (error, origin) => {
 			host.stderr.write(`${label}: uncaughtException (${origin}): ${describe(error)}\n`);
 			if (exits(onUncaught)) host.exit(1);
-			handled?.();
 		});
 		host.on("unhandledRejection", (reason) => {
 			host.stderr.write(`${label}: unhandledRejection: ${describe(reason)}\n`);
 			if (exits(onRejection)) host.exit(1);
-			handled?.();
 		});
 
 		const inject = options.injectCrash;
-		if (inject?.at === "load") {
-			await new Promise<void>((resolve) => {
-				handled = resolve;
-				if (!raise(inject.kind)) resolve();
+		const injectKind = isInjectedKind(inject?.kind) ? inject.kind : undefined;
+		if (inject?.at === "load" && injectKind !== undefined) {
+			// Settled either way, so a host whose exit throws can never leave `run` waiting.
+			await new Promise<void>((resolve, reject) => {
+				setTimeout(() => {
+					try {
+						emitInjected(host, injectKind);
+						resolve();
+					} catch (error) {
+						reject(error);
+					}
+				}, 0);
 			});
-			handled = undefined;
 		}
 		const onReady = (): void => {
 			connected = true;
-			if (inject?.at === "connected") raise(inject.kind);
+			if (inject?.at === "connected" && injectKind !== undefined) {
+				setTimeout(() => {
+					try {
+						emitInjected(host, injectKind);
+					} catch {
+						// Only a test double's `exit` throws here; a real one never returns.
+					}
+				}, 0);
+			}
 		};
 
 		try {

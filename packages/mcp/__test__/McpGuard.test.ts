@@ -5,7 +5,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, Layer } from "effect";
 import { ChildProcess } from "effect/unstable/process";
-import type { McpGuardHost, McpGuardRunOptions } from "../src/guard.js";
+import type { McpGuardHost, McpGuardPolicy, McpGuardRunOptions } from "../src/guard.js";
 import { McpGuard } from "../src/guard.js";
 import { McpProcess } from "../src/testing.js";
 
@@ -31,6 +31,7 @@ const fakeHost = () => {
 		on: (event: string, listener: (...args: ReadonlyArray<unknown>) => void) => {
 			listeners[event] = listener;
 		},
+		emit: (event: string, ...args: ReadonlyArray<unknown>) => listeners[event]?.(...args),
 		stderr: { write: (chunk: string) => stderr.push(chunk) },
 		exit: (code?: number): never => {
 			exits.push(code);
@@ -175,6 +176,78 @@ describe("McpGuard.run with a host double", () => {
 		}
 		await settle();
 		assert.strictEqual(loads, 2);
+		assert.deepStrictEqual(exits, []);
+		assert.deepStrictEqual(stderr, []);
+		await stop(fibers);
+	});
+
+	// injectCrash through a host double: raised via host.emit, so it reaches the double's listeners and never hangs.
+	const injected = [
+		{ kind: "uncaughtException", policy: { onUncaught: "exit" } },
+		{ kind: "uncaughtException", policy: { onUncaught: "exitBeforeConnect" } },
+		{ kind: "unhandledRejection", policy: { onUncaught: "exit", onRejection: "exit" } },
+		{ kind: "unhandledRejection", policy: { onUncaught: "exit", onRejection: "exitBeforeConnect" } },
+		{ kind: "unhandledRejection", policy: { onUncaught: "exit", onRejection: "log" } },
+	] as const;
+	for (const { kind, policy } of injected) {
+		const mode = kind === "uncaughtException" ? policy.onUncaught : (policy as McpGuardPolicy).onRejection;
+		const exitsAtLoad = mode !== "log";
+		const exitsConnected = mode === "exit";
+
+		it(`injectCrash at load, ${kind} under ${mode}: ${exitsAtLoad ? "exits 1 and never loads" : "logs, then loads"}`, async () => {
+			const { host, stderr, exits } = fakeHost();
+			const { runMain, fibers } = forkingRunMain();
+			const order: Array<string> = [];
+			const outcome = await McpGuard.run({
+				label: "srv",
+				host,
+				policy,
+				injectCrash: { at: "load", kind },
+				load: async () => {
+					order.push("load");
+					return { layer: Layer.empty, runMain };
+				},
+			}).then(
+				() => "resolved",
+				(error: unknown) => (error instanceof ExitCalled ? "exited" : Promise.reject(error)),
+			);
+			assert.strictEqual(outcome, exitsAtLoad ? "exited" : "resolved");
+			assert.deepStrictEqual(exits, exitsAtLoad ? [1] : []);
+			assert.deepStrictEqual(order, exitsAtLoad ? [] : ["load"]);
+			assert.strictEqual(stderr.length, 1);
+			assert.include(stderr[0] ?? "", `srv: ${kind}`);
+			assert.include(stderr[0] ?? "", `Error: [injected] ${kind}`);
+			await stop(fibers);
+		});
+
+		it(`injectCrash at connected, ${kind} under ${mode}: ${exitsConnected ? "exits 1" : "logs and keeps serving"}`, async () => {
+			const { host, stderr, exits } = fakeHost();
+			const { runMain, fibers } = forkingRunMain();
+			await McpGuard.run({
+				label: "srv",
+				host,
+				policy,
+				injectCrash: { at: "connected", kind },
+				load: async () => ({ layer: Layer.empty, runMain }),
+			});
+			while (stderr.length === 0) await settle();
+			assert.deepStrictEqual(exits, exitsConnected ? [1] : []);
+			assert.strictEqual(stderr.length, 1);
+			assert.include(stderr[0] ?? "", `srv: ${kind}`);
+			await stop(fibers);
+		});
+	}
+
+	it("injectCrash at connected is never raised while the server is still building", async () => {
+		const { host, stderr, exits } = fakeHost();
+		const { runMain, fibers } = forkingRunMain();
+		await McpGuard.run({
+			label: "srv",
+			host,
+			injectCrash: { at: "connected", kind: "uncaughtException" },
+			load: async () => ({ layer: Layer.effectDiscard(Effect.never), runMain }),
+		});
+		await settle();
 		assert.deepStrictEqual(exits, []);
 		assert.deepStrictEqual(stderr, []);
 		await stop(fibers);

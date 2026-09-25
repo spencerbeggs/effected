@@ -252,7 +252,7 @@ Some behaviour worth knowing:
 - Carrying on after a crash works because the platform `runMain` holds the process open while the server fiber lives.
 - A layer that fails to build is still reported by `McpStdio.launch`, on stderr.
 
-To test the guards themselves, pass `injectCrash: { at, kind }`, with `kind` either `"uncaughtException"` or `"unhandledRejection"`. Wire it to an environment variable only your test sets; unset, it does nothing.
+To test the guards themselves, pass `injectCrash: { at, kind }`, with `kind` either `"uncaughtException"` or `"unhandledRejection"`. Wire it to an environment variable only your test sets; unset, it does nothing. The crash is raised through `host.emit` on a `setTimeout(0)` tick, so the guard's own listeners handle it identically under the real `process` and under a test double for `McpGuardHost` (which therefore needs `on`, `emit`, `stderr` and `exit`). If a double's `exit` throws at `"load"`, `run` rejects with what it threw instead of waiting.
 
 - `at: "load"` raises it once both listeners are installed and before `load()` is called, and `load()` waits until the guard has handled it. The pre-connect half of the policy applies: `"exitBeforeConnect"` and `"exit"` both exit 1 here, and only `onRejection: "log"` lets the process go on to load and serve. The report uses the guard's own formatter, because no `format` is loaded yet.
 - `at: "connected"` raises it on a timer just after the server is serving, where `"exitBeforeConnect"` logs and keeps serving.

@@ -212,7 +212,9 @@ await McpGuard.run({
 
 `injectCrash: { at, kind }` raises an `"uncaughtException"` or an
 `"unhandledRejection"`, for a test of the guards themselves; unset, it does
-nothing.
+nothing. It is raised through `host.emit` on a `setTimeout(0)` tick, so the
+guard's listeners handle it the same way under the real `process` and
+under a test double of `McpGuardHost` (`on`, `emit`, `stderr`, `exit`).
 
 | `at` | Raised | Under `"exitBeforeConnect"` |
 | --- | --- | --- |

@@ -411,7 +411,11 @@ await McpGuard.run({
 Both policy fields default to `"exit"`. `injectCrash: { at, kind }` raises
 an `"uncaughtException"` or an `"unhandledRejection"` for an end-to-end test
 of the guards; wire it to an environment variable only the test sets, and
-leave it unset everywhere else, where it does nothing.
+leave it unset everywhere else, where it does nothing. It is raised through
+`host.emit` on a `setTimeout(0)` tick, never as a real throw, so a unit test
+can pass a double of `McpGuardHost` (`on`, `emit`, `stderr`, `exit`) and
+drive the same listener logic the real `process` runs; a double whose
+`exit` throws makes `run` reject at `"load"` rather than hang.
 
 - `at: "load"` raises it after both listeners are installed and before
   `load()` is called, and `load()` waits until the guard has handled it.
