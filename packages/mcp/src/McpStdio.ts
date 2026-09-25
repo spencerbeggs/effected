@@ -24,6 +24,27 @@ export interface McpStdioOptions {
 }
 
 /**
+ * Options for {@link McpStdio.launch}.
+ *
+ * @public
+ */
+export interface McpLaunchOptions {
+	/**
+	 * Runs once the whole layer has built, and before the launch waits
+	 * forever. By then the stdio protocol is reading stdin: the server is
+	 * serving, although no client may have sent `initialize` yet.
+	 *
+	 * @remarks
+	 * `McpGuard.run` (`@effected/mcp/guard`) uses it as its "connected"
+	 * signal. A layer built after the server layer, as in
+	 * `Layer.effectDiscard(ready).pipe(Layer.provide(Main))`, gives the same
+	 * signal, but only if every consumer re-derives that `Layer.provide`
+	 * builds its dependency first.
+	 */
+	readonly onReady?: Effect.Effect<void> | undefined;
+}
+
+/**
  * Serve an MCP server over stdio without ever writing a log line or a failure
  * report onto stdout, which is the JSON-RPC wire.
  *
@@ -117,8 +138,12 @@ export class McpStdio {
 	 * one graph does that, and so does building or providing the second
 	 * anywhere under the first one's `Effect.provide`: nested `Layer.build`
 	 * and `Effect.provide` fork the ambient memo map rather than starting a
-	 * new one. Isolate each server with its own `ManagedRuntime`,
-	 * `Effect.provide(layer, { local: true })` or its own process.
+	 * new one. The tool registry is shared the same way. Isolate each server
+	 * by wrapping its whole bundle (its toolkit layers together with this
+	 * layer) in `Layer.fresh`, or with its own `ManagedRuntime`,
+	 * `Effect.provide(layer, { local: true })` or its own process. Never put
+	 * the `Layer.fresh` boundary between a toolkit and this layer: the server
+	 * would serve an empty registry.
 	 *
 	 * Code after a completed `Effect.provide` of a stdio server never runs:
 	 * core's stdio protocol interrupts the fiber that built it when its stdin
@@ -153,9 +178,19 @@ export class McpStdio {
 	 * `Effect.provideService` reaches, and Effect's default logger writes
 	 * through `console.log` unless `LogToStderr` is set. For an MCP server
 	 * that is stdout, which is the wire.
+	 *
+	 * `options.onReady` runs after the layer has built and before the launch
+	 * waits forever, as {@link McpLaunchOptions.onReady} describes.
 	 */
-	static readonly launch = <ROut, E, R>(layer: Layer.Layer<ROut, E, R>): Effect.Effect<never, Error, R> =>
-		Layer.launch(layer).pipe(
+	static readonly launch = <ROut, E, R>(
+		layer: Layer.Layer<ROut, E, R>,
+		options: McpLaunchOptions = {},
+	): Effect.Effect<never, Error, R> =>
+		(options.onReady === undefined
+			? Layer.launch(layer)
+			: // Layer.launch's own shape, with the ready signal between the build and the wait.
+				Effect.scoped(Layer.build(layer).pipe(Effect.andThen(options.onReady), Effect.andThen(Effect.never)))
+		).pipe(
 			Effect.catchCause((cause) =>
 				Cause.hasInterruptsOnly(cause)
 					? // An interrupt-only cause holds no Fail reason, so no E can escape through it.

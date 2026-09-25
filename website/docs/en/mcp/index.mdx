@@ -48,13 +48,20 @@ reads no `process` token, imports no `node:` module, and calls no
   server that never reports a failure or a log line onto the wire.
 - **`ToolFailure`** — the shared shape for folding a remediation hint into
   a tool's declared-failure message, because core sends only
-  `error.message` to the client.
+  `error.message` to the client. **`ToolRefusal`** is that shape
+  ready-made, with `ToolRefusal.refuse(reason, remediation)`.
+- **`ToolOutputSchema`** — `objectRooted`, so a union success schema
+  whose members are all objects is served as an object-rooted
+  `outputSchema` on every revision. Not for a union with a primitive member.
 - **`ToolInputSchema`** — pure walkers over a served JSON Schema: every
   unknown key at every depth, a message naming them, and an object-rooted
   form of a union.
 - **`McpToolkit`** — registers a toolkit strict by default, with one
   response naming every unknown key instead of core's first-key-only
-  report.
+  report; `unionTool` and `unionHandler` for a tool whose parameters are a
+  union.
+- **`@effected/mcp/guard`** — `McpGuard.run`, crash guards installed
+  before the server graph loads.
 - **`@effected/mcp/testing`** — `McpHarness` (in-process), `McpProcess`
   and `McpProbe` (spawned bins), `McpToolAudit` (a pure `tools/list`
   policy sweep), and `McpTestFailure`.

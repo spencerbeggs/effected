@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T08:04:45Z
-  body_sha256: c79581d8d9b376b4e12ab4e3213415940db09d99196f861a50c934564d507352
+  at: 2026-09-25T22:33:35Z
+  body_sha256: 275d056e1e6041299f8c223fac707f61e98fbfed11c4a3a74ac6319beb53189e
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -108,12 +108,48 @@ bundler substitutes it at build time. `ignoreTokens` adds more exact tokens,
 each starting at the reference. An exemption never applies through a member
 access, so `globalThis.process.env.__PACKAGE_VERSION__` is still flagged.
 
+### Confining a token: `forbidTokens`
+
+The exemption holds everywhere, but a carrier's house rule is usually "the
+version define appears only in `version.ts`". `{ forbidTokens }` forbids
+each entry's exact text in code; paired with an `allowRules` waiver under the
+`"forbidTokens"` key, it confines the token to the named files:
+
+```ts
+SourceBoundary.scan({
+  root,
+  rules: ["process", { forbidTokens: ["process.env.__PACKAGE_VERSION__"] }],
+  allowRules: { forbidTokens: ["version.ts"] },
+});
+```
+
+A use anywhere else is an offence. Each use inside `version.ts` is reported
+in `waived`, so asserting `waived` names `version.ts` proves the confinement
+is live rather than vacuous. The glob matches the root-relative path, as
+every `allow` and `allowRules` glob does, so `version.ts` names only the
+file at the root and `**/version.ts` names one at any depth. We chose the
+generic forbid-plus-waiver shape over a dedicated `{ token, onlyIn }` rule
+because the waiver already reports what it exempts; a separate `onlyIn` list
+would need its own non-vacuity handle. The cost is that one `"forbidTokens"`
+key covers every `{ forbidTokens }` rule in a scan: two tokens with different
+homes need two scans.[^source-boundary-ts]
+
+A token matches as whole text in the `code` view. A token that starts with
+an identifier character does not match inside a longer identifier, and one
+that ends with one does not run into the next. Whitespace must match byte
+for byte, and a token containing a string literal never matches, since
+strings are blanked. A member access still matches:
+`globalThis.process.env.__PACKAGE_VERSION__` contains the token.
+
 The known misses:
 
 - `globalThis["process"]`, because the key is a string, and
   `const { process: p } = globalThis`.
 - A regex literal directly after a block-closing `}`. It reads as a division,
   so a quote or `/*` inside it can hide the code after it.
+- A variable named `yield` or `await` in a sloppy-mode script, which reads as
+  the keyword, so a `/` after it opens a regex. Module and strict code reserve
+  both words.
 - JSX text, which reads as code. `.tsx` and `.jsx` are not among the default
   extensions for this reason.
 - A bare built-in under `forbidImports: ["node:*"]`: the entry matches only
@@ -390,7 +426,47 @@ from a manager that could not spawn at all. The installs run one after
 another, so a test's outer `Effect.timeout` must cover the number of
 managers times `installTimeout`, plus the pack and whatever the test runs
 afterwards. A tighter guard fires first, as a `TimeoutError` that names no
-manager.
+manager. `PackedInstall.timeoutBudget({ managers, installTimeout, packages,
+perConsumer })` returns that sum as a `Duration`. It adds each manager's probe
+(30 seconds), install and `perConsumer` (one minute by default: one `runBin`
+at its default ceiling; `"0 seconds"` for a test that only installs), each
+package's pack (`packTimeout`,
+two minutes by default; a pack past it fails `PackFailed` naming the package
+and the ceiling) and manifest read (30 seconds), 30 seconds for the untimed
+steps, and one minute for cleanup: removing the scratch root when the scope
+closes, and killing a child after its ceiling interrupts it. It reads the
+same constants the run does, so the two cannot drift. `packages` is a count
+or the names `PackedInstall.closure(carrier, options?)` returns: the packages
+the run will pack, in order, computed without packing by the same planner the
+run calls, so they equal `Object.keys(result.tarballs)`. It takes the run's
+own options object, and fails as the run would before packing.
+`PackedInstall.timeoutBudgetFor(runOptions, { perConsumer? })` plans with
+`closure` and budgets with `managers`, `installTimeout` and `packTimeout` from
+the same object, in one Effect. A vitest test's timeout is fixed when it is
+declared, so a consumer awaits either at module evaluation, gated on its
+prod build existing.[^packed-install-ts]
+
+### Overrides: packages from outside the workspace
+
+A closure member can depend on a package version the registry does not have
+yet, typically a sibling checkout's unreleased build that the workspace itself
+links through a dogfood `pnpm-workspace.yaml` override. The scratch consumers
+would resolve it from the registry and miss the new surface. `overrides` maps
+a package name to a publish-ready package directory, which is `npm pack`ed,
+or to a `.tgz`, which is used as it is; a relative path resolves against the
+workspace root. `workspaceOverrides: true` also takes every bare-name
+`"<name>": "file:<path>"` entry of the root `pnpm-workspace.yaml`'s
+`overrides:`, and an explicit `overrides` entry wins over one read there.
+Each supplied package joins `result.tarballs` after the closure, sorted by
+name, and every consumer steers it to its tarball through the same override
+field as the closure, so the closure's transitive references install it
+whatever range they ask for. An override naming the carrier or a closure
+member (the workspace copy is what the run proves), a path that is neither a
+package directory nor a `.tgz`, a tarball whose manifest carries another name,
+or an unreadable or non-YAML `pnpm-workspace.yaml` fails `InvalidOverride`.
+The e2e proves it under every available manager against a package no
+registry has, with a control that fails the same install without the
+override.[^packed-install-e2e]
 
 ### POSIX only
 
@@ -413,12 +489,85 @@ sidesteps npm 12's keyed-by-name `--json` shape.
 ### Composing `McpProbe`
 
 `PackedInstall` asserts that each bin exists and is executable, not what it
-does. Run each bin from the test, inside the same scope, through
-`InstalledConsumer.binPath`, and with `PackedInstall.scrubEnv(process.env)`
-as its environment. For an MCP bin, `McpProbe.initialize` from
-`@effected/mcp/testing` is the proof, and the consumer's test composes it:
-there is no runtime edge between `workspaces` and `mcp`. The scratch
-directory is removed when the scope closes.
+does. Run each bin from the test, inside the same scope.
+`InstalledConsumer.runBin(name, args, options?)` spawns it from the consumer
+directory with stdin ignored and returns `{ stdout, stderr, exitCode }`; a
+non-zero exit is a result. A spawn failure, an expired ceiling (one minute by
+default) or flooded output fails `BinFailed`. The environment is the one the
+install ran under, which the consumer carries as a redacted `env` field so
+printing it never prints a token. `options.env` is layered over it after the
+scrub, with an `undefined` value removing a variable, so a caller's explicit
+entry wins: `CI: "true"` runs a bin as if under CI. A
+consumer's test therefore needs no direct `@effected/commands` dependency to
+run a bin.[^packed-install-ts]
+
+`PackedInstallResult.scratch` is the realpath'd scratch root, so per-run
+state such as `XDG_DATA_HOME` can live inside it and be removed with it
+rather than in a second temporary directory.
+
+For an MCP bin, `McpProbe.initialize` from `@effected/mcp/testing` is the
+proof. `InstalledConsumer.command(name, args?, options?)` returns the
+`ChildProcess` command `runBin` builds, with the same environment layering and
+scrub, and leaves stdin as the spawner's default pipe so the probe can write
+to it; `runBin` spawns that command with stdin ignored. There is no runtime
+edge between `workspaces` and `mcp`: the consumer's test passes one to the
+other. The scratch directory is removed when the scope closes.
+
+By default only the carrier may declare its bins; carrier-only bins are
+recommended and shared bins a supported alternative
+([the carrier-only bins decision](../decisions/carrier-only-declares-bins.md)).
+Under a flat npm, Yarn or bun layout, a hoisted bin of the same name from
+another package can take the carrier's `.bin` slot, and running it cannot tell
+which one ran. npm 11 and bun 1.4 were observed to link the package whose name
+sorts first; the e2e pins that with a `cli` front end beating a `plugin`
+carrier, and the same pair named the other way round let the carrier win.
+Yarn 1.22 and 4.18 (the `node-modules` linker) kept the carrier's bin, the
+consumer's direct dependency, and the e2e asserts that wherever yarn is on
+`PATH`.[^packed-install-e2e]
+The run therefore fails `BinConflict`, before any install, when
+a packed package other than the carrier (a closure member or an override)
+declares one of the carrier's bin names, read from the packed manifests it
+already inspects: a `bin` object's keys, or for a `bin` string the unscoped
+package name. It compares packed packages only: `directories.bin` is not
+read, and a dependency installed from the registry that declares the same
+bin name goes undetected. `allowSharedBins: true` skips the check for a
+carrier whose front ends share its bin names on purpose, because they are
+also installed on their own; its cost is provenance under flat layouts. The
+expected bins are still verified present and executable, but `runBin` may run
+a front end's. `InstalledConsumer.runCarrierBin(name, args?, options?)` runs
+the carrier's own bin regardless: it reads `node_modules/<carrier>/package.json`
+(the consumer's `carrier` field, which `run` sets), takes `name` from its
+`bin` map, and runs that file with `node` under `runBin`'s environment,
+stdin ignored. Through `node` it assumes a Node script, drops any flags in
+the shim's shebang, and bypasses the executable bit, so it proves the
+carrier's shim runs, not that it is executable. `carrierCommand` returns the same command with stdin open for
+`McpProbe`. A consumer with no carrier, a carrier not installed or not
+declaring the bin, or a declared file that is missing fails `MissingBin`;
+an unreadable or non-JSON manifest fails `Io`.[^packed-install-ts]
+
+`InstalledConsumer.binProvenance(name)` answers that for the
+managers that write `.bin` entries as symlinks: npm, bun, and Yarn under the
+`node-modules` linker the run configures. It reads the link, realpaths the
+target, and walks up to the nearest `package.json` with a string `name`,
+staying inside the consumer directory; a nameless nested manifest such as a
+`dist/package.json` carrying only `type` is passed over. It returns
+`{ package, target }`.[^packed-install-ts]
+
+pnpm writes `.bin` entries as shell shims, and `binProvenance` returns
+`undefined` for them rather than parsing a script. We declined shim parsing:
+pnpm's isolated layout links only the consumer's direct dependencies at the
+top level, so the shadowing it would detect needs a direct dependency there.
+`undefined` means only that: the entry exists and is not a symlink. Node
+reports "not a link" from `readLink` as `EINVAL`, which its platform layer tags
+`Unknown` with the errno on the cause, and `@effected/memfs` raises the same
+shape. Only that means a shim; any other `readLink` failure, such as
+`EACCES`, `BadResource` or an `Unknown` with another errno, fails `Io`. An entry that does not exist, or a link whose target
+does not, fails `MissingBin`, consistent with the run's own bin check. A
+link into no named package inside the consumer fails `UnownedBin` naming the
+target, and the walk's bound is the consumer directory realpath'd first, so a
+`/var` alias of `/private/var` or a trailing slash cannot move it. A manifest
+that is valid JSON but not an object is passed over like a nameless one. The e2e asserts the carrier
+under npm and bun, and `undefined` under pnpm, against real installs.[^packed-install-e2e]
 
 [^testing-ts]: `packages/workspaces/src/testing.ts` — the entry point and its
     `@packageDocumentation` block.
@@ -438,9 +587,10 @@ directory is removed when the scope closes.
     — the merged adjacency.
 [^layers-json]: `lib/configs/layers.json` — this repository's layer policy.
 [^packed-install-plan-ts]: `packages/workspaces/src/internal/packedInstallPlan.ts`
-    — `scrubEnv`, `closureOf`, `consumerFiles` and `installArgs`.
-[^packed-install-ts]: `packages/workspaces/src/PackedInstall.ts` — `PackSource`
-    and `run`.
+    — `scrubEnv`, `closureOf`, `consumerFiles`, `installArgs`,
+    `readPackedManifest`, `binConflict` and `fileOverridesOf`.
+[^packed-install-ts]: `packages/workspaces/src/PackedInstall.ts` — `PackSource`,
+    `run`, `closure` and the shared planner behind both.
 [^package-publish-ts]: `packages/npm/src/PackagePublish.ts:317,453-457` — the
     pack destination and the service requirements.
 [^package-tarball-ts]: `packages/npm/src/PackageTarball.ts:75,117` — the

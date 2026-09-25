@@ -120,6 +120,32 @@ UTF-16 code units) before it is echoed back — a hostile multi-megabyte
 argument is otherwise echoed into the agent's context whole, backing off
 one unit rather than splitting a surrogate pair.
 
+For a refusal with no fields of its own, use `ToolRefusal`, the same shape
+ready-made. Declare it in the tool's `failure` schema and fail with
+`ToolRefusal.refuse`:
+
+```ts
+import { ToolFailure, ToolRefusal } from "@effected/mcp";
+
+const refusal = ToolRefusal.refuse(`No run "${ToolFailure.truncate("r9")}".`, {
+  hint: "List the runs first.",
+  suggestedTool: "list_runs",
+});
+
+console.log(refusal.message);
+// => No run "r9". List the runs first. Try list_runs.
+```
+
+:::warning Audit every throw path
+
+Core scrubs an undeclared failure, and every defect, to `Tool execution
+failed due to an internal server error.` The message you wrote never reaches
+the agent, and nothing warns you. When you port a tool, walk every path that
+can fail and declare each one the agent should act on, as a `ToolRefusal` or
+your own `ToolFailure`-shaped error.
+
+:::
+
 ## Next steps
 
 - See [Advanced](/mcp/advanced) for strict input (`ToolInputSchema`,

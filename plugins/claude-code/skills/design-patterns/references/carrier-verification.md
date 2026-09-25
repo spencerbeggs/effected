@@ -126,8 +126,31 @@ otherwise report a spotless boundary because nothing was scanned at all.
 
 An engine's own allowlist can be **truly empty** — no per-file exception —
 because `process.env.__PACKAGE_VERSION__` in a build-time version constant
-is a bundler `define`, not a runtime environment read, and `SourceBoundary`
-does not flag it.
+is a bundler `define`, not a runtime environment read, and the `"process"`
+rule does not flag it.
+
+That exemption holds in every file, so the house rule "the define appears only
+in `version.ts`" needs a rule of its own. Forbid the token with
+`{ forbidTokens }` and waive that rule for `version.ts`; the waiver reports each
+permitted use in `scan.waived`, which is what proves the confinement still
+matches something rather than passing vacuously:
+
+```ts
+const scan = yield* SourceBoundary.scan({
+  root: resolve(ROOT, "packages", "cli", "src"),
+  rules: ["process", { forbidTokens: ["process.env.__PACKAGE_VERSION__"] }],
+  allowRules: { forbidTokens: ["version.ts"] },
+})
+// scan.violations: [] — a use anywhere but version.ts would be listed here.
+// scan.waived: version.ts's uses only.
+```
+
+A token matches as whole text in code — never in a comment, a string or
+template text — and a member access still counts
+(`globalThis.process.env.__PACKAGE_VERSION__`). The waiver glob matches the
+path relative to `root`, so `version.ts` is the file at the root and
+`**/version.ts` one at any depth. Drop any second hand-kept `readFileSync` +
+`includes(token)` scan; this replaces it.
 
 Three documented misses to design a scan around, not "fix" by widening a
 rule: **any local binding named `process` or `console`** — a parameter, a
@@ -186,33 +209,59 @@ the scope closes.
 ```ts
 import { NodeServices } from "@effect/platform-node"
 import { McpProbe } from "@effected/mcp/testing"
+import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
-import { Effect } from "effect"
-import { ChildProcess } from "effect/unstable/process"
+import { Duration, Effect, Layer } from "effect"
+
+const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const
+const INSTALL_TIMEOUT = "2 minutes"
+const PACK_TIMEOUT = "1 minute"
+const BIN_TIMEOUT = "30 seconds"
+
+const Live = Workspaces.layer({ cwd: "/repo" }).pipe(Layer.provideMerge(NodeServices.layer))
+
+// Exactly the packages the run will pack (the carrier first), known before the
+// test is declared: the same planner the run uses.
+const PACKAGES = await Effect.runPromise(PackedInstall.closure("my-tool").pipe(Effect.provide(Live)))
+
+// The worst case of every ceiling the run sets, plus each consumer's two bin
+// runs. A vitest test timeout goes above it.
+const BUDGET = PackedInstall.timeoutBudget({
+  managers: MANAGERS,
+  installTimeout: INSTALL_TIMEOUT,
+  packTimeout: PACK_TIMEOUT,
+  packages: PACKAGES,
+  perConsumer: "1 minute",
+})
+export const TEST_TIMEOUT_MS = Duration.toMillis(BUDGET) + 60_000
 
 const program = Effect.gen(function* () {
   const result = yield* PackedInstall.run({
     carrier: "my-tool",
     closure: "auto",
-    managers: ["npm", "pnpm", "yarn", "bun"],
-    bins: ["my-tool-mcp"],
+    managers: MANAGERS,
+    bins: ["my-tool", "my-tool-mcp"],
     env: process.env,
     // CI provisions every manager, so a missing one fails there; locally it is skipped.
     require: process.env.CI ? "all" : "any",
-    installTimeout: "2 minutes",
+    installTimeout: INSTALL_TIMEOUT,
+    packTimeout: PACK_TIMEOUT,
   })
-  const env = PackedInstall.scrubEnv(process.env)
+  // Per-run state lives inside the scratch root and is removed with it.
+  const env = { XDG_DATA_HOME: `${result.scratch}/xdg` }
   for (const consumer of result.consumers) {
-    const bin = ChildProcess.make(consumer.binPath("my-tool-mcp"), [], {
-      cwd: consumer.directory,
-      env,
-      extendEnv: false,
-    })
-    const { response, stderr, exitCode } = yield* McpProbe.initialize(bin).pipe(Effect.timeout("30 seconds"))
-    yield* Effect.log(`${consumer.manager}: initialize error=${response.error !== undefined}, stderr="${stderr}", exit=${exitCode}`)
+    // The CLI bin: stdout, stderr and exit code, under the env the install used.
+    const version = yield* consumer.runBin("my-tool", ["--version"], { env, timeout: BIN_TIMEOUT })
+    // Which package the .bin entry resolves into; undefined under pnpm's shims.
+    const provenance = yield* consumer.binProvenance("my-tool")
+    // The MCP bin: the command runBin would spawn, stdin left open for the probe.
+    const probe = McpProbe.initialize(consumer.command("my-tool-mcp", [], { env }))
+    const { response, stderr, exitCode } = yield* probe.pipe(Effect.timeout(BIN_TIMEOUT))
+    yield* Effect.log(
+      `${consumer.manager}: version exit=${version.exitCode}, bin from ${provenance?.package ?? "a shim"}, initialize error=${response.error !== undefined}, stderr="${stderr}", exit=${exitCode}`,
+    )
   }
-  // Four managers x installTimeout, plus pack and probes.
-}).pipe(Effect.timeout("12 minutes"), Effect.provide(NodeServices.layer))
+}).pipe(Effect.scoped, Effect.timeout(BUDGET), Effect.provide(Live))
 
 void program
 ```
@@ -238,13 +287,153 @@ other rule here still applies to a real suite built on it:
 - `PackedInstall` is **POSIX-only** and fails `UnsupportedPlatform`
   elsewhere.
 - The installs run one after another, so an outer `Effect.timeout` has to
-  be at least the number of managers times `installTimeout`, plus the pack
-  and the probes — a tighter guard fires first as a `TimeoutError` naming no
-  manager, which reads like a hang rather than a configuration mistake.
+  cover every manager's probe and install, every package's pack, and what the
+  test does per consumer — a tighter guard fires first as a `TimeoutError`
+  naming no manager, which reads like a hang rather than a configuration
+  mistake. `PackedInstall.timeoutBudget` computes that from the run's own
+  ceilings; never hand-multiply one, and never recount the closure by hand:
+  `PackedInstall.closure(carrier, options?)` returns the names the run will
+  pack, from the same planner, equal to `Object.keys(result.tarballs)` in
+  order. Pass the run's own options object as its second argument when the
+  run sets `closure`, `overrides` or `workspaceOverrides`. A closure heavy
+  with prebuilt packages can lower the two-minute per-package ceiling with
+  `packTimeout`; pass the same value to the budget.
+- Run a CLI bin with `consumer.runBin`: a non-zero exit is a result
+  (`exitCode`), and a bin that cannot spawn or outlives its ceiling (one
+  minute by default) fails `BinFailed` naming the manager. It runs under
+  the environment the install used, with `options.env` layered over it after
+  the scrub, so an explicit entry such as `CI: "true"` wins and `undefined`
+  removes a variable. The test needs no `@effected/commands` import and no
+  second `scrubEnv`.
+  Put state such as `XDG_DATA_HOME` under `result.scratch` instead of a
+  second temporary directory. For a bin a probe drives itself, such as an
+  MCP server under `McpProbe.initialize`, `consumer.command(name, args?,
+  options?)` is the command `runBin` builds, same environment and working
+  directory, with stdin left open.
+- **Who declares the bin decides what the run can prove** (see
+  [carrier-entry-contract.md](./carrier-entry-contract.md#who-declares-a-bin)).
+  Under npm, Yarn and bun the layout is flat, and any other installed
+  package that declares a bin of the same name can take the carrier's
+  `.bin` slot, so the carrier identity (its `--version` suffix) is lost
+  there. `PackedInstall.run` refuses that by default: a packed package other
+  than the carrier that declares one of the carrier's bin names fails
+  `BinConflict` before any install. It reads the packed packages' `bin`
+  fields only, never `directories.bin` or a registry dependency. A tool
+  that shares bin names on purpose, because its front ends also stand
+  alone, passes `allowSharedBins: true`: the bins are still checked
+  present, but `runBin` may run a front end's. `consumer.runCarrierBin(name)`
+  then proves the carrier's own shim, resolving it through the carrier's
+  installed `bin` map whichever package took the slot and running it with
+  `node` (so a Node script, shebang flags dropped, and its executable bit
+  not proven), and
+  `consumer.carrierCommand(name)` yields the same command, stdin open, for
+  `McpProbe`. `consumer.binProvenance(name)` reads the `.bin` symlink and
+  names the package it resolves into: assert the carrier under carrier-only
+  bins, or record which package won under shared bins. pnpm writes shell
+  shims, for which it returns `undefined` — the only meaning `undefined`
+  has — and pnpm's isolated layout links only the consumer's direct
+  dependencies at the top level anyway. A link into no named package fails
+  `UnownedBin`, and a dangling one `MissingBin`.
 - Pass `process.env` in explicitly: nothing under `./testing` reads
-  `process` itself. Declare every package the consumer's own code imports
+  `process` itself. `PackedInstall.scrubEnv(...)` returns the same scrubbed
+  environment for any spawn that goes through neither `runBin` nor
+  `command`. Declare every package the consumer's own code imports
   besides the carrier in `consumerDependencies` — pnpm links only declared
   dependencies at a project's top level.
+- While a dogfood loop links an unreleased sibling build into the workspace
+  (`pnpm-workspace.yaml` `overrides:` `"@scope/name": "file:<dir>"`), the
+  scratch consumers would still resolve that package from the registry,
+  where the new surface does not exist yet. Pass `workspaceOverrides: true`
+  to install the linked builds in every consumer too, or name them in
+  `overrides` (package name to a publish-ready directory or a `.tgz`); both
+  steer the closure's transitive references to the supplied tarball under
+  every manager.
+
+### A vitest file: sizing the timeout from the closure
+
+vitest fixes a test's timeout when the test is **declared**, before any test
+body runs, but `closure: "auto"` is only known once the workspace is read.
+So plan it at **module evaluation**, with a top-level `await`, and gate that
+await on the prod build existing: without the build there is nothing to
+pack, and the suite skips rather than fails. Keep **one** options object and
+hand it to both `PackedInstall.closure` and `PackedInstall.run`, so the
+planned names are exactly the run's tarballs (overrides included), and
+assert that they are:
+
+```ts
+// __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
+import { existsSync } from "node:fs"
+import { join, resolve } from "node:path"
+import { NodeServices } from "@effect/platform-node"
+import { assert, describe, layer } from "@effect/vitest"
+import { McpProbe } from "@effected/mcp/testing"
+import { Workspaces } from "@effected/workspaces"
+import type { PackedInstallOptions } from "@effected/workspaces/testing"
+import { PackedInstall } from "@effected/workspaces/testing"
+import { Duration, Effect, Layer } from "effect"
+
+const ROOT = resolve(import.meta.dirname, "..", "..")
+const BUILT = existsSync(join(ROOT, "packages", "plugin", "dist", "prod", "npm", "pkg", "package.json"))
+// PackedInstall is POSIX-only.
+const RUNNABLE = BUILT && process.platform !== "win32"
+
+const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer))
+
+/** ONE options object: closure plans with it, run installs with it. */
+const RUN: PackedInstallOptions = {
+  carrier: "@scope/plugin",
+  closure: "auto",
+  workspaceOverrides: true, // linked sibling builds reach the scratch consumers too
+  managers: ["npm", "pnpm", "yarn", "bun"],
+  bins: ["tool", "tool-mcp"],
+  env: process.env,
+  require: process.env.CI ? "all" : "any",
+  installTimeout: "3 minutes",
+  packTimeout: "30 seconds",
+  // allowSharedBins: true, // only if the front ends deliberately share the bin names
+}
+
+// Module evaluation, before describe runs: the names the run will pack.
+const PACKED = RUNNABLE ? await Effect.runPromise(PackedInstall.closure(RUN.carrier, RUN).pipe(Effect.provide(Live))) : []
+const BUDGET = PackedInstall.timeoutBudget({
+  managers: RUN.managers,
+  installTimeout: RUN.installTimeout,
+  packTimeout: RUN.packTimeout,
+  packages: PACKED,
+  perConsumer: "3 minutes", // two one-minute bin runs plus a 30-second probe, with headroom
+})
+
+describe.skipIf(!RUNNABLE)("packed install", () => {
+  layer(Live, { excludeTestServices: true })((it) => {
+    it.effect(
+      "the carrier's bins work from a packed install under every available manager",
+      () =>
+        Effect.gen(function* () {
+          const result = yield* PackedInstall.run(RUN)
+          assert.deepStrictEqual(Object.keys(result.tarballs), [...PACKED])
+          const env = { XDG_DATA_HOME: `${result.scratch}/xdg` }
+          for (const consumer of result.consumers) {
+            // What a user typing the bin name gets, and the carrier's own shim.
+            const typed = yield* consumer.runBin("tool", ["--version"], { env })
+            const own = yield* consumer.runCarrierBin("tool", ["--version"], { env })
+            assert.strictEqual(typed.exitCode, 0, `${consumer.manager}: ${typed.stderr}`)
+            assert.include(own.stdout, "via @scope/plugin", consumer.manager)
+            const mcp = yield* consumer.carrierCommand("tool-mcp", [], { env })
+            const probe = yield* McpProbe.initialize(mcp).pipe(Effect.timeout("30 seconds"))
+            assert.isUndefined(probe.response.error, consumer.manager)
+          }
+        }).pipe(Effect.timeout(BUDGET)),
+      // vitest's own guard a minute above the Effect's, so a named PackedInstallError fires first.
+      Duration.toMillis(BUDGET) + 60_000,
+    )
+  })
+})
+```
+
+When the test has no use for the names, `PackedInstall.timeoutBudgetFor(RUN,
+{ perConsumer })` plans and budgets in one Effect, taking `managers`,
+`installTimeout` and `packTimeout` from the same object; await it the same
+way. Keep `closure` when the test asserts the tarballs, as it should.
 
 Gate the whole suite on the carrier's production build existing (skip, not
 fail, when it doesn't — this is an e2e proof layered on a build artifact,

@@ -225,6 +225,51 @@ describe("SourceBoundary.scan over a virtual tree", () => {
 		);
 	});
 
+	// The house rule a carrier keeps: the build-time version define appears in version.ts and nowhere else.
+	const TOKEN = "process.env.__PACKAGE_VERSION__";
+	const CONFINED = {
+		"/pkg/src/version.ts": `export const version = ${TOKEN};\n`,
+		"/pkg/src/commands/about.ts": `export const about = () => ${TOKEN};\n`,
+		"/pkg/src/main.ts": 'import { version } from "./version.js";\nexport const v = version;\n',
+	};
+	const CONFINE_RULES = ["process", { forbidTokens: [TOKEN] }] as const;
+	layer(
+		Layer.mergeAll(MemoryFileSystem.layerWith(CONFINED), Path.layer),
+		LIVE_CLOCK,
+	)((it) => {
+		it.effect("forbidTokens with a forbidTokens waiver confines a token to the named file, reporting both sides", () =>
+			Effect.gen(function* () {
+				const scan = yield* SourceBoundary.scan({
+					root: "/pkg/src",
+					rules: CONFINE_RULES,
+					allowRules: { forbidTokens: ["version.ts"] },
+				});
+				assert.deepStrictEqual(scan.files, ["commands/about.ts", "main.ts", "version.ts"]);
+				assert.deepStrictEqual(scan.violations, [`commands/about.ts:1:28 forbidTokens ${TOKEN}`]);
+				assert.deepStrictEqual(
+					scan.waived.map((offence) => offence.label),
+					[`version.ts:1:24 forbidTokens ${TOKEN}`],
+					"the confinement is live: the one permitted use is reported, not dropped",
+				);
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+
+		it.effect("a confinement naming a file that no longer uses the token waives nothing, which waived shows", () =>
+			Effect.gen(function* () {
+				const scan = yield* SourceBoundary.scan({
+					root: "/pkg/src",
+					rules: CONFINE_RULES,
+					allowRules: { forbidTokens: ["main.ts"] },
+				});
+				assert.deepStrictEqual(scan.waived, []);
+				assert.deepStrictEqual(scan.violations, [
+					`commands/about.ts:1:28 forbidTokens ${TOKEN}`,
+					`version.ts:1:24 forbidTokens ${TOKEN}`,
+				]);
+			}).pipe(Effect.timeout("3 seconds")),
+		);
+	});
+
 	layer(
 		Layer.mergeAll(MemoryFileSystem.layerWith(SEED), BackslashPath),
 		LIVE_CLOCK,

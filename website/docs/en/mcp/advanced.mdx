@@ -135,6 +135,96 @@ exactly the tool's declared keys, with every protocol extra confined to
 the sibling `params._meta` — so an all-strict default rejects nothing a
 real client sends.
 
+### Union-parameter tools
+
+A tool whose parameters are a `Schema.Union` of objects cannot be a
+`Tool.make` tool: core dies at registration on a non-object `parameters`
+root. `McpToolkit.unionTool` makes it a `Tool.dynamic` served with Effect's
+strict JSON Schema for the union, object-rooted with `oneOf` and
+`x-discriminator`, and `McpToolkit.unionHandler` hands your handler the
+decoded member:
+
+```ts
+import { McpToolkit, ToolRefusal } from "@effected/mcp";
+import { Effect, Schema } from "effect";
+import { Tool, Toolkit } from "effect/unstable/ai";
+
+const Note = McpToolkit.unionTool("note", {
+  parameters: Schema.Union([
+    Schema.Struct({ action: Schema.Literal("add"), text: Schema.String }),
+    Schema.Struct({ action: Schema.Literal("list") }),
+  ]),
+  success: Schema.Struct({ ok: Schema.Boolean }),
+  failure: ToolRefusal,
+}).annotate(Tool.Title, "Note");
+
+const Handlers = Toolkit.make(Note).toLayer({
+  note: McpToolkit.unionHandler(Note, (params) => Effect.succeed({ ok: params.action === "add" })),
+});
+```
+
+Under `McpToolkit.layer`, a union tool's unknown keys are all named in one
+`InvalidParams` and the union is decoded strictly, both before the handler
+runs. So bad arguments answer exactly as a `Tool.make` decode failure does:
+`-32602` on `2025-06-18`, `isError` on the later revisions. Under core's
+`McpServer.toolkit`, or called directly from a test, `unionHandler` runs the
+same check and decode itself, so the message is identical. There it is a
+declared failure, an `isError` result on every revision. A custom
+`unknownKeyMessage` goes in `unionHandler`'s third argument as well as
+`McpToolkit.layer`'s options. `annotate` and
+`addDependency` keep the union on the tool, so chaining them is safe.
+
+## Crash guards
+
+`@effected/mcp/guard` exports `McpGuard.run`. It installs
+`uncaughtException` and `unhandledRejection` listeners before your server
+graph loads, and the entrypoint has no static runtime import. It then awaits
+your `load()` and launches the server:
+
+```ts
+import { McpGuard } from "@effected/mcp/guard";
+
+await McpGuard.run({
+  label: "my-server",
+  host: process,
+  policy: { onUncaught: "exitBeforeConnect", onRejection: "log" },
+  load: async () => {
+    const NodeRuntime = await import("@effect/platform-node/NodeRuntime");
+    const { Main } = await import("./server.js");
+    return { layer: Main, runMain: NodeRuntime.runMain };
+  },
+});
+```
+
+| Policy | Before the server is serving | After |
+| --- | --- | --- |
+| `"exit"` (the default for both) | exit 1 | exit 1 |
+| `"exitBeforeConnect"` | exit 1 | log, keep serving |
+| `"log"` (rejections only) | log | log |
+
+- "Serving" means the whole layer has built and stdin is being read,
+  before any `initialize`. The signal is `McpStdio.launch`'s `onReady`.
+- A rejected `load()` is `startup failed` and exit 1 under every policy.
+- Registering an `unhandledRejection` listener disables Node's default
+  throw, so `"log"` keeps the process alive.
+- A guard's exit skips Effect finalizers and the teardown.
+- A layer build failure is still reported by `McpStdio.launch`.
+
+`injectCrash: { at, kind }` raises an `"uncaughtException"` or an
+`"unhandledRejection"`, for a test of the guards themselves; unset, it does
+nothing. It is raised through `host.emit` on a `setTimeout(0)` tick, so the
+guard's listeners handle it the same way under the real `process` and
+under a test double of `McpGuardHost` (`on`, `emit`, `stderr`, `exit`).
+
+| `at` | Raised | Under `"exitBeforeConnect"` |
+| --- | --- | --- |
+| `"load"` | after both listeners are installed, before `load()` is called; `load()` waits until the guard has handled it | exit 1 |
+| `"connected"` | on a timer right after the server is serving | log, keep serving |
+
+At `"load"`, only `onRejection: "log"` lets the process go on to load and
+serve, and the report uses the guard's own formatter, since no `format` is
+loaded yet.
+
 ## Testing
 
 ### In-process, with `McpHarness`
@@ -173,6 +263,16 @@ naming the revision, instead of reaching a server that would only answer
 an opaque `Invalid request metadata`. `sendRaw` is never gated, so a test
 can still drive that refusal on purpose. The stateless `2026-07-28`
 revision needs no handshake.
+
+`client.initializeWith(protocolVersion)` sends `initialize` asking for a
+different stateful revision than the harness was made with, and returns
+the whole response. Use it to test version negotiation by asserting the
+negotiated `result.protocolVersion`. A stateful server never refuses a
+version: an unknown one, or the stateless `2026-07-28`, is counter-offered
+`2025-11-25`. On a harness made with the stateless revision, `initialize`
+is not served at all: the response is a JSON-RPC `-32601` error, and no
+`notifications/initialized` follows it. `client.sentSoFar` lists every
+frame the harness has written, in order.
 
 ### A spawned bin, with `McpProcess`
 
@@ -258,6 +358,16 @@ Run it against what a real server serves (`McpHarness.listTools`), not
 against your own source schemas — the served document is what a client
 actually sees, and it can differ by protocol revision.
 
+A union success schema fails `objectRootedOutput`: a top-level
+`Schema.Union` emits a bare `anyOf`. When every member of the union is an
+object shape, wrap it in `ToolOutputSchema.objectRooted` (from
+`@effected/mcp`), which adds `type: "object"` beside the `anyOf` without
+changing decoding. It works before or after `.annotate({ identifier })`.
+Do not use it on a union with a primitive or array member: the added
+`type: "object"` is a claim about every member that nothing checks, so the
+served schema would contradict the values the tool returns. Give such a
+tool an object envelope instead.
+
 ## `InvalidParams` per protocol revision
 
 A rejected call's shape on the wire differs by revision:
@@ -269,6 +379,10 @@ A rejected call's shape on the wire differs by revision:
 | `2025-06-18` | JSON-RPC error, code `-32602` |
 | `2025-11-25` | `isError: true` tool result |
 | `2026-07-28` (stateless) | `isError: true` tool result |
+
+A union tool registered through `McpToolkit.layer` follows the same
+table. Registered through core's `McpServer.toolkit`, its rejection is a
+declared failure: an `isError` result on every revision.
 
 A test suite covering only one shape misses the other half of the matrix
 — `@effected/mcp`'s own tests cross the three revisions `McpStdio.protocols`

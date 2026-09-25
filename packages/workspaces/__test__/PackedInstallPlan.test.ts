@@ -2,9 +2,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { Result } from "effect";
 import { WorkspacePackage } from "../src/index.js";
 import {
+	binConflict,
+	binTargetOf,
 	closureOf,
 	consumerFiles,
+	fileOverridesOf,
 	installArgs,
+	overridePath,
+	readPackedManifest,
 	scrubEnv,
 	unresolvedSpecifiers,
 	versionOf,
@@ -211,5 +216,115 @@ describe("unresolvedSpecifiers", () => {
 				"optionalDependencies.f: file:f",
 			]),
 		);
+	});
+});
+
+describe("readPackedManifest", () => {
+	it("reads the name and the bin names: a bin object's keys, a bin string's unscoped package name", () => {
+		const read = (manifest: unknown) =>
+			Result.map(readPackedManifest(JSON.stringify(manifest)), (m) => [m.name, m.bins]);
+		assert.deepStrictEqual(
+			read({ name: "@x/tool", bin: { tool: "./a.js", "tool-mcp": "./b.js" } }),
+			Result.succeed(["@x/tool", ["tool", "tool-mcp"]]),
+		);
+		assert.deepStrictEqual(read({ name: "@x/tool", bin: "./cli.js" }), Result.succeed(["@x/tool", ["tool"]]));
+		assert.deepStrictEqual(read({ name: "plain", bin: "./cli.js" }), Result.succeed(["plain", ["plain"]]));
+		assert.deepStrictEqual(read({ name: "none" }), Result.succeed(["none", []]));
+		// A nameless string bin names nothing; a name that is not a string is no name.
+		assert.deepStrictEqual(read({ name: 1, bin: "./cli.js" }), Result.succeed([undefined, []]));
+	});
+
+	it("a manifest that is not a JSON object fails", () => {
+		assert.isTrue(Result.isFailure(readPackedManifest("[]")));
+		assert.isTrue(Result.isFailure(readPackedManifest("null")));
+		assert.isTrue(Result.isFailure(readPackedManifest("{ nope")));
+	});
+});
+
+describe("binConflict", () => {
+	const carrier = { name: "@x/carrier", bins: ["tool", "tool-mcp"] };
+
+	it("names the first carrier bin another packed package also declares, and that package", () => {
+		assert.deepStrictEqual(
+			binConflict(carrier, [
+				{ name: "@x/lib", bins: [] },
+				{ name: "@x/mcp", bins: ["tool-mcp"] },
+				{ name: "@x/cli", bins: ["tool"] },
+			]),
+			{ bin: "tool", package: "@x/cli" },
+		);
+	});
+
+	it("a bin only another package declares, or the carrier listed among the others, is no conflict", () => {
+		assert.isUndefined(
+			binConflict(carrier, [
+				{ name: "@x/cli", bins: ["tool-cli"] },
+				{ name: "@x/carrier", bins: ["tool"] },
+			]),
+		);
+	});
+});
+
+describe("fileOverridesOf", () => {
+	it("keeps the bare-name file: entries of overrides, without the prefix", () => {
+		assert.deepStrictEqual(
+			fileOverridesOf({
+				packages: ["packages/*"],
+				overrides: {
+					"@effected/cli": "file:../effected/packages/cli/dist/prod/npm/pkg",
+					plain: "file:/abs/plain.tgz",
+					"@effected/mcp": "^0.2.0",
+					"parent>child": "file:../child",
+					"pinned@1": "file:../pinned",
+					numeric: 3,
+				},
+			}),
+			{ "@effected/cli": "../effected/packages/cli/dist/prod/npm/pkg", plain: "/abs/plain.tgz" },
+		);
+	});
+
+	it("skips __proto__ and keeps constructor and prototype as own entries of a prototype-free map", () => {
+		// JSON.parse makes `__proto__` an own key, as a YAML parse of the workspace file can.
+		const document: unknown = JSON.parse(
+			'{"overrides":{"__proto__":"file:../evil","constructor":"file:../ctor","prototype":"file:../proto"}}',
+		);
+		const out = fileOverridesOf(document);
+		assert.deepStrictEqual(Object.entries(out), [
+			["constructor", "../ctor"],
+			["prototype", "../proto"],
+		]);
+		assert.isNull(Object.getPrototypeOf(out));
+		assert.isFalse(Object.hasOwn(out, "__proto__"));
+		assert.isUndefined(fileOverridesOf({ overrides: {} }).constructor);
+	});
+
+	it("a document without an overrides map has none", () => {
+		assert.deepStrictEqual(fileOverridesOf({ packages: [] }), {});
+		assert.deepStrictEqual(fileOverridesOf({ overrides: ["file:a"] }), {});
+		assert.deepStrictEqual(fileOverridesOf(null), {});
+	});
+});
+
+describe("overridePath", () => {
+	it("drops a file: prefix and leaves a bare path alone", () => {
+		assert.deepStrictEqual([overridePath("file:../a"), overridePath("/abs/b.tgz")], ["../a", "/abs/b.tgz"]);
+	});
+});
+
+describe("binTargetOf", () => {
+	it("finds a bin object's entry, or a bin string under the unscoped package name", () => {
+		const object = JSON.stringify({ name: "@x/carrier", bin: { tool: "./dist/tool.js", "tool-mcp": "./dist/mcp.js" } });
+		assert.strictEqual(binTargetOf(object, "tool-mcp"), "./dist/mcp.js");
+		assert.isUndefined(binTargetOf(object, "carrier"));
+		assert.isUndefined(binTargetOf(object, "toString"), "an inherited key is no bin");
+		const string = JSON.stringify({ name: "@x/tool", bin: "./cli.js" });
+		assert.strictEqual(binTargetOf(string, "tool"), "./cli.js");
+		assert.isUndefined(binTargetOf(string, "@x/tool"));
+	});
+
+	it("a manifest without a bin, or not a JSON object, declares none", () => {
+		assert.isUndefined(binTargetOf(JSON.stringify({ name: "x" }), "x"));
+		assert.isUndefined(binTargetOf("[]", "x"));
+		assert.isUndefined(binTargetOf("{ nope", "x"));
 	});
 });

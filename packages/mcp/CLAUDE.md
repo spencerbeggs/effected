@@ -39,12 +39,23 @@ wire message; nothing else in `@effected/engine` is consumed yet.
 `@effected/mcp` (`src/index.ts`): `McpStdio` (`protocols`, `layer`, `launch`,
 `teardown`), `McpToolkit` (`layer`), `ToolFailure` (`fields`, `message`,
 `truncate`, `ECHO_LIMIT`, `ENGINE_ECHO_LIMIT`), `ToolInputSchema`
-(`unknownKeys`, `formatUnknownKeys`, `objectRooted`), plus the
-`McpStdioOptions`, `McpToolkitOptions`, `UnknownKeysLevel` and
-`FormatUnknownKeysOptions` types.
+(`unknownKeys`, `formatUnknownKeys`, `objectRooted`), `ToolOutputSchema`
+(`objectRooted`), `ToolRefusal` (`refuse`), plus the
+`McpStdioOptions`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionHandlerOptions`, `UnionTool`,
+`UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
+types. `McpToolkit` also carries `unionTool` and `unionHandler`.
+
+`@effected/mcp/guard` (`src/guard.ts`): `McpGuard` (`run`), plus the
+`McpGuardHost`, `McpGuardPolicy`, `McpGuardedServer` and
+`McpGuardRunOptions` types. **It has no static runtime import**, only
+`import type`: the guards must be listening before `effect` or the
+server graph evaluates. The server half lives in
+`src/internal/guardLaunch.ts` behind a dynamic `import()`;
+`entrypoints.test.ts` pins the graph, so a static import added to
+`McpGuard.ts` fails it.
 
 `@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
-carry `listTools`, `listResources`, `callTool`, `readResource`, `request`,
+carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `listResources`, `callTool`, `readResource`, `request`,
 `startRequest`, `notify`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`,
 `consoleLogSoFar`, `close`), `McpProcess` (`spawn`; instances carry `send`,
 `sendRaw`, `nextLine`, `readUntilResponse`, `handshake`, `closeStdin`,
@@ -100,16 +111,23 @@ carry `listTools`, `listResources`, `callTool`, `readResource`, `request`,
   both into one graph shares the map, and so does building or providing
   the second anywhere under the first's `Effect.provide`: nested
   `Layer.build` and `Effect.provide` fork the ambient memo map
-  (`CurrentMemoMap.forkOrCreate`). Isolate a server with its own
+  (`CurrentMemoMap.forkOrCreate`). The tool registry is shared the same
+  way: core's `McpServer.layer` is a module constant too, and
+  `McpServer.toolkit` / `McpToolkit.layer` register into whichever copy
+  their memo map holds. Isolate a server by wrapping its **whole bundle**
+  (its toolkit layers together with `McpStdio.layer`, plus its `Stdio` if
+  that is per server) in `Layer.fresh`: probed, each server then gets its
+  own protocol and its own registry, tools included. The trap is a
+  `Layer.fresh` boundary **between** a toolkit and `McpStdio.layer`: fresh
+  around `McpStdio.layer` alone, with the toolkit outside it, builds a
+  second, empty registry, so the server serves no tools even when it is
+  the only server. That is what failed 35 of the harness and toolkit tests
+  when it was tried (tool calls stopped resolving). Its own
   `ManagedRuntime`, `Effect.provide(layer, { local: true })` or its own
-  process. This is core's behaviour with or without the guard.
-  `McpHarness.make` builds with a fresh memo map
+  process isolate a server too. This is core's behaviour with or without
+  the guard. `McpHarness.make` builds with a fresh memo map
   (`Layer.buildWithMemoMap(…, Layer.makeMemoMapUnsafe(), scope)`) for this
   reason, so a harness never shares an ambient server's protocol.
-  `Layer.fresh` around `layerStdio` is not a fix: tried, it failed 35 of
-  the harness and toolkit tests
-  (tool calls stopped resolving), most likely because core's `McpServer.layer`
-  is also a shared constant that `McpServer.toolkit` registers through.
 - **Code after a completed `Effect.provide` of a stdio server never
   runs.** Core's `makeProtocolStdio` captures the fiber that builds it and
   interrupts that fiber when its stdin loop ends

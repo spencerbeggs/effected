@@ -16,7 +16,13 @@ const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xd
  *
  * Spread {@link ToolFailure.fields} into your tool's `Schema.TaggedError`, build
  * `message` with {@link ToolFailure.message}, and pass every caller-supplied
- * value through {@link ToolFailure.truncate} before echoing it.
+ * value through {@link ToolFailure.truncate} before echoing it. For a plain
+ * refusal with no fields of its own, `ToolRefusal` is this shape ready-made.
+ *
+ * Only a declared failure keeps its message: core scrubs an undeclared
+ * failure or a defect to "Tool execution failed due to an internal server
+ * error.", so audit every throw path a tool can take and declare each one the
+ * agent should read.
  *
  * @example
  * ```ts

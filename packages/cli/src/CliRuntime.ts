@@ -4,6 +4,7 @@ import { CliError } from "effect/unstable/cli";
 import { CliExit } from "./CliExit.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
+import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
@@ -11,6 +12,22 @@ const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u
 /** A `UserError` `Command.runWith` already printed: it sets the mark to `false` after rendering. */
 const isRenderedUserError = (u: unknown): u is CliError.UserError =>
 	CliError.isCliError(u) && u._tag === "UserError" && Runtime.getErrorReported(u) === false;
+
+/**
+ * What `render` is told about a failure beyond the squashed error.
+ *
+ * @public
+ */
+export interface FailureDetails {
+	/** The whole cause the program failed with, before squashing. */
+	readonly cause: Cause.Cause<unknown>;
+	/**
+	 * `true` when the cause carries no typed failure, so `error` is a defect:
+	 * a `die`, a thrown exception, a bug. `false` when `error` is a typed
+	 * failure from the error channel.
+	 */
+	readonly isDefect: boolean;
+}
 
 /**
  * How a failure is turned into output and an exit code.
@@ -24,8 +41,14 @@ export interface ReportFailuresOptions {
 	 * @remarks
 	 * Return several lines to print several: a config error's own message
 	 * followed by the rendered issue lines, say.
+	 *
+	 * `error` is the squashed cause: the first typed failure when there is
+	 * one, otherwise the first defect. `details` says which it is, so a typed
+	 * failure can render as one line and a defect as a full report, without
+	 * guessing from the error's shape. A renderer that takes only `error`
+	 * still fits.
 	 */
-	readonly render?: ((error: unknown) => string | ReadonlyArray<string>) | undefined;
+	readonly render?: ((error: unknown, details: FailureDetails) => string | ReadonlyArray<string>) | undefined;
 	/**
 	 * The exit code to use when the error does not carry one.
 	 *
@@ -66,6 +89,25 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	readonly platform: Layer.Layer<RP, EP>;
 	/** The logger, provided outermost. Defaults to `CliLogger.layer()`. */
 	readonly logger?: Layer.Layer<never> | undefined;
+	/**
+	 * Where the help document goes when it is printed with a usage error:
+	 * `"stdout"` (the default, core's behaviour) or `"stderr"`, beside the
+	 * errors.
+	 *
+	 * @remarks
+	 * `"stderr"` keeps stdout clean for a caller that parses it, such as a
+	 * hook piping JSON into `jq`: an unknown flag, a bad value or an unknown
+	 * subcommand then writes nothing to stdout. An explicit `--help` and a
+	 * bare invocation of a command group still print help on stdout: neither
+	 * is an error.
+	 *
+	 * Two cases keep help on stdout even under `"stderr"`. A `CliOutput`
+	 * Formatter or a `Console` provided inside `program` is not seen by
+	 * `main`, so its help is not rerouted; provide the Formatter through
+	 * `platform` instead. And with `Command.runWith`'s `renderErrors: false`
+	 * no errors are printed, so nothing marks the help as a usage error's.
+	 */
+	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
 }
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>
@@ -203,9 +245,11 @@ export class CliRuntime {
 					}
 
 					const render = options.render ?? ((value: unknown) => String(value));
+					// Cause.squash prefers a Fail over a Die, so `error` is a defect exactly when there is no Fail.
+					const details: FailureDetails = { cause, isDefect: !Cause.hasFails(cause) };
 
 					return Effect.gen(function* () {
-						for (const line of toLines(render(error))) {
+						for (const line of toLines(render(error, details))) {
 							yield* Effect.logError(line);
 						}
 
@@ -240,7 +284,8 @@ export class CliRuntime {
 		options: MainOptions<RP, EP>,
 	): Effect.Effect<void, Error, Exclude<Exclude<R, CliExit>, RP>> =>
 		Effect.gen(function* () {
-			yield* program;
+			// Inside the platform provide, so the rerouting sees the platform's own Formatter.
+			yield* options.helpOnUsageError === "stderr" ? routeHelpOnUsageError(program) : program;
 			const exit = yield* CliExit;
 			const code = MutableRef.get(exit.code);
 			// CliExit.set validates, but the cell is a public MutableRef a program

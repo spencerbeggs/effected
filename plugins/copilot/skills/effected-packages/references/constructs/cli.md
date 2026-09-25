@@ -13,6 +13,7 @@
 | `CliRuntime` | Class | Report a CLI program's failures through the program's own logger. | report a cli program's failures through its own logger, set exit code |
 | `CliTest` | Class | Spawn a built CLI bin hermetically and read its exit code and streams as data. | from `@effected/cli/testing` — spawn a built cli bin hermetically in a sandboxed temp home, read exit code and stdout/stderr as data |
 | `ConfigIssueRenderer` | Class | Render a `@effected/config-file` validation failure. | render a @effected/config-file validation error into human-readable lines |
+| `FailureDetails` | Interface | What `render` is told about a failure beyond the squashed error. | |
 | `MainOptions` | Interface | Options for `CliRuntime.main`. | |
 | `ReportFailuresOptions` | Interface | How a failure is turned into output and an exit code. | |
 | `RunOptions` | Interface | How `CliTest.run` spawns a bin. | from `@effected/cli/testing` |

@@ -5,6 +5,8 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `BinCommandOptions` | Interface | Options for `InstalledConsumer.command`: how the bin's environment and working directory are built. | from `@effected/workspaces/testing` |
+| `BinProvenance` | Interface | Which installed package a `node_modules/.bin` symlink resolves into. | from `@effected/workspaces/testing` |
 | `BoundaryFixture` | Interface | A snippet with the verdict one rule must reach on it. | from `@effected/workspaces/testing` |
 | `BoundaryRule` | TypeAlias | One rule a source file must keep. | from `@effected/workspaces/testing` |
 | `CatalogAssemblyFailure` | TypeAlias | Every failure catalog assembly can surface. | |
@@ -33,7 +35,7 @@
 | `HookReplay` | Interface | Which version of a config dependency a replay actually loaded, and where that version came from. | |
 | `HookReplaySource` | TypeAlias | Where a replayed config dependency's declared version was found: the `node_modules/.pnpm-config` copy, the pnpm store's `links/` tree, or a `ConfigDependencyHooks.layerFrom` entry. | |
 | `ImporterVersions` | TypeAlias | Each importer's dependency-name → resolved-version map, keyed by importer path (`"."` for the root package — the same keys `WorkspaceDiscovery.importerMap()` uses, and the same value `PackageStateSnapshot.relativePath` carries). | |
-| `InstalledConsumer` | Class | One scratch project, outside the workspace, with the carrier installed. | from `@effected/workspaces/testing` — scratch consumer project, installed bin path |
+| `InstalledConsumer` | Class | One scratch project, outside the workspace, with the carrier installed. | from `@effected/workspaces/testing` — scratch consumer project, installed bin path, bin command for a probe, run the carrier's own bin under shared bins |
 | `LayerEdge` | Class | One dependency edge between two workspace packages, in one field. | from `@effected/workspaces/testing` — one workspace dependency edge in one manifest field |
 | `LayerPolicy` | Class | A committed dependency-layering policy (`layers.json`). | from `@effected/workspaces/testing` — decode a committed layers.json dependency layering policy |
 | `LayerPolicyError` | Class | Raised when a layer policy cannot be read, parsed or decoded. | from `@effected/workspaces/testing` — layer policy file unreadable, not json, or wrong shape |
@@ -46,7 +48,7 @@
 | `LockfileReaderShape` | Interface | The `LockfileReader` service shape. | |
 | `NoPeerDependencyRules` | Variable | The empty `PeerDependencyRules`: every axis present and empty. | empty peer-dependency suppression rules, assert a workspace declares no peerDependencyRules |
 | `Offence` | Class | One place a source file breaks a `BoundaryRule`. | from `@effected/workspaces/testing` — one boundary violation with file line column and rule |
-| `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
+| `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule and `"forbidTokens"` for any `{ forbidTokens }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
 | `PackSource` | TypeAlias | Where each closure package is packed from. | from `@effected/workspaces/testing` |
 | `PackageManagerDetectionError` | Class | Raised when a directory carries no lockfile and no workspace configuration, so no package manager can be attributed to it. | handle no package manager could be detected at a workspace root |
 | `PackageManagerDetectionFailure` | TypeAlias | Every failure `PackageManagerDetector` can surface: no manager could be attributed to the root, or the root's `package.json` exists but cannot be read or parsed. | |
@@ -57,8 +59,10 @@
 | `PackageNotFoundError` | Class | Raised when a workspace package is requested by a name no member carries. | handle an unknown workspace package name requested by name |
 | `PackageRelease` | Interface | One entry in a release batch: which package went out, at which version. | |
 | `PackageStateSnapshot` | Class | One workspace member as captured in a `WorkspaceStateSnapshot` — the serializable slice a snapshot diff reads: identity, version, location, and the four dependency records. | one package's captured state at a point in time: name, version, dependencies |
-| `PackedInstall` | Class | Prove a carrier's bins reach a consumer that is not part of the workspace, once per available package manager. | from `@effected/workspaces/testing` — pack carrier, install outside workspace under npm pnpm yarn bun |
-| `PackedInstallError` | Class | Why a packed install could not be proven. | from `@effected/workspaces/testing` — packed install failure, manager unavailable, unresolved workspace protocol, missing bin |
+| `PackedInstall` | Class | Prove a carrier's bins reach a consumer that is not part of the workspace, once per available package manager. | from `@effected/workspaces/testing` — pack carrier, install outside workspace under npm pnpm yarn bun, closure before run, override unreleased dependency |
+| `PackedInstallBudget` | Interface | What `PackedInstall.timeoutBudget` adds up. | from `@effected/workspaces/testing` |
+| `PackedInstallClosureOptions` | Interface | What decides the set of packages a packed install packs: the options `PackedInstall.closure` and `PackedInstall.run` share. | from `@effected/workspaces/testing` |
+| `PackedInstallError` | Class | Why a packed install could not be proven. | from `@effected/workspaces/testing` — packed install failure, manager unavailable, unresolved workspace protocol, missing bin, invalid override, bin conflict |
 | `PackedInstallOptions` | Interface | Options for `PackedInstall.run`. | from `@effected/workspaces/testing` |
 | `PackedInstallResult` | Class | What a packed install produced. | from `@effected/workspaces/testing` — installed consumers, unavailable managers, packed tarball paths |
 | `PeerCheck` | Class | The result of checking a lockfile for unsatisfied peer dependencies. | find unsatisfied peer dependencies in a lockfile, replicate pnpm peers check, peer dependency audit |
@@ -71,6 +75,7 @@
 | `PublishabilityDetectorShape` | Interface | The `PublishabilityDetector` service shape. | |
 | `ReferenceOptions` | Interface | Options for the `process` rule. | from `@effected/workspaces/testing` |
 | `ReleaseTag` | Class | A git tag naming a release, and the parts it was built from. | format a git release tag, single shared tag or per-package scoped tag naming |
+| `RunBinOptions` | Interface | Options for `InstalledConsumer.runBin`. | from `@effected/workspaces/testing` |
 | `ScanOptions` | Interface | Options for `SourceBoundary.scan`. | from `@effected/workspaces/testing` |
 | `SourceBoundary` | Class | Source-text boundary checks: which files read `process`, import a forbidden module, or write to stdout or the console. | from `@effected/workspaces/testing` — scan source for process reads, node imports, console and stdout writes |
 | `SourceScan` | Class | What a scan read and found. | from `@effected/workspaces/testing` — boundary scan result, files read, allowlisted files, offences |

@@ -75,7 +75,11 @@ never depend on each other.
   a different name.
 - **carrier** — ships almost no behavior of its own. It takes a regular
   `dependencies` edge on every front end (see below — this is the one rule
-  that is easy to get backwards) plus one mirror bin shim per front end.
+  that is easy to get backwards) plus one bin shim per front end. By
+  recommendation those are the only bins in the tool and front ends declare
+  none; a tool whose front ends also stand alone may share the names
+  instead, at the cost of provenance under flat installs (see
+  [carrier-entry-contract.md](./carrier-entry-contract.md#who-declares-a-bin)).
   It **may also be a library** — a build-tool plugin that happens to also be
   the meta-package, or a package that carries config shims alongside the
   bin shims — as long as it only ever imports a front end from inside a bin
@@ -91,8 +95,10 @@ library instinct:
   companions as `peerDependencies` (plus the same names in
   `devDependencies` for its own tests) — that is what keeps one resolved
   copy of `effect` in a consumer's tree.
-- **An installed package** — anything that ships a `bin`, and the carrier
-  above all — declares its **full runtime closure** as regular
+- **An installed package** — anything that runs as a program: the carrier
+  above all, and every front end whose `main` a carrier shim runs (a front
+  end declares no `bin` of its own, but it is still what runs) — declares
+  its **full runtime closure** as regular
   `dependencies`: its own imports, plus **every peer of every library it
   depends on**. The peer chain has to terminate somewhere, and an installed
   package is where it terminates.

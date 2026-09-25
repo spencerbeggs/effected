@@ -677,6 +677,25 @@ const wrapFaulty = (base: FileSystem.FileSystem, faults: MemoryFileSystemFaults)
  * - Malformed input fails through the typed `PlatformError` channel, never as
  *   a defect; pathological directory or brace-nesting depth fails typed at the
  *   engine's nesting bound.
+ * - **Failures take the shape `@effect/platform-node` gives them.** Each
+ *   failure the real platform would raise carries the errno node reports as
+ *   `reason.cause.code` (`ENOENT`, `EINVAL`, `ERR_FS_EISDIR`, …), and its
+ *   `_tag` is derived from that code by the node adapter's own mapping:
+ *   `ENOENT` → `NotFound`, `EEXIST` → `AlreadyExists`,
+ *   `EISDIR`/`ENOTDIR`/`ELOOP` → `BadResource`, every other code →
+ *   `Unknown`. So `readLink` on a regular file fails `Unknown` with `EINVAL`,
+ *   renaming onto a non-empty directory `Unknown` with `ENOTEMPTY`, and
+ *   removing any directory without `recursive` `Unknown` with
+ *   `ERR_FS_EISDIR`. Match on `_tag` and `cause.code` exactly as you would
+ *   against the node adapter. Unlike node's `ErrnoException`, an Effect
+ *   failure's `cause` carries only `code` (and `path` for a path operation):
+ *   no `errno` number, no `syscall` and no `dest`, and `reason.syscall` is
+ *   never set. The thrown errors of the synchronous
+ *   {@link MemoryFileSystem.syncFileSystem} port are the exception: they do
+ *   carry `syscall`. Where Linux and macOS report different errnos the Linux
+ *   one is modelled. Limits of
+ *   the in-memory model itself (nesting depth, allocation) fail
+ *   `BadResource` with no `cause`.
  *
  * @example
  * ```ts

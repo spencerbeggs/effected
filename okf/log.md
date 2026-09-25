@@ -1,5 +1,14 @@
 # Log
 
+## 2026-09-25
+
+* Updated @effected/cli
+* Updated @effected/memfs
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated Carrier-only bins are recommended; shared bins are a supported choice
+* Updated savvy-web/systems
+* Updated spencerbeggs/okfit
+
 ## 2026-09-24
 
 * Updated @effected/workspaces/testing: the repo-shape checks
@@ -15,6 +24,7 @@
 * Updated claude-code-plugin
 * Updated scratchpad
 * Updated workspace
+* Updated @effected/github errors and retry
 
 ## 2026-09-23
 

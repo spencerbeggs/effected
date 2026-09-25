@@ -7,8 +7,8 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:39:07Z
-  body_sha256: ed75748bf90b0c80f545328a72d4b99e71c01baf8f0a7699a301cc19ff444cb3
+  at: 2026-09-25T21:15:01Z
+  body_sha256: 3f69ce4a1d1985fcd9033fc3f550f602cc5dbfe379e292dcf8812f357aa51735
 ---
 
 # spencerbeggs/okfit
@@ -76,3 +76,15 @@ integration. No front end depends on another front end.
   `LaunchContext` belong in a future `@effected/mcp` (phase 2); okfit's
   own MCP remediation helpers are one of three near-identical copies
   across the kit's consumers.
+- Shared bins, with an optional migration to
+  [carrier-only bins](../decisions/carrier-only-declares-bins.md):
+  `@okfit/cli`, `@okfit/lsp` and `@okfit/mcp` each declare the bin
+  (`okfit`, `okfit-lsp`, `okfit-mcp`) that the carrier `@okfit/plugin`
+  also declares, and the plugin loaders (`plugins/claude-code/bin/start-mcp.sh`,
+  `start-lsp.sh`, pinned by `__test__/loader.bats` and `lsp-loader.bats`)
+  fall back to `npx --yes @okfit/mcp` and `npx --yes @okfit/lsp`. Keeping
+  that shape is supported: a `PackedInstall` proof passes
+  `allowSharedBins: true` and accepts lost provenance under flat installs.
+  Migrating, if okfit wants the identity to hold everywhere, is a major bump
+  for each front end, with the loaders moving to
+  `npx --yes -p @okfit/plugin@<MAJOR> okfit-mcp` in the same release.

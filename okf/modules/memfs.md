@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 8886bd908339b17aa5134ac483af4cbfd4b00109b4821d9aac8a1eea3c32d98c
+  at: 2026-09-25T22:33:35Z
+  body_sha256: d75af96070faaba5f5c6bb1efa32666c2f1a5025b9ec234b5fda20c476b5295a
 ---
 
 # @effected/memfs
@@ -330,6 +330,21 @@ re-exporting module.
   `badArgument` for malformed caller input. Malformed input never
   defects. The only `Effect.die` sites are genuine internal-invariant
   violations inherited from upstream.
+- **Errno fidelity with the node adapter** ([ledger entry 10](#adaptation-ledger)):
+  every failure the real platform raises carries node's errno as
+  `reason.cause.code`, and the `_tag` is derived from that code by the
+  switch `@effect/platform-node`'s `handleErrnoException` uses —
+  `ENOENT` → `NotFound`, `EEXIST` → `AlreadyExists`,
+  `EISDIR`/`ENOTDIR`/`ELOOP` → `BadResource`, anything else → `Unknown`.
+  A site names the errno node raises, never a tag, so tag parity holds
+  by construction. Unlike node's `ErrnoException`, the `cause` carries
+  only `code` (and `path` for a path operation) — no `errno` number, no
+  `syscall`, no `dest` — and `reason.syscall` is never set on an Effect
+  failure; only the synchronous port's thrown errors carry `syscall`.
+  Where Linux and macOS
+  disagree, the Linux errno is modelled. Limits of the in-memory model
+  (nesting depth, allocation, position range) fail `BadResource` with no
+  `cause`: no real errno corresponds to them.
 - **Isolation**: each `make`/layer *build* is one volume. Layer
   memoization is per-build, not per-value: every `Effect.provide` of a
   layer value — even the same bound `const` — builds and re-seeds a
@@ -441,6 +456,53 @@ authoritative list.
    also why every write under `it.effect` reads as `0` unless the clock
    is advanced, so a seeded time appears to be in the future.
 
+10. **Errno fidelity** — `volume.ts` errors are built by `errnoError`
+    from a node errno code, with the tag derived by node's own mapping
+    and the code carried on an `Error` cause (`code`, `path`). The
+    upstream engine hand-picked tags, and code tested against it
+    misread the real adapter: `readLink` on a regular file failed
+    `BadResource` where node fails `Unknown`/`EINVAL`, which
+    `@effected/workspaces`' `binProvenance` had to tolerate both ways.
+    An audit ran every failure site against both implementations and
+    against raw `node:fs` on macOS and Linux (node 24, Docker). The
+    per-site mapping, with the platform splits:
+
+    | Operation | Before | After (= node) | Platform notes |
+    | --- | --- | --- | --- |
+    | `readLink` on a non-link | `BadResource` | `Unknown` `EINVAL` | |
+    | `remove` a directory without `recursive` (empty, non-empty, `force`, trailing slash) | `BadResource`, or success when empty | `Unknown` `ERR_FS_EISDIR` | node's `fs.rm` refuses every directory |
+    | `makeDirectory` beneath a file (plain or recursive) | `AlreadyExists` | `BadResource` `ENOTDIR` | |
+    | `makeDirectory("/")` | `BadResource` | `AlreadyExists` `EEXIST`; recursive succeeds | |
+    | `rename` a directory into itself | `BadResource` | `Unknown` `EINVAL` | |
+    | `rename` onto a non-empty directory | `BadResource` | `Unknown` `ENOTEMPTY` | errno 66 macOS, 39 Linux; the code is the same |
+    | `rename`/`copyFile`/`link`/`symlink` other kind conflicts | `BadResource` | `BadResource` + `ENOTDIR`/`EISDIR` | a file onto `dir/` is `ENOTDIR` on Linux, `EISDIR` on macOS; `EISDIR` modelled |
+    | `link` to a directory | `PermissionDenied` | `Unknown` `EPERM` | |
+    | `copy` onto itself or its own hard link | success no-op, or `AlreadyExists`/`BadResource` | `Unknown` `ERR_FS_CP_EINVAL` | checked before `overwrite` |
+    | `copy` into itself | `BadResource` | `Unknown` `ERR_FS_CP_EINVAL` | |
+    | `copy` kind mismatch (top-level or nested, any `overwrite`) | `AlreadyExists`/`BadResource` | `Unknown` `ERR_FS_CP_DIR_TO_NON_DIR`/`ERR_FS_CP_NON_DIR_TO_DIR` | |
+    | handle ops on a closed handle, or `read`/`write` on the wrong mode | `BadResource` | `Unknown` `EBADF` | |
+    | `truncate` a read-only handle | `BadResource` | `Unknown` `EINVAL` | `ftruncate` is `EINVAL` on both platforms |
+    | NUL byte in a path | `NotFound`/`BadResource` | `BadArgument` | node validates before any syscall |
+    | trailing slash on an existing directory | `BadResource` | addressed as the directory (so `rename dir/`, `remove dir/ recursive` succeed) | |
+    | trailing slash on a missing path | `BadResource` | `NotFound` `ENOENT`; creating a file there `BadResource` `EISDIR`; renaming a file there `BadResource` `ENOTDIR` | Linux modelled; macOS reports `ENOENT` for the last two |
+    | `copyFile` from a directory | `BadResource` | `BadResource` `EISDIR` | Linux modelled; macOS `Unknown` `ENOTSUP` |
+    | `glob` from a missing, non-directory or looping root | `NotFound`/`BadResource` | success, `[]` | |
+    | `truncate` to a negative length (path or handle) | `BadArgument` | success, clamped to 0 | |
+    | `utimes` failures | method `utimes` | method `utime` | the node adapter's method name |
+    | every other errno site (`ENOENT`, `EEXIST`, `ENOTDIR`, `EISDIR`, `ELOOP`) | tag already right, no cause | same tag, plus `cause.code` | |
+
+    Kept divergences, pinned by the differential suite rather than
+    disclaimed: `copy` without `overwrite` fails `AlreadyExists` where
+    `fs.cp` silently keeps the destination and merges into an existing
+    directory; `copy` does not create a missing destination parent;
+    a read-only `open` of a directory fails at `open` where node fails
+    at the first `read`/`readAlloc` with the same tag and code; a
+    two-path operation reports the path the conflict concerns where
+    the node adapter always reports its first argument; `description`
+    stays set where node's is undefined. The upstream memory-specific
+    test pinning `truncate(-1)` as `BadArgument` was amended, since
+    node clamps it.
+
 ## Provenance and refusals
 
 The kit extensions above are not speculative API design — every one was
@@ -516,7 +578,7 @@ Not yet migrated: `schemastore`, `app`, `xdg`'s `XdgConfig` suite, and
 
 ## Test strategy: the differential oracle
 
-Five layers of proof, largest first:
+Six layers of proof, largest first:
 
 1. **The vendored contract suite** (PR #6555's `FileSystemTest.ts`,
    adapted to house style) run against `MemoryFileSystem.layer`. It
@@ -541,7 +603,15 @@ Five layers of proof, largest first:
    delegation; `failTimes` under `Effect.retry`, its per-build re-arm
    across two provides of one bound `const`, and `RangeError` on bad
    counts; and `@ts-expect-error` tests pinning the type enforcement.
-5. **Volume-inspection tests**: the pairing invariant (a write through
+5. **Errno-parity suite** (`__test__/ErrnoParityContract.ts`, kit-owned
+   so the vendored suite stays unedited): one case per disputed failure
+   from [ledger entry 10](#adaptation-ledger), run against both the
+   volume and the node adapter, asserting `_tag`, `method` and
+   `cause.code`. Platform-split cases carry `{ linux, darwin }`
+   expectations (memfs asserts Linux; the node run asserts its host),
+   and kept divergences carry `{ memory, node }` so a change on either
+   side fails. Every fix was mutation-checked against it.
+6. **Volume-inspection tests**: the pairing invariant (a write through
    `FileSystem` is immediately visible to `Volume`, a removal
    likewise); per-build isolation across two provides; the no-widening
    type guard; seed parity across every entry kind; honest absence plus

@@ -3,7 +3,7 @@
 // project looks like, and how each spells "skip lifecycle scripts". Pure, so
 // every per-manager trap is pinned without spawning one.
 
-import { Result } from "effect";
+import { Predicate, Result } from "effect";
 import type { PackageManagerName } from "../PackageManagerName.js";
 import type { WorkspacePackage } from "../WorkspacePackage.js";
 import { RUNTIME_DEPENDENCY_FIELDS } from "./dependencyFields.js";
@@ -181,23 +181,116 @@ export const installArgs = (manager: PackageManagerName, version: string): Reado
  */
 const UNRESOLVABLE = /^(?:workspace:|catalog:|link:|file:(?!\/))/;
 
-/** Every specifier in a packed manifest's runtime maps that only the workspace could resolve (see `UNRESOLVABLE`). */
-export const unresolvedSpecifiers = (manifestJson: string): Result.Result<ReadonlyArray<string>, unknown> => {
+/** What a packed `package.json` says that the run checks before any install. */
+export interface PackedManifest {
+	/** Its `name`, when that is a string. */
+	readonly name: string | undefined;
+	/** Every runtime specifier only the workspace could resolve (see `UNRESOLVABLE`), as `field.name: spec`. */
+	readonly unresolved: ReadonlyArray<string>;
+	/**
+	 * The bin names it declares: the keys of a `bin` object, or for a `bin`
+	 * string the package name without its scope, as npm links it.
+	 */
+	readonly bins: ReadonlyArray<string>;
+}
+
+/** Parse a packed manifest into the facts the run checks; the failure is the parse error or a non-object. */
+export const readPackedManifest = (manifestJson: string): Result.Result<PackedManifest, unknown> => {
 	let manifest: unknown;
 	try {
 		manifest = JSON.parse(manifestJson);
 	} catch (cause) {
 		return Result.fail(cause);
 	}
-	if (typeof manifest !== "object" || manifest === null) return Result.fail(new Error("package.json is not an object"));
+	if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest))
+		return Result.fail(new Error("package.json is not an object"));
 	const record = manifest as Record<string, unknown>;
-	return Result.succeed(
-		RUNTIME_DEPENDENCY_FIELDS.flatMap((field) => {
-			const block = record[field];
-			if (typeof block !== "object" || block === null) return [];
-			return Object.entries(block as Record<string, unknown>)
-				.filter(([, spec]) => typeof spec === "string" && UNRESOLVABLE.test(spec))
-				.map(([name, spec]) => `${field}.${name}: ${String(spec)}`);
-		}),
-	);
+	const name = typeof record.name === "string" ? record.name : undefined;
+	const unresolved = RUNTIME_DEPENDENCY_FIELDS.flatMap((field) => {
+		const block = record[field];
+		if (typeof block !== "object" || block === null) return [];
+		return Object.entries(block as Record<string, unknown>)
+			.filter(([, spec]) => typeof spec === "string" && UNRESOLVABLE.test(spec))
+			.map(([dependency, spec]) => `${field}.${dependency}: ${String(spec)}`);
+	});
+	const bin = record.bin;
+	const bins =
+		typeof bin === "string"
+			? name === undefined
+				? []
+				: [name.replace(/^@[^/]+\//, "")]
+			: typeof bin === "object" && bin !== null && !Array.isArray(bin)
+				? Object.keys(bin)
+				: [];
+	return Result.succeed({ name, unresolved, bins });
 };
+
+/**
+ * The file a manifest's `bin` declares for `name`: a `bin` object's entry, or
+ * a `bin` string when `name` is the unscoped package name. `undefined` when
+ * the manifest is not a JSON object or declares no such bin.
+ */
+export const binTargetOf = (manifestJson: string, name: string): string | undefined => {
+	let manifest: unknown;
+	try {
+		manifest = JSON.parse(manifestJson);
+	} catch {
+		return undefined;
+	}
+	if (!Predicate.isObject(manifest) || Array.isArray(manifest)) return undefined;
+	const bin = manifest.bin;
+	if (typeof bin === "string") {
+		return typeof manifest.name === "string" && manifest.name.replace(/^@[^/]+\//, "") === name ? bin : undefined;
+	}
+	if (!Predicate.isObject(bin) || Array.isArray(bin)) return undefined;
+	const target = (bin as Record<string, unknown>)[name];
+	return typeof target === "string" && Object.hasOwn(bin, name) ? target : undefined;
+};
+
+/** Every specifier in a packed manifest's runtime maps that only the workspace could resolve (see `UNRESOLVABLE`). */
+export const unresolvedSpecifiers = (manifestJson: string): Result.Result<ReadonlyArray<string>, unknown> =>
+	Result.map(readPackedManifest(manifestJson), (manifest) => manifest.unresolved);
+
+/**
+ * The first bin the carrier declares that another packed package declares
+ * too. Under a flat layout (npm, bun, Yarn's `node-modules` linker) either
+ * package can take `node_modules/.bin/<bin>`, so a bin check or a bin run
+ * could pass on the wrong package. `PackedInstall.run` refuses it unless the
+ * caller shares bin names deliberately (`allowSharedBins`).
+ */
+export const binConflict = (
+	carrier: { readonly name: string; readonly bins: ReadonlyArray<string> },
+	others: ReadonlyArray<{ readonly name: string; readonly bins: ReadonlyArray<string> }>,
+): { readonly bin: string; readonly package: string } | undefined => {
+	for (const bin of carrier.bins) {
+		const other = others.find((pkg) => pkg.name !== carrier.name && pkg.bins.includes(bin));
+		if (other !== undefined) return { bin, package: other.name };
+	}
+	return undefined;
+};
+
+/** A bare package name, scoped or not: an override key carrying a selector (`a>b`, `a@1`) is not one. */
+const BARE_NAME = /^(?:@[^/@\s>]+\/)?[^/@\s>]+$/;
+
+/**
+ * The `file:` entries of a parsed `pnpm-workspace.yaml`'s `overrides:` map,
+ * name to the path after `file:` (relative paths are the caller's to resolve,
+ * against the workspace root, as pnpm does). Entries that are not strings,
+ * not `file:`, or keyed by anything but a bare package name are skipped, and
+ * so is `__proto__`, which no npm package can be named. The map has no
+ * prototype, so a package named `constructor` or `prototype` is an ordinary
+ * own entry and a missing name never resolves to an inherited member.
+ */
+export const fileOverridesOf = (document: unknown): Record<string, string> => {
+	const out: Record<string, string> = Object.create(null);
+	if (!Predicate.isObject(document) || !Predicate.isObject(document.overrides) || Array.isArray(document.overrides))
+		return out;
+	for (const [name, spec] of Object.entries(document.overrides)) {
+		if (name === "__proto__") continue;
+		if (typeof spec === "string" && spec.startsWith("file:") && BARE_NAME.test(name)) out[name] = spec.slice(5);
+	}
+	return out;
+};
+
+/** An `overrides` value without the `file:` prefix a caller may copy from a workspace file. */
+export const overridePath = (spec: string): string => (spec.startsWith("file:") ? spec.slice(5) : spec);

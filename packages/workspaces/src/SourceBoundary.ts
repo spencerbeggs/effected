@@ -22,6 +22,17 @@ import { isIdentifierChar, lex, locate, references, specifierLiterals } from "./
  * core's `Console` service. `{ forbidImports }` forbids an import whose specifier
  * equals an entry, is a subpath of one, or starts with an entry's text before a
  * trailing `*` (so `"node:*"` and `"@effect/platform*"` are prefixes).
+ * `{ forbidTokens }` forbids each entry's exact text wherever it appears in
+ * code (see {@link SourceBoundary.check} for how a token is matched).
+ *
+ * To confine a token to named files rather than forbid it everywhere, forbid
+ * it and waive the rule for those files through
+ * {@link ScanOptions.allowRules}: the `"forbidTokens"` key names the files, and
+ * `SourceScan.waived` then reports every use inside them, so a
+ * confinement that no longer matches anything shows up there. The house rule
+ * "`process.env.__PACKAGE_VERSION__` only in `version.ts`" is
+ * `rules: [{ forbidTokens: ["process.env.__PACKAGE_VERSION__"] }]` with
+ * `allowRules: { forbidTokens: ["version.ts"] }`.
  *
  * `"node:*"` matches only the `node:` spelling: a bare built-in such as `"fs"`
  * is not caught. To forbid both, spread Node's own list from the test file,
@@ -38,7 +49,8 @@ export type BoundaryRule =
 	| "stdout-write"
 	| "console"
 	| "console-stdout"
-	| { readonly forbidImports: ReadonlyArray<string> };
+	| { readonly forbidImports: ReadonlyArray<string> }
+	| { readonly forbidTokens: ReadonlyArray<string> };
 
 /**
  * Options for the `process` rule.
@@ -49,7 +61,9 @@ export interface ReferenceOptions {
 	/**
 	 * Exact tokens exempt from the `process` rule, each starting at the
 	 * reference (`"process.env.MY_CONSTANT"`). `process.env.__PACKAGE_VERSION__`
-	 * is always exempt: the bundler substitutes it at build time.
+	 * is always exempt: the bundler substitutes it at build time. To hold such a
+	 * token to named files, forbid it with a `{ forbidTokens }` rule as well (see
+	 * {@link BoundaryRule}).
 	 */
 	readonly ignoreTokens?: ReadonlyArray<string> | undefined;
 }
@@ -83,8 +97,16 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 	/** The 1-based column, in UTF-16 code units. */
 	column: Schema.Number,
 	/** The rule broken. */
-	rule: Schema.Literals(["process", "node:process", "stdout-write", "console", "console-stdout", "forbidImports"]),
-	/** What matched: the identifier, the call, or the import specifier. */
+	rule: Schema.Literals([
+		"process",
+		"node:process",
+		"stdout-write",
+		"console",
+		"console-stdout",
+		"forbidImports",
+		"forbidTokens",
+	]),
+	/** What matched: the identifier, the call, the import specifier, or the token. */
 	detail: Schema.String,
 }) {
 	/** `file:line:column rule detail`, the form an assertion message reads best in. */
@@ -95,7 +117,8 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 
 /**
  * The rule an {@link Offence} names: every string {@link BoundaryRule}, plus
- * `"forbidImports"` for any `{ forbidImports }` rule. These are the keys of
+ * `"forbidImports"` for any `{ forbidImports }` rule and `"forbidTokens"` for
+ * any `{ forbidTokens }` rule. These are the keys of
  * {@link ScanOptions.allowRules}.
  *
  * @public
@@ -144,8 +167,10 @@ export interface ScanOptions extends ReferenceOptions {
 	 * rule. A matching file is still checked against every other rule, and
 	 * each offence a glob waives is reported in `SourceScan.waived`
 	 * rather than dropped. The `"forbidImports"` key covers every
-	 * `{ forbidImports }` rule. A file `allow` matches is exempt from every
-	 * rule, so nothing in it is waived.
+	 * `{ forbidImports }` rule, and the `"forbidTokens"` key every
+	 * `{ forbidTokens }` rule, which is how a token is confined to named files.
+	 * A file `allow` matches is exempt from every rule, so nothing in it is
+	 * waived.
 	 */
 	readonly allowRules?: { readonly [R in OffenceRule]?: ReadonlyArray<string> | undefined } | undefined;
 	/**
@@ -212,6 +237,24 @@ const memberAfter = (code: string, at: number, name: string): string | undefined
 	let end = j;
 	while (isIdentifierChar(code[end])) end++;
 	return end > j ? code.slice(j, end) : undefined;
+};
+
+/**
+ * Every offset where `token` appears in `code` as whole text: a token that
+ * starts with an identifier character must not continue one (nor follow `#`),
+ * and one that ends with an identifier character must not run into another.
+ */
+const tokenOccurrences = (code: string, token: string): ReadonlyArray<number> => {
+	if (token.length === 0) return [];
+	const guardStart = isIdentifierChar(token[0]);
+	const guardEnd = isIdentifierChar(token[token.length - 1]);
+	const found: Array<number> = [];
+	for (let at = code.indexOf(token); at !== -1; at = code.indexOf(token, at + 1)) {
+		if (guardStart && (isIdentifierChar(code[at - 1]) || code[at - 1] === "#")) continue;
+		if (guardEnd && isIdentifierChar(code[at + token.length])) continue;
+		found.push(at);
+	}
+	return found;
 };
 
 const forbids = (entry: string, specifier: string): boolean =>
@@ -383,6 +426,48 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 		rule: { forbidImports: ["@effect/platform*"] },
 		flagged: false,
 	},
+	{
+		name: "forbidTokens: the build-time version constant",
+		source: "export const version = process.env.__PACKAGE_VERSION__;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: true,
+	},
+	{
+		name: "forbidTokens: the token reached through globalThis",
+		source: "const version = globalThis.process.env.__PACKAGE_VERSION__;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: true,
+	},
+	{
+		name: "forbidTokens: a string and a comment",
+		source: 'const s = "process.env.__PACKAGE_VERSION__"; // process.env.__PACKAGE_VERSION__',
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: false,
+	},
+	{
+		name: "forbidTokens: a longer identifier",
+		source: "const v = process.env.__PACKAGE_VERSION__X;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: false,
+	},
+	{
+		name: "forbidTokens: the tail of a longer identifier",
+		source: "const v = xprocess.env.__PACKAGE_VERSION__;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: false,
+	},
+	{
+		name: "forbidTokens: after a variable named of, divided",
+		source: "const of = 8; const x = of / 2; const v = process.env.__PACKAGE_VERSION__; const y = 8 / 2;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: true,
+	},
+	{
+		name: "forbidTokens: a private field",
+		source: "const v = this.#process.env.__PACKAGE_VERSION__;",
+		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
+		flagged: false,
+	},
 ];
 
 /**
@@ -417,6 +502,10 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
  *   a quote or `/*` inside it can hide the code after it;
  *
  * - JSX text reads as code;
+ *
+ * - a variable named `yield` or `await` in a sloppy-mode script reads as the
+ *   keyword, so a `/` after it opens a regex (module and strict code reserve
+ *   both words);
  *
  * - `forbidImports: ["node:*"]` does not catch a bare built-in such as
  *   `"fs"` (see {@link BoundaryRule}).
@@ -455,7 +544,22 @@ export class SourceBoundary {
 	static readonly importsNode = (text: string, module: string): boolean =>
 		SourceBoundary.importSpecifiers(text).some((specifier) => isNodeModule(specifier, module));
 
-	/** Every place `text` breaks one of `rules`, in source order, attributed to `file`. */
+	/**
+	 * Every place `text` breaks one of `rules`, in source order, attributed to `file`.
+	 *
+	 * @remarks
+	 * A `{ forbidTokens }` entry matches its exact text in code only: comments,
+	 * strings, template text and regex bodies are blanked first, so a token that
+	 * itself contains a string literal never matches, and whitespace inside a
+	 * token must match byte for byte. A token that starts with an identifier
+	 * character does not match inside a longer identifier or after `#`, and one
+	 * that ends with one does not match when an identifier character follows.
+	 * A member access is still a match: `globalThis.process.env.X` contains the
+	 * token `process.env.X`. A token listed twice is reported once. A token with
+	 * no identifier character at either end (`"=>"`, `"?."`) has no edge guard,
+	 * so it matches inside longer punctuation, and consecutive matches of it can
+	 * overlap.
+	 */
 	static readonly check = (
 		file: string,
 		text: string,
@@ -486,6 +590,11 @@ export class SourceBoundary {
 					const member = memberAfter(lexed.code, offset, "console");
 					if (member !== undefined && STDERR_METHODS.has(member)) continue;
 					found.push({ offset, rule, detail: member === undefined ? "console" : `console.${member}` });
+				}
+			} else if ("forbidTokens" in rule) {
+				for (const token of new Set(rule.forbidTokens)) {
+					for (const offset of tokenOccurrences(lexed.code, token))
+						found.push({ offset, rule: "forbidTokens", detail: token });
 				}
 			} else {
 				for (const literal of specifiers) {

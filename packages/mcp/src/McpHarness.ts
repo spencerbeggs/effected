@@ -35,6 +35,7 @@ export interface McpHarnessOptions {
 interface HarnessParts {
 	readonly protocol: McpProtocol.ProtocolAdapter;
 	readonly initialize: Effect.Effect<JsonRpcMessage, McpTestFailure>;
+	readonly initializeWith: (protocolVersion: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly discover: Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly request: (method: string, params?: unknown) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly startRequest: (
@@ -51,6 +52,7 @@ interface HarnessParts {
 	readonly readResource: (uri: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly sendRaw: (message: unknown) => Effect.Effect<void>;
 	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
+	readonly sentSoFar: Effect.Effect<ReadonlyArray<unknown>>;
 	readonly stderrSoFar: Effect.Effect<string>;
 	readonly consoleLogSoFar: Effect.Effect<ReadonlyArray<string>>;
 	readonly close: Effect.Effect<void>;
@@ -102,6 +104,22 @@ export class McpHarness {
 	readonly protocol: McpProtocol.ProtocolAdapter;
 	/** `initialize` then `notifications/initialized`; `server/discover` on a stateless revision. Call it first on a stateful revision. */
 	readonly initialize: Effect.Effect<JsonRpcMessage, McpTestFailure>;
+	/**
+	 * `initialize` asking for `protocolVersion` instead of the harness's own
+	 * revision, then `notifications/initialized` only when the response
+	 * carries no error. Returns the whole response: assert the negotiated
+	 * `result.protocolVersion`, or the JSON-RPC `error`.
+	 *
+	 * @remarks
+	 * It moves between stateful revisions only. A stateful server never
+	 * refuses a version: it counter-offers its latest stateful revision, so
+	 * asking for an unknown one, or for the stateless `2026-07-28`, comes back
+	 * as `2025-11-25`. On a harness made with a stateless revision the server
+	 * does not serve `initialize` at all, and the response is a JSON-RPC
+	 * `-32601` "Method not found" error, with no `notifications/initialized`
+	 * sent after it.
+	 */
+	readonly initializeWith: (protocolVersion: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** `server/discover`. */
 	readonly discover: Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** Send a request and wait for its response. */
@@ -128,6 +146,8 @@ export class McpHarness {
 	readonly sendRaw: (message: unknown) => Effect.Effect<void>;
 	/** The next server-initiated frame with this method, skipping and keeping others; fails with `ServerStopped` once the server stops. */
 	readonly awaitOutboundMethod: (method: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
+	/** Every frame written to the server's stdin so far, in order, as the JSON-parsed bytes written (a snapshot the caller's later mutations cannot reach): requests, notifications and `sendRaw` values. */
+	readonly sentSoFar: Effect.Effect<ReadonlyArray<unknown>>;
 	/** Everything written to stderr, plus every captured log line. */
 	readonly stderrSoFar: Effect.Effect<string>;
 	/** Every captured `console.log`, `info` or `debug` call. */
@@ -138,6 +158,7 @@ export class McpHarness {
 	private constructor(parts: HarnessParts) {
 		this.protocol = parts.protocol;
 		this.initialize = parts.initialize;
+		this.initializeWith = parts.initializeWith;
 		this.discover = parts.discover;
 		this.request = parts.request;
 		this.startRequest = parts.startRequest;
@@ -148,6 +169,7 @@ export class McpHarness {
 		this.readResource = parts.readResource;
 		this.sendRaw = parts.sendRaw;
 		this.awaitOutboundMethod = parts.awaitOutboundMethod;
+		this.sentSoFar = parts.sentSoFar;
 		this.stderrSoFar = parts.stderrSoFar;
 		this.consoleLogSoFar = parts.consoleLogSoFar;
 		this.close = parts.close;
@@ -276,10 +298,15 @@ export class McpHarness {
 			// naming the missing step.
 			const stateful = !isStateless(protocol);
 			let initializeSent = false;
+			const sent: Array<unknown> = [];
 			const sendRaw = (message: unknown): Effect.Effect<void> =>
 				Effect.suspend(() => {
-					if (isJsonRpcMessage(message) && message.method === "initialize") initializeSent = true;
-					return Effect.asVoid(Queue.offer(stdin, encoder.encode(`${JSON.stringify(message)}\n`)));
+					const line = JSON.stringify(message);
+					// Recorded from the bytes written, so mutating the caller's object afterwards changes nothing.
+					const written: unknown = line === undefined ? undefined : JSON.parse(line);
+					sent.push(written);
+					if (isJsonRpcMessage(written) && written.method === "initialize") initializeSent = true;
+					return Effect.asVoid(Queue.offer(stdin, encoder.encode(`${line}\n`)));
 				});
 			const startRequest = (method: string, params?: unknown) =>
 				Effect.gen(function* () {
@@ -306,6 +333,12 @@ export class McpHarness {
 						yield* notify("notifications/initialized");
 						return response;
 					});
+			const initializeWith = (protocolVersion: string) =>
+				Effect.gen(function* () {
+					const response = yield* request("initialize", { ...initializeParams(protocol, clientInfo), protocolVersion });
+					if (response.error === undefined) yield* notify("notifications/initialized");
+					return response;
+				});
 			const listTools = Effect.flatMap(request("tools/list"), (response) =>
 				response.error === undefined
 					? Effect.succeed((response.result as { readonly tools: ReadonlyArray<ServedTool> }).tools)
@@ -344,6 +377,7 @@ export class McpHarness {
 			return new McpHarness({
 				protocol,
 				initialize,
+				initializeWith,
 				discover,
 				request,
 				startRequest,
@@ -354,6 +388,7 @@ export class McpHarness {
 				readResource: (uri) => request("resources/read", { uri }),
 				sendRaw,
 				awaitOutboundMethod,
+				sentSoFar: Effect.sync(() => [...sent]),
 				stderrSoFar: Effect.sync(() => stderr.join("")),
 				consoleLogSoFar: Effect.sync(() => [...consoleLog]),
 				close: Effect.asVoid(Queue.end(stdin)),
