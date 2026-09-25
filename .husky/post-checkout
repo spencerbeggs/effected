@@ -41,7 +41,7 @@ if ! { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ] || [ -n "$SAVVY_SKIP_INSTALL" ];
   install_pm=""
   if [ -n "$install_root" ] && [ -f "$install_root/package.json" ]; then
     if command -v jq >/dev/null 2>&1; then
-      install_pm=$(jq -r '.packageManager // empty' "$install_root/package.json" 2>/dev/null | cut -d'@' -f1)
+      install_pm=$(jq -r '(.devEngines.packageManager | if type == "array" then .[0] else . end | .name?) // .packageManager // empty' "$install_root/package.json" 2>/dev/null | cut -d'@' -f1)
     fi
     if [ -z "$install_pm" ]; then
       if   [ -f "$install_root/pnpm-lock.yaml" ]; then install_pm="pnpm"

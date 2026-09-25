@@ -9,7 +9,7 @@ in_ci() { [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; }
 
 detect_pm() {
   if [ -f "$ROOT/package.json" ]; then
-    pm=$(jq -r '.packageManager // empty' "$ROOT/package.json" 2>/dev/null | cut -d'@' -f1)
+    pm=$(jq -r '(.devEngines.packageManager | if type == "array" then .[0] else . end | .name?) // .packageManager // empty' "$ROOT/package.json" 2>/dev/null | cut -d'@' -f1)
     if [ -n "$pm" ]; then echo "$pm"; return; fi
   fi
   if   [ -f "$ROOT/pnpm-lock.yaml" ]; then echo "pnpm"

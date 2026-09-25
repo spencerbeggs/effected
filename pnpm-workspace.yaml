@@ -128,7 +128,7 @@ catalogs:
     "@effected/xdg": ^0.6.0
     "@effected/yaml": ^0.16.0
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.42.0+sha512-2KQ/+3C+ciQ+1I/Vpfr+875Guta0YtCPNodeZkB2kegaraItEGwaYxIx8OocWglaoCbYC44acTJhQwxIRWhNdw==
+  "@savvy-web/pnpm-plugin-silk": 0.44.0+sha512-6GbxZtliXuGHKFzJGFkqqNAbZzErb42XvCLdnr29KVR3OwvwU+D1MxNPpfzKOkde/TlM/KLsciuNqqmCSS/Yag==
 loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/tsgo-*"
