@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T19:28:42Z
-  body_sha256: b5966d9dd74132ea19f63c38e0982b5c35718d5a6d22ce5788601a458ff7d315
+  at: 2026-09-25T19:35:03Z
+  body_sha256: 0195cb8d3f54b3a93f538711e13b4b5a8609ade10aed60edc4f9162d8b094b1e
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -472,9 +472,23 @@ it with `PackedInstall.scrubEnv` for the environment: there is no runtime
 edge between `workspaces` and `mcp`. The scratch directory is removed when
 the scope closes.
 
-Which package a `.bin` entry resolves to is not reported. Under a flat npm,
-yarn or bun layout, a hoisted bin of the same name from another package can
-shadow the carrier's.
+Under a flat npm, Yarn or bun layout, a hoisted bin of the same name from
+another package can take the carrier's `.bin` slot, and running it cannot tell
+which one ran. `InstalledConsumer.binProvenance(name)` answers that for the
+managers that write `.bin` entries as symlinks: npm, bun, and Yarn under the
+`node-modules` linker the run configures. It reads the link, realpaths the
+target, and walks up to the nearest `package.json` with a string `name`,
+staying inside the consumer directory; a nameless nested manifest such as a
+`dist/package.json` carrying only `type` is passed over. It returns
+`{ package, target }`.[^packed-install-ts]
+
+pnpm writes `.bin` entries as shell shims, and `binProvenance` returns
+`undefined` for them rather than parsing a script. We declined shim parsing:
+pnpm's isolated layout links only the consumer's direct dependencies at the
+top level, so the shadowing it would detect needs a direct dependency there.
+It also returns `undefined` for a link into no named package, and fails
+`MissingBin` for an entry that does not exist. The e2e asserts the carrier
+under npm and bun, and `undefined` under pnpm, against real installs.[^packed-install-e2e]
 
 [^testing-ts]: `packages/workspaces/src/testing.ts` — the entry point and its
     `@packageDocumentation` block.

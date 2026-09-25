@@ -653,3 +653,59 @@ describe("PackedInstall.timeoutBudget", () => {
 		assert.strictEqual(minutes(budget), 7.5);
 	});
 });
+
+describe("InstalledConsumer.binProvenance", () => {
+	const DIR = "/scratch/consumer-npm";
+	const NM = `${DIR}/node_modules`;
+	const at = (manager: "npm" | "pnpm") => InstalledConsumer.make({ manager, managerVersion: "1.0.0", directory: DIR });
+	const SEED: MemoryFileSystemSeed = {
+		[`${NM}/@x/carrier/package.json`]: JSON.stringify({ name: "@x/carrier", version: "1.0.0" }),
+		[`${NM}/@x/carrier/dist/package.json`]: JSON.stringify({ type: "module" }),
+		[`${NM}/@x/carrier/dist/bin.js`]: "#!/usr/bin/env node\n",
+		[`${NM}/@x/cli/package.json`]: JSON.stringify({ name: "@x/cli", version: "1.0.0" }),
+		[`${NM}/@x/cli/bin.js`]: "#!/usr/bin/env node\n",
+		[`${NM}/loose.js`]: "#!/usr/bin/env node\n",
+		[`${NM}/.bin/tool`]: MemoryFileSystem.symlink("../@x/carrier/dist/bin.js"),
+		[`${NM}/.bin/shadowed`]: MemoryFileSystem.symlink("../@x/cli/bin.js"),
+		[`${NM}/.bin/orphan`]: MemoryFileSystem.symlink("../loose.js"),
+		[`${NM}/.bin/shim`]: MemoryFileSystem.file('#!/bin/sh\nexec node "$basedir/../@x/carrier/dist/bin.js" "$@"\n', {
+			mode: 0o755,
+		}),
+	};
+	layer(Layer.mergeAll(MemoryFileSystem.layerWith(SEED), Path.layer))((it) => {
+		it.effect("names the package a .bin symlink resolves into, past a nameless nested package.json", () =>
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* at("npm").binProvenance("tool"), {
+					package: "@x/carrier",
+					target: `${NM}/@x/carrier/dist/bin.js`,
+				});
+			}),
+		);
+
+		it.effect("tells a hoisted bin from another package apart from the carrier's", () =>
+			Effect.gen(function* () {
+				assert.strictEqual((yield* at("npm").binProvenance("shadowed"))?.package, "@x/cli");
+			}),
+		);
+
+		it.effect("a shim that is not a symlink (pnpm's) is undefined, not a guess", () =>
+			Effect.gen(function* () {
+				assert.isUndefined(yield* at("pnpm").binProvenance("shim"));
+			}),
+		);
+
+		it.effect("a link into no named package inside the consumer is undefined", () =>
+			Effect.gen(function* () {
+				assert.isUndefined(yield* at("npm").binProvenance("orphan"));
+			}),
+		);
+
+		it.effect("a missing entry fails MissingBin naming the manager", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(at("npm").binProvenance("absent"));
+				assert.deepStrictEqual([error.reason, error.manager], ["MissingBin", "npm"]);
+				assert.strictEqual(error.message, "npm: node_modules/.bin/absent does not exist");
+			}),
+		);
+	});
+});

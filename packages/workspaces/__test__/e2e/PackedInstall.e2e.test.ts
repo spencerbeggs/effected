@@ -198,6 +198,17 @@ const assertConsumer = (consumer: InstalledConsumer, tarballs: Readonly<Record<s
 		const out = yield* spawn(consumer.binPath(BIN_NAME), []);
 		assert.strictEqual(out.stdout.trim(), GREETING, `${consumer.manager}: ${out.stderr}`);
 		assert.strictEqual(out.exitCode, 0, consumer.manager);
+		// runBin, under the env the install carried, runs the same bin to the same result.
+		const ran = yield* consumer.runBin(BIN_NAME);
+		assert.deepStrictEqual([ran.stdout.trim(), ran.exitCode], [GREETING, 0], `${consumer.manager}: ${ran.stderr}`);
+		// A symlinking manager's .bin entry resolves into the carrier; pnpm's shim is not read.
+		const provenance = yield* consumer.binProvenance(BIN_NAME);
+		if (consumer.manager === "pnpm") {
+			assert.isUndefined(provenance);
+		} else {
+			assert.strictEqual(provenance?.package, CARRIER, consumer.manager);
+			assert.isTrue(provenance?.target.startsWith(`${consumer.directory}/node_modules/`), provenance?.target);
+		}
 	});
 
 describe("PackedInstall against a real fixture workspace", () => {

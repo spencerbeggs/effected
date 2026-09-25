@@ -23,6 +23,7 @@
 export { LayerPolicy, LayerPolicyError } from "./LayerPolicy.js";
 export { PackageManagerName } from "./PackageManagerName.js";
 export {
+	type BinProvenance,
 	InstalledConsumer,
 	type PackSource,
 	PackedInstall,

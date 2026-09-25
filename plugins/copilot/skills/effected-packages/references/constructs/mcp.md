@@ -24,4 +24,6 @@
 | `ServedTool` | Interface | One entry of a `tools/list` result. | from `@effected/mcp/testing` |
 | `ToolFailure` | Class | How a tool's declared failure should read on the wire. | fold remediation into tool error message, truncate echoed caller values |
 | `ToolInputSchema` | Class | Pure walkers over a tool's served JSON Schema: every unknown key at every depth, a message naming them all, and an object-rooted form of a union. | find unknown tool arguments at every depth, object-root a union input |
+| `ToolOutputSchema` | Class | Shaping for a tool's `success` schema, so the `outputSchema` core serves is one every client accepts. | object-root a union tool success schema so outputSchema is served |
+| `ToolRefusal` | Class | A tool call refused for a reason the caller can fix: the kit's ready-made declared failure, built on `ToolFailure.fields`. | declared tool refusal with remediation in the message, survives error scrubbing |
 | `UnknownKeysLevel` | Interface | The unknown keys found at one object level of a tool-call payload. | |

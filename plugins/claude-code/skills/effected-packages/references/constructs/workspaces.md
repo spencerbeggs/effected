@@ -5,6 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `BinProvenance` | Interface | Which installed package a `node_modules/.bin` symlink resolves into. | from `@effected/workspaces/testing` |
 | `BoundaryFixture` | Interface | A snippet with the verdict one rule must reach on it. | from `@effected/workspaces/testing` |
 | `BoundaryRule` | TypeAlias | One rule a source file must keep. | from `@effected/workspaces/testing` |
 | `CatalogAssemblyFailure` | TypeAlias | Every failure catalog assembly can surface. | |

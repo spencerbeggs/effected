@@ -143,6 +143,18 @@ export interface RunBinOptions {
 const DEFAULT_BIN_TIMEOUT: Duration.Input = "1 minute";
 
 /**
+ * Which installed package a `node_modules/.bin` symlink resolves into.
+ *
+ * @public
+ */
+export interface BinProvenance {
+	/** The `name` from the nearest `package.json` above the link's target. */
+	readonly package: string;
+	/** The link's target, realpath'd. */
+	readonly target: string;
+}
+
+/**
  * One scratch project, outside the workspace, with the carrier installed.
  *
  * @public
@@ -165,6 +177,65 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	/** The installed bin `name`, in `node_modules/.bin`. POSIX: `PackedInstall` runs only there. */
 	binPath(name: string): string {
 		return `${this.directory}/node_modules/.bin/${name}`;
+	}
+
+	/**
+	 * Which installed package the `node_modules/.bin` entry `name` resolves into.
+	 *
+	 * @remarks
+	 * Under a flat layout (npm, bun, and Yarn with the `node-modules` linker
+	 * this run configures), a hoisted bin of the same name from another package
+	 * can shadow the carrier's, and running it cannot tell you which one ran.
+	 * Those managers write each `.bin` entry as a symlink, so this reads the
+	 * link, realpaths its target, and walks up to the nearest `package.json`
+	 * with a string `name`, staying inside the consumer directory. Assert
+	 * `package` is your carrier.
+	 *
+	 * Returns `undefined` when the entry is not a symlink: pnpm writes `.bin`
+	 * entries as shell shims, whose target this does not parse. pnpm's
+	 * isolated layout links only the consumer's direct dependencies at the top
+	 * level, so a shadowing bin needs a direct dependency there. It also
+	 * returns `undefined` when no named `package.json` lies between the target
+	 * and the consumer directory. An entry that does not exist fails
+	 * `MissingBin`; a read that fails, `Io`.
+	 *
+	 * @param name - The bin, as named in `node_modules/.bin`.
+	 */
+	binProvenance(
+		name: string,
+	): Effect.Effect<BinProvenance | undefined, PackedInstallError, FileSystem.FileSystem | Path.Path> {
+		const bin = this.binPath(name);
+		const directory = this.directory;
+		const manager = this.manager;
+		return Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const path = yield* Path.Path;
+			const io = (message: string) => (cause: unknown) => failure("Io", message, { manager, cause });
+			const linked = yield* fs.readLink(bin).pipe(
+				Effect.as(true),
+				Effect.catch(() => Effect.succeed(false)),
+			);
+			if (!linked) {
+				const present = yield* fs.exists(bin).pipe(Effect.mapError(io(`could not inspect ${bin}`)));
+				if (!present) {
+					return yield* failure("MissingBin", `${manager}: node_modules/.bin/${name} does not exist`, { manager });
+				}
+				// A shim, not a link (pnpm writes these): its target is inside a script this does not parse.
+				return undefined;
+			}
+			const target = yield* fs.realPath(bin).pipe(Effect.mapError(io(`could not resolve ${bin}`)));
+			for (let dir = path.dirname(target); dir.startsWith(`${directory}/`); dir = path.dirname(dir)) {
+				const manifest = path.join(dir, "package.json");
+				if (!(yield* fs.exists(manifest).pipe(Effect.mapError(io(`could not inspect ${manifest}`))))) continue;
+				const text = yield* fs.readFileString(manifest).pipe(Effect.mapError(io(`could not read ${manifest}`)));
+				const named = yield* Effect.try({
+					try: () => (JSON.parse(text) as { readonly name?: unknown }).name,
+					catch: io(`${manifest} is not JSON`),
+				});
+				if (typeof named === "string") return { package: named, target };
+			}
+			return undefined;
+		});
 	}
 
 	/**
