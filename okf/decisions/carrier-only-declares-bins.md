@@ -2,7 +2,7 @@
 type: Decision
 title: Carrier-only bins are recommended; shared bins are a supported choice
 description: "In the carrier pattern, front ends should declare no bin of the carrier's names, required only when provenance must hold under flat installs; sharing the names is a supported choice with allowSharedBins, and PackedInstall's BinConflict default makes it explicit."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -44,6 +44,8 @@ verified:
     at: 2026-09-25T20:47:50Z
   - by: human:spencer
     at: 2026-09-25T21:18:59Z
+  - by: human:spencer
+    at: 2026-09-25T21:26:12Z
 ---
 
 # Carrier-only bins are recommended; shared bins are a supported choice
