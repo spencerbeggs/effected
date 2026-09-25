@@ -229,8 +229,8 @@ importers:
         specifier: ^0.5.2
         version: 0.5.2(@effected/config-file@0.12.0(@effected/jsonc@0.13.0(effect@4.0.0-rc.117))(@effected/toml@0.9.0(effect@4.0.0-rc.117))(@effected/walker@0.12.0(@effected/glob@0.8.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/yaml@0.17.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/glob@0.8.0(effect@4.0.0-rc.117))(@effected/jsonc@0.13.0(effect@4.0.0-rc.117))(@effected/markdown@0.12.1(@effected/jsonc@0.13.0(effect@4.0.0-rc.117))(@effected/toml@0.9.0(effect@4.0.0-rc.117))(@effected/yaml@0.17.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/schemastore@0.15.1(effect@4.0.0-rc.117))(@effected/toml@0.9.0(effect@4.0.0-rc.117))(@effected/walker@0.12.0(@effected/glob@0.8.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/yaml@0.17.0(effect@4.0.0-rc.117))(redis@6.2.1)
       '@savvy-web/silk':
-        specifier: ^4.2.8
-        version: 4.2.8(@changesets/cli@3.0.3)(@commitlint/cli@21.2.3(@types/node@26.6.2)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.3)(@types/bun@1.4.2)(@types/node@26.6.2)(@vitest/coverage-istanbul@5.0.1)(@vitest/coverage-v8@5.0.1)(@vitest/expect@5.0.1)(husky@9.1.7)(lint-staged@17.5.1)(markdownlint-cli2-formatter-codequality@0.0.8(markdownlint-cli2@0.23.3(supports-color@8.1.1)))(markdownlint-cli2@0.23.3(supports-color@8.1.1))(redis@6.2.1)(supports-color@8.1.1)(tsx@4.23.15)(turbo@2.11.3)(typescript@7.0.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.1)
+        specifier: ^4.2.9
+        version: 4.2.9(@changesets/cli@3.0.3)(@commitlint/cli@21.2.3(@types/node@26.6.2)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.3)(@effected/config-file@0.12.0(@effected/jsonc@0.13.0(effect@4.0.0-rc.117))(@effected/toml@0.9.0(effect@4.0.0-rc.117))(@effected/walker@0.12.0(@effected/glob@0.8.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/yaml@0.17.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@types/bun@1.4.2)(@types/node@26.6.2)(@vitest/coverage-istanbul@5.0.1)(@vitest/coverage-v8@5.0.1)(@vitest/expect@5.0.1)(husky@9.1.7)(lint-staged@17.5.1)(markdownlint-cli2-formatter-codequality@0.0.8(markdownlint-cli2@0.23.3(supports-color@8.1.1)))(markdownlint-cli2@0.23.3(supports-color@8.1.1))(redis@6.2.1)(supports-color@8.1.1)(tsx@4.23.15)(turbo@2.11.3)(typescript@7.0.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.1)
       '@vitest-agent/plugin':
         specifier: ^4.1.7
         version: 4.1.7(@types/react@19.3.0)(@vitest/coverage-istanbul@5.0.1)(@vitest/coverage-v8@5.0.1)(redis@6.2.1)(vitest@5.0.1)
@@ -2904,12 +2904,12 @@ packages:
   '@savvy-web/changelog@1.0.7':
     resolution: {integrity: sha512-C9aYmJr4WaQ038ic/tCvKgPM8hgXy3DnY7zjB716w2FdOxrH/UOrK7mdnAKQ4kZFu/pw/a6nbm2tRUf6+UFsYA==}
 
-  '@savvy-web/cli@3.2.8':
-    resolution: {integrity: sha512-iTbNnJGc834b6aBZmEJ4zMq+P72GBUNMvhE4IXh9cDPd/GklZDVp2uoys4z0ygVi3rJamom4nmf2sk55DEkD/A==}
+  '@savvy-web/cli@3.3.0':
+    resolution: {integrity: sha512-/FXrPGir7Ag1qZ46z2quPrV/vBs/Kdaj/eniP5zeV0vlH+3fr0olsqq1KoS3xdURkTePm4nieJZfcbKQETmKDA==}
     hasBin: true
 
-  '@savvy-web/mcp@3.2.4':
-    resolution: {integrity: sha512-dEAMOZzOoYijq2YVbg8B039I6tJna+x4uO+T2ZpIJCcnPA1Q4a8+vBjtFkJ50apMJZ6oxmDkiHxk28xMaVFTaw==}
+  '@savvy-web/mcp@3.3.0':
+    resolution: {integrity: sha512-YGpZgaz/kXke2lYlftaau2uIezwjMmUeE9cKMuDi7pS1X+aUmWIXRAcP1xK9QcQyV7jMqAoB12bRcM0rOmar5g==}
     hasBin: true
 
   '@savvy-web/silk-core@0.4.5':
@@ -2928,8 +2928,8 @@ packages:
       '@effected/workspaces': ^0.26.0
       effect: 4.0.0-rc.117
 
-  '@savvy-web/silk@4.2.8':
-    resolution: {integrity: sha512-iA4lsD05HGWIhibT/33AVPVUQNTSJqSH1qrLOOvXY209KsaGcniovyMHUoCfn7DmAfRCMtCbmqn+q+E7+WDQvw==}
+  '@savvy-web/silk@4.2.9':
+    resolution: {integrity: sha512-SHfU8utMBA0oLg6ROdbPBydL//JFscgFrthlitg3t/Go4WyfQBSPUyC4QyX/PFxhYQ7fBHR+4oPZXOOBm/Sj7w==}
     hasBin: true
     peerDependencies:
       '@biomejs/biome': 2.5.14
@@ -5792,8 +5792,8 @@ packages:
   unhead@2.1.17:
     resolution: {integrity: sha512-HLMKXOszRhAPBrr6VlqCeVeJq2kbC4kXwzGLEZvvojPLWNYTJw22xG7Bfwhsvs31+IBet3Wl8ADg9dwYdyphfQ==}
 
-  unicorn-magic@0.4.0:
-    resolution: {integrity: sha512-wH590V9VNgYH9g3lH9wWjTrUoKsjLF6sGLjhR4sH1LWpLmCOH0Zf7PukhDA8BiS7KHe4oPNkcTHqYkj7SOGUOw==}
+  unicorn-magic@0.4.1:
+    resolution: {integrity: sha512-lzlXPoVB0Uy/FvTaUgX39RbixYiSKoc3JSoSf01+0c2B6FR3qdYIPN7Qjo/AV7n6sqLCk0509cT3LRj1oSZ1+A==}
     engines: {node: '>=20'}
 
   unified-lint-rule@3.0.1:
@@ -7579,10 +7579,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@savvy-web/cli@3.2.8(redis@6.2.1)(supports-color@8.1.1)':
+  '@savvy-web/cli@3.3.0(@effected/config-file@0.12.0(@effected/jsonc@0.13.0(effect@4.0.0-rc.117))(@effected/toml@0.9.0(effect@4.0.0-rc.117))(@effected/walker@0.12.0(@effected/glob@0.8.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/yaml@0.17.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(redis@6.2.1)(supports-color@8.1.1)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.117(effect@4.0.0-rc.117)(redis@6.2.1)
+      '@effected/cli': 0.8.0(@effected/config-file@0.12.0(@effected/jsonc@0.13.0(effect@4.0.0-rc.117))(@effected/toml@0.9.0(effect@4.0.0-rc.117))(@effected/walker@0.12.0(@effected/glob@0.8.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/yaml@0.17.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(effect@4.0.0-rc.117)
       '@effected/commands': 0.9.0(effect@4.0.0-rc.117)
+      '@effected/engine': 0.1.0(effect@4.0.0-rc.117)
       '@effected/git': 0.17.0(effect@4.0.0-rc.117)
       '@effected/jsonc': 0.13.0(effect@4.0.0-rc.117)
       '@effected/templates': 0.8.0(effect@4.0.0-rc.117)
@@ -7591,16 +7593,19 @@ snapshots:
       '@savvy-web/silk-effects': 9.1.3(@effected/commands@0.9.0(effect@4.0.0-rc.117))(@effected/git@0.17.0(effect@4.0.0-rc.117))(@effected/templates@0.8.0(effect@4.0.0-rc.117))(@effected/workspaces@0.26.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117)(supports-color@8.1.1)
       effect: 4.0.0-rc.117
     transitivePeerDependencies:
+      - '@effected/config-file'
       - bufferutil
       - redis
       - supports-color
       - utf-8-validate
 
-  '@savvy-web/mcp@3.2.4(redis@6.2.1)(supports-color@8.1.1)':
+  '@savvy-web/mcp@3.3.0(redis@6.2.1)(supports-color@8.1.1)':
     dependencies:
       '@effect/platform-node': 4.0.0-rc.117(effect@4.0.0-rc.117)(redis@6.2.1)
       '@effected/commands': 0.9.0(effect@4.0.0-rc.117)
+      '@effected/engine': 0.1.0(effect@4.0.0-rc.117)
       '@effected/git': 0.17.0(effect@4.0.0-rc.117)
+      '@effected/mcp': 0.1.1(@effected/engine@0.1.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117)
       '@effected/templates': 0.8.0(effect@4.0.0-rc.117)
       '@effected/workspaces': 0.26.0(effect@4.0.0-rc.117)
       '@savvy-web/silk-effects': 9.1.3(@effected/commands@0.9.0(effect@4.0.0-rc.117))(@effected/git@0.17.0(effect@4.0.0-rc.117))(@effected/templates@0.8.0(effect@4.0.0-rc.117))(@effected/workspaces@0.26.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117)(supports-color@8.1.1)
@@ -7652,7 +7657,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@savvy-web/silk@4.2.8(@changesets/cli@3.0.3)(@commitlint/cli@21.2.3(@types/node@26.6.2)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.3)(@types/bun@1.4.2)(@types/node@26.6.2)(@vitest/coverage-istanbul@5.0.1)(@vitest/coverage-v8@5.0.1)(@vitest/expect@5.0.1)(husky@9.1.7)(lint-staged@17.5.1)(markdownlint-cli2-formatter-codequality@0.0.8(markdownlint-cli2@0.23.3(supports-color@8.1.1)))(markdownlint-cli2@0.23.3(supports-color@8.1.1))(redis@6.2.1)(supports-color@8.1.1)(tsx@4.23.15)(turbo@2.11.3)(typescript@7.0.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.1)':
+  '@savvy-web/silk@4.2.9(@changesets/cli@3.0.3)(@commitlint/cli@21.2.3(@types/node@26.6.2)(conventional-commits-parser@7.1.2)(typescript@7.0.2))(@commitlint/config-conventional@21.2.3)(@effected/config-file@0.12.0(@effected/jsonc@0.13.0(effect@4.0.0-rc.117))(@effected/toml@0.9.0(effect@4.0.0-rc.117))(@effected/walker@0.12.0(@effected/glob@0.8.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/yaml@0.17.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@types/bun@1.4.2)(@types/node@26.6.2)(@vitest/coverage-istanbul@5.0.1)(@vitest/coverage-v8@5.0.1)(@vitest/expect@5.0.1)(husky@9.1.7)(lint-staged@17.5.1)(markdownlint-cli2-formatter-codequality@0.0.8(markdownlint-cli2@0.23.3(supports-color@8.1.1)))(markdownlint-cli2@0.23.3(supports-color@8.1.1))(redis@6.2.1)(supports-color@8.1.1)(tsx@4.23.15)(turbo@2.11.3)(typescript@7.0.2)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.0.1)':
     dependencies:
       '@changesets/cli': 3.0.3
       '@commitlint/cli': 21.2.3(@types/node@26.6.2)(conventional-commits-parser@7.1.2)(typescript@7.0.2)
@@ -7662,8 +7667,8 @@ snapshots:
       '@effected/templates': 0.8.0(effect@4.0.0-rc.117)
       '@effected/workspaces': 0.26.0(effect@4.0.0-rc.117)
       '@savvy-web/changelog': 1.0.7(supports-color@8.1.1)
-      '@savvy-web/cli': 3.2.8(redis@6.2.1)(supports-color@8.1.1)
-      '@savvy-web/mcp': 3.2.4(redis@6.2.1)(supports-color@8.1.1)
+      '@savvy-web/cli': 3.3.0(@effected/config-file@0.12.0(@effected/jsonc@0.13.0(effect@4.0.0-rc.117))(@effected/toml@0.9.0(effect@4.0.0-rc.117))(@effected/walker@0.12.0(@effected/glob@0.8.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(@effected/yaml@0.17.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117))(redis@6.2.1)(supports-color@8.1.1)
+      '@savvy-web/mcp': 3.3.0(redis@6.2.1)(supports-color@8.1.1)
       '@savvy-web/silk-effects': 9.1.3(@effected/commands@0.9.0(effect@4.0.0-rc.117))(@effected/git@0.17.0(effect@4.0.0-rc.117))(@effected/templates@0.8.0(effect@4.0.0-rc.117))(@effected/workspaces@0.26.0(effect@4.0.0-rc.117))(effect@4.0.0-rc.117)(supports-color@8.1.1)
       '@types/bun': 1.4.2
       '@types/node': 26.6.2
@@ -7682,6 +7687,7 @@ snapshots:
       vite: 8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
       vitest: 5.0.1(@types/node@26.6.2)(@vitest/coverage-istanbul@5.0.1)(@vitest/coverage-v8@5.0.1)(vite@8.3.0(@types/node@26.6.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
     transitivePeerDependencies:
+      - '@effected/config-file'
       - bufferutil
       - redis
       - supports-color
@@ -9045,7 +9051,7 @@ snapshots:
       is-path-inside: 4.0.0
       micromatch: 4.0.8
       slash: 5.1.0
-      unicorn-magic: 0.4.0
+      unicorn-magic: 0.4.1
 
   graceful-fs@4.2.11: {}
 
@@ -11163,7 +11169,7 @@ snapshots:
     dependencies:
       hookable: 6.1.2
 
-  unicorn-magic@0.4.0: {}
+  unicorn-magic@0.4.1: {}
 
   unified-lint-rule@3.0.1:
     dependencies:
