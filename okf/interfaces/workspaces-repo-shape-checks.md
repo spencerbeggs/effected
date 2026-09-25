@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T08:04:45Z
-  body_sha256: c79581d8d9b376b4e12ab4e3213415940db09d99196f861a50c934564d507352
+  at: 2026-09-25T19:28:42Z
+  body_sha256: b5966d9dd74132ea19f63c38e0982b5c35718d5a6d22ce5788601a458ff7d315
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -107,6 +107,39 @@ The exact token `process.env.__PACKAGE_VERSION__` is exempt, because the
 bundler substitutes it at build time. `ignoreTokens` adds more exact tokens,
 each starting at the reference. An exemption never applies through a member
 access, so `globalThis.process.env.__PACKAGE_VERSION__` is still flagged.
+
+### Confining a token: `forbidTokens`
+
+The exemption holds everywhere, but a carrier's house rule is usually "the
+version define appears only in `version.ts`". `{ forbidTokens }` forbids
+each entry's exact text in code; paired with an `allowRules` waiver under the
+`"forbidTokens"` key, it confines the token to the named files:
+
+```ts
+SourceBoundary.scan({
+  root,
+  rules: ["process", { forbidTokens: ["process.env.__PACKAGE_VERSION__"] }],
+  allowRules: { forbidTokens: ["version.ts"] },
+});
+```
+
+A use anywhere else is an offence. Each use inside `version.ts` is reported
+in `waived`, so asserting `waived` names `version.ts` proves the confinement
+is live rather than vacuous. The glob matches the root-relative path, as
+every `allow` and `allowRules` glob does, so `version.ts` names only the
+file at the root and `**/version.ts` names one at any depth. We chose the
+generic forbid-plus-waiver shape over a dedicated `{ token, onlyIn }` rule
+because the waiver already reports what it exempts; a separate `onlyIn` list
+would need its own non-vacuity handle. The cost is that one `"forbidTokens"`
+key covers every `{ forbidTokens }` rule in a scan: two tokens with different
+homes need two scans.[^source-boundary-ts]
+
+A token matches as whole text in the `code` view. A token that starts with
+an identifier character does not match inside a longer identifier, and one
+that ends with one does not run into the next. Whitespace must match byte
+for byte, and a token containing a string literal never matches, since
+strings are blanked. A member access still matches:
+`globalThis.process.env.__PACKAGE_VERSION__` contains the token.
 
 The known misses:
 
@@ -390,7 +423,12 @@ from a manager that could not spawn at all. The installs run one after
 another, so a test's outer `Effect.timeout` must cover the number of
 managers times `installTimeout`, plus the pack and whatever the test runs
 afterwards. A tighter guard fires first, as a `TimeoutError` that names no
-manager.
+manager. `PackedInstall.timeoutBudget({ managers, installTimeout, packages,
+perConsumer })` returns that sum as a `Duration`. It adds each manager's probe
+(30 seconds), install and `perConsumer`, each package's pack (two minutes) and
+manifest read (30 seconds), and 30 seconds for the untimed steps. It reads the
+same constants the run does, so the two cannot drift. `packages` is an explicit
+count, because `closure: "auto"` is only resolved by discovery inside the run.[^packed-install-ts]
 
 ### POSIX only
 
@@ -413,12 +451,30 @@ sidesteps npm 12's keyed-by-name `--json` shape.
 ### Composing `McpProbe`
 
 `PackedInstall` asserts that each bin exists and is executable, not what it
-does. Run each bin from the test, inside the same scope, through
-`InstalledConsumer.binPath`, and with `PackedInstall.scrubEnv(process.env)`
-as its environment. For an MCP bin, `McpProbe.initialize` from
-`@effected/mcp/testing` is the proof, and the consumer's test composes it:
-there is no runtime edge between `workspaces` and `mcp`. The scratch
-directory is removed when the scope closes.
+does. Run each bin from the test, inside the same scope.
+`InstalledConsumer.runBin(name, args, options?)` spawns it from the consumer
+directory with stdin ignored and returns `{ stdout, stderr, exitCode }`; a
+non-zero exit is a result. A spawn failure, an expired ceiling (one minute by
+default) or flooded output fails `BinFailed`. The environment is the one the
+install ran under, which the consumer carries as a redacted `env` field so
+printing it never prints a token. `options.env` is layered over it, with an
+`undefined` value removing a variable, and the result is scrubbed again. A
+consumer's test therefore needs no direct `@effected/commands` dependency to
+run a bin.[^packed-install-ts]
+
+`PackedInstallResult.scratch` is the realpath'd scratch root, so per-run
+state such as `XDG_DATA_HOME` can live inside it and be removed with it
+rather than in a second temporary directory.
+
+For an MCP bin, `McpProbe.initialize` from `@effected/mcp/testing` at
+`InstalledConsumer.binPath` is the proof, and the consumer's test composes
+it with `PackedInstall.scrubEnv` for the environment: there is no runtime
+edge between `workspaces` and `mcp`. The scratch directory is removed when
+the scope closes.
+
+Which package a `.bin` entry resolves to is not reported. Under a flat npm,
+yarn or bun layout, a hoisted bin of the same name from another package can
+shadow the carrier's.
 
 [^testing-ts]: `packages/workspaces/src/testing.ts` — the entry point and its
     `@packageDocumentation` block.

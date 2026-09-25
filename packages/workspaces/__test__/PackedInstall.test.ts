@@ -1,11 +1,11 @@
-import { assert, describe, layer } from "@effect/vitest";
+import { assert, describe, it, layer } from "@effect/vitest";
 import type { SpawnScript } from "@effected/commands";
 import { ScriptedSpawner } from "@effected/commands";
 import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Path } from "effect";
+import { Duration, Effect, FileSystem, Layer, Path, Redacted } from "effect";
 import { WorkspaceDiscovery, WorkspacePackage } from "../src/index.js";
-import { PackedInstall } from "../src/testing.js";
+import { InstalledConsumer, PackedInstall } from "../src/testing.js";
 
 const carrier = WorkspacePackage.make({
 	name: "@x/carrier",
@@ -336,6 +336,9 @@ describe("PackedInstall.run past the pack", () => {
 				assert.strictEqual(result.consumers[0]?.binPath("x"), "/scratch/consumer-npm/node_modules/.bin/x");
 				assert.deepStrictEqual(result.unavailable, ["yarn"], "require defaults to any");
 				assert.deepStrictEqual(result.tarballs, { "@x/carrier": CARRIER_TGZ, "@x/lib": LIB_TGZ });
+				assert.strictEqual(result.scratch, SCRATCH, "the scratch root is exposed");
+				assert.include(String(result.consumers[0]), "/scratch/consumer-npm", "the printed consumer shows its fields");
+				assert.notInclude(String(result.consumers[0]), "/home/u", "but its env prints redacted");
 
 				const tars = happy.spawns.filter((spawn) => spawn.command === "tar");
 				assert.deepStrictEqual(
@@ -561,5 +564,92 @@ describe("PackedInstall.run past the pack", () => {
 				assert.strictEqual(error.message, "npm install could not run");
 			}),
 		);
+	});
+});
+
+describe("InstalledConsumer.runBin", () => {
+	const BIN_DIR = "/scratch/consumer-npm";
+	const consumer = InstalledConsumer.make({
+		manager: "npm",
+		managerVersion: "11.19.1",
+		directory: BIN_DIR,
+		env: Redacted.make({ PATH: "/usr/bin", HOME: "/home/u", XDG_DATA_HOME: "/home/u/.local/share" }),
+	});
+	const runs = ScriptedSpawner.make((command) =>
+		command.endsWith("/tool") ? { stdout: "1.2.3\n", stderr: "warn\n", exit: 3 } : ScriptedSpawner.notFound(command),
+	);
+	layer(runs.layer)((it) => {
+		it.effect(
+			"runs the bin from the consumer under the install env, extra env layered over, a non-zero exit a result",
+			() =>
+				Effect.gen(function* () {
+					const output = yield* consumer.runBin("tool", ["--version"], {
+						env: { XDG_DATA_HOME: "/scratch/xdg", HOME: undefined, CI: "true", npm_config_user_agent: "pnpm/12" },
+					});
+					assert.deepStrictEqual([output.stdout, output.stderr, output.exitCode], ["1.2.3\n", "warn\n", 3]);
+					const [spawn] = runs.spawns;
+					assert.deepStrictEqual(
+						[spawn?.command, ...(spawn?.args ?? [])],
+						[`${BIN_DIR}/node_modules/.bin/tool`, "--version"],
+					);
+					assert.strictEqual(spawn?.cwd, BIN_DIR);
+					assert.deepStrictEqual(spawn?.env, { PATH: "/usr/bin", XDG_DATA_HOME: "/scratch/xdg" });
+					assert.strictEqual(spawn?.extendEnv, false);
+					assert.strictEqual(spawn?.options.stdin, "ignore");
+				}),
+		);
+
+		it.effect("a bin that cannot spawn fails BinFailed naming the manager and the bin", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(consumer.runBin("absent"));
+				assert.deepStrictEqual([error.reason, error.manager], ["BinFailed", "npm"]);
+				assert.strictEqual(error.message, "npm: absent could not run");
+			}),
+		);
+
+		it.effect("a hand-made consumer without env runs under only the options env, from the cwd given", () =>
+			Effect.gen(function* () {
+				const bare = InstalledConsumer.make({ manager: "pnpm", managerVersion: "12.5.1", directory: BIN_DIR });
+				yield* bare.runBin("tool", [], { env: { PATH: "/bin" }, cwd: "/elsewhere" });
+				const spawn = runs.spawns.at(-1);
+				assert.deepStrictEqual(spawn?.env, { PATH: "/bin" });
+				assert.strictEqual(spawn?.cwd, "/elsewhere");
+			}),
+		);
+	});
+
+	// The real clock: the bin's ceiling is a real ceiling.
+	const hung = ScriptedSpawner.make(() => ({ hang: true }));
+	layer(hung.layer, { excludeTestServices: true })((it) => {
+		it.effect("a bin that outlives its timeout fails BinFailed naming the ceiling", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(consumer.runBin("tool", [], { timeout: "50 millis" })).pipe(
+					Effect.timeout("3 seconds"),
+				);
+				assert.deepStrictEqual([error.reason, error.message], ["BinFailed", "npm: tool timed out after 50ms"]);
+			}),
+		);
+	});
+});
+
+describe("PackedInstall.timeoutBudget", () => {
+	const minutes = (duration: Duration.Duration): number => Duration.toMillis(duration) / 60_000;
+
+	it("sums every manager's probe, install and perConsumer, every package's pack and manifest read, and the slack", () => {
+		const budget = PackedInstall.timeoutBudget({
+			managers: ["npm", "pnpm", "yarn", "bun"],
+			installTimeout: "3 minutes",
+			packages: 3,
+			perConsumer: "2 minutes",
+		});
+		// 4 x (0.5 + 3 + 2) + 3 x (2 + 0.5) + 0.5
+		assert.strictEqual(minutes(budget), 30);
+		assert.strictEqual(Duration.format(budget), "30m");
+	});
+
+	it("defaults installTimeout to the run's four minutes and perConsumer to zero, and counts a repeated manager once", () => {
+		const budget = PackedInstall.timeoutBudget({ managers: ["npm", "npm"], packages: 1 });
+		// 1 x (0.5 + 4) + 1 x 2.5 + 0.5
+		assert.strictEqual(minutes(budget), 7.5);
 	});
 });

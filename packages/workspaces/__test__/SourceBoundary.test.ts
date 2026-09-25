@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
-import type { BoundaryRule } from "../src/testing.js";
+import type { BoundaryRule, OffenceRule } from "../src/testing.js";
 import { SourceBoundary } from "../src/testing.js";
 
 const lines = (text: string, rule: BoundaryRule): ReadonlyArray<number> =>
@@ -178,6 +178,35 @@ describe("SourceBoundary.check", () => {
 		);
 	});
 
+	it("forbidTokens flags each token's exact text in code, as whole text, and names the token", () => {
+		const text = [
+			"export const version = process.env.__PACKAGE_VERSION__;",
+			'const s = "process.env.__PACKAGE_VERSION__";',
+			"// process.env.__PACKAGE_VERSION__",
+			"const longer = process.env.__PACKAGE_VERSION__S;",
+			"const prefixed = xprocess.env.__PACKAGE_VERSION__;",
+			"const spaced = process . env.__PACKAGE_VERSION__;",
+			"const member = globalThis.process.env.__PACKAGE_VERSION__;",
+			"eval(code); evaluate(code);",
+		].join("\n");
+		const found = SourceBoundary.check("f.ts", text, [
+			{ forbidTokens: ["process.env.__PACKAGE_VERSION__", "eval(", ""] },
+		]);
+		assert.deepStrictEqual(
+			found.map((offence) => offence.label),
+			[
+				"f.ts:1:24 forbidTokens process.env.__PACKAGE_VERSION__",
+				"f.ts:7:27 forbidTokens process.env.__PACKAGE_VERSION__",
+				"f.ts:8:1 forbidTokens eval(",
+			],
+		);
+	});
+
+	it("forbidTokens leaves the process rule's exemption of the version constant in force", () => {
+		const text = "export const version = process.env.__PACKAGE_VERSION__;";
+		assert.deepStrictEqual(SourceBoundary.check("f.ts", text, ["process"]), []);
+	});
+
 	it("stdout-write flags a write through any stdout, in code only", () => {
 		const text =
 			'process.stdout.write("x");\nconst { stdout } = process;\nstdout.write(line);\nconst s = "stdout.write";\n// stdout.write';
@@ -266,19 +295,19 @@ describe("SourceBoundary.check console-stdout", () => {
 	});
 });
 
+/** The OffenceRule a fixture's rule reports under. */
+const kindOf = (rule: BoundaryRule): OffenceRule =>
+	typeof rule === "string" ? rule : "forbidTokens" in rule ? "forbidTokens" : "forbidImports";
+
 describe("SourceBoundary.fixtures", () => {
 	it("every shipped fixture behaves as it claims (the consumer's positive control)", () => {
 		assert.deepStrictEqual(SourceBoundary.verifyFixtures(), []);
 	});
 
 	it("covers both polarities for every rule kind", () => {
-		const kinds = new Set(
-			SourceBoundary.fixtures.map((fixture) => (typeof fixture.rule === "string" ? fixture.rule : "forbidImports")),
-		);
+		const kinds = new Set(SourceBoundary.fixtures.map((fixture) => kindOf(fixture.rule)));
 		for (const kind of kinds) {
-			const own = SourceBoundary.fixtures.filter(
-				(fixture) => (typeof fixture.rule === "string" ? fixture.rule : "forbidImports") === kind,
-			);
+			const own = SourceBoundary.fixtures.filter((fixture) => kindOf(fixture.rule) === kind);
 			assert.isTrue(
 				own.some((fixture) => fixture.flagged),
 				`${kind} has a flagged fixture`,
@@ -288,7 +317,7 @@ describe("SourceBoundary.fixtures", () => {
 				`${kind} has a spared fixture`,
 			);
 		}
-		assert.strictEqual(kinds.size, 6);
+		assert.strictEqual(kinds.size, 7);
 	});
 });
 

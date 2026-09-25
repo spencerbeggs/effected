@@ -1,5 +1,7 @@
+import type { CommandOutput } from "@effected/commands";
 import { Run } from "@effected/commands";
-import { Duration, Effect, FileSystem, Option, Path, Result, Schema } from "effect";
+import { Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChildProcess } from "effect/unstable/process";
 import {
 	closureOf,
@@ -103,6 +105,7 @@ export class PackedInstallError extends Schema.TaggedError<PackedInstallError>()
 		"UnresolvedProtocol",
 		"InstallFailed",
 		"MissingBin",
+		"BinFailed",
 		"Discovery",
 		"Io",
 	]),
@@ -119,6 +122,27 @@ export class PackedInstallError extends Schema.TaggedError<PackedInstallError>()
 }) {}
 
 /**
+ * Options for {@link InstalledConsumer.runBin}.
+ *
+ * @public
+ */
+export interface RunBinOptions {
+	/**
+	 * Variables layered over the environment the install ran under, such as an
+	 * `XDG_DATA_HOME` inside `PackedInstallResult.scratch`. A key set to
+	 * `undefined` removes that variable. The parent manager's context is
+	 * stripped from the result, as it is for the install.
+	 */
+	readonly env?: Readonly<Record<string, string | undefined>> | undefined;
+	/** The working directory. Defaults to the consumer's `directory`. */
+	readonly cwd?: string | undefined;
+	/** Ceiling on the run. Defaults to one minute. Expiry fails `BinFailed` with a message naming the bin and this duration. */
+	readonly timeout?: Duration.Input | undefined;
+}
+
+const DEFAULT_BIN_TIMEOUT: Duration.Input = "1 minute";
+
+/**
  * One scratch project, outside the workspace, with the carrier installed.
  *
  * @public
@@ -130,10 +154,63 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	managerVersion: Schema.String,
 	/** The consumer project directory (realpath'd). */
 	directory: Schema.String,
+	/**
+	 * The scrubbed environment the install ran under, which {@link InstalledConsumer.runBin}
+	 * starts from. Redacted, so printing a consumer never prints a token.
+	 * `PackedInstall.run` always sets it; a hand-made consumer without it runs
+	 * its bins under only `RunBinOptions.env`.
+	 */
+	env: Schema.optionalKey(Schema.Redacted(Schema.Record(Schema.String, Schema.String))),
 }) {
 	/** The installed bin `name`, in `node_modules/.bin`. POSIX: `PackedInstall` runs only there. */
 	binPath(name: string): string {
 		return `${this.directory}/node_modules/.bin/${name}`;
+	}
+
+	/**
+	 * Run the installed bin `name` to completion and collect what it wrote.
+	 *
+	 * @remarks
+	 * Spawns {@link InstalledConsumer.binPath} from the consumer's directory,
+	 * stdin ignored, under the install's scrubbed environment with
+	 * `options.env` layered over it, and nothing inherited beyond that. A
+	 * non-zero exit is a result, read from `exitCode`, never a failure. A bin
+	 * that cannot spawn, outlives `options.timeout` or floods its output fails
+	 * `BinFailed` naming the manager and the bin. Run it inside the scope that
+	 * ran `PackedInstall.run`: the scratch directory is removed when that
+	 * scope closes.
+	 *
+	 * @param name - The bin, as named in `node_modules/.bin`.
+	 * @param args - Its arguments.
+	 * @param options - Extra environment, working directory and ceiling.
+	 */
+	runBin(
+		name: string,
+		args: ReadonlyArray<string> = [],
+		options: RunBinOptions = {},
+	): Effect.Effect<CommandOutput, PackedInstallError, ChildProcessSpawner.ChildProcessSpawner> {
+		const env = scrubEnv({ ...(this.env === undefined ? {} : Redacted.value(this.env)), ...options.env });
+		const timeout = options.timeout ?? DEFAULT_BIN_TIMEOUT;
+		const manager = this.manager;
+		return Run.collect(
+			ChildProcess.make(this.binPath(name), args, {
+				cwd: options.cwd ?? this.directory,
+				env,
+				extendEnv: false,
+				stdin: "ignore",
+			}),
+			{ timeout },
+		).pipe(
+			Effect.mapError((cause) =>
+				failure(
+					"BinFailed",
+					cause._tag === "CommandFailedError" && cause.kind === "timeout"
+						? `${manager}: ${name} timed out after ${describeDuration(timeout)}`
+						: `${manager}: ${name} could not run`,
+					{ manager, cause },
+				),
+			),
+		);
 	}
 }
 
@@ -149,7 +226,34 @@ export class PackedInstallResult extends Schema.Class<PackedInstallResult>("Pack
 	unavailable: Schema.Array(PackageManagerName),
 	/** Every packed package: name to absolute tarball path. */
 	tarballs: Schema.Record(Schema.String, Schema.String),
+	/**
+	 * The scratch root (realpath'd) holding the tarballs and every consumer.
+	 * It is removed when the scope that ran `PackedInstall.run` closes, so a
+	 * directory made under it, such as an `XDG_DATA_HOME` for the bins, is
+	 * cleaned up with it.
+	 */
+	scratch: Schema.String,
 }) {}
+
+/**
+ * What {@link PackedInstall.timeoutBudget} adds up.
+ *
+ * @public
+ */
+export interface PackedInstallBudget {
+	/** The managers the run requests; one listed twice counts once. */
+	readonly managers: ReadonlyArray<PackageManagerName>;
+	/** The run's `installTimeout`. Defaults to four minutes, as the run does. */
+	readonly installTimeout?: Duration.Input | undefined;
+	/**
+	 * How many packages the run packs: the carrier plus its closure. For
+	 * `closure: "auto"`, count them once; `PackedInstallResult.tarballs` has one
+	 * entry per packed package.
+	 */
+	readonly packages: number;
+	/** What the test does with each consumer afterwards, such as its bin runs' ceilings. Defaults to zero. */
+	readonly perConsumer?: Duration.Input | undefined;
+}
 
 // Probe P3: npm-packing the prod output is byte-identical to the published
 // tarball; pnpm-packing the source packs the dev build.
@@ -158,6 +262,11 @@ const WORKSPACE_PROTOCOL_NOT_INSTALLED = "ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROT
 const TAIL = 2000;
 const tail = (text: string): string => (text.length <= TAIL ? text : text.slice(-TAIL));
 const DEFAULT_INSTALL_TIMEOUT: Duration.Input = "4 minutes";
+const PROBE_TIMEOUT: Duration.Input = "30 seconds";
+const PACK_TIMEOUT: Duration.Input = "2 minutes";
+const MANIFEST_TIMEOUT: Duration.Input = "30 seconds";
+/** The untimed steps a budget allows for: discovery, the consumer files and the bin checks. */
+const UNTIMED_SLACK: Duration.Input = "30 seconds";
 /** A ceiling as a person reads it: `"4m"` for `"4 minutes"`, the raw input if it does not decode. */
 const describeDuration = (input: Duration.Input): string =>
 	Option.match(Duration.fromInput(input), { onNone: () => String(input), onSome: Duration.format });
@@ -179,8 +288,8 @@ const failure = (
  * pin in the repo cannot refuse it), it writes a consumer whose only direct
  * dependency is the carrier tarball, steers the closure to its tarballs
  * through the manager's own override field, pins the probed version (as
- * `packageManager`, or for pnpm as `devEngines.packageManager` with `onFail:
- * "ignore"`, since pnpm resolves a `packageManager` pin from the registry even
+ * `packageManager`, or for pnpm as `devEngines.packageManager` with
+ * `onFail: "ignore"`, since pnpm resolves a `packageManager` pin from the registry even
  * when it names the running version), installs with lifecycle scripts skipped,
  * and checks every
  * expected bin is present and executable. A packed manifest that still
@@ -188,18 +297,18 @@ const failure = (
  * fails `UnresolvedProtocol` before any install.
  *
  * It asserts nothing about what the bins DO: run them from the test through
- * `InstalledConsumer.binPath`, for an MCP bin with `McpProbe` from
- * `@effected/mcp/testing`, inside the same scope, because the scratch
- * directory is removed when the scope closes. POSIX only.
+ * `InstalledConsumer.runBin`, or for an MCP bin through `McpProbe` from
+ * `@effected/mcp/testing` at `InstalledConsumer.binPath`, inside the same
+ * scope, because the scratch directory (`PackedInstallResult.scratch`) is
+ * removed when the scope closes. Size the test's outer timeout with
+ * {@link PackedInstall.timeoutBudget}. POSIX only.
  *
  * @example
  * ```ts
  * import { NodeServices } from "@effect/platform-node";
- * import { Run } from "@effected/commands";
  * import { Workspaces } from "@effected/workspaces";
  * import { PackedInstall } from "@effected/workspaces/testing";
  * import { Effect, Layer } from "effect";
- * import { ChildProcess } from "effect/unstable/process";
  *
  * const Live = Workspaces.layer({ cwd: "/repo" }).pipe(Layer.provideMerge(NodeServices.layer));
  *
@@ -213,12 +322,11 @@ const failure = (
  *     bins: ["my-tool"],
  *     env: process.env,
  *   });
- *   const env = PackedInstall.scrubEnv(process.env);
+ *   // Keep the tool's data inside the scratch root, removed with it.
+ *   const env = { XDG_DATA_HOME: `${result.scratch}/xdg` };
  *   for (const consumer of result.consumers) {
- *     const version = yield* Run.text(
- *       ChildProcess.make(consumer.binPath("my-tool"), ["--version"], { env, extendEnv: false }),
- *     );
- *     console.log(consumer.manager, version.trim());
+ *     const { stdout, exitCode } = yield* consumer.runBin("my-tool", ["--version"], { env });
+ *     console.log(consumer.manager, exitCode, stdout.trim());
  *   }
  * }).pipe(Effect.scoped, Effect.provide(Live));
  * ```
@@ -230,6 +338,48 @@ export class PackedInstall {
 
 	/** `env` without undefined values or the parent manager's context: the environment the installs run under. Reuse it to run the installed bins. */
 	static readonly scrubEnv: (env: Readonly<Record<string, string | undefined>>) => Record<string, string> = scrubEnv;
+
+	/**
+	 * The ceiling a test's outer timeout should cover so that every one of the
+	 * run's own ceilings fires first, as a named `PackedInstallError`, rather
+	 * than the outer guard's `TimeoutError` that names nothing.
+	 *
+	 * @remarks
+	 * The worst case of the run's own ceilings, taken in sequence as the run
+	 * takes them: each manager's `--version` probe (30 seconds), install
+	 * (`installTimeout`) and `perConsumer`, plus each package's pack (two
+	 * minutes) and manifest read (30 seconds), plus 30 seconds for the untimed
+	 * steps. A vitest test timeout must sit above it, since vitest's own guard
+	 * should not pre-empt the Effect's.
+	 *
+	 * @example
+	 * ```ts
+	 * import { PackedInstall } from "@effected/workspaces/testing";
+	 * import { Duration } from "effect";
+	 *
+	 * const budget = PackedInstall.timeoutBudget({
+	 *   managers: ["npm", "pnpm", "yarn", "bun"],
+	 *   installTimeout: "3 minutes",
+	 *   packages: 3,
+	 *   perConsumer: "2 minutes",
+	 * });
+	 * console.log(Duration.format(budget));
+	 * // => 30m
+	 * ```
+	 */
+	static readonly timeoutBudget = (budget: PackedInstallBudget): Duration.Duration => {
+		const perManager = [PROBE_TIMEOUT, budget.installTimeout ?? DEFAULT_INSTALL_TIMEOUT, budget.perConsumer ?? 0]
+			.map(Duration.fromInputUnsafe)
+			.reduce((total, step) => Duration.sum(total, step), Duration.zero);
+		const perPackage = Duration.sum(Duration.fromInputUnsafe(PACK_TIMEOUT), Duration.fromInputUnsafe(MANIFEST_TIMEOUT));
+		return Duration.sum(
+			Duration.sum(
+				Duration.times(perManager, new Set(budget.managers).size),
+				Duration.times(perPackage, Math.max(1, budget.packages)),
+			),
+			Duration.fromInputUnsafe(UNTIMED_SLACK),
+		);
+	};
 
 	/** Pack, then install under every available manager. */
 	static readonly run = Effect.fn("PackedInstall.run")(function* (options: PackedInstallOptions) {
@@ -260,7 +410,7 @@ export class PackedInstall {
 		);
 
 		const probes = yield* Effect.forEach(managers, (manager) =>
-			Run.collect(command(manager, ["--version"], scratch), { timeout: "30 seconds" }).pipe(
+			Run.collect(command(manager, ["--version"], scratch), { timeout: PROBE_TIMEOUT }).pipe(
 				Effect.map((output) => (output.succeeded ? versionOf(output.stdout) : undefined)),
 				Effect.catch(() => Effect.succeed(undefined)),
 				Effect.map((version) => ({ manager, version })),
@@ -315,7 +465,7 @@ export class PackedInstall {
 					source === "source"
 						? ["pack", "--pack-destination", destination, "--config.ignore-scripts=true"]
 						: ["pack", "--ignore-scripts", "--pack-destination", destination];
-				const output = yield* Run.collect(command(packer, args, cwd), { timeout: "2 minutes" }).pipe(
+				const output = yield* Run.collect(command(packer, args, cwd), { timeout: PACK_TIMEOUT }).pipe(
 					Effect.mapError((cause) =>
 						failure("PackFailed", `${packer} pack could not run for ${pkg.name}`, { package: pkg.name, cause }),
 					),
@@ -347,7 +497,7 @@ export class PackedInstall {
 				}
 				const tarball = path.join(destination, only);
 				const manifest = yield* Run.text(command("tar", ["-xzOf", tarball, "package/package.json"], destination), {
-					timeout: "30 seconds",
+					timeout: MANIFEST_TIMEOUT,
 				}).pipe(
 					Effect.mapError((cause) =>
 						failure("PackFailed", `could not read package/package.json out of ${tarball}`, {
@@ -420,7 +570,12 @@ export class PackedInstall {
 						output: tail(`${output.stdout}\n${output.stderr}`),
 					});
 				}
-				const consumer = InstalledConsumer.make({ manager, managerVersion: version, directory });
+				const consumer = InstalledConsumer.make({
+					manager,
+					managerVersion: version,
+					directory,
+					env: Redacted.make(env),
+				});
 				for (const bin of options.bins) {
 					const info = yield* Effect.option(fs.stat(consumer.binPath(bin)));
 					if (Option.isNone(info) || (info.value.mode & 0o111) === 0) {
@@ -448,6 +603,7 @@ export class PackedInstall {
 			consumers,
 			unavailable,
 			tarballs: Object.fromEntries(packed.map(({ name, tarball }) => [name, tarball])),
+			scratch,
 		});
 	});
 }

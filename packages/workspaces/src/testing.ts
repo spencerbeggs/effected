@@ -26,9 +26,11 @@ export {
 	InstalledConsumer,
 	type PackSource,
 	PackedInstall,
+	type PackedInstallBudget,
 	PackedInstallError,
 	type PackedInstallOptions,
 	PackedInstallResult,
+	type RunBinOptions,
 } from "./PackedInstall.js";
 export {
 	type BoundaryFixture,
