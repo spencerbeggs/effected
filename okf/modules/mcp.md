@@ -9,8 +9,8 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T20:35:07Z
-  body_sha256: d3d6b4fae3d284e41a31f0de9c6a19fa0db53ccbde18f96280ab386fee9d6ff7
+  at: 2026-09-25T21:33:50Z
+  body_sha256: 2f114cd587c93c7914e7d17647682312bf1472a3f569f6170c56378f5a4e47c8
 ---
 
 # @effected/mcp
@@ -61,7 +61,7 @@ exports this package consumes, not exports of its own.
 | `McpProcess.spawn` | `(command: ChildProcess.Command) => Effect<McpProcess, PlatformError, ChildProcessSpawner \| Scope>`, returning an `McpProcess` instance (A4). The test file builds the command with `execPath` and `env`. Reads stdout with `Stream.decodeText` and `Stream.splitLines`. `nextLine` and `readUntilResponse` fail with `McpTestFailure` (`StreamEnded` or `NotJsonRpc`) rather than hanging (A4); `readUntilResponse(id)` returns `{ response, seen }`, because `list_changed` notifications interleave. `handshake(protocol?)` always uses id 1 (A4). `closeStdin` is `Queue.end`, never `shutdown`. `stderrSoFar` is added beside `stderrFinal` (A4). `sendRaw(text: string \| Uint8Array)` writes a string (as UTF-8) or bytes to stdin exactly as given, with no JSON encoding and no newline, for frames `send` cannot make: a non-JSON line, a blank line, one frame split across writes, even mid-character. |
 | `McpProbe.initialize` | `(command, options: McpProbeOptions) => Effect.Effect<McpProbeResult, McpTestFailure \| PlatformError, ChildProcessSpawner>`, with `stdout` holding the raw lines (A5). Keeps stdin open until the id-1 response arrives, then closes. On a `StreamEnded` failure the exit code and stderr are folded into the failure itself, because the caller holds no handle to read them separately. The caller asserts `response.error === undefined`, empty stderr and exit 0 — the MCP half of the packed-install proof. |
 | `McpTestFailure` | `Schema.TaggedError` shared by every test client, introduced as part of A3: `reason: "StreamEnded" \| "ServerStopped" \| "NotJsonRpc" \| "NotInitialized" \| "ErrorResponse"`, `message: string`. `StreamEnded`/`NotJsonRpc` come from the spawned clients; `ServerStopped`/`NotInitialized`/`ErrorResponse` from `McpHarness`, which dies (never raises `NotJsonRpc`) on a non-JSON-RPC line. |
-| `McpToolAudit.check` | `(tools: ReadonlyArray<ServedTool>, policy: McpToolAuditPolicy) => ReadonlyArray<string>`. A pure sweep over `tools/list` that returns violations, `"<tool>: <what>"` per line. `input: "open" \| "closed" \| "any"`; `requireTitle?`; `requireOutputSchema?`; `objectRootedOutput?` defaults to `true` ([D10](../decisions/mcp-tool-audit-object-rooted-outputs.md)); `maxDescription?`; `requireHints?`. **Reports a duplicate tool name under every policy**, independent of `input`/`requireTitle`/etc. (A8). |
+| `McpToolAudit.check` | `(tools: ReadonlyArray<ServedTool>, policy: McpToolAuditPolicy) => ReadonlyArray<string>`. A pure sweep over `tools/list` that returns violations, `"<tool>: <what>"` per line. `input: "open" \| "closed" \| "any"`; `requireTitle?`; `requireOutputSchema?`; `objectRootedOutput?` defaults to `true` ([D10](../decisions/mcp-tool-audit-object-rooted-outputs.md)); `maxDescription?`; `requireHints?`. A missing `outputSchema` (under `requireOutputSchema`) and a non-object root whose schema is a union (`anyOf`/`oneOf`) both name `ToolOutputSchema.objectRooted` as the fix: a union success schema is dropped on stateful revisions and served bare on the stateless one. **Reports a duplicate tool name under every policy**, independent of `input`/`requireTitle`/etc. (A8). |
 | `JsonRpcMessage`, `ServedTool`, `ServedResource` | The wire-frame, served-tool-listing-entry and served-resource-listing-entry shapes shared across the testing surface. |
 
 ## `McpToolkit` — Branch A ships

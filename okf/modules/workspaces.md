@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T21:15:01Z
-  body_sha256: aebb7cf05ece20c4134f374ff944cf5bf7ae644d5d4519d2b8a6c1cd38ed1d24
+  at: 2026-09-25T21:33:50Z
+  body_sha256: 6fad18a9f28f87edbd545c574553d24ef3ccf205b8171ba1ecb14bc79e12ca6e
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -195,8 +195,8 @@ constructor:[^testing-ts]
   discovery.
 - `PackedInstall` (with `PackedInstallError`, `PackedInstallResult`,
   `InstalledConsumer`, `PackSource`, `PackedInstallOptions`,
-  `PackedInstallClosureOptions`, `PackedInstallBudget`, `BinCommandOptions`
-  and `RunBinOptions`): packs a carrier, its closure and any `overrides`,
+  `PackedInstallClosureOptions`, `PackedInstallBudget`, `BinCommandOptions`,
+  `RunBinOptions` and `BinProvenance`): packs a carrier, its closure and any `overrides`,
   then installs it into a scratch consumer under every available package
   manager; `closure` names what a run will pack without packing it, and
   `timeoutBudgetFor` budgets a run from its own options.
