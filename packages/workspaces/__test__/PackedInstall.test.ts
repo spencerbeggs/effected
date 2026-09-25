@@ -863,6 +863,55 @@ describe("PackedInstall.run past the pack", () => {
 				assert.isFalse(conflicting.spawns.some((spawn) => spawn.args[0] === "install"));
 			}),
 		);
+
+		it.effect("allowSharedBins skips BinConflict for a tool mid-migration, and still verifies the carrier's bins", () =>
+			Effect.gen(function* () {
+				const result = yield* PackedInstall.run({
+					carrier: "@x/carrier",
+					closure: "auto",
+					managers: ["npm"],
+					bins: ["x"],
+					env: ENV,
+					allowSharedBins: true,
+				});
+				assert.deepStrictEqual(
+					result.consumers.map((consumer) => consumer.manager),
+					["npm"],
+				);
+				assert.isTrue(
+					conflicting.spawns.some((spawn) => spawn.args[0] === "install"),
+					"the install ran",
+				);
+				const missing = yield* Effect.flip(
+					PackedInstall.run({
+						carrier: "@x/carrier",
+						closure: "auto",
+						managers: ["npm"],
+						bins: ["x", "ghost"],
+						env: ENV,
+						allowSharedBins: true,
+					}),
+				);
+				assert.deepStrictEqual([missing.reason, missing.manager], ["MissingBin", "npm"]);
+				assert.include(missing.message, ".bin/ghost");
+			}),
+		);
+
+		it.effect("allowSharedBins: false is the default: shared bin names still fail", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.run({
+						carrier: "@x/carrier",
+						closure: "auto",
+						managers: ["npm"],
+						bins: [],
+						env: ENV,
+						allowSharedBins: false,
+					}),
+				);
+				assert.strictEqual(error.reason, "BinConflict");
+			}),
+		);
 	});
 
 	// A string bin links under the unscoped package name: @y/x's "./x.js" is the bin x.

@@ -174,4 +174,9 @@ Consequences:
 - `PackedInstall.run` (`@effected/workspaces/testing`) enforces the rule: a
   packed package other than the carrier declaring one of the carrier's bin
   names fails `BinConflict` before any install (see
-  [carrier-verification.md](./carrier-verification.md)).
+  [carrier-verification.md](./carrier-verification.md)); `allowSharedBins`
+  opts a tool out while it migrates.
+- Migrating is breaking for the front ends: anyone who installed or `npx`'d
+  a front end directly for its bin loses it. Drop a front end's `bin` in a
+  major bump, and move the plugin loader's fallback to the carrier form in
+  the same release.

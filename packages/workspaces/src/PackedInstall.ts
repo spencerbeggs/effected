@@ -131,8 +131,27 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	 * fails `BinConflict` before any install: under a flat layout (npm, bun,
 	 * Yarn's `node-modules` linker) either package can take the `.bin` slot,
 	 * so the bin check and every bin run could pass on the wrong package.
+	 *
+	 * The check compares packed packages only (the carrier, the closure and
+	 * `overrides`), reading each manifest's `bin` field; it does not read
+	 * `directories.bin`, and a dependency installed from the registry that
+	 * declares the same bin name goes undetected.
 	 */
 	readonly bins: ReadonlyArray<string>;
+	/**
+	 * Skip the `BinConflict` check, for a tool still migrating away from
+	 * mirror bins (front ends that declare the carrier's bin names).
+	 *
+	 * @remarks
+	 * Every expected bin in `bins` is still verified present and executable.
+	 * But with a front end sharing the carrier's bin name, a flat layout can
+	 * link the front end's bin into the carrier's `.bin` slot, so that check,
+	 * and any bin the test runs, can pass on the wrong package. Assert
+	 * `InstalledConsumer.binProvenance` for the linking managers while this
+	 * is set, and drop it once the front ends stop declaring the bins.
+	 * Defaults to `false`: shared bin names fail.
+	 */
+	readonly allowSharedBins?: boolean | undefined;
 	/** The environment for every spawn: pass `process.env` from the test file. The parent manager's context is stripped. */
 	readonly env: Readonly<Record<string, string | undefined>>;
 	/**
@@ -938,10 +957,13 @@ export class PackedInstall {
 		const [carrier, ...rest] = packed;
 		if (carrier === undefined)
 			return yield* failure("UnknownPackage", `${options.carrier} was not packed`, { package: options.carrier });
-		const conflict = binConflict(
-			{ name: carrier.name, bins: carrier.manifest.bins },
-			rest.map(({ name, manifest }) => ({ name, bins: manifest.bins })),
-		);
+		const conflict =
+			options.allowSharedBins === true
+				? undefined
+				: binConflict(
+						{ name: carrier.name, bins: carrier.manifest.bins },
+						rest.map(({ name, manifest }) => ({ name, bins: manifest.bins })),
+					);
 		if (conflict !== undefined) {
 			return yield* failure(
 				"BinConflict",

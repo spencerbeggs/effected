@@ -317,7 +317,11 @@ other rule here still applies to a real suite built on it:
   `.bin` slot, so the carrier identity (its `--version` suffix) would be
   lost there. `PackedInstall.run` enforces the rule: a packed package other
   than the carrier that declares one of the carrier's bin names fails
-  `BinConflict` before any install. `consumer.binProvenance(name)` still
+  `BinConflict` before any install. It reads the packed packages' `bin`
+  fields only, never `directories.bin` or a registry dependency. A tool
+  still migrating its front ends off mirror bins passes
+  `allowSharedBins: true` to skip it; the bins are still checked present,
+  but may be a front end's, so assert provenance until the migration lands. `consumer.binProvenance(name)` still
   reads the `.bin` symlink and names the package it resolves into; assert
   it is the carrier under the linking managers. pnpm writes shell shims, for
   which it returns `undefined` — the only meaning `undefined` has — and

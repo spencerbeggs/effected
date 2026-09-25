@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T20:41:35Z
-  body_sha256: 60fe831a39f8d03786ff4bc0757ca685364f64c45c4a57bbf56ab88f4044c66b
+  at: 2026-09-25T20:48:19Z
+  body_sha256: 3faa83bee52377bacb7752bf166e5df44bab7e0a4bafa04a60b5c9c7b7d08b35
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -511,7 +511,13 @@ which one ran. The run therefore fails `BinConflict`, before any install, when
 a packed package other than the carrier (a closure member or an override)
 declares one of the carrier's bin names, read from the packed manifests it
 already inspects: a `bin` object's keys, or for a `bin` string the unscoped
-package name. `InstalledConsumer.binProvenance(name)` answers that for the
+package name. It compares packed packages only: `directories.bin` is not
+read, and a dependency installed from the registry that declares the same
+bin name goes undetected. `allowSharedBins: true` skips the check for a tool
+whose front ends still declare the carrier's bin names mid-migration; the
+expected bins are still verified present and executable, but a flat layout
+may have linked a front end's, so such a test asserts `binProvenance` until
+the migration lands. `InstalledConsumer.binProvenance(name)` answers that for the
 managers that write `.bin` entries as symlinks: npm, bun, and Yarn under the
 `node-modules` linker the run configures. It reads the link, realpaths the
 target, and walks up to the nearest `package.json` with a string `name`,
