@@ -1,5 +1,24 @@
 # @effected/pnpm-plugin-effect
 
+## 0.11.2
+
+### Maintenance
+
+#### Updates 6 catalog:effected versions
+
+- `@effected/cli` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/mcp` ^0.1.1 -> ^0.2.0 (peer ^0.2.0)
+- `@effected/memfs` ^0.9.0 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/schemastore` ^0.15.1 -> ^0.15.2 (peer ^0.15.0)
+- `@effected/schemastore-cli` ^0.15.1 -> ^0.15.2 (peer ^0.15.0)
+- `@effected/workspaces` ^0.26.0 -> ^0.27.0 (peer ^0.27.0) [#840][#840]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#840]: https://github.com/spencerbeggs/effected/pull/840
+
 ## 0.11.1
 
 ### Maintenance
