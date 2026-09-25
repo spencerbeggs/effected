@@ -6,8 +6,8 @@
  *
  * @packageDocumentation
  */
-export { McpStdio, type McpStdioOptions } from "./McpStdio.js";
-export { McpToolkit, type McpToolkitOptions } from "./McpToolkit.js";
+export { type McpLaunchOptions, McpStdio, type McpStdioOptions } from "./McpStdio.js";
+export { McpToolkit, type McpToolkitOptions, type UnionTool, type UnionToolOptions } from "./McpToolkit.js";
 export { ToolFailure } from "./ToolFailure.js";
 export { type FormatUnknownKeysOptions, ToolInputSchema, type UnknownKeysLevel } from "./ToolInputSchema.js";
 export { ToolOutputSchema } from "./ToolOutputSchema.js";

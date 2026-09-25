@@ -275,9 +275,14 @@ encoding, and the registration path's `orDie` decode
 (`unstable/ai/McpServer.ts:1864-1866`) kills the server layer while it is
 still building — a stdio server never even starts reading stdin, and a
 server exposed some other way never finishes coming up either. Design the
-tool with an object-rooted, field-discriminated shape from the start; for a
-`Tool.dynamic` tool whose raw JSON Schema is a union, rewrite it with
-`ToolInputSchema.objectRooted` before registering.
+tool with an object-rooted, field-discriminated shape from the start, or
+make it with `McpToolkit.unionTool` and write its handler with
+`McpToolkit.unionHandler`: the tool is a `Tool.dynamic` served with the
+union's strict, object-rooted JSON Schema, and under `McpToolkit.layer` a
+bad call is rejected exactly as a `Tool.make` decode failure is (`-32602` on
+`2025-06-18`, `isError` later). For a hand-written `Tool.dynamic` whose raw
+JSON Schema is a union, rewrite it with `ToolInputSchema.objectRooted`
+before registering.
 
 ## The `ok: false` envelope
 
@@ -293,7 +298,9 @@ defect — the `outputSchema` is simply **silently omitted** from
 with optional `value`/`error` fields keeps one object root while still
 discriminating, at the cost of giving up discriminated typing on the
 result — a consumer narrows on `ok` at runtime rather than the type system
-narrowing a tagged union for them:
+narrowing a tagged union for them. (To keep the tagged union instead, wrap
+it in `ToolOutputSchema.objectRooted`, which adds `type: "object"` beside
+the `anyOf` so the `outputSchema` is served.) The envelope:
 
 ~~~ts
 import { Remediation } from "@effected/engine"

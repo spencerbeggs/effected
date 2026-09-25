@@ -41,8 +41,18 @@ wire message; nothing else in `@effected/engine` is consumed yet.
 `truncate`, `ECHO_LIMIT`, `ENGINE_ECHO_LIMIT`), `ToolInputSchema`
 (`unknownKeys`, `formatUnknownKeys`, `objectRooted`), `ToolOutputSchema`
 (`objectRooted`), `ToolRefusal` (`refuse`), plus the
-`McpStdioOptions`, `McpToolkitOptions`, `UnknownKeysLevel` and
-`FormatUnknownKeysOptions` types.
+`McpStdioOptions`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionTool`,
+`UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
+types. `McpToolkit` also carries `unionTool` and `unionHandler`.
+
+`@effected/mcp/guard` (`src/guard.ts`): `McpGuard` (`run`), plus the
+`McpGuardHost`, `McpGuardPolicy`, `McpGuardedServer` and
+`McpGuardRunOptions` types. **It has no static runtime import**, only
+`import type`: the guards must be listening before `effect` or the
+server graph evaluates. The server half lives in
+`src/internal/guardLaunch.ts` behind a dynamic `import()`;
+`entrypoints.test.ts` pins the graph, so a static import added to
+`McpGuard.ts` fails it.
 
 `@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
 carry `initialize`, `initializeWith`, `discover`, `listTools`, `listResources`, `callTool`, `readResource`, `request`,

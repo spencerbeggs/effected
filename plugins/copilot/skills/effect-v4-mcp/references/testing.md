@@ -357,11 +357,23 @@ import { assert, describe, layer } from "@effect/vitest"
 import { McpProbe } from "@effected/mcp/testing"
 import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
-import { Effect, Layer } from "effect"
+import { Duration, Effect, Layer } from "effect"
 import { ChildProcess } from "effect/unstable/process"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer))
+
+const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const
+const INSTALL_TIMEOUT = "2 minutes"
+// The installs run one after another. timeoutBudget sums the run's own ceilings
+// (every manager's probe and install, every package's pack) plus the probe per
+// consumer, so a named PackedInstallError fires before this guard does.
+const BUDGET = PackedInstall.timeoutBudget({
+  managers: MANAGERS,
+  installTimeout: INSTALL_TIMEOUT,
+  packages: 2, // the carrier and its closure: result.tarballs has one entry each
+  perConsumer: "30 seconds",
+})
 
 describe("packed install", () => {
   // The real clock: installs and the probe are real processes.
@@ -373,10 +385,10 @@ describe("packed install", () => {
           const result = yield* PackedInstall.run({
             carrier: "my-tool",
             closure: "auto",
-            managers: ["npm", "pnpm", "yarn", "bun"],
+            managers: MANAGERS,
             bins: ["my-tool-mcp"],
             env: process.env,
-            installTimeout: "2 minutes",
+            installTimeout: INSTALL_TIMEOUT,
           })
           assert.isAbove(result.consumers.length, 0, `nothing installed; unavailable: ${result.unavailable.join(", ")}`)
           const env = PackedInstall.scrubEnv(process.env)
@@ -391,9 +403,8 @@ describe("packed install", () => {
             assert.strictEqual(stderr, "", `${consumer.manager}: stderr`)
             assert.strictEqual(exitCode, 0, `${consumer.manager}: exit code`)
           }
-          // The installs run one after another: the guard covers 4 managers x installTimeout, plus pack and probes.
-        }).pipe(Effect.timeout("12 minutes")),
-      780_000,
+        }).pipe(Effect.timeout(BUDGET)),
+      Duration.toMillis(BUDGET) + 60_000,
     )
   })
 })
@@ -547,4 +558,4 @@ so its own failure message — the one naming what actually hung — never has
 a chance to run. Keep a guard at `3` seconds (as
 used throughout this reference), or pass an explicit, larger vitest timeout
 (the third argument to `it`/`it.live`, after the name and the test body, as the packed-install example above
-does with `780_000`).
+does with `Duration.toMillis(BUDGET) + 60_000`).

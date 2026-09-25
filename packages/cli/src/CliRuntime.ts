@@ -4,6 +4,7 @@ import { CliError } from "effect/unstable/cli";
 import { CliExit } from "./CliExit.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
+import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
@@ -88,6 +89,25 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	readonly platform: Layer.Layer<RP, EP>;
 	/** The logger, provided outermost. Defaults to `CliLogger.layer()`. */
 	readonly logger?: Layer.Layer<never> | undefined;
+	/**
+	 * Where the help document goes when it is printed with a usage error:
+	 * `"stdout"` (the default, core's behaviour) or `"stderr"`, beside the
+	 * errors.
+	 *
+	 * @remarks
+	 * `"stderr"` keeps stdout clean for a caller that parses it, such as a
+	 * hook piping JSON into `jq`: an unknown flag, a bad value or an unknown
+	 * subcommand then writes nothing to stdout. An explicit `--help` and a
+	 * bare invocation of a command group still print help on stdout: neither
+	 * is an error.
+	 *
+	 * Two cases keep help on stdout even under `"stderr"`. A `CliOutput`
+	 * Formatter or a `Console` provided inside `program` is not seen by
+	 * `main`, so its help is not rerouted; provide the Formatter through
+	 * `platform` instead. And with `Command.runWith`'s `renderErrors: false`
+	 * no errors are printed, so nothing marks the help as a usage error's.
+	 */
+	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
 }
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>
@@ -264,7 +284,8 @@ export class CliRuntime {
 		options: MainOptions<RP, EP>,
 	): Effect.Effect<void, Error, Exclude<Exclude<R, CliExit>, RP>> =>
 		Effect.gen(function* () {
-			yield* program;
+			// Inside the platform provide, so the rerouting sees the platform's own Formatter.
+			yield* options.helpOnUsageError === "stderr" ? routeHelpOnUsageError(program) : program;
 			const exit = yield* CliExit;
 			const code = MutableRef.get(exit.code);
 			// CliExit.set validates, but the cell is a public MutableRef a program

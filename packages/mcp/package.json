@@ -23,6 +23,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./guard": "./src/guard.ts",
 		"./testing": "./src/testing.ts",
 		"./package.json": "./package.json"
 	},

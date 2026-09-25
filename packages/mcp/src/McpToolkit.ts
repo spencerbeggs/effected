@@ -1,4 +1,5 @@
-import { Context, Effect, Layer } from "effect";
+import type { JsonSchema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { McpSchema, McpServer, Tool, Toolkit } from "effect/unstable/ai";
 import type { UnknownKeysLevel } from "./ToolInputSchema.js";
 import { ToolInputSchema } from "./ToolInputSchema.js";
@@ -27,6 +28,87 @@ export interface McpToolkitOptions {
 	 */
 	readonly unknownKeyMessage?: ((levels: ReadonlyArray<UnknownKeysLevel>) => string) | undefined;
 }
+
+/**
+ * A `Tool.dynamic` made by {@link McpToolkit.unionTool}: served with the
+ * strict, object-rooted JSON Schema of a `Schema.Union` of objects, and
+ * carrying that union so {@link McpToolkit.unionHandler} can decode it.
+ *
+ * @remarks
+ * `annotate` and `addDependency` keep the type, so a chained
+ * `.annotate(Tool.Title, …)` still hands `unionHandler` the union. The
+ * declared failure is `failure` together with `McpSchema.InvalidParams`.
+ *
+ * @public
+ */
+export interface UnionTool<
+	Name extends string,
+	P extends Schema.Decoder<unknown>,
+	S extends Schema.Constraint,
+	F extends Schema.Constraint,
+	R = never,
+> extends Tool.Dynamic<
+		Name,
+		{
+			readonly parameters: JsonSchema.JsonSchema;
+			readonly success: S;
+			readonly failure: Schema.Union<readonly [F, typeof McpSchema.InvalidParams]>;
+			readonly failureMode: "error";
+		},
+		R
+	> {
+	/** The union the tool decodes its arguments with. */
+	readonly unionParameters: P;
+	/** Add an annotation, keeping the union. */
+	annotate<I, V>(tag: Context.Key<I, V>, value: V): UnionTool<Name, P, S, F, R>;
+	/** Add a request-level dependency, keeping the union. */
+	addDependency<Identifier, Service>(tag: Context.Key<Identifier, Service>): UnionTool<Name, P, S, F, Identifier | R>;
+}
+
+/**
+ * Options for {@link McpToolkit.unionTool}.
+ *
+ * @public
+ */
+export interface UnionToolOptions<
+	P extends Schema.Decoder<unknown>,
+	S extends Schema.Constraint,
+	F extends Schema.Constraint,
+	Dependencies extends ReadonlyArray<Context.Key<unknown, unknown>>,
+> {
+	/** What the tool does, for the agent. */
+	readonly description?: string | undefined;
+	/** A `Schema.Union` of object schemas, discriminated by an `action`, `kind`, `_tag` or `type` literal. */
+	readonly parameters: P;
+	/** The success schema. Defaults to `Schema.Void`; object-root a union with `ToolOutputSchema.objectRooted`. */
+	readonly success?: S | undefined;
+	/** Declared failures besides `InvalidParams`, such as `ToolRefusal`. Defaults to `Schema.Never`. */
+	readonly failure?: F | undefined;
+	/** Services the handler needs, as with `Tool.make`. */
+	readonly dependencies?: Dependencies | undefined;
+}
+
+/** The union a {@link McpToolkit.unionTool} decodes with; read by the `McpToolkit.layer` decorator. */
+const UnionParameters = Context.Reference<Schema.Decoder<unknown> | undefined>("@effected/mcp/UnionParameters", {
+	defaultValue: () => undefined,
+});
+
+/**
+ * Effect's strict JSON Schema document for `parameters`, definitions attached
+ * as `$defs`, then object-rooted: the served input schema of a union tool.
+ */
+const unionInputJsonSchema = (parameters: Schema.Decoder<unknown>): JsonSchema.JsonSchema => {
+	const document = Schema.toJsonSchemaDocument(parameters, { onExcessProperty: "error" });
+	return ToolInputSchema.objectRooted(
+		Object.keys(document.definitions).length === 0
+			? document.schema
+			: { ...document.schema, $defs: document.definitions },
+	);
+};
+
+const invalidParameters = (name: string, message: string): McpSchema.InvalidParams =>
+	// Core's own wording for a `Tool.make` decode failure (`AiError.ToolParameterValidationError`).
+	new McpSchema.InvalidParams({ message: `Invalid parameters for tool '${name}': ${message}` });
 
 // Set from probe P2: Claude Code 2.1.281 sends a tool call's `arguments` with
 // exactly the declared keys and keeps every extra under `params._meta`, so
@@ -98,6 +180,99 @@ export class McpToolkit {
 	private constructor() {}
 
 	/**
+	 * A tool whose parameters are a `Schema.Union` of objects, which
+	 * `Tool.make` cannot take: core dies at registration on a non-object
+	 * `parameters` root.
+	 *
+	 * @remarks
+	 * The tool is a `Tool.dynamic` served with Effect's strict JSON Schema
+	 * document for `parameters` (`additionalProperties: false` on every
+	 * object node, definitions as `$defs`), rewritten by
+	 * `ToolInputSchema.objectRooted` to an object root carrying `type`,
+	 * `oneOf` and `x-discriminator`. Write its handler with
+	 * {@link McpToolkit.unionHandler}, which receives the decoded member.
+	 *
+	 * Registered through {@link McpToolkit.layer}, a union tool gets the same
+	 * treatment as a strict `Tool.make` tool: every unknown key named in one
+	 * `InvalidParams`, then a strict decode, both before the handler runs, so
+	 * bad arguments answer JSON-RPC `-32602` on `2025-06-18` and an `isError`
+	 * result on the later revisions, exactly as a `Tool.make` decode failure
+	 * does. Registered through core's `McpServer.toolkit` it still decodes
+	 * strictly, in the handler, but the `InvalidParams` is then a declared
+	 * failure: an `isError` result on every revision.
+	 *
+	 * Never annotate it `Tool.Strict` true: core dies at registration on a
+	 * strict tool with a raw JSON Schema.
+	 *
+	 * @example
+	 * ```ts
+	 * const Note = McpToolkit.unionTool("note", {
+	 *   parameters: Schema.Union([AddNote, ListNotes]),
+	 *   success: ToolOutputSchema.objectRooted(Schema.Union([Added, Listed])),
+	 *   failure: ToolRefusal,
+	 * }).annotate(Tool.Title, "Note")
+	 * const handlers = Kit.toLayer({ note: McpToolkit.unionHandler(Note, (params) => handleNote(params)) })
+	 * ```
+	 */
+	static readonly unionTool = <
+		const Name extends string,
+		P extends Schema.Decoder<unknown>,
+		S extends Schema.Constraint = typeof Schema.Void,
+		F extends Schema.Constraint = typeof Schema.Never,
+		const Dependencies extends ReadonlyArray<Context.Key<unknown, unknown>> = [],
+	>(
+		name: Name,
+		options: UnionToolOptions<P, S, F, Dependencies>,
+	): UnionTool<Name, P, S, F, Context.Service.Identifier<Dependencies[number]>> => {
+		const tool = Tool.dynamic(name, {
+			description: options.description,
+			parameters: unionInputJsonSchema(options.parameters),
+			success: options.success ?? Schema.Void,
+			failure: Schema.Union([options.failure ?? Schema.Never, McpSchema.InvalidParams]),
+		}).annotate(UnionParameters, options.parameters);
+		// `Tool` clones copy own properties, so the union survives every later `annotate`.
+		return Object.assign(tool, { unionParameters: options.parameters }) as unknown as UnionTool<
+			Name,
+			P,
+			S,
+			F,
+			Context.Service.Identifier<Dependencies[number]>
+		>;
+	};
+
+	/**
+	 * The handler for a {@link McpToolkit.unionTool}: decodes the raw payload
+	 * with the tool's union, `onExcessProperty: "error"`, and passes the
+	 * decoded member to `handler`.
+	 *
+	 * @remarks
+	 * A payload that does not decode fails with `McpSchema.InvalidParams`,
+	 * worded as core words a `Tool.make` decode failure. Under
+	 * {@link McpToolkit.layer} that never happens here: the layer has
+	 * already rejected the call before the handler runs.
+	 */
+	static readonly unionHandler = <
+		Name extends string,
+		P extends Schema.Decoder<unknown>,
+		S extends Schema.Constraint,
+		F extends Schema.Constraint,
+		R,
+		A,
+		E,
+		RH,
+	>(
+		tool: UnionTool<Name, P, S, F, R>,
+		handler: (params: P["Type"]) => Effect.Effect<A, E, RH>,
+	): ((payload: unknown) => Effect.Effect<A, E | McpSchema.InvalidParams, RH>) => {
+		const decode = Schema.decodeUnknownEffect(tool.unionParameters);
+		return (payload) =>
+			decode(payload ?? {}, { onExcessProperty: "error" }).pipe(
+				Effect.mapError((error) => invalidParameters(tool.name, error.message)),
+				Effect.flatMap(handler),
+			);
+	};
+
+	/**
 	 * `McpServer.toolkit`'s registration layer, strict by default and naming
 	 * every unknown argument in one `InvalidParams`.
 	 */
@@ -117,10 +292,30 @@ export class McpToolkit {
 					((levels: ReadonlyArray<UnknownKeysLevel>) => ToolInputSchema.formatUnknownKeys(levels));
 				const decorated = McpServer.McpServer.of({
 					...registry,
-					addTool: (registration) =>
+					addTool: (registration) => {
+						const union = Context.get(registration.annotations, UnionParameters);
+						if (union !== undefined) {
+							// Outside core's handler, so an InvalidParams here lands where core's own
+							// parameter failure does: -32602 on 2025-06-18, isError on later revisions.
+							const decode = Schema.decodeUnknownEffect(union);
+							const name = registration.tool.name;
+							return registry.addTool({
+								...registration,
+								handle: (payload) =>
+									Effect.suspend(() => {
+										const raw = payload ?? {};
+										const levels = ToolInputSchema.unknownKeys(raw, registration.tool.inputSchema);
+										if (levels.length > 0) return Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }));
+										return decode(raw, { onExcessProperty: "error" }).pipe(
+											Effect.mapError((error) => invalidParameters(name, error.message)),
+											Effect.andThen(registration.handle(payload)),
+										);
+									}),
+							});
+						}
 						// Same predicate core uses to pick strict decoding (`Tool.getStrictMode(tool) === true`):
 						// a tool core decodes leniently is never rejected here, whatever its schema looks like.
-						Context.get(registration.annotations, Tool.Strict) === true
+						return Context.get(registration.annotations, Tool.Strict) === true
 							? registry.addTool({
 									...registration,
 									handle: (payload) =>
@@ -131,7 +326,8 @@ export class McpToolkit {
 												: registration.handle(payload);
 										}),
 								})
-							: registry.addTool(registration),
+							: registry.addTool(registration);
+					},
 				});
 				yield* McpServer.registerToolkit(strictened(toolkit, options.strict ?? DEFAULT_STRICT)).pipe(
 					Effect.provideService(McpServer.McpServer, decorated),

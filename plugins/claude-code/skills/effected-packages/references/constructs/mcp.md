@@ -7,8 +7,14 @@
 | --- | --- | --- | --- |
 | `FormatUnknownKeysOptions` | Interface | Options for `ToolInputSchema.formatUnknownKeys`. | |
 | `JsonRpcMessage` | Interface | One JSON-RPC 2.0 frame as an MCP test client sees it. | from `@effected/mcp/testing` |
+| `McpGuard` | Class | Crash guards for an MCP server process, installed before the server's module graph is loaded. Imported from `@effected/mcp/guard`. | from `@effected/mcp/guard` — crash guards before the server graph loads, exit only before connect, startup failure exits 1 |
+| `McpGuardHost` | Interface | The slice of the host process the guard uses. Node's `process` satisfies it. | from `@effected/mcp/guard` |
+| `McpGuardPolicy` | Interface | When a stray exception or rejection ends the process. | from `@effected/mcp/guard` |
+| `McpGuardRunOptions` | Interface | Options for `McpGuard.run`. | from `@effected/mcp/guard` |
+| `McpGuardedServer` | Interface | What `McpGuardRunOptions.load` resolves to: the server and the platform runner to launch it with. | from `@effected/mcp/guard` |
 | `McpHarness` | Class | An in-process MCP client for a real server layer, over queue-backed stdio. | from `@effected/mcp/testing` — test mcp server in-process, call tools over queue-backed stdio |
 | `McpHarnessOptions` | Interface | Options for `McpHarness.make`. | from `@effected/mcp/testing` |
+| `McpLaunchOptions` | Interface | Options for `McpStdio.launch`. | |
 | `McpProbe` | Class | The smallest proof that an installed MCP bin boots: one initialize, a clean close, and exit 0. | from `@effected/mcp/testing` — smoke-test a built mcp bin, initialize then clean exit |
 | `McpProbeOptions` | Interface | Options for `McpProbe.initialize`. | from `@effected/mcp/testing` |
 | `McpProbeResult` | Interface | What `McpProbe.initialize` observed. | from `@effected/mcp/testing` |
@@ -26,4 +32,6 @@
 | `ToolInputSchema` | Class | Pure walkers over a tool's served JSON Schema: every unknown key at every depth, a message naming them all, and an object-rooted form of a union. | find unknown tool arguments at every depth, object-root a union input |
 | `ToolOutputSchema` | Class | Shaping for a tool's `success` schema, so the `outputSchema` core serves is one every client accepts. | object-root a union tool success schema so outputSchema is served |
 | `ToolRefusal` | Class | A tool call refused for a reason the caller can fix: the kit's ready-made declared failure, built on `ToolFailure.fields`. | declared tool refusal with remediation in the message, survives error scrubbing |
+| `UnionTool` | Interface | A `Tool.dynamic` made by `McpToolkit.unionTool`: served with the strict, object-rooted JSON Schema of a `Schema.Union` of objects, and carrying that union so `McpToolkit.unionHandler` can decode it. | |
+| `UnionToolOptions` | Interface | Options for `McpToolkit.unionTool`. | |
 | `UnknownKeysLevel` | Interface | The unknown keys found at one object level of a tool-call payload. | |

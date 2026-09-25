@@ -24,6 +24,27 @@ export interface McpStdioOptions {
 }
 
 /**
+ * Options for {@link McpStdio.launch}.
+ *
+ * @public
+ */
+export interface McpLaunchOptions {
+	/**
+	 * Runs once the whole layer has built, and before the launch waits
+	 * forever. By then the stdio protocol is reading stdin: the server is
+	 * serving, although no client may have sent `initialize` yet.
+	 *
+	 * @remarks
+	 * `McpGuard.run` (`@effected/mcp/guard`) uses it as its "connected"
+	 * signal. A layer built after the server layer, as in
+	 * `Layer.effectDiscard(ready).pipe(Layer.provide(Main))`, gives the same
+	 * signal, but only if every consumer re-derives that `Layer.provide`
+	 * builds its dependency first.
+	 */
+	readonly onReady?: Effect.Effect<void> | undefined;
+}
+
+/**
  * Serve an MCP server over stdio without ever writing a log line or a failure
  * report onto stdout, which is the JSON-RPC wire.
  *
@@ -153,9 +174,19 @@ export class McpStdio {
 	 * `Effect.provideService` reaches, and Effect's default logger writes
 	 * through `console.log` unless `LogToStderr` is set. For an MCP server
 	 * that is stdout, which is the wire.
+	 *
+	 * `options.onReady` runs after the layer has built and before the launch
+	 * waits forever, as {@link McpLaunchOptions.onReady} describes.
 	 */
-	static readonly launch = <ROut, E, R>(layer: Layer.Layer<ROut, E, R>): Effect.Effect<never, Error, R> =>
-		Layer.launch(layer).pipe(
+	static readonly launch = <ROut, E, R>(
+		layer: Layer.Layer<ROut, E, R>,
+		options: McpLaunchOptions = {},
+	): Effect.Effect<never, Error, R> =>
+		(options.onReady === undefined
+			? Layer.launch(layer)
+			: // Layer.launch's own shape, with the ready signal between the build and the wait.
+				Effect.scoped(Layer.build(layer).pipe(Effect.andThen(options.onReady), Effect.andThen(Effect.never)))
+		).pipe(
 			Effect.catchCause((cause) =>
 				Cause.hasInterruptsOnly(cause)
 					? // An interrupt-only cause holds no Fail reason, so no E can escape through it.

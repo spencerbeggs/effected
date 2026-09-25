@@ -457,6 +457,7 @@
 		"MemoryFileSystem": "in-memory filesystem test double for FileSystem, seed files, inject faults, inspect writes"
 	},
 	"mcp": {
+		"McpGuard": "crash guards before the server graph loads, exit only before connect, startup failure exits 1",
 		"McpHarness": "test mcp server in-process, call tools over queue-backed stdio",
 		"McpProbe": "smoke-test a built mcp bin, initialize then clean exit",
 		"McpProcess": "drive a spawned mcp bin, read json-rpc lines, never hang on exit",

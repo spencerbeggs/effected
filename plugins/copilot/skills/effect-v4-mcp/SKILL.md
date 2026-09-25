@@ -25,6 +25,8 @@ clients.
 | `McpToolkit` | `@effected/mcp` | registering a toolkit strict-by-default, naming every unknown key in one response |
 | `ToolFailure` | `@effected/mcp` | folding remediation into a declared failure's message — core sends only `error.message` |
 | `ToolInputSchema` | `@effected/mcp` | naming unknown keys in a `Tool.dynamic` tool's raw payload, inside its own handler |
+| `McpToolkit.unionTool` / `unionHandler` | `@effected/mcp` | a tool whose parameters are a `Schema.Union` of objects, rejected like a `Tool.make` decode failure |
+| `McpGuard` | `@effected/mcp/guard` | crash guards installed before the server graph loads, with an exit-before-connect policy |
 | `Remediation`, `LaunchContext` | `@effected/engine` | a structured `{ hint, suggestedTool? }` shape, or resolving an agent-launched project directory |
 | `McpHarness`, `McpProcess`, `McpProbe`, `McpToolAudit` | `@effected/mcp/testing` | testing the server layer in process, a spawned child, a packed install, or auditing what `tools/list` actually serves |
 
@@ -39,7 +41,7 @@ clients.
 ## Footguns
 
 - Hand-wiring `McpServer.layerStdio` without `McpStdio.layer` wedges on one bad line: core's stdio decoder throws on a non-JSON line and never trims it, so every later chunk re-throws and the server stops answering while stdin EOF still exits `0` — see [The stdin guard](./references/server-wiring.md#stdin-guard).
-- One stdio server per memo map: a second `McpStdio.layer` merged into the same graph, or built or provided under the first one's `Effect.provide`, shares its stdio protocol and never reads its own stdin — see [`McpStdio.layer`](./references/server-wiring.md#mcpstdiolayer).
+- Two stdio servers in one process share one stdio protocol and one tool registry unless each **whole** bundle (toolkit + server) is wrapped in `Layer.fresh`: merged or nested without it, the second never reads its own stdin; `Layer.fresh` around the server alone, toolkit outside, serves no tools — see [`McpStdio.layer`](./references/server-wiring.md#mcpstdiolayer).
 - `runMain`'s own failure report runs outside anything the program provides and lands on stdout, the wire — see [`McpStdio.launch`](./references/server-wiring.md).
 - Stdin EOF interrupts the main fiber; the default teardown exits `130` — see [`McpStdio.teardown`](./references/server-wiring.md).
 - A declared failure reaches the agent as message text only, never `structuredContent` — see [Failures on the wire](./references/tools.md#failures-on-the-wire).

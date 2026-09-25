@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T19:27:53Z
-  body_sha256: 47c9e6ae2b81ab0d6d048ac034fd2ce01fdf6701faf9da3c46283f8966927db3
+  at: 2026-09-25T19:42:55Z
+  body_sha256: 8ac18f4782c09128767f429f1fba8da155d0a3603b3169941ebb676b593ee0c4
 ---
 
 # @effected/cli
@@ -85,6 +85,7 @@ Exports are static classes with a private constructor — never an
 | `CliExit` | A `Context.Service` holding a `MutableRef<number>`; `CliExit.set(code)` and `CliExit.layer` for in-process tests. **`CliExit.layer` is `Layer.fresh`** — every provide mints a new cell, so a program run under `CliRuntime.main` must not provide `CliExit.layer` itself, or `CliExit.set` writes to a second, unread cell and the run silently exits `0`. See "Findings are success" below. |
 | `CliColor.enabled` | `Effect<boolean, never, Stdio>` — `Stdio.stdoutIsTerminal` and a non-empty `NO_COLOR` read through `Config.option`, never `process` (D8). |
 | `CliColor.formatterLayer` | `(overrides?: Partial<CliOutput.Formatter>) => Layer<never, never, Stdio>` — builds `CliOutput.defaultFormatter({ colors })` from the same `CliColor.enabled` decision, so help text, parse errors and rendered output always agree. |
+| `MainOptions.helpOnUsageError` | `"stdout" \| "stderr"`, default `"stdout"` (core's behaviour). Under `"stderr"`, `main` wraps `program` (inside the platform provide, so it sees the platform's Formatter) with `internal/HelpRouting.ts`: a recording `CliOutput.Formatter` notes the strings `formatHelpDoc`/`formatErrors` return, and a routing `Console` holds a `log` of a recorded help string until the next console call. If that call is `error` of a recorded errors string, the help goes to stderr ahead of it; anything else, or the program ending (`ensuring`), releases it to stdout. Needed because core prints help with the same `Console.log` for `--help`, a bare group invocation (a `ShowHelp` with no errors) and a usage error, and only the usage error prints `Console.error(formatErrors)` next (`unstable/cli/Command.ts` `showHelp`). Caveats: a Formatter or Console provided inside `program` bypasses it, and `renderErrors: false` prints no errors, so help stays on stdout. |
 | `ReportFailuresOptions.render` | `(error: unknown, details: FailureDetails) => string \| ReadonlyArray<string>`. `error` is `Cause.squash(cause)`; `FailureDetails` is `{ cause, isDefect }`, with `isDefect = !Cause.hasFails(cause)` — exact because `squash` prefers a `Fail` over a `Die`. Added so a consumer stops guessing "typed" from an `Error` carrying a string `_tag`, which a defect can also be. A one-parameter renderer still fits. |
 | `ReportFailuresOptions.usageExitCode` | Remaps a `ShowHelp` that carries errors to this code, default 64 (D7). A `ShowHelp` with no errors keeps exit 0. |
 | `SchemaIssueRenderer` | `SchemaIssue` tree → actionable lines, over core's formatter |

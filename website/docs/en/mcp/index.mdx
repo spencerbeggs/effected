@@ -57,7 +57,10 @@ reads no `process` token, imports no `node:` module, and calls no
   form of a union.
 - **`McpToolkit`** — registers a toolkit strict by default, with one
   response naming every unknown key instead of core's first-key-only
-  report.
+  report; `unionTool` and `unionHandler` for a tool whose parameters are a
+  union.
+- **`@effected/mcp/guard`** — `McpGuard.run`, crash guards installed
+  before the server graph loads.
 - **`@effected/mcp/testing`** — `McpHarness` (in-process), `McpProcess`
   and `McpProbe` (spawned bins), `McpToolAudit` (a pure `tools/list`
   policy sweep), and `McpTestFailure`.

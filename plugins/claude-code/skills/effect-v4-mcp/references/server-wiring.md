@@ -73,19 +73,51 @@ internally would win over the harness's and talk to the real terminal.
   `NonEmptyReadonlyArray`, so an empty list is a compile error, not a
   runtime one.
 
-**One `McpStdio.layer` server per layer graph.** Core's
-`RpcServer.layerProtocolStdio` is a module constant, so two stdio servers
-merged into **one** graph — one `Layer.mergeAll`/`Layer.build` call — share
-one protocol, built over whichever `Stdio` came first: the second server
-never reads its own stdin, silently. This is core's behaviour with or
-without the guard; `Layer.fresh` around `layerStdio` is not a fix. Nesting
-does not separate them either: `Effect.provide` and `Layer.build` both
-build through a fork of the memo map already in the fiber's context, so a
-second `McpStdio.layer` provided or built anywhere under the first one's
-`Effect.provide` reuses the first server's stdio protocol and never reads
-its own stdin. Give each server a fresh memo map instead — its own
-`ManagedRuntime`, `Effect.provide(layer, { local: true })`, or its own
-process — and never merge two `McpStdio.layer` outputs into one graph.
+**Two stdio servers in one process: wrap each whole server bundle in
+`Layer.fresh`.** Core's `RpcServer.layerProtocolStdio` and the tool registry
+`McpServer.McpServer.layer` are both module constants, and layers memoize by
+reference. So two servers built through one memo map share one stdio
+protocol, built over whichever `Stdio` came first, and one tool registry. The
+second server never reads its own stdin, and the first lists both servers'
+tools. That happens when both are merged into one graph, and also when the
+second is built or provided anywhere under the first one's `Effect.provide`,
+since a nested `Layer.build` or `Effect.provide` forks the memo map already
+in the fiber's context. The stdin guard changes none of this.
+
+`Layer.fresh(layer)` builds `layer` and everything under it through a new
+memo map, so each bundle gets its own protocol and its own registry. Wrap
+the **whole** bundle — the toolkit layers together with the server, and the
+`Stdio` too if it is per server:
+
+~~~ts
+const serverA = McpToolkit.layer(ToolkitA).pipe(
+  Layer.provide(HandlersA),
+  Layer.provideMerge(McpStdio.layer({ name: "a", version: "1.0.0" })),
+)
+const serverB = McpToolkit.layer(ToolkitB).pipe(
+  Layer.provide(HandlersB),
+  Layer.provideMerge(McpStdio.layer({ name: "b", version: "1.0.0" })),
+)
+
+const Both = Layer.mergeAll(
+  Layer.fresh(serverA.pipe(Layer.provide(StdioA))),
+  Layer.fresh(serverB.pipe(Layer.provide(StdioB))),
+)
+~~~
+
+The trap is wrapping **only** `McpStdio.layer` (or `McpServer.layerStdio`)
+in `Layer.fresh` and leaving the toolkit outside. The server then answers on
+its own stdin but serves **no tools**, even when it is the only server: the
+toolkit registers into the registry the outer memo map built, and the server
+inside the fresh boundary built a second one nobody registers into. The
+boundary goes around the toolkit and the server together, never between
+them.
+
+A nested server is separated the same way: build or provide the whole inner
+bundle through `Layer.fresh`, or through `Effect.provide(layer, { local: true })`.
+Its own `ManagedRuntime` or its own process also works. One server per
+process, which is how an MCP client launches a stdio server, needs none of
+this.
 
 ### Stdin guard
 
@@ -347,6 +379,39 @@ that client) is strictly worse. Three parts, not one flag:
 Choose **exit-always** when any in-process mutable state could be left
 half-written; choose **survive-once-connected**, with all three parts
 above, only when none can.
+
+### `McpGuard.run` packages both policies
+
+`@effected/mcp/guard` ships the skeleton above as `McpGuard.run`. The
+entrypoint has no static runtime import, so importing it statically is
+safe; it registers both listeners, awaits `load()`, reports a rejected
+`load()` as `startup failed` with exit `1`, then launches the returned layer
+with `McpStdio.launch` and `McpStdio.teardown`. It owns the connected flag
+too: `McpStdio.launch`'s `onReady` runs once the whole layer has built.
+
+~~~ts
+import { McpGuard } from "@effected/mcp/guard"
+
+await McpGuard.run({
+  label: "guarded-server",
+  host: process,
+  // survive-once-connected; omit policy for exit-always
+  policy: { onUncaught: "exitBeforeConnect", onRejection: "log" },
+  load: async () => {
+    const { McpStdio } = await import("@effected/mcp")
+    const NodeRuntime = await import("@effect/platform-node/NodeRuntime")
+    const NodeStdio = await import("@effect/platform-node/NodeStdio")
+    const { Layer } = await import("effect")
+    const Main = McpStdio.layer({ name: "guarded-server", version: "1.0.0" }).pipe(Layer.provide(NodeStdio.layer))
+    return { layer: Main, runMain: NodeRuntime.runMain }
+  },
+})
+~~~
+
+Both policy fields default to `"exit"`. `injectCrashAfterConnect` raises an
+exception or rejection on a timer just after the server is serving, for an
+end-to-end test of the guards; wire it to an environment variable only the
+test sets.
 
 ## Project directory
 
