@@ -107,6 +107,52 @@ describe("CliRuntime.reportFailures", () => {
 		}),
 	);
 
+	it.effect("tells render a typed failure is not a defect, and hands it the whole cause", () =>
+		Effect.gen(function* () {
+			const seen: Array<{ error: unknown; isDefect: boolean; cause: Cause.Cause<unknown> }> = [];
+			const typed = new Error("typed");
+			yield* run(Effect.fail(typed), {
+				render: (error, { cause, isDefect }) => {
+					seen.push({ error, isDefect, cause });
+					return String(error);
+				},
+			});
+			assert.strictEqual(seen.length, 1);
+			assert.strictEqual(seen[0]?.error, typed);
+			assert.isFalse(seen[0]?.isDefect);
+			assert.isTrue(Cause.hasFails(seen[0]?.cause ?? Cause.empty));
+		}),
+	);
+
+	it.effect("tells render a die is a defect, even when the defect is an Error carrying a _tag", () =>
+		Effect.gen(function* () {
+			const flags: Array<boolean> = [];
+			const lookalike = Object.assign(new Error("bug"), { _tag: "LooksTyped" });
+			const { err } = yield* run(Effect.die(lookalike), {
+				render: (error, { isDefect }) => {
+					flags.push(isDefect);
+					return isDefect ? `defect: ${String(error)}` : String(error);
+				},
+			});
+			assert.deepStrictEqual(flags, [true]);
+			assert.deepStrictEqual(err, ["defect: Error: bug"]);
+		}),
+	);
+
+	it.effect("a cause with both a failure and a defect renders the typed failure as not a defect", () =>
+		Effect.gen(function* () {
+			const flags: Array<[unknown, boolean]> = [];
+			const typed = new Error("typed");
+			yield* run(Effect.failCause(Cause.combine(Cause.die(new Error("bug")), Cause.fail(typed))), {
+				render: (error, { isDefect }) => {
+					flags.push([error, isDefect]);
+					return String(error);
+				},
+			});
+			assert.deepStrictEqual(flags, [[typed, false]]);
+		}),
+	);
+
 	it.effect("leaves an interrupt alone", () =>
 		Effect.gen(function* () {
 			const { out, err, exit } = yield* run(Effect.interrupt);

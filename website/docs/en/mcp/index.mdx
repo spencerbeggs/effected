@@ -48,7 +48,10 @@ reads no `process` token, imports no `node:` module, and calls no
   server that never reports a failure or a log line onto the wire.
 - **`ToolFailure`** — the shared shape for folding a remediation hint into
   a tool's declared-failure message, because core sends only
-  `error.message` to the client.
+  `error.message` to the client. **`ToolRefusal`** is that shape
+  ready-made, with `ToolRefusal.refuse(reason, remediation)`.
+- **`ToolOutputSchema`** — `objectRooted`, so a union success schema is
+  served as an object-rooted `outputSchema` on every revision.
 - **`ToolInputSchema`** — pure walkers over a served JSON Schema: every
   unknown key at every depth, a message naming them, and an object-rooted
   form of a union.

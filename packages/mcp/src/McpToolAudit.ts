@@ -13,7 +13,7 @@ export interface McpToolAuditPolicy {
 	readonly requireTitle?: boolean | undefined;
 	/** Every tool must serve an `outputSchema`. The stateful revisions drop a non-object one, so check the revision you serve. */
 	readonly requireOutputSchema?: boolean | undefined;
-	/** A served `outputSchema` must be rooted at `type: "object"`. Defaults to `true` (D10). */
+	/** A served `outputSchema` must be rooted at `type: "object"`; a union root names `ToolOutputSchema.objectRooted` as the fix. Defaults to `true` (D10). */
 	readonly objectRootedOutput?: boolean | undefined;
 	/** The longest `description` allowed, in UTF-16 code units; a missing description counts as 0. */
 	readonly maxDescription?: number | undefined;
@@ -142,7 +142,12 @@ export class McpToolAudit {
 				tool.outputSchema !== undefined &&
 				tool.outputSchema.type !== "object"
 			) {
-				report(`outputSchema is not object-rooted (root type: ${String(tool.outputSchema.type ?? "none")})`);
+				const union = Array.isArray(tool.outputSchema.anyOf) || Array.isArray(tool.outputSchema.oneOf);
+				report(
+					`outputSchema is not object-rooted (root type: ${String(tool.outputSchema.type ?? "none")})${
+						union ? "; wrap the union success schema in ToolOutputSchema.objectRooted" : ""
+					}`,
+				);
 			}
 
 			const length = (tool.description ?? "").length;

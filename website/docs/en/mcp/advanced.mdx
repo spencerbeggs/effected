@@ -174,6 +174,11 @@ an opaque `Invalid request metadata`. `sendRaw` is never gated, so a test
 can still drive that refusal on purpose. The stateless `2026-07-28`
 revision needs no handshake.
 
+`client.initializeWith(protocolVersion)` sends `initialize` asking for a
+different revision than the harness was made with, and returns the whole
+response. Use it to test version negotiation: assert the negotiated
+`result.protocolVersion`, or the JSON-RPC `error`.
+
 ### A spawned bin, with `McpProcess`
 
 For a test that must exercise a **built** bin rather than a layer:
@@ -257,6 +262,12 @@ McpToolAudit.check(
 Run it against what a real server serves (`McpHarness.listTools`), not
 against your own source schemas — the served document is what a client
 actually sees, and it can differ by protocol revision.
+
+A union success schema fails `objectRootedOutput`: a top-level
+`Schema.Union` emits a bare `anyOf`. Wrap it in
+`ToolOutputSchema.objectRooted` (from `@effected/mcp`), which adds
+`type: "object"` beside the `anyOf` without changing decoding. It works
+before or after `.annotate({ identifier })`.
 
 ## `InvalidParams` per protocol revision
 

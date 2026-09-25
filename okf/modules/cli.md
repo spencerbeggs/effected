@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T19:35:12Z
-  body_sha256: 4d1b0a6f777dd8ccc7bd259fc9fc0c1929fd25cd2b787239a02f45e2c9dcc2f8
+  at: 2026-09-25T19:27:53Z
+  body_sha256: 47c9e6ae2b81ab0d6d048ac034fd2ce01fdf6701faf9da3c46283f8966927db3
 ---
 
 # @effected/cli
@@ -85,6 +85,7 @@ Exports are static classes with a private constructor — never an
 | `CliExit` | A `Context.Service` holding a `MutableRef<number>`; `CliExit.set(code)` and `CliExit.layer` for in-process tests. **`CliExit.layer` is `Layer.fresh`** — every provide mints a new cell, so a program run under `CliRuntime.main` must not provide `CliExit.layer` itself, or `CliExit.set` writes to a second, unread cell and the run silently exits `0`. See "Findings are success" below. |
 | `CliColor.enabled` | `Effect<boolean, never, Stdio>` — `Stdio.stdoutIsTerminal` and a non-empty `NO_COLOR` read through `Config.option`, never `process` (D8). |
 | `CliColor.formatterLayer` | `(overrides?: Partial<CliOutput.Formatter>) => Layer<never, never, Stdio>` — builds `CliOutput.defaultFormatter({ colors })` from the same `CliColor.enabled` decision, so help text, parse errors and rendered output always agree. |
+| `ReportFailuresOptions.render` | `(error: unknown, details: FailureDetails) => string \| ReadonlyArray<string>`. `error` is `Cause.squash(cause)`; `FailureDetails` is `{ cause, isDefect }`, with `isDefect = !Cause.hasFails(cause)` — exact because `squash` prefers a `Fail` over a `Die`. Added so a consumer stops guessing "typed" from an `Error` carrying a string `_tag`, which a defect can also be. A one-parameter renderer still fits. |
 | `ReportFailuresOptions.usageExitCode` | Remaps a `ShowHelp` that carries errors to this code, default 64 (D7). A `ShowHelp` with no errors keeps exit 0. |
 | `SchemaIssueRenderer` | `SchemaIssue` tree → actionable lines, over core's formatter |
 | `ConfigIssueRenderer` | The same for `@effected/config-file`'s `ConfigValidationError` |

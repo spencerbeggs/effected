@@ -87,6 +87,31 @@ console.log(ToolFailure.truncate(enginePath, ToolFailure.ENGINE_ECHO_LIMIT) === 
 
 `ToolFailure` is a static-namespace class with a private constructor — it is never instantiated.
 
+### ToolRefusal
+
+For a refusal with no fields of its own, `ToolRefusal` is that shape ready-made: a `Schema.TaggedError` on `ToolFailure.fields`, built with `ToolRefusal.refuse(reason, remediation)`, which folds the remediation into `message`. Declare it in the tool's `failure` schema:
+
+```ts
+import { ToolFailure, ToolRefusal } from "@effected/mcp";
+import { Effect, Schema } from "effect";
+import { Tool } from "effect/unstable/ai";
+
+const GetRun = Tool.make("get_run", {
+  parameters: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ status: Schema.String }),
+  failure: ToolRefusal,
+});
+
+const refusal = ToolRefusal.refuse(`No run "${ToolFailure.truncate("r9")}".`, {
+  hint: "List the runs first.",
+  suggestedTool: "list_runs",
+});
+console.log(refusal.message);
+// => No run "r9". List the runs first. Try list_runs.
+```
+
+**Audit every throw path when you port a tool.** Core scrubs an undeclared failure, and every defect, to `Tool execution failed due to an internal server error.` The message you wrote never reaches the agent, and nothing warns you. Any failure the agent should act on must be declared in the tool's `failure` schema, as a `ToolRefusal` or your own `ToolFailure`-shaped error.
+
 ## Putting it together
 
 A stdio server's `main.ts` is one line, plus the layer that wires it:
@@ -289,6 +314,22 @@ edit({ action: "rename", to: "b", extra: 1, options: { force: true, bogus: 2 } }
 => Unrecognized parameter(s): extra. Accepted params: action, to, options. Unrecognized parameter(s): options.bogus. Accepted params: force.
 ```
 
+## Union success schemas
+
+MCP requires a tool's `outputSchema` to be rooted in an object, and a top-level `Schema.Union` emits a bare `anyOf`. Core drops such an `outputSchema` from `tools/list` on the stateful revisions, and serves it verbatim on the stateless one, where strict clients reject it. `ToolOutputSchema.objectRooted` adds `type: "object"` beside the `anyOf` through a check that always passes, so decoding and the schema's type stay the same:
+
+```ts
+import { ToolOutputSchema } from "@effected/mcp";
+import { Schema } from "effect";
+
+const Found = Schema.Struct({ kind: Schema.Literal("found"), id: Schema.String });
+const Missing = Schema.Struct({ kind: Schema.Literal("missing"), reason: Schema.String });
+
+const Result = ToolOutputSchema.objectRooted(Schema.Union([Found, Missing])).annotate({ identifier: "Result" });
+```
+
+It can go before or after `.annotate({ identifier })`: the identifier the schema already carries moves onto the new check, so the served document is the same either way. Every union member must be an object shape. `McpToolAudit`'s `objectRootedOutput` check names this helper when it finds a union root.
+
 ## Testing
 
 `@effected/mcp/testing` is a separate entrypoint — importing it never pulls
@@ -314,7 +355,7 @@ const test = Effect.gen(function* () {
 On a stateful revision (the default is `2025-11-25`), `initialize` comes
 first: any other request sent before it fails fast with `McpTestFailure`
 reason `NotInitialized` instead of the server's opaque `Invalid request
-metadata`.
+metadata`. `client.initializeWith("2025-06-18")` asks for a different revision than the harness speaks and returns the whole response, so a test can assert the negotiated `protocolVersion`.
 
 `McpHarness.make` runs the server in-process over queue-backed `Stdio`, so
 a test sees the exact served schemas and wire results a real client would,

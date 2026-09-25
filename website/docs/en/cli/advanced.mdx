@@ -198,6 +198,24 @@ ConfigValidationError: Config validation failed at "/home/me/.config/app/config.
   Missing key at variables.keep.value
 ```
 
+### Telling a defect from a typed failure
+
+`render` gets the squashed cause: the first typed failure when there is one, otherwise the first defect. Its second argument, `details`, says which one it is (`isDefect`) and carries the whole `cause`. So a typed failure can render as one line and a defect as a full report, and you don't have to guess from the error's shape:
+
+```ts
+import { CliRuntime } from "@effected/cli";
+import { Cause } from "effect";
+
+const main = program.pipe(
+  CliRuntime.reportFailures({
+    render: (error, { cause, isDefect }) =>
+      isDefect ? ["Unexpected error, please report it:", Cause.pretty(cause)] : String(error),
+  }),
+);
+```
+
+A renderer that takes only `error` still works as before.
+
 `ConfigIssueRenderer.render` takes the **error**, not its `issue`, because that is what an `Effect.catchTag("ConfigValidationError", …)` hands you and because `issue` is typed `Schema.Defect` — reaching into it at every call site is the ceremony this removes.
 
 ## The optional peer, and the rule that makes it honest

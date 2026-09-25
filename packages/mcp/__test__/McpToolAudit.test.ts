@@ -71,6 +71,14 @@ describe("McpToolAudit.check fixtures, each wrong in exactly one way", () => {
 			["get_thing: outputSchema is not object-rooted (root type: string)"],
 		],
 		[
+			"a union output root names the ToolOutputSchema.objectRooted fix",
+			{ ...clean, outputSchema: { anyOf: [{ type: "object" }, { type: "object" }] } },
+			{ input: "any" },
+			[
+				"get_thing: outputSchema is not object-rooted (root type: none); wrap the union success schema in ToolOutputSchema.objectRooted",
+			],
+		],
+		[
 			"the same output root with objectRootedOutput opted out",
 			{ ...clean, outputSchema: { type: "string" } },
 			{ input: "any", objectRootedOutput: false },

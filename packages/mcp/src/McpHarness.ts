@@ -35,6 +35,7 @@ export interface McpHarnessOptions {
 interface HarnessParts {
 	readonly protocol: McpProtocol.ProtocolAdapter;
 	readonly initialize: Effect.Effect<JsonRpcMessage, McpTestFailure>;
+	readonly initializeWith: (protocolVersion: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly discover: Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly request: (method: string, params?: unknown) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	readonly startRequest: (
@@ -102,6 +103,19 @@ export class McpHarness {
 	readonly protocol: McpProtocol.ProtocolAdapter;
 	/** `initialize` then `notifications/initialized`; `server/discover` on a stateless revision. Call it first on a stateful revision. */
 	readonly initialize: Effect.Effect<JsonRpcMessage, McpTestFailure>;
+	/**
+	 * `initialize` asking for `protocolVersion` instead of the harness's own
+	 * revision, then `notifications/initialized` when the server accepts it.
+	 * Returns the whole response, so a refused version is data: assert the
+	 * negotiated `result.protocolVersion` or the JSON-RPC `error`.
+	 *
+	 * @remarks
+	 * Always sends `initialize`, whatever revision the harness speaks; the
+	 * frame's shape (stateless `_meta` or none) still follows the harness's
+	 * `protocol`. Use it to test version negotiation, or a server's behaviour
+	 * under a revision other than the one the harness was made with.
+	 */
+	readonly initializeWith: (protocolVersion: string) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** `server/discover`. */
 	readonly discover: Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** Send a request and wait for its response. */
@@ -138,6 +152,7 @@ export class McpHarness {
 	private constructor(parts: HarnessParts) {
 		this.protocol = parts.protocol;
 		this.initialize = parts.initialize;
+		this.initializeWith = parts.initializeWith;
 		this.discover = parts.discover;
 		this.request = parts.request;
 		this.startRequest = parts.startRequest;
@@ -306,6 +321,12 @@ export class McpHarness {
 						yield* notify("notifications/initialized");
 						return response;
 					});
+			const initializeWith = (protocolVersion: string) =>
+				Effect.gen(function* () {
+					const response = yield* request("initialize", { ...initializeParams(protocol, clientInfo), protocolVersion });
+					if (response.error === undefined) yield* notify("notifications/initialized");
+					return response;
+				});
 			const listTools = Effect.flatMap(request("tools/list"), (response) =>
 				response.error === undefined
 					? Effect.succeed((response.result as { readonly tools: ReadonlyArray<ServedTool> }).tools)
@@ -344,6 +365,7 @@ export class McpHarness {
 			return new McpHarness({
 				protocol,
 				initialize,
+				initializeWith,
 				discover,
 				request,
 				startRequest,

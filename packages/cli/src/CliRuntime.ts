@@ -13,6 +13,22 @@ const isRenderedUserError = (u: unknown): u is CliError.UserError =>
 	CliError.isCliError(u) && u._tag === "UserError" && Runtime.getErrorReported(u) === false;
 
 /**
+ * What `render` is told about a failure beyond the squashed error.
+ *
+ * @public
+ */
+export interface FailureDetails {
+	/** The whole cause the program failed with, before squashing. */
+	readonly cause: Cause.Cause<unknown>;
+	/**
+	 * `true` when the cause carries no typed failure, so `error` is a defect:
+	 * a `die`, a thrown exception, a bug. `false` when `error` is a typed
+	 * failure from the error channel.
+	 */
+	readonly isDefect: boolean;
+}
+
+/**
  * How a failure is turned into output and an exit code.
  *
  * @public
@@ -24,8 +40,14 @@ export interface ReportFailuresOptions {
 	 * @remarks
 	 * Return several lines to print several: a config error's own message
 	 * followed by the rendered issue lines, say.
+	 *
+	 * `error` is the squashed cause: the first typed failure when there is
+	 * one, otherwise the first defect. `details` says which it is, so a typed
+	 * failure can render as one line and a defect as a full report, without
+	 * guessing from the error's shape. A renderer that takes only `error`
+	 * still fits.
 	 */
-	readonly render?: ((error: unknown) => string | ReadonlyArray<string>) | undefined;
+	readonly render?: ((error: unknown, details: FailureDetails) => string | ReadonlyArray<string>) | undefined;
 	/**
 	 * The exit code to use when the error does not carry one.
 	 *
@@ -203,9 +225,11 @@ export class CliRuntime {
 					}
 
 					const render = options.render ?? ((value: unknown) => String(value));
+					// Cause.squash prefers a Fail over a Die, so `error` is a defect exactly when there is no Fail.
+					const details: FailureDetails = { cause, isDefect: !Cause.hasFails(cause) };
 
 					return Effect.gen(function* () {
-						for (const line of toLines(render(error))) {
+						for (const line of toLines(render(error, details))) {
 							yield* Effect.logError(line);
 						}
 

@@ -39,12 +39,13 @@ wire message; nothing else in `@effected/engine` is consumed yet.
 `@effected/mcp` (`src/index.ts`): `McpStdio` (`protocols`, `layer`, `launch`,
 `teardown`), `McpToolkit` (`layer`), `ToolFailure` (`fields`, `message`,
 `truncate`, `ECHO_LIMIT`, `ENGINE_ECHO_LIMIT`), `ToolInputSchema`
-(`unknownKeys`, `formatUnknownKeys`, `objectRooted`), plus the
+(`unknownKeys`, `formatUnknownKeys`, `objectRooted`), `ToolOutputSchema`
+(`objectRooted`), `ToolRefusal` (`refuse`), plus the
 `McpStdioOptions`, `McpToolkitOptions`, `UnknownKeysLevel` and
 `FormatUnknownKeysOptions` types.
 
 `@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
-carry `listTools`, `listResources`, `callTool`, `readResource`, `request`,
+carry `initialize`, `initializeWith`, `discover`, `listTools`, `listResources`, `callTool`, `readResource`, `request`,
 `startRequest`, `notify`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`,
 `consoleLogSoFar`, `close`), `McpProcess` (`spawn`; instances carry `send`,
 `sendRaw`, `nextLine`, `readUntilResponse`, `handshake`, `closeStdin`,
