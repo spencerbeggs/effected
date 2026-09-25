@@ -225,6 +225,28 @@ export const readPackedManifest = (manifestJson: string): Result.Result<PackedMa
 	return Result.succeed({ name, unresolved, bins });
 };
 
+/**
+ * The file a manifest's `bin` declares for `name`: a `bin` object's entry, or
+ * a `bin` string when `name` is the unscoped package name. `undefined` when
+ * the manifest is not a JSON object or declares no such bin.
+ */
+export const binTargetOf = (manifestJson: string, name: string): string | undefined => {
+	let manifest: unknown;
+	try {
+		manifest = JSON.parse(manifestJson);
+	} catch {
+		return undefined;
+	}
+	if (!Predicate.isObject(manifest) || Array.isArray(manifest)) return undefined;
+	const bin = manifest.bin;
+	if (typeof bin === "string") {
+		return typeof manifest.name === "string" && manifest.name.replace(/^@[^/]+\//, "") === name ? bin : undefined;
+	}
+	if (!Predicate.isObject(bin) || Array.isArray(bin)) return undefined;
+	const target = (bin as Record<string, unknown>)[name];
+	return typeof target === "string" && Object.hasOwn(bin, name) ? target : undefined;
+};
+
 /** Every specifier in a packed manifest's runtime maps that only the workspace could resolve (see `UNRESOLVABLE`). */
 export const unresolvedSpecifiers = (manifestJson: string): Result.Result<ReadonlyArray<string>, unknown> =>
 	Result.map(readPackedManifest(manifestJson), (manifest) => manifest.unresolved);
@@ -233,7 +255,8 @@ export const unresolvedSpecifiers = (manifestJson: string): Result.Result<Readon
  * The first bin the carrier declares that another packed package declares
  * too. Under a flat layout (npm, bun, Yarn's `node-modules` linker) either
  * package can take `node_modules/.bin/<bin>`, so a bin check or a bin run
- * could pass on the wrong package; only the carrier may declare its bins.
+ * could pass on the wrong package. `PackedInstall.run` refuses it unless the
+ * caller shares bin names deliberately (`allowSharedBins`).
  */
 export const binConflict = (
 	carrier: { readonly name: string; readonly bins: ReadonlyArray<string> },

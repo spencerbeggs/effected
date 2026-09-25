@@ -97,8 +97,9 @@ hand-rolling the recipe again.
   `peerDependencies` split.
 - [references/carrier-entry-contract.md](./references/carrier-entry-contract.md)
   — the four-file front-end contract (`bin.ts`/`main.ts`/`index.ts`/`version.ts`),
-  the carrier's bin shims (only the carrier declares a bin), and the MCP
-  crash-guard requirement. Load
+  the carrier's bin shims, who declares a bin (carrier-only, recommended;
+  or shared, at the cost of provenance), and the MCP crash-guard
+  requirement. Load
   when: scaffolding a new front-end package or a carrier's bin shims.
 - [references/carrier-version-threading.md](./references/carrier-version-threading.md)
   — build-time version literals, the `Distribution` `Context.Reference`,

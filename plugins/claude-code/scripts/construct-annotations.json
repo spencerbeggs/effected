@@ -906,7 +906,7 @@
 		"WorkspaceLayering": "check monorepo package graph against layers, per-field edges",
 		"PackedInstall": "pack carrier, install outside workspace under npm pnpm yarn bun, closure before run, override unreleased dependency",
 		"PackedInstallError": "packed install failure, manager unavailable, unresolved workspace protocol, missing bin, invalid override, bin conflict",
-		"InstalledConsumer": "scratch consumer project, installed bin path, bin command for a probe",
+		"InstalledConsumer": "scratch consumer project, installed bin path, bin command for a probe, run the carrier's own bin under shared bins",
 		"PackedInstallResult": "installed consumers, unavailable managers, packed tarball paths"
 	},
 	"xdg": {

@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T20:48:19Z
-  body_sha256: 3faa83bee52377bacb7752bf166e5df44bab7e0a4bafa04a60b5c9c7b7d08b35
+  at: 2026-09-25T21:15:01Z
+  body_sha256: 416f9b89553eefd81b9646e922166462c7fa272cdbcf1e28dcc772e8c3a3c791
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -434,7 +434,12 @@ same constants the run does, so the two cannot drift. `packages` is a count
 or the names `PackedInstall.closure(carrier, options?)` returns: the packages
 the run will pack, in order, computed without packing by the same planner the
 run calls, so they equal `Object.keys(result.tarballs)`. It takes the run's
-own options object, and fails as the run would before packing.[^packed-install-ts]
+own options object, and fails as the run would before packing.
+`PackedInstall.timeoutBudgetFor(runOptions, { perConsumer? })` plans with
+`closure` and budgets with `managers`, `installTimeout` and `packTimeout` from
+the same object, in one Effect. A vitest test's timeout is fixed when it is
+declared, so a consumer awaits either at module evaluation, gated on its
+prod build existing.[^packed-install-ts]
 
 ### Overrides: packages from outside the workspace
 
@@ -503,21 +508,34 @@ to it; `runBin` spawns that command with stdin ignored. There is no runtime
 edge between `workspaces` and `mcp`: the consumer's test passes one to the
 other. The scratch directory is removed when the scope closes.
 
-Only the carrier may declare its bins
+By default only the carrier may declare its bins; carrier-only bins are
+recommended and shared bins a supported alternative
 ([the carrier-only bins decision](../decisions/carrier-only-declares-bins.md)).
 Under a flat npm, Yarn or bun layout, a hoisted bin of the same name from
 another package can take the carrier's `.bin` slot, and running it cannot tell
-which one ran. The run therefore fails `BinConflict`, before any install, when
+which one ran. npm 11 and bun 1.4 were observed to link the package whose name
+sorts first; the e2e pins that with a `cli` front end beating a `plugin`
+carrier, and the same pair named the other way round let the carrier win.[^packed-install-e2e]
+The run therefore fails `BinConflict`, before any install, when
 a packed package other than the carrier (a closure member or an override)
 declares one of the carrier's bin names, read from the packed manifests it
 already inspects: a `bin` object's keys, or for a `bin` string the unscoped
 package name. It compares packed packages only: `directories.bin` is not
 read, and a dependency installed from the registry that declares the same
-bin name goes undetected. `allowSharedBins: true` skips the check for a tool
-whose front ends still declare the carrier's bin names mid-migration; the
-expected bins are still verified present and executable, but a flat layout
-may have linked a front end's, so such a test asserts `binProvenance` until
-the migration lands. `InstalledConsumer.binProvenance(name)` answers that for the
+bin name goes undetected. `allowSharedBins: true` skips the check for a
+carrier whose front ends share its bin names on purpose, because they are
+also installed on their own; its cost is provenance under flat layouts. The
+expected bins are still verified present and executable, but `runBin` may run
+a front end's. `InstalledConsumer.runCarrierBin(name, args?, options?)` runs
+the carrier's own bin regardless: it reads `node_modules/<carrier>/package.json`
+(the consumer's `carrier` field, which `run` sets), takes `name` from its
+`bin` map, and runs that file with `node` under `runBin`'s environment,
+stdin ignored. `carrierCommand` returns the same command with stdin open for
+`McpProbe`. A consumer with no carrier, a carrier not installed or not
+declaring the bin, or a declared file that is missing fails `MissingBin`;
+an unreadable or non-JSON manifest fails `Io`.[^packed-install-ts]
+
+`InstalledConsumer.binProvenance(name)` answers that for the
 managers that write `.bin` entries as symlinks: npm, bun, and Yarn under the
 `node-modules` linker the run configures. It reads the link, realpaths the
 target, and walks up to the nearest `package.json` with a string `name`,

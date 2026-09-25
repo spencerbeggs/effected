@@ -3,6 +3,7 @@ import { Result } from "effect";
 import { WorkspacePackage } from "../src/index.js";
 import {
 	binConflict,
+	binTargetOf,
 	closureOf,
 	consumerFiles,
 	fileOverridesOf,
@@ -292,5 +293,23 @@ describe("fileOverridesOf", () => {
 describe("overridePath", () => {
 	it("drops a file: prefix and leaves a bare path alone", () => {
 		assert.deepStrictEqual([overridePath("file:../a"), overridePath("/abs/b.tgz")], ["../a", "/abs/b.tgz"]);
+	});
+});
+
+describe("binTargetOf", () => {
+	it("finds a bin object's entry, or a bin string under the unscoped package name", () => {
+		const object = JSON.stringify({ name: "@x/carrier", bin: { tool: "./dist/tool.js", "tool-mcp": "./dist/mcp.js" } });
+		assert.strictEqual(binTargetOf(object, "tool-mcp"), "./dist/mcp.js");
+		assert.isUndefined(binTargetOf(object, "carrier"));
+		assert.isUndefined(binTargetOf(object, "toString"), "an inherited key is no bin");
+		const string = JSON.stringify({ name: "@x/tool", bin: "./cli.js" });
+		assert.strictEqual(binTargetOf(string, "tool"), "./cli.js");
+		assert.isUndefined(binTargetOf(string, "@x/tool"));
+	});
+
+	it("a manifest without a bin, or not a JSON object, declares none", () => {
+		assert.isUndefined(binTargetOf(JSON.stringify({ name: "x" }), "x"));
+		assert.isUndefined(binTargetOf("[]", "x"));
+		assert.isUndefined(binTargetOf("{ nope", "x"));
 	});
 });

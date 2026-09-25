@@ -337,6 +337,7 @@ describe("PackedInstall.run past the pack", () => {
 				assert.deepStrictEqual(result.unavailable, ["yarn"], "require defaults to any");
 				assert.deepStrictEqual(result.tarballs, { "@x/carrier": CARRIER_TGZ, "@x/lib": LIB_TGZ });
 				assert.strictEqual(result.scratch, SCRATCH, "the scratch root is exposed");
+				assert.strictEqual(result.consumers[0]?.carrier, "@x/carrier", "each consumer records its carrier");
 				assert.include(String(result.consumers[0]), "/scratch/consumer-npm", "the printed consumer shows its fields");
 				assert.notInclude(String(result.consumers[0]), "/home/u", "but its env prints redacted");
 
@@ -860,11 +861,12 @@ describe("PackedInstall.run past the pack", () => {
 				);
 				assert.deepStrictEqual([error.reason, error.package], ["BinConflict", "@x/lib"]);
 				assert.include(error.message, "@x/lib declares the bin x, which the carrier @x/carrier declares");
+				assert.include(error.message, "pass allowSharedBins: true", "the message names the way out");
 				assert.isFalse(conflicting.spawns.some((spawn) => spawn.args[0] === "install"));
 			}),
 		);
 
-		it.effect("allowSharedBins skips BinConflict for a tool mid-migration, and still verifies the carrier's bins", () =>
+		it.effect("allowSharedBins skips BinConflict, deliberately sharing the name, and still verifies the bins", () =>
 			Effect.gen(function* () {
 				const result = yield* PackedInstall.run({
 					carrier: "@x/carrier",
@@ -1245,6 +1247,156 @@ describe("InstalledConsumer.binProvenance", () => {
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(at("pnpm").binProvenance("shim"));
 				assert.strictEqual(error.reason, "Io");
+			}),
+		);
+	});
+});
+
+describe("PackedInstall.timeoutBudgetFor", () => {
+	layer(Layer.mergeAll(MemoryFileSystem.layerWith({}), Path.layer, Discovery))((it) => {
+		it.effect("plans the closure from the run's own options and budgets exactly what timeoutBudget would", () =>
+			Effect.gen(function* () {
+				const options = {
+					carrier: "@x/carrier",
+					closure: "auto",
+					managers: ["npm", "pnpm"],
+					bins: [],
+					env: ENV,
+					installTimeout: "3 minutes",
+					packTimeout: "20 seconds",
+				} as const;
+				const budget = yield* PackedInstall.timeoutBudgetFor(options, { perConsumer: "1 minute" });
+				assert.deepStrictEqual(
+					budget,
+					PackedInstall.timeoutBudget({
+						managers: ["npm", "pnpm"],
+						installTimeout: "3 minutes",
+						packTimeout: "20 seconds",
+						packages: ["@x/carrier", "@x/lib"],
+						perConsumer: "1 minute",
+					}),
+				);
+				// 2 x (0.5 + 3 + 1) + 2 x (20s + 30s) + 0.5 untimed + 1 cleanup
+				assert.strictEqual(Duration.format(budget), "12m 10s");
+				// Defaults: the run's own four-minute install and two-minute pack, no per-consumer work.
+				const defaults = yield* PackedInstall.timeoutBudgetFor({
+					...options,
+					installTimeout: undefined,
+					packTimeout: undefined,
+					closure: [],
+				});
+				assert.strictEqual(
+					Duration.format(defaults),
+					Duration.format(PackedInstall.timeoutBudget({ managers: ["npm", "pnpm"], packages: 1 })),
+				);
+			}),
+		);
+
+		it.effect("fails as closure does", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(
+					PackedInstall.timeoutBudgetFor({
+						carrier: "@x/nope",
+						closure: "auto",
+						managers: ["npm"],
+						bins: [],
+						env: ENV,
+					}),
+				);
+				assert.deepStrictEqual([error.reason, error.package], ["UnknownPackage", "@x/nope"]);
+			}),
+		);
+	});
+});
+
+describe("InstalledConsumer.carrierCommand and runCarrierBin", () => {
+	const DIR = "/scratch/consumer-npm";
+	const NM = `${DIR}/node_modules`;
+	const at = (carrier: string | undefined, env: Record<string, string> = { PATH: "/usr/bin", INIT_CWD: "/repo" }) =>
+		InstalledConsumer.make({
+			manager: "npm",
+			managerVersion: "11.19.1",
+			directory: DIR,
+			env: Redacted.make(env),
+			...(carrier === undefined ? {} : { carrier }),
+		});
+	const SEED: MemoryFileSystemSeed = {
+		[`${NM}/@x/carrier/package.json`]: JSON.stringify({
+			name: "@x/carrier",
+			bin: { tool: "./dist/tool.js", gone: "./dist/gone.js" },
+		}),
+		[`${NM}/@x/carrier/dist/tool.js`]: "#!/usr/bin/env node\n",
+		// The front end won the .bin slot: a link to its bin, not the carrier's.
+		[`${NM}/@x/cli/package.json`]: JSON.stringify({ name: "@x/cli", bin: { tool: "./bin.js" } }),
+		[`${NM}/@x/cli/bin.js`]: "#!/usr/bin/env node\n",
+		[`${NM}/.bin/tool`]: MemoryFileSystem.symlink("../@x/cli/bin.js"),
+		[`${NM}/@x/broken/package.json`]: "{ not json",
+	};
+	const runs = ScriptedSpawner.make((command, args) =>
+		command === "node" ? { stdout: `ran ${args.join(" ")}\n`, exit: 2 } : ScriptedSpawner.notFound(command),
+	);
+	layer(Layer.mergeAll(MemoryFileSystem.layerWith(SEED), Path.layer, runs.layer))((it) => {
+		it.effect(
+			"resolves the bin through the carrier's own bin map, not the .bin slot, under command's environment",
+			() =>
+				Effect.gen(function* () {
+					const consumer = at("@x/carrier");
+					const command = yield* consumer.carrierCommand("tool", ["--version"], {
+						env: { XDG_DATA_HOME: "/scratch/xdg" },
+						cwd: "/work",
+					});
+					assert.strictEqual(command.command, "node");
+					assert.deepStrictEqual(command.args, [`${NM}/@x/carrier/dist/tool.js`, "--version"]);
+					assert.strictEqual(command.options.cwd, "/work");
+					assert.strictEqual(command.options.extendEnv, false);
+					assert.isUndefined(command.options.stdin, "left open for a probe");
+					// The same scrub and layering command() applies.
+					const same = consumer.command("tool", [], { env: { XDG_DATA_HOME: "/scratch/xdg" } });
+					assert.deepStrictEqual(command.options.env, same.options.env);
+					assert.deepStrictEqual(command.options.env, { PATH: "/usr/bin", XDG_DATA_HOME: "/scratch/xdg" });
+					// The .bin slot belongs to the front end; carrierCommand never looked there.
+					assert.strictEqual((yield* consumer.binProvenance("tool"))?.package, "@x/cli");
+					assert.strictEqual((yield* consumer.carrierCommand("tool")).options.cwd, DIR);
+				}),
+		);
+
+		it.effect("runCarrierBin runs that command with stdin ignored; a non-zero exit is a result", () =>
+			Effect.gen(function* () {
+				const output = yield* at("@x/carrier").runCarrierBin("tool", ["a"]);
+				assert.deepStrictEqual([output.stdout, output.exitCode], [`ran ${NM}/@x/carrier/dist/tool.js a\n`, 2]);
+				const spawn = runs.spawns.at(-1);
+				assert.deepStrictEqual([spawn?.command, spawn?.cwd, spawn?.options.stdin], ["node", DIR, "ignore"]);
+			}),
+		);
+
+		it.effect("every way the carrier's bin cannot be found fails MissingBin, naming it", () =>
+			Effect.gen(function* () {
+				const reasons = [];
+				for (const [consumer, name] of [
+					[at(undefined), "tool"],
+					[at("@x/absent"), "tool"],
+					[at("@x/carrier"), "other"],
+					[at("@x/carrier"), "gone"],
+				] as const) {
+					const error = yield* Effect.flip(consumer.carrierCommand(name));
+					reasons.push([error.reason, error.message]);
+				}
+				assert.deepStrictEqual(reasons, [
+					["MissingBin", "npm: the carrier's bin tool cannot be found: this consumer records no carrier"],
+					["MissingBin", `npm: the carrier's bin tool cannot be found: @x/absent is not installed at ${NM}/@x/absent`],
+					["MissingBin", "npm: the carrier's bin other is not declared by @x/carrier"],
+					["MissingBin", `npm: the carrier's bin gone points at ${NM}/@x/carrier/dist/gone.js, which does not exist`],
+				]);
+			}),
+		);
+
+		it.effect("a carrier manifest that is not JSON fails Io", () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(at("@x/broken").carrierCommand("tool"));
+				assert.deepStrictEqual(
+					[error.reason, error.message],
+					["Io", `${NM}/@x/broken/package.json is not a JSON object`],
+				);
 			}),
 		);
 	});

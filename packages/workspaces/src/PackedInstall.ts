@@ -8,6 +8,7 @@ import { ChildProcess } from "effect/unstable/process";
 import type { PackedManifest } from "./internal/packedInstallPlan.js";
 import {
 	binConflict,
+	binTargetOf,
 	closureOf,
 	consumerFiles,
 	fileOverridesOf,
@@ -126,9 +127,10 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	 * Bin names every consumer must expose, executable, in `node_modules/.bin`.
 	 *
 	 * @remarks
-	 * Only the carrier may declare them. Whatever this lists, a packed package
-	 * other than the carrier that declares one of the carrier's own bin names
-	 * fails `BinConflict` before any install: under a flat layout (npm, bun,
+	 * By default only the carrier may declare them. Whatever this lists, a
+	 * packed package other than the carrier that declares one of the
+	 * carrier's own bin names fails `BinConflict` before any install, unless
+	 * `allowSharedBins` is set: under a flat layout (npm, bun,
 	 * Yarn's `node-modules` linker) either package can take the `.bin` slot,
 	 * so the bin check and every bin run could pass on the wrong package.
 	 *
@@ -139,17 +141,24 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	 */
 	readonly bins: ReadonlyArray<string>;
 	/**
-	 * Skip the `BinConflict` check, for a tool still migrating away from
-	 * mirror bins (front ends that declare the carrier's bin names).
+	 * Skip the `BinConflict` check: the front ends declare the carrier's bin
+	 * names too, deliberately.
 	 *
 	 * @remarks
-	 * Every expected bin in `bins` is still verified present and executable.
-	 * But with a front end sharing the carrier's bin name, a flat layout can
-	 * link the front end's bin into the carrier's `.bin` slot, so that check,
-	 * and any bin the test runs, can pass on the wrong package. Assert
-	 * `InstalledConsumer.binProvenance` for the linking managers while this
-	 * is set, and drop it once the front ends stop declaring the bins.
-	 * Defaults to `false`: shared bin names fail.
+	 * A supported, permanent choice for a carrier whose front ends are also
+	 * installed and run on their own, and a stopgap for one migrating to
+	 * carrier-only bins. Its cost is provenance: under npm, bun and Yarn's
+	 * `node-modules` linker, either package can take the `.bin` slot (npm and
+	 * bun were observed to link the package whose name sorts first, which for
+	 * a `cli` front end and a `plugin` carrier is the front end), and the bin
+	 * that runs then carries no distribution identity: no `--version` suffix.
+	 * When every shared bin calls the same `main()`, nothing else changes.
+	 *
+	 * Every expected bin in `bins` is still verified present and executable,
+	 * but that check, and `runBin`, can pass on the front end's bin. Prove the
+	 * carrier's own shim with `InstalledConsumer.runCarrierBin`, and read who
+	 * owns the slot with `InstalledConsumer.binProvenance`. Defaults to
+	 * `false`, so sharing is an explicit choice.
 	 */
 	readonly allowSharedBins?: boolean | undefined;
 	/** The environment for every spawn: pass `process.env` from the test file. The parent manager's context is stripped. */
@@ -294,6 +303,11 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * its bins under only `RunBinOptions.env`.
 	 */
 	env: Schema.optionalKey(Schema.Redacted(Schema.Record(Schema.String, Schema.String))),
+	/**
+	 * The carrier the consumer depends on, which {@link InstalledConsumer.carrierCommand}
+	 * resolves bins through. `PackedInstall.run` always sets it.
+	 */
+	carrier: Schema.optionalKey(Schema.String),
 }) {
 	/** The installed bin `name`, in `node_modules/.bin`. POSIX: `PackedInstall` runs only there. */
 	binPath(name: string): string {
@@ -419,13 +433,11 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 		args: ReadonlyArray<string> = [],
 		options: BinCommandOptions = {},
 	): ChildProcess.StandardCommand {
-		// The caller's explicit entries go on after the scrub: a deliberate CI=true must survive it.
-		const env = scrubEnv(this.env === undefined ? {} : Redacted.value(this.env));
-		for (const [key, value] of Object.entries(options.env ?? {})) {
-			if (value === undefined) delete env[key];
-			else env[key] = value;
-		}
-		return ChildProcess.make(this.binPath(name), args, { cwd: options.cwd ?? this.directory, env, extendEnv: false });
+		return ChildProcess.make(this.binPath(name), args, {
+			cwd: options.cwd ?? this.directory,
+			env: layeredEnv(this, options),
+			extendEnv: false,
+		});
 	}
 
 	/**
@@ -451,24 +463,141 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 		args: ReadonlyArray<string> = [],
 		options: RunBinOptions = {},
 	): Effect.Effect<CommandOutput, PackedInstallError, ChildProcessSpawner.ChildProcessSpawner> {
-		const command = this.command(name, args, options);
-		const timeout = options.timeout ?? DEFAULT_BIN_TIMEOUT;
+		return collectBin(this.command(name, args, options), this.manager, name, options.timeout);
+	}
+
+	/**
+	 * The command that runs the CARRIER's own bin `name`, whichever package
+	 * won the `node_modules/.bin` slot.
+	 *
+	 * @remarks
+	 * With `allowSharedBins`, a flat layout (npm, bun, Yarn's `node-modules`
+	 * linker) can link a front end's same-named bin into `.bin`, so
+	 * {@link InstalledConsumer.runBin} proves only that SOME package's bin runs.
+	 * This reads the carrier's installed `node_modules/<carrier>/package.json`,
+	 * takes `name` from its `bin` map (a `bin` string answers to the unscoped
+	 * package name), and returns `node <that file> ...args`: the carrier's shim
+	 * itself, run by the `node` on the environment's `PATH`, so it assumes the
+	 * bin is a Node script. Environment and working directory are built as
+	 * {@link InstalledConsumer.command} builds them, stdin left open for a probe
+	 * such as `McpProbe.initialize`.
+	 *
+	 * A consumer with no `carrier`, a carrier that is not installed or does not
+	 * declare `name`, or a declared file that does not exist fails
+	 * `MissingBin`; a manifest that cannot be read or is not JSON fails `Io`.
+	 *
+	 * @param name - The bin, as the carrier's `bin` map names it.
+	 * @param args - Its arguments.
+	 * @param options - Extra environment and working directory.
+	 */
+	carrierCommand(
+		name: string,
+		args: ReadonlyArray<string> = [],
+		options: BinCommandOptions = {},
+	): Effect.Effect<ChildProcess.StandardCommand, PackedInstallError, FileSystem.FileSystem | Path.Path> {
+		const consumer = this;
 		const manager = this.manager;
-		return Run.collect(ChildProcess.make(command.command, command.args, { ...command.options, stdin: "ignore" }), {
-			timeout,
-		}).pipe(
-			Effect.mapError((cause) =>
-				failure(
-					"BinFailed",
-					cause._tag === "CommandFailedError" && cause.kind === "timeout"
-						? `${manager}: ${name} timed out after ${describeDuration(timeout)}`
-						: `${manager}: ${name} could not run`,
-					{ manager, cause },
-				),
-			),
+		return Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const path = yield* Path.Path;
+			const missing = (why: string) =>
+				failure("MissingBin", `${manager}: the carrier's bin ${name} ${why}`, {
+					manager,
+					...(consumer.carrier === undefined ? {} : { package: consumer.carrier }),
+				});
+			if (consumer.carrier === undefined) return yield* missing("cannot be found: this consumer records no carrier");
+			const root = path.join(consumer.directory, "node_modules", ...consumer.carrier.split("/"));
+			const manifestPath = path.join(root, "package.json");
+			const text = yield* fs
+				.readFileString(manifestPath)
+				.pipe(
+					Effect.catch((error) =>
+						error.reason._tag === "NotFound"
+							? Effect.fail(missing(`cannot be found: ${consumer.carrier} is not installed at ${root}`))
+							: Effect.fail(failure("Io", `could not read ${manifestPath}`, { manager, cause: error })),
+					),
+				);
+			const manifest = readPackedManifest(text);
+			if (Result.isFailure(manifest)) {
+				return yield* failure("Io", `${manifestPath} is not a JSON object`, { manager, cause: manifest.failure });
+			}
+			const target = binTargetOf(text, name);
+			if (target === undefined) return yield* missing(`is not declared by ${consumer.carrier}`);
+			const file = path.join(root, target);
+			const present = yield* fs
+				.exists(file)
+				.pipe(Effect.mapError((cause) => failure("Io", `could not inspect ${file}`, { manager, cause })));
+			if (!present) return yield* missing(`points at ${file}, which does not exist`);
+			return ChildProcess.make("node", [file, ...args], {
+				cwd: options.cwd ?? consumer.directory,
+				env: layeredEnv(consumer, options),
+				extendEnv: false,
+			});
+		});
+	}
+
+	/**
+	 * Run the carrier's own bin `name` to completion, whichever package won
+	 * the `node_modules/.bin` slot.
+	 *
+	 * @remarks
+	 * Spawns {@link InstalledConsumer.carrierCommand} with stdin ignored, and
+	 * reports as {@link InstalledConsumer.runBin} does: a non-zero exit is a
+	 * result, and a bin that cannot spawn or outlives `options.timeout` (one
+	 * minute by default) fails `BinFailed`. Use it beside `runBin` under
+	 * `allowSharedBins`: `runBin` proves what a user typing the bin name gets,
+	 * this proves the carrier's shim itself works.
+	 *
+	 * @param name - The bin, as the carrier's `bin` map names it.
+	 * @param args - Its arguments.
+	 * @param options - Extra environment, working directory and ceiling.
+	 */
+	runCarrierBin(
+		name: string,
+		args: ReadonlyArray<string> = [],
+		options: RunBinOptions = {},
+	): Effect.Effect<
+		CommandOutput,
+		PackedInstallError,
+		FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+	> {
+		const manager = this.manager;
+		return this.carrierCommand(name, args, options).pipe(
+			Effect.flatMap((command) => collectBin(command, manager, name, options.timeout)),
 		);
 	}
 }
+
+/** The install's scrubbed environment with the caller's entries layered on after the scrub: a deliberate CI=true must survive it. */
+const layeredEnv = (consumer: InstalledConsumer, options: BinCommandOptions): Record<string, string> => {
+	const env = scrubEnv(consumer.env === undefined ? {} : Redacted.value(consumer.env));
+	for (const [key, value] of Object.entries(options.env ?? {})) {
+		if (value === undefined) delete env[key];
+		else env[key] = value;
+	}
+	return env;
+};
+
+/** Run a bin's command to completion, stdin ignored, mapping a failed spawn or an expired ceiling to `BinFailed`. */
+const collectBin = (
+	command: ChildProcess.StandardCommand,
+	manager: PackageManagerName,
+	name: string,
+	timeout: Duration.Input = DEFAULT_BIN_TIMEOUT,
+): Effect.Effect<CommandOutput, PackedInstallError, ChildProcessSpawner.ChildProcessSpawner> =>
+	Run.collect(ChildProcess.make(command.command, command.args, { ...command.options, stdin: "ignore" }), {
+		timeout,
+	}).pipe(
+		Effect.mapError((cause) =>
+			failure(
+				"BinFailed",
+				cause._tag === "CommandFailedError" && cause.kind === "timeout"
+					? `${manager}: ${name} timed out after ${describeDuration(timeout)}`
+					: `${manager}: ${name} could not run`,
+				{ manager, cause },
+			),
+		),
+	);
 
 /**
  * What a packed install produced.
@@ -792,6 +921,61 @@ export class PackedInstall {
 	): Effect.Effect<ReadonlyArray<string>, PackedInstallError, WorkspaceDiscovery | FileSystem.FileSystem | Path.Path> =>
 		planClosure(carrier, options).pipe(Effect.map(namesOf), Effect.withSpan("PackedInstall.closure"));
 
+	/**
+	 * {@link PackedInstall.timeoutBudget} for exactly the run `options`
+	 * describes, planned from the options themselves.
+	 *
+	 * @remarks
+	 * Plans the closure with {@link PackedInstall.closure} (the run's own
+	 * planner, `overrides` and `workspaceOverrides` included) and takes
+	 * `managers`, `installTimeout` and `packTimeout` from the same object, so
+	 * nothing is written twice. `perConsumer` is the one input a run's options
+	 * do not carry. It is an Effect because planning reads the workspace; in a
+	 * vitest file, await it at module evaluation, since a test's timeout is
+	 * fixed when the test is declared. Fails as `closure` does.
+	 *
+	 * @example
+	 * ```ts
+	 * import { NodeServices } from "@effect/platform-node";
+	 * import { Workspaces } from "@effected/workspaces";
+	 * import type { PackedInstallOptions } from "@effected/workspaces/testing";
+	 * import { PackedInstall } from "@effected/workspaces/testing";
+	 * import { Duration, Effect, Layer } from "effect";
+	 *
+	 * const Live = Workspaces.layer({ cwd: "/repo" }).pipe(Layer.provideMerge(NodeServices.layer));
+	 * const RUN: PackedInstallOptions = {
+	 *   carrier: "my-tool",
+	 *   closure: "auto",
+	 *   managers: ["npm", "pnpm"],
+	 *   bins: ["my-tool"],
+	 *   env: process.env,
+	 *   packTimeout: "30 seconds",
+	 * };
+	 * const budget = await Effect.runPromise(
+	 *   PackedInstall.timeoutBudgetFor(RUN, { perConsumer: "1 minute" }).pipe(Effect.provide(Live)),
+	 * );
+	 * const TEST_TIMEOUT_MS = Duration.toMillis(budget) + 60_000;
+	 * ```
+	 *
+	 * @param options - The run's options, the same object passed to `run`.
+	 * @param extra - What the test does with each consumer afterwards.
+	 */
+	static readonly timeoutBudgetFor = (
+		options: PackedInstallOptions,
+		extra: { readonly perConsumer?: Duration.Input | undefined } = {},
+	): Effect.Effect<Duration.Duration, PackedInstallError, WorkspaceDiscovery | FileSystem.FileSystem | Path.Path> =>
+		PackedInstall.closure(options.carrier, options).pipe(
+			Effect.map((packages) =>
+				PackedInstall.timeoutBudget({
+					managers: options.managers,
+					packages,
+					...(options.installTimeout === undefined ? {} : { installTimeout: options.installTimeout }),
+					...(options.packTimeout === undefined ? {} : { packTimeout: options.packTimeout }),
+					...(extra.perConsumer === undefined ? {} : { perConsumer: extra.perConsumer }),
+				}),
+			),
+		);
+
 	/** Pack, then install under every available manager. */
 	static readonly run = Effect.fn("PackedInstall.run")(function* (options: PackedInstallOptions) {
 		const fs = yield* FileSystem.FileSystem;
@@ -967,7 +1151,7 @@ export class PackedInstall {
 		if (conflict !== undefined) {
 			return yield* failure(
 				"BinConflict",
-				`${conflict.package} declares the bin ${conflict.bin}, which the carrier ${carrier.name} declares; under a flat layout (npm, bun, Yarn's node-modules linker) either can take node_modules/.bin/${conflict.bin}, so only the carrier may declare it`,
+				`${conflict.package} declares the bin ${conflict.bin}, which the carrier ${carrier.name} declares; under a flat layout (npm, bun, Yarn's node-modules linker) either can take node_modules/.bin/${conflict.bin} and the carrier's provenance is lost there; drop the bin from ${conflict.package}, or pass allowSharedBins: true to share it deliberately`,
 				{ package: conflict.package },
 			);
 		}
@@ -1016,6 +1200,7 @@ export class PackedInstall {
 					managerVersion: version,
 					directory,
 					env: Redacted.make(env),
+					carrier: carrier.name,
 				});
 				for (const bin of options.bins) {
 					const info = yield* Effect.option(fs.stat(consumer.binPath(bin)));

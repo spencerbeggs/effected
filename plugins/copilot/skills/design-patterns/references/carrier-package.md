@@ -75,9 +75,11 @@ never depend on each other.
   a different name.
 - **carrier** — ships almost no behavior of its own. It takes a regular
   `dependencies` edge on every front end (see below — this is the one rule
-  that is easy to get backwards) plus one bin shim per front end — the
-  only bins in the tool: front ends declare none (see
-  [carrier-entry-contract.md](./carrier-entry-contract.md#only-the-carrier-declares-a-bin)).
+  that is easy to get backwards) plus one bin shim per front end. By
+  recommendation those are the only bins in the tool and front ends declare
+  none; a tool whose front ends also stand alone may share the names
+  instead, at the cost of provenance under flat installs (see
+  [carrier-entry-contract.md](./carrier-entry-contract.md#who-declares-a-bin)).
   It **may also be a library** — a build-tool plugin that happens to also be
   the meta-package, or a package that carries config shims alongside the
   bin shims — as long as it only ever imports a front end from inside a bin

@@ -42,18 +42,21 @@ The loader script's job, in order:
    presence, defaulting to npm) and the exact install command for it —
    `<pm> add -D @scope/plugin`.
 3. **Then fall back to `npx --yes -p @scope/plugin@<MAJOR> <tool>-mcp`** —
-   the **carrier**, **major-pinned**, running the bin by name. Naming the
-   carrier is required, not a style choice: only the carrier declares a bin
-   (see
-   [carrier-entry-contract.md](./carrier-entry-contract.md#only-the-carrier-declares-a-bin)),
-   and `npx <package>` runs a package's *own* bin, so `npx @scope/mcp` has
-   nothing to run once the front end stops declaring one: npm fails
+   the **carrier**, **major-pinned**, running the bin by name. With
+   carrier-only bins (see
+   [carrier-entry-contract.md](./carrier-entry-contract.md#who-declares-a-bin))
+   naming the carrier is required, not a style choice: `npx <package>` runs
+   a package's *own* bin, so `npx @scope/mcp` has nothing to run once the
+   front end stops declaring one: npm fails
    `could not determine executable to run`. Plain `npx @scope/plugin` fails
    the same way, because the carrier declares several bins and none named
    after the package. `-p` installs the carrier and the trailing name picks
    its bin, arguments passed through (checked with npm 11 against packed
    tarballs; a name the carrier lacks exits 127). It also means the fallback
-   carries the distribution identity, as a local install does. The major pin
+   carries the distribution identity, as a local install does. A tool whose
+   front ends keep their bins (shared bins) may fall back to the front end
+   instead, `npx --yes @scope/mcp@<MAJOR>`, which downloads less and runs
+   the same `main()` without the identity. The major pin
    keeps the fallback from silently drifting onto a breaking release the
    plugin was never tested against:
 
@@ -74,9 +77,9 @@ exec npx --yes -p @scope/plugin@4 tool-mcp "$@"
 ```
 
 vitest-agent's loader is the model for the rest of the script
-(<https://github.com/spencerbeggs/vitest-agent/blob/main/plugins/claude-code/bin/start-mcp.sh>);
-its fallback is moving from the front end (`@vitest-agent/mcp@<MAJOR>`) to
-this carrier form.
+(<https://github.com/spencerbeggs/vitest-agent/blob/main/plugins/claude-code/bin/start-mcp.sh>).
+It keeps shared bins, so its fallback names the front end,
+`@vitest-agent/mcp@<MAJOR>`, a legitimate choice for that shape.
 
 **Never dispatch through `pnpm exec` / `yarn exec` / `bunx` / `npm exec`.**
 Each resolves bins under a different mechanism (workspace-aware exec vs.
@@ -109,12 +112,13 @@ silently start running a different one. Pin the fallback's major whenever
 the carrier has shipped a breaking major; treat an unpinned fallback as
 latent skew waiting to happen, not as "it hasn't broken yet."
 
-Both also name the front end rather than the carrier, so they stop working
-the moment the front end drops its own bin, and until then they run the
-bare front end with no meta-package identity: any report it produces
-carries `distribution: null` — see
-[carrier-version-threading.md](./carrier-version-threading.md). The carrier
-form above fixes both.
+Both also name the front end rather than the carrier. That works while the
+front end keeps its own bin (the shared-bins shape), and runs the bare front
+end with no meta-package identity: any report it produces carries
+`distribution: null` — see
+[carrier-version-threading.md](./carrier-version-threading.md). A tool that
+moves to carrier-only bins must move its fallback to the carrier form above
+in the same release, or the fallback has nothing to run.
 
 ## Hook CLI resolution order
 

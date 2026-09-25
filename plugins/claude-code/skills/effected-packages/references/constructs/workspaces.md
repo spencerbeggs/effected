@@ -35,7 +35,7 @@
 | `HookReplay` | Interface | Which version of a config dependency a replay actually loaded, and where that version came from. | |
 | `HookReplaySource` | TypeAlias | Where a replayed config dependency's declared version was found: the `node_modules/.pnpm-config` copy, the pnpm store's `links/` tree, or a `ConfigDependencyHooks.layerFrom` entry. | |
 | `ImporterVersions` | TypeAlias | Each importer's dependency-name → resolved-version map, keyed by importer path (`"."` for the root package — the same keys `WorkspaceDiscovery.importerMap()` uses, and the same value `PackageStateSnapshot.relativePath` carries). | |
-| `InstalledConsumer` | Class | One scratch project, outside the workspace, with the carrier installed. | from `@effected/workspaces/testing` — scratch consumer project, installed bin path, bin command for a probe |
+| `InstalledConsumer` | Class | One scratch project, outside the workspace, with the carrier installed. | from `@effected/workspaces/testing` — scratch consumer project, installed bin path, bin command for a probe, run the carrier's own bin under shared bins |
 | `LayerEdge` | Class | One dependency edge between two workspace packages, in one field. | from `@effected/workspaces/testing` — one workspace dependency edge in one manifest field |
 | `LayerPolicy` | Class | A committed dependency-layering policy (`layers.json`). | from `@effected/workspaces/testing` — decode a committed layers.json dependency layering policy |
 | `LayerPolicyError` | Class | Raised when a layer policy cannot be read, parsed or decoded. | from `@effected/workspaces/testing` — layer policy file unreadable, not json, or wrong shape |

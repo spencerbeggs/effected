@@ -7,8 +7,8 @@ status: stable
 tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T20:48:19Z
-  body_sha256: 123a111cb13a957001c9c299fe6b05c19b899feaad5174a1dd7383912d13bede
+  at: 2026-09-25T21:15:01Z
+  body_sha256: 597254c8eab76cef28e93ff1c17d9302cbdfec4c4602cedc7a4b78d6931593c7
 ---
 
 # savvy-web/systems
@@ -142,10 +142,12 @@ policy in `systems`' own resolver rather than becoming a kit member.
   near-duplication a future `@effected/mcp` `Remediation`/`ToolFailure`
   primitive would collapse across all three of this register's MCP
   server consumers.
-- A pending migration to [carrier-only bins](../decisions/carrier-only-declares-bins.md):
+- Shared bins, with an optional migration to
+  [carrier-only bins](../decisions/carrier-only-declares-bins.md):
   `@savvy-web/cli` declares `savvy` and `@savvy-web/mcp` declares
   `savvy-mcp`, the same names the carrier `@savvy-web/silk` declares, and
   `plugins/silk/bin/start-mcp.sh` falls back to `npx --yes @savvy-web/mcp`.
-  Dropping the front-end bins is a major bump for each, with the loader
-  moving to `npx --yes -p @savvy-web/silk@<MAJOR> savvy-mcp` in the same
-  release; until then a `PackedInstall` proof needs `allowSharedBins`.
+  Keeping that shape is supported: a `PackedInstall` proof passes
+  `allowSharedBins: true` and accepts lost provenance under flat installs.
+  Migrating is a major bump for each front end, with the loader moving to
+  `npx --yes -p @savvy-web/silk@<MAJOR> savvy-mcp` in the same release.

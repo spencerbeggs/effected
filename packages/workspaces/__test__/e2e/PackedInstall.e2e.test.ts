@@ -39,6 +39,9 @@ const VERSION = "0.0.0-fixture";
 const GREETING = "hello from the packed lib";
 const BIN_NAME = "fixture-carrier";
 const BIN = `#!/usr/bin/env node\nimport { greet } from "${LIB}";\nconsole.log(greet());\n`;
+const SHARED_CARRIER = "@effected/packed-install-fixture-shared-plugin";
+const SHARED_FRONT = "@effected/packed-install-fixture-shared-cli";
+const SHARED_BIN = "fixture-shared";
 /** The effected bundler's prod npm output, and PackedInstall's default pack source. */
 const PROD = "dist/prod/npm/pkg";
 
@@ -127,6 +130,28 @@ const writeFixture = (): string => {
 	] as const) {
 		write(root, `${dir}/package.json`, json(plugin(peer)));
 		write(root, `${dir}/index.js`, shout);
+	}
+
+	// A carrier and a front end that BOTH declare fixture-shared: the mirror-bin shape allowSharedBins permits.
+	const shared = (name: string, printed: string, dependencies: Record<string, string>) => ({
+		manifest: {
+			name,
+			version: VERSION,
+			type: "module",
+			bin: { [SHARED_BIN]: "./bin.js" },
+			files: ["bin.js"],
+			dependencies,
+		},
+		bin: `#!/usr/bin/env node\nconsole.log(${JSON.stringify(printed)});\n`,
+	});
+	for (const [dir, pkg] of [
+		["packages/shared-cli", shared(SHARED_FRONT, "front", {})],
+		[`packages/shared-cli/${PROD}`, shared(SHARED_FRONT, "front", {})],
+		["packages/shared-plugin", shared(SHARED_CARRIER, "carrier", { [SHARED_FRONT]: "workspace:^" })],
+		[`packages/shared-plugin/${PROD}`, shared(SHARED_CARRIER, "carrier", { [SHARED_FRONT]: VERSION })],
+	] as const) {
+		write(root, `${dir}/package.json`, json(pkg.manifest));
+		write(root, `${dir}/bin.js`, pkg.bin, 0o755);
 	}
 	return root;
 };
@@ -514,6 +539,62 @@ describe("PackedInstall against a real fixture workspace", () => {
 					assert.include(out.stderr, LIB);
 				}).pipe(Effect.timeout("100 seconds"), Effect.scoped),
 			120_000,
+		);
+
+		// A front end sharing the carrier's bin name: BinConflict by default; with allowSharedBins
+		// a flat layout can hand the .bin slot to the front end, and runCarrierBin still reaches the carrier.
+		const sharedManagers = (["npm", "pnpm", "yarn", "bun"] as const).filter((pm) => VERSIONS[pm] !== undefined);
+		it.effect.skipIf(!HAS_NPM)(
+			"allowSharedBins: .bin may run the front end under a flat layout, runCarrierBin always runs the carrier",
+			() =>
+				Effect.gen(function* () {
+					const options = {
+						carrier: SHARED_CARRIER,
+						closure: "auto",
+						managers: sharedManagers,
+						require: "all",
+						bins: [SHARED_BIN],
+						env: OFFLINE,
+						installTimeout: "90 seconds",
+					} as const;
+					const refused = yield* Effect.flip(PackedInstall.run(options));
+					assert.deepStrictEqual([refused.reason, refused.package], ["BinConflict", SHARED_FRONT]);
+
+					const result = yield* PackedInstall.run({ ...options, allowSharedBins: true });
+					const seen: Record<string, string> = {};
+					for (const consumer of result.consumers) {
+						const slot = yield* consumer.runBin(SHARED_BIN);
+						const provenance = yield* consumer.binProvenance(SHARED_BIN);
+						// What .bin ran agrees with who owns the slot.
+						if (provenance !== undefined) {
+							assert.strictEqual(
+								slot.stdout.trim(),
+								provenance.package === SHARED_FRONT ? "front" : "carrier",
+								consumer.manager,
+							);
+						}
+						seen[consumer.manager] = slot.stdout.trim();
+						const own = yield* consumer.runCarrierBin(SHARED_BIN);
+						assert.deepStrictEqual(
+							[own.stdout.trim(), own.exitCode],
+							["carrier", 0],
+							`${consumer.manager}: ${own.stderr}`,
+						);
+					}
+					// Observed with npm 11.19 and bun 1.4: the package whose name sorts first takes the slot, so
+					// shared-cli (the front end) beats shared-plugin (the carrier), as @vitest-agent/cli beats
+					// @vitest-agent/plugin. Named the other way round, the carrier won both. pnpm links only the
+					// direct dependency. yarn is not asserted: it was not available to observe.
+					assert.deepStrictEqual(
+						seen,
+						Object.fromEntries(
+							sharedManagers.flatMap((pm) =>
+								pm === "yarn" ? [] : [[pm, pm === "pnpm" ? "carrier" : "front"] as const],
+							),
+						),
+					);
+				}).pipe(Effect.timeout("200 seconds"), Effect.scoped),
+			240_000,
 		);
 
 		it.effect.skipIf(!HAS_NPM)(

@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T20:38:38Z
-  body_sha256: 7e6646f0e90eb11c8ff92c971de002cfd14d352b0397d2d0b4962d61001bf7b7
+  at: 2026-09-25T21:15:01Z
+  body_sha256: aebb7cf05ece20c4134f374ff944cf5bf7ae644d5d4519d2b8a6c1cd38ed1d24
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -198,7 +198,8 @@ constructor:[^testing-ts]
   `PackedInstallClosureOptions`, `PackedInstallBudget`, `BinCommandOptions`
   and `RunBinOptions`): packs a carrier, its closure and any `overrides`,
   then installs it into a scratch consumer under every available package
-  manager; `closure` names what a run will pack without packing it.
+  manager; `closure` names what a run will pack without packing it, and
+  `timeoutBudgetFor` budgets a run from its own options.
 
 The contracts are
 [the repo-shape checks interface](../interfaces/workspaces-repo-shape-checks.md).

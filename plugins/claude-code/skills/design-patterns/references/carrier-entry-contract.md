@@ -6,7 +6,7 @@ with one job:
 
 | File | Role | Exported as |
 | --- | --- | --- |
-| `src/bin.ts` | shebang; import `main`; call it. Nothing else. A workspace-local entry for running the front end directly during development | **not** declared as a `bin`: only the carrier declares bins (see [below](#only-the-carrier-declares-a-bin)) |
+| `src/bin.ts` | shebang; import `main`; call it. Nothing else. | with carrier-only bins (recommended), **not** declared: a workspace-local development entry; with shared bins, `bin` in `package.json` (see [below](#who-declares-a-bin)) |
 | `src/main.ts` | the assembled program: crash guards, environment resolution, exit-code mapping, runtime teardown, `runMain`. **Owns the process.** | `./main` subpath export |
 | `src/index.ts` | the programmatic barrel — side-effect free, never exports `main` | `.` (package root) |
 | `src/version.ts` | `export const X_VERSION = process.env.__PACKAGE_VERSION__ ?? "0.0.0"` — a bundler `define`, not a runtime read | not exported directly; consumed internally |
@@ -23,7 +23,10 @@ A front end's `package.json` exports map is:
 }
 ```
 
-No `bin` field: the carrier's shim is the only published way to run it.
+No `bin` field under carrier-only bins, the recommended shape: the
+carrier's shim is the only published way to run it. A front end that also
+stands alone adds `"bin": { "the-tool": "./src/bin.ts" }` (see
+[who declares a bin](#who-declares-a-bin)).
 
 ## Why `./main`, not `.`
 
@@ -146,22 +149,29 @@ behavior with a dedicated `externals.test.ts` so a future bundler config
 change that starts inlining front ends fails a test instead of silently
 bloating every shim.
 
-## Only the carrier declares a bin
+## Who declares a bin
+
+Two supported shapes. Choose one deliberately; the default of the kit's
+packed-install check is the first.
+
+### Carrier-only bins (recommended)
 
 Front ends declare **no** `bin` — above all none with a name the carrier
 declares. The carrier's shim is the one executable a consumer installs.
+This is **required** only when the carrier's identity must hold under flat
+installs.
 
 Why: under npm, Yarn (`node-modules` linker) and bun **flat** installs, a
-transitive front end that declared a bin of the same name could take the
-carrier's `.bin` slot, and which one wins is the manager's choice, not
-yours: packed-install runs observed npm and bun linking the front end's bin
-over the carrier's. Both call the same `main()`, so the tool still works,
-but the carrier identity is lost — the front end runs without the
-distribution the shim passes down, and `--version` drops its
-`via @scope/plugin <version>` suffix. Only pnpm's isolated layout, which
-links nothing transitive at the top level, kept the carrier's shim. With
-one declaration there is nothing to shadow, and the identity holds under
-every manager.
+front end that declares a bin of the same name can take the carrier's
+`.bin` slot, and which one wins is the manager's choice, not yours:
+packed-install runs observed npm and bun linking whichever package's name
+sorts first, which for a `cli` front end and a `plugin` carrier is the front
+end. Both call the same `main()`, so the tool still works, but the carrier
+identity is lost: the front end runs without the distribution the shim
+passes down, and `--version` drops its `via @scope/plugin <version>` suffix.
+Only pnpm's isolated layout, which links nothing transitive at the top
+level, always kept the carrier's shim. With one declaration there is
+nothing to shadow, and the identity holds under every manager.
 
 Consequences:
 
@@ -171,12 +181,24 @@ Consequences:
   [carrier-plugin-loader.md](./carrier-plugin-loader.md)).
 - `src/bin.ts` stays as the workspace-local development entry; it is simply
   not published as a bin.
-- `PackedInstall.run` (`@effected/workspaces/testing`) enforces the rule: a
-  packed package other than the carrier declaring one of the carrier's bin
-  names fails `BinConflict` before any install (see
-  [carrier-verification.md](./carrier-verification.md)); `allowSharedBins`
-  opts a tool out while it migrates.
-- Migrating is breaking for the front ends: anyone who installed or `npx`'d
-  a front end directly for its bin loses it. Drop a front end's `bin` in a
-  major bump, and move the plugin loader's fallback to the carrier form in
-  the same release.
+- Moving an existing tool here is breaking for its front ends: anyone who
+  installed or `npx`'d a front end directly for its bin loses it. Drop a
+  front end's `bin` in a major bump, and move the plugin loader's fallback
+  to the carrier form in the same release.
+
+### Shared bins (a supported alternative)
+
+Front ends keep declaring their own bins, with the carrier's names, because
+each front end is also useful installed on its own: `npx @scope/mcp` keeps
+working, no front end needs a major, and a loader's `npx` fallback does not
+download the whole carrier. vitest-agent chose this shape. The cost is only
+provenance: under npm, Yarn and bun the front end's bin can win the `.bin`
+slot, and then no `--version` suffix or distribution identity. Behaviour is
+otherwise identical, since every bin calls the same `main()`.
+
+`PackedInstall.run` (`@effected/workspaces/testing`) refuses a shared name
+by default (`BinConflict`), so sharing is an explicit choice: pass
+`allowSharedBins: true`. Then prove the carrier's own shim with
+`consumer.runCarrierBin(name)`, which runs it through the carrier's `bin`
+map whichever package took the slot (see
+[carrier-verification.md](./carrier-verification.md)).
