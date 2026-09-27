@@ -1,5 +1,25 @@
 # @effected/copilot-plugin
 
+## 0.11.1
+
+### Documentation
+
+- The `effected-packages` markdown reference now teaches `Text.escapeStyle: "literal"`: a text node whose value the caller vouches is already safe emits verbatim, keeping only the escapes that protect block and table structure, which suits generated tables such as changeset dependency rows. [#811][#811]
+
+* The `effected-packages` reference docs and construct index now teach the `@effected/workspaces` and `@effected/npm` changes they were drifting behind: `findWorkspaceRootSync`'s new `stopAt` ceiling and `FindWorkspaceRootSyncOptions`, `WorkspaceResolver.versionOf` and `DependencyResolutionError` reporting `reason: "no-version"` for a version-less workspace member (`"mechanism"` otherwise), and `PackageStateSnapshot.version` being optional so `WorkspaceStateSnapshot.versions` lists only members that declared a version — use `package(name)` for membership instead. [#859][#859]
+
+### Other
+
+- The workspaces skill reference now teaches all three `PeerCheck.run` `UnverifiedReason` values — `"peerRulesNotApplied"`, `"unresolvedEdge"`, and the new `"peerRangeUnresolved"` — and shows the "proven clean" predicate reachable under pnpm for a monorepo with internal dependencies: pass both `workspacePackages` (joins a `link:`-resolved parent's manifest peers) and `catalogs` (resolves a joined `catalog:` peer range) alongside `peerDependencyRules`. It also names `"peerRangeUnresolved"`'s trigger — a joined manifest peer whose range is a protocol specifier that could not be resolved while something resolved for that peer — so a consumer reading `unverified` in a gate knows what each reason means and how to clear it, rather than reaching for a fail-closed workaround. [#811][#811]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) and [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#811]: https://github.com/spencerbeggs/effected/pull/811
+
+[#859]: https://github.com/spencerbeggs/effected/pull/859
+
 ## 0.11.0
 
 ### Features

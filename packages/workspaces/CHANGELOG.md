@@ -1,5 +1,68 @@
 # @effected/workspaces
 
+## 0.29.0
+
+### Breaking Changes
+
+- `PackageStateSnapshot.version` is now optional and is never the empty string. Both capture paths omit `version` for a workspace member with no declared version instead of recording `""`, `PackageStateSnapshot.make` rejects an explicit `""`, and a snapshot serialized under the old `""` sentinel decodes to the field being absent. As a consequence, `WorkspaceStateSnapshot.versions` now lists only members that declared a version — use `package(name)` to check membership instead, since a version-less member no longer appears there. Closes #613. [#859][#859]
+
+### Features
+
+- `PeerCheck.run` accepts two new options that close the `link:` blind spot in peer verification (effected#800): under pnpm, every `workspace:` dependency resolves through `link:`, and pnpm records no peer declarations for a workspace project, so a linked parent's peers were invisible to the report even though `pnpm peers check` reads them from the manifest on disk. Without these options, a pnpm monorepo with internal dependencies now reports `unverified` where it previously reported clean — pass both to restore a "proven clean" answer:
+
+```ts
+const report = PeerCheck.run(lockfile, {
+	peerDependencyRules: yield* catalogs.peerDependencyRules(),
+	workspacePackages: yield* discovery.listPackages(),
+	catalogs: yield* catalogs.set(),
+});
+```
+
+- `workspacePackages` — the packages `WorkspaceDiscovery` already returns. Joins a `link:`-resolved parent's manifest peers into the walk (the root importer's linked targets included), naming the parent from its manifest (`probe-a@1.0.0`, not the lockfile row's `packages/a@0.0.0`) and judging its peers against the *importer's own* dependency set, which is where pnpm resolves them from. Presence of the key is the assertion: `"unresolvedEdge"` still fires for any `link:` target the supplied set does not cover, and for every target when the key is omitted, so the option answers only for what it covers.
+- A `link:` target matches a supplied package at its own directory or, when `publishConfig.directory` is set and `linkDirectory` is not `false` (pnpm's default), at that publish directory — the layout a workspace that links built output uses. A linked package's peers are judged for its direct consumer only, and a workspace package's own dependencies belong to its own importer, matching where `pnpm peers check` reports them.
+- `catalogs` — the workspace's `CatalogSet`, from `WorkspaceCatalogs.set()`. A joined manifest may declare a peer as `catalog:` or `catalog:<name>` rather than a plain range; with this key supplied, the specifier resolves through the set and the resolved range is judged and reported as `wanted` — the same value `pnpm peers check` reports as `wantedRange`.
+- A new `UnverifiedReason`, `"peerRangeUnresolved"`, fires when a joined peer's range is a protocol specifier (a `catalog:` entry the supplied set names nothing for, `catalogs` omitted, or any other protocol such as `workspace:*`) while something resolved for that peer, so the comparison was never performed. A peer with no provider at all is unaffected and is still reported as usual.
+- A new `UnverifiedReason`, `"peerVersionUnresolved"`, fires when a peer resolved to a non-workspace provider whose version is a protocol specifier: a `file:` directory or tarball, directly or through a `file:` override, and a git or remote-tarball provider, which pnpm keys by its URL. Such a peer was previously skipped as unparseable and passed as satisfied, while `pnpm peers check` reports it `bad`; it is now declined without a fabricated row, for lockfile-row and joined-manifest peers alike.
+
+#### `findWorkspaceRootSync` stop boundary
+
+- `findWorkspaceRootSync(cwd, options)` accepts an optional `stopAt` via the new exported `FindWorkspaceRootSyncOptions`, closing #846. The bound is inclusive, a relative path resolves against `process.cwd()` at lookup time, and the ascent returns `null` once it passes `stopAt` without finding a workspace root. Omitting `stopAt` keeps the ascent unbounded, matching prior behavior.
+
+```ts
+import { findWorkspaceRootSync } from "@effected/workspaces";
+import { nodeSyncOps } from "@effected/workspaces/node-sync";
+
+const root = findWorkspaceRootSync(process.cwd(), { ...nodeSyncOps, stopAt: process.cwd() });
+```
+
+#### `reason: "no-version"` on version-less resolution failures
+
+- Part of #612: a `versionOf` failure caused by a workspace member declaring no `version` — from both `WorkspaceDiscovery` and the snapshot resolvers — now carries `reason: "no-version"` and no `cause`, matching `@effected/npm`'s `DependencyResolutionError` shape.
+
+### Bug Fixes
+
+- `LockfileReader` passes `configOnly` to `Lockfile.parse` only when the workspace root has no `package.json`, so a config-dependency-only pnpm workspace reads as an empty lockfile while the same bytes left by an interrupted first install fail with `LockfileFramingError` instead of reading as a clean, empty workspace.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/lockfiles | dependency | updated | 0.12.0 | 0.13.0 |
+| @effected/npm | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/package-json | dependency | updated | 0.18.0 | 0.18.1 |
+
+### Other
+
+- New committed oracle fixtures under `__test__/fixtures/peers/` (the `linkdeep*` and `linkchain*` sets) recording real pnpm 12.5.1/12.6.0 `peers check --json` output alongside the lockfile, covering the root importer's own linked dependencies, publish-directory links, and chains of linked workspace packages, plus a `filedep*` set recording pnpm 12.6.0 and 12.7.0 verdicts for `file:` directory, tarball, override and joined providers. [#811][#811]
+
+### Thanks
+
+Thanks to [@fuleinist](https://github.com/fuleinist) and [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#811]: https://github.com/spencerbeggs/effected/pull/811
+
+[#859]: https://github.com/spencerbeggs/effected/pull/859
+
 ## 0.28.0
 
 ### Features
