@@ -9,8 +9,8 @@ tags:
   - release
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T06:21:10Z
-  body_sha256: dbd66ba57aaa4798cdd93ad8a4edbb0b99434596cc4f1158d793242731a53c50
+  at: 2026-09-27T07:37:31Z
+  body_sha256: 69f186ae3c9fb5c416eb3c08272333ef85dc829b765dfda840ccf44668918535
 ---
 
 # Publish a snapshot
@@ -36,6 +36,14 @@ A consumer needs unreleased kit changes on a runner, usually because its own fix
 - **A package the registry has never seen is skipped**, with a warning in the job log. A first publish under a non-latest tag would also claim `latest`, so the first publish belongs to the real release. If a published snapshot depends on a skipped package, it can't install. Release that package first.
 - **Snapshots publish ripple bumps too.** Every package the plan bumps is published, including patch bumps pulled in only because a dependency moved. Check `changeset status` before dispatching to see the set.
 - **The `effected` catalog doesn't carry snapshot versions**, and `@effected/pnpm-plugin-effect` is not snapshot-published. Consumers pin snapshots with `overrides:`, which replace the catalog's resolution outright.
+
+## Authority
+
+- **The gate is repository write access.** Anyone who can dispatch a workflow here can publish a snapshot of any branch. This is deliberate: the job has no approval environment, and the maintainer chose that over a protected environment.
+- **What limits the damage:**
+  - The job refuses `main`, non-branch refs and the `latest` tag, and never publishes a package the registry hasn't seen.
+  - A snapshot dispatch has its own concurrency group, so another dispatch can't cancel it mid-publish.
+- **A failure partway through leaves a partial set under the tag.** Consumers should pin the exact versions from the job summary rather than follow the dist-tag.
 
 ## Done when
 

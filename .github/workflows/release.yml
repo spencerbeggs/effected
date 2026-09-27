@@ -30,7 +30,9 @@ on:
 concurrency:
   # The event name keeps a fork push's pull_request and pull_request_target
   # runs in separate groups; sharing one would cancel one of them.
-  group: release-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  # A snapshot dispatch gets its own group, so another dispatch on the same
+  # commit (a dry-run release, say) cannot cancel it mid-publish.
+  group: release-${{ github.event_name }}${{ inputs.snapshot && '-snapshot' || '' }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -77,12 +79,21 @@ jobs:
     env:
       SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
     steps:
-      - name: Refuse main and the latest tag
+      - name: Refuse anything but a feature branch, and the latest tag
         run: |
-          if [ "$GITHUB_REF_NAME" = "main" ]; then
-            echo "::error::Snapshots are for unmerged branches; dispatch from a feature branch."
-            exit 1
-          fi
+          # GITHUB_REF, not GITHUB_REF_NAME: a dispatch can target a tag, and a tag
+          # named anything but "main" may still point at a main commit.
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              echo "::error::Snapshots are for unmerged branches; dispatch from a feature branch."
+              exit 1
+              ;;
+            refs/heads/*) ;;
+            *)
+              echo "::error::Snapshots publish from a branch; $GITHUB_REF is not one."
+              exit 1
+              ;;
+          esac
           if [ -z "$SNAPSHOT_TAG" ] || [ "$SNAPSHOT_TAG" = "latest" ]; then
             echo "::error::snapshot_tag must be set and must not be latest."
             exit 1
@@ -144,10 +155,17 @@ jobs:
             pushd "$out" >/dev/null
             # A first-ever publish under a non-latest tag also claims latest, so a
             # package the registry has never seen is left for the real release.
-            if ! npm view "$name" version --userconfig "$userconfig" >/dev/null 2>&1; then
-              echo "::warning::$name has never been published; skipped (the first publish belongs to the release)."
-              popd >/dev/null
-              continue
+            # Only a confirmed E404 means "never published"; any other lookup failure
+            # (registry down, auth, timeout) fails the job rather than silently
+            # skipping a package that exists.
+            if ! lookup="$(npm view "$name" version --userconfig "$userconfig" 2>&1)"; then
+              if grep -q "E404" <<<"$lookup"; then
+                echo "::warning::$name has never been published; skipped (the first publish belongs to the release)."
+                popd >/dev/null
+                continue
+              fi
+              echo "::error::$name: registry lookup failed: $lookup"
+              exit 1
             fi
             npm publish --tag "$SNAPSHOT_TAG" --provenance --access public --userconfig "$userconfig"
             popd >/dev/null

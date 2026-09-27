@@ -86,8 +86,9 @@ every platform, so a gap means the map is wrong, never "skip the check".
 An entry with no usable SRI, or a tarball that hashes to anything else,
 fails `integrityMismatch`. Pins with no native overlay (pnpm 11 and
 earlier, npm, yarn, bun) ignore the option. The wrapper tarball itself is
-still verified against the pin's own `integrity`; convert a lockfile SRI
-onto the pin with `CorepackIntegrityHash.fromSri`.
+verified against the pin's `integrity` or the `integrity` option, never
+against `nativeIntegrity`; convert a lockfile SRI with
+`CorepackIntegrityHash.fromSri`.
 
 `install`'s `pin` argument is `@effected/npm`'s package-manager-pin type —
 a plain `Schema.Class`, not a service, so it costs nothing in `R`. The
