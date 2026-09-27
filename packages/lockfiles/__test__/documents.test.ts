@@ -11,8 +11,10 @@
 // answer. These tests pin the deterministic framing rule (the lockfile is the
 // last document — pnpm composes the preamble as a prefix) and prove that an
 // unlocatable lockfile now fails typed instead of returning an empty model.
-// The one empty model the stream can honestly yield is a preamble followed by
-// an empty main document, which real pnpm writes (effected#845).
+// A preamble followed by an empty main document is AMBIGUOUS: pnpm writes
+// those exact bytes both for a config-dependency-only workspace with no root
+// package.json (effected#845) and for a workspace whose first install failed.
+// It reads as an empty model only when the caller asserts `configOnly`.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -137,17 +139,51 @@ describe("document framing", () => {
 		);
 	});
 
-	describe("pnpm: a preamble followed by an empty main document is an empty lockfile", () => {
-		// pnpm 11 and 12 write this for a workspace with no root package.json and
-		// only configDependencies (effected#845). The env reader reads the
-		// preamble; Lockfile.parse must read the same bytes, as the empty lockfile
-		// they are, never by falling back to the preamble's packages.
-		for (const major of ["pnpm11", "pnpm12"]) {
-			it.effect(`${major} real output: no packages, no importers, the preamble's version`, () =>
+	describe("pnpm: a preamble followed by an empty main document is ambiguous", () => {
+		// pnpm 11 and 12 write these bytes for a workspace with no root
+		// package.json and only configDependencies (effected#845) — AND pnpm 12
+		// writes the very same bytes when a workspace WITH a root package.json
+		// fails its first install after the config dependencies went in
+		// (`pnpm/unsupported-interrupted-pnpm12`). The parser cannot tell them
+		// apart, so by default it fails closed, and reads the stream as an empty
+		// lockfile only on the caller's `configOnly` assertion.
+		const configOnly = { format: "pnpm", configOnly: true } as const;
+
+		it("the interrupted-install capture is byte-identical to the config-only capture", () => {
+			// The evidence the whole opt-in rests on: were these ever to differ, the
+			// parser could decide by content and the flag would be unnecessary.
+			assert.strictEqual(
+				fixture("pnpm/unsupported-interrupted-pnpm12/pnpm-lock.yaml"),
+				fixture("pnpm/env-configonly-pnpm12/pnpm-lock.yaml"),
+			);
+		});
+
+		for (const name of ["env-configonly-pnpm11", "env-configonly-pnpm12", "unsupported-interrupted-pnpm12"]) {
+			it.effect(`${name}, by default: fails 'noLockfileDocument', never an empty model`, () =>
 				Effect.gen(function* () {
-					const lockfile = yield* Lockfile.parse(fixture(`pnpm/env-configonly-${major}/pnpm-lock.yaml`), {
-						format: "pnpm",
-					});
+					const error = yield* framingError(fixture(`pnpm/${name}/pnpm-lock.yaml`), "pnpm");
+
+					assert.strictEqual(error.reason, "noLockfileDocument");
+					assert.strictEqual(error.documents, 2);
+				}),
+			);
+
+			it.effect(`${name}, configOnly: false is the default, not a different mode`, () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(
+						Lockfile.parse(fixture(`pnpm/${name}/pnpm-lock.yaml`), { format: "pnpm", configOnly: false }),
+					);
+
+					assert.instanceOf(error, LockfileFramingError);
+					assert.strictEqual(error.reason, "noLockfileDocument");
+				}),
+			);
+		}
+
+		for (const major of ["pnpm11", "pnpm12"]) {
+			it.effect(`${major} real output, configOnly: no packages, no importers, the preamble's version`, () =>
+				Effect.gen(function* () {
+					const lockfile = yield* Lockfile.parse(fixture(`pnpm/env-configonly-${major}/pnpm-lock.yaml`), configOnly);
 
 					assert.strictEqual(lockfile.format, "pnpm");
 					assert.strictEqual(lockfile.lockfileVersion, "9.0");
@@ -163,20 +199,18 @@ describe("document framing", () => {
 			);
 		}
 
-		it.effect("the version is the preamble's, not a constant", () =>
+		it.effect("configOnly: the version is the preamble's, not a constant", () =>
 			Effect.gen(function* () {
-				const lockfile = yield* Lockfile.parse(`${preamble.replace("'9.0'", "'9.5'")}\n---\n`, { format: "pnpm" });
+				const lockfile = yield* Lockfile.parse(`${preamble.replace("'9.0'", "'9.5'")}\n---\n`, configOnly);
 
 				assert.strictEqual(lockfile.lockfileVersion, "9.5");
 				assert.deepStrictEqual(lockfile.packages, []);
 			}),
 		);
 
-		it.effect("a preamble below the supported version still fails the gate", () =>
+		it.effect("configOnly: a preamble below the supported version still fails the gate", () =>
 			Effect.gen(function* () {
-				const error = yield* Effect.flip(
-					Lockfile.parse(`${preamble.replace("'9.0'", "'6.0'")}\n---\n`, { format: "pnpm" }),
-				);
+				const error = yield* Effect.flip(Lockfile.parse(`${preamble.replace("'9.0'", "'6.0'")}\n---\n`, configOnly));
 
 				assert.instanceOf(error, LockfileParseError);
 				assert.strictEqual(error.stage, "validation");
@@ -184,14 +218,79 @@ describe("document framing", () => {
 			}),
 		);
 
-		it.effect("a preamble that is not a mapping fails validation, not as an empty lockfile", () =>
+		it.effect("configOnly: a preamble that is not a mapping fails validation, not as an empty lockfile", () =>
 			Effect.gen(function* () {
-				const error = yield* Effect.flip(Lockfile.parse("--- 42\n---\n", { format: "pnpm" }));
+				const error = yield* Effect.flip(Lockfile.parse("--- 42\n---\n", configOnly));
 
 				assert.instanceOf(error, LockfileParseError);
 				assert.strictEqual(error.stage, "validation");
 			}),
 		);
+
+		describe("configOnly loosens nothing else", () => {
+			it.effect("no preamble (two empty documents) still fails 'noLockfileDocument'", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(Lockfile.parse("---\n---\n", configOnly));
+
+					assert.instanceOf(error, LockfileFramingError);
+					assert.strictEqual(error.reason, "noLockfileDocument");
+					assert.strictEqual(error.documents, 2);
+				}),
+			);
+
+			it.effect("a lone empty document still fails 'noLockfileDocument'", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(Lockfile.parse("---\n", configOnly));
+
+					assert.instanceOf(error, LockfileFramingError);
+					assert.strictEqual(error.reason, "noLockfileDocument");
+					assert.strictEqual(error.documents, 1);
+				}),
+			);
+
+			it.effect("more than two documents still fail 'unexpectedDocuments'", () =>
+				Effect.gen(function* () {
+					// A preamble, an empty document, then a third: the config-only shape
+					// with one document too many is still outside the writer contract.
+					const error = yield* Effect.flip(Lockfile.parse(`${preamble}\n---\n---\n`, configOnly));
+
+					assert.instanceOf(error, LockfileFramingError);
+					assert.strictEqual(error.reason, "unexpectedDocuments");
+					assert.strictEqual(error.documents, 3);
+				}),
+			);
+
+			it.effect("a non-empty main document declaring no importers still fails 'noImporters'", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(
+						Lockfile.parse(`${preamble}\n---\nlockfileVersion: '9.0'\nimporters: {}\n`, configOnly),
+					);
+
+					assert.instanceOf(error, LockfileFramingError);
+					assert.strictEqual(error.reason, "noImporters");
+				}),
+			);
+
+			it.effect("a populated two-document stream parses exactly as it does without the flag", () =>
+				Effect.gen(function* () {
+					const content = fixture("pnpm/multidoc/pnpm-lock.yaml");
+					const flagged = yield* Lockfile.parse(content, configOnly);
+					const plain = yield* Lockfile.parse(content, { format: "pnpm" });
+
+					assert.isAbove(flagged.packages.length, 0);
+					assert.deepStrictEqual(flagged, plain);
+				}),
+			);
+
+			it.effect("ignored for a non-pnpm format: an empty yarn.lock still fails 'noLockfileDocument'", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(Lockfile.parse("", { format: "yarn", configOnly: true }));
+
+					assert.instanceOf(error, LockfileFramingError);
+					assert.strictEqual(error.reason, "noLockfileDocument");
+				}),
+			);
+		});
 	});
 
 	describe("pnpm: an unlocatable lockfile fails typed, never as an empty model", () => {

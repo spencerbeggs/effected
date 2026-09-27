@@ -61,11 +61,15 @@ export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()
  * - `documents` — how many YAML documents the stream carried.
  * - `reason`:
  *   - `"noLockfileDocument"` — the stream carries no lockfile document:
- *     empty content, or a pnpm stream whose lockfile position is empty with
- *     no env preamble ahead of it. A preamble followed by an empty document
- *     is not this failure: pnpm writes that for a workspace with no root
- *     `package.json` and only `configDependencies`, and `Lockfile.parse`
- *     reads it as an empty lockfile versioned by the preamble.
+ *     empty content, or a pnpm stream whose lockfile position is empty. That
+ *     includes an env preamble followed by an empty document unless the
+ *     caller passes `configOnly`: pnpm writes those same bytes for a
+ *     config-dependency-only workspace with no root `package.json` *and* for
+ *     a workspace whose first install failed after its config dependencies
+ *     were installed, so only the caller can say which it is. With
+ *     `configOnly`, `Lockfile.parse` reads that stream as an empty lockfile
+ *     versioned by the preamble; an empty lockfile position with no preamble
+ *     fails either way.
  *   - `"noImporters"` — the located document declares no importers, so it
  *     describes no workspace. pnpm always records at least the root importer.
  *   - `"unexpectedDocuments"` — the stream carries more documents than the
@@ -115,14 +119,18 @@ export const materializeFailure = (
 		? new LockfileFramingError({ format, reason: failure.reason, documents: failure.documents })
 		: new LockfileParseError({ format, stage: failure.stage, cause: failure.cause });
 
-const dispatch = (format: LockfileFormat, content: string): Effect.Effect<LockfileFields, ParseFailure> => {
+const dispatch = (
+	format: LockfileFormat,
+	content: string,
+	configOnly: boolean,
+): Effect.Effect<LockfileFields, ParseFailure> => {
 	switch (format) {
 		case "bun":
 			return parseBun(content);
 		case "npm":
 			return parseNpm(content);
 		case "pnpm":
-			return parsePnpm(content);
+			return parsePnpm(content, configOnly);
 		case "yarn":
 			return parseYarn(content);
 	}
@@ -180,7 +188,14 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 	 *
 	 * @param content - The lockfile text (this package does no IO; the caller
 	 *   reads the file).
-	 * @param options - The lockfile format to parse as.
+	 * @param options - `format` is the lockfile format to parse as.
+	 *   `configOnly` is the caller's assertion that the workspace has **no root
+	 *   `package.json`**, so a pnpm env preamble followed by an empty main
+	 *   document is a config-dependency-only workspace and reads as an empty
+	 *   lockfile versioned by the preamble. Without it that stream fails
+	 *   {@link LockfileFramingError} with `noLockfileDocument`, because the same
+	 *   bytes are also what an interrupted first install leaves behind. It
+	 *   loosens nothing else, and is ignored for non-pnpm formats.
 	 * @returns An `Effect` succeeding with the {@link Lockfile}, or failing
 	 *   with {@link LockfileParseError} (malformed text or the wrong shape) or
 	 *   {@link LockfileFramingError} (the text parsed, but no lockfile document
@@ -189,9 +204,9 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 	 */
 	static readonly parse = Effect.fn("Lockfile.parse")(function* (
 		content: string,
-		options: { readonly format: LockfileFormat },
+		options: { readonly format: LockfileFormat; readonly configOnly?: boolean | undefined },
 	) {
-		const fields = yield* dispatch(options.format, content).pipe(
+		const fields = yield* dispatch(options.format, content, options.configOnly === true).pipe(
 			Effect.mapError((failure) => materializeFailure(options.format, failure)),
 		);
 		return Lockfile.make({

@@ -23,7 +23,17 @@ const fixture = (relative: string): string => readFileSync(join(import.meta.dirn
  */
 const NEGATIVE_FIXTURE_PREFIX = "unsupported-";
 
-const parseFixture = (relative: string, format: LockfileFormat) => Lockfile.parse(fixture(relative), { format });
+/**
+ * pnpm fixture directories under this prefix were captured from a workspace
+ * with **no root `package.json`**, so the caller reading them would assert
+ * `configOnly`. The prefix is the marker the enumeration guard below reads to
+ * pass that flag: a new config-only capture opts in by its name, and no other
+ * fixture is ever parsed with the flag.
+ */
+const CONFIG_ONLY_FIXTURE_PREFIX = "env-configonly-";
+
+const parseFixture = (relative: string, format: LockfileFormat, configOnly = false) =>
+	Lockfile.parse(fixture(relative), { format, configOnly });
 
 describe("Lockfile.parse", () => {
 	describe("pnpm", () => {
@@ -1680,8 +1690,13 @@ describe("supported lockfile versions", () => {
 			// named `unsupported-*` asserts a typed failure, so it is expected to
 			// sit *below* the gate. The convention is the exclusion mechanism, so
 			// adding a negative fixture cannot silently opt a positive one out.
+			//
+			// Config-only pnpm captures are marked the same way, by name: they are
+			// the one fixture shape whose caller asserts `configOnly`, so the guard
+			// passes the flag for exactly those and for nothing else.
 			const gated = { pnpm: 9, npm: 3 } as const;
 			const checked: Array<string> = [];
+			const checkedConfigOnly: Array<string> = [];
 
 			for (const [format, minimum] of Object.entries(gated) as ReadonlyArray<[keyof typeof gated, number]>) {
 				const filename = filenameFor(format);
@@ -1701,17 +1716,22 @@ describe("supported lockfile versions", () => {
 					// reports *which* fixture, rather than surfacing as a bare parse
 					// error with no path in it — this guard is read by whoever added
 					// the fixture that broke it.
-					const parsed = yield* Effect.result(parseFixture(relative, format));
+					const configOnly = format === "pnpm" && entry.name.startsWith(CONFIG_ONLY_FIXTURE_PREFIX);
+					const parsed = yield* Effect.result(parseFixture(relative, format, configOnly));
 					assert.isTrue(parsed._tag === "Success", `${relative} no longer parses: it may have aged below the gate`);
 					if (parsed._tag !== "Success") continue;
 					assert.isAtLeast(Number.parseFloat(parsed.success.lockfileVersion), minimum, relative);
 					checked.push(relative);
+					if (configOnly) checkedConfigOnly.push(relative);
 				}
 			}
 
 			// The enumeration itself must not silently find nothing — a mistyped
 			// directory would turn this guard into a vacuous pass.
 			assert.isAtLeast(checked.length, 12, `enumerated too few fixtures: ${checked.join(", ")}`);
+			// Nor may the marker silently match nothing: a mistyped prefix would
+			// leave the flag path of this guard unexercised.
+			assert.isAtLeast(checkedConfigOnly.length, 2, `marked too few config-only fixtures: ${checked.join(", ")}`);
 		}),
 	);
 });

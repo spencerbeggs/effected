@@ -72,10 +72,12 @@ export interface PnpmStream {
  *   typed framing channel with `unexpectedDocuments`.
  *
  * An empty document composes to `null` and occupies its position as
- * `undefined`. pnpm writes an empty *main* document after a preamble for a
- * workspace with no root `package.json` and only `configDependencies`
- * (measured against pnpm 11.28.0 and 12.7.0). Whether that is a lockfile is
- * the caller's decision, not the splitter's.
+ * `undefined`. pnpm writes an empty *main* document after a preamble both for
+ * a workspace with no root `package.json` and only `configDependencies`, and
+ * for a workspace whose first install failed after its config dependencies
+ * were installed (measured against pnpm 11.28.0 and 12.7.0; the bytes are
+ * identical). Whether that is a lockfile is the caller's decision, not the
+ * splitter's.
  *
  * @internal
  */

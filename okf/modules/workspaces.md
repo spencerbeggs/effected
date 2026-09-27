@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T02:04:08Z
-  body_sha256: a4f43deebeb7ec195870bd3f27a214b65ad45ee092496457f3476832d5167226
+  at: 2026-09-27T22:15:57Z
+  body_sha256: 742922efa4c5d5e59819f3f1abcc8f228cd79bcfc7b5a37fb346eb1d97e9edc3
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -143,7 +143,11 @@ mechanics:
 - Lockfile framing is not this package's job. `@effected/lockfiles` owns
   pnpm's multi-document `pnpm-lock.yaml`, and `LockfileReader` only calls
   `Lockfile.parse` and resolves pnpm importer paths to names; no
-  richest-document-wins or other framing workaround belongs here.
+  richest-document-wins or other framing workaround belongs here. The one
+  fact it supplies is one the pure parser cannot see: it passes `configOnly`
+  for a pnpm lockfile only when the root has no `package.json` (a failing
+  `exists` probe counts as present), because an env preamble followed by an
+  empty main document is also what an interrupted first install leaves.
 - Sorting and file-to-package lookup are not services: sorting is methods on
   the `DependencyGraph` value class (see
   [the graph interface](../interfaces/workspaces-graph.md)), and file

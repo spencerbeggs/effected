@@ -187,7 +187,22 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 				// deterministically the last one. This reader used to select the document
 				// itself; the pure package now does it correctly, and a stream carrying no
 				// lockfile document fails typed as a `LockfileFramingError`.
-				const lockfile = yield* LockfileModel.parse(content, { format });
+				//
+				// A preamble followed by an EMPTY main document is ambiguous: pnpm writes
+				// those bytes for a config-dependency-only workspace with no root
+				// `package.json`, and also when a first install fails after the config
+				// dependencies went in. The pure parser cannot tell them apart, so this
+				// reader — which can look — asserts `configOnly` only when the root has
+				// no `package.json`. A failing `exists` probe (anything but NotFound,
+				// which `exists` already answers `false`) is read as "present": the flag
+				// is an assertion of absence, so it is made only on evidence of absence.
+				// That fails closed without widening the error channel — at worst an
+				// ambiguous stream fails `noLockfileDocument`, and an unambiguous one
+				// parses as it would have anyway.
+				const configOnly =
+					format === "pnpm" &&
+					!(yield* fs.exists(path.join(root, "package.json")).pipe(Effect.orElseSucceed(() => true)));
+				const lockfile = yield* LockfileModel.parse(content, { format, configOnly });
 				if (format !== "pnpm") return lockfile;
 
 				// The pure second stage. pnpm names workspace packages by IMPORTER PATH;

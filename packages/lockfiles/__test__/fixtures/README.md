@@ -9,6 +9,9 @@ Two naming rules matter here, and `okf/modules/lockfiles.md` explains both:
 
 - A directory named `unsupported-*` holds input the parser must reject. The
   version-gate guard in `Lockfile.test.ts` skips exactly that prefix.
+- A pnpm directory named `env-configonly-*` was captured from a workspace with
+  no root `package.json`. The version-gate guard parses exactly those with
+  `configOnly`, the assertion their real caller would make.
 - The `v*` names are fixture **sets**, not lockfile versions. `npm/v1` and
   `npm/v2` are both `lockfileVersion: 3`.
 
@@ -54,8 +57,18 @@ majors write a main document holding `importers: {.: {}}` instead.
 
 | Fixture | Command | Input difference | Pins |
 | --- | --- | --- | --- |
-| `pnpm/env-configonly-pnpm11` | `npx pnpm@11.28.0 install --dir <d> --store-dir <tmp>` | no `package.json`, one bare `configDependencies` entry | The preamble is followed by an **empty** main document. `Lockfile.parse` reads that as an empty lockfile versioned by the preamble, and the env reader reads the preamble (effected#845). |
+| `pnpm/env-configonly-pnpm11` | `npx pnpm@11.28.0 install --dir <d> --store-dir <tmp>` | no `package.json`, one bare `configDependencies` entry | The preamble is followed by an **empty** main document. By default `Lockfile.parse` fails it `noLockfileDocument`; with `configOnly` it reads as an empty lockfile versioned by the preamble. The env reader reads the preamble either way (effected#845). |
 | `pnpm/env-configonly-pnpm12` | `npx pnpm@12.7.0 install --dir <d> --store-dir <tmp>` | as above | Byte-identical to the pnpm 11 capture. |
+
+`pnpm/unsupported-interrupted-pnpm12` was captured on 2026-09-27 on
+darwin-arm64 from a fourth input project: the same `pnpm-workspace.yaml`,
+plus a root `package.json` depending on a package that does not exist
+(`@effected/this-package-does-not-exist-xyz@^1.0.0`). The install failed after
+the config dependency was installed, and left this file on disk.
+
+| Fixture | Command | Input difference | Pins |
+| --- | --- | --- | --- |
+| `pnpm/unsupported-interrupted-pnpm12` | `npx -y pnpm@12.7.0 install --store-dir <tmp>`, which failed (pnpm 11.28.0 left the same bytes) | a root `package.json` whose one dependency cannot resolve | **Byte-identical** to `pnpm/env-configonly-pnpm12`. The bytes cannot tell a config-only workspace from an interrupted install, which is why `Lockfile.parse` fails this stream unless the caller asserts `configOnly`. It carries the `unsupported-` prefix because its caller, which sees a root `package.json`, must reject it. |
 
 To regenerate one, recreate its input project in an empty directory `<d>`, run
 the command in its row, and copy `<d>/pnpm-lock.yaml` over the fixture

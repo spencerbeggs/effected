@@ -9,7 +9,8 @@
 `findWorkspaceRootSync(cwd, options)` accepts an optional `stopAt` via the new exported `FindWorkspaceRootSyncOptions`, closing #846. The bound is inclusive, a relative path resolves against `process.cwd()` at lookup time, and the ascent returns `null` once it passes `stopAt` without finding a workspace root. Omitting `stopAt` keeps the ascent unbounded, matching prior behavior.
 
 ```ts
-import { findWorkspaceRootSync, nodeSyncOps } from "@effected/workspaces/node-sync";
+import { findWorkspaceRootSync } from "@effected/workspaces";
+import { nodeSyncOps } from "@effected/workspaces/node-sync";
 
 const root = findWorkspaceRootSync(process.cwd(), { ...nodeSyncOps, stopAt: process.cwd() });
 ```
@@ -17,6 +18,10 @@ const root = findWorkspaceRootSync(process.cwd(), { ...nodeSyncOps, stopAt: proc
 ### `reason: "no-version"` on version-less resolution failures
 
 Part of #612: a `versionOf` failure caused by a workspace member declaring no `version` — from both `WorkspaceDiscovery` and the snapshot resolvers — now carries `reason: "no-version"` and no `cause`, matching `@effected/npm`'s `DependencyResolutionError` shape.
+
+## Bug Fixes
+
+`LockfileReader` passes `configOnly` to `Lockfile.parse` only when the workspace root has no `package.json`, so a config-dependency-only pnpm workspace reads as an empty lockfile while the same bytes left by an interrupted first install fail with `LockfileFramingError` instead of reading as a clean, empty workspace.
 
 ## Breaking Changes
 

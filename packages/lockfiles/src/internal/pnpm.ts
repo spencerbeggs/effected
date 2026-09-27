@@ -95,14 +95,18 @@ type PnpmPackageEntry = NonNullable<PnpmLockfileRawType["packages"]>[string];
  * deterministically (it is the last document); the preamble is never read as
  * the lockfile.
  *
- * An empty main document after a preamble is a valid empty lockfile, not a
- * framing failure: pnpm writes exactly that for a workspace with no root
- * `package.json` and only `configDependencies`. It yields no packages, no
- * importers and no workspace edges, versioned by the preamble's
- * `lockfileVersion` after the preamble passes the same version gate. The
- * preamble's own packages are config dependencies, not the workspace's, so
- * none of them is reported. With no preamble to vouch for the stream, an
- * empty main document still fails `noLockfileDocument`.
+ * An empty main document after a preamble is **ambiguous**: pnpm 11 and 12
+ * write exactly those bytes both for a config-dependency-only workspace with
+ * no root `package.json` and for a workspace whose first install failed after
+ * its config dependencies were installed. The bytes cannot tell the two apart,
+ * so the parser does not decide: only when the caller asserts `configOnly`
+ * (it knows the root has no `package.json`) does the stream read as an empty
+ * lockfile — no packages, importers or workspace edges, versioned by the
+ * preamble's `lockfileVersion` after the preamble passes the same version
+ * gate. The preamble's own packages are config dependencies, not the
+ * workspace's, so none of them is reported. Without the assertion, and always
+ * when there is no preamble to vouch for the stream, an empty main document
+ * fails `noLockfileDocument`. The flag loosens nothing else.
  *
  * Workspace packages are keyed by importer *path* with version `"0.0.0"`;
  * `Lockfile#withImporterNames` is the explicit second stage that rewrites
@@ -110,11 +114,13 @@ type PnpmPackageEntry = NonNullable<PnpmLockfileRawType["packages"]>[string];
  *
  * @internal
  */
-export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseFailure> =>
+export const parsePnpm = (content: string, configOnly: boolean): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
 		const { preamble, main: document, documents } = yield* splitPnpmStream(content);
 		if (document === undefined) {
-			if (preamble === undefined) return yield* Effect.fail(framingFailure("noLockfileDocument", documents));
+			if (preamble === undefined || !configOnly) {
+				return yield* Effect.fail(framingFailure("noLockfileDocument", documents));
+			}
 			const lockfileVersion = yield* gatePnpmVersion(preamble);
 			return {
 				lockfileVersion,
