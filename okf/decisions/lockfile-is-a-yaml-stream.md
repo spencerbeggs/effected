@@ -7,15 +7,15 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 7a8409b075c5891e1548856a18c63b50f5754574d2765f254fee97336b09b58c
+  at: 2026-09-27T06:20:52Z
+  body_sha256: 8631bd47ee27e8af0838b8fee8e9050fcbfd53235d1f7ca8a081f96af3fc2826
 ---
 
 # A lockfile is a YAML stream, not always one document
 
 ## Context
 
-pnpm 11 writes `pnpm-lock.yaml` as **two YAML documents** in one file when the workspace uses `configDependencies`: an "env" preamble, followed by the actual lockfile document. This repository's own lockfile is that shape. Both documents declare the same top-level keys (`lockfileVersion`, `importers`, `packages`), so a naive single-document parse **succeeds** on the preamble alone — it returns a valid-looking `Lockfile` with one package and no workspace importers, silently reporting an apparently empty workspace instead of failing or reading the real document.
+pnpm 11 and 12 write `pnpm-lock.yaml` as **two YAML documents** in one file when the workspace declares `configDependencies` or `devEngines.packageManager`: an "env" preamble, followed by the actual lockfile document. This repository's own lockfile is that shape. Both documents declare the same top-level keys (`lockfileVersion`, `importers`, `packages`), so a naive single-document parse **succeeds** on the preamble alone — it returns a valid-looking `Lockfile` with one package and no workspace importers, silently reporting an apparently empty workspace instead of failing or reading the real document.
 
 ## Decision
 
@@ -30,3 +30,5 @@ pnpm 11 writes `pnpm-lock.yaml` as **two YAML documents** in one file when the w
 ## Consequences
 
 An unlocatable lockfile document now fails typed through `LockfileFramingError`, carrying the format, the document count and a reason (`noLockfileDocument`, `noImporters`, or `unexpectedDocuments`) — and never a `cause`, since the text parsed fine and there is no foreign throwable to wrap. The invariant this buys: **an unlocatable lockfile fails typed; it can never return an empty `Lockfile`.** Before this rule, the silent single-document parse of a config-dependencies lockfile was the most dangerous kind of wrong answer, because it was indistinguishable from a legitimately empty workspace — a parser that succeeds on the wrong input is worse than one that fails outright, and this decision closes exactly that gap for the one format where it was possible.
+
+The same position rule, read from the other end, locates the preamble: `PnpmEnvLockfile.packageManager` takes the **first** of exactly two documents, treats a single-document stream as having no preamble, and fails a stream of more than two with `unexpectedDocuments` rather than guessing, because that selection feeds integrity verification (see [lockfiles](../modules/lockfiles.md#the-env-preamble-the-pinned-package-manager)).

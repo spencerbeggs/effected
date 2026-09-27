@@ -9,8 +9,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: a800eaf3d3c94fd3846d5a471e268bdefc528f9d8493843b1957f5ebf261d7e7
+  at: 2026-09-27T06:20:52Z
+  body_sha256: 7169431fd68a08b893d915710cf4599346b59b776b9959abba7dd0303533a3af
 ---
 
 # lockfiles
@@ -29,7 +29,7 @@ The package parses **pnpm `lockfileVersion` 9+ and npm `lockfileVersion` 3+**; a
 
 ## The model
 
-`Lockfile` is a `Schema.Class` carrying the format, the lockfile version, the resolved packages, the workspace dependency edges, the importers and an optional per-format extension. `Lockfile.parse` is the package's **only fallible boundary** — everything else is total: the importer-name rewrite, name/importer/instance-id lookup (all backed by lazily built private indexes outside the schema), the workspace-packages getter, and integrity comparison.
+`Lockfile` is a `Schema.Class` carrying the format, the lockfile version, the resolved packages, the workspace dependency edges, the importers and an optional per-format extension. The package has **three fallible boundaries**: `Lockfile.parse`, and `PnpmEnvLockfile.packageManager` and `.configDependencies` (see [the env preamble](#the-env-preamble-the-pinned-package-manager)). All three map the internal failure record through one shared function, so they cannot disagree about which failure is `LockfileParseError` and which is `LockfileFramingError`. Everything else is total: the importer-name rewrite, name/importer/instance-id lookup (all backed by lazily built private indexes outside the schema), the workspace-packages getter, and integrity comparison.
 
 `packageByInstanceId` is the index edge-walking consumers were rebuilding: `ResolvedPackage.instanceId` is what a resolved edge points at, so peer and dependency resolution is a lookup, not a scan. It mirrors `importer` exactly and deliberately — lazily built so a consumer that never walks edges pays nothing, `Map`-backed so an id colliding with an `Object` member name (`__proto__`, `constructor`) neither pollutes nor false-matches, and first-wins on a duplicate id so a malformed lockfile gets a stable answer rather than one depending on iteration order.
 
@@ -51,6 +51,20 @@ Three surface shapes are deliberate rather than incidental. `LockfileParseError.
 
 A lockfile is not always one YAML document — see [a lockfile is a YAML stream](../decisions/lockfile-is-a-yaml-stream.md) for the framing rule, why it is deterministic rather than heuristic, and the per-format behavior it produces.
 
+## The env preamble: the pinned package manager
+
+`PnpmEnvLockfile.packageManager(content)` reads the **first** document of a pnpm stream, the env preamble `Lockfile.parse` skips. pnpm 11 and 12 both write it when a workspace declares `devEngines.packageManager` or `configDependencies`. It is the same position rule read from the other end, and it too takes text and performs no IO. It answers `Effect<Option<PackageManagerLock>, LockfileParseError | LockfileFramingError>`. Its sibling `PnpmEnvLockfile.configDependencies(content)` reads the same preamble's root-importer `configDependencies` into a `ReadonlyMap` of `ConfigDependencyLock` (`name`, `specifier`, `version`, SRI `integrity`), empty when none are recorded. It fails on the same terms: a recorded entry with no `packages` entry, integrity or SRI form, or an empty version, fails at `validation`. `@effected/workspaces` reads it to verify a config dependency it fetches (effected#842).
+
+`PackageManagerLock` carries `name` (always `"pnpm"`), the declared `specifier` verbatim (it may keep a `+sha512.<hex>` tail), the resolved `version`, the SRI `integrity` of `pnpm@<version>`, and `nativeIntegrity`: SRI per native package keyed by bare name (`"@pnpm/exe.linux-x64"`). The natives come from the lockfile's own graph, the `optionalDependencies` of the `snapshots["pnpm@<version>"]` entry, never from a name pattern. pnpm 12 records one `@pnpm/exe.<target>` there per platform. pnpm 11 records none, so its record is empty: pnpm 11 hangs its platform binaries off a separate `@pnpm/exe` entry, which this model does not carry.
+
+The contract splits "nothing recorded" from "recorded but unbacked":
+
+- **`Option.none()`** means the lockfile records no package manager. That is a single-document stream, an empty first document, or a preamble whose root importer (`.`) declares no `pnpm` in `packageManagerDependencies`.
+- **`LockfileParseError` at `stage: "validation"`** covers a claim the preamble cannot back: an empty recorded version, no `packages["pnpm@<version>"]` entry, no snapshot, or a missing or non-SRI integrity for pnpm or any native it lists. A lockfile that names a version it cannot account for is a failure, never `none`. A preamble failing the format-version gate fails the same way `Lockfile.parse` does.
+- **`LockfileFramingError` with `reason: "unexpectedDocuments"`** covers a stream of more than two documents. No position identifies the preamble there, and this selection feeds integrity verification, so a guess would be a trust decision.
+
+The decoded records are read with own-property semantics, so a key such as `__proto__` or `constructor` is never answered by `Object.prototype`. Its consumer is `@effected/github-actions`' `PackageManagerInstaller`, whose `integrity` and `nativeIntegrity` options take these values (see [actions-storage](../interfaces/actions-storage.md#tool-and-package-manager-installation)).
+
 ## Importers
 
 The importers field records each workspace importer's *declared* dependencies — the data a before/after lockfile diff needs, which is what `silk-update-action` parses two texts through this pure boundary to compare. `ImporterDependency` holds one declared dependency: its specifier is `npm`'s branded specifier via that package's string codec, so a decoded value is tag-matchable while encoding round-trips the exact original string; its version is **pnpm-only**, since pnpm records a specifier-and-version pair per importer dependency while bun and npm record resolved versions on package entries, so consumers there join by name against the packages array. That version is always the plain version — pnpm's peer-disambiguation context splits off into a separate optional `peerSuffix` field holding the raw parenthesized chain, with one shared implementation for the split so the pnpm package-key parser and the importer-dependency parser cannot disagree about where a version ends. `LockfileImporter` holds the root-relative importer path plus the dependencies. pnpm, bun and npm populate importers off a shared dependency-sections table; yarn always yields an empty array, since yarn records no importers; and the importer-name rewrite deliberately does not touch importers, since they stay keyed by path, the join key.
@@ -61,17 +75,17 @@ This package's position is unusually good: it adds no new text-parsing engine an
 
 ## Observability
 
-Pure-tier house rule: a named `Effect.fn` span on the single public fallible boundary (`Lockfile.parse`) and nothing else. The total methods are span-free. Operational logging belongs to the consumer's reader, which owns the IO story. No metrics, telemetry-agnostic.
+Pure-tier house rule: a named `Effect.fn` span on each public fallible boundary (`Lockfile.parse`, `PnpmEnvLockfile.packageManager`, `PnpmEnvLockfile.configDependencies`) and nothing else. The total methods are span-free. Operational logging belongs to the consumer's reader, which owns the IO story. No metrics, telemetry-agnostic.
 
 ## Testing
 
 `@effect/vitest`, `it.effect`, `assert.*` — never `expect`. No platform packages, no mock layers, no `TestClock`. Four families: per-format fixture tests across each manager's lockfile versions, asserted against the unified model (package identification, integrity, workspace dependency edges, extension payloads); seam-property tests (the importer-name rewrite renames pnpm workspace packages and rewrites both edge ends while leaving unmapped entries, non-pnpm lockfiles and importers untouched; integrity comparison covers valid, missing, extra, unsatisfied and skipped cases, fed by in-memory manifests, so there is no IO anywhere in the suite); a hostility suite (malformed text and wrong shape each landing on their own stage, yarn classic content, dunder and hostile `name@version` keys, nesting bombs); and codec round-trips via `it.effect.prop` over derived arbitraries, asserting encode-decode identity.
 
-Fixture naming carries two load-bearing conventions. A directory named `unsupported-*` holds input the parser must reject, and that prefix is the exclusion mechanism: the version-gate guard ("every non-negative fixture sits at or above its format's gate") enumerates the fixtures directory and skips exactly those, so a new fixture is covered automatically and a negative one cannot silently opt a positive one out — never re-hard-code that list. The npm `v*` directories denote fixture *sets*, not lockfile versions: `npm/v1` and `npm/v2` are both `lockfileVersion: 3`, which is why the negative fixtures carry the prefix and their own version (`npm/unsupported-v1`). Fixtures are real manager output (pnpm 11.22.0, npm 11.19.0, bun 1.3.14, yarn 4.9.1) except three hand-authored for a reason no install can produce: `pnpm/emptysnapshots` (a dependency-free v9 document), `npm/unsupported-v2` (the point is the version field, not the tree) and `npm/ancestor-walk` (npm's hoisting avoids the intermediate-ancestor shape it encodes).
+Fixture naming carries two load-bearing conventions. A directory named `unsupported-*` holds input the parser must reject, and that prefix is the exclusion mechanism: the version-gate guard ("every non-negative fixture sits at or above its format's gate") enumerates the fixtures directory and skips exactly those, so a new fixture is covered automatically and a negative one cannot silently opt a positive one out — never re-hard-code that list. The npm `v*` directories denote fixture *sets*, not lockfile versions: `npm/v1` and `npm/v2` are both `lockfileVersion: 3`, which is why the negative fixtures carry the prefix and their own version (`npm/unsupported-v1`). Fixtures are real manager output (pnpm 11.22.0, npm 11.19.0, bun 1.3.14, yarn 4.9.1; the `pnpm/env-*` preamble fixtures pnpm 11.27.1 and 12.6.0) except four hand-authored for a reason no install can produce: `pnpm/emptysnapshots` (a dependency-free v9 document), `pnpm/multidoc` (its preamble integrity is a deliberate placeholder the main-document parse must never read), `npm/unsupported-v2` (the point is the version field, not the tree) and `npm/ancestor-walk` (npm's hoisting avoids the intermediate-ancestor shape it encodes).
 
 ## Build
 
-Scaffolded from a pure sibling, model paths under `website/lib/models/lockfiles`. The model and error classes are class factories, so `savvy.build.ts` carries the narrow `_base` API Extractor suppression. Because it has workspace peers, the package needs a `prepare` script so turbo's upstream-build ordering applies.
+Scaffolded from a pure sibling, model paths under `website/lib/models/lockfiles`. The model and error classes are class factories, so `savvy.build.ts` carries the narrow `_base` API Extractor suppression; a clean prod gate reports 12 suppressed `_base` entries, `PackageManagerLock_base` being the newest. Because it has workspace peers, the package needs a `prepare` script so turbo's upstream-build ordering applies.
 
 ## Consumer contract
 

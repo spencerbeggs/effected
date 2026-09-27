@@ -1,5 +1,5 @@
-import type { PackageManagerPin } from "@effected/npm";
-import { DEFAULT_REGISTRY, PackageManagerPinName } from "@effected/npm";
+import type { IntegrityHashBrand } from "@effected/npm";
+import { CorepackIntegrityHash, DEFAULT_REGISTRY, PackageManagerPin, PackageManagerPinName } from "@effected/npm";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
@@ -24,8 +24,16 @@ export class PackageManagerInstallerError extends Schema.TaggedError<PackageMana
 		 * {@link ToolInstallerError} that caused them, preserved on `cause`
 		 * (`cacheFailed` also covers a shim that could not be written into the
 		 * entry). `integrityMismatch` — the downloaded artifact does not hash to
-		 * what the pin declares; nothing was cached. `integrityMissing` — the pin
-		 * carries no integrity and the caller asked for `requireIntegrity`.
+		 * what the pin or the `integrity` option (or, for pnpm 12's native
+		 * binary, the registry or the caller's `nativeIntegrity`) declares;
+		 * nothing was cached. Also raised before anything runs when the
+		 * `integrity` option is malformed or disagrees with the pin (see
+		 * {@link PackageManagerInstallOptions.integrity}).
+		 * `integrityMissing` — neither the pin nor the `integrity` option
+		 * carries integrity and the caller asked for `requireIntegrity`, or —
+		 * with `subject` naming the package — the
+		 * caller supplied `nativeIntegrity` without an entry for the host's
+		 * `@pnpm/exe.*` package.
 		 * `unsupportedPlatform` — no build exists for this runner's
 		 * OS/architecture pair: bun publishes none, or pnpm 12 ships no
 		 * `@pnpm/exe.*` native binary for it. `layoutUnexpected` — the artifact
@@ -71,7 +79,9 @@ export class PackageManagerInstallerError extends Schema.TaggedError<PackageMana
 					? `Could not verify the integrity of ${pin}${this.subject === undefined ? "" : ` (${this.subject})`}`
 					: `Integrity mismatch for ${pin}: expected ${this.expected}, got ${this.actual}`;
 			case "integrityMissing":
-				return `The pin for ${pin} carries no integrity hash and requireIntegrity is set`;
+				return this.subject === undefined
+					? `Neither the pin for ${pin} nor the integrity option carries an integrity hash, and requireIntegrity is set`
+					: `No integrity was supplied for ${this.subject}, which ${pin} needs on this runner`;
 			case "unsupportedPlatform":
 				return `No ${pin} build is published for ${this.subject}`;
 			case "layoutUnexpected":
@@ -89,11 +99,40 @@ export class PackageManagerInstallerError extends Schema.TaggedError<PackageMana
  */
 export interface PackageManagerInstallOptions {
 	/**
-	 * Fail with `integrityMissing` when the pin carries no integrity hash,
-	 * instead of proceeding with a logged warning. Off by default, because
-	 * in-the-wild `devEngines` pins routinely carry no integrity.
+	 * Fail with `integrityMissing` when neither the pin nor the `integrity`
+	 * option carries an integrity hash, instead of proceeding with a logged
+	 * warning. Off by default, because in-the-wild `devEngines` pins routinely
+	 * carry no integrity.
 	 */
 	readonly requireIntegrity?: boolean | undefined;
+	/**
+	 * The expected integrity of the manager's own artifact, supplied beside
+	 * the pin rather than through its `+<integrity>` tail — for a caller whose
+	 * digest comes from somewhere other than the pin (a lockfile, or the
+	 * registry's `dist.integrity`) and that should not have to rewrite the pin
+	 * to carry it.
+	 *
+	 * @remarks
+	 * Corepack form only (`<algo>.<hex>`), the same brand the pin's own
+	 * `integrity` carries; convert a registry or lockfile SRI string with
+	 * `CorepackIntegrityHash.fromSri` from `@effected/npm`. It verifies
+	 * exactly what a pin integrity verifies — the registry tarball for npm,
+	 * pnpm and yarn 1.x, the standalone `yarn.js` for yarn 2+, the platform zip
+	 * for bun — and stands in for the pin's in every rule: it silences the
+	 * "carries no integrity hash" warning, satisfies `requireIntegrity`, and a
+	 * tool-cache hit is answered without re-verifying, exactly as it is for an
+	 * integrity-carrying pin.
+	 *
+	 * Fail-closed, before any cache lookup or download: a value not in corepack
+	 * form (an SRI or yarn hash) fails with `integrityMismatch` on its
+	 * could-not-verify arm (no `expected`, no `actual`, `subject` naming the
+	 * option); and when the pin also carries an integrity and the two differ,
+	 * the install fails with `integrityMismatch` (`expected` is this option,
+	 * `subject` names the pin's value) — neither is chosen silently. Equal
+	 * values verify once. It governs the wrapper only; pnpm 12's native
+	 * binary is `nativeIntegrity`'s business.
+	 */
+	readonly integrity?: IntegrityHashBrand | undefined;
 	/**
 	 * The npm registry host the npm, pnpm and yarn tarballs download from.
 	 * Defaults to `https://registry.npmjs.org`. A corporate mirror qualifies
@@ -102,10 +141,32 @@ export interface PackageManagerInstallOptions {
 	 * artifact verified against the registry's own integrity — the
 	 * `/<name>/<version>` packument route as JSON carrying `dist.integrity`.
 	 * A tarball-only proxy fails a pnpm 12 pin with `downloadFailed` naming
-	 * that packument url. bun does not ship through a registry — its
-	 * per-platform zip always comes from GitHub releases.
+	 * that packument url — unless `nativeIntegrity` vouches for the host's
+	 * native package, which skips the packument. bun does not ship through a
+	 * registry — its per-platform zip always comes from GitHub releases.
 	 */
 	readonly registry?: string | undefined;
+	/**
+	 * The expected Subresource Integrity of each pnpm native-binary package,
+	 * keyed by bare package name with no version (`"@pnpm/exe.linux-x64"`) —
+	 * usually read straight from the lockfile, which records every platform's
+	 * entry.
+	 *
+	 * @remarks
+	 * Consulted only for a pin whose wrapper overlays a native binary (pnpm 12
+	 * and later); every other pin ignores it. When supplied, the installer
+	 * verifies the host's `@pnpm/exe.<target>` tarball against this map's entry
+	 * (its strongest listed algorithm) INSTEAD of the registry's packument, so
+	 * the packument route is never requested and a tarball-only mirror
+	 * suffices. Fail-closed throughout: a map with no entry for the host's
+	 * package fails with `integrityMissing` naming that package, an entry
+	 * carrying no parseable SRI fails with `integrityMismatch` (the
+	 * could-not-verify arm), and a tarball that hashes to anything else fails
+	 * with `integrityMismatch` naming the tarball url. Absent, the registry's
+	 * own `dist.integrity` is the authority, as before. A tool-cache hit is
+	 * answered without re-verifying, exactly as the pin's own integrity is.
+	 */
+	readonly nativeIntegrity?: Readonly<Record<string, string>> | undefined;
 	/**
 	 * Whether an npm pin may be answered by the runner's own ambient npm.
 	 * Defaults to `true`.
@@ -227,6 +288,26 @@ export interface PackageManagerInstallerShape {
 	) => Effect.Effect<InstalledPackageManager, PackageManagerInstallerError>;
 }
 
+/** Where the npm-registry managers' artifacts come from, resolved once by `install`. */
+interface RegistrySource {
+	/** The registry host, trailing slashes stripped. */
+	readonly registry: string;
+	/** The caller's native-binary integrity map, when one was supplied. */
+	readonly nativeIntegrity: Readonly<Record<string, string>> | undefined;
+}
+
+/** What a package directory's own manifest declares, normalized. */
+interface PackageManifest {
+	readonly bins: Record<string, string>;
+	readonly nativePackages: Record<string, string>;
+}
+
+/** An expected digest, split into its algorithm and hex. */
+interface ExpectedDigest {
+	readonly algorithm: string;
+	readonly hex: string;
+}
+
 /** The shim directory name inside a cached npm-registry-manager entry. */
 const SHIM_DIR = ".bin";
 
@@ -272,7 +353,7 @@ const bunTarget = (runnerOs: string, arch: string): Option.Option<string> => {
  * (Berry) ships as `@yarnpkg/cli-dist` — a scoped package, whose tarball
  * basename drops the scope (`/@yarnpkg/cli-dist/-/cli-dist-<v>.tgz`).
  */
-const registryTarballUrl = (name: "npm" | "pnpm" | "yarn", version: string, major: number, registry: string): string =>
+const registryTarballUrl = (name: string, version: string, major: number, registry: string): string =>
 	name === "yarn" && major >= 2
 		? `${registry}/@yarnpkg/cli-dist/-/cli-dist-${version}.tgz`
 		: `${registry}/${name}/-/${name}-${version}.tgz`;
@@ -361,30 +442,32 @@ const make = Effect.gen(function* () {
 		);
 
 	/**
-	 * Verify a downloaded artifact against the pin's integrity, fail-closed.
+	 * Verify a downloaded artifact against the settled pin's integrity,
+	 * fail-closed.
 	 *
-	 * A pin with no integrity proceeds with a logged warning — in-the-wild
+	 * An integrity-less pin proceeds with a logged warning — in-the-wild
 	 * `devEngines` pins routinely carry none, and the opt-in strictness lives in
 	 * `requireIntegrity`, checked before anything is downloaded.
 	 */
 	const verifyIntegrity = (pin: PackageManagerPin, file: string): Effect.Effect<void, PackageManagerInstallerError> =>
 		Effect.gen(function* () {
-			if (pin.integrity === undefined) {
+			const integrity = pin.integrity;
+			if (integrity === undefined) {
 				yield* Effect.logWarning(
-					`The pin ${pin.toString()} carries no integrity hash; the downloaded artifact was not verified.`,
+					`The pin ${pin.toString()} carries no integrity hash and none was supplied; the downloaded artifact was not verified.`,
 				);
 				return;
 			}
-			const dot = pin.integrity.indexOf(".");
-			const algorithm = pin.integrity.slice(0, dot);
-			const expectedHex = pin.integrity.slice(dot + 1);
+			const dot = integrity.indexOf(".");
+			const algorithm = integrity.slice(0, dot);
+			const expectedHex = integrity.slice(dot + 1);
 			const actualHex = yield* hashFile(pin, file, algorithm);
 			if (actualHex !== expectedHex) {
 				return yield* Effect.fail(
 					errorFor(pin)({
 						reason: "integrityMismatch",
 						subject: file,
-						expected: pin.integrity,
+						expected: integrity,
 						actual: `${algorithm}.${actualHex}`,
 					}),
 				);
@@ -428,10 +511,7 @@ const make = Effect.gen(function* () {
 	const readPackageManifest = (
 		pin: PackageManagerPin,
 		packageDir: string,
-	): Effect.Effect<
-		{ readonly bins: Record<string, string>; readonly nativePackages: Record<string, string> },
-		PackageManagerInstallerError
-	> =>
+	): Effect.Effect<PackageManifest, PackageManagerInstallerError> =>
 		Effect.gen(function* () {
 			const manifestPath = path.join(packageDir, "package.json");
 			const raw = yield* fs
@@ -628,12 +708,77 @@ const make = Effect.gen(function* () {
 		});
 
 	/**
+	 * The strongest digest an SRI value lists — or, when it is not a string or
+	 * lists no usable algorithm, the could-not-verify arm of
+	 * `integrityMismatch` naming `subject`.
+	 */
+	const expectedFromSri = (
+		pin: PackageManagerPin,
+		sri: unknown,
+		subject: string,
+	): Effect.Effect<ExpectedDigest, PackageManagerInstallerError> =>
+		Option.match(typeof sri === "string" ? strongestSri(sri) : Option.none(), {
+			onNone: () => Effect.fail(errorFor(pin)({ reason: "integrityMismatch", subject })),
+			onSome: Effect.succeed,
+		});
+
+	/**
+	 * The expected integrity of a native package as its registry packument
+	 * declares it for the exact version — fail-closed: a packument that cannot
+	 * be read, parsed, or that lists no usable SRI is the could-not-verify arm
+	 * of `integrityMismatch`, naming the packument url.
+	 */
+	const registryIntegrity = (
+		pin: PackageManagerPin,
+		packageName: string,
+		version: string,
+		registry: string,
+	): Effect.Effect<ExpectedDigest, PackageManagerInstallerError> =>
+		Effect.gen(function* () {
+			const packumentUrl = `${registry}/${packageName}/${version}`;
+			const packumentFile = yield* installer.download(packumentUrl).pipe(Effect.mapError(fromInstaller(pin)));
+			const unverifiable = (cause: unknown) =>
+				errorFor(pin)({ reason: "integrityMismatch", subject: packumentUrl, cause });
+			const packument = yield* fs.readFileString(packumentFile).pipe(
+				Effect.mapError(unverifiable),
+				Effect.flatMap((raw) =>
+					Effect.try({
+						try: () => JSON.parse(raw) as { readonly dist?: { readonly integrity?: unknown } },
+						catch: unverifiable,
+					}),
+				),
+			);
+			return yield* expectedFromSri(pin, packument.dist?.integrity, packumentUrl);
+		});
+
+	/**
+	 * The expected integrity of a native package as the caller's
+	 * `nativeIntegrity` map records it — fail-closed: no entry for the host's
+	 * package is `integrityMissing` (a lockfile records every platform, so a
+	 * gap means the map is inconsistent), and an entry with no usable SRI is
+	 * the could-not-verify arm of `integrityMismatch`, both naming the package.
+	 */
+	const suppliedIntegrity = (
+		pin: PackageManagerPin,
+		packageName: string,
+		nativeIntegrity: Readonly<Record<string, string>>,
+	): Effect.Effect<ExpectedDigest, PackageManagerInstallerError> => {
+		// An own-property read: the map is caller data, and an inherited
+		// member must never stand in for a recorded checksum.
+		const supplied = Object.hasOwn(nativeIntegrity, packageName) ? nativeIntegrity[packageName] : undefined;
+		return typeof supplied === "string"
+			? expectedFromSri(pin, supplied, packageName)
+			: Effect.fail(errorFor(pin)({ reason: "integrityMissing", subject: packageName }));
+	};
+
+	/**
 	 * pnpm 12's native overlay, done here because the installer never runs the
 	 * lifecycle script that does it upstream: pick the host's `@pnpm/exe.*`
 	 * package from the wrapper's optional dependencies, fetch its tarball from
-	 * the SAME registry the wrapper came from, verify it against the registry's
-	 * own `dist.integrity` (fail-closed — this is a second artifact the pin
-	 * never named, so there is no integrity-less posture to honor), and copy
+	 * the SAME registry the wrapper came from, verify it against the caller's
+	 * `nativeIntegrity` entry when one was supplied or else the registry's own
+	 * `dist.integrity` (fail-closed either way — this is a second artifact the
+	 * pin never named, so there is no integrity-less posture to honor), and copy
 	 * the executable over the placeholder in the STAGED wrapper, where `dist/`
 	 * sits beside it as the binary expects. Answers the bins as they should be
 	 * shimmed and recorded — retargeted to `.exe` on Windows, as upstream does.
@@ -641,9 +786,8 @@ const make = Effect.gen(function* () {
 	const overlayNativeBinary = (
 		pin: PackageManagerPin,
 		packageDir: string,
-		bins: Record<string, string>,
-		nativePackages: Record<string, string>,
-		registry: string,
+		{ bins, nativePackages }: PackageManifest,
+		{ registry, nativeIntegrity }: RegistrySource,
 	): Effect.Effect<Record<string, string>, PackageManagerInstallerError> =>
 		Effect.gen(function* () {
 			const target = Option.getOrUndefined(pnpmExeTarget(runnerOs, arch, musl));
@@ -674,31 +818,15 @@ const make = Effect.gen(function* () {
 				);
 			}
 
-			// The registry's integrity for the exact version, before the 36 MB
-			// tarball: a packument that cannot vouch for the bytes ends the install
-			// before they are fetched.
-			const packumentUrl = `${registry}/${packageName}/${nativeVersion}`;
-			const packumentFile = yield* installer.download(packumentUrl).pipe(Effect.mapError(fromInstaller(pin)));
-			const unverifiable = (cause?: unknown) =>
-				errorFor(pin)({
-					reason: "integrityMismatch",
-					subject: packumentUrl,
-					...(cause === undefined ? {} : { cause }),
-				});
-			const packument = yield* fs.readFileString(packumentFile).pipe(
-				Effect.mapError((cause) => unverifiable(cause)),
-				Effect.flatMap((raw) =>
-					Effect.try({
-						try: () => JSON.parse(raw) as { readonly dist?: { readonly integrity?: unknown } },
-						catch: (cause) => unverifiable(cause),
-					}),
-				),
-			);
-			const declared = packument.dist?.integrity;
-			const expected = typeof declared === "string" ? Option.getOrUndefined(strongestSri(declared)) : undefined;
-			if (expected === undefined) {
-				return yield* Effect.fail(unverifiable());
-			}
+			// The expected integrity, settled before the 36 MB tarball is fetched.
+			// A caller-supplied map (the lockfile's record) is the authority when
+			// present and the packument is never asked; otherwise the registry's
+			// own packument vouches for the exact version. Either source that
+			// cannot vouch for the bytes ends the install before they are fetched.
+			const expected =
+				nativeIntegrity === undefined
+					? yield* registryIntegrity(pin, packageName, nativeVersion, registry)
+					: yield* suppliedIntegrity(pin, packageName, nativeIntegrity);
 
 			const tarballUrl = `${registry}/${packageName}/-/exe.${target}-${nativeVersion}.tgz`;
 			const archive = yield* installer.download(tarballUrl).pipe(Effect.mapError(fromInstaller(pin)));
@@ -791,12 +919,12 @@ const make = Effect.gen(function* () {
 	/** Download a registry tarball, verify, extract, shim, and cache the package dir. */
 	const installFromRegistry = (
 		pin: PackageManagerPin,
-		name: "npm" | "pnpm" | "yarn",
-		registry: string,
+		source: RegistrySource,
 	): Effect.Effect<InstalledPackageManager, PackageManagerInstallerError> =>
 		Effect.gen(function* () {
+			const { name } = pin;
 			const version = pin.version.toString();
-			const url = registryTarballUrl(name, version, pin.version.major, registry);
+			const url = registryTarballUrl(name, version, pin.version.major, source.registry);
 			const archive = yield* installer.download(url).pipe(Effect.mapError(fromInstaller(pin)));
 			// What a corepack pin's integrity hashes depends on the manager:
 			// npm, pnpm and yarn 1.x pins hash the registry tarball's bytes; a
@@ -820,7 +948,7 @@ const make = Effect.gen(function* () {
 			// ships as an `@pnpm/exe.*` optional dependency and is overlaid here.
 			const bins =
 				Object.keys(manifest.nativePackages).length > 0
-					? yield* overlayNativeBinary(pin, packageDir, manifest.bins, manifest.nativePackages, registry)
+					? yield* overlayNativeBinary(pin, packageDir, manifest, source)
 					: manifest.bins;
 			if (berry) {
 				const cli = path.join(packageDir, "bin/yarn.js");
@@ -846,6 +974,48 @@ const make = Effect.gen(function* () {
 			});
 		});
 
+	/**
+	 * Fold the `integrity` option into the pin, answering the one pin every
+	 * later step reads. The option's FORM is checked here, once — the type
+	 * admits every `IntegrityHash` form, but only a corepack `<algo>.<hex>` can
+	 * be compared with a pin's tail or split into an algorithm and a digest —
+	 * and a pin integrity that disagrees with the option is refused rather than
+	 * resolved by preferring either.
+	 *
+	 * A malformed option is `integrityMismatch` on its could-not-verify arm (no
+	 * `expected`, no `actual`): the caller DID supply an integrity, so
+	 * `integrityMissing` would misreport it, and a value that cannot be
+	 * compared is exactly what that arm means.
+	 */
+	const settlePin = (
+		pin: PackageManagerPin,
+		integrity: IntegrityHashBrand | undefined,
+	): Effect.Effect<PackageManagerPin, PackageManagerInstallerError> =>
+		Effect.gen(function* () {
+			if (integrity === undefined) {
+				return pin;
+			}
+			const option = yield* Schema.decodeUnknownEffect(CorepackIntegrityHash)(integrity).pipe(
+				Effect.mapError((cause) =>
+					errorFor(pin)({
+						reason: "integrityMismatch",
+						subject: `the integrity option ${integrity} is not a corepack <algo>.<hex> hash`,
+						cause,
+					}),
+				),
+			);
+			if (pin.integrity !== undefined && pin.integrity !== option) {
+				return yield* Effect.fail(
+					errorFor(pin)({
+						reason: "integrityMismatch",
+						subject: `the pin declares ${pin.integrity}, which disagrees with the integrity option`,
+						expected: option,
+					}),
+				);
+			}
+			return PackageManagerPin.make({ name: pin.name, version: pin.version, integrity: option });
+		});
+
 	const install = Effect.fn("PackageManagerInstaller.install")(function* (
 		pin: PackageManagerPin,
 		options?: PackageManagerInstallOptions,
@@ -853,15 +1023,21 @@ const make = Effect.gen(function* () {
 		const version = pin.version.toString();
 		yield* Effect.annotateCurrentSpan({ name: pin.name, version });
 
-		// The strictness is a statement about the PIN, so it is decided before
-		// any path — a cache hit does not launder an integrity-less pin.
-		if (options?.requireIntegrity === true && pin.integrity === undefined) {
+		// Settle ONE effective pin: the `integrity` option folded into the pin
+		// (see PackageManagerInstallOptions.integrity for the rules). Everything
+		// downstream reads only `effective`.
+		const effective = yield* settlePin(pin, options?.integrity);
+
+		// The strictness is a statement about the INPUTS, so it is decided
+		// before any path — a cache hit does not launder an integrity-less
+		// install, and an option-supplied integrity counts exactly as a pin's.
+		if (options?.requireIntegrity === true && effective.integrity === undefined) {
 			return yield* Effect.fail(errorFor(pin)({ reason: "integrityMissing" }));
 		}
 
-		const cached = yield* installer.find(pin.name, version);
+		const cached = yield* installer.find(effective.name, version);
 		if (Option.isSome(cached)) {
-			const record = yield* cachedRecord(pin, cached.value);
+			const record = yield* cachedRecord(effective, cached.value);
 			if (Option.isSome(record)) {
 				return record.value;
 			}
@@ -875,22 +1051,24 @@ const make = Effect.gen(function* () {
 		// suppresses the probe entirely — the run is replacing node, so the
 		// runner's npm is about to be shadowed and its answer is not the npm
 		// that will execute (see PackageManagerInstallOptions.allowAmbient).
-		if (pin.name === "npm" && options?.allowAmbient !== false) {
+		if (effective.name === "npm" && options?.allowAmbient !== false) {
 			const probed = yield* ambientNpmVersion;
 			if (Option.isSome(probed) && probed.value === version) {
 				return AmbientPackageManager.make({
-					name: pin.name,
+					name: effective.name,
 					version,
 					bins: { npm: "npm", npx: "npx" },
 				});
 			}
 		}
 
-		if (pin.name === "bun") {
-			return yield* installBun(pin);
+		if (effective.name === "bun") {
+			return yield* installBun(effective);
 		}
-		const registry = (options?.registry ?? DEFAULT_REGISTRY).replace(/\/+$/, "");
-		return yield* installFromRegistry(pin, pin.name, registry);
+		return yield* installFromRegistry(effective, {
+			registry: (options?.registry ?? DEFAULT_REGISTRY).replace(/\/+$/, ""),
+			nativeIntegrity: options?.nativeIntegrity,
+		});
 	});
 
 	return { install } satisfies PackageManagerInstallerShape;
@@ -907,9 +1085,10 @@ const dies = unstubbed("PackageManagerInstaller.makeTest");
  * ambient `npm --version` probe (every Node toolchain ships npm), and only
  * then the manager's own dist: npm, pnpm and yarn 1.x from their registry
  * tarballs, yarn 2+ (Berry) from `@yarnpkg/cli-dist`, bun from its
- * per-platform GitHub-release zip. A pin that carries integrity is verified
- * fail-closed against what corepack itself hashes; one that does not proceeds
- * with a logged warning unless `requireIntegrity` says otherwise.
+ * per-platform GitHub-release zip. An install with an expected integrity —
+ * the pin's `+<integrity>` tail or the `integrity` option — is verified
+ * fail-closed against what corepack itself hashes; one without proceeds with
+ * a logged warning unless `requireIntegrity` says otherwise.
  *
  * Every tool-cache answer carries a `binDir` a consumer can hand straight to
  * `ActionOutputs.addPath`: the npm-registry managers get a `.bin` directory

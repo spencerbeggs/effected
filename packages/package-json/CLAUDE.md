@@ -14,8 +14,9 @@ package roster. Load the concept a task needs:
 - `okf/modules/package-json.md` — Load when: changing the public surface, the
   tier or dependency posture, the module layout, the `rest` wire transform and
   `.extend()` story, wire provenance and the guarded replay, `Funding`,
-  `Repository.directoryUrl`, `PackageManager` versus `PackageManagerRange`, the
-  error set, `PackageJsonFile`, or the Effect-wrapping policy.
+  `Repository.directoryUrl`, `PackageManager` versus `PackageManagerRange`
+  (its `packageManager` and `devEngines.packageManager` readers and three
+  renderings), the error set, `PackageJsonFile`, or the Effect-wrapping policy.
 - `okf/decisions/package-json-tolerance-ladder.md` — Load when: choosing
   between `Package`, `PackageManifest`, `LenientManifest`, npm's `Manifest`
   and the text path, or adding a tier.

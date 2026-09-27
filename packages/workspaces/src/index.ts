@@ -39,10 +39,12 @@ export {
 	type ConfigDependencyHooksShape,
 	type HookInjection,
 	type HookReplay,
+	type HookReplayContext,
 	type HookReplaySource,
 	NoPeerDependencyRules,
 	type PeerDependencyRules,
 } from "./ConfigDependencyHooks.js";
+export { ConfigDependencySpec, InvalidConfigDependencySpecError } from "./ConfigDependencySpec.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
 export {
 	Dependent,

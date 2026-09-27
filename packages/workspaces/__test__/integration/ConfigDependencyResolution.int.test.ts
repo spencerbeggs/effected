@@ -40,6 +40,10 @@ const NAME = "cfg-ladder";
 const NO_HOOK = "cfg-nohook";
 // A `.pnpm-config` directory with no package.json at all.
 const NO_MANIFEST = "cfg-nomanifest";
+// A `.pnpm-config` manifest with no `version` field, and one whose version is
+// the empty string: both carry no usable version (part of effected#613).
+const UNVERSIONED = "cfg-unversioned";
+const EMPTY_VERSION = "cfg-emptyversion";
 // Only in the store, shipping ONLY `pnpmfile.js`.
 const JS_ONLY = "cfg-js";
 // A scoped name, only in the store.
@@ -77,6 +81,12 @@ beforeAll(() => {
 	installConfigDependency(root, NAME, "1.0.0", ["pnpmfile.mjs", pnpmfileInjecting("^1.0.0")]);
 	installConfigDependency(root, NO_HOOK, "2.0.0");
 	mkdirSync(installedDir(root, NO_MANIFEST), { recursive: true });
+	installConfigDependency(root, UNVERSIONED, undefined, ["pnpmfile.mjs", pnpmfileInjecting("^6.0.0")]);
+	mkdirSync(installedDir(root, EMPTY_VERSION), { recursive: true });
+	writeFileSync(
+		join(installedDir(root, EMPTY_VERSION), "package.json"),
+		JSON.stringify({ name: EMPTY_VERSION, version: "" }),
+	);
 
 	const stored = storeConfigDependency(store, NAME, "2.0.0", "a".repeat(64), [
 		"pnpmfile.mjs",
@@ -217,6 +227,29 @@ const ladderCases = (label: string, hooksLayer: Layer.Layer<ConfigDependencyHook
 				assert.instanceOf(error, CatalogAssemblyError);
 				assert.strictEqual(error.path, NO_MANIFEST);
 				assert.include((error.cause as Error).message, "holds nothing");
+			}).pipe(Effect.provide(hooksLayer)),
+		);
+
+		it.effect("a .pnpm-config manifest with no usable version is 'a package with no version', not a match", () =>
+			Effect.gen(function* () {
+				const hooks = yield* ConfigDependencyHooks;
+				// The subprocess layer would fetch, but a bare spec with no lockfile
+				// records no integrity, so it fails before any spawn — with the same
+				// not-installed diagnosis.
+				const reason = label.includes("layerSubprocess") ? "integrityUnavailable" : "notInstalled";
+				for (const name of [UNVERSIONED, EMPTY_VERSION]) {
+					const error = yield* Effect.flip(hooks.inject(root, { [name]: "1.0.0" }, SEED));
+					assert.instanceOf(error, CatalogAssemblyError);
+					assert.strictEqual(error.path, name);
+					assert.strictEqual(error.reason, reason);
+					const message = (error.cause as Error).message;
+					assert.include(message, `node_modules/.pnpm-config/${name} holds a package with no version,`);
+					// No version to compare, so no "declares a different version" diagnosis.
+					assert.notInclude(message, "declares a different version");
+				}
+				// Nor does an empty declared version match an unversioned manifest.
+				const empty = yield* Effect.flip(hooks.inject(root, { [EMPTY_VERSION]: "" }, SEED));
+				assert.strictEqual(empty.reason, reason);
 			}).pipe(Effect.provide(hooksLayer)),
 		);
 

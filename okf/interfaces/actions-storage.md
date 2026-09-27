@@ -10,8 +10,8 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: ed60c4061e877b2b4e82ba020015da5c2da61b241598c5b9d5ef78b40f6e7730
+  at: 2026-09-27T06:20:52Z
+  body_sha256: 43898d8b704e948e8231b1e412fa2c0dcb417f4261d599b3c830bb19eda50baf
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:32.522Z
@@ -200,12 +200,45 @@ binary shipped as an `@pnpm/exe.<os>-<arch>[-musl]` optional dependency;
 since the installer runs no lifecycle scripts, it performs that overlay
 itself when the wrapper manifest's `optionalDependencies` names an
 `@pnpm/exe.*` package. The host's `@pnpm/exe.<target>` tarball comes from
-the same registry as the wrapper and is verified **fail-closed** against
-the packument's `dist.integrity` — it is a second artifact the pin never
-named, so there is no integrity-less posture to honor — and its executable
-is copied over the placeholder in the **staged** entry, where the wrapper's
-`dist/` sits beside it as the binary expects. The manifest's `@pnpm/exe.*`
-version must equal the pin's; anything else is `layoutUnexpected`.
+the same registry as the wrapper and is verified **fail-closed** — it is a
+second artifact the pin never named, so there is no integrity-less posture
+to honor — and its executable is copied over the placeholder in the
+**staged** entry, where the wrapper's `dist/` sits beside it as the binary
+expects. The manifest's `@pnpm/exe.*` version must equal the pin's;
+anything else is `layoutUnexpected`.
+
+The native tarball's expected integrity has two sources, settled before the
+tarball is fetched. When the caller passes `nativeIntegrity`, a record of
+SRI strings keyed by bare package name (`"@pnpm/exe.linux-x64"`), usually
+[lockfiles](../modules/lockfiles.md#the-env-preamble-the-pinned-package-manager)'
+`PackageManagerLock.nativeIntegrity`, the host's entry is the authority and
+the packument is never requested, so a tarball-only mirror suffices.
+Otherwise the registry packument's `dist.integrity` for the exact version
+is. Either way the strongest listed algorithm is used, and the map is read
+with own-property semantics. The supplied map fails closed at every step:
+
+- No entry for the host's package is `integrityMissing`, `subject` naming
+  the package. A lockfile records every platform, so a gap means the map is
+  inconsistent.
+- An entry with no usable SRI is `integrityMismatch`, `subject` naming the
+  package.
+- A tarball hashing to anything else is `integrityMismatch`, `subject`
+  naming the tarball url.
+
+Pins with no native overlay ignore the option.
+
+The manager's own artifact takes its expected integrity from the pin's
+`+<integrity>` tail or from the `integrity` option, an
+`IntegrityHashBrand` in corepack `<algo>.<hex>` form (convert a lockfile or
+registry SRI with `CorepackIntegrityHash.fromSri`). The option counts
+exactly as a pin integrity does: it verifies the same artifact (the
+registry tarball for npm, pnpm and yarn 1.x, `yarn.js` for yarn 2+, the
+platform zip for bun), silences the unverified-download warning, satisfies
+`requireIntegrity`, and lets a tool-cache hit answer without re-verifying.
+When both are present and differ, the install fails with
+`integrityMismatch` before any cache lookup or download — `expected` is the
+option, `subject` names the pin's value, and neither is chosen silently. It
+governs the wrapper only; the native binary is `nativeIntegrity`'s.
 
 Shims follow their target, not their manager: a `.js`/`.mjs`/`.cjs` target
 runs under `node`, anything else is exec'd directly. For pnpm 12 that

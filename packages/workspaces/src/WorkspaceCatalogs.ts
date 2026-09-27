@@ -6,6 +6,7 @@
 // inline `pnpm-workspace.yaml` catalogs, which win.
 
 import type { Lockfile } from "@effected/lockfiles";
+import { filenameFor } from "@effected/lockfiles";
 import {
 	CatalogAssemblyError,
 	CatalogResolver,
@@ -20,6 +21,7 @@ import type {
 	ConfigDependencyHooksShape,
 	HookInjection,
 	HookReplay,
+	HookReplayContext,
 	PeerDependencyRules,
 } from "./ConfigDependencyHooks.js";
 import { ConfigDependencyHooks, NoPeerDependencyRules } from "./ConfigDependencyHooks.js";
@@ -429,17 +431,21 @@ interface Assembled {
  * @remarks
  * Rules are SEEDED, not merged afterwards: the workspace file's block goes
  * into the threaded config so the hooks merge onto it, exactly as pnpm seeds
- * its own config and takes back what the hooks return. Not part of the public
- * surface; `WorkspaceSnapshots` imports it directly.
+ * its own config and takes back what the hooks return. `context` is the
+ * document's own side — its lockfile and, at a ref, the ref — so a fetched
+ * config dependency is verified against the record of the side that declared
+ * it. Not part of the public surface; `WorkspaceSnapshots` imports it
+ * directly.
  */
 export const injectFromDocument = (
 	hooks: ConfigDependencyHooksShape,
 	root: string,
 	document: unknown,
 	inline: CatalogSet,
+	context: HookReplayContext,
 ): Effect.Effect<{ readonly injected: CatalogSet; readonly injection: HookInjection }, CatalogAssemblyError> =>
 	Effect.map(
-		hooks.inject(root, configDependenciesOf(document), inline.entries, inlinePeerDependencyRules(document)),
+		hooks.inject(root, configDependenciesOf(document), inline.entries, inlinePeerDependencyRules(document), context),
 		(injection) => ({ injected: CatalogSet.fromCatalogs(injection.catalogs), injection }),
 	);
 
@@ -687,7 +693,20 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 					// this executes no config-dependency code. It surfaces the injected
 					// catalogs, the hooks' release-age contribution, the effective rules
 					// and the replay record from ONE replay.
-					const replayed = yield* injectFromDocument(hooks, root, document, inline);
+					// The working tree's own lockfile text, the integrity record a fetched
+					// config dependency is verified against. Unreadable reads as absent
+					// here, as it does for the lockfile record above: only a fetch needs
+					// it, and a fetch without it fails closed on its own. Read only when
+					// a config dependency is declared, since nothing else can use it.
+					// Read as TEXT beside `lockfiles.read()` because the env preamble
+					// the fetch verifies against is a document `Lockfile` does not model.
+					const lockfileText =
+						Object.keys(configDependenciesOf(document)).length === 0
+							? undefined
+							: yield* fs
+									.readFileString(path.join(root, filenameFor("pnpm")))
+									.pipe(Effect.orElseSucceed(() => undefined));
+					const replayed = yield* injectFromDocument(hooks, root, document, inline, { lockfile: lockfileText });
 					injected = replayed.injected;
 					hookGate = replayed.injection.releaseAge;
 					peerDependencyRules = replayed.injection.peerDependencyRules;

@@ -29,7 +29,9 @@ Everything durable about this package lives in `okf/`, not here. Start at
   assertion can see a re-fork →
   `okf/invariants/corepack-integrity-hash-shared-by-identity.md` — Load
   when: touching `IntegrityHash.ts`, `PackageManagerPin.integrity`, or the
-  matching `@effected/package-json` field.
+  matching `@effected/package-json` field. Its SRI sibling,
+  `SriIntegrityHash`, is consumed the same way by `@effected/workspaces`'
+  `ConfigDependencySpec` → the vocabulary section of `okf/modules/npm.md`.
 - Traps → `okf/gotchas/npm-renamed-field-silent-spread-drop.md`
   (`RegistryTarget.token` is a `never` tripwire — never alias or delete it
   early), `okf/gotchas/npm-12-pack-json-is-keyed-by-name.md` (`pack --json`

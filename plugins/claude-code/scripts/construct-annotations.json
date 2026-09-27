@@ -336,6 +336,7 @@
 	},
 	"lockfiles": {
 		"BunExtension": "bun lockfile extension data, catalog, catalogs, overrides and trustedDependencies",
+		"ConfigDependencyLock": "config dependency integrity from lockfile, verify config dependency fetch",
 		"ImporterDependency": "one workspace importer's declared dependency as the lockfile records it",
 		"Lockfile": "parse a pnpm npm yarn or bun lockfile into one unified lockfile model",
 		"LockfileFormat": "the lockfile format literal: bun, npm, pnpm or yarn",
@@ -343,6 +344,8 @@
 		"LockfileImporter": "one workspace importer's declared dependencies, keyed by importer path",
 		"LockfileIntegrity": "verify lockfile integrity against workspace manifests, unsatisfied constraint and missing workspace check",
 		"LockfileParseError": "handle malformed or wrong-shape lockfile content, syntax vs validation failure",
+		"PackageManagerLock": "read pinned pnpm version, specifier and sri integrity, per-platform native binary integrity",
+		"PnpmEnvLockfile": "read pnpm version and config dependency integrity from a pnpm-lock.yaml env preamble",
 		"PnpmExtension": "pnpm lockfile extension data, catalogs, overrides and settings from the lockfile header",
 		"ResolvedPackage": "one package resolved from a lockfile, its dependency and peer edges",
 		"WorkspaceDependency": "a directed dependency edge between two workspace packages as the lockfile records it",
@@ -508,6 +511,7 @@
 		"RegistryKind": "classify a registry url as npm, github-packages, jsr, or custom",
 		"RegistryReadError": "handle a failed registry http read: transport failure, bad status, undecodable body",
 		"ReleaseAgeGate": "enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns",
+		"SriIntegrityHash": "restrict integrity hash to sri algo-base64 form, reject corepack and yarn checksums",
 		"TarballError": "handle a tarball that could not be fetched, verified or extracted, integrity mismatch",
 		"UnresolvedDependencyError": "handle a catalog or workspace specifier that resolves to no entry",
 		"WorkspaceResolver": "resolve a workspace: specifier to a concrete package version, workspace contract, noop default layer",
@@ -530,6 +534,7 @@
 		"DevEnginesSchema": "devEngines field schema, runtime and package manager os cpu libc constraints",
 		"ExportsField": "exports field shape, string entry point or conditional exports object",
 		"Funding": "read a package's funding field, where to sponsor a maintainer, single entry or array",
+		"InvalidPackageManagerRangeError": "handle a malformed packageManager or devEngines.packageManager range, bad name, range or integrity",
 		"InvalidPackageNameError": "handle invalid npm package name, failed naming rules",
 		"InvalidSpdxLicenseError": "handle invalid spdx license field, unrecognized identifier or expression",
 		"LenientManifest": "sniff or discover a package.json leniently, degrade malformed fields instead of failing",
@@ -907,7 +912,9 @@
 		"PackedInstall": "pack carrier, install outside workspace under npm pnpm yarn bun, closure before run, override unreleased dependency",
 		"PackedInstallError": "packed install failure, manager unavailable, unresolved workspace protocol, missing bin, invalid override, bin conflict",
 		"InstalledConsumer": "scratch consumer project, installed bin path, bin command for a probe, run the carrier's own bin under shared bins",
-		"PackedInstallResult": "installed consumers, unavailable managers, packed tarball paths"
+		"PackedInstallResult": "installed consumers, unavailable managers, packed tarball paths",
+		"ConfigDependencySpec": "parse a pnpm-workspace.yaml configDependencies version, split inline sri integrity, render bare form",
+		"InvalidConfigDependencySpecError": "handle a configDependencies spec whose version is not exact or integrity is not sri"
 	},
 	"xdg": {
 		"AppDirKind": "the config, data, cache, state or runtime directory kind",

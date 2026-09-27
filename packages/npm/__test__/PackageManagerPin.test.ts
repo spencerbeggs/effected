@@ -200,3 +200,16 @@ describe("PackageManagerPin.parseResult", () => {
 		}
 	});
 });
+
+describe("PackageManagerPin.bare", () => {
+	it("renders name@version without the integrity, and equals toString for a bare pin", () => {
+		const hashed = PackageManagerPin.parseResult(`pnpm@12.6.0+sha512.${"ab".repeat(64)}`);
+		const plain = PackageManagerPin.parseResult("pnpm@12.6.0");
+		assert.isTrue(Result.isSuccess(hashed) && Result.isSuccess(plain));
+		if (Result.isSuccess(hashed) && Result.isSuccess(plain)) {
+			assert.strictEqual(hashed.success.bare, "pnpm@12.6.0");
+			assert.notStrictEqual(hashed.success.toString(), hashed.success.bare);
+			assert.strictEqual(plain.success.bare, plain.success.toString());
+		}
+	});
+});

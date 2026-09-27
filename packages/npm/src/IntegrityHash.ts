@@ -21,6 +21,11 @@
 // meets at the registry boundary: `CorepackIntegrityHash.FromSri` decodes
 // npm's SRI `sha512-<base64>` (the shape `NpmRegistry.version()` returns)
 // into the corepack `sha512.<hex>` form a `packageManager` pin carries.
+//
+// `SriIntegrityHash` is the sibling narrowing for the SRI form, for fields that
+// only ever carry `<algo>-<base64>` — `@effected/workspaces`'
+// `ConfigDependencySpec.integrity` (the legacy inline `configDependencies`
+// integrity) is its first consumer.
 
 import type { Brand } from "effect";
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
@@ -152,6 +157,53 @@ const corepackRestricted = brandedIntegrity.pipe(
 		Schema.makeFilter((value) => (isCorepack(value) ? undefined : "Expected a corepack (<algo>.<hex>) integrity hash")),
 	),
 );
+
+const sriRestricted = brandedIntegrity.pipe(
+	Schema.check(
+		Schema.makeFilter((value) => (isSri(value) ? undefined : "Expected an SRI (<algo>-<base64>) integrity hash")),
+	),
+);
+
+/**
+ * {@link (IntegrityHash:variable)} narrowed to the SRI `<algo>-<base64>` form
+ * — `sha512-<base64>` as pnpm and npm lockfiles record it, and as pnpm's
+ * legacy inline `configDependencies` integrity carries it. A corepack
+ * (`sha512.<hex>`) or yarn (`10c0/<hex>`) hash, both valid `IntegrityHash`
+ * values, fails this schema.
+ *
+ * @remarks
+ * The SRI counterpart of {@link (CorepackIntegrityHash:variable)}, with the same
+ * posture: it decodes to the same {@link IntegrityHashBrand} as the
+ * unrestricted schema (no second brand), and because a `Schema.check` is erased
+ * from the built type, a consumer that re-derives the restriction privately
+ * compiles clean and behaves identically. Each consuming field therefore
+ * asserts its schema IS this export (object identity), as the corepack
+ * consumers do.
+ *
+ * It validates SRI shape only: the digest is not base64-decoded or
+ * length-checked. A value this schema accepts, such as `sha512-oldHash==`, can
+ * therefore still fail `CorepackIntegrityHash.fromSri`, which decodes the
+ * digest to hex.
+ *
+ * Reach for `IntegrityHash.isSri(value)` to ask the same question about a raw
+ * string without decoding. Not to be confused with
+ * {@link InvalidSriIntegrityHashError}, which reports a failed SRI → corepack
+ * conversion, not a failed decode through this schema.
+ *
+ * @example
+ * ```ts
+ * import { SriIntegrityHash } from "@effected/npm";
+ * import { Schema } from "effect";
+ *
+ * const decode = Schema.decodeUnknownExit(SriIntegrityHash);
+ *
+ * decode("sha512-3q2+7w=="); // success
+ * decode("sha512.deadbeef"); // failure — corepack form
+ * ```
+ *
+ * @public
+ */
+export const SriIntegrityHash: Schema.brand<Schema.String, "IntegrityHash"> = sriRestricted;
 
 // --- The SRI → corepack bridge ---------------------------------------------
 //

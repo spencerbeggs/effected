@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/workspaces/src/ChangeDetector.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 381b34d786cede51177ac591c84248979ac415258b256f609babb3e9612fa44a
+  at: 2026-09-27T06:20:52Z
+  body_sha256: 63d996bc6cc6316049581c25b14dd5705a4d7ae9ecf4e3834b4952f9fc88022e
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:06.249Z
@@ -76,12 +76,13 @@ reference to it and to `WorkspaceCatalogs` so the two sides of a diff run
 one policy. Under the no-op layer nothing executes and the ref side sees
 no hook-injected catalog; under a replaying layer each ref's hook runs at
 the version that ref declares — resolved through the installed copy or the
-pnpm store by the live and subprocess layers, failing closed otherwise, or
+pnpm store by the live and subprocess layers (the subprocess layer also
+fetching a missing version, verified against the ref's own lockfile),
+failing closed otherwise, or
 taken from a caller-supplied `"<name>@<version>"` map under
 `ConfigDependencyHooks.layerFrom` via `Workspaces.layerWithGitAndHooks` (see
 [the config-dependency seam](workspaces-catalogs.md#the-replaying-layers-resolve-the-declared-version)),
-which still requires no checkout, no fetch and no historical code the
-machine has not already installed. Every snapshot records which version
+which still requires no checkout. Every snapshot records which version
 each config dependency was replayed from in `hookReplays`, a `name →
 version` record set on every fresh read (empty under the no-op layer or
 where config dependencies do not exist) and absent only on values

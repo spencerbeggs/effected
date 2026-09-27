@@ -18,16 +18,25 @@
 // routing the store walk through a virtual filesystem would find nothing.
 //
 // Fail-closed. A declared version found neither under `.pnpm-config` nor in
-// any store fails typed with the remediation in the message; nothing is ever
-// fetched.
+// any store goes to the fetch rung when the caller wired one
+// (`configDependencyFetch.ts`, only `layerSubprocess` does), which fetches it
+// verified against the declaring side's recorded integrity; otherwise, and
+// whenever that fails, it fails typed with a `reason` and the remediation in
+// the message. Nothing is ever fetched unverified.
 
 import { readFile, readdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { CatalogAssemblyError, PackageManagerCache } from "@effected/npm";
+import { PnpmEnvLockfile } from "@effected/lockfiles";
+import type { CatalogAssemblyError } from "@effected/npm";
+import { PackageManagerCache } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Array as Arr, Duration, Effect, Exit, Option, Predicate, Result } from "effect";
-import type { HookReplaySource } from "../ConfigDependencyHooks.js";
+import type { HookReplayContext, HookReplaySource } from "../ConfigDependencyHooks.js";
+import type { FetchConfigDependency, FetchFailure, RecordedLocks } from "./configDependencyFetch.js";
+import type { ManifestVersion } from "./configDependencyShared.js";
+import { carries, hooksError, ioOrNone, manifestVersion, sideLabel } from "./configDependencyShared.js";
+import { splitConfigDependencySpec } from "./configDependencySpecGrammar.js";
 
 /**
  * One config dependency resolved at its declared version: where it was
@@ -39,7 +48,7 @@ export interface ResolvedPnpmfile {
 	readonly name: string;
 	/** The declared version that was resolved. */
 	readonly version: string;
-	/** Which rung answered: the installed `.pnpm-config` copy, the pnpm store, or a caller-supplied map. */
+	/** Which rung answered: the installed `.pnpm-config` copy, the pnpm store, the fetch rung, or a caller-supplied map. */
 	readonly source: HookReplaySource;
 	/** The absolute path of the pnpmfile to load, or `undefined` when the dependency ships none. */
 	readonly path: string | undefined;
@@ -51,11 +60,13 @@ const PNPMFILE_CANDIDATES = ["pnpmfile.mjs", "pnpmfile.cjs", "pnpmfile.js"] as c
 /**
  * The version part of a `configDependencies` spec: the text before the first
  * `+` (`0.9.0+sha512-…` → `0.9.0`); a bare `0.9.0` is returned whole.
+ *
+ * Deliberately lenient — it goes through the same split as the public
+ * `ConfigDependencySpec` but validates neither half. See
+ * `configDependencySpecGrammar.ts` for why replay must not adopt the strict
+ * model's rejections.
  */
-const declaredVersionOf = (spec: string): string => {
-	const plus = spec.indexOf("+");
-	return plus === -1 ? spec : spec.slice(0, plus);
-};
+const declaredVersionOf = (spec: string): string => splitConfigDependencySpec(spec).version;
 
 /**
  * Whether a config-dependency `name` carries a `..` path segment. A scoped name
@@ -65,14 +76,12 @@ const declaredVersionOf = (spec: string): string => {
  */
 const hasTraversalSegment = (name: string): boolean => name.split(/[/\\]/).includes("..");
 
-/** The typed `hooks`-source failure every rung of the ladder reports through. */
-const hooksError = (path: string, cause: unknown): CatalogAssemblyError =>
-	new CatalogAssemblyError({ source: "hooks", path, cause });
-
-/** A declared `(name, version)` pair, validated. */
+/** A declared `(name, version)` pair, validated, with the spec it came from. */
 interface DeclaredEntry {
 	readonly name: string;
 	readonly version: string;
+	/** The declared spec verbatim; the fetch rung reads its inline integrity. */
+	readonly spec: string;
 }
 
 /**
@@ -87,6 +96,7 @@ const declaredEntries = (
 	const entries = Object.entries(configDependencies).map(([name, spec]) => ({
 		name,
 		version: declaredVersionOf(spec),
+		spec,
 	}));
 	const traversal = entries.find((entry) => hasTraversalSegment(entry.name));
 	return traversal === undefined
@@ -95,45 +105,6 @@ const declaredEntries = (
 				hooksError(traversal.name, new Error(`config dependency name has a '..' path segment: ${traversal.name}`)),
 			);
 };
-
-/** Whether a `node:fs` rejection means "nothing there" (as opposed to a real IO failure). */
-const isAbsent = (cause: unknown): boolean =>
-	Predicate.isObject(cause) && (cause.code === "ENOENT" || cause.code === "ENOTDIR");
-
-/**
- * Run a `node:fs/promises` call, mapping an absent target to `Option.none()`
- * and ANY other rejection (`EACCES`, `EIO`, …) to a typed `hooks` error
- * attributed to `path` — never a silent skip.
- */
-const ioOrNone = <A>(path: string, run: () => Promise<A>): Effect.Effect<Option.Option<A>, CatalogAssemblyError> =>
-	Effect.tryPromise({ try: run, catch: (cause) => cause }).pipe(
-		Effect.map(Option.some),
-		Effect.catch((cause) =>
-			isAbsent(cause) ? Effect.succeed(Option.none<A>()) : Effect.fail(hooksError(path, cause)),
-		),
-	);
-
-/**
- * The `version` of the `package.json` in `dir`: `None` when the manifest is
- * absent, `Some("")` when present but carrying no string version (so it can
- * never match a declared version), typed on any other IO failure or on
- * unparseable JSON — a manifest that exists but cannot be read is not
- * evidence of absence.
- */
-const manifestVersion = (name: string, dir: string): Effect.Effect<Option.Option<string>, CatalogAssemblyError> =>
-	ioOrNone(name, () => readFile(join(dir, "package.json"), "utf8")).pipe(
-		Effect.flatMap((text) => {
-			if (Option.isNone(text)) return Effect.succeed(Option.none<string>());
-			return Effect.try({
-				try: () => JSON.parse(text.value) as unknown,
-				catch: (cause) => hooksError(name, cause),
-			}).pipe(
-				Effect.map((parsed) =>
-					Option.some(Predicate.isObject(parsed) && typeof parsed.version === "string" ? parsed.version : ""),
-				),
-			);
-		}),
-	);
 
 /** Directory entries of `dir`, or `[]` when it is absent; typed on any other failure. */
 const entriesOf = (path: string, dir: string): Effect.Effect<ReadonlyArray<string>, CatalogAssemblyError> =>
@@ -305,7 +276,7 @@ const findInStores = (
 			for (const hash of yield* entriesOf(name, versionDir)) {
 				const dir = join(versionDir, hash, "node_modules", name);
 				const version = yield* manifestVersion(name, dir);
-				if (Option.isSome(version) && version.value === declared) matches.push(dir);
+				if (carries(version, declared)) matches.push(dir);
 			}
 			if (matches.length > 0) return { store, matches };
 		}
@@ -318,23 +289,52 @@ const ambiguousMessage = (name: string, declared: string, store: string, matches
 	`(${matches.join(", ")}) and the store records no integrity to tell them apart, so none is replayed. ` +
 	`Remove the stale copies, or install ${name}@${declared} in this workspace so node_modules/.pnpm-config answers instead.`;
 
-/** The fail-closed message: what was declared, what is installed, where we looked, and how to fix it. */
+/**
+ * The fail-closed message: what was declared, by which side, what is
+ * installed, where we looked, why that happens, and how to fix it. `fetch`
+ * is the fetch rung's failure when one ran.
+ */
 const notInstalledMessage = (
 	name: string,
 	declared: string,
-	installed: Option.Option<string>,
+	installed: ManifestVersion,
 	stores: ReadonlyArray<string>,
+	side: HookReplayContext,
+	fetch: Option.Option<FetchFailure>,
 ): string => {
-	const holds = Option.match(installed, {
-		onNone: () => "nothing",
-		onSome: (version) => (version === "" ? "a package with no version" : `version ${version}`),
-	});
+	const holds =
+		installed._tag === "absent"
+			? "nothing"
+			: installed._tag === "unversioned"
+				? "a package with no version"
+				: `version ${installed.version}`;
 	const searched = stores.length === 0 ? "no pnpm store directory could be located" : `searched ${stores.join(", ")}`;
-	return (
-		`config dependency ${name}@${declared} is not installed: node_modules/.pnpm-config/${name} holds ${holds}, ` +
-		`and no store copy of ${name}@${declared} was found (${searched}). ` +
-		`Run \`pnpm add --config ${name}@${declared}\` in a throwaway workspace to populate the store, then retry.`
-	);
+	const by = side.ref === undefined ? "" : ` (declared at ${sideLabel(side)})`;
+	const found =
+		`config dependency ${name}@${declared}${by} is not installed: node_modules/.pnpm-config/${name} holds ${holds}, ` +
+		`and no store copy of ${name}@${declared} was found (${searched}).`;
+	// The case #842 hit: the replayed side pins a DIFFERENT version from the
+	// installed one, which is what the base side of a diff across a
+	// config-dependency bump always does on a fresh checkout.
+	const why =
+		installed._tag === "version" && installed.version !== declared
+			? "This side declares a different version from the installed one, as the base side of a diff across a " +
+				"config-dependency bump does: that version was never installed in this checkout."
+			: "";
+	const tried = Option.match(fetch, {
+		onNone: () =>
+			"This replay layer does not fetch; ConfigDependencyHooks.layerSubprocess, which the *Subprocess Workspaces " +
+			"composites use, fetches the declared version, verified, into the store.",
+		onSome: (failure) =>
+			failure.reason === "fetchFailed" ? `Fetching it into the store failed: ${failure.message}` : failure.message,
+	});
+	// Two recorded integrities that disagree are the one case where populating
+	// the store by hand is the wrong advice: the fetch message says to
+	// reconcile the pins instead.
+	const remedy = Option.exists(fetch, (failure) => failure.reason === "integrityMismatch")
+		? ""
+		: `Run \`pnpm add --config ${name}@${declared}\` in a throwaway workspace to populate the store, then retry.`;
+	return [found, why, tried, remedy].filter((sentence) => sentence !== "").join(" ");
 };
 
 /**
@@ -357,20 +357,33 @@ const pnpmfileIn = (name: string, dir: string): Effect.Effect<Option.Option<stri
 /**
  * Resolve one declared config dependency to the directory holding its
  * declared version: `.pnpm-config` when it holds exactly that version, else
- * the store, else a typed fail-closed error. `stores` is the memoized
- * discovery, run at most once per {@link resolvePnpmfiles} call and only on
- * the first `.pnpm-config` miss.
+ * the store, else the fetch rung when one is wired, else a typed fail-closed
+ * error. `stores` is the memoized discovery, run at most once per
+ * {@link resolvePnpmfiles} call and only on the first `.pnpm-config` miss;
+ * `locks` is the declaring side's memoized lockfile decode, run at most once
+ * per call and only by the fetch rung.
+ *
+ * @remarks
+ * A fetch failure is folded into the not-installed message, so the error
+ * still says what was declared, what is installed and where the ladder
+ * looked, and it keeps the fetch rung's own `reason` (`integrityMismatch`,
+ * `integrityUnavailable`, `fetchFailed`). The `pnpm add --config`
+ * remediation is kept except for `integrityMismatch`, where the pins must be
+ * reconciled first.
  */
 const resolveDirectory = (
 	root: string,
-	name: string,
-	declared: string,
+	entry: DeclaredEntry,
 	stores: Effect.Effect<ReadonlyArray<string>, CatalogAssemblyError>,
+	locks: RecordedLocks,
+	options: ResolveOptions,
 ): Effect.Effect<{ readonly dir: string; readonly source: HookReplaySource }, CatalogAssemblyError> =>
 	Effect.gen(function* () {
+		const { name, version: declared } = entry;
+		const side = options.side ?? {};
 		const installedDir = join(pnpmConfigDir(root), name);
 		const installed = yield* manifestVersion(name, installedDir);
-		if (Option.isSome(installed) && installed.value === declared) return { dir: installedDir, source: "installed" };
+		if (carries(installed, declared)) return { dir: installedDir, source: "installed" };
 		const searched = yield* stores;
 		const { store, matches } = yield* findInStores(name, declared, searched);
 		const [only, ...rest] = matches;
@@ -379,9 +392,42 @@ const resolveDirectory = (
 		// which one the ref's integrity pinned, so replaying either would be a
 		// guess about which code to execute. Fail closed and say why.
 		if (only !== undefined)
-			return yield* Effect.fail(hooksError(name, new Error(ambiguousMessage(name, declared, store, matches))));
-		return yield* Effect.fail(hooksError(name, new Error(notInstalledMessage(name, declared, installed, searched))));
+			return yield* Effect.fail(
+				hooksError(name, new Error(ambiguousMessage(name, declared, store, matches)), "ambiguous"),
+			);
+		const notInstalled = (fetch: Option.Option<FetchFailure>) => {
+			const message = notInstalledMessage(name, declared, installed, searched, side, fetch);
+			const cause = Option.getOrUndefined(fetch)?.cause;
+			return hooksError(
+				name,
+				cause === undefined ? new Error(message) : new Error(message, { cause }),
+				Option.match(fetch, { onNone: () => "notInstalled" as const, onSome: (failure) => failure.reason }),
+			);
+		};
+		if (options.fetch === undefined) return yield* Effect.fail(notInstalled(Option.none()));
+		const fetched = yield* options
+			.fetch({ name, version: declared, spec: entry.spec, stores: searched, side, locks })
+			.pipe(Effect.mapError((failure) => notInstalled(Option.some(failure))));
+		return { dir: fetched, source: "fetched" };
 	});
+
+/**
+ * A lazy memo of `effect`, scoped to one {@link resolvePnpmfiles} call: the
+ * house success-only memo (never `Effect.cached`, which would pin an
+ * interrupt), so a failed or interrupted run is retried by the next user.
+ */
+const memoizeSuccess = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<Effect.Effect<A, E>> =>
+	Effect.map(Effect.cachedInvalidateWithTTL(effect, Duration.infinity), ([once, invalidate]) =>
+		Effect.onExit(once, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate)),
+	);
+
+/** What a {@link resolvePnpmfiles} call may use beyond the declared map. */
+export interface ResolveOptions {
+	/** What the declaring side recorded: its lockfile (integrity for a bare spec) and its ref (for messages). */
+	readonly side?: HookReplayContext | undefined;
+	/** The fetch rung. Absent, a version found nowhere fails typed with `reason: "notInstalled"`. */
+	readonly fetch?: FetchConfigDependency | undefined;
+}
 
 /**
  * Resolve every declared config dependency at its declared version, in
@@ -389,25 +435,32 @@ const resolveDirectory = (
  * (resolved, `path` undefined — the one legitimate skip at replay time); a
  * `..` segment in a name, an unresolvable declared version, or any
  * non-absent IO failure fails typed as a `hooks`-source
- * `CatalogAssemblyError`.
+ * `CatalogAssemblyError`. `options.fetch`, when wired, is tried for a version
+ * found nowhere before that fails.
  */
 export const resolvePnpmfiles = (
 	root: string,
 	configDependencies: Readonly<Record<string, string>>,
+	options: ResolveOptions = {},
 ): Effect.Effect<ReadonlyArray<ResolvedPnpmfile>, CatalogAssemblyError> =>
 	Effect.gen(function* () {
 		const entries = yield* declaredEntries(configDependencies);
-		// Store discovery is shared across the whole call and runs lazily on the
-		// first `.pnpm-config` miss; concurrent misses dedupe onto one run. The
-		// house success-only memo (never `Effect.cached`, which would pin an
-		// interrupt), scoped to this one call.
-		const [discoverOnce, invalidate] = yield* Effect.cachedInvalidateWithTTL(discoverStores(root), Duration.infinity);
-		const stores = Effect.onExit(discoverOnce, (exit) => (Exit.isSuccess(exit) ? Effect.void : invalidate));
+		// Store discovery and the declaring side's lockfile decode are each shared
+		// across the whole call and run lazily on first use (the first
+		// `.pnpm-config` miss, the first fetch); concurrent users dedupe onto one
+		// run.
+		const stores = yield* memoizeSuccess(discoverStores(root));
+		const lockfile = options.side?.lockfile;
+		const locks: RecordedLocks =
+			lockfile === undefined
+				? Effect.succeed(undefined)
+				: yield* memoizeSuccess(PnpmEnvLockfile.configDependencies(lockfile));
 		return yield* Effect.forEach(
 			entries,
-			({ name, version }) =>
+			(entry) =>
 				Effect.gen(function* () {
-					const { dir, source } = yield* resolveDirectory(root, name, version, stores);
+					const { name, version } = entry;
+					const { dir, source } = yield* resolveDirectory(root, entry, stores, locks, options);
 					const pnpmfile = yield* pnpmfileIn(name, dir);
 					return { name, version, source, path: Option.getOrUndefined(pnpmfile) } satisfies ResolvedPnpmfile;
 				}),

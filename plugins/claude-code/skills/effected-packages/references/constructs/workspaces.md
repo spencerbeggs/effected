@@ -19,6 +19,7 @@
 | `ClassifyOptions` | Interface | Arguments to `VersioningStrategy.classify`. | |
 | `ConfigDependencyHooks` | Class | Replays a workspace's `configDependencies` `updateConfig` hooks over the inline catalogs — the opt-in seam that lets hook-injected catalogs participate in assembly. | replay pnpm config dependency pnpmfile hooks, inject catalogs from a config-dependency plugin, updateConfig hook |
 | `ConfigDependencyHooksShape` | Interface | The `ConfigDependencyHooks` service shape. | |
+| `ConfigDependencySpec` | Class | A pnpm `configDependencies` spec from `pnpm-workspace.yaml`: an exact `version` and, on the legacy inline form only, an SRI `integrity`. | parse a pnpm-workspace.yaml configDependencies version, split inline sri integrity, render bare form |
 | `CyclicDependencyError` | Class | Raised when the workspace dependency graph cannot be topologically ordered because it contains a cycle. | handle a circular workspace dependency, cannot topologically sort packages |
 | `DependencyDiff` | Interface | The result of comparing two `WorkspacePackage` dependency snapshots. | |
 | `DependencyGraph` | Class | The directed graph of dependencies **between workspace packages**. External npm dependencies are not nodes. | inter-package dependency graph, topological sort, parallel build levels, blast radius |
@@ -33,9 +34,11 @@
 | `GetWorkspacePackagesSyncOptions` | Interface | Options for `getWorkspacePackagesSync`: the required consumer-supplied operations plus the traversal bound. | |
 | `HookInjection` | Interface | The result of replaying a workspace's `configDependencies` hooks: the catalogs the hooks yield, and the release-age gate contribution they leave on the config (pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude`). | |
 | `HookReplay` | Interface | Which version of a config dependency a replay actually loaded, and where that version came from. | |
-| `HookReplaySource` | TypeAlias | Where a replayed config dependency's declared version was found: the `node_modules/.pnpm-config` copy, the pnpm store's `links/` tree, or a `ConfigDependencyHooks.layerFrom` entry. | |
+| `HookReplayContext` | Interface | What the side whose `configDependencies` are being replayed recorded beyond that map — the input the fetch rung needs to verify what it fetches. | |
+| `HookReplaySource` | TypeAlias | Where a replayed config dependency's declared version was found: the `node_modules/.pnpm-config` copy, the pnpm store's `links/` tree, the store after `ConfigDependencyHooks.layerSubprocess` fetched it, or a `ConfigDependencyHooks.layerFrom` entry. | |
 | `ImporterVersions` | TypeAlias | Each importer's dependency-name → resolved-version map, keyed by importer path (`"."` for the root package — the same keys `WorkspaceDiscovery.importerMap()` uses, and the same value `PackageStateSnapshot.relativePath` carries). | |
 | `InstalledConsumer` | Class | One scratch project, outside the workspace, with the carrier installed. | from `@effected/workspaces/testing` — scratch consumer project, installed bin path, bin command for a probe, run the carrier's own bin under shared bins |
+| `InvalidConfigDependencySpecError` | Class | Indicates that a string could not be parsed as a pnpm `configDependencies` spec (`<version>[+<integrity>]`). | handle a configDependencies spec whose version is not exact or integrity is not sri |
 | `LayerEdge` | Class | One dependency edge between two workspace packages, in one field. | from `@effected/workspaces/testing` — one workspace dependency edge in one manifest field |
 | `LayerPolicy` | Class | A committed dependency-layering policy (`layers.json`). | from `@effected/workspaces/testing` — decode a committed layers.json dependency layering policy |
 | `LayerPolicyError` | Class | Raised when a layer policy cannot be read, parsed or decoded. | from `@effected/workspaces/testing` — layer policy file unreadable, not json, or wrong shape |

@@ -238,6 +238,34 @@ export const requireLockfileVersion = (
 };
 
 /**
+ * The pnpm version gate's own input: `lockfileVersion` and nothing else.
+ *
+ * The gate has to read the version *before* the shape decode, because the
+ * shape it decodes against is the shape of a supported version. `importers` is
+ * a required key in the lockfile shape and a pre-v9 single-project lockfile has
+ * none — it records its dependencies at the top level — so a shape-first order
+ * reports a lockfile we reject for being too old as merely malformed instead.
+ *
+ * @internal
+ */
+const PnpmVersionProbe = Schema.Struct({
+	lockfileVersion: Schema.Union([Schema.String, Schema.Number]),
+});
+
+/**
+ * Gate a located pnpm document (lockfile or env preamble) on its format
+ * version: decode {@link PnpmVersionProbe}, then {@link requireLockfileVersion}.
+ * Call it BEFORE the shape decode, for the reason the probe documents.
+ *
+ * @internal
+ */
+export const gatePnpmVersion = (document: unknown): Effect.Effect<void, ParseFailure> =>
+	Schema.decodeUnknownEffect(PnpmVersionProbe)(document).pipe(
+		Effect.mapError(validationFailure),
+		Effect.flatMap((probe) => requireLockfileVersion("pnpm", probe.lockfileVersion)),
+	);
+
+/**
  * Why the lockfile document could not be located in a YAML stream.
  *
  * @internal

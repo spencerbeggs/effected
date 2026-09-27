@@ -16,6 +16,7 @@
 | `EntryPointManifest` | Interface | The manifest fields entry resolution reads. | |
 | `ExportsField` | Variable | The `exports` field: a single string entry point or an open object of conditional exports. Not meant to be referenced directly. | exports field shape, string entry point or conditional exports object |
 | `Funding` | Class | Where to send money for a package: one funding entry. | read a package's funding field, where to sponsor a maintainer, single entry or array |
+| `InvalidPackageManagerRangeError` | Class | Indicates that a `packageManager` value, or a `devEngines.packageManager` entry, could not be read as a `PackageManagerRange`. | handle a malformed packageManager or devEngines.packageManager range, bad name, range or integrity |
 | `InvalidPackageNameError` | Class | Indicates that a string could not be used as a valid npm package name. | handle invalid npm package name, failed naming rules |
 | `InvalidSpdxLicenseError` | Class | Indicates that a string is not a valid SPDX license identifier or expression. | handle invalid spdx license field, unrecognized identifier or expression |
 | `LenientFieldIssue` | Interface | One degraded field from a lenient decode: the top-level `field` that did not match its permissive shape, a human-readable description of the `expected` shape, and the raw `value` found there (also preserved verbatim under `LenientManifest.rest[field]`). | |

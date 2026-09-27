@@ -7,9 +7,9 @@ import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
 import {
 	extractWorkspaceDeps,
 	framingFailure,
+	gatePnpmVersion,
 	importerDependencies,
 	peerDeclarations,
-	requireLockfileVersion,
 	splitPeerSuffix,
 	toIntegrityHash,
 	validationFailure,
@@ -31,21 +31,6 @@ const PnpmImporter = Schema.Struct({
 	// exact evidence that lets a `link:<importer>/<publishDirectory>` edge name
 	// its importer.
 	publishDirectory: Schema.optionalKey(Schema.String),
-});
-
-/**
- * The version gate's own input: `lockfileVersion` and nothing else.
- *
- * The gate has to read the version *before* the shape decode, because the
- * shape it decodes against is the shape of a supported version. `importers` is
- * a required key here and a pre-v9 single-project lockfile has none — it
- * records its dependencies at the top level — so a shape-first order reports a
- * lockfile we reject for being too old as merely malformed instead.
- *
- * @internal
- */
-const PnpmVersionProbe = Schema.Struct({
-	lockfileVersion: Schema.Union([Schema.String, Schema.Number]),
 });
 
 const PnpmLockfileRaw = Schema.Struct({
@@ -129,10 +114,7 @@ export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseF
 		// lockfile carries no `importers` map, so decoding first would report a
 		// too-old lockfile as malformed — losing the distinction the
 		// `UnsupportedLockfileVersion` cause exists to carry.
-		const probe = yield* Schema.decodeUnknownEffect(PnpmVersionProbe)(document).pipe(
-			Effect.mapError(validationFailure),
-		);
-		yield* requireLockfileVersion("pnpm", probe.lockfileVersion);
+		yield* gatePnpmVersion(document);
 		const validated = yield* Schema.decodeUnknownEffect(PnpmLockfileRaw)(document).pipe(
 			Effect.mapError(validationFailure),
 		);

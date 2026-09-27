@@ -289,36 +289,36 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 			const seeded = (snapshot: WorkspaceStateSnapshot): WorkspaceStateSnapshot =>
 				options?.seedCatalogs === undefined ? snapshot : snapshot.withSeededCatalogs(options.seedCatalogs);
 
+			/** A manager's lockfile text at the ref, `none` when the ref has none. */
+			const lockfileText = (
+				root: string,
+				ref: string,
+				format: "pnpm" | "bun",
+			): Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError> =>
+				// `./`-prefixed so git resolves the lockfile relative to `cwd` (the
+				// workspace root), NOT the git repo top-level — see `computeAt`.
+				git.show(root, ref, `./${filenameFor(format)}`);
+
 			/**
 			 * What a manager's lockfile records at the ref: its catalog set and its
 			 * importer versions, from ONE parse. Empty on both counts when the
 			 * lockfile is absent or malformed.
 			 */
-			const lockfileRecord = (
-				root: string,
-				ref: string,
-				format: "pnpm" | "bun",
-			): Effect.Effect<LockfileRecord, GitCommandError | NotARepositoryError | UnknownRefError> =>
-				// `./`-prefixed so git resolves the lockfile relative to `cwd` (the
-				// workspace root), NOT the git repo top-level — see `computeAt`.
-				git.show(root, ref, `./${filenameFor(format)}`).pipe(
-					Effect.flatMap((content) =>
-						Option.match(content, {
-							onNone: () => Effect.succeed(EMPTY_LOCKFILE_RECORD),
-							onSome: (text) =>
-								LockfileModel.parse(text, { format }).pipe(
-									Effect.map((lockfile) => ({
-										catalogs: CatalogSet.fromLockfile(lockfile),
-										importerVersions: importerVersionsOf(lockfile),
-									})),
-									// A malformed lockfile at the ref is a broken RECORD, not a
-									// broken source of truth — degrade to no catalogs, exactly as
-									// the live WorkspaceCatalogs does for an unreadable lockfile.
-									Effect.catch(() => Effect.succeed(EMPTY_LOCKFILE_RECORD)),
-								),
-						}),
-					),
-				);
+			const lockfileRecord = (content: Option.Option<string>, format: "pnpm" | "bun"): Effect.Effect<LockfileRecord> =>
+				Option.match(content, {
+					onNone: () => Effect.succeed(EMPTY_LOCKFILE_RECORD),
+					onSome: (text) =>
+						LockfileModel.parse(text, { format }).pipe(
+							Effect.map((lockfile) => ({
+								catalogs: CatalogSet.fromLockfile(lockfile),
+								importerVersions: importerVersionsOf(lockfile),
+							})),
+							// A malformed lockfile at the ref is a broken RECORD, not a
+							// broken source of truth — degrade to no catalogs, exactly as
+							// the live WorkspaceCatalogs does for an unreadable lockfile.
+							Effect.catch(() => Effect.succeed(EMPTY_LOCKFILE_RECORD)),
+						),
+				});
 
 			const computeAt = (
 				root: string,
@@ -366,10 +366,18 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						// each declared version through `.pnpm-config` or the pnpm store, so
 						// a config dependency bumped between two refs yields two different
 						// injected sets; `layerNoop` returns the seed and executes nothing.
-						const replayed = yield* injectFromDocument(hooks, root, document, inline);
+						// The ref's OWN lockfile is read once and serves twice: as the
+						// record below, and as the integrity source a fetched config
+						// dependency is verified against — the base side of a diff is
+						// checked against the base side's pins, never the working tree's.
+						const lockfile = yield* lockfileText(root, ref, "pnpm");
+						const replayed = yield* injectFromDocument(hooks, root, document, inline, {
+							lockfile: Option.getOrUndefined(lockfile),
+							ref,
+						});
 						injected = replayed.injected;
 						hookReplays = replayed.injection.replays;
-						recorded = yield* lockfileRecord(root, ref, "pnpm");
+						recorded = yield* lockfileRecord(lockfile, "pnpm");
 					} else {
 						// c594ff1: with no `pnpm-workspace.yaml`, the workspace globs come
 						// from the root `package.json` `workspaces` field. WITHOUT this, a
@@ -388,7 +396,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						inline = bunInlineCatalogs(rootManifest);
 						// Config dependencies are a pnpm feature; there are none on this path.
 						injected = CatalogSet.empty();
-						recorded = yield* lockfileRecord(root, ref, "bun");
+						recorded = yield* lockfileRecord(yield* lockfileText(root, ref, "bun"), "bun");
 					}
 
 					// Precedence follows the live assembler: lockfile record first, then

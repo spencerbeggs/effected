@@ -62,6 +62,33 @@ branch on `source` first. `options.allowAmbient` (default `true`)
 suppresses the ambient probe entirely when the run is about to replace the
 runner's Node with a pinned one, so a stale ambient npm never shadows it.
 
+**The manager's own artifact takes its expected integrity from the pin's
+`+<integrity>` tail or from `options.integrity`** — a corepack-form hash
+(`<algo>.<hex>`, the same brand as the pin's), for a caller whose digest
+comes from a lockfile or the registry's `dist.integrity` and whose pin is
+bare. The option counts exactly as a pin integrity: it satisfies
+`requireIntegrity`, silences the unverified-download warning, and a
+tool-cache hit is answered without re-verifying. If the pin carries one too
+and the two differ, the install fails `integrityMismatch` before any cache
+lookup or download — neither side is picked silently. Convert an SRI string
+with `CorepackIntegrityHash.fromSri`.
+
+pnpm 12 and later ship the real `pnpm` as a second artifact — the host's
+`@pnpm/exe.<target>` native-binary package — which the installer overlays
+and verifies fail-closed. By default the registry packument's
+`dist.integrity` vouches for it. **Pass `options.nativeIntegrity` to make
+the lockfile the authority instead**: a map from bare package name
+(`"@pnpm/exe.linux-x64"`, no version) to its SRI, read straight from
+`pnpm-lock.yaml`. With it the packument is never requested, so a
+tarball-only mirror works. A map with no entry for the host's package fails
+`integrityMissing` with `subject` naming that package — a lockfile records
+every platform, so a gap means the map is wrong, never "skip the check".
+An entry with no usable SRI, or a tarball that hashes to anything else,
+fails `integrityMismatch`. Pins with no native overlay (pnpm 11 and
+earlier, npm, yarn, bun) ignore the option. The wrapper tarball itself is
+still verified against the pin's own `integrity`; convert a lockfile SRI
+onto the pin with `CorepackIntegrityHash.fromSri`.
+
 `install`'s `pin` argument is `@effected/npm`'s package-manager-pin type —
 a plain `Schema.Class`, not a service, so it costs nothing in `R`. The
 dependency this module takes on that package is confined to importing that

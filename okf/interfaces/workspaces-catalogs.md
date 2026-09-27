@@ -1,7 +1,7 @@
 ---
 type: Interface
 title: "@effected/workspaces catalogs and the config-dependency seam"
-description: WorkspaceCatalogs and CatalogSet assembly, the release-age gate, and the ConfigDependencyHooks opt-in replay seam over pnpm config dependencies.
+description: WorkspaceCatalogs and CatalogSet assembly, the release-age gate, the ConfigDependencySpec value model, and the ConfigDependencyHooks opt-in replay seam over pnpm config dependencies.
 status: stable
 kind: api
 resource: ../../packages/workspaces/src/WorkspaceCatalogs.ts
@@ -17,10 +17,16 @@ sources:
     resource: ../../packages/workspaces/src/internal/catalogs.ts
   - id: config-dependency-resolution-ts
     resource: ../../packages/workspaces/src/internal/configDependencyResolution.ts
+  - id: config-dependency-fetch-ts
+    resource: ../../packages/workspaces/src/internal/configDependencyFetch.ts
+  - id: config-dependency-spec-ts
+    resource: ../../packages/workspaces/src/ConfigDependencySpec.ts
+  - id: config-dependency-spec-grammar-ts
+    resource: ../../packages/workspaces/src/internal/configDependencySpecGrammar.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 80211e0b6b29805ec189d3d3eb2de166d92285881303b848c63731048efda9c9
+  at: 2026-09-27T06:20:52Z
+  body_sha256: 3959e7cb7e2e7f122a569908cfe0de3dc2545a94fd2a44b2c60def439e6c1fc0
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
@@ -85,6 +91,32 @@ discard-by-projection defect the seam itself once had. Every
 `src/internal/catalogs.ts` is the only module in the package that imports
 `@pnpm/catalogs.*`.[^internal-catalogs-ts]
 
+## ConfigDependencySpec — one configDependencies value
+
+`ConfigDependencySpec` models one `configDependencies` value from
+`pnpm-workspace.yaml`: an exact `version` (`@effected/semver`'s `SemVer`,
+prereleases allowed, build metadata refused) and an optional SRI
+`integrity`.[^config-dependency-spec-ts] It reads the bare form pnpm 11 and
+12 write (`0.11.1`, the integrity living in the lockfile) and the deprecated
+inline form (`0.11.1+sha512-<base64>`) that workspaces in the wild still
+carry. The integrity field's schema IS `@effected/npm`'s `SriIntegrityHash`,
+asserted by object identity in the suite.
+
+- `parseResult(spec)` is the sync primitive under `parse`, failing with
+  `InvalidConfigDependencySpecError`. Its `reason` is `"version"` for a
+  range, dist-tag, partial, `v`-prefixed or padded version, and
+  `"integrity"` for a tail that is not an SRI hash, a corepack
+  `sha512.<hex>` tail and an empty `0.11.1+` tail included.
+- `bare` renders `<version>`, the form to write when normalizing the field.
+- `toString()` renders the form that was parsed, so a spec a tool only
+  reads round-trips byte for byte. `FromString` is the matching string
+  codec, encoding through `toString()`.
+
+Only the **first** `+` separates version from integrity, because an SRI's
+base64 alphabet contains `+` itself. That split lives in one internal
+module, and the strict model and hook replay both call it rather than
+re-deriving it.[^config-dependency-spec-grammar-ts]
+
 ## ConfigDependencyHooks — the opt-in replay seam
 
 A contract service with four layers: an in-process layer that dynamically
@@ -111,18 +143,27 @@ requirement — core's `ChildProcessSpawner` — is already required for `Git`.
 Every replaying layer loads the pnpmfile of the version a
 `configDependencies` entry declares — the text before the first `+` of its
 `<version>+<integrity>` value, or the whole bare `<version>` — never
-whatever `node_modules/.pnpm-config` happens to hold now. That entry is a
+whatever `node_modules/.pnpm-config` happens to hold now. Replay takes that
+text through the shared splitter but deliberately validates neither half,
+unlike `ConfigDependencySpec`: it only matches the text against installed
+manifests, store directory names and caller-supplied map keys, so an
+unparseable version finds nothing and fails closed with the ladder's own
+remediation. Adopting the strict model's rejections would newly fail
+replay on specs it resolves today — a malformed integrity it never reads,
+or a map key that is not strict SemVer. That entry is a
 symlink into the pnpm store's `links/` tree, and the store keeps every
 version ever installed on the machine, so a past ref's pnpmfile is
-recoverable with no checkout, no fetch and no registry.[^config-dependency-resolution-ts]
+usually recoverable with no checkout, no fetch and no registry.[^config-dependency-resolution-ts]
 The ladder runs in the parent for both replaying layers: the installed
 copy when its manifest carries exactly the declared version; otherwise the
 store's `links/<name>/<version>/*/node_modules/<name>` with the inner
 manifest verified rather than the path trusted, the store located from
 `.modules.yaml`, then the realpath of any `.pnpm-config` entry, then the
-conventional environment and platform locations; otherwise a typed,
-fail-closed `hooks` assembly error naming the package, the declared
-version, what is installed, the stores searched and the remediation
+conventional environment and platform locations; otherwise, under the
+subprocess layer alone, a verified fetch into the store (below); otherwise
+a typed, fail-closed `hooks` assembly error with `reason: "notInstalled"`,
+naming the package, the declared version and the ref that declared it,
+what is installed, the stores searched and the remediation
 (`pnpm add --config <name>@<version>` in a throwaway workspace). Two
 honest store copies of one version in one store fail closed too, as
 ambiguous: the hash directory is not derivable from the declared integrity
@@ -139,6 +180,38 @@ a dependency shipping none contributes nothing. The ladder reads the real disk t
 rather than the effect `FileSystem`, because the store is real even when a
 caller's filesystem is virtual; `layerFrom` is the seam for that case,
 keyed `"<name>@<version>"` to an absolute path and consulting nothing else.
+
+### The fetch rung (subprocess layer only)
+
+The store holds only what this machine installed, so the base side of a
+diff across a config-dependency bump declares a version a fresh checkout
+never installed (effected#842). The subprocess layer fetches it rather than
+failing: pnpm runs `install --frozen-lockfile` in a scratch workspace,
+removed afterwards, whose `pnpm-lock.yaml` env preamble pins the expected
+integrity, with `--store-dir` set to the first store the ladder searched
+(its parent, since pnpm appends the `v11` segment itself). The replay then
+loads the copy the scratch `.pnpm-config` entry links to, and records
+`source: "fetched"`; the next replay finds it on the store rung.[^config-dependency-fetch-ts]
+
+The integrity is settled before anything is spawned, fail-closed. Its
+sources are the inline `<version>+<integrity>` spec and the declaring
+side's lockfile preamble, read through `@effected/lockfiles`'
+`PnpmEnvLockfile.configDependencies`. Replay callers pass that side's
+lockfile as `HookReplayContext`: the working tree's from
+`WorkspaceCatalogs`, the ref's own from `WorkspaceSnapshots.at(ref)`. Two
+sources that disagree fail `integrityMismatch`. No source, a non-SRI inline
+integrity, or an unreadable lockfile fails `integrityUnavailable`. Nothing
+is fetched in any of those cases. Pinning the scratch lockfile, rather than
+hashing the result afterwards, is deliberate: the store records no
+integrity beside a `links/` entry, so nothing after the fact could check
+it, while pnpm checks the tarball against the pinned lockfile and refuses a
+mismatch even from a warm store. That was probed on pnpm 11.27.1 and
+12.6.0. Two guards cover a pnpm that did not honour the pin: the scratch
+lockfile must be byte-identical afterwards, and the linked copy must be a
+store entry for exactly that version. Any fetch failure, pnpm's own
+integrity refusal included, fails `fetchFailed` with the not-installed
+remediation. The in-process layer never fetches, because it has no
+subprocess seam.
 
 Assembly precedence is lockfile, then inline, then hook-injected, merged
 per-dependency within a catalog, with the hooks seeded by the inline
@@ -219,5 +292,12 @@ assembly errors.
 [^config-dependency-resolution-ts]: `packages/workspaces/src/internal/configDependencyResolution.ts` —
     `resolvePnpmfiles`, `lookupPnpmfiles`, the store-discovery rungs and
     the fail-closed message.
+[^config-dependency-fetch-ts]: `packages/workspaces/src/internal/configDependencyFetch.ts` —
+    the fetch rung, `expectedIntegrity`, the scratch workspace and its guards.
+[^config-dependency-spec-ts]: `packages/workspaces/src/ConfigDependencySpec.ts` —
+    `ConfigDependencySpec`, `InvalidConfigDependencySpecError`.
+[^config-dependency-spec-grammar-ts]: `packages/workspaces/src/internal/configDependencySpecGrammar.ts` —
+    `splitConfigDependencySpec` and the header comment on the two policies
+    over it.
 [^internal-catalogs-ts]: `packages/workspaces/src/internal/catalogs.ts:1-12` —
     the header comment and the four `@pnpm/catalogs.*` imports.

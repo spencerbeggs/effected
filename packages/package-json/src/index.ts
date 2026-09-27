@@ -77,7 +77,8 @@ export {
 	PackageJsonSyntaxError,
 } from "./PackageJsonFormat.js";
 export { PackageManager } from "./PackageManager.js";
-export { PackageManagerRange } from "./PackageManagerRange.js";
+export type { DevEnginePackageManagerEntry } from "./PackageManagerRange.js";
+export { InvalidPackageManagerRangeError, PackageManagerRange } from "./PackageManagerRange.js";
 export { PackageManifest } from "./PackageManifest.js";
 export {
 	InvalidPackageNameError,

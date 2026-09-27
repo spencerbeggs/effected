@@ -11,8 +11,8 @@ sources:
     resource: ../../packages/workspaces/src/WorkspaceStateSnapshot.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-20T05:41:00Z
-  body_sha256: fbf866c9f2b10d220e355de9e9f8b2fa91ada836740ff9d71a98f75e359d32c9
+  at: 2026-09-27T06:20:52Z
+  body_sha256: 21e1be218e5ce5d647b4b1376786d89244cfe9dd17c09d97c50d0af711ce8aa0
 ---
 
 # Under the no-op hooks layer, a hook-injected catalog's range bump between two refs is invisible to a snapshot diff
@@ -53,11 +53,13 @@ its subprocess twin, or `Workspaces.layerWithGitAndHooks` over
 `ConfigDependencyHooks.layerFrom` for a hermetic test) `at(ref)` replays each
 ref's `configDependencies` at the version that ref declares — resolved through
 `node_modules/.pnpm-config` when it holds that version and through the pnpm
-store otherwise, failing closed when neither does; or read from the supplied
+store otherwise, fetched verified into the store under the subprocess
+layer, failing closed when none of those answers; or read from the supplied
 map — so each side's own catalogs carry its range and
 the bump is a visible row. The store keeps every version installed on the
 machine, which is what makes a past ref's pnpmfile reachable with no
-checkout and no fetch. A consumer that must stay on the no-op layer diffs
+checkout, and the subprocess layer's fetch covers a version this machine
+never installed. A consumer that must stay on the no-op layer diffs
 the `configDependencies` block in `pnpm-workspace.yaml` directly, the only
 committed signal that a hook-injected catalog's policy might have moved.
 

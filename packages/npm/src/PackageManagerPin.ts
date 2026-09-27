@@ -254,12 +254,20 @@ export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageM
 	);
 
 	/**
+	 * The pin without its integrity: `<name>@<version>`
+	 * (`pnpm@12.6.0+sha512.<hex>` → `pnpm@12.6.0`), the bare form pnpm itself
+	 * writes to the `packageManager` field.
+	 */
+	get bare(): string {
+		return `${this.name}@${this.version.toString()}`;
+	}
+
+	/**
 	 * The canonical pin string: `<name>@<version>` or
 	 * `<name>@<version>+<integrity>`. The encode direction of
 	 * {@link PackageManagerPin.FromString} prints exactly this.
 	 */
 	override toString(): string {
-		const base = `${this.name}@${this.version.toString()}`;
-		return this.integrity === undefined ? base : `${base}+${this.integrity}`;
+		return this.integrity === undefined ? this.bare : `${this.bare}+${this.integrity}`;
 	}
 }

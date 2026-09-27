@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 7f431c02c0f8a0350c6589ab0ba24258da73ef24704c4a9ce932da598c0f2806
+  at: 2026-09-27T06:20:52Z
+  body_sha256: 68ab8d3520cae816d68b4477e423396925babeb542cbc2aff362f050c8237e4f
 ---
 
 # package-json
@@ -34,7 +34,7 @@ Module-per-concept, one class or concept per file:
 
 - `Package.ts` — the core model, the wire transform and `.extend()` story, and the reusable `@public` field codecs.
 - `PackageManifest.ts` and `LenientManifest.ts` — the two more permissive tiers; see [the tolerance ladder](#the-tolerance-ladder).
-- The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `PackageManagerRange.ts`, `Person.ts`, `Repository.ts` (holding both `Repository` and `Bugs`, since they share the shorthand-or-object encoding and the wire-provenance machinery), `Funding.ts`, `DevEngines.ts`, `Dependency.ts`.
+- The leaf concepts: `PackageName.ts`, `License.ts`, `PackageManager.ts`, `PackageManagerRange.ts` (with `InvalidPackageManagerRangeError`), `Person.ts`, `Repository.ts` (holding both `Repository` and `Bugs`, since they share the shorthand-or-object encoding and the wire-provenance machinery), `Funding.ts`, `DevEngines.ts`, `Dependency.ts`.
 - `PackageValidator.ts` — the validation service, its rule interface, the default rule set and a parameterized layer factory.
 - `PackageJsonFile.ts` — the only IO module: one service, read/write over core `FileSystem`/`Path`, plus its error tags.
 - `EntryPoint.ts` — entry-point resolution, pure and IO-free, and the one module whose input is deliberately structural rather than a `Package`. See [the entry-point resolver interface](../interfaces/package-json-entry-point.md).
@@ -95,6 +95,10 @@ The kit's package.json tolerance ladder, strictest to most permissive, spans fiv
 - **`PackageJsonFormat`** — the decode-free text path: anything syntactically JSON, no field validation at all. See [the decode-free text path interface](../interfaces/package-json-text.md).
 
 `PackageManagerRange` models pnpm's own wider reading of `packageManager` under `manage-package-manager-versions` (a semver range, not just an exact pin), as a separate class from `PackageManager` rather than one loosened field — so a caller asking "can corepack provision this?" still gets a typed answer from the strict class. It shares `PackageManager`'s one load-bearing rule: the first `+` after the `@` begins the integrity component, never semver build metadata.
+
+It reads two fields through one component validation, so they cannot drift apart. `parseResult(input)` (a sync `Result`, the primitive under `parse` and the `FromString` codec) reads a `packageManager` string. `fromDevEngineResult(engine)` (under `fromDevEngine`) reads a `devEngines.packageManager` entry, whose `name` is the manager and whose `version` holds the same `<range>[+<integrity>]` tail. An entry with no `version` names no range, so it fails; `onFail` is ignored. Every entry point fails with `InvalidPackageManagerRangeError`, whose `reason` names the component: `format` (a string with no `@`), `name`, `range` (absent, empty, or not a semver range) or `integrity` (the tail is not a corepack `<algo>.<hex>` hash). An empty range is a `range` failure, never the `*` node-semver would coerce it to. `FromString` still reports a generic `SchemaError` carrying the same message.
+
+Three renderings serve three writers. `toString()` is the value as parsed, integrity included, and is what `FromString` encodes. `bare` is `<name>@<range>` with the integrity dropped and the operator kept. `range` alone is the bare `devEngines.packageManager.version` value, so `^12.6.0+sha512.<hex>` writes back as `^12.6.0`.
 
 ## The `rest` catch-all and `.extend()` story
 

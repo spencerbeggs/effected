@@ -65,9 +65,14 @@ export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()
  *     such a file as having no lockfile.
  *   - `"noImporters"` — the located document declares no importers, so it
  *     describes no workspace. pnpm always records at least the root importer.
- *   - `"unexpectedDocuments"` — the stream carries several documents in a
- *     format that defines no document framing (yarn). Rather than silently
- *     taking the first, parsing refuses to guess.
+ *   - `"unexpectedDocuments"` — the stream carries more documents than the
+ *     format's framing defines: several in a format that defines none
+ *     (yarn), or more than the env preamble and the lockfile when reading a
+ *     pnpm env preamble. Rather than silently picking one, parsing refuses to
+ *     guess. For pnpm the limit is the env reader's alone:
+ *     `PnpmEnvLockfile` enforces at most two documents, while
+ *     `Lockfile.parse` reads the last document of a stream of any count and
+ *     never fails with this reason.
  *
  * It carries typed fields rather than a `cause`: unlike
  * {@link LockfileParseError}, there is no underlying engine failure to wrap —
@@ -85,11 +90,29 @@ export class LockfileFramingError extends Schema.TaggedError<LockfileFramingErro
 			this.reason === "noImporters"
 				? "the lockfile document declares no importers, so it describes no workspace"
 				: this.reason === "unexpectedDocuments"
-					? `expected a single YAML document but the content carries ${this.documents}`
+					? this.format === "pnpm"
+						? `expected at most two YAML documents (an env preamble and the lockfile) but the content carries ${this.documents}`
+						: `expected a single YAML document but the content carries ${this.documents}`
 					: `the content carries no lockfile document (${this.documents} YAML document(s) found)`;
 		return `Failed to parse ${this.format} lockfile: ${detail}`;
 	}
 }
+
+/**
+ * Materialize an internal {@link ParseFailure} record into the public error
+ * union — the one mapping every public fallible boundary shares, so
+ * `Lockfile.parse` and `PnpmEnvLockfile.packageManager` cannot disagree about
+ * which failure is which.
+ *
+ * @internal
+ */
+export const materializeFailure = (
+	format: LockfileFormat,
+	failure: ParseFailure,
+): LockfileParseError | LockfileFramingError =>
+	failure.stage === "framing"
+		? new LockfileFramingError({ format, reason: failure.reason, documents: failure.documents })
+		: new LockfileParseError({ format, stage: failure.stage, cause: failure.cause });
 
 const dispatch = (format: LockfileFormat, content: string): Effect.Effect<LockfileFields, ParseFailure> => {
 	switch (format) {
@@ -168,15 +191,7 @@ export class Lockfile extends Schema.Class<Lockfile>("Lockfile")({
 		options: { readonly format: LockfileFormat },
 	) {
 		const fields = yield* dispatch(options.format, content).pipe(
-			Effect.mapError((failure) =>
-				failure.stage === "framing"
-					? new LockfileFramingError({
-							format: options.format,
-							reason: failure.reason,
-							documents: failure.documents,
-						})
-					: new LockfileParseError({ format: options.format, stage: failure.stage, cause: failure.cause }),
-			),
+			Effect.mapError((failure) => materializeFailure(options.format, failure)),
 		);
 		return Lockfile.make({
 			format: options.format,

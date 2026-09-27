@@ -48,6 +48,10 @@ const isEmptyDocument = (document: unknown): boolean => document === null || doc
  * document. pnpm reads that as "no lockfile"; so do we, through the typed
  * framing failure — never by silently falling back to the preamble.
  *
+ * It takes the last document of a stream of **any** count and never fails
+ * with `unexpectedDocuments`; only {@link selectPnpmEnvDocument}, the env
+ * reader's selector, enforces the at-most-two limit.
+ *
  * @internal
  */
 export const selectPnpmDocument = (content: string): Effect.Effect<SelectedDocument, ParseFailure> =>
@@ -84,5 +88,47 @@ export const selectSoleDocument = (content: string): Effect.Effect<SelectedDocum
 		if (documents.length === 0 || isEmptyDocument(document)) {
 			return yield* Effect.fail(framingFailure("noLockfileDocument", documents.length));
 		}
+		return { document, documents: documents.length };
+	});
+
+/**
+ * The number of documents pnpm's env-lockfile writer can compose: the env
+ * preamble and the main lockfile. See {@link selectPnpmEnvDocument}.
+ *
+ * @internal
+ */
+const MAX_PNPM_DOCUMENTS = 2;
+
+/**
+ * Select the env ("preamble") document from a `pnpm-lock.yaml` YAML stream,
+ * or `undefined` when the stream carries none.
+ *
+ * @remarks
+ * The same position rule as {@link selectPnpmDocument}, read from the other
+ * end: pnpm's `writeEnvLockfile` composes `${env}---${main}`, so the preamble
+ * is the **first** of exactly two documents. A single-document stream has no
+ * preamble — that is how pnpm writes a lockfile for a workspace that declares
+ * neither `configDependencies` nor `devEngines.packageManager` — and neither
+ * does an empty one. An empty first document is no preamble either: there is
+ * nothing in it to read.
+ *
+ * A stream carrying **more** than two documents is outside the writer
+ * contract, so no position identifies the preamble in it. Rather than guess —
+ * this selection feeds integrity verification, where a guess is a trust
+ * decision — it fails through the typed framing channel. That limit is this
+ * selector's alone: {@link selectPnpmDocument}, behind `Lockfile.parse`, takes
+ * the last document of a stream of any count.
+ *
+ * @internal
+ */
+export const selectPnpmEnvDocument = (content: string): Effect.Effect<SelectedDocument | undefined, ParseFailure> =>
+	Effect.gen(function* () {
+		const documents = yield* Yaml.parseAll(content).pipe(Effect.mapError(syntaxFailure));
+		if (documents.length > MAX_PNPM_DOCUMENTS) {
+			return yield* Effect.fail(framingFailure("unexpectedDocuments", documents.length));
+		}
+		if (documents.length < MAX_PNPM_DOCUMENTS) return undefined;
+		const document = documents.at(0);
+		if (isEmptyDocument(document)) return undefined;
 		return { document, documents: documents.length };
 	});

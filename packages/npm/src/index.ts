@@ -44,6 +44,7 @@ export {
 	type IntegrityHashBrand,
 	InvalidIntegrityHashError,
 	InvalidSriIntegrityHashError,
+	SriIntegrityHash,
 	isValidIntegrityHash,
 } from "./IntegrityHash.js";
 export {

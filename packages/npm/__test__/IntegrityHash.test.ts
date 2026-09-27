@@ -7,6 +7,7 @@ import {
 	InvalidIntegrityHashError,
 	InvalidSriIntegrityHashError,
 	PackageManagerPin,
+	SriIntegrityHash,
 } from "../src/index.js";
 
 describe("IntegrityHash schema", () => {
@@ -156,6 +157,61 @@ describe("CorepackIntegrityHash", () => {
 	});
 });
 
+describe("SriIntegrityHash", () => {
+	const decode = Schema.decodeUnknownEffect(SriIntegrityHash);
+
+	it.effect("accepts every SRI algorithm, including base64 carrying + and /", () =>
+		Effect.gen(function* () {
+			for (const good of [
+				"sha512-m35mtvgU4nbE8ZHd4EFqKu5jJeQY0gPUYHzKTno57JT/QeHzM9RRLNQsIcG0npsFYBxJfJ1tC/NH4zEWc2gdxQ==",
+				"sha512-6GbxZtliXuGHKFzJGFkqqNAbZzErb42XvCLdnr29KVR3OwvwU+D1MxNPpfzKOkde/TlM/KLsciuNqqmCSS/Yag==",
+				"sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC",
+				"sha256-tsPuRLBpQ2xk6+8HB4vP0Wq1v0EYlv6q6qz1oqTgU5U=",
+				"sha1-rAaRyuqI5+rUBqc0B+HHOQ9hZhA=",
+			]) {
+				assert.strictEqual(yield* decode(good), good, good);
+			}
+		}),
+	);
+
+	it.effect("rejects the two other forms the IntegrityHash brand accepts", () =>
+		Effect.gen(function* () {
+			for (const wrongForm of ["sha512.deadbeef01", "10c0/deadbeef0123"]) {
+				// The control: the unrestricted brand DOES accept it, so the failure
+				// below is the restriction firing and not a malformed fixture.
+				assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)(wrongForm), wrongForm, wrongForm);
+				const error = yield* Effect.flip(decode(wrongForm));
+				assert.strictEqual(error._tag, "SchemaError", wrongForm);
+			}
+		}),
+	);
+
+	it.effect("rejects malformed SRI-shaped hashes", () =>
+		Effect.gen(function* () {
+			// sha224 is not an SRI algorithm; md5 is unknown; empty digest; a
+			// space in the base64; empty string.
+			for (const bad of ["sha224-3q2+7w==", "md5-3q2+7w==", "sha512-", "sha512-not base64", ""]) {
+				const error = yield* Effect.flip(decode(bad));
+				assert.strictEqual(error._tag, "SchemaError", bad);
+			}
+		}),
+	);
+
+	it.effect("decodes to the same brand as the unrestricted schema — no second brand", () =>
+		Effect.gen(function* () {
+			const input = "sha256-tsPuRLBpQ2xk6+8HB4vP0Wq1v0EYlv6q6qz1oqTgU5U=";
+			const restricted = yield* decode(input);
+			const wide: typeof IntegrityHash.Type = restricted;
+			assert.strictEqual(wide, yield* Schema.decodeUnknownEffect(IntegrityHash)(input));
+		}),
+	);
+
+	it("is a distinct schema from both the unrestricted brand and the corepack narrowing", () => {
+		assert.notStrictEqual<unknown>(SriIntegrityHash, IntegrityHash);
+		assert.notStrictEqual<unknown>(SriIntegrityHash, CorepackIntegrityHash);
+	});
+});
+
 // The SRI → corepack bridge: npm's registry speaks `sha512-<base64>`, a
 // `packageManager` pin speaks `sha512.<hex>`, and this codec is the one
 // sanctioned conversion between them. The fixture is a REAL pair — both
@@ -279,6 +335,18 @@ describe("CorepackIntegrityHash.FromSri", () => {
 				const error = yield* Effect.flip(encode(bad));
 				assert.strictEqual(error._tag, "SchemaError", bad);
 			}
+		}),
+	);
+});
+
+describe("SriIntegrityHash validates shape, not the digest", () => {
+	it.effect("accepts a digest CorepackIntegrityHash.fromSri then rejects", () =>
+		Effect.gen(function* () {
+			const value = "sha512-oldHash==";
+			const decoded = Schema.decodeUnknownExit(SriIntegrityHash)(value);
+			assert.isTrue(decoded._tag === "Success", "shape-valid SRI is accepted");
+			const converted = yield* Effect.flip(CorepackIntegrityHash.fromSri(value));
+			assert.strictEqual(converted._tag, "InvalidSriIntegrityHashError");
 		}),
 	);
 });
