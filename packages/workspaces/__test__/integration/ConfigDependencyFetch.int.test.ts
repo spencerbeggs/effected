@@ -80,7 +80,12 @@ const lockfileRecording = (version: string, integrity: string): string =>
 	].join("\n");
 
 /** The fake pnpm's runs so far, in order. */
-const pnpmRuns = (): ReadonlyArray<{ readonly argv: ReadonlyArray<string>; readonly lockfile: string }> =>
+const pnpmRuns = (): ReadonlyArray<{
+	readonly argv: ReadonlyArray<string>;
+	readonly lockfile: string;
+	readonly workspaceYaml: string;
+	readonly npmrc: string | null;
+}> =>
 	existsSync(pnpmLog)
 		? readFileSync(pnpmLog, "utf8")
 				.split("\n")
@@ -150,12 +155,16 @@ beforeEach(() => {
 	// and no pnpm runs yet.
 	rmSync(join(store, "links"), { recursive: true, force: true });
 	rmSync(pnpmLog, { force: true });
+	// No `.npmrc` in the checkout, so the fake pnpm refuses a scratch that has one.
+	rmSync(join(root, ".npmrc"), { force: true });
+	process.env.FAKE_PNPM_EXPECT_NPMRC = "";
 });
 
 afterAll(() => {
 	process.env.PATH = savedPath;
 	delete process.env.FAKE_PNPM_LOG;
 	delete process.env.FAKE_PNPM_PUBLISHED;
+	delete process.env.FAKE_PNPM_EXPECT_NPMRC;
 	for (const dir of [root, dirname(store), dirname(binDir)]) {
 		if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
 	}
@@ -199,8 +208,50 @@ describe("effected#842 — the base side of a config-dependency bump", () => {
 			// The scratch workspace is gone.
 			const scratch = run?.argv[run.argv.indexOf("--dir") + 1] ?? "";
 			assert.isFalse(existsSync(scratch));
+			// The checkout has no `.npmrc` and no registry keys, so none are invented.
+			assert.isNull(run?.npmrc);
+			assert.notInclude(run?.workspaceYaml, "registr");
 		}).pipe(Effect.provide(Subprocess())),
 	);
+
+	it.effect("the fetch inherits the workspace's .npmrc verbatim and its registry keys", () => {
+		// A scoped registry with an env-var token and a default-registry mirror:
+		// the fetch must reach the registries `pnpm install` in the checkout would.
+		// A literal `${NPM_TOKEN}` reference, spelled so it reads as npmrc text, not a template.
+		const tokenRef = "$".concat("{NPM_TOKEN}");
+		const npmrc = `@acme:registry=https://npm.acme.example/\n//npm.acme.example/:_authToken=${tokenRef}\n`;
+		const yamlWithRegistries = [
+			workspaceYaml("0.11.2"),
+			"registry: https://mirror.example/",
+			"registries:",
+			"  '@acme': https://npm.acme.example/",
+			"",
+		].join("\n");
+		return Effect.gen(function* () {
+			writeFileSync(join(root, ".npmrc"), npmrc);
+			writeFileSync(join(root, "pnpm-workspace.yaml"), yamlWithRegistries);
+			process.env.FAKE_PNPM_EXPECT_NPMRC = npmrc;
+			const hooks = yield* ConfigDependencyHooks;
+			const lockfile = lockfileRecording("0.11.1", BASE_SRI);
+			const result = yield* hooks.inject(root, { [NAME]: "0.11.1" }, {}, undefined, { lockfile, ref: "base" });
+			assert.deepStrictEqual(result.replays, { [NAME]: { version: "0.11.1", source: "fetched" } });
+			const [run] = pnpmRuns();
+			// Byte for byte: the `${NPM_TOKEN}` reference is pnpm's to expand.
+			assert.strictEqual(run?.npmrc, npmrc);
+			assert.include(run?.workspaceYaml, 'registry: "https://mirror.example/"');
+			assert.include(run?.workspaceYaml, 'registries:\n  "@acme": "https://npm.acme.example/"');
+			// The copy goes with the scratch.
+			assert.isFalse(existsSync(run?.argv[run.argv.indexOf("--dir") + 1] ?? ""));
+		}).pipe(
+			Effect.ensuring(
+				Effect.sync(() => {
+					rmSync(join(root, ".npmrc"), { force: true });
+					writeFileSync(join(root, "pnpm-workspace.yaml"), workspaceYaml("0.11.2"));
+				}),
+			),
+			Effect.provide(ConfigDependencyHooks.layerSubprocess.pipe(Layer.provide(NodeServices.layer))),
+		);
+	});
 
 	it.effect("the replay records that the fetch rung answered, and the next replay finds it in the store", () =>
 		Effect.gen(function* () {

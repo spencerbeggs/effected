@@ -28,6 +28,7 @@ import { ConfigDependencyHooks, NoPeerDependencyRules } from "./ConfigDependency
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
 import { importerVersionsOf } from "./internal/importerVersions.js";
+import { findLayerRoot } from "./internal/layerRoot.js";
 import { configDependenciesOf, inlinePeerDependencyRules } from "./internal/workspaceYaml.js";
 import type { LockfileReadFailure } from "./LockfileReader.js";
 import { LockfileReader } from "./LockfileReader.js";
@@ -553,6 +554,21 @@ export interface WorkspaceCatalogsOptions {
 	 * @defaultValue `process.cwd()`, read lazily on first use.
 	 */
 	readonly cwd?: string;
+	/**
+	 * A ceiling for the root ascent from `cwd`, passed straight through to the
+	 * `stopAt` of {@link WorkspaceRoot}'s `find`.
+	 *
+	 * @remarks
+	 * Inclusive, and resolved to an absolute path exactly as `cwd` is. When no
+	 * root is found at or below the ceiling, catalog assembly fails with
+	 * {@link WorkspaceRootNotFoundError} carrying the resolved `stopAt` rather
+	 * than adopting an enclosing directory's workspace. Pass the same value as
+	 * {@link WorkspaceDiscoveryOptions.stopAt} so every service agrees on the
+	 * root; the `Workspaces.*` composites forward one `stopAt` to all of them.
+	 *
+	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
+	 */
+	readonly stopAt?: string | undefined;
 }
 
 /**
@@ -628,7 +644,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 			// replay — so the config-dependency hooks (which execute arbitrary code)
 			// run exactly once, and both outputs share the same memo.
 			const assemble: Effect.Effect<Assembled, CatalogAssemblyFailure> = Effect.gen(function* () {
-				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
+				const root = yield* findLayerRoot(roots, options);
 
 				// The lockfile is a RECORD of what was installed; an absent or
 				// unreadable one is not a catalog failure, it just contributes nothing.

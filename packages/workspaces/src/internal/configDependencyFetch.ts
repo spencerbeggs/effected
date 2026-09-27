@@ -19,17 +19,33 @@
 // failure when the two disagree or neither exists. Nothing is ever fetched
 // unverified.
 //
+// The declaring workspace's registry config comes along. pnpm reads a
+// workspace's registry and auth from `<root>/.npmrc` and its `registry` /
+// `registries` keys from `<root>/pnpm-workspace.yaml`, and a scratch under
+// the OS temp dir sees neither, so a config dependency resolved through a
+// scoped registry, a mirror or repo-level auth would fetch from the public
+// registry and fail. The rung copies `<root>/.npmrc` into the scratch as-is
+// (never read, never logged; `${VAR}` references stay verbatim for pnpm to
+// expand) and carries those two yaml keys into the scratch
+// `pnpm-workspace.yaml` (probed on pnpm 11.27.1 and 12.6.0: both keys are
+// read from the workspace yaml; `npmrcAuthFile` is ignored there and auth
+// lives only in `.npmrc`). `root` is the CURRENT workspace root for both
+// sides of a diff: the base ref's `.npmrc` is not read through git, since
+// registry config describes where this checkout fetches from, not what a ref
+// declared.
+//
 // Runtime-coupled by design, like the rest of the ladder: the scratch
 // workspace and the store are real directories even when a caller's
 // `FileSystem` is virtual, so this reads and writes through `node:fs`.
 
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { Run } from "@effected/commands";
 import type { ConfigDependencyLock, LockfileFramingError, LockfileParseError } from "@effected/lockfiles";
 import { IntegrityHash } from "@effected/npm";
-import { Duration, Effect } from "effect";
+import { Yaml } from "@effected/yaml";
+import { Duration, Effect, Predicate } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import type { HookReplayContext } from "../ConfigDependencyHooks.js";
 import { carries, manifestVersion, messageOf, sideLabel } from "./configDependencyShared.js";
@@ -47,6 +63,11 @@ export type RecordedLocks = Effect.Effect<
 
 /** One config dependency the ladder could not find, handed to the fetch rung. */
 export interface FetchRequest {
+	/**
+	 * The current workspace root, whose `.npmrc` and registry keys the scratch
+	 * workspace inherits — for both sides of a diff.
+	 */
+	readonly root: string;
 	/** The config dependency's name, already `..`-checked. */
 	readonly name: string;
 	/** The declared version. */
@@ -159,12 +180,50 @@ export const expectedIntegrity = (
 	});
 
 /**
- * The scratch workspace's `pnpm-workspace.yaml`. Every scalar is a
+ * The registry settings pnpm reads from a `pnpm-workspace.yaml`: the default
+ * `registry` and the per-scope `registries` map. Anything that is not a string
+ * is dropped, as pnpm would not use it.
+ */
+export interface RegistrySettings {
+	readonly registry?: string;
+	readonly registries: Readonly<Record<string, string>>;
+}
+
+/** The {@link RegistrySettings} of a parsed `pnpm-workspace.yaml` document. */
+export const registrySettingsOf = (document: unknown): RegistrySettings => {
+	if (!Predicate.isObject(document)) return { registries: {} };
+	const registries: Record<string, string> = {};
+	if (Predicate.isObject(document.registries)) {
+		for (const [scope, url] of Object.entries(document.registries)) {
+			if (typeof url === "string") registries[scope] = url;
+		}
+	}
+	return typeof document.registry === "string" ? { registry: document.registry, registries } : { registries };
+};
+
+/**
+ * The scratch workspace's `pnpm-workspace.yaml`: the one config dependency,
+ * plus the declaring workspace's registry settings. Every key and scalar is a
  * JSON-quoted string, which YAML reads verbatim, so no declared text can
  * change the document's structure.
  */
-const scratchWorkspaceYaml = (name: string, version: string): string =>
-	`configDependencies:\n  ${JSON.stringify(name)}: ${JSON.stringify(version)}\n`;
+export const scratchWorkspaceYaml = (
+	name: string,
+	version: string,
+	settings: RegistrySettings = { registries: {} },
+): string => {
+	const lines = ["configDependencies:", `  ${JSON.stringify(name)}: ${JSON.stringify(version)}`];
+	if (settings.registry !== undefined) lines.push(`registry: ${JSON.stringify(settings.registry)}`);
+	const scopes = Object.entries(settings.registries);
+	if (scopes.length > 0) {
+		lines.push("registries:");
+		for (const [scope, url] of scopes) lines.push(`  ${JSON.stringify(scope)}: ${JSON.stringify(url)}`);
+	}
+	return `${lines.join("\n")}\n`;
+};
+
+/** Whether `error` is a node filesystem "no such file" failure. */
+const isNotFound = (error: unknown): boolean => Predicate.isObject(error) && error.code === "ENOENT";
 
 /**
  * The scratch workspace's `pnpm-lock.yaml`: the env preamble pnpm 11 and 12
@@ -244,14 +303,39 @@ export const makeFetchConfigDependency =
 					Effect.tryPromise({ try: run, catch: (cause) => failed(`${what} failed: ${messageOf(cause)}`, cause) });
 
 				const integrity = yield* expectedIntegrity(request);
+				// The declaring workspace's registry keys, read before anything is
+				// spawned. An absent yaml carries none; an unparseable one fails,
+				// since fetching past it could reach a registry the workspace
+				// never configured.
+				const rootYaml = yield* io("reading the workspace pnpm-workspace.yaml", () =>
+					readFile(join(request.root, "pnpm-workspace.yaml"), "utf8").catch((error: unknown) => {
+						if (isNotFound(error)) return undefined;
+						throw error;
+					}),
+				);
+				const settings =
+					rootYaml === undefined
+						? registrySettingsOf(undefined)
+						: registrySettingsOf(
+								yield* Yaml.parse(rootYaml).pipe(
+									Effect.mapError((cause) =>
+										failed(`reading the workspace pnpm-workspace.yaml failed: ${messageOf(cause)}`, cause),
+									),
+								),
+							);
 				const scratch = yield* Effect.acquireRelease(
 					io("creating a scratch workspace", () => mkdtemp(join(tmpdir(), "effected-config-dependency-"))),
 					(dir) => Effect.promise(() => rm(dir, { recursive: true, force: true }).catch(() => undefined)),
 				);
 				const lockfile = scratchLockfile(name, version, integrity);
 				yield* io("writing the scratch workspace", async () => {
-					await writeFile(join(scratch, "pnpm-workspace.yaml"), scratchWorkspaceYaml(name, version));
+					await writeFile(join(scratch, "pnpm-workspace.yaml"), scratchWorkspaceYaml(name, version, settings));
 					await writeFile(join(scratch, "pnpm-lock.yaml"), lockfile);
+					// Copied as-is, never read: it may carry auth. The scratch's release
+					// removes it with the rest of the directory.
+					await copyFile(join(request.root, ".npmrc"), join(scratch, ".npmrc")).catch((error: unknown) => {
+						if (!isNotFound(error)) throw error;
+					});
 				});
 
 				const command = ChildProcess.make("pnpm", fetchArgs(scratch, request.stores), { cwd: scratch });

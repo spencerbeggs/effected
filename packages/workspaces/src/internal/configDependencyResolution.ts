@@ -406,7 +406,7 @@ const resolveDirectory = (
 		};
 		if (options.fetch === undefined) return yield* Effect.fail(notInstalled(Option.none()));
 		const fetched = yield* options
-			.fetch({ name, version: declared, spec: entry.spec, stores: searched, side, locks })
+			.fetch({ root, name, version: declared, spec: entry.spec, stores: searched, side, locks })
 			.pipe(Effect.mapError((failure) => notInstalled(Option.some(failure))));
 		return { dir: fetched, source: "fetched" };
 	});

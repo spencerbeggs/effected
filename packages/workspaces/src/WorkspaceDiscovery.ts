@@ -13,6 +13,7 @@ import { DependencyResolutionError, WorkspaceResolver } from "@effected/npm";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
 import type { EnumerationFailureKind } from "./internal/enumerate.js";
 import { enumerate } from "./internal/enumerate.js";
+import { findLayerRoot } from "./internal/layerRoot.js";
 import { readPatterns } from "./internal/patterns.js";
 import { WorkspacePackage } from "./WorkspacePackage.js";
 import type { WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
@@ -166,6 +167,11 @@ export interface WorkspaceDiscoveryOptions {
 	 * `infoIn`, `listPackagesIn` and `refreshIn` resolve from an arbitrary
 	 * directory the caller names, which a single layer-level ceiling cannot
 	 * sensibly bound, so they ascend unbounded as before.
+	 *
+	 * `LockfileReader`, `WorkspaceCatalogs` and `WorkspaceSnapshots` each
+	 * take the same option; give them the same
+	 * value when wiring by hand, or let a `Workspaces.*` composite forward one
+	 * `stopAt` to all of them, so no service adopts a root another refused.
 	 *
 	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
 	 */
@@ -490,12 +496,9 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				{ readonly info: WorkspaceInfo; readonly packages: ReadonlyArray<WorkspacePackage> },
 				WorkspaceDiscoveryFailure
 			> = Effect.gen(function* () {
-				// `Effect.suspend` so the ambient cwd is read at first use, not at
-				// layer construction.
-				const stopAt = options?.stopAt;
-				const root = yield* Effect.suspend(() =>
-					roots.find(options?.cwd ?? process.cwd(), stopAt === undefined ? undefined : { stopAt }),
-				);
+				// The ambient cwd is read at first use, not at layer construction
+				// (`findLayerRoot` suspends).
+				const root = yield* findLayerRoot(roots, options);
 				return yield* discoverAt(root);
 			});
 

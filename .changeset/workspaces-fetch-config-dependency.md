@@ -14,6 +14,7 @@ The fetch is verified, fail-closed:
 * The integrity comes from the inline `<version>+<integrity>` spec when present, else from that side's `pnpm-lock.yaml` env preamble. `WorkspaceSnapshots.at(ref)` reads the lockfile at the ref, so the base side is checked against the base side's record.
 * Two sources that disagree fail with `reason: "integrityMismatch"`. No source fails with `reason: "integrityUnavailable"`. Nothing is fetched in either case.
 * A failed fetch fails with `reason: "fetchFailed"`, keeping the `pnpm add --config` remediation.
+* The scratch workspace fetches through the workspace's own registry config. The root `.npmrc` (scoped registries, mirrors, auth) is copied in as-is, with `${NPM_TOKEN}`-style references left for pnpm to expand, and removed with the scratch. The root `pnpm-workspace.yaml`'s `registry` and `registries` keys are carried over too. Both come from the current checkout for either side of a diff; a base ref's `.npmrc` is not read through git.
 
 The fetch writes to the first store the ladder searched, so the next replay finds the version there. `HookReplaySource` gains `"fetched"`, recorded in `replays[name].source` when the fetch rung answered.
 

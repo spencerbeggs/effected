@@ -25,8 +25,8 @@ sources:
     resource: ../../packages/workspaces/src/internal/configDependencySpecGrammar.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T06:20:52Z
-  body_sha256: 3959e7cb7e2e7f122a569908cfe0de3dc2545a94fd2a44b2c60def439e6c1fc0
+  at: 2026-09-27T07:39:04Z
+  body_sha256: 6448337dd46b05bfe8ef28a056528d838dca14189442241ff9c962a8ad0dac8a
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
@@ -212,6 +212,21 @@ store entry for exactly that version. Any fetch failure, pnpm's own
 integrity refusal included, fails `fetchFailed` with the not-installed
 remediation. The in-process layer never fetches, because it has no
 subprocess seam.
+
+The scratch fetches through the declaring workspace's registry config, since a
+scratch under the OS temp dir would otherwise see only user-level config and a
+config dependency behind a scoped registry, a mirror or repo-level auth would
+fail `fetchFailed` against the public registry. `<root>/.npmrc` is copied in
+as-is, never read or logged, with `${VAR}` references left for pnpm to expand,
+and it is removed with the scratch. The root `pnpm-workspace.yaml`'s `registry`
+and `registries` keys are carried into the scratch's own; those are the only
+registry keys pnpm 11.27.1 and 12.6.0 read from the workspace yaml, since a
+flat `@scope:registry` key there is ignored and `npmrcAuthFile` is refused at
+project level. `root` is the current checkout for both sides of a diff: a base
+ref's `.npmrc` is not read through git, because registry config says where
+this machine fetches from, not what a ref declared. Relative paths inside the
+`.npmrc`, a `cafile=./ca.pem` for instance, resolve against the scratch and
+not the root.[^config-dependency-fetch-ts]
 
 Assembly precedence is lockfile, then inline, then hook-injected, merged
 per-dependency within a catalog, with the hooks seeded by the inline

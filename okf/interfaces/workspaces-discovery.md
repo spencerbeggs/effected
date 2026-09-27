@@ -20,10 +20,14 @@ sources:
     resource: ../../packages/workspaces/src/internal/enumerate.ts
   - id: traverse-ts
     resource: ../../packages/workspaces/src/internal/traverse.ts
+  - id: workspaces-ts
+    resource: ../../packages/workspaces/src/Workspaces.ts
+  - id: layer-root-ts
+    resource: ../../packages/workspaces/src/internal/layerRoot.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T07:13:25Z
-  body_sha256: 5b4833fd20e742b35d839420f3b3b28892d09f8767b84237eb305f0a4e462014
+  at: 2026-09-27T07:39:04Z
+  body_sha256: a27b563e0ddaaa1ac8631803bf0484ab41c33e6309c2208502b5bbf40612789b
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -140,15 +144,26 @@ to prevent. An unmarked ceiling fails typed with `stopAt` recorded on
 above me" from "none below my ceiling".[^workspace-root-ts] The sync facade's
 `findWorkspaceRootSync` has not been given the same bounds.
 
-`WorkspaceDiscoveryOptions.stopAt` carries the same ceiling into the
-discovery layer, but only onto the layer-bound ascent from `cwd`: pass
-`stopAt: cwd` and a checkout nested under someone else's workspace fails
-`WorkspaceRootNotFoundError` instead of adopting that workspace's members,
-while a checkout that is itself a root still resolves. The per-call
-`infoIn` / `listPackagesIn` / `refreshIn` stay unbounded, because one
-layer-level ceiling does not fit an arbitrary caller-named directory. The
-default is no ceiling, and the composite `WorkspacesOptions` does not carry
-it yet.[^workspace-discovery-ts]
+Every service that resolves a root from its layer options takes the same
+ceiling as `stopAt`: `WorkspaceDiscovery`, `LockfileReader`,
+`WorkspaceCatalogs` and `WorkspaceSnapshots`. All four resolve through ONE
+lookup, so they cannot disagree about which root a layer's options
+name.[^layer-root-ts] Pass `stopAt: cwd` and a checkout nested under someone
+else's workspace fails `WorkspaceRootNotFoundError` instead of adopting that
+workspace, while a checkout that is itself a root still resolves. Discovery's
+per-call `infoIn` / `listPackagesIn` / `refreshIn` stay unbounded, because
+one layer-level ceiling does not fit an arbitrary caller-named
+directory.[^workspace-discovery-ts]
+
+`WorkspacesOptions` extends the per-service option shapes and every
+`Workspaces.*` composite hands one options object to every service it builds,
+so a composite given `stopAt` fails every root-resolving read consistently.
+A hand-built graph that bounds discovery but not the lockfile, catalog or
+snapshot service gets a split result instead: discovery refuses the enclosing
+workspace while the others adopt it. Give every service the same value, or
+use a composite. `Workspaces.localExecLayer` takes `stopAt` too, and a refused
+root reads as its ordinary `None`. The default is no ceiling
+anywhere.[^workspaces-ts]
 
 The not-found message words the manifest marker as `package.json with a
 "workspaces" field`, since a bare `package.json` reads as missing a file a
@@ -257,5 +272,9 @@ branches on and proceeds past.
     `PackageManagerName`, `DetectedPackageManager`, `PackageManagerDetector`.
 [^enumerate-ts]: `packages/workspaces/src/internal/enumerate.ts` — the
     compiled-pattern enumerator.
+[^workspaces-ts]: `packages/workspaces/src/Workspaces.ts` — `WorkspacesOptions`,
+    the composites' one-options-object forwarding, and `localExecLayer`.
+[^layer-root-ts]: `packages/workspaces/src/internal/layerRoot.ts` — the one
+    layer-bound root lookup the four root-resolving services share.
 [^traverse-ts]: `packages/workspaces/src/internal/traverse.ts` — the shared
     worklist traversal.

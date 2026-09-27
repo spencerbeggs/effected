@@ -104,10 +104,13 @@ export const writeModulesYaml = (root: string, store: string): void => {
  * `<store-dir>/v11/links/<name>/<version>/<hash>/node_modules/<name>`, with a
  * pnpmfile injecting `hooked-dep` at `^<version>`, and links the scratch
  * workspace's `.pnpm-config/<name>` to it. Every run appends
- * `{ argv, lockfile }` as a JSON line to `FAKE_PNPM_LOG`.
+ * `{ argv, lockfile, workspaceYaml, npmrc }` (`npmrc` null when the scratch
+ * has none) as a JSON line to `FAKE_PNPM_LOG`. When `FAKE_PNPM_EXPECT_NPMRC` is
+ * set, it refuses unless the scratch `.npmrc` holds exactly that text (the
+ * empty string meaning "no `.npmrc` at all").
  */
 const FAKE_PNPM = `#!/usr/bin/env node
-const { appendFileSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } = require("node:fs");
+const { appendFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } = require("node:fs");
 const { dirname, join } = require("node:path");
 const argv = process.argv.slice(2);
 const option = (flag) => {
@@ -116,7 +119,18 @@ const option = (flag) => {
 };
 const scratch = option("--dir");
 const lockfile = readFileSync(join(scratch, "pnpm-lock.yaml"), "utf8");
-appendFileSync(process.env.FAKE_PNPM_LOG, JSON.stringify({ argv, lockfile }) + "\\n");
+const workspaceYaml = readFileSync(join(scratch, "pnpm-workspace.yaml"), "utf8");
+const npmrcPath = join(scratch, ".npmrc");
+const npmrc = existsSync(npmrcPath) ? readFileSync(npmrcPath, "utf8") : null;
+appendFileSync(process.env.FAKE_PNPM_LOG, JSON.stringify({ argv, lockfile, workspaceYaml, npmrc }) + "\\n");
+// Real pnpm reads the scratch's .npmrc for registry and auth: a declaring
+// workspace with one must hand it over, byte for byte, and one without must
+// not invent one.
+const expected = process.env.FAKE_PNPM_EXPECT_NPMRC;
+if (expected !== undefined && npmrc !== (expected === "" ? null : expected)) {
+	process.stderr.write("FAKE_PNPM_NPMRC scratch .npmrc is " + JSON.stringify(npmrc) + ", expected " + JSON.stringify(expected || null) + "\\n");
+	process.exit(1);
+}
 const key = JSON.parse(/^  ("[^"]+"):$/m.exec(lockfile)[1]);
 const integrity = JSON.parse(/resolution: \\{integrity: ("[^"]+")\\}/.exec(lockfile)[1]);
 const at = key.lastIndexOf("@");

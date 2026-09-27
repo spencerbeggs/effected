@@ -22,10 +22,13 @@ import { Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { ChangeDetector } from "./ChangeDetector.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
+import type { LockfileReaderOptions } from "./LockfileReader.js";
 import { LockfileReader } from "./LockfileReader.js";
 import type { DetectedPackageManager } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
+import type { WorkspaceCatalogsOptions } from "./WorkspaceCatalogs.js";
 import { WorkspaceCatalogs } from "./WorkspaceCatalogs.js";
+import type { WorkspaceDiscoveryOptions } from "./WorkspaceDiscovery.js";
 import { WorkspaceDiscovery } from "./WorkspaceDiscovery.js";
 import { WorkspaceRoot } from "./WorkspaceRoot.js";
 import type { WorkspaceSnapshotsOptions } from "./WorkspaceSnapshots.js";
@@ -34,9 +37,17 @@ import { WorkspaceSnapshots } from "./WorkspaceSnapshots.js";
 /**
  * Options shared by the composite layers.
  *
+ * @remarks
+ * Derived from the option shapes of the services a composite builds —
+ * {@link WorkspaceDiscoveryOptions}, {@link LockfileReaderOptions} and
+ * {@link WorkspaceCatalogsOptions} — and handed to each of them unchanged, so a
+ * root-resolving option one service grows cannot silently stop at the
+ * composite. `cwd` and `stopAt` are re-declared here only to document them as
+ * the one concern they are across the composite.
+ *
  * @public
  */
-export interface WorkspacesOptions {
+export interface WorkspacesOptions extends WorkspaceDiscoveryOptions, LockfileReaderOptions, WorkspaceCatalogsOptions {
 	/**
 	 * The directory every root-consuming service resolves the workspace root
 	 * from — one explicit concern, applied uniformly.
@@ -44,8 +55,23 @@ export interface WorkspacesOptions {
 	 * @defaultValue `process.cwd()`, read lazily on first use.
 	 */
 	readonly cwd?: string;
-	/** Descent cap for segment-crossing `packages:` patterns. Defaults to 32. */
-	readonly maxDepth?: number;
+	/**
+	 * A ceiling for the root ascent from `cwd`, forwarded to EVERY
+	 * root-resolving service the composite builds — {@link WorkspaceDiscovery},
+	 * {@link LockfileReader}, {@link WorkspaceCatalogs} and, on the git
+	 * composites, {@link WorkspaceSnapshots}.
+	 *
+	 * @remarks
+	 * Inclusive and resolved to an absolute path, as {@link WorkspaceRoot}'s
+	 * `find` does. Pass `stopAt: cwd` for a checkout nested inside someone
+	 * else's workspace: every service then fails with
+	 * {@link WorkspaceRootNotFoundError} consistently, instead of discovery
+	 * refusing the enclosing workspace while the lockfile and catalog reads
+	 * adopt it. A checkout that is itself a workspace root still resolves.
+	 *
+	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
+	 */
+	readonly stopAt?: string | undefined;
 }
 
 /**
@@ -218,6 +244,7 @@ const resolveManifest: (
 // Implementation of Workspaces.localExecLayer; the public contract lives on the static.
 const localExecLayer = (options?: {
 	readonly cwd?: string;
+	readonly stopAt?: string | undefined;
 }): Layer.Layer<LocalExec, never, PackageManagerDetector | WorkspaceRoot> =>
 	Layer.effect(
 		LocalExec,
@@ -231,8 +258,13 @@ const localExecLayer = (options?: {
 				// between provide and first use is honoured. The house `{ cwd }`
 				// convention, applied here too.
 				const cwd = options?.cwd ?? globalThis.process?.cwd?.() ?? "/";
+				const stopAt = options?.stopAt;
 
-				const root = yield* roots.find(cwd).pipe(Effect.asSome, Effect.orElseSucceed(Option.none<string>));
+				// A ceiling that finds no root is the ordinary None case, like any
+				// other absent root: nothing project-local to run here.
+				const root = yield* roots
+					.find(cwd, stopAt === undefined ? undefined : { stopAt })
+					.pipe(Effect.asSome, Effect.orElseSucceed(Option.none<string>));
 				if (Option.isNone(root)) return Option.none<ExecContext>();
 
 				const detected = yield* detector.detect(root.value).pipe(
@@ -497,7 +529,10 @@ export class Workspaces {
 	 * verbatim.
 	 *
 	 * `directory` is the resolved **workspace root**, not the caller's cwd: a
-	 * project-local launcher has to run where the workspace is.
+	 * project-local launcher has to run where the workspace is. `stopAt` caps
+	 * that ascent exactly as {@link WorkspacesOptions.stopAt} does, and a
+	 * ceiling with no root at or below it is the same `Option.none()` as no
+	 * root at all.
 	 *
 	 * A consumer with no monorepo never needs this layer, and therefore never
 	 * installs this package — `LocalExec.layerNone` and `LocalExec.layerFor`

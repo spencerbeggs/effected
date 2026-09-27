@@ -23,6 +23,7 @@ import { Context, Duration, Effect, Exit, Layer, Option } from "effect";
 import type { HookReplay } from "./ConfigDependencyHooks.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import { importerVersionsOf } from "./internal/importerVersions.js";
+import { findLayerRoot } from "./internal/layerRoot.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import type { ImporterVersions } from "./WorkspaceCatalogs.js";
 import { CatalogSet, WorkspaceCatalogs, injectFromDocument } from "./WorkspaceCatalogs.js";
@@ -80,6 +81,21 @@ export interface WorkspaceSnapshotsOptions {
 	 *   first call is honoured.
 	 */
 	readonly cwd?: string;
+	/**
+	 * A ceiling for the root ascent from `cwd`, passed straight through to the
+	 * `stopAt` of {@link WorkspaceRoot}'s `find`.
+	 *
+	 * @remarks
+	 * Inclusive, and resolved to an absolute path exactly as `cwd` is. When no
+	 * root is found at or below the ceiling, `at(ref)` fails with
+	 * {@link WorkspaceRootNotFoundError} carrying the resolved `stopAt` rather
+	 * than adopting an enclosing directory's workspace. Pass the same value as
+	 * {@link WorkspaceDiscoveryOptions.stopAt} so every service agrees on the
+	 * root; the `Workspaces.*` composites forward one `stopAt` to all of them.
+	 *
+	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
+	 */
+	readonly stopAt?: string | undefined;
 	/**
 	 * Catalogs every snapshot this service produces carries as its
 	 * `seededCatalogs` — consulted only where the snapshot's own catalogs cannot
@@ -458,8 +474,8 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 			const atCaches = new Map<string, Effect.Effect<WorkspaceStateSnapshot, WorkspaceSnapshotAtFailure>>();
 
 			const at = Effect.fn("WorkspaceSnapshots.at")(function* (ref: string) {
-				// `Effect.suspend` so the ambient cwd is read at call time, not layer build.
-				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
+				// The ambient cwd is read at call time, not layer build (`findLayerRoot` suspends).
+				const root = yield* findLayerRoot(roots, options);
 				// NUL-separated — a NUL can occur in neither a path nor a ref, so keys
 				// cannot collide. Kept as the `\0` escape deliberately: a literal NUL
 				// byte makes `file` classify this source as binary and grep/ripgrep

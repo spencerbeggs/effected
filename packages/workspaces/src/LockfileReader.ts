@@ -10,6 +10,7 @@
 import type { Lockfile, LockfileFramingError, LockfileParseError, ResolvedPackage } from "@effected/lockfiles";
 import { LockfileFormat, LockfileIntegrity, Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { findLayerRoot } from "./internal/layerRoot.js";
 import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
 import { PackageManagerDetector } from "./PackageManagerName.js";
 import type { WorkspaceDiscoveryFailure } from "./WorkspaceDiscovery.js";
@@ -105,6 +106,21 @@ export interface LockfileReaderOptions {
 	 * @defaultValue `process.cwd()`, read lazily on first use.
 	 */
 	readonly cwd?: string;
+	/**
+	 * A ceiling for the root ascent from `cwd`, passed straight through to the
+	 * `stopAt` of {@link WorkspaceRoot}'s `find`.
+	 *
+	 * @remarks
+	 * Inclusive, and resolved to an absolute path exactly as `cwd` is. When no
+	 * root is found at or below the ceiling, `read` fails with
+	 * {@link WorkspaceRootNotFoundError} carrying the resolved `stopAt` rather
+	 * than adopting an enclosing directory's workspace. Pass the same value as
+	 * {@link WorkspaceDiscoveryOptions.stopAt} so every service agrees on the
+	 * root; the `Workspaces.*` composites forward one `stopAt` to all of them.
+	 *
+	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
+	 */
+	readonly stopAt?: string | undefined;
 }
 
 /** A defect naming the unstubbed test-double method — a test-wiring mistake, not a typed failure. */
@@ -154,7 +170,7 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 			const path = yield* Path.Path;
 
 			const init: Effect.Effect<Lockfile, LockfileReadFailure> = Effect.gen(function* () {
-				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
+				const root = yield* findLayerRoot(roots, options);
 				const detected = yield* detector.detect(root);
 				// `PackageManagerName` and `LockfileFormat` are the same four literals;
 				// the assignment is what makes the two concepts interoperate for free.

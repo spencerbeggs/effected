@@ -792,7 +792,19 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * with `reason: "integrityUnavailable"` — nothing is fetched in either case
 	 * — and a fetch that fails with `reason: "fetchFailed"`, keeping the
 	 * not-installed remediation. The fetch needs `pnpm` 11 or 12 on `PATH` and
-	 * registry access, and is bounded at two minutes. An empty `configDependencies`, or one whose dependencies all
+	 * registry access, and is bounded at two minutes.
+	 *
+	 * The scratch workspace fetches through the same registries a
+	 * `pnpm install` in the workspace would: the workspace root's `.npmrc` (scoped
+	 * registries, mirrors, auth) is copied into it as-is, with `${VAR}`
+	 * references left for pnpm to expand, never read or logged, and removed
+	 * with the scratch; and the root `pnpm-workspace.yaml`'s `registry` and
+	 * `registries` keys are carried into the scratch's. That is the CURRENT
+	 * checkout's registry config for both sides of a diff — a base ref's
+	 * `.npmrc` is not read through git — and relative paths inside the `.npmrc`
+	 * (a `cafile=./ca.pem`) resolve against the scratch, not the root.
+	 *
+	 * An empty `configDependencies`, or one whose dependencies all
 	 * ship no pnpmfile, returns the seed without spawning anything; a `..` path
 	 * segment in a dependency name fails typed **before** any spawn; a
 	 * load failure in the child — a syntax error, a throwing top level, an
