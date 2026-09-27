@@ -1,5 +1,83 @@
 # @effected/workspaces
 
+## 0.28.0
+
+### Features
+
+#### Parse a pnpm configDependencies spec
+
+- `ConfigDependencySpec` models one `configDependencies` value from `pnpm-workspace.yaml`. It reads the bare form pnpm 11 and 12 write (`0.11.1`) and the deprecated inline-integrity form (`0.11.1+sha512-<base64>`). The version is an exact SemVer version. The integrity is an SRI hash, validated by `@effected/npm`'s `SriIntegrityHash` and present only on the inline form.
+
+- `ConfigDependencySpec.parse(spec)` and `parseResult(spec)` fail with `InvalidConfigDependencySpecError`. Its `reason` is `"version"` for a range, dist-tag or partial version, and `"integrity"` for a tail that is not an SRI hash. A corepack `sha512.<hex>` tail counts as `"integrity"`.
+
+- `bare` renders `<version>`, the form to write when normalizing the field.
+
+- `toString()` renders the form that was parsed, so a spec you only read round-trips byte for byte.
+
+- `ConfigDependencySpec.FromString` is the matching string codec.
+
+- Only the first `+` separates version from integrity, because an SRI's base64 can itself contain `+`. Hook replay splits specs the same way. It still validates neither half, so it resolves every spec it resolved before. [#843][#843]
+
+#### Cap the workspace root ascent with `stopAt`
+
+- `WorkspaceDiscoveryOptions`, `LockfileReaderOptions`, `WorkspaceCatalogsOptions`, `WorkspaceSnapshotsOptions` and `WorkspacesOptions` gain `stopAt`, a ceiling for the root ascent from `cwd`. It is passed through to `WorkspaceRoot.find`, so it is inclusive and resolved to an absolute path. A checkout nested under another directory's workspace used to adopt that outer workspace. With `stopAt: cwd` it now fails with `WorkspaceRootNotFoundError`, carrying the ceiling. A checkout that is itself a workspace root still resolves.
+
+- Every `Workspaces.*` composite forwards one `stopAt` to every service it builds, so discovery, lockfile, catalog and snapshot reads all refuse the enclosing workspace together.
+
+- `WorkspacesOptions` now extends the per-service option shapes it forwards, so an option a service grows reaches the composites too.
+
+- `Workspaces.localExecLayer` takes `stopAt` as well. A ceiling with no root below it gives the same `Option.none()` as no root at all.
+
+- The ceiling applies to layer-bound lookups only. `WorkspaceDiscovery`'s `infoIn`, `listPackagesIn` and `refreshIn` take a directory per call and still ascend unbounded.
+
+- The default is no ceiling, so existing callers see no change.
+
+#### Replay a config dependency version nobody installed
+
+- A snapshot diff across a config-dependency bump no longer fails on a fresh checkout (#842). The base side declares the old version, which neither `node_modules/.pnpm-config` nor the store holds. `ConfigDependencyHooks.layerSubprocess`, and so `Workspaces.layerWithGitAndConfigDependenciesSubprocess`, now fetches that version into the pnpm store.
+
+- The fetch is verified, fail-closed:
+
+- pnpm 11 or 12 runs `install --frozen-lockfile` in a scratch workspace, which is removed afterwards. Its lockfile pins the integrity the declaring side recorded, so pnpm itself refuses a tarball that does not match.
+
+- The integrity comes from the inline `<version>+<integrity>` spec when present, else from that side's `pnpm-lock.yaml` env preamble. `WorkspaceSnapshots.at(ref)` reads the lockfile at the ref, so the base side is checked against the base side's record.
+
+- Two sources that disagree fail with `reason: "integrityMismatch"`. No source fails with `reason: "integrityUnavailable"`. Nothing is fetched in either case.
+
+- A failed fetch fails with `reason: "fetchFailed"`, keeping the `pnpm add --config` remediation.
+
+- The scratch workspace fetches through the workspace's own registry config. The root `.npmrc` (scoped registries, mirrors, auth) is copied in as-is, with `${NPM_TOKEN}`-style references left for pnpm to expand, and removed with the scratch. The root `pnpm-workspace.yaml`'s `registry` and `registries` keys are carried over too. Both come from the current checkout for either side of a diff; a base ref's `.npmrc` is not read through git.
+
+- The fetch writes to the first store the ladder searched, so the next replay finds the version there. `HookReplaySource` gains `"fetched"`, recorded in `replays[name].source` when the fetch rung answered.
+
+- The other replaying layers still do not fetch. A version they find nowhere now fails with `reason: "notInstalled"`, and the message names the ref that declared it and explains the base-side cause.
+
+- `ConfigDependencyHooksShape.inject` takes an optional fifth argument, `HookReplayContext`, carrying the declaring side's `lockfile` text and `ref`. `WorkspaceCatalogs` and `WorkspaceSnapshots` supply it. A custom implementation may ignore it.
+
+#### The not-installed message no longer depends on a magic empty version
+
+- The replay ladder no longer uses an empty-string version to mean "this `package.json` carries no version". It now tracks that state as its own case, so no caller has to know the convention (part of #613). The error still reads "a package with no version". A manifest whose `version` is the empty string now counts as having no version too, so an empty declared version can no longer match it. [#843][#843]
+
+### Bug Fixes
+
+#### The not-found message names the `workspaces` field
+
+- The replay ladder no longer uses an empty-string version to mean "this `package.json` carries no version". It now tracks that state as its own case, so no caller has to know the convention (part of #613). The error still reads "a package with no version". A manifest whose `version` is the empty string now counts as having no version too, so an empty declared version can no longer match it. [#843][#843]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/lockfiles | dependency | updated | 0.11.0 | 0.12.0 |
+| @effected/npm | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/package-json | dependency | updated | 0.17.0 | 0.18.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#843]: https://github.com/spencerbeggs/effected/pull/843
+
 ## 0.27.0
 
 ### Breaking Changes
