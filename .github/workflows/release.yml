@@ -38,9 +38,6 @@ concurrency:
 jobs:
   workflow:
     name: Workflow
-    # A snapshot dispatch runs the snapshot job below instead; every other event
-    # takes this path exactly as before.
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.snapshot) }}
     uses: spencerbeggs/.github/.github/workflows/release.yml@main
     permissions:
       contents: write
@@ -52,6 +49,12 @@ jobs:
       artifact-metadata: write
     with:
       dry-run: ${{ inputs.dry_run || false }}
+      # A snapshot dispatch runs silk-release-action's snapshot phase through the
+      # reusable workflow's nested release-snapshot.yml; every other event takes
+      # the normal release path. The id-token and packages grants above are what
+      # that nested job needs for OIDC publishing and GitHub Packages.
+      snapshot: ${{ inputs.snapshot || false }}
+      snapshot-tag: ${{ inputs.snapshot_tag }}
       auto-merge: "squash"
       skip-claude-review: false
       # Fails the validation phase when the effected catalog has drifted from
@@ -63,130 +66,3 @@ jobs:
       # dispatcher refuses to proceed if it has no required reviewer.
       fork-review-environment: fork-review
     secrets: inherit
-
-  # Publishes unreleased kit versions under a non-latest dist-tag, so a
-  # downstream can pin them from the registry on a PR (a file: link cannot
-  # install on a runner). It lives in THIS file rather than its own because npm
-  # trusted publishing binds to the workflow filename; NPM_TOKEN is the fallback
-  # the release path already uses. The snapshot version bump is never pushed.
-  snapshot:
-    name: Snapshot
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.snapshot }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
-    steps:
-      - name: Refuse anything but a feature branch, and the latest tag
-        run: |
-          # GITHUB_REF, not GITHUB_REF_NAME: a dispatch can target a tag, and a tag
-          # named anything but "main" may still point at a main commit.
-          case "$GITHUB_REF" in
-            refs/heads/main)
-              echo "::error::Snapshots are for unmerged branches; dispatch from a feature branch."
-              exit 1
-              ;;
-            refs/heads/*) ;;
-            *)
-              echo "::error::Snapshots publish from a branch; $GITHUB_REF is not one."
-              exit 1
-              ;;
-          esac
-          if [ -z "$SNAPSHOT_TAG" ] || [ "$SNAPSHOT_TAG" = "latest" ]; then
-            echo "::error::snapshot_tag must be set and must not be latest."
-            exit 1
-          fi
-
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Setup Runtime
-        uses: savvy-web/silk-runtime-action@v1
-
-      - name: Version as a snapshot
-        # useCalculatedVersion keeps the next release number in front
-        # (0.12.0-next-20260927051500) instead of changesets' 0.0.0 default. It is
-        # patched into this runner's checkout only; the committed config, and so
-        # the real release path, never carries it.
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          node -e '
-            const fs = require("node:fs");
-            const path = ".changeset/config.json";
-            const config = JSON.parse(fs.readFileSync(path, "utf8"));
-            config.snapshot = { useCalculatedVersion: true, prereleaseTemplate: "{tag}-{datetime}" };
-            fs.writeFileSync(path, JSON.stringify(config, null, "\t") + "\n");
-          '
-          pnpm exec changeset version --snapshot "$SNAPSHOT_TAG"
-
-      - name: Build
-        run: pnpm run ci:build
-
-      - name: Publish
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          # npm refuses to run under the root devEngines pnpm pin, so every npm
-          # call below runs from a built package directory, whose manifest
-          # carries no devEngines. The token is a fallback: npm tries OIDC first.
-          userconfig="$RUNNER_TEMP/snapshot.npmrc"
-          : > "$userconfig"
-          if [ -n "${NPM_TOKEN:-}" ]; then
-            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$userconfig"
-          fi
-          rows=()
-          overrides=()
-          for manifest in packages/*/package.json; do
-            jq -e '.publishConfig.access == "public" and .publishConfig.targets.npm == true' "$manifest" >/dev/null || continue
-            read -r name version < <(jq -r '"\(.name) \(.version)"' "$manifest")
-            case "$version" in *"-${SNAPSHOT_TAG}-"*) ;; *) continue ;; esac
-            out="$(dirname "$manifest")/dist/prod/npm/pkg"
-            if [ "$(jq -r .version "$out/package.json" 2>/dev/null)" != "$version" ]; then
-              echo "::error::$name: no built manifest at $out for $version"
-              exit 1
-            fi
-            pushd "$out" >/dev/null
-            # A first-ever publish under a non-latest tag also claims latest, so a
-            # package the registry has never seen is left for the real release.
-            # Only a confirmed E404 means "never published"; any other lookup failure
-            # (registry down, auth, timeout) fails the job rather than silently
-            # skipping a package that exists.
-            if ! lookup="$(npm view "$name" version --userconfig "$userconfig" 2>&1)"; then
-              if grep -q "E404" <<<"$lookup"; then
-                echo "::warning::$name has never been published; skipped (the first publish belongs to the release)."
-                popd >/dev/null
-                continue
-              fi
-              echo "::error::$name: registry lookup failed: $lookup"
-              exit 1
-            fi
-            npm publish --tag "$SNAPSHOT_TAG" --provenance --access public --userconfig "$userconfig"
-            popd >/dev/null
-            rows+=("| \`$name\` | \`$version\` |")
-            overrides+=("  \"$name\": \"$version\"")
-          done
-          {
-            echo "## Snapshot \`$SNAPSHOT_TAG\` of \`$GITHUB_REF_NAME\` ($GITHUB_SHA)"
-            echo
-            if [ "${#rows[@]}" -eq 0 ]; then
-              echo "Nothing published: no public package carries a pending changeset."
-            else
-              echo "| Package | Version |"
-              echo "| --- | --- |"
-              printf '%s\n' "${rows[@]}"
-              echo
-              echo "Pin in a downstream \`pnpm-workspace.yaml\`:"
-              echo
-              echo '```yaml'
-              echo "overrides:"
-              printf '%s\n' "${overrides[@]}"
-              echo '```'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
