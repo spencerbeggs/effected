@@ -11,6 +11,7 @@
 | `DependencyMapField` | Variable | A string→string map field decoding a plain JSON object to a `HashMap`, defaulting to an empty map when the key is absent. Backs the four dependency maps and `scripts`. Not meant to be referenced directly. | dependencies field codec, json object to HashMap |
 | `DevEngine` | Class | A single `devEngines` constraint with a name and optional `version` / `onFail`. | single devEngines constraint, engine name version onFail |
 | `DevEngineOrArray` | Variable | A `devEngines` constraint slot: a single `DevEngine` or an array of them. | devEngines constraint slot, single engine or array of engines |
+| `DevEnginePackageManagerEntry` | Interface | The encoded shape of a `devEngines.packageManager` entry: what a raw `package.json` object carries. A `DevEngine` instance satisfies it structurally, so both a decoded entry and the plain object read straight off disk are accepted. | |
 | `DevEngines` | TypeAlias | The decoded `devEngines` field type. | |
 | `DevEnginesSchema` | Variable | The `devEngines` field schema, modeling runtime and package-manager constraints as optional `DevEngine` slots. | devEngines field schema, runtime and package manager os cpu libc constraints |
 | `EntryPointManifest` | Interface | The manifest fields entry resolution reads. | |
