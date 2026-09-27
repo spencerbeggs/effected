@@ -15,6 +15,9 @@ import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect
  */
 export const WORKSPACE_MARKERS: ReadonlyArray<string> = ["pnpm-workspace.yaml", "package.json"];
 
+/** How the not-found message names the `package.json` marker: only one with a `workspaces` field counts. */
+const PACKAGE_JSON_MARKER_PROSE = 'package.json with a "workspaces" field';
+
 /**
  * Options for {@link WorkspaceRoot}'s `find`.
  *
@@ -79,7 +82,11 @@ export class WorkspaceRootNotFoundError extends Schema.TaggedError<WorkspaceRoot
 	/** Renders the search path, probed markers and any ceiling into a one-line message. */
 	override get message(): string {
 		const bound = this.stopAt === undefined ? "" : ` up to ${this.stopAt}`;
-		return `No workspace root above ${this.searchPath}${bound} (looked for ${this.markers.join(", ")})`;
+		// Worded here, not in `markers`: a bare `package.json` would claim the
+		// probe looked for a file a single-package repo plainly has, when only one
+		// carrying a `workspaces` field counts. `markers` keeps the raw filenames.
+		const looked = this.markers.map((marker) => (marker === "package.json" ? PACKAGE_JSON_MARKER_PROSE : marker));
+		return `No workspace root above ${this.searchPath}${bound} (looked for ${looked.join(", ")})`;
 	}
 }
 

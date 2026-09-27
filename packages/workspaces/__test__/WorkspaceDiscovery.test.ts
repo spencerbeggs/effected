@@ -493,6 +493,86 @@ describe("WorkspaceRoot — no marker anywhere", () => {
 	});
 });
 
+// ── the layer-bound ceiling: a checkout nested in someone else's workspace ──
+
+// The downstream probe: a CI checkout (a plain single-package repo) sits inside
+// a directory that is itself a pnpm workspace root. An unbounded ascent adopts
+// that outer workspace and its members; `stopAt: cwd` refuses it.
+const nestedCheckout: Tree = {
+	"/outer/pnpm-workspace.yaml": "packages:\n  - 'pkgs/*'\n",
+	"/outer/package.json": JSON.stringify({ name: "outer-root", version: "0.0.0", private: true }),
+	"/outer/pkgs/other/package.json": manifest("other"),
+	"/outer/checkout/package.json": manifest("checkout"),
+};
+
+/** Discovery over a tree with explicit layer options — each distinct option set needs its own `layer(...)`. */
+const discoveryWith = (tree: Tree, options: { readonly cwd: string; readonly stopAt?: string }) => {
+	const base = platform(tree);
+	const roots = WorkspaceRoot.layer.pipe(Layer.provide(base));
+	return WorkspaceDiscovery.layer(options).pipe(Layer.provide(roots), Layer.provide(base));
+};
+
+describe("WorkspaceDiscovery — no stopAt adopts an enclosing workspace", () => {
+	layer(discoveryWith(nestedCheckout, { cwd: "/outer/checkout" }))((it) => {
+		it.effect("resolves the OUTER root and its members (the unbounded default, pinned)", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const info = yield* discovery.info();
+				assert.strictEqual(info.root, "/outer");
+				const packages = yield* discovery.listPackages();
+				assert.deepStrictEqual(
+					packages.map((pkg) => `${pkg.name}@${pkg.relativePath}`),
+					["outer-root@.", "other@pkgs/other"],
+				);
+			}),
+		);
+	});
+});
+
+describe("WorkspaceDiscovery — stopAt: cwd refuses the enclosing workspace", () => {
+	layer(discoveryWith(nestedCheckout, { cwd: "/outer/checkout", stopAt: "/outer/checkout" }))((it) => {
+		it.effect("fails WorkspaceRootNotFoundError carrying the ceiling", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const error = yield* Effect.flip(discovery.listPackages());
+				assert.instanceOf(error, WorkspaceRootNotFoundError);
+				assert.strictEqual(error.searchPath, "/outer/checkout");
+				assert.strictEqual(error.stopAt, "/outer/checkout");
+			}),
+		);
+
+		it.effect("does not bound the per-call …In methods", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				// Deliberate: a layer-level ceiling cannot sensibly bound an arbitrary
+				// caller-named directory, so the `…In` methods ascend unbounded.
+				const info = yield* discovery.infoIn("/outer/checkout");
+				assert.strictEqual(info.root, "/outer");
+			}),
+		);
+	});
+
+	const checkoutIsRoot: Tree = {
+		...nestedCheckout,
+		"/outer/checkout/pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n",
+		"/outer/checkout/packages/inner/package.json": manifest("inner"),
+	};
+	layer(discoveryWith(checkoutIsRoot, { cwd: "/outer/checkout", stopAt: "/outer/checkout" }))((it) => {
+		it.effect("still resolves a checkout that is itself a workspace root (the ceiling is inclusive)", () =>
+			Effect.gen(function* () {
+				const discovery = yield* WorkspaceDiscovery;
+				const info = yield* discovery.info();
+				assert.strictEqual(info.root, "/outer/checkout");
+				const packages = yield* discovery.listPackages();
+				assert.deepStrictEqual(
+					packages.map((pkg) => `${pkg.name}@${pkg.relativePath}`),
+					["checkout@.", "inner@packages/inner"],
+				);
+			}),
+		);
+	});
+});
+
 describe("WorkspaceRoot — the NEAREST root wins", () => {
 	const nestedRoots: Tree = {
 		"/outer/package.json": rootManifest(["packages/*"]),

@@ -148,6 +148,28 @@ export interface WorkspaceDiscoveryOptions {
 	 *   honoured.
 	 */
 	readonly cwd?: string;
+	/**
+	 * A ceiling for the layer-bound root ascent from `cwd`, passed straight
+	 * through to the `stopAt` of {@link WorkspaceRoot}'s `find`.
+	 *
+	 * @remarks
+	 * Inclusive: the ceiling itself is probed, so a `cwd` that is its own
+	 * workspace root still resolves with `stopAt: cwd`. A relative ceiling is
+	 * resolved against the process working directory, exactly as `cwd` is. When
+	 * no root is found at or below the ceiling, the methods fail with
+	 * {@link WorkspaceRootNotFoundError} carrying the resolved `stopAt`, rather
+	 * than adopting an enclosing directory's workspace — pass `stopAt: cwd` for
+	 * a checkout nested inside someone else's monorepo.
+	 *
+	 * Applies ONLY to the layer-bound methods (`info`, `listPackages`,
+	 * `importerMap`, `getPackage`, `resolveFile`, `resolveFiles`). The per-call
+	 * `infoIn`, `listPackagesIn` and `refreshIn` resolve from an arbitrary
+	 * directory the caller names, which a single layer-level ceiling cannot
+	 * sensibly bound, so they ascend unbounded as before.
+	 *
+	 * @defaultValue no ceiling — the ascent runs to the filesystem root.
+	 */
+	readonly stopAt?: string | undefined;
 	/** Descent cap for segment-crossing patterns. Defaults to 32. */
 	readonly maxDepth?: number;
 }
@@ -470,7 +492,10 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 			> = Effect.gen(function* () {
 				// `Effect.suspend` so the ambient cwd is read at first use, not at
 				// layer construction.
-				const root = yield* Effect.suspend(() => roots.find(options?.cwd ?? process.cwd()));
+				const stopAt = options?.stopAt;
+				const root = yield* Effect.suspend(() =>
+					roots.find(options?.cwd ?? process.cwd(), stopAt === undefined ? undefined : { stopAt }),
+				);
 				return yield* discoverAt(root);
 			});
 

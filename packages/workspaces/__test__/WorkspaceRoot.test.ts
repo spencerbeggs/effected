@@ -272,3 +272,30 @@ describe("WorkspacePackage.workspaceRoot — hand-built", () => {
 		assert.strictEqual(pkg.workspaceRoot, "/repo");
 	});
 });
+
+// ── the not-found message names the `workspaces` field ─────────────────────
+
+describe("WorkspaceRootNotFoundError — message", () => {
+	it("words the package.json marker as the field it requires, keeping `markers` raw", () => {
+		const error = new WorkspaceRootNotFoundError({ searchPath: "/solo", markers: WORKSPACE_MARKERS });
+		// A single-package repo HAS a package.json; a bare "package.json" in the
+		// message claimed the probe missed a file that is plainly there.
+		assert.strictEqual(
+			error.message,
+			'No workspace root above /solo (looked for pnpm-workspace.yaml, package.json with a "workspaces" field)',
+		);
+		assert.deepStrictEqual([...error.markers], ["pnpm-workspace.yaml", "package.json"]);
+	});
+
+	it("renders the ceiling alongside the reworded marker", () => {
+		const error = new WorkspaceRootNotFoundError({
+			searchPath: "/outer/checkout",
+			markers: WORKSPACE_MARKERS,
+			stopAt: "/outer/checkout",
+		});
+		assert.strictEqual(
+			error.message,
+			'No workspace root above /outer/checkout up to /outer/checkout (looked for pnpm-workspace.yaml, package.json with a "workspaces" field)',
+		);
+	});
+});

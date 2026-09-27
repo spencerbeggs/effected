@@ -22,8 +22,8 @@ sources:
     resource: ../../packages/workspaces/src/internal/traverse.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 4638344c8824e788fda2b83ac63e088b030525bb480e791f3249357b919ba0eb
+  at: 2026-09-27T07:13:25Z
+  body_sha256: 5b4833fd20e742b35d839420f3b3b28892d09f8767b84237eb305f0a4e462014
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -139,6 +139,21 @@ to prevent. An unmarked ceiling fails typed with `stopAt` recorded on
 `WorkspaceRootNotFoundError`, which is what distinguishes "no root anywhere
 above me" from "none below my ceiling".[^workspace-root-ts] The sync facade's
 `findWorkspaceRootSync` has not been given the same bounds.
+
+`WorkspaceDiscoveryOptions.stopAt` carries the same ceiling into the
+discovery layer, but only onto the layer-bound ascent from `cwd`: pass
+`stopAt: cwd` and a checkout nested under someone else's workspace fails
+`WorkspaceRootNotFoundError` instead of adopting that workspace's members,
+while a checkout that is itself a root still resolves. The per-call
+`infoIn` / `listPackagesIn` / `refreshIn` stay unbounded, because one
+layer-level ceiling does not fit an arbitrary caller-named directory. The
+default is no ceiling, and the composite `WorkspacesOptions` does not carry
+it yet.[^workspace-discovery-ts]
+
+The not-found message words the manifest marker as `package.json with a
+"workspaces" field`, since a bare `package.json` reads as missing a file a
+single-package repository plainly has; the `markers` field and
+`WORKSPACE_MARKERS` keep the raw filenames.[^workspace-root-ts]
 
 Discovery reads
 the packages list from whichever source the workspace uses, enumerates it,
