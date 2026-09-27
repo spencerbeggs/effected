@@ -1,5 +1,5 @@
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { DependencyResolutionError, WorkspaceResolver } from "../src/index.js";
 
 describe("WorkspaceResolver", () => {
@@ -75,5 +75,40 @@ describe("WorkspaceResolver", () => {
 				assert.strictEqual(result.cause, "unresolved");
 			}),
 		);
+
+		it("defaults reason to mechanism, so existing call sites keep their meaning", () => {
+			const error = DependencyResolutionError.make({ specifier: "catalog:", cause: new Error("boom") });
+			assert.strictEqual(error.reason, "mechanism");
+			assert.strictEqual(error.message, 'Failed to resolve dependency specifier "catalog:"');
+		});
+
+		it("a no-version failure carries the reason, no cause, and says so in its message", () => {
+			const error = DependencyResolutionError.make({
+				specifier: "workspace:@x/bare",
+				reason: "no-version",
+				cause: undefined,
+			});
+			assert.strictEqual(error.reason, "no-version");
+			assert.isUndefined(error.cause);
+			assert.strictEqual(
+				error.message,
+				'Failed to resolve dependency specifier "workspace:@x/bare": the workspace member declares no version',
+			);
+		});
+
+		it("rejects a reason outside the literal union", () => {
+			assert.throws(() =>
+				DependencyResolutionError.make({ specifier: "workspace:x", reason: "bogus" as never, cause: undefined }),
+			);
+		});
+
+		it("decodes an error encoded before reason existed as a mechanism failure", () => {
+			const decoded = Schema.decodeUnknownSync(DependencyResolutionError)({
+				_tag: "DependencyResolutionError",
+				specifier: "catalog:",
+				cause: "unresolved",
+			});
+			assert.strictEqual(decoded.reason, "mechanism");
+		});
 	});
 });

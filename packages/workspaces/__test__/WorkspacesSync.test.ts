@@ -22,7 +22,7 @@ import {
 import { tmpdir } from "node:os";
 import nodePath, { dirname, join } from "node:path";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
-import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
+import { afterAll, afterEach, assert, beforeAll, describe, it, vi } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import type { SyncFileSystem, WorkspacePackage, WorkspacesSyncOptions } from "../src/index.js";
@@ -310,6 +310,68 @@ describe("getWorkspacePackagesSync over pure in-memory ops (no ambient Node fs)"
 	it("carries fields outside the discovery slice through manifestRecord", () => {
 		const a = getWorkspacePackagesSync("/repo", ops).find((pkg) => pkg.name === "@mem/a");
 		assert.deepStrictEqual(a?.manifestRecord.scripts, { build: "tsc" });
+	});
+});
+
+// ── stopAt: the nested-checkout layout ───────────────────────────────────
+//
+// Mirrors `WorkspacesStopAt.test.ts`: a plain single-package repository
+// checked out inside a directory that is itself a pnpm workspace root. With no
+// ceiling the ascent adopts the OUTER workspace (the control, proving the tree
+// resolves at all); with `stopAt: cwd` it must answer `null` instead.
+
+describe("findWorkspaceRootSync — stopAt over a nested checkout", () => {
+	const CWD = "/outer/checkout";
+	const files: Record<string, string> = {
+		"/outer/pnpm-workspace.yaml": "packages:\n  - 'pkgs/*'\n",
+		"/outer/package.json": JSON.stringify({ name: "outer-root", version: "0.0.0", private: true }),
+		"/outer/pkgs/other/package.json": JSON.stringify({ name: "other", version: "1.0.0" }),
+		"/outer/checkout/package.json": JSON.stringify({ name: "checkout", version: "1.0.0" }),
+	};
+	const ops: WorkspacesSyncOptions = { fileSystem: fakeFs(files), path: nodePath.posix };
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("control: with no ceiling the ascent adopts the outer workspace", () => {
+		assert.strictEqual(findWorkspaceRootSync(CWD, ops), "/outer");
+	});
+
+	it("stopAt: cwd refuses the enclosing workspace", () => {
+		assert.isNull(findWorkspaceRootSync(CWD, { ...ops, stopAt: CWD }));
+	});
+
+	it("the ceiling is inclusive — a ceiling that is itself the root resolves", () => {
+		assert.strictEqual(findWorkspaceRootSync(CWD, { ...ops, stopAt: "/outer" }), "/outer");
+	});
+
+	it("a checkout that is itself a root still resolves under stopAt: cwd", () => {
+		const selfRooted: WorkspacesSyncOptions = {
+			fileSystem: fakeFs({ ...files, "/outer/checkout/pnpm-workspace.yaml": "packages: []\n" }),
+			path: nodePath.posix,
+		};
+		assert.strictEqual(findWorkspaceRootSync(CWD, { ...selfRooted, stopAt: CWD }), CWD);
+	});
+
+	it("an unnormalized ceiling is resolved before comparison, not string-matched raw", () => {
+		assert.isNull(findWorkspaceRootSync(CWD, { ...ops, stopAt: "/outer/checkout/./" }));
+	});
+
+	it("a relative ceiling resolves against the process cwd at lookup time", () => {
+		// Built BEFORE the cwd moves: the ceiling must be resolved when the call
+		// runs, not when the options object was assembled.
+		const bounded = { ...ops, stopAt: "checkout" };
+		vi.spyOn(process, "cwd").mockReturnValue("/outer");
+		assert.isNull(findWorkspaceRootSync(CWD, bounded));
+		// Discriminating control: the same relative ceiling under a cwd that makes
+		// it name a non-ancestor never matches, so the ascent is unbounded again.
+		vi.spyOn(process, "cwd").mockReturnValue("/elsewhere");
+		assert.strictEqual(findWorkspaceRootSync(CWD, bounded), "/outer");
+	});
+
+	it("a ceiling naming no ancestor never matches — the ascent runs to the filesystem root", () => {
+		assert.strictEqual(findWorkspaceRootSync(CWD, { ...ops, stopAt: "/unrelated" }), "/outer");
 	});
 });
 

@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { LockfileImporter } from "../LockfileImporter.js";
 import { PnpmExtension } from "../PnpmExtension.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
-import { selectPnpmDocument } from "./documents.js";
+import { splitPnpmStream } from "./documents.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
 import {
 	extractWorkspaceDeps,
@@ -91,10 +91,18 @@ type PnpmPackageEntry = NonNullable<PnpmLockfileRawType["packages"]>[string];
  *
  * `pnpm-lock.yaml` is a YAML *stream*, not a single document: a workspace
  * using `configDependencies` gets a config-dependencies preamble document
- * ahead of the lockfile. {@link selectPnpmDocument} locates the lockfile
- * deterministically (it is the last document); a stream carrying no lockfile
- * document fails through the typed framing channel rather than silently
- * reporting the preamble as an empty workspace.
+ * ahead of the lockfile. {@link splitPnpmStream} locates the lockfile
+ * deterministically (it is the last document); the preamble is never read as
+ * the lockfile.
+ *
+ * An empty main document after a preamble is a valid empty lockfile, not a
+ * framing failure: pnpm writes exactly that for a workspace with no root
+ * `package.json` and only `configDependencies`. It yields no packages, no
+ * importers and no workspace edges, versioned by the preamble's
+ * `lockfileVersion` after the preamble passes the same version gate. The
+ * preamble's own packages are config dependencies, not the workspace's, so
+ * none of them is reported. With no preamble to vouch for the stream, an
+ * empty main document still fails `noLockfileDocument`.
  *
  * Workspace packages are keyed by importer *path* with version `"0.0.0"`;
  * `Lockfile#withImporterNames` is the explicit second stage that rewrites
@@ -104,7 +112,18 @@ type PnpmPackageEntry = NonNullable<PnpmLockfileRawType["packages"]>[string];
  */
 export const parsePnpm = (content: string): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
-		const { document, documents } = yield* selectPnpmDocument(content);
+		const { preamble, main: document, documents } = yield* splitPnpmStream(content);
+		if (document === undefined) {
+			if (preamble === undefined) return yield* Effect.fail(framingFailure("noLockfileDocument", documents));
+			const lockfileVersion = yield* gatePnpmVersion(preamble);
+			return {
+				lockfileVersion,
+				packages: [],
+				workspaceDependencies: [],
+				importers: [],
+				extension: PnpmExtension.make({}),
+			};
+		}
 		// Format-version gate. Deliberately NOT a check for `snapshots:` being
 		// present or populated: a dependency-free v9 workspace legitimately has
 		// zero snapshot entries, so an emptiness guard would reject a valid

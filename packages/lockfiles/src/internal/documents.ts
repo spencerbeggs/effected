@@ -25,43 +25,70 @@ export interface SelectedDocument {
 const isEmptyDocument = (document: unknown): boolean => document === null || document === undefined;
 
 /**
- * Select the lockfile document from a `pnpm-lock.yaml` YAML stream.
- *
- * @remarks
- * pnpm 11 writes `pnpm-lock.yaml` as **up to two YAML documents** when the
- * workspace uses `configDependencies`: an optional config-dependencies
- * ("env") preamble, then the lockfile proper. The rule for picking the right
- * one is **deterministic, not a heuristic** — it is pnpm's own writer
- * contract. `writeEnvLockfile` emits `${env}---${main}`, composing the
- * preamble as a *prefix*, and `extractMainDocument` reads back everything
- * after the first separator. So the preamble is always first and the lockfile
- * is always **last**.
- *
- * Both documents declare `lockfileVersion`, `importers` and `packages`, so
- * they are not told apart by which keys they carry — only by position. That
- * is exactly why the previous single-document assumption failed *silently*:
- * the preamble validates against the pnpm schema, yielding a `Lockfile`
- * reporting one package and an empty workspace instead of an error.
- *
- * An env-only lockfile (`---` preamble `---` and nothing after it, which
- * pnpm writes when there is no main lockfile yet) has an **empty** trailing
- * document. pnpm reads that as "no lockfile"; so do we, through the typed
- * framing failure — never by silently falling back to the preamble.
- *
- * It takes the last document of a stream of **any** count and never fails
- * with `unexpectedDocuments`; only {@link selectPnpmEnvDocument}, the env
- * reader's selector, enforces the at-most-two limit.
+ * The number of documents pnpm's env-lockfile writer can compose: the env
+ * preamble and the main lockfile. See {@link splitPnpmStream}.
  *
  * @internal
  */
-export const selectPnpmDocument = (content: string): Effect.Effect<SelectedDocument, ParseFailure> =>
+const MAX_PNPM_DOCUMENTS = 2;
+
+/**
+ * A `pnpm-lock.yaml` YAML stream split into its two positions. `preamble` is
+ * the env document, `main` the lockfile proper; each is `undefined` when that
+ * position is absent or holds an empty document.
+ *
+ * @internal
+ */
+export interface PnpmStream {
+	readonly preamble: unknown;
+	readonly main: unknown;
+	readonly documents: number;
+}
+
+/**
+ * Split a `pnpm-lock.yaml` YAML stream into its env preamble and its main
+ * lockfile document. This is the one place pnpm's document framing is
+ * decided: `Lockfile.parse` projects the main document out of it and
+ * `PnpmEnvLockfile` the preamble, so the two readers cannot disagree about
+ * which document is which or how many a stream may carry.
+ *
+ * @remarks
+ * pnpm 11 and 12 write `pnpm-lock.yaml` as **up to two YAML documents** when
+ * the workspace declares `configDependencies` or `devEngines.packageManager`:
+ * an env preamble, then the lockfile proper. The rule for telling them apart
+ * is **deterministic, not a heuristic**. It is pnpm's own writer contract:
+ * `writeEnvLockfile` emits `${env}---${main}`, composing the preamble as a
+ * *prefix*, so the preamble is the **first** of two documents and the
+ * lockfile is always the **last**. Both documents declare `lockfileVersion`,
+ * `importers` and `packages`, so position is the only discriminator. Content
+ * cannot tell them apart, which is how a single-document parse once read the
+ * preamble as the lockfile and reported an empty workspace.
+ *
+ * - One document: no preamble; that document is the lockfile.
+ * - Two documents: the first is the preamble, the second the lockfile.
+ * - More than two: outside the writer contract, so no position identifies
+ *   either document. Rather than guess (the preamble feeds integrity
+ *   verification, where a guess is a trust decision), it fails through the
+ *   typed framing channel with `unexpectedDocuments`.
+ *
+ * An empty document composes to `null` and occupies its position as
+ * `undefined`. pnpm writes an empty *main* document after a preamble for a
+ * workspace with no root `package.json` and only `configDependencies`
+ * (measured against pnpm 11.28.0 and 12.7.0). Whether that is a lockfile is
+ * the caller's decision, not the splitter's.
+ *
+ * @internal
+ */
+export const splitPnpmStream = (content: string): Effect.Effect<PnpmStream, ParseFailure> =>
 	Effect.gen(function* () {
 		const documents = yield* Yaml.parseAll(content).pipe(Effect.mapError(syntaxFailure));
-		const document = documents.at(-1);
-		if (documents.length === 0 || isEmptyDocument(document)) {
-			return yield* Effect.fail(framingFailure("noLockfileDocument", documents.length));
+		if (documents.length > MAX_PNPM_DOCUMENTS) {
+			return yield* Effect.fail(framingFailure("unexpectedDocuments", documents.length));
 		}
-		return { document, documents: documents.length };
+		const present = (document: unknown): unknown => (isEmptyDocument(document) ? undefined : document);
+		return documents.length === MAX_PNPM_DOCUMENTS
+			? { preamble: present(documents[0]), main: present(documents[1]), documents: documents.length }
+			: { preamble: undefined, main: present(documents[0]), documents: documents.length };
 	});
 
 /**
@@ -88,47 +115,5 @@ export const selectSoleDocument = (content: string): Effect.Effect<SelectedDocum
 		if (documents.length === 0 || isEmptyDocument(document)) {
 			return yield* Effect.fail(framingFailure("noLockfileDocument", documents.length));
 		}
-		return { document, documents: documents.length };
-	});
-
-/**
- * The number of documents pnpm's env-lockfile writer can compose: the env
- * preamble and the main lockfile. See {@link selectPnpmEnvDocument}.
- *
- * @internal
- */
-const MAX_PNPM_DOCUMENTS = 2;
-
-/**
- * Select the env ("preamble") document from a `pnpm-lock.yaml` YAML stream,
- * or `undefined` when the stream carries none.
- *
- * @remarks
- * The same position rule as {@link selectPnpmDocument}, read from the other
- * end: pnpm's `writeEnvLockfile` composes `${env}---${main}`, so the preamble
- * is the **first** of exactly two documents. A single-document stream has no
- * preamble — that is how pnpm writes a lockfile for a workspace that declares
- * neither `configDependencies` nor `devEngines.packageManager` — and neither
- * does an empty one. An empty first document is no preamble either: there is
- * nothing in it to read.
- *
- * A stream carrying **more** than two documents is outside the writer
- * contract, so no position identifies the preamble in it. Rather than guess —
- * this selection feeds integrity verification, where a guess is a trust
- * decision — it fails through the typed framing channel. That limit is this
- * selector's alone: {@link selectPnpmDocument}, behind `Lockfile.parse`, takes
- * the last document of a stream of any count.
- *
- * @internal
- */
-export const selectPnpmEnvDocument = (content: string): Effect.Effect<SelectedDocument | undefined, ParseFailure> =>
-	Effect.gen(function* () {
-		const documents = yield* Yaml.parseAll(content).pipe(Effect.mapError(syntaxFailure));
-		if (documents.length > MAX_PNPM_DOCUMENTS) {
-			return yield* Effect.fail(framingFailure("unexpectedDocuments", documents.length));
-		}
-		if (documents.length < MAX_PNPM_DOCUMENTS) return undefined;
-		const document = documents.at(0);
-		if (isEmptyDocument(document)) return undefined;
 		return { document, documents: documents.length };
 	});

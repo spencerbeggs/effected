@@ -44,10 +44,18 @@ records the bare version as the `specifier` either way.
 | `pnpm/env-configdeps-pnpm11` | `npx pnpm@11.27.1 install --dir <d> --store-dir <tmp>` | one bare `configDependencies` entry, no `devEngines` | The preamble records the config dependency's integrity and nothing else. This is where a bare `configDependencies` entry keeps its integrity (effected#842). pnpm 11 also writes `pnpmfileChecksum` into the lockfile document. |
 | `pnpm/env-configdeps-pnpm12` | `npx pnpm@12.6.0 install --dir <d> --store-dir <tmp>` | as above | The same preamble as pnpm 11, byte for byte. The lockfile document carries no `pnpmfileChecksum`. |
 
-A config-dependency-only workspace (no `package.json` dependencies) is
-deliberately not a fixture here. Both majors write its second document empty,
-and `Lockfile.parse` rejects that with a framing error. That is outside this
-fixture set's positive-parse gate.
+`pnpm/env-configonly-pnpm11` and `pnpm/env-configonly-pnpm12` were captured
+on 2026-09-27 on darwin-arm64 from a third input project. It had no
+`package.json` at all, only a `pnpm-workspace.yaml` declaring the same bare
+`configDependencies` entry. Each command was run from outside `<d>`. The
+empty main document needs the missing `package.json`: a `package.json` with
+no dependencies, with or without `devEngines.packageManager`, makes both
+majors write a main document holding `importers: {.: {}}` instead.
+
+| Fixture | Command | Input difference | Pins |
+| --- | --- | --- | --- |
+| `pnpm/env-configonly-pnpm11` | `npx pnpm@11.28.0 install --dir <d> --store-dir <tmp>` | no `package.json`, one bare `configDependencies` entry | The preamble is followed by an **empty** main document. `Lockfile.parse` reads that as an empty lockfile versioned by the preamble, and the env reader reads the preamble (effected#845). |
+| `pnpm/env-configonly-pnpm12` | `npx pnpm@12.7.0 install --dir <d> --store-dir <tmp>` | as above | Byte-identical to the pnpm 11 capture. |
 
 To regenerate one, recreate its input project in an empty directory `<d>`, run
 the command in its row, and copy `<d>/pnpm-lock.yaml` over the fixture

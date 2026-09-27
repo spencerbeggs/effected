@@ -329,6 +329,34 @@ const isPackage = (options: WorkspacesSyncOptions, dir: string): boolean =>
 	options.fileSystem.exists(options.path.join(dir, "package.json"));
 
 /**
+ * Options for {@link findWorkspaceRootSync}: the consumer-supplied operations
+ * plus the ascent's ceiling.
+ *
+ * @public
+ */
+export interface FindWorkspaceRootSyncOptions extends WorkspacesSyncOptions {
+	/**
+	 * A ceiling directory, with the semantics of `FindWorkspaceRootOptions.stopAt`
+	 * on the Effect surface. The ascent stops after probing it, so an unmarked
+	 * `stopAt` returns `null` rather than silently adopting an enclosing
+	 * repository's workspace.
+	 *
+	 * @remarks
+	 * Inclusive: a ceiling that is itself a workspace root is returned. The
+	 * ceiling is resolved through the supplied {@link SyncPath.resolve} at
+	 * lookup time, so a relative one is taken against the process working
+	 * directory when the call runs (with `node:path`). A ceiling that names no
+	 * ancestor of `cwd` never matches, and the ascent runs to the filesystem
+	 * root. Omit it for the unbounded ascent.
+	 *
+	 * Pass `stopAt: cwd` for a checkout nested inside someone else's workspace
+	 * (a self-hosted runner, `actions/checkout` with `path:`): a checkout that is
+	 * itself a root still resolves, and one that is not returns `null`.
+	 */
+	readonly stopAt?: string | undefined;
+}
+
+/**
  * The nearest workspace root at or above `cwd`, or `null`.
  *
  * @remarks
@@ -348,9 +376,17 @@ const isPackage = (options: WorkspacesSyncOptions, dir: string): boolean =>
  * Markers match the async service exactly: a `pnpm-workspace.yaml`, or a
  * `package.json` carrying a `workspaces` field.
  *
+ * The ascent is unbounded unless `options.stopAt` names a ceiling
+ * ({@link FindWorkspaceRootSyncOptions.stopAt}), with the Effect surface's
+ * semantics: inclusive, resolved at lookup time. Where `WorkspaceRoot.find`
+ * fails `WorkspaceRootNotFoundError` carrying the resolved ceiling, this
+ * returns `null` — the facade is total and has no error channel, and the
+ * caller already holds the ceiling it passed.
+ *
  * @param cwd - Where to start the ascent (typically `process.cwd()`),
  *   matching the Effect layers' `{ cwd }` option.
- * @param options - The consumer-supplied file and path operations.
+ * @param options - The consumer-supplied file and path operations, plus an
+ *   optional `stopAt` ceiling.
  *
  * @example
  * ```ts
@@ -371,15 +407,23 @@ const isPackage = (options: WorkspacesSyncOptions, dir: string): boolean =>
  *
  * @public
  */
-export const findWorkspaceRootSync = (cwd: string, options: WorkspacesSyncOptions): string | null => {
+export const findWorkspaceRootSync = (cwd: string, options: FindWorkspaceRootSyncOptions): string | null => {
 	const { fileSystem, path } = options;
 	let current = path.resolve(cwd);
+	// Resolved at lookup time, exactly as `WorkspaceRoot.find` resolves it: the
+	// comparison below is string equality, so an unresolved ceiling would never
+	// match and would silently degrade to the unbounded ascent it exists to stop.
+	const ceiling = options.stopAt === undefined ? undefined : path.resolve(options.stopAt);
 	// Bounded twice over: `dirname` is a fixpoint at the filesystem root, and the
 	// depth cap guards a pathological path implementation that never reaches one.
 	for (let depth = 0; depth < MAX_ENUMERATION_DEPTH * 8; depth++) {
 		if (fileSystem.exists(path.join(current, "pnpm-workspace.yaml"))) return current;
 		const manifest = readJson(fileSystem, path.join(current, "package.json"));
 		if (manifest?.workspaces !== undefined && manifest.workspaces !== null) return current;
+		// Inclusive: the ceiling itself was just probed. A ceiling naming no
+		// ancestor never matches and the ascent runs to the filesystem root —
+		// walker's rule, which the Effect surface inherits.
+		if (ceiling !== undefined && current === ceiling) return null;
 		const parent = path.dirname(current);
 		if (parent === current) return null;
 		current = parent;

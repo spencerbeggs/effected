@@ -889,10 +889,9 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 							const version = index.get(packageName);
 							return version === undefined
 								? Effect.fail(
-										new DependencyResolutionError({
-											specifier,
-											cause: new Error(`Workspace member "${packageName}" declares no version`),
-										}),
+										// A domain condition read from structured data, not a foreign
+										// failure: typed by `reason`, with nothing to carry as `cause`.
+										new DependencyResolutionError({ specifier, reason: "no-version", cause: undefined }),
 									)
 								: Effect.succeed(Option.some(version));
 						}),

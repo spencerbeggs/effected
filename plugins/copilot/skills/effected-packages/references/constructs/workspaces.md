@@ -31,6 +31,7 @@
 | `DuplicatedPackage` | Class | One package name reached at two or more distinct versions. | one package name resolved at two or more distinct versions |
 | `DuplicatedVersion` | Class | One version a duplicated package resolved at. | one version of a duplicated package with its resolved instances |
 | `FindWorkspaceRootOptions` | Interface | Options for `WorkspaceRoot`'s `find`. | |
+| `FindWorkspaceRootSyncOptions` | Interface | Options for `findWorkspaceRootSync`: the consumer-supplied operations plus the ascent's ceiling. | |
 | `GetWorkspacePackagesSyncOptions` | Interface | Options for `getWorkspacePackagesSync`: the required consumer-supplied operations plus the traversal bound. | |
 | `HookInjection` | Interface | The result of replaying a workspace's `configDependencies` hooks: the catalogs the hooks yield, and the release-age gate contribution they leave on the config (pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude`). | |
 | `HookReplay` | Interface | Which version of a config dependency a replay actually loaded, and where that version came from. | |

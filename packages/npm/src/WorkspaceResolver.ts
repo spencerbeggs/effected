@@ -23,10 +23,29 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
  * false and sends the resolution down a registry path. It fails here instead,
  * naming the specifier.
  *
- * `cause` preserves the originating failure on a structured `Schema.Defect`
- * field rather than folding it into a string, so callers can branch on the
- * original value (an `Error`, a parsed diagnostic, anything); `specifier`
- * records the specifier string that failed to resolve.
+ * `reason` tells the two apart without string-matching: `"mechanism"` (the
+ * default) when the resolution mechanism failed, `"no-version"` for the
+ * version-less member. `cause` preserves the originating failure on a
+ * structured `Schema.Defect` field rather than folding it into a string, so
+ * callers can branch on the original value (an `Error`, a parsed diagnostic,
+ * anything); a `"no-version"` failure is raised from structured data and
+ * carries no `cause`. `specifier` records the specifier string that failed to
+ * resolve.
+ *
+ * @example
+ * ```ts
+ * import { Effect } from "effect";
+ * import { DependencyResolutionError, WorkspaceResolver } from "@effected/npm";
+ *
+ * const program = Effect.gen(function* () {
+ *   const resolver = yield* WorkspaceResolver;
+ *   return yield* resolver.versionOf("@x/private-tool");
+ * }).pipe(
+ *   Effect.catchTag("DependencyResolutionError", (error: DependencyResolutionError) =>
+ *     error.reason === "no-version" ? Effect.succeed(undefined) : Effect.fail(error),
+ *   ),
+ * );
+ * ```
  *
  * @public
  */
@@ -34,12 +53,30 @@ export class DependencyResolutionError extends Schema.TaggedError<DependencyReso
 	"DependencyResolutionError",
 	{
 		specifier: Schema.String,
+		/**
+		 * Why the specifier could not be resolved.
+		 *
+		 * @remarks
+		 * - `"mechanism"` — the resolution mechanism itself failed (reading or
+		 *   assembling the workspace or its catalogs); `cause` carries the failure.
+		 * - `"no-version"` — a `workspace:` specifier names a known member whose
+		 *   manifest declares no `version`; there is no `cause`.
+		 *
+		 * Defaults to `"mechanism"` when omitted, at construction and when decoding
+		 * an error encoded before the field existed.
+		 */
+		reason: Schema.Literals(["mechanism", "no-version"]).pipe(
+			Schema.withDecodingDefaultKey(Effect.succeed("mechanism" as const)),
+			Schema.withConstructorDefault(Effect.succeed("mechanism" as const)),
+		),
 		cause: Schema.Defect(),
 	},
 ) {
-	/** Renders `specifier` into a one-line failure message. */
+	/** Renders `specifier` and `reason` into a one-line failure message. */
 	override get message(): string {
-		return `Failed to resolve dependency specifier "${this.specifier}"`;
+		return this.reason === "no-version"
+			? `Failed to resolve dependency specifier "${this.specifier}": the workspace member declares no version`
+			: `Failed to resolve dependency specifier "${this.specifier}"`;
 	}
 }
 

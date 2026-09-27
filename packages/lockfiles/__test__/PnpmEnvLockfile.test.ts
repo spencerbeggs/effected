@@ -9,6 +9,9 @@
 //   env-configdeps-pnpm11 / -pnpm12  pnpm 11.27.1 / 12.6.0, one bare
 //                  configDependency beside an ordinary dependency: the shape
 //                  the base side of effected#842 records
+//   env-configonly-pnpm11 / -pnpm12  pnpm 11.28.0 / 12.7.0, a workspace with
+//                  no package.json and one configDependency: the preamble
+//                  then an EMPTY main document (effected#845)
 // Both majors write the preamble with no configDependencies at all; a legacy
 // `packageManager` field (or no declaration) writes a single document.
 //
@@ -352,6 +355,19 @@ describe("PnpmEnvLockfile.configDependencies", () => {
 					assert.strictEqual(lock?.specifier, "0.11.1");
 					assert.strictEqual(lock?.version, "0.11.1");
 					assert.strictEqual(lock?.integrity, PLUGIN_0_11_1_SRI);
+				}),
+			);
+		}
+
+		for (const major of ["pnpm11", "pnpm12"]) {
+			it.effect(`${major}, config dependencies only: the preamble reads ahead of an empty main document`, () =>
+				Effect.gen(function* () {
+					const content = fixture(`env-configonly-${major}`);
+					const locks = yield* PnpmEnvLockfile.configDependencies(content);
+					assert.deepStrictEqual([...locks.keys()], ["@effected/pnpm-plugin-effect"]);
+					assert.strictEqual(locks.get("@effected/pnpm-plugin-effect")?.integrity, PLUGIN_0_11_1_SRI);
+					// No devEngines, so the preamble records no package manager.
+					assert.isTrue(Option.isNone(yield* PnpmEnvLockfile.packageManager(content)));
 				}),
 			);
 		}

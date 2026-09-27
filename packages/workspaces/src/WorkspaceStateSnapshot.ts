@@ -10,7 +10,7 @@
 // itself, so code written to those contracts can run "as of" a ref.
 
 import { CatalogResolver, DependencyResolutionError, DependencySpecifier, WorkspaceResolver } from "@effected/npm";
-import { Effect, Exit, Layer, Option, Schema } from "effect";
+import { Effect, Exit, Layer, Option, Schema, SchemaTransformation } from "effect";
 import { unanimousVersionOf } from "./internal/importerVersions.js";
 import { CatalogSet } from "./WorkspaceCatalogs.js";
 
@@ -22,6 +22,27 @@ const EMPTY: Record<string, string> = Object.freeze(Object.create(null) as Recor
 const DependencyMap = Schema.Record(Schema.String, Schema.String).pipe(
 	Schema.withDecodingDefaultKey(Effect.succeed(EMPTY)),
 	Schema.withConstructorDefault(Effect.succeed(EMPTY)),
+);
+
+/**
+ * A snapshot's `version` field: absent when the manifest declared none, and
+ * never `""`.
+ *
+ * @remarks
+ * The Type side is a `NonEmptyString`, so `make` rejects `""` outright. The
+ * encoded side stays a plain optional string for one reason only: snapshots
+ * serialized while `""` was the "declared no version" sentinel must still
+ * decode, and they decode to the absent key they always meant — so an old
+ * stored value and a fresh capture of the same manifest compare equal.
+ */
+const SnapshotVersion = Schema.optionalKey(Schema.String).pipe(
+	Schema.decodeTo(
+		Schema.optionalKey(Schema.NonEmptyString),
+		SchemaTransformation.transformOptional({
+			decode: (encoded) => Option.filter(encoded, (version) => version !== ""),
+			encode: (version) => version,
+		}),
+	),
 );
 
 /**
@@ -42,23 +63,24 @@ export class PackageStateSnapshot extends Schema.Class<PackageStateSnapshot>("Pa
 	/** The package name. */
 	name: Schema.NonEmptyString,
 	/**
-	 * The raw `version` string, as recorded at the captured moment — or `""` for
+	 * The raw `version` string, as recorded at the captured moment — absent for
 	 * a manifest that declared none.
 	 *
 	 * @remarks
-	 * `WorkspacePackage.version` is optional and a version-less member is an
-	 * ordinary pnpm shape, but this field stays a plain required string because a
-	 * snapshot is a serialized value someone stores and diffs: an absent key and
-	 * a present one would read as a change the moment one side of a diff was
-	 * captured by a different code path. **`""` is therefore the sentinel for
-	 * "the manifest declared no version", not a version anyone can use** — both
-	 * `snapshotOf` at a ref and the worktree snapshot write it, so the two sides
-	 * agree. Every resolution surface treats it as absence:
-	 * {@link WorkspaceStateSnapshot.resolve} answers `Option.none()` for a
-	 * `workspace:` specifier against it, because `some("")` would rewrite
-	 * `workspace:^` as a bare `"^"`.
+	 * Optional exactly as `WorkspacePackage.version` is: a version-less member is
+	 * an ordinary pnpm shape. Both capture paths — `WorkspaceSnapshots.at(ref)`
+	 * and `WorkspaceSnapshots.worktree()` — omit the key for such a member, so
+	 * the two sides of a diff agree without a placeholder. Never `""`: `make`
+	 * rejects it, and a snapshot serialized when `""` was the "no version"
+	 * sentinel decodes to the absent key.
+	 *
+	 * A version-less member is still a member: it appears in `packages` and
+	 * answers {@link WorkspaceStateSnapshot.package}, but is absent from
+	 * {@link WorkspaceStateSnapshot.versions}, resolves a `workspace:` specifier
+	 * to `Option.none()`, and fails its snapshot-bound `WorkspaceResolver`'s
+	 * `versionOf` typed.
 	 */
-	version: Schema.String,
+	version: SnapshotVersion,
 	/** POSIX path relative to the workspace root; `"."` for the root package. */
 	relativePath: Schema.String,
 	/** Production dependencies. */
@@ -187,7 +209,11 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 
 	#versions(): ReadonlyMap<string, string> {
 		if (this.#versionIndex === undefined) {
-			this.#versionIndex = new Map(this.packages.map((pkg) => [pkg.name, pkg.version]));
+			// Only members that declared a version: an absent version stays absent
+			// here, rather than being presented as a placeholder string.
+			const index = new Map<string, string>();
+			for (const pkg of this.packages) if (pkg.version !== undefined) index.set(pkg.name, pkg.version);
+			this.#versionIndex = index;
 		}
 		return this.#versionIndex;
 	}
@@ -200,15 +226,13 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	}
 
 	/**
-	 * Every captured package's name → version. Total; O(1) after the first call.
+	 * Every captured package's name → version, for the packages that declared
+	 * one. Total; O(1) after the first call.
 	 *
 	 * @remarks
-	 * Values are `PackageStateSnapshot.version` verbatim, so a member whose
-	 * manifest declared no version maps to the **`""` sentinel** rather than
-	 * being absent from the map — presence here answers membership, not
-	 * "has a usable version". A caller reading a version out of this map owes
-	 * the `""` check itself; {@link WorkspaceStateSnapshot.resolve} already
-	 * makes it.
+	 * A member whose manifest declared no version is **absent** from this map,
+	 * so every value is a real version and presence answers "has a version",
+	 * not membership — ask {@link WorkspaceStateSnapshot.package} for that.
 	 */
 	get versions(): ReadonlyMap<string, string> {
 		return this.#versions();
@@ -307,11 +331,10 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 				return Option.isSome(fromCatalogs) ? fromCatalogs : onUnresolvedCatalog();
 			}
 			case "workspace": {
-				// `""` is the sentinel a version-less member records, not a version:
-				// `some("")` would rewrite `workspace:^` as a bare `"^"`. See
-				// `PackageStateSnapshot.version`.
-				const version = this.#versions().get(dependency);
-				return version === undefined || version === "" ? Option.none() : Option.some(version);
+				// A version-less member is absent from the index, so it resolves to
+				// `none` exactly as a non-member does — there is nothing to substitute
+				// for `workspace:^`.
+				return Option.fromUndefinedOr(this.#versions().get(dependency));
 			}
 			default:
 				return Option.none();
@@ -493,18 +516,19 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	get workspaceResolver(): Layer.Layer<WorkspaceResolver> {
 		if (this.#workspaceResolver === undefined) {
 			this.#workspaceResolver = Layer.succeed(WorkspaceResolver, {
-				// `""` is the snapshot's sentinel for a member that declared no version
-				// (see `PackageStateSnapshot.version`). The contract reserves `none` for
-				// a NON-member, so a known member with nothing to resolve fails typed —
-				// the same answer the discovery-backed resolver gives.
+				// The contract reserves `none` for a NON-member, so a known member that
+				// declared no version fails typed — the same answer the discovery-backed
+				// resolver gives.
 				versionOf: (packageName: string) => {
-					const version = this.#versions().get(packageName);
-					if (version === undefined) return Effect.succeed(Option.none<string>());
-					if (version === "") {
+					const member = this.#packages().get(packageName);
+					if (member === undefined) return Effect.succeed(Option.none<string>());
+					const version = member.version;
+					if (version === undefined) {
 						return Effect.fail(
 							new DependencyResolutionError({
 								specifier: `workspace:${packageName}`,
-								cause: new Error(`Workspace member "${packageName}" declares no version`),
+								reason: "no-version",
+								cause: undefined,
 							}),
 						);
 					}

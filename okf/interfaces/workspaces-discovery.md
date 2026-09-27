@@ -24,10 +24,12 @@ sources:
     resource: ../../packages/workspaces/src/Workspaces.ts
   - id: layer-root-ts
     resource: ../../packages/workspaces/src/internal/layerRoot.ts
+  - id: workspaces-sync-ts
+    resource: ../../packages/workspaces/src/WorkspacesSync.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T07:39:04Z
-  body_sha256: a27b563e0ddaaa1ac8631803bf0484ab41c33e6309c2208502b5bbf40612789b
+  at: 2026-09-27T21:58:29Z
+  body_sha256: 35047509871c75e88a7db5e3c7d92fb06db9faf90957065dfac99af882e625f5
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -105,8 +107,8 @@ runtime stayed needlessly strict.
 
 `WorkspaceResolver.versionOf` answers the two questions discovery keeps
 apart: `Option.none()` for a name that is not a workspace member at all, and
-a typed `DependencyResolutionError` for a member that is one but declares no
-`version` — because the `workspace:` contract reserves `none` for "not a
+a typed `DependencyResolutionError` with `reason: "no-version"` and no
+`cause` for a member that is one but declares no `version` — because the `workspace:` contract reserves `none` for "not a
 member", and answering it for a version-less member would read downstream
 as exactly that.
 
@@ -142,7 +144,11 @@ never match, silently degrading to the unbounded ascent the option exists
 to prevent. An unmarked ceiling fails typed with `stopAt` recorded on
 `WorkspaceRootNotFoundError`, which is what distinguishes "no root anywhere
 above me" from "none below my ceiling".[^workspace-root-ts] The sync facade's
-`findWorkspaceRootSync` has not been given the same bounds.
+`findWorkspaceRootSync` takes the same `stopAt` (inclusive, resolved through
+the consumer's `SyncPath.resolve` at lookup time, a non-ancestor never
+matching); being total, it answers `null` where the Effect surface fails
+typed.[^workspaces-sync-ts] It takes no `maxDepth`: its ascent is bounded
+only by the `dirname` fixpoint and an internal cap.
 
 Every service that resolves a root from its layer options takes the same
 ceiling as `stopAt`: `WorkspaceDiscovery`, `LockfileReader`,
@@ -278,3 +284,5 @@ branches on and proceeds past.
     layer-bound root lookup the four root-resolving services share.
 [^traverse-ts]: `packages/workspaces/src/internal/traverse.ts` — the shared
     worklist traversal.
+[^workspaces-sync-ts]: `packages/workspaces/src/WorkspacesSync.ts` —
+    `findWorkspaceRootSync` and its `FindWorkspaceRootSyncOptions.stopAt`.

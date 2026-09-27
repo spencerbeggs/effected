@@ -10,8 +10,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T06:20:52Z
-  body_sha256: 5f9859d5b96b62d2b5a8e0083d2c38c86bfddebd35f95b3740952f99e8504365
+  at: 2026-09-27T21:58:29Z
+  body_sha256: 761953a1ee7491c474fce34118b4119e6033a872b06baef26e5d0e98165984b5
 ---
 
 # npm
@@ -38,7 +38,7 @@ Every Effect class factory is written inline, with the synthesized `_base` herit
 
 ## Resolver contracts
 
-`CatalogResolver` and `WorkspaceResolver` are both `Context.Service` with the shape inlined structurally, and no-op layers bound to a `const` so they memoize by reference. `CatalogResolver.rangeOf` takes a package name and an `Option` catalog name (`None` meaning the default catalog) and answers the configured range, or `None` if unresolvable. `WorkspaceResolver.versionOf` answers the concrete version with the range modifier stripped, or `None`. An unmatched specifier is `Option.none()`, not an error — `DependencyResolutionError` is reserved for mechanism failure, never for "no match found."
+`CatalogResolver` and `WorkspaceResolver` are both `Context.Service` with the shape inlined structurally, and no-op layers bound to a `const` so they memoize by reference. `CatalogResolver.rangeOf` takes a package name and an `Option` catalog name (`None` meaning the default catalog) and answers the configured range, or `None` if unresolvable. `WorkspaceResolver.versionOf` answers the concrete version with the range modifier stripped, or `None`. An unmatched specifier is `Option.none()`, not an error — `DependencyResolutionError` is reserved for mechanism failure, never for "no match found." Its one other case is a `workspace:` specifier naming a known member that declares no `version`, which `none` would misreport as a non-member; a `reason` literal (`"mechanism"`, the constructor and decoding default, or `"no-version"`, raised with no `cause`) separates the two so a consumer never string-matches the wrapped cause, and the `message` getter names the no-version case.
 
 `CatalogAssemblyError` is the typed failure of catalog assembly, and it lives beside the contract rather than in the implementing package: the contract package owns the contract's error vocabulary. Before the relocation, `rangeOf` could only name `DependencyResolutionError`, so implementations folded assembly failures into its defect `cause` and every consumer `_tag`-sniffed `unknown` to distinguish an assembly failure from a resolution failure. `@effected/workspaces` implements both contracts directly as layers over its own services, and imports `CatalogAssemblyError` back from here without re-exporting it, so there is exactly one home for it. Its `message` appends the cause's message, since the cause carries the actionable detail and a consumer rendering `message` must not lose it. An optional `reason` (`notInstalled`, `ambiguous`, `fetchFailed`, `integrityMismatch`, `integrityUnavailable`) distinguishes a config dependency that could not be resolved at its declared version (effected#842).
 

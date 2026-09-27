@@ -194,11 +194,14 @@ const snapshotOf = (content: Option.Option<string>, relativePath: string): Optio
 	const parsed = parseJsonObject(content.value);
 	const name = parsed.name;
 	if (typeof name !== "string" || name.length === 0) return Option.none();
-	const version = typeof parsed.version === "string" ? parsed.version : "";
+	// Absent stays absent. At-ref content is not ours to fix, so a present but
+	// unusable `version` (a non-string, or `""`) degrades to absent rather than
+	// failing the snapshot — the tolerance this projection applies throughout.
+	const version = parsed.version;
 	return Option.some(
 		PackageStateSnapshot.make({
 			name,
-			version,
+			...(typeof version === "string" && version !== "" ? { version } : {}),
 			relativePath,
 			...(isStringRecord(parsed.dependencies) ? { dependencies: parsed.dependencies } : {}),
 			...(isStringRecord(parsed.devDependencies) ? { devDependencies: parsed.devDependencies } : {}),
@@ -516,10 +519,10 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 				const snapshotPackages = packages.map((pkg) =>
 					PackageStateSnapshot.make({
 						name: pkg.name,
-						// A version-less member records `""`, exactly as `snapshotOf` does
+						// A version-less member omits the key, exactly as `snapshotOf` does
 						// for the same manifest at a ref: both sides of a diff must answer
 						// the same way, or the missing field would read as a change.
-						version: pkg.version ?? "",
+						...(pkg.version === undefined ? {} : { version: pkg.version }),
 						relativePath: pkg.relativePath,
 						dependencies: pkg.dependencies,
 						devDependencies: pkg.devDependencies,

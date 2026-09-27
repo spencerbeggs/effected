@@ -2,7 +2,7 @@ import { IntegrityHash } from "@effected/npm";
 import { Effect, Schema } from "effect";
 import { ConfigDependencyLock } from "../ConfigDependencyLock.js";
 import { PackageManagerLock } from "../PackageManagerLock.js";
-import { selectPnpmEnvDocument } from "./documents.js";
+import { splitPnpmStream } from "./documents.js";
 import type { ParseFailure } from "./shared.js";
 import { gatePnpmVersion, validationFailure } from "./shared.js";
 
@@ -106,10 +106,10 @@ const recordedIntegrity = (
  */
 const decodePreamble = (content: string): Effect.Effect<PnpmEnvRawType | undefined, ParseFailure> =>
 	Effect.gen(function* () {
-		const selected = yield* selectPnpmEnvDocument(content);
-		if (selected === undefined) return undefined;
-		yield* gatePnpmVersion(selected.document);
-		return yield* Schema.decodeUnknownEffect(PnpmEnvRaw)(selected.document).pipe(Effect.mapError(validationFailure));
+		const { preamble } = yield* splitPnpmStream(content);
+		if (preamble === undefined) return undefined;
+		yield* gatePnpmVersion(preamble);
+		return yield* Schema.decodeUnknownEffect(PnpmEnvRaw)(preamble).pipe(Effect.mapError(validationFailure));
 	});
 
 /**

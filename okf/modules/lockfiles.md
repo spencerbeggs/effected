@@ -9,8 +9,8 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T20:59:34Z
-  body_sha256: 95cdeb929bc897dd02f7504f70c53c3745572a8b42beaf573c2316d212575313
+  at: 2026-09-27T21:58:29Z
+  body_sha256: 1cb12a85adf3746d88ea5fbcce4040da791c82639a6db71e9319a45713090dbf
 ---
 
 # lockfiles
@@ -51,6 +51,8 @@ Three surface shapes are deliberate rather than incidental. `LockfileParseError.
 
 A lockfile is not always one YAML document — see [a lockfile is a YAML stream](../decisions/lockfile-is-a-yaml-stream.md) for the framing rule, why it is deterministic rather than heuristic, and the per-format behavior it produces.
 
+One internal splitter, `splitPnpmStream`, decides pnpm framing for both `Lockfile.parse` and `PnpmEnvLockfile`, so the two cannot drift: at most two documents (more fail `unexpectedDocuments` through either reader), preamble first, lockfile last. An empty main document after a preamble is a **valid empty lockfile**: no packages, importers or workspace edges, with `lockfileVersion` taken from the preamble after the preamble passes the version gate. pnpm 11 and 12 write that shape for a workspace with no root `package.json` and only `configDependencies` (effected#845, fixtures `pnpm/env-configonly-pnpm11` and `-pnpm12`). An empty main document with no preamble still fails `noLockfileDocument`.
+
 ## The env preamble: the pinned package manager
 
 `PnpmEnvLockfile.packageManager(content)` reads the **first** document of a pnpm stream, the env preamble `Lockfile.parse` skips. pnpm 11 and 12 both write it when a workspace declares `devEngines.packageManager` or `configDependencies`. It is the same position rule read from the other end, and it too takes text and performs no IO. It answers `Effect<Option<PackageManagerLock>, LockfileParseError | LockfileFramingError>`. Its sibling `PnpmEnvLockfile.configDependencies(content)` reads the same preamble's root-importer `configDependencies` into a `ReadonlyMap` of `ConfigDependencyLock` (`name`, `specifier`, `version`, SRI `integrity`), empty when none are recorded. It fails on the same terms: a recorded entry with no `packages` entry, integrity or SRI form, or an empty version, fails at `validation`. `@effected/workspaces` reads it to verify a config dependency it fetches (effected#842).
@@ -81,7 +83,7 @@ Pure-tier house rule: a named `Effect.fn` span on each public fallible boundary 
 
 `@effect/vitest`, `it.effect`, `assert.*` — never `expect`. No platform packages, no mock layers, no `TestClock`. Four families: per-format fixture tests across each manager's lockfile versions, asserted against the unified model (package identification, integrity, workspace dependency edges, extension payloads); seam-property tests (the importer-name rewrite renames pnpm workspace packages and rewrites both edge ends while leaving unmapped entries, non-pnpm lockfiles and importers untouched; integrity comparison covers valid, missing, extra, unsatisfied and skipped cases, fed by in-memory manifests, so there is no IO anywhere in the suite); a hostility suite (malformed text and wrong shape each landing on their own stage, yarn classic content, dunder and hostile `name@version` keys, nesting bombs); and codec round-trips via `it.effect.prop` over derived arbitraries, asserting encode-decode identity.
 
-Fixture naming carries two load-bearing conventions. A directory named `unsupported-*` holds input the parser must reject, and that prefix is the exclusion mechanism: the version-gate guard ("every non-negative fixture sits at or above its format's gate") enumerates the fixtures directory and skips exactly those, so a new fixture is covered automatically and a negative one cannot silently opt a positive one out — never re-hard-code that list. The npm `v*` directories denote fixture *sets*, not lockfile versions: `npm/v1` and `npm/v2` are both `lockfileVersion: 3`, which is why the negative fixtures carry the prefix and their own version (`npm/unsupported-v1`). Fixtures are real manager output (pnpm 11.22.0, npm 11.19.0, bun 1.3.14, yarn 4.9.1; the `pnpm/env-*` preamble fixtures pnpm 11.27.1 and 12.6.0) except four hand-authored for a reason no install can produce: `pnpm/emptysnapshots` (a dependency-free v9 document), `pnpm/multidoc` (its preamble integrity is a deliberate placeholder the main-document parse must never read), `npm/unsupported-v2` (the point is the version field, not the tree) and `npm/ancestor-walk` (npm's hoisting avoids the intermediate-ancestor shape it encodes).
+Fixture naming carries two load-bearing conventions. A directory named `unsupported-*` holds input the parser must reject, and that prefix is the exclusion mechanism: the version-gate guard ("every non-negative fixture sits at or above its format's gate") enumerates the fixtures directory and skips exactly those, so a new fixture is covered automatically and a negative one cannot silently opt a positive one out — never re-hard-code that list. The npm `v*` directories denote fixture *sets*, not lockfile versions: `npm/v1` and `npm/v2` are both `lockfileVersion: 3`, which is why the negative fixtures carry the prefix and their own version (`npm/unsupported-v1`). Fixtures are real manager output (pnpm 11.22.0, npm 11.19.0, bun 1.3.14, yarn 4.9.1; the `pnpm/env-*` preamble fixtures pnpm 11.27.1 and 12.6.0, `pnpm/env-configonly-*` pnpm 11.28.0 and 12.7.0) except four hand-authored for a reason no install can produce: `pnpm/emptysnapshots` (a dependency-free v9 document), `pnpm/multidoc` (its preamble integrity is a deliberate placeholder the main-document parse must never read), `npm/unsupported-v2` (the point is the version field, not the tree) and `npm/ancestor-walk` (npm's hoisting avoids the intermediate-ancestor shape it encodes).
 
 ## Build
 

@@ -136,6 +136,7 @@ export {
 	type WorkspacesServices,
 } from "./Workspaces.js";
 export {
+	type FindWorkspaceRootSyncOptions,
 	type GetWorkspacePackagesSyncOptions,
 	type SyncDirectoryEntry,
 	type SyncFileSystem,

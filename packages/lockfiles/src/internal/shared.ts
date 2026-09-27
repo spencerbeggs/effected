@@ -292,12 +292,18 @@ const PnpmVersionProbe = Schema.Struct({
  * version: decode {@link PnpmVersionProbe}, then {@link requireLockfileVersion}.
  * Call it BEFORE the shape decode, for the reason the probe documents.
  *
+ * Succeeds with the gated version as the model spells it (`String` of the
+ * recorded value), for a caller that reports a version without decoding the
+ * rest of the document.
+ *
  * @internal
  */
-export const gatePnpmVersion = (document: unknown): Effect.Effect<void, ParseFailure> =>
+export const gatePnpmVersion = (document: unknown): Effect.Effect<string, ParseFailure> =>
 	Schema.decodeUnknownEffect(PnpmVersionProbe)(document).pipe(
 		Effect.mapError(validationFailure),
-		Effect.flatMap((probe) => requireLockfileVersion("pnpm", probe.lockfileVersion)),
+		Effect.flatMap((probe) =>
+			requireLockfileVersion("pnpm", probe.lockfileVersion).pipe(Effect.as(String(probe.lockfileVersion))),
+		),
 	);
 
 /**

@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/workspaces/src/ChangeDetector.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T06:20:52Z
-  body_sha256: 63d996bc6cc6316049581c25b14dd5705a4d7ae9ecf4e3834b4952f9fc88022e
+  at: 2026-09-27T21:58:29Z
+  body_sha256: a7e78afb2c024f71276234e6843cd63005ae82397bc105cf5dc4fc146bc6d0fe
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:06.249Z
@@ -147,8 +147,13 @@ never prefix-sniffed. The value also exposes snapshot-scoped
 `@effected/npm`'s contracts as of that moment, so a consumer can resolve a
 manifest against a past ref with the same code it uses against the
 worktree.[^workspace-state-snapshot-ts] `PackageStateSnapshot` is the
-narrower per-member slice; a version-less member records `""` on both the
-ref and worktree reads, because a diff's two sides must agree on the shape.
+narrower per-member slice. Its `version` is optional: a version-less member
+omits the key on both the ref and worktree reads, because a diff's two sides
+must agree on the shape, and the model never holds `""` — `make` rejects it,
+and a value serialized when `""` was the no-version sentinel decodes to the
+absent key. Such a member is absent from `versions`, still answers
+`package(name)`, resolves `workspace:` to `Option.none()`, and fails the
+snapshot-bound `versionOf` with `reason: "no-version"`.
 
 The two failure unions are `WorkspaceSnapshotAtFailure` — git's typed
 errors, `CatalogAssemblyError` from the inline source, and

@@ -1,7 +1,7 @@
 import { assert, describe, it, layer } from "@effect/vitest";
 import { Git, GitCommandError, LsTreeEntry } from "@effected/git";
 import { CatalogAssemblyError, CatalogResolver, WorkspaceResolver } from "@effected/npm";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Equal, Layer, Option, Schema } from "effect";
 import type { HookInjection, HookReplay } from "../src/index.js";
 import {
 	CatalogSet,
@@ -301,20 +301,50 @@ describe("WorkspaceStateSnapshot.resolve", () => {
 	);
 });
 
-// A snapshot whose captured versions include the `""` sentinel a version-less
-// member records — the shape `snapshotOf` and the worktree snapshot both write.
+// A snapshot holding a version-less member — the key simply absent, the shape
+// `snapshotOf` and the worktree snapshot both write (#613).
 const bareVersionSnapshot = WorkspaceStateSnapshot.make({
 	packages: [
-		PackageStateSnapshot.make({ name: "@x/bare", version: "", relativePath: "packages/bare" }),
+		PackageStateSnapshot.make({ name: "@x/bare", relativePath: "packages/bare" }),
 		PackageStateSnapshot.make({ name: "@x/alpha", version: "1.2.3", relativePath: "packages/alpha" }),
 	],
 	catalogs: CatalogSet.make({ entries: {} }),
 });
 
-describe('WorkspaceStateSnapshot.resolve — the `""` version sentinel', () => {
+describe('WorkspaceStateSnapshot — a version-less member is absent, never `""`', () => {
+	it('the model cannot hold `""`: make rejects it', () => {
+		assert.throws(() => PackageStateSnapshot.make({ name: "@x/bare", version: "", relativePath: "packages/bare" }));
+	});
+
+	it('a snapshot serialized with the old `""` sentinel decodes to the absent key', () => {
+		const legacy = Schema.decodeUnknownSync(PackageStateSnapshot)({
+			name: "@x/bare",
+			version: "",
+			relativePath: "packages/bare",
+		});
+		assert.isFalse(Object.hasOwn(legacy, "version"));
+		assert.isTrue(Equal.equals(legacy, bareVersionSnapshot.packages[0]));
+		// Control: a real version survives the same decode.
+		const versioned = Schema.decodeUnknownSync(PackageStateSnapshot)({
+			name: "@x/alpha",
+			version: "1.2.3",
+			relativePath: "packages/alpha",
+		});
+		assert.strictEqual(versioned.version, "1.2.3");
+	});
+
+	it("encoding omits the key rather than writing a placeholder", () => {
+		const encoded = Schema.encodeSync(PackageStateSnapshot)(bareVersionSnapshot.packages[0] as PackageStateSnapshot);
+		assert.isFalse(Object.hasOwn(encoded, "version"));
+	});
+
+	it("versions lists only members that declared a version; package() still answers membership", () => {
+		assert.deepStrictEqual([...bareVersionSnapshot.versions.entries()], [["@x/alpha", "1.2.3"]]);
+		assert.isTrue(Option.isSome(bareVersionSnapshot.package("@x/bare")));
+	});
+
 	it.effect('a version-less member resolves to none, never some("")', () =>
 		Effect.sync(() => {
-			// `""` is how a version-less member is RECORDED, not a version it has.
 			// Answering `some("")` would rewrite `workspace:^` as a bare `"^"`.
 			assert.isTrue(Option.isNone(bareVersionSnapshot.resolve("@x/bare", "workspace:^")));
 			// The positive control: a member that HAS a version still resolves, so
@@ -331,11 +361,57 @@ describe('WorkspaceStateSnapshot.resolve — the `""` version sentinel', () => {
 			const error = yield* Effect.flip(workspace.versionOf("@x/bare"));
 			assert.strictEqual(error._tag, "DependencyResolutionError");
 			assert.strictEqual(error.specifier, "workspace:@x/bare");
+			// The branch a `_tag` check cannot pin: this is the version-less case,
+			// raised from structured data with no foreign failure to wrap.
+			assert.strictEqual(error.reason, "no-version");
+			assert.isUndefined(error.cause);
 			// Positive and negative controls on the same layer.
 			assert.deepStrictEqual(yield* workspace.versionOf("@x/alpha"), Option.some("1.2.3"));
 			assert.isTrue(Option.isNone(yield* workspace.versionOf("nope")));
 		}).pipe(Effect.provide(bareVersionSnapshot.workspaceResolver)),
 	);
+});
+
+// ── a version-less member at a ref AND in the worktree (#613) ──────────────
+//
+// Both capture paths must omit the key for the same manifest, so a diff of a
+// clean tree reads no change — and neither side may present `""` as a version.
+
+const versionlessTree: Tree = {
+	"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+	"/repo/package.json": JSON.stringify({ name: "root", private: true }),
+	"/repo/packages/bare/package.json": JSON.stringify({ name: "@x/bare", private: true }),
+	"/repo/packages/alpha/package.json": manifest("@x/alpha", { dependencies: { "@x/bare": "workspace:^" } }),
+};
+
+describe("WorkspaceSnapshots — version-less manifests at a ref and in the worktree", () => {
+	layer(snapshotsLayer(scriptGit(refFromTree(versionlessTree)), versionlessTree))((it) => {
+		it.effect("both sides omit version, agree structurally, and resolve workspace: to none", () =>
+			Effect.gen(function* () {
+				const snapshots = yield* WorkspaceSnapshots;
+				const atHead = yield* snapshots.at("HEAD");
+				const worktree = yield* snapshots.worktree();
+				for (const snapshot of [atHead, worktree]) {
+					const bare = Option.getOrThrow(snapshot.package("@x/bare"));
+					const root = Option.getOrThrow(snapshot.package("root"));
+					assert.isFalse(Object.hasOwn(bare, "version"));
+					assert.isFalse(Object.hasOwn(root, "version"));
+					assert.deepStrictEqual([...snapshot.versions.keys()], ["@x/alpha"]);
+					assert.isTrue(Option.isNone(snapshot.resolve("@x/bare", "workspace:^")));
+				}
+				// The two sides are the same value, member for member, so a diff of a
+				// clean tree reports nothing — the reason the key must match.
+				const byName = (snapshot: WorkspaceStateSnapshot) =>
+					[...snapshot.packages].sort((a, b) => a.name.localeCompare(b.name));
+				const [left, right] = [byName(atHead), byName(worktree)];
+				assert.strictEqual(left.length, right.length);
+				for (const [index, pkg] of left.entries()) assert.isTrue(Equal.equals(pkg, right[index]), pkg.name);
+				// Control: the versioned member is captured on both sides.
+				assert.deepStrictEqual(atHead.resolve("@x/alpha", "workspace:*"), Option.some("1.0.0"));
+				assert.deepStrictEqual(worktree.resolve("@x/alpha", "workspace:*"), Option.some("1.0.0"));
+			}),
+		);
+	});
 });
 
 describe("WorkspaceStateSnapshot — snapshot-scoped resolver layers", () => {

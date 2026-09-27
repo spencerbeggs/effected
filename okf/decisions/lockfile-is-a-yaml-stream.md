@@ -7,8 +7,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T06:20:52Z
-  body_sha256: 8631bd47ee27e8af0838b8fee8e9050fcbfd53235d1f7ca8a081f96af3fc2826
+  at: 2026-09-27T21:58:29Z
+  body_sha256: 80a6964eeddae7d5cc6b06915004ec27c19420fddefadfff247aa1f910c70898
 ---
 
 # A lockfile is a YAML stream, not always one document
@@ -19,7 +19,7 @@ pnpm 11 and 12 write `pnpm-lock.yaml` as **two YAML documents** in one file when
 
 ## Decision
 
-`@effected/lockfiles` treats a pnpm lockfile as a **YAML stream** and selects the correct document by **position**: the lockfile is always the **last** document in the stream, because pnpm's own writer composes the file as env-prefix followed by the main document (`writeEnvLockfile` emits `${env}---${main}`, and `extractMainDocument` reads back everything after the first separator) — so the preamble is always a prefix, never a suffix. `src/internal/documents.ts` owns this selection.
+`@effected/lockfiles` treats a pnpm lockfile as a **YAML stream** and selects the correct document by **position**: the lockfile is always the **last** document in the stream, because pnpm's own writer composes the file as env-prefix followed by the main document (`writeEnvLockfile` emits `${env}---${main}`, and `extractMainDocument` reads back everything after the first separator) — so the preamble is always a prefix, never a suffix. pnpm writes at most two documents, so the stream holds one or two; a stream of more than two is not one pnpm wrote and fails typed rather than being read by guess. `src/internal/documents.ts` owns this selection through one splitter that both `Lockfile.parse` and `PnpmEnvLockfile` project from, so the two readers cannot drift apart on the document-count rule.
 
 ## Alternatives rejected
 
@@ -29,6 +29,6 @@ pnpm 11 and 12 write `pnpm-lock.yaml` as **two YAML documents** in one file when
 
 ## Consequences
 
-An unlocatable lockfile document now fails typed through `LockfileFramingError`, carrying the format, the document count and a reason (`noLockfileDocument`, `noImporters`, or `unexpectedDocuments`) — and never a `cause`, since the text parsed fine and there is no foreign throwable to wrap. The invariant this buys: **an unlocatable lockfile fails typed; it can never return an empty `Lockfile`.** Before this rule, the silent single-document parse of a config-dependencies lockfile was the most dangerous kind of wrong answer, because it was indistinguishable from a legitimately empty workspace — a parser that succeeds on the wrong input is worse than one that fails outright, and this decision closes exactly that gap for the one format where it was possible.
+An unlocatable lockfile document now fails typed through `LockfileFramingError`, carrying the format, the document count and a reason (`noLockfileDocument`, `noImporters`, or `unexpectedDocuments`) — and never a `cause`, since the text parsed fine and there is no foreign throwable to wrap. The invariant this buys: **an unlocatable lockfile fails typed; it can never return an empty `Lockfile`.** The one empty `Lockfile` the parser does return is a stream pnpm really writes: a workspace with config dependencies and no root `package.json` gets a preamble followed by an **empty** main document. That reads as a lockfile with no importers or packages, its `lockfileVersion` taken from the preamble after the same version gate. It is located, not guessed — the position rule still picks the main document — so the invariant holds. An empty main document with no preamble in front of it still fails with `noLockfileDocument`. Before this rule, the silent single-document parse of a config-dependencies lockfile was the most dangerous kind of wrong answer, because it was indistinguishable from a legitimately empty workspace — a parser that succeeds on the wrong input is worse than one that fails outright, and this decision closes exactly that gap for the one format where it was possible.
 
-The same position rule, read from the other end, locates the preamble: `PnpmEnvLockfile.packageManager` takes the **first** of exactly two documents, treats a single-document stream as having no preamble, and fails a stream of more than two with `unexpectedDocuments` rather than guessing, because that selection feeds integrity verification (see [lockfiles](../modules/lockfiles.md#the-env-preamble-the-pinned-package-manager)).
+The same position rule, read from the other end, locates the preamble: `PnpmEnvLockfile.packageManager` takes the **first** of exactly two documents, treats a single-document stream as having no preamble, and fails a stream of more than two with `unexpectedDocuments` rather than guessing (as `Lockfile.parse` now does too), because that selection feeds integrity verification (see [lockfiles](../modules/lockfiles.md#the-env-preamble-the-pinned-package-manager)).

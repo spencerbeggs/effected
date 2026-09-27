@@ -48,9 +48,10 @@ export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()
  * lockfile document could be located in it.
  *
  * @remarks
- * `pnpm-lock.yaml` is a YAML **stream**. pnpm 11 writes a
- * config-dependencies preamble document ahead of the lockfile whenever the
- * workspace uses `configDependencies`, so the file holds two documents. The
+ * `pnpm-lock.yaml` is a YAML **stream**. pnpm 11 and 12 write an env
+ * preamble document ahead of the lockfile whenever the workspace declares
+ * `configDependencies` or `devEngines.packageManager`, so the file holds two
+ * documents. The
  * lockfile is the last one — pnpm composes the preamble as a prefix — and a
  * parser that reads only the first document gets the preamble: a document
  * that *validates*, and yields a lockfile with an empty workspace. This error
@@ -59,20 +60,20 @@ export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()
  * - `format` — which format was being parsed.
  * - `documents` — how many YAML documents the stream carried.
  * - `reason`:
- *   - `"noLockfileDocument"` — the stream carries no lockfile document. An
- *     env-only `pnpm-lock.yaml` (a config-dependencies preamble and nothing
- *     after it) reads this way, as does empty content. pnpm itself treats
- *     such a file as having no lockfile.
+ *   - `"noLockfileDocument"` — the stream carries no lockfile document:
+ *     empty content, or a pnpm stream whose lockfile position is empty with
+ *     no env preamble ahead of it. A preamble followed by an empty document
+ *     is not this failure: pnpm writes that for a workspace with no root
+ *     `package.json` and only `configDependencies`, and `Lockfile.parse`
+ *     reads it as an empty lockfile versioned by the preamble.
  *   - `"noImporters"` — the located document declares no importers, so it
  *     describes no workspace. pnpm always records at least the root importer.
  *   - `"unexpectedDocuments"` — the stream carries more documents than the
  *     format's framing defines: several in a format that defines none
- *     (yarn), or more than the env preamble and the lockfile when reading a
- *     pnpm env preamble. Rather than silently picking one, parsing refuses to
- *     guess. For pnpm the limit is the env reader's alone:
- *     `PnpmEnvLockfile` enforces at most two documents, while
- *     `Lockfile.parse` reads the last document of a stream of any count and
- *     never fails with this reason.
+ *     (yarn), or more than the env preamble and the lockfile in a pnpm
+ *     stream. Rather than silently picking one, parsing refuses to guess.
+ *     `Lockfile.parse` and `PnpmEnvLockfile` share one pnpm splitter, so
+ *     both enforce the same at-most-two limit.
  *
  * It carries typed fields rather than a `cause`: unlike
  * {@link LockfileParseError}, there is no underlying engine failure to wrap —

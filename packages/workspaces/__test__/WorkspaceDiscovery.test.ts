@@ -389,6 +389,10 @@ describe("WorkspaceDiscovery — a manifest without a version is discovered (#47
 				const error = yield* Effect.flip(resolver.versionOf("@x/bare"));
 				assert.strictEqual(error._tag, "DependencyResolutionError");
 				assert.strictEqual(error.specifier, "workspace:@x/bare");
+				// The branch a `_tag` check cannot pin: this is the version-less case,
+				// raised from structured data with no foreign failure to wrap.
+				assert.strictEqual(error.reason, "no-version");
+				assert.isUndefined(error.cause);
 			}).pipe(Effect.provide(WorkspaceDiscovery.workspaceResolver)),
 		);
 	});
@@ -430,6 +434,10 @@ describe("WorkspaceDiscovery — a version that is PRESENT but EMPTY", () => {
 				const error = yield* Effect.flip(resolver.versionOf("@x/empty"));
 				assert.strictEqual(error._tag, "DependencyResolutionError");
 				assert.strictEqual(error.specifier, "workspace:@x/empty");
+				// A `""` version is a malformed manifest, not a version-less member:
+				// the mechanism reason, carrying the discovery failure as its cause.
+				assert.strictEqual(error.reason, "mechanism");
+				assert.isDefined(error.cause);
 			}).pipe(Effect.provide(WorkspaceDiscovery.workspaceResolver)),
 		);
 	});
