@@ -1,6 +1,6 @@
 import { LocalExec, Run } from "@effected/commands";
 import { Context, Crypto, Effect, FileSystem, Layer, Option, Redacted as Red, Schema } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { IntegrityHash } from "./IntegrityHash.js";
 import { NpmExecutor } from "./NpmExecutor.js";
 import { PublishError } from "./PublishError.js";

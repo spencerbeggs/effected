@@ -9,14 +9,15 @@
  * elsewhere (`OidcTokenIssuer`); neither authorizes anything on the strength
  * of the claim alone. Do not "fix" it here.
  *
- * Core `Encoding` does the base64url work, so no `Buffer` is involved: it is
+ * Core `Base64Url` does the base64url work, so no `Buffer` is involved: it is
  * strict about the alphabet where Node's decoder is forgiving, which is why
  * there is a test whose payload actually contains `-` and `_`.
  *
  * @internal
  */
 
-import { Encoding, Result } from "effect";
+import { Result } from "effect";
+import * as Base64Url from "effect/encoding/Base64Url";
 
 /** Why a token's payload could not be read. @internal */
 export type JwtPayloadFailure =
@@ -35,7 +36,7 @@ export const payloadOf = (token: string): Result.Result<unknown, JwtPayloadFailu
 	if (segments.length !== 3 || payload === undefined || payload === "") {
 		return Result.fail({ kind: "segments", detail: `expected three segments, got ${segments.length}` });
 	}
-	const json = Encoding.decodeBase64UrlString(payload);
+	const json = Base64Url.decodeString(payload);
 	if (Result.isFailure(json)) {
 		return Result.fail({ kind: "payload", detail: "the payload is not base64url JSON", cause: json.failure });
 	}
@@ -54,6 +55,6 @@ export const payloadOf = (token: string): Result.Result<unknown, JwtPayloadFailu
  * @internal
  */
 export const unsignedJwt = (header: unknown, payload: unknown): string => {
-	const segment = (value: unknown): string => Encoding.encodeBase64Url(JSON.stringify(value));
+	const segment = (value: unknown): string => Base64Url.encode(JSON.stringify(value));
 	return `${segment(header)}.${segment(payload)}.unsigned`;
 };

@@ -14,6 +14,11 @@ export interface UnknownKeysLevel {
 	readonly unknown: ReadonlyArray<string>;
 	/** Keys this level declares, in schema order. */
 	readonly accepted: ReadonlyArray<string>;
+	/**
+	 * The `patternProperties` patterns this level also accepts keys by, in
+	 * schema order. Present only when the level has at least one.
+	 */
+	readonly acceptedPatterns?: ReadonlyArray<string>;
 }
 
 /**
@@ -129,7 +134,10 @@ const collect = (payload: unknown, root: Node): ReadonlyArray<UnknownKeysLevel> 
 			if (match === undefined) extra.push(key);
 			else patterned.push([key, match[1]]);
 		}
-		if (extra.length > 0 && isClosed) out.push({ path, unknown: extra, accepted });
+		if (extra.length > 0 && isClosed) {
+			const acceptedPatterns = patterns.map(([pattern]) => pattern);
+			out.push({ path, unknown: extra, accepted, ...(acceptedPatterns.length > 0 ? { acceptedPatterns } : {}) });
+		}
 		for (const key of accepted) {
 			if (Object.hasOwn(value, key)) walk(value[key], properties[key], [...path, key], depth + 1);
 		}
@@ -147,10 +155,12 @@ const collect = (payload: unknown, root: Node): ReadonlyArray<UnknownKeysLevel> 
  * depth, a message naming them all, and an object-rooted form of a union.
  *
  * @remarks
- * Core's `Tool.Strict` rejects unknown keys but reports only the first
- * (effect `unstable/ai/McpServer.ts` decodes without `errors: "all"`), so an
- * agent fixes one typo per round trip. These walkers run over the schema core
- * actually serves, so what they accept matches what the tool advertises:
+ * For a `Tool.make` tool, core's strict decode already names every unknown
+ * key, with every missing or invalid field, in one response. Core never
+ * validates a `Tool.dynamic` tool's raw JSON Schema, so these walkers are
+ * for that case: a handler runs them against the schema it registered.
+ * They run over the schema as served, so what they accept matches what the
+ * tool advertises:
  *
  * - Only `additionalProperties: false` closes a node, as in JSON Schema; core
  *   emits it on every object node of a strict tool and `true` otherwise.
@@ -161,6 +171,9 @@ const collect = (payload: unknown, root: Node): ReadonlyArray<UnknownKeysLevel> 
  * - `items`, `prefixItems`, `$ref` into `$defs` (JSON Pointer escapes
  *   honoured), and `patternProperties` are followed; a key matched by a
  *   pattern is accepted and walked with the first matching pattern's schema.
+ *   Effect serves a pattern-keyed `Schema.Record` with `patternProperties`
+ *   only when the key pattern's RegExp has the `u` flag; without it the
+ *   record is served open, and every key is accepted.
  * - The payload is untrusted: the walk stops descending at depth 256 rather
  *   than overflowing the stack, so a deeper unknown key goes unreported and
  *   is left for decoding. Every hop counts toward that cap: each property or
@@ -177,9 +190,12 @@ export class ToolInputSchema {
 		collect(payload, schema);
 
 	/**
-	 * `Unrecognized parameter(s): a, b.c. Accepted params: x, y.` per level. Each
-	 * echoed key is truncated, and at most 20 keys and 20 levels are named; a
-	 * trailing `(and N more levels).` counts the levels left out.
+	 * `Unrecognized parameter(s): a, b.c. Accepted params: x, y.` per level,
+	 * followed by `Accepted keys matching: ^x-.` when the level also accepts
+	 * keys by pattern. A level that accepts keys only by pattern names its
+	 * patterns alone, never `Accepted params: (none).` Each echoed key and
+	 * pattern is truncated, and at most 20 keys, 20 patterns and 20 levels are
+	 * named; a trailing `(and N more levels).` counts the levels left out.
 	 */
 	static readonly formatUnknownKeys = (
 		levels: ReadonlyArray<UnknownKeysLevel>,
@@ -191,8 +207,17 @@ export class ToolInputSchema {
 				.slice(0, MAX_ECHOED)
 				.map((key) => ToolFailure.truncate([...level.path, key].join("."), limit));
 			const more = level.unknown.length > MAX_ECHOED ? ` (and ${level.unknown.length - MAX_ECHOED} more)` : "";
-			const accepted = level.accepted.length === 0 ? "(none)" : level.accepted.join(", ");
-			return `Unrecognized parameter(s): ${shown.join(", ")}${more}. Accepted params: ${accepted}.`;
+			const patterns = (level.acceptedPatterns ?? [])
+				.slice(0, MAX_ECHOED)
+				.map((pattern) => ToolFailure.truncate(pattern, limit));
+			const params =
+				level.accepted.length > 0
+					? ` Accepted params: ${level.accepted.join(", ")}.`
+					: patterns.length === 0
+						? " Accepted params: (none)."
+						: "";
+			const matching = patterns.length > 0 ? ` Accepted keys matching: ${patterns.join(", ")}.` : "";
+			return `Unrecognized parameter(s): ${shown.join(", ")}${more}.${params}${matching}`;
 		});
 		const hidden = levels.length > MAX_ECHOED ? ` (and ${levels.length - MAX_ECHOED} more levels).` : "";
 		return `${sentences.join(" ")}${hidden}`;

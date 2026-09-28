@@ -1,7 +1,7 @@
 import type { Array as Arr, Stdio } from "effect";
 import { Cause, Effect, Exit, Layer, References, Runtime } from "effect";
-import type { McpSchema } from "effect/unstable/ai";
-import { McpProtocol, McpServer } from "effect/unstable/ai";
+import type { McpSchema } from "effect/ai";
+import { McpProtocol, McpServer } from "effect/ai";
 import { LaunchFailed } from "./internal/LaunchFailed.js";
 import { makeGuardedStdio } from "./internal/StdinFrames.js";
 
@@ -110,26 +110,35 @@ export class McpStdio {
 	 *
 	 * The server reads stdin through a guard that frames it exactly as core's
 	 * decoder does: one streaming UTF-8 decoder, a byte-order mark stripped
-	 * only at the start of the stream, lines split on `\n`. A line that is
-	 * not JSON is answered on stdout with a JSON-RPC parse error, code
-	 * `-32700` and `id: null`, and never reaches core's decoder, which would
-	 * otherwise throw on that line again for every later chunk and stop
-	 * answering. So is a line longer than core's cap of 16 Mi UTF-16 code
-	 * units: it is answered once, as soon as it passes the cap, and the rest
-	 * of it is discarded up to its newline. A line of JSON whitespace (space,
-	 * tab, carriage return) is ignored.
+	 * only at the start of the stream, lines split on `\n`. Core itself skips
+	 * a line it cannot use and keeps serving, but sends no reply, where
+	 * JSON-RPC 2.0 requires one; the guard supplies it. A line that is not
+	 * JSON is answered on stdout with a parse error, code `-32700` and
+	 * `id: null`, and never reaches core. So is a line longer than core's cap
+	 * of 16 Mi UTF-16 code units: it is answered once, as soon as it passes
+	 * the cap, and the rest of it is discarded up to its newline (core would
+	 * log it on stderr and drop it). A line of JSON whitespace (space, tab,
+	 * carriage return) is ignored.
 	 *
 	 * A line that is JSON but no JSON-RPC message core can handle is answered
 	 * with an Invalid Request, code `-32600` and `id: null`, and never reaches
-	 * core: a value that is neither an object nor an array (core throws on
-	 * `null`, dropping every other frame in its chunk, and ignores a number,
-	 * string or boolean without a reply), an object whose `method` is not a
-	 * string and whose `id` is absent or `null` (core throws on it too), and
-	 * an object with neither `method` nor `id`, which is neither a request nor
-	 * a response. Everything else goes to core: an array, which core answers
-	 * `-32600` itself because it serves no batches; an object with an `id`
-	 * and no `method`, which is a response and gets no reply; and a request
-	 * with an `id`, which core answers even when its `method` is malformed.
+	 * core: a value that is neither an object nor an array, an object whose
+	 * `method` is not a string and whose `id` is absent or `null`, and an
+	 * object with neither `method` nor `id`, which is neither a request nor a
+	 * response.
+	 *
+	 * A line whose `method` starts with `@effect/rpc/` never reaches core,
+	 * whose JSON-RPC decoder would read one without an `id` as its own RPC
+	 * control message: `@effect/rpc/Eof` alone silently stops the server
+	 * (Effect-TS/effect#8499, open upstream). Such a request is answered
+	 * `-32601` Method not found, echoing its `id`; such a notification is
+	 * dropped. The guard stops doing this once core no longer treats a
+	 * client's `@effect/rpc/` frame as a control message.
+	 *
+	 * Everything else goes to core: an array, which core answers `-32600`
+	 * itself because it serves no batches; an object with an `id` and no
+	 * `method`, which is a response and gets no reply; and a request with an
+	 * `id`, which core answers even when its `method` is malformed.
 	 *
 	 * Give each server a fresh layer memo map. Core's stdio protocol layer
 	 * is a shared constant, so a second `McpStdio.layer` server whose build

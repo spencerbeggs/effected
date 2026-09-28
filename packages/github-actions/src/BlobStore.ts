@@ -1,6 +1,6 @@
 import type { Redacted } from "effect";
 import { Context, Effect, Layer, Option, Schema } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/http";
 import type { ActionOutputs } from "./ActionOutputs.js";
 import type { BlobEnvelopeError } from "./BlobEnvelope.js";
 import { BlobEnvelope } from "./BlobEnvelope.js";

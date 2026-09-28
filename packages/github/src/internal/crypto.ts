@@ -1,5 +1,7 @@
 import blakejs from "blakejs";
-import { Encoding, Result } from "effect";
+import { Result } from "effect";
+import * as Base64 from "effect/encoding/Base64";
+import type * as EncodingError from "effect/encoding/EncodingError";
 import nacl from "tweetnacl";
 
 // `blakejs` is CommonJS, and Node's cjs-module-lexer detects only PART of its
@@ -41,7 +43,7 @@ const utf8 = new TextEncoder();
  *
  * ## Nothing here is Node-specific
  *
- * Base64 goes through core's `Encoding` and text through `TextEncoder`, so this
+ * Base64 goes through core's `Base64` and text through `TextEncoder`, so this
  * module imports **no builtin**. That is deliberate: an earlier draft used
  * `node:buffer` and was the only thing in this package's reachable graph tying
  * it to a runtime — neither `blakejs` (pure JS; its `util` is a *relative*
@@ -58,8 +60,11 @@ const utf8 = new TextEncoder();
  *
  * @internal
  */
-export const encryptSecret = (publicKey: string, secretValue: string): Result.Result<string, Encoding.EncodingError> =>
-	Result.map(Encoding.decodeBase64(publicKey), (publicKeyBytes) => {
+export const encryptSecret = (
+	publicKey: string,
+	secretValue: string,
+): Result.Result<string, EncodingError.EncodingError> =>
+	Result.map(Base64.decode(publicKey), (publicKeyBytes) => {
 		const ephemeralKeyPair = nacl.box.keyPair();
 
 		const nonceInput = new Uint8Array(PUBLIC_KEY_BYTES * 2);
@@ -73,5 +78,5 @@ export const encryptSecret = (publicKey: string, secretValue: string): Result.Re
 		sealed.set(ephemeralKeyPair.publicKey);
 		sealed.set(ciphertext, ephemeralKeyPair.publicKey.length);
 
-		return Encoding.encodeBase64(sealed);
+		return Base64.encode(sealed);
 	});

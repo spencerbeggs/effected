@@ -25,11 +25,12 @@ needs instead — `NodeFileSystem.layer`, `NodePath.layer`,
 and leave `Stdio` out of the composition entirely; the harness supplies it.
 
 On the default stateful revision (`McpProtocol.v2025_11_25`), `yield*
-harness.initialize` first: every other request — `ping` included — fails
+harness.initialize` first: every other request except `ping` fails
 `NotInitialized` and is never written, because the server would only answer
 an opaque refusal: `-32602 Invalid request metadata` when a stateless adapter
 is listed first, as in `McpStdio.protocols`, or `-32603 Internal error` when
-only stateful revisions are served. `harness.sendRaw` is never gated by
+only stateful revisions are served. `ping` passes the gate, because the
+server answers it `{}` before `initialize`, as the MCP lifecycle allows. `harness.sendRaw` is never gated by
 this check; it writes unconditionally. There is no `awaitResponse(id)` on
 the harness — use `request` (send and wait) or `startRequest` (send now,
 wait later) instead. `strictStdout` (default `true`) dies the wait, rather
@@ -62,7 +63,7 @@ import { McpStdio, McpToolkit } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { assert, describe, it } from "@effect/vitest"
 import { Cause, Effect, Exit, Layer, Option, Schema, Stdio, Stream } from "effect"
-import { Tool, Toolkit } from "effect/unstable/ai"
+import { Tool, Toolkit } from "effect/ai"
 
 const Ping = Tool.make("ping", { description: "Liveness check.", parameters: Tool.EmptyParams })
 const Garble = Tool.make("garble", {
@@ -87,13 +88,21 @@ const ServerLayer = McpToolkit.layer(Tools).pipe(
 )
 
 describe("McpHarness behaviour", () => {
-  it.effect("a request before initialize fails NotInitialized on a stateful revision, ping included", () =>
+  it.effect("a request before initialize fails NotInitialized on a stateful revision", () =>
     Effect.gen(function* () {
       const harness = yield* McpHarness.make(ServerLayer)
-      const exit = yield* Effect.exit(harness.request("ping"))
+      const exit = yield* Effect.exit(harness.request("tools/list"))
       assert.isTrue(Exit.isFailure(exit))
       const failure = Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : Option.none()
       assert.isTrue(Option.isSome(failure) && failure.value.reason === "NotInitialized")
+    }),
+  )
+
+  it.effect("ping is answered before initialize", () =>
+    Effect.gen(function* () {
+      const harness = yield* McpHarness.make(ServerLayer)
+      const response = yield* harness.request("ping")
+      assert.deepStrictEqual(response.result, {})
     }),
   )
 
@@ -165,7 +174,7 @@ import { McpStdio, McpToolkit } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, Layer, Schema } from "effect"
-import { McpProtocol, Tool, Toolkit } from "effect/unstable/ai"
+import { McpProtocol, Tool, Toolkit } from "effect/ai"
 
 const Echo = Tool.make("echo", { description: "Echo text back.", parameters: Schema.Struct({ text: Schema.String }) })
 const Tools = Toolkit.make(Echo)
@@ -214,7 +223,7 @@ import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, Layer, Schema } from "effect"
-import { Tool, Toolkit } from "effect/unstable/ai"
+import { Tool, Toolkit } from "effect/ai"
 
 class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { ...ToolFailure.fields, id: Schema.String }) {}
 
@@ -291,7 +300,7 @@ import { join } from "node:path"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { McpProcess } from "@effected/mcp/testing"
 import { Effect } from "effect"
-import { ChildProcess } from "effect/unstable/process"
+import { ChildProcess } from "effect/process"
 
 const serverFile = join(import.meta.dirname, "mcp-exit-immediately.mjs")
 writeFileSync(serverFile, "process.exit(0)\n")
@@ -312,10 +321,12 @@ to the child's stdin with no JSON encoding and no newline added — for a
 frame `send` cannot construct, such as a genuinely malformed line. See
 `server-wiring.md`'s [Stdin guard](./server-wiring.md#stdin-guard), which
 already spawns a real process, sends one, and asserts the server answers a
-typed `-32700` and keeps serving rather than wedging. JSON that is no
-JSON-RPC message (a bare `null`, `{}`) is answered `-32600` the same way;
+typed `-32700` and answers the next request. JSON that is no JSON-RPC
+message (a bare `null`, `{}`) is answered `-32600` the same way, and a
+request whose `method` starts with `@effect/rpc/` is answered `-32601`;
 send a valid request in the same `sendRaw` write after it to prove a
-co-batched frame is still answered.
+co-batched frame is still answered. Match replies by `id`, never by
+position: a guard reply can precede core's answer to an earlier line.
 
 ## Packed install proof
 
@@ -433,8 +444,13 @@ false` on every object node, `"open"` requires none of them to have it, and
 `additionalProperties` schema, or an `allOf` nested inside another `allOf`;
 a key declared in two `allOf` members is last-write-wins. A hand-authored or
 `Tool.dynamic` schema can pass `"closed"` with an open node the walk never
-reached. Core-emitted strict schemas close every node, so a strict
-`Tool.make` tool is reported faithfully regardless.
+reached. Core-emitted strict schemas close every object node, with one
+exception: a pattern-keyed `Schema.Record` whose key RegExp lacks the `u`
+flag is served open (`propertyNames` beside a schema-valued
+`additionalProperties`), because Effect cannot export the pattern. `"closed"`
+reports that node as open and appends the fix — `a key pattern is served
+closed, as patternProperties, only when its RegExp has the u flag, e.g.
+Schema.isPattern(/^x-/u)`.
 
 ~~~ts
 import { McpToolAudit } from "@effected/mcp/testing"
@@ -502,7 +518,7 @@ revisions disagree on whether a non-object success schema even survives to
 import { McpStdio, McpToolkit } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { Effect, Layer, Schema } from "effect"
-import { McpProtocol, Tool, Toolkit } from "effect/unstable/ai"
+import { McpProtocol, Tool, Toolkit } from "effect/ai"
 
 const StringOut = Tool.make("string_out", {
   description: "Returns a bare string success value.",

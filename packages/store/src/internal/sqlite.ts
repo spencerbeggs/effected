@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /**
  * SQLite-only support shared by the `Store` and `Cache` batteries-included

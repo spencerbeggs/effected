@@ -26,8 +26,8 @@
 //
 //     {
 //       "file": "effect-v4-cli/references/gotchas.md",   // relative to skills/
-//       "anchor": "unstable/cli/Command.ts:1448",         // the token exactly as written
-//       "source": "effect:unstable/cli/Command.ts",       // root:path, roots below
+//       "anchor": "cli/Command.ts:1448",                   // the token exactly as written
+//       "source": "effect:cli/Command.ts",                 // root:path, roots below
 //       "symbols": { "1448": "export const provide: {" }  // line -> literal text on it
 //     }
 //

@@ -1,9 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { PlatformError } from "effect";
 import { Effect, Fiber, Redacted, Schema, Sink, Stdio, Stream } from "effect";
+import type { ChildProcessSpawner } from "effect/process";
+import { ChildProcess } from "effect/process";
 import { TestClock } from "effect/testing";
-import type { ChildProcessSpawner } from "effect/unstable/process";
-import { ChildProcess } from "effect/unstable/process";
 import { CommandFailedError, CommandOutput, CommandOutputError, Run } from "../src/Run.js";
 import type { ScriptResult } from "../src/ScriptedSpawner.js";
 import { ScriptedSpawner } from "../src/ScriptedSpawner.js";

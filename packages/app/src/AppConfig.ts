@@ -87,7 +87,7 @@ export interface AppConfigOptions<A, I, RR = never> {
 	 * unchanged: `XdgConfig.resolver`, then `XdgConfig.nativeResolver`.
 	 *
 	 * A layer is built before a CLI parses anything, so getting the parsed flag
-	 * here is the one wiring question this option raises. `effect/unstable/cli`
+	 * here is the one wiring question this option raises. `effect/cli`
 	 * answers it twice, and neither answer needs an `Effect.provide` inside the
 	 * handler: `Command.provide` accepts a **function of the parsed input**, and
 	 * for several subcommands sharing one flag, `GlobalFlag.setting` makes the

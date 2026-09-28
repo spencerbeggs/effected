@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import blakejs from "blakejs";
-import { Encoding, Result } from "effect";
+import { Result } from "effect";
+import * as Base64 from "effect/encoding/Base64";
 import nacl from "tweetnacl";
 import { encryptSecret } from "../src/internal/crypto.js";
 
@@ -9,10 +10,10 @@ const PUBLIC_KEY_BYTES = 32;
 /** The sealed box, or a thrown assertion — the Result is the point elsewhere. */
 const sealBytes = (publicKey: string, value: string): Uint8Array => {
 	const sealed = Result.getOrThrow(encryptSecret(publicKey, value));
-	return Result.getOrThrow(Encoding.decodeBase64(sealed));
+	return Result.getOrThrow(Base64.decode(sealed));
 };
 
-const b64 = (bytes: Uint8Array): string => Encoding.encodeBase64(bytes);
+const b64 = (bytes: Uint8Array): string => Base64.encode(bytes);
 
 const named = (namespace: Record<string, unknown>): ReadonlyArray<string> =>
 	Object.keys(namespace).filter((key) => key !== "default" && key !== "module.exports");

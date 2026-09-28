@@ -1,8 +1,8 @@
 import type { Cause, PlatformError, Scope } from "effect";
 import { Deferred, Effect, Queue, Ref, Stream } from "effect";
-import { McpProtocol } from "effect/unstable/ai";
-import type { ChildProcess } from "effect/unstable/process";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { McpProtocol } from "effect/ai";
+import type { ChildProcess } from "effect/process";
+import { ChildProcessSpawner } from "effect/process";
 import {
 	DEFAULT_CLIENT_INFO,
 	STDERR_HINT,

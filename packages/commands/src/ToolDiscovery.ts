@@ -1,5 +1,5 @@
 import { Cache, Context, Duration, Effect, Exit, Layer, Option, Schema } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { LocalExecError } from "./LocalExec.js";
 import { ExecContext, LocalExec } from "./LocalExec.js";
 import { Run } from "./Run.js";

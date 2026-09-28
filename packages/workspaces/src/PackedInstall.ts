@@ -3,8 +3,8 @@ import { Run } from "@effected/commands";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
 import { Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema } from "effect";
-import type { ChildProcessSpawner } from "effect/unstable/process";
-import { ChildProcess } from "effect/unstable/process";
+import type { ChildProcessSpawner } from "effect/process";
+import { ChildProcess } from "effect/process";
 import type { PackedManifest } from "./internal/packedInstallPlan.js";
 import {
 	binConflict,

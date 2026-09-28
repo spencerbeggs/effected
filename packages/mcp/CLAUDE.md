@@ -1,6 +1,6 @@
 # @effected/mcp
 
-The boundary layer of an `effect/unstable/ai` MCP server: stdio wiring that
+The boundary layer of an `effect/ai` MCP server: stdio wiring that
 keeps stdout the JSON-RPC wire, tool-failure shaping, and strict-input
 walkers — plus a `./testing` subpath for driving a built server from a test.
 Protocol handling, tool registration and the wire format stay core's; this
@@ -82,22 +82,26 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   it logs to stderr too, not only the wiring `McpStdio.layer` builds
   internally.
 - **`McpStdio.layer` guards the server's stdin.** Core's stdio decoder
-  throws on a line that is not JSON before it drops that line from its
-  buffer, so every later chunk throws on it again and the server stops
-  answering while stdin EOF still ends the process with a healthy
-  session's status (0 under `McpStdio.teardown`, 130 under core's default). `McpStdio.layer` provides the
+  skips a line it cannot use and keeps serving (Effect-TS/effect PR #8541),
+  but sends no reply, where JSON-RPC 2.0 requires one; an over-cap line is
+  logged on stderr and dropped. `McpStdio.layer` provides the
   server a `Stdio` (`src/internal/StdinFrames.ts`) that frames stdin the
   way core does (streaming UTF-8 decode, BOM stripped only at stream
   start), answers a non-JSON or over-cap (16 Mi code units) line with a
   `-32700` parse error, drops JSON-whitespace lines, and answers JSON that
   is no JSON-RPC message core can handle with a `-32600` Invalid Request:
-  a non-object non-array value (core throws on `null`, dropping the rest of
-  its chunk, and silently ignores scalars), an object with a non-string
-  `method` and no usable `id` (core throws), and an object with neither
-  `method` nor `id` (core ignores it). Arrays, responses and requests with
-  an `id` go to core, which answers or ignores them correctly itself —
-  probe before widening the guard, and keep the `answerFor` classes in step
-  with what core actually throws on. Its state lives once per `Stdio`, not
+  a non-object non-array value, an object with a non-string `method` and
+  no usable `id`, and an object with neither `method` nor `id`. A line
+  whose `method` starts with `@effect/rpc/` never reaches core: without an
+  `id` core reads it as its own RPC control message, and
+  `@effect/rpc/Eof` silently stops the server (Effect-TS/effect#8499); the
+  guard drops such a notification and answers such a request `-32601`.
+  Remove that branch once #8499 is fixed in the installed `effect` (open
+  PR #8509 proposes the fix) and a probe shows an unguarded server
+  answering a ping sent after an Eof notification. Arrays (even one wrapping an Eof, probed), responses and
+  requests with an `id` go to core, which answers or ignores them
+  correctly itself — probe before widening the guard, and keep the
+  `answerFor` classes in step with what core actually does. Its state lives once per `Stdio`, not
   per subscription: core re-subscribes to stdin after any failure in its
   read loop, and a held partial line must survive that. The guard layer is minted per
   `McpStdio.layer` call (`makeGuardedStdio()`), never a module constant,
@@ -157,6 +161,29 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   policy.** The duplicate-name check runs unconditionally, independent of
   `input`/`requireTitle`/etc. — a duplicate is a violation on any audit, not
   something a permissive policy exempts.
+
+- **`McpToolkit.layer` appends to core's parameter report, never
+  pre-empts it.** Core decodes a strict tool with `errors: "all"`
+  (Effect-TS/effect PR #8508), naming every excess, missing and invalid
+  field in one `InvalidParams`; a kit pre-check in front of it would hide
+  the missing and invalid fields. The `addTool` decorator catches that
+  `InvalidParams` as it leaves the registered handler (core's only
+  `InvalidParams` there is a parameter failure) and appends one
+  `Accepted params at <path>: …` line per payload level with an unknown
+  key, walked by `ToolInputSchema.unknownKeys` over the served input
+  schema (`keys matching …` for `acceptedPatterns`; `This tool accepts no
+  params.` for a zero-parameter root). That list is a consumer contract
+  (vitest-agent documents it): an agent fixes the call from the reply
+  alone. Only a `unionTool` gets a kit decode (core refuses union roots),
+  with the same `errors: "all"` and the same lines. `unknownKeyMessage` on
+  both option types is a deprecated no-op, kept for one minor.
+- **`McpHarness` lets `ping` through before `initialize`**: a stateful
+  server answers it `{}` (Effect-TS/effect PR #8505). Every other request
+  still fails `NotInitialized` unsent.
+- **A pattern-keyed `Schema.Record` is served with `patternProperties`
+  only when its RegExp has the `u` flag** (Effect-TS/effect PR #8482);
+  without it the record is served open and `ToolInputSchema.unknownKeys`
+  accepts any key there.
 
 See `okf/modules/mcp.md`'s "Spec amendments" table (A1–A10) for the full
 list, each amendment against the original design spec.

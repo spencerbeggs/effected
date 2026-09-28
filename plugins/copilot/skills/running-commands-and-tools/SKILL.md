@@ -34,7 +34,7 @@ zero `@effected/*` edges, zero `node:` imports.
   is.** Never add a `Command` type, a service wrapping
   `ChildProcessSpawner`, a spawner backend, a `node:child_process` import,
   or a shell helper that interpolates a tool name — core's
-  `effect/unstable/process` already declares the vocabulary, and `Run` is
+  `effect/process` already declares the vocabulary, and `Run` is
   free functions for exactly this reason: core's spawner already *is* the
   runner service.
 - **A non-zero exit is a result for `collect`/`exitCode`/`succeeds`/
@@ -118,7 +118,7 @@ zero `@effected/*` edges, zero `node:` imports.
 
 ## Point elsewhere, don't restate
 
-- `effect-v4-module-index` — what `effect/unstable/process` declares
+- `effect-v4-module-index` — what `effect/process` declares
   (`ChildProcess`/`ChildProcessSpawner`), and the routing-by-task row for
   "spawn a subprocess".
 - `effect-v4-idioms`, `effect-v4-services-layers` — general v4 generator,

@@ -4,7 +4,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, Layer } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 import type { McpGuardHost, McpGuardPolicy, McpGuardRunOptions } from "../src/guard.js";
 import { McpGuard } from "../src/guard.js";
 import { McpProcess } from "../src/testing.js";

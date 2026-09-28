@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 import { ExecContext, LocalExec } from "../src/LocalExec.js";
 import type { ScriptResult } from "../src/ScriptedSpawner.js";
 import { ScriptedSpawner } from "../src/ScriptedSpawner.js";

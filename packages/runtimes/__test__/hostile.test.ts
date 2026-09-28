@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { GitHubAuth, GitHubClient, NetworkError, ResponseParseError } from "../src/index.js";
 
 const withFetch = (fake: typeof globalThis.fetch) =>

@@ -46,7 +46,7 @@ Swap `layerOffline` for `layer` and provide an `HttpClient`, and the same progra
 ```ts
 import { BunResolver, GitHubClient, NodeResolver } from "@effected/runtimes";
 import { Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 const Live = Layer.mergeAll(
   NodeResolver.layer.pipe(Layer.provide(FetchHttpClient.layer)),

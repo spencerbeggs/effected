@@ -27,8 +27,8 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T22:15:57Z
-  body_sha256: 742922efa4c5d5e59819f3f1abcc8f228cd79bcfc7b5a37fb346eb1d97e9edc3
+  at: 2026-09-28T18:00:23Z
+  body_sha256: e81b028e3ec3816b6de70d5dca9412593d8464439bb0085cecc8cdb7ed14a0f2
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -240,7 +240,7 @@ re-measured the same way on 2026-09-25, after overrides, `closure` and
 | `internal/dependencyFields.js` | 496 |
 
 `PackedInstall.js` imports `@effected/commands`, `@effected/yaml`, `effect`,
-`effect/unstable/process` and three local modules. The external imports,
+`effect/process` and three local modules. The external imports,
 `WorkspaceDiscovery.js` and `PackageManagerName.js` are already loaded by `.`;
 `internal/packedInstallPlan.js` is `./testing`-only, and
 `__test__/entrypoints.test.ts` asserts `.` never reaches it. So D5's "a

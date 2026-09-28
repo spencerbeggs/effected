@@ -1,5 +1,5 @@
 import { Effect, Layer, Stdio, Stream } from "effect";
-import { McpSchema } from "effect/unstable/ai";
+import { McpSchema } from "effect/ai";
 
 /**
  * The line-length cap core's stdio NDJSON decoder applies, in the same unit
@@ -37,6 +37,28 @@ export const INVALID_REQUEST_FRAME = `${JSON.stringify({
 })}\n`;
 
 /**
+ * The JSON-RPC 2.0 answer to a request whose method is one of Effect's
+ * internal `@effect/rpc/` control messages, newline-framed, echoing the
+ * request's `id`.
+ *
+ * @internal
+ */
+export const methodNotFoundFrame = (id: unknown): string =>
+	`${JSON.stringify({
+		jsonrpc: "2.0",
+		id,
+		error: { code: McpSchema.METHOD_NOT_FOUND_ERROR_CODE, message: "Method not found" },
+	})}\n`;
+
+/**
+ * The method prefix core's JSON-RPC decoder reserves for its own RPC control
+ * messages (`Eof`, `Interrupt`, `Ack`, …).
+ *
+ * @internal
+ */
+export const RPC_CONTROL_PREFIX = "@effect/rpc/";
+
+/**
  * One stdin chunk after the guard: the bytes to hand to core, and the reply
  * frames the guard answered lines with instead, in stdin order.
  *
@@ -52,23 +74,34 @@ const BLANK = /^[ \t\r]*$/;
 
 const isNullish = (value: unknown): boolean => value === null || value === undefined;
 
+/** {@link answerFor}'s verdict for a line that is neither forwarded nor answered. */
+const DROP = "";
+
 /**
- * The guard's answer to one non-blank line within the cap, or `undefined` to
- * forward it to core.
+ * The guard's answer to one non-blank line within the cap, `DROP` to swallow
+ * it silently, or `undefined` to forward it to core.
  *
  * @remarks
- * A frame that parses is forwarded unless core would throw on it or ignore
- * it without a reply, which JSON-RPC 2.0 calls an Invalid Request:
+ * A frame that parses is forwarded unless core would skip it without a
+ * reply, where JSON-RPC 2.0 requires an Invalid Request:
  *
- * - a value that is neither an object nor an array: core throws on `null`,
- *   dropping every other frame in its chunk, and ignores a number, string or
- *   boolean without a reply;
- * - an object with a `method` that is not a string and no usable `id`: core
- *   throws on it, dropping the rest of its chunk (with an `id`, core answers
- *   `-32601` itself);
+ * - a value that is neither an object nor an array;
+ * - an object with a `method` that is not a string and no usable `id` (with
+ *   an `id`, core answers `-32601` itself);
  * - an object with neither `method` nor `id`: every JSON-RPC request carries a
  *   `method` and every response an `id`, so it is neither, and core ignores it
  *   as a response to nothing.
+ *
+ * A frame whose `method` starts with `@effect/rpc/` never reaches core. Core's
+ * JSON-RPC decoder reads such a frame with no `id` as one of its own RPC
+ * control messages, so `{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}` from
+ * any client silently stops the server (Effect-TS/effect#8499). A
+ * notification of that shape is dropped; a request, which carries an `id`,
+ * is answered `-32601` Method not found, as no MCP method has that prefix.
+ * Remove this branch once Effect-TS/effect#8499 is fixed in the installed
+ * `effect` (the open PR #8509 proposes the fix) and a probe shows an
+ * unguarded server still answering a ping sent after an `@effect/rpc/Eof`
+ * notification.
  *
  * Arrays are forwarded: core answers a batch `-32600` itself. So is any object
  * with an `id` and no `method`, which is a response; JSON-RPC never answers a
@@ -85,6 +118,9 @@ const answerFor = (line: string): string | undefined => {
 	if (Array.isArray(value)) return undefined;
 	const message = value as { readonly method?: unknown; readonly id?: unknown };
 	if (Object.hasOwn(message, "method")) {
+		if (typeof message.method === "string" && message.method.startsWith(RPC_CONTROL_PREFIX)) {
+			return isNullish(message.id) ? DROP : methodNotFoundFrame(message.id);
+		}
 		return typeof message.method !== "string" && isNullish(message.id) ? INVALID_REQUEST_FRAME : undefined;
 	}
 	return Object.hasOwn(message, "id") ? undefined : INVALID_REQUEST_FRAME;
@@ -95,15 +131,15 @@ const answerFor = (line: string): string | undefined => {
  * decoder will parse and answer, each with its newline.
  *
  * @remarks
- * Core's stdio decoder parses each line inside its read loop. A line that is
- * not JSON throws before the decoder advances past it, so the line stays at
- * the head of its buffer and every later chunk throws on it again: the server
- * never reads another frame. A line that is JSON but no JSON-RPC message core
- * can handle either throws inside the decoder, dropping the frames after it in
- * the same chunk, or is ignored without a reply. The guard frames stdin
+ * Core's stdio decoder skips a line it cannot use and keeps serving
+ * (Effect-TS/effect PR #8541): a line that is not JSON, a JSON value that is
+ * not an object, or an object that is no JSON-RPC message is dropped without
+ * a reply, and a line past its buffer cap is logged on stderr and dropped.
+ * JSON-RPC 2.0 requires a reply to each of them, so the guard frames stdin
  * exactly as core does and answers such a line itself, returning
  * {@link PARSE_ERROR_FRAME} or {@link INVALID_REQUEST_FRAME} for the caller
- * to write.
+ * to write. It also keeps `@effect/rpc/` control methods away from core (see
+ * `answerFor`), which would otherwise let one client line stop the server.
  *
  * - Decoding mirrors core: one streaming UTF-8 decoder, so a character split
  *   across chunks decodes whole, a byte-order mark is stripped only at the
@@ -113,7 +149,10 @@ const answerFor = (line: string): string | undefined => {
  * - A line of JSON whitespace only is not a frame: dropped, not answered.
  * - A line that is JSON is answered `-32600` when it is not an object or an
  *   array, when its `method` is not a string and it has no usable `id`, or
- *   when it has neither `method` nor `id`; everything else goes to core.
+ *   when it has neither `method` nor `id`.
+ * - A line whose `method` starts with `@effect/rpc/` is answered `-32601`
+ *   when it carries an `id` and dropped when it does not.
+ * - Everything else goes to core.
  * - A line longer than `maxFrameLength` code units is answered once, as soon
  *   as the held part exceeds the cap, and the rest of it is discarded up to
  *   its newline. Nothing is held beyond the cap.
@@ -154,7 +193,7 @@ export const makeFrameGuard = (maxFrameLength: number = MAX_FRAME_LENGTH): ((chu
 			if (BLANK.test(line)) continue;
 			const answer = answerFor(line);
 			if (answer === undefined) forward += `${line}\n`;
-			else replies.push(answer);
+			else if (answer !== DROP) replies.push(answer);
 		}
 		pending += text.slice(start);
 		if (pending.length > maxFrameLength) {

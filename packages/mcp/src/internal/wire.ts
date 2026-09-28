@@ -1,5 +1,5 @@
 import { Result } from "effect";
-import type { McpProtocol } from "effect/unstable/ai";
+import type { McpProtocol } from "effect/ai";
 import type { JsonRpcMessage } from "../McpWire.js";
 
 /** @internal */

@@ -1,7 +1,7 @@
 /**
  * Event definitions and the registry they form.
  *
- * Modeled on core's `effect/unstable/eventlog` `Event` — a tag plus a payload
+ * Modeled on core's `effect/eventlog` `Event` — a tag plus a payload
  * schema, defined once and collected into a group — so a reader who knows that
  * module recognizes this one. The mechanism is ours; the vocabulary is theirs.
  *

@@ -156,7 +156,7 @@ describe("SchemaResolver.classify", () => {
 	);
 
 	const Segments = Schema.Array(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 9999 }))).check(
-		Schema.isLengthBetween(1, 3),
+		Schema.isBetweenLength(1, 3),
 	);
 
 	it.prop(

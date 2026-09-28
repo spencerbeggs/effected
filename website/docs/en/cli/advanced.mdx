@@ -88,7 +88,7 @@ Note that this program does **not** apply `reportFailures`; it reports itself. T
 
 ## `reportFailures` never renders `ShowHelp`
 
-`effect/unstable/cli`'s `Command.runWith` already printed the help text, or the parse errors, before a `CliError.ShowHelp` reaches `reportFailures` — rendering it a second time produces nothing but a stray "Help requested" line. `reportFailures` special-cases it: a `ShowHelp` carrying parse errors is remapped to the `usageExitCode` option (default `64`, BSD `EX_USAGE`); a bare `--help` invocation or a root command with no arguments — a `ShowHelp` with no errors — keeps exit `0`.
+`effect/cli`'s `Command.runWith` already printed the help text, or the parse errors, before a `CliError.ShowHelp` reaches `reportFailures` — rendering it a second time produces nothing but a stray "Help requested" line. `reportFailures` special-cases it: a `ShowHelp` carrying parse errors is remapped to the `usageExitCode` option (default `64`, BSD `EX_USAGE`); a bare `--help` invocation or a root command with no arguments — a `ShowHelp` with no errors — keeps exit `0`.
 
 A `CliError.UserError` a handler fails with gets the same treatment. `Command.runWith` renders it through its `CliOutput` formatter and flips its `Runtime.errorReported` mark to `false` before re-failing, so `reportFailures` skips it and exits `usageExitCode` (default `64`) — unless the error carries its own `Runtime.errorExitCode`, which it keeps. `reportFailures` cannot tell that `UserError` from one you marked with `CliRuntime.reported`, because both carry the same `false` mark: **a `CliError.UserError` marked with `reported` is treated as already printed and is not rendered** — use a different error type if the program has not printed it. With runWith's `renderErrors: false`, runWith prints nothing, the mark stays set, and `reportFailures` renders the `UserError` like any other failure, with the `exitCode` fallback.
 
@@ -107,7 +107,7 @@ const reported = program.pipe(CliRuntime.reportFailures({ usageExitCode: 2 }));
 import { CliColor, CliExit, CliRuntime } from "@effected/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect, Layer } from "effect";
-import { Command, Flag } from "effect/unstable/cli";
+import { Command, Flag } from "effect/cli";
 
 const check = Command.make("check", { strict: Flag.Boolean("strict").pipe(Flag.withDefault(false)) }, (config) =>
   Effect.gen(function* () {
@@ -161,7 +161,7 @@ Two reasons, and neither is about ordering. **Portability**: `process.exitCode` 
 
 ## `CliColor`: one colour decision, shared by everything that renders
 
-Both `effect/unstable/cli`'s own help/error rendering and anything your program renders itself should agree on whether output carries ANSI colour. `CliColor.enabled` is that decision, computed once per the [no-color.org](https://no-color.org) rule:
+Both `effect/cli`'s own help/error rendering and anything your program renders itself should agree on whether output carries ANSI colour. `CliColor.enabled` is that decision, computed once per the [no-color.org](https://no-color.org) rule:
 
 ```ts with-api
 import { CliColor } from "@effected/cli";
@@ -176,7 +176,7 @@ Effect.runPromise(CliColor.enabled.pipe(Effect.provide(Stdio.layerTest({}))));
 
 The environment is read through the ambient `ConfigProvider`, never `process`, so a test swaps it with `Effect.provideService(ConfigProvider.ConfigProvider, ...)` rather than mutating `process.env`.
 
-`CliColor.formatterLayer(overrides?)` builds `effect/unstable/cli`'s own `CliOutput.defaultFormatter({ colors })` from that same decision, so help text, parse errors and anything your program renders never disagree:
+`CliColor.formatterLayer(overrides?)` builds `effect/cli`'s own `CliOutput.defaultFormatter({ colors })` from that same decision, so help text, parse errors and anything your program renders never disagree:
 
 ```ts
 import { CliColor } from "@effected/cli";
@@ -381,9 +381,9 @@ describe("mytool", () => {
 
 `CliTest.sandbox({ path })` mints a scoped temp directory with a fresh `HOME` and `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, `NO_COLOR: "1"`, and `path` as `PATH` — the host environment is never inherited. `CliTest.run(bin, args, { sandbox, execPath, cwd?, env?, stdin? })` spawns `execPath` with `[bin, ...args]` over core's `ChildProcess`/`ChildProcessSpawner` and returns `{ exitCode, stdout, stderr }` as **data** — a non-zero exit is never a failure, matching the findings pattern `CliExit` exists for.
 
-**When `stdin` is omitted, or passed as `""`, the child receives an already-ended empty input, never an open pipe.** `effect/unstable/process`'s default `"pipe"` stdio stays open until something writes to and ends it, so a stdin-reading bin would otherwise hang the test.
+**When `stdin` is omitted, or passed as `""`, the child receives an already-ended empty input, never an open pipe.** `effect/process`'s default `"pipe"` stdio stays open until something writes to and ends it, so a stdin-reading bin would otherwise hang the test.
 
-A **reachability test** guards the split: nothing reachable from `@effected/cli`'s main entrypoint may import `CliTest`, with a positive control proving the import walker actually resolves modules — so importing the package for production use never pulls `effect/unstable/process`'s subprocess machinery into the bundle.
+A **reachability test** guards the split: nothing reachable from `@effected/cli`'s main entrypoint may import `CliTest`, with a positive control proving the import walker actually resolves modules — so importing the package for production use never pulls `effect/process`'s subprocess machinery into the bundle.
 
 ## Next steps
 

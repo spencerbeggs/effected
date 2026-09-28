@@ -17,8 +17,8 @@ import { Schema } from "effect";
  *   not `catchTag`.
  * - `ServerStopped` (`McpHarness`): the in-process server stopped, usually
  *   because stdin closed while the request was in flight.
- * - `NotInitialized` (`McpHarness`): a request other than `initialize` was
- *   made on a stateful revision before `initialize` was sent. The request
+ * - `NotInitialized` (`McpHarness`): a request other than `initialize` or
+ *   `ping` was made on a stateful revision before `initialize` was sent. The request
  *   is never written; the server would only have refused it opaquely:
  *   `-32602 Invalid request metadata` when a stateless adapter is listed
  *   first, `-32603 Internal error` when only stateful revisions are served.

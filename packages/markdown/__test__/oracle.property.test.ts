@@ -11,8 +11,7 @@
 // added to a skip list. There is no skip list in this file, by design.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Result, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Result, Schema } from "effect";
 import { Markdown } from "../src/Markdown.js";
 import { loadSpecExamples } from "./e2e/support/corpus.js";
 import { renderHtml } from "./e2e/support/htmlWriter.js";

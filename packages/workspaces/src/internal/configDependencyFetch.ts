@@ -46,7 +46,7 @@ import type { ConfigDependencyLock, LockfileFramingError, LockfileParseError } f
 import { IntegrityHash } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Duration, Effect, Predicate } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { HookReplayContext } from "../ConfigDependencyHooks.js";
 import { carries, manifestVersion, messageOf, sideLabel } from "./configDependencyShared.js";
 import { splitConfigDependencySpec } from "./configDependencySpecGrammar.js";

@@ -1,6 +1,6 @@
 import type { Layer } from "effect";
 import { Cause, Effect, MutableRef, Runtime } from "effect";
-import { CliError } from "effect/unstable/cli";
+import { CliError } from "effect/cli";
 import { CliExit } from "./CliExit.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";

@@ -10,8 +10,8 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 97468f7a243996bbad2fce7a6616e5c44a7e2ffc0c2171cad8bc2aeb2fd745e2
+  at: 2026-09-28T18:00:23Z
+  body_sha256: a4e1d54883623705d3d6d901df7fa58e039bcbd8cd233844a7e32fe017172b26
 ---
 
 # runtimes
@@ -49,7 +49,7 @@ provide without three tags.
 
 ## HTTP over core, no Octokit
 
-All network access goes through `HttpClient` from `effect/unstable/http`,
+All network access goes through `HttpClient` from `effect/http`,
 with the consumer providing a fetch-backed layer at the edge that has no
 requirements of its own. See
 [HTTP over core, no Octokit](../decisions/runtimes-http-over-core-no-octokit.md).

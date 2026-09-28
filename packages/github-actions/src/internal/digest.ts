@@ -14,7 +14,8 @@
 
 import { createHash } from "node:crypto";
 import type { FileSystem, PlatformError } from "effect";
-import { Effect, Encoding, Stream } from "effect";
+import { Effect, Stream } from "effect";
+import * as Hex from "effect/encoding/Hex";
 
 /** The raw SHA-256 of a string or byte array held in memory. @internal */
 export const sha256 = (value: string | Uint8Array): Uint8Array =>
@@ -53,5 +54,4 @@ export const digestFileHex = (
 	fs: FileSystem.FileSystem,
 	file: string,
 	algorithm: string,
-): Effect.Effect<string, PlatformError.PlatformError> =>
-	Effect.map(digestFile(fs, file, algorithm), Encoding.encodeHex);
+): Effect.Effect<string, PlatformError.PlatformError> => Effect.map(digestFile(fs, file, algorithm), Hex.encode);

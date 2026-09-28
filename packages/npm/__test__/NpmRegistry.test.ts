@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { DateTime, Effect, Exit, Layer, Option, Redacted } from "effect";
-import { HttpClient, HttpClientError, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import { NpmRegistry, PublishedVersion, RegistryReadError } from "../src/NpmRegistry.js";
 
 /** One scripted HTTP outcome. */

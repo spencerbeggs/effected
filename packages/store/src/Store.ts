@@ -1,7 +1,7 @@
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { Context, DateTime, Effect, Layer, Schema } from "effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import type * as SqlError from "effect/unstable/sql/SqlError";
+import * as SqlClient from "effect/sql/SqlClient";
+import type * as SqlError from "effect/sql/SqlError";
 import type { MigratorFailure } from "./internal/migrator.js";
 import { ensureLedger, rollbackTo, runPending, statusOf, validateMigrations } from "./internal/migrator.js";
 import { walCheckpointOnClose } from "./internal/sqlite.js";

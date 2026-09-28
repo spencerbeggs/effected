@@ -1,7 +1,7 @@
 import type { PlatformError } from "effect";
 import { Effect } from "effect";
-import { McpProtocol } from "effect/unstable/ai";
-import type { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { McpProtocol } from "effect/ai";
+import type { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
 	DEFAULT_CLIENT_INFO,
 	STDERR_HINT,

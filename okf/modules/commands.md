@@ -13,8 +13,8 @@ sources:
     resource: ../../packages/commands/__test__/ScriptedSpawner.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T05:32:50Z
-  body_sha256: 115c101e6b43c173a266601fff90ecadde89e867c4e4d5db0d00ea015f90e083
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 2e14f18a97026241df8e32e8ad4ba2282490fe8b460b5d059b056f95877c0132
 ---
 
 # @effected/commands
@@ -40,7 +40,7 @@ the other. `Redaction` and `Retry` are policies `Run` applies or hands to a
 caller, and `LocalExec` is the seam discovery resolves through — every
 module in the package is on the same dependency chain.
 
-The package is designed against core's `effect/unstable/process`
+The package is designed against core's `effect/process`
 vocabulary, never around it: a caller builds a `ChildProcess.Command` with
 core's own constructors and combinators and hands it here to be run.
 

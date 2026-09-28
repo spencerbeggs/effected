@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Console, Effect, Exit, Runtime } from "effect";
-import { CliError } from "effect/unstable/cli";
+import { CliError } from "effect/cli";
 import { CliLogger } from "../src/CliLogger.js";
 import { CliRuntime } from "../src/CliRuntime.js";
 import { ExitRequested } from "../src/internal/ExitRequested.js";

@@ -19,7 +19,7 @@ import type {
 } from "@effected/npm";
 import type { FileSystem, Path } from "effect";
 import { Effect, Layer, Option } from "effect";
-import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcessSpawner } from "effect/process";
 import { ChangeDetector } from "./ChangeDetector.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { LockfileReaderOptions } from "./LockfileReader.js";

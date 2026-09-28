@@ -1,5 +1,5 @@
 /**
- * Test utilities for CLIs built on `effect/unstable/cli`: spawn a built bin in a
+ * Test utilities for CLIs built on `effect/cli`: spawn a built bin in a
  * hermetic sandbox and read its exit code and streams as data.
  *
  * @remarks

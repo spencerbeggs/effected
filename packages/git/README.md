@@ -113,7 +113,7 @@ stdout/stderr/exit-code concurrently under one scope" discipline:
 
 ```ts
 import { Run } from "@effected/commands";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const shortlog = ChildProcess.make("git", ["shortlog", "-sn", "HEAD"], {
   // The pins Git applies to its own spawns, which you make yourself here:

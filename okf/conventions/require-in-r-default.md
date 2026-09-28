@@ -8,7 +8,7 @@ tags:
   - architecture
 sources:
   - id: effect-process
-    resource: ../../.repos/effect/packages/effect/src/unstable/process/ChildProcessSpawner.ts
+    resource: ../../.repos/effect/packages/effect/src/process/ChildProcessSpawner.ts
   - id: effect-filesystem
     resource: ../../.repos/effect/packages/effect/src/FileSystem.ts
   - id: git-src
@@ -17,8 +17,8 @@ sources:
     resource: ../../packages/commands/src
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 48cda6dfb00c1e97ef2bdc612b1c77142ad084841e6454b55a6bb8f241cba2c0
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 8d8d95fc2e7882368a878e457d3b0c89558f6188686eec7ddfa237ac7fc2f89a
 ---
 
 # Require the consolidated core's contract in R; never re-implement or re-declare it
@@ -27,7 +27,7 @@ Effect v4 consolidated what were separate packages into `effect` core:
 functionality that lived in `@effect/platform`, `@effect/rpc` and
 `@effect/cluster` now lives directly inside `effect`, including the
 service **contracts** for platform concerns — `FileSystem`,[^effect-filesystem]
-`Path`, `Terminal`, `Stdio`, and `effect/unstable/process`'s
+`Path`, `Terminal`, `Stdio`, and `effect/process`'s
 `ChildProcess` plus `ChildProcessSpawner`.[^effect-process] The packages
 that remain separate are platform-specific, provider-specific or
 technology-specific **implementations** of those contracts:
@@ -93,7 +93,7 @@ The rule above answers *does core declare this?* It does not answer the
 question that actually decides a call site: does core's version have the
 shape this site needs? A sweep of the kit against the vendored core, for
 hand-rolled re-rolls of the late-landing modules (`Crypto`, `Encoding`,
-`Graph`, `unstable/encoding/Toml`/`Yaml`), found most candidates already
+`Graph`, `encoding/Toml`/`Yaml`), found most candidates already
 adopted and every remaining one kept for a shape mismatch rather than
 inertia. The mismatches recur in five shapes, each invisible from the
 module name alone and each cheap to miss:
@@ -119,8 +119,8 @@ module name alone and each cheap to miss:
    outside the declared error channel rather than a typed failure — a
    reason to adopt the module only where the throw is unreachable or the
    payload does not matter, not a reason to avoid it outright.
-5. **A superset against a subset.** Core's `unstable/encoding/Toml` and
-   `unstable/encoding/Yaml` export a single `parse`. The kit's
+5. **A superset against a subset.** Core's `encoding/Toml` and
+   `encoding/Yaml` export a single `parse`. The kit's
    `@effected/toml` and `@effected/yaml` are strict supersets — parse,
    edit, format, comment fidelity — so a same-named core module is not
    evidence of duplication, and there is nothing to fold in.
@@ -159,7 +159,7 @@ gets, and the easier the kit's pieces compose with the wider ecosystem.
 Divergence is allowed, but it must be a recorded decision with a reason,
 never a habit.
 
-[^effect-process]: `.repos/effect/packages/effect/src/unstable/process/ChildProcessSpawner.ts`
+[^effect-process]: `.repos/effect/packages/effect/src/process/ChildProcessSpawner.ts`
     — the core contract, its `make` factory deriving the rich surface
     from one `spawn` primitive, and the doc-comment style this repo's
     modules match.

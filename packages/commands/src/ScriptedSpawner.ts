@@ -1,5 +1,5 @@
 import { Effect, Layer, PlatformError, Sink, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 /**
  * One scripted outcome for a spawned command.
@@ -95,7 +95,7 @@ const spawnError = (tag: "NotFound" | "PermissionDenied", command: string, code:
  * ```ts
  * import { Run, ScriptedSpawner } from "@effected/commands";
  * import { Effect } from "effect";
- * import { ChildProcess } from "effect/unstable/process";
+ * import { ChildProcess } from "effect/process";
  *
  * // Replaces the per-suite hand-roll of ChildProcessSpawner.make +
  * // makeHandle's eleven fields with one call:

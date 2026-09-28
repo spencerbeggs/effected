@@ -1,5 +1,5 @@
 import { Console, Effect } from "effect";
-import { CliOutput } from "effect/unstable/cli";
+import { CliOutput } from "effect/cli";
 
 type Method = Exclude<keyof Console.Console, "log" | "error">;
 

@@ -32,7 +32,7 @@ import { Run } from "@effected/commands";
 import type { PartialReleaseAgeGate } from "@effected/npm";
 import { CatalogAssemblyError } from "@effected/npm";
 import { Context, Duration, Effect, Layer, Predicate, Schema } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { CatalogEntries } from "./internal/catalogs.js";
 import { normalize } from "./internal/catalogs.js";
 import { makeFetchConfigDependency } from "./internal/configDependencyFetch.js";

@@ -14,7 +14,7 @@ A tool with **no** parameters uses `Tool.EmptyParams`, never a zero-key
 `Schema.Struct({})`:
 
 ~~~ts
-import { Tool } from "effect/unstable/ai"
+import { Tool } from "effect/ai"
 
 // RIGHT — Tool.make already defaults an omitted `parameters` to this.
 Tool.make("ping", { description: "Liveness check.", parameters: Tool.EmptyParams })
@@ -22,19 +22,22 @@ Tool.make("ping", { description: "Liveness check.", parameters: Tool.EmptyParams
 
 `Schema.Struct({})` is not an equivalent stand-in. Registering a tool with
 it dies the server layer at build time — before any client ever calls it —
-with `SchemaError(Missing key at ["type"])`: `McpServer`'s own registration
-path decodes the JSON Schema it generates for a tool's parameters against a
-fixed shape (`ToolJson`), `.orDie` on failure, and a zero-key struct produces
-a shape that decode rejects (`unstable/ai/McpServer.ts:1864-1866`, the same
-`orDie` that kills the server on a top-level union parameter — see
+with `McpServer cannot register tool '…': its parameters must encode to a
+JSON Schema with an object root (type: "object"), such as a Schema.Struct.
+Use Tool.EmptyParams for a tool without parameters.`, followed by
+`Missing key at ["type"]`: `McpServer`'s own registration path decodes the
+JSON Schema it generates for a tool's parameters against a fixed shape
+(`ToolJson`) and dies on failure, and a zero-key struct produces a shape
+that decode rejects (`ai/McpServer.ts:1876-1889`, the same die that kills
+the server on a top-level union parameter — see
 [Failures on the wire](#failures-on-the-wire)). This is a **registration-time defect**, not a
 runtime rejection by a client's own schema validator — the server never
 finishes coming up.
 
 Annotate hints onto a tool with `.annotate`, one call per hint:
-`Tool.Title` (a `Context.Service` class, `unstable/ai/Tool.ts:1733`),
+`Tool.Title` (a `Context.Service` class, `ai/Tool.ts:1785`),
 `Tool.Readonly`, `Tool.Destructive`, `Tool.Idempotent`, `Tool.OpenWorld`
-(`Context.Reference`s, `:1776`, `:1802`, `:1829`, `:1856`). Each maps
+(`Context.Reference`s, `:1830`, `:1857`, `:1885`, `:1913`). Each maps
 directly to an MCP hint (`readOnlyHint`, `destructiveHint`,
 `idempotentHint`, `openWorldHint`); an unannotated tool defaults to the
 *less* trusting reading in every case (`Readonly` and `Idempotent` default
@@ -50,22 +53,30 @@ own is the tool boundary blurring into the engine it should be calling.
 
 A tool annotated `Tool.Strict` true is served with `additionalProperties:
 false` on every object node and decoded with `onExcessProperty: "error"`
-(`unstable/ai/McpServer.ts:1835`) — but core's decode reports only the
-**first** excess key it finds, so an agent fixes one typo and never learns
-about a second one, nested or not, until the next round trip.
+and `errors: "all"` (`ai/McpServer.ts:1844-1847`). Core's report is
+complete: one `InvalidParams` names every excess key at every depth
+together with every missing or invalid field, so an agent fixes the whole
+call in one round trip.
 
-`McpToolkit.layer` runs core's own `registerToolkit` unchanged, under a
-registration-scoped `McpServer` whose `addTool` puts an unknown-key
-pre-check in front of every strict tool's handler — **before** core ever
-decodes. It is the better *report*, not the rejecter: rejection is still
-core's `Tool.Strict` decode; the pre-check just names every unknown key
-path, at every depth, in one response.
+`McpToolkit.layer` runs core's own `registerToolkit` unchanged. Rejection
+and the report are both core's. The layer appends to that report, never in
+place of it: for each object level of the payload that carries an unknown
+key, one line naming what that level accepts —
+`Accepted params at the root: name, nested.` or
+`Accepted params at ["nested"]: value.`, the path written as core writes
+it, `keys matching <pattern>` for keys a `patternProperties` level
+accepts, and `This tool accepts no params.` for a zero-parameter tool — so
+an agent can fix the call from the reply alone. A failure with no unknown
+key is core's report unchanged. Beyond that the layer adds policy:
+strict-by-default (below) and the union decode for a
+`McpToolkit.unionTool`. Its `unknownKeyMessage` option is deprecated and
+ignored; the appended lines are fixed text.
 
 ~~~ts
 import { McpStdio, McpToolkit } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { Effect, Layer, Schema } from "effect"
-import { Tool, Toolkit } from "effect/unstable/ai"
+import { Tool, Toolkit } from "effect/ai"
 
 const SaveThing = Tool.make("save_thing", {
   description: "Save a thing.",
@@ -87,8 +98,8 @@ const program = Effect.scoped(
   Effect.gen(function* () {
     const client = yield* McpHarness.make(ServerLayer)
     yield* client.initialize
+    // `name` missing, `extra` and `nested.bogus` unknown.
     const call = yield* client.callTool("save_thing", {
-      name: "x",
       extra: 1,
       nested: { value: "y", bogus: 2 },
     })
@@ -100,15 +111,17 @@ Effect.runPromise(program)
 ~~~
 
 Prints, on the default `2025-11-25` revision, an `isError: true` result
-naming **both** unknown keys — the top-level `extra` and the nested
-`nested.bogus` — each with its own accepted list: `Unrecognized
-parameter(s): extra. Accepted params: name, nested. Unrecognized
-parameter(s): nested.bogus. Accepted params: value.` The pre-check's reply
-follows the same per-revision split as any other `InvalidParams` (see
-[Failures on the wire](#failures-on-the-wire)), because it fails with
-`McpSchema.InvalidParams` — the same error class core's own decode raises:
+whose one text names all three problems, one block per issue:
+`Invalid parameters for tool 'save_thing': Expected no excess property at
+["extra"]`, `Missing key at ["name"]`, `Expected no excess property at
+["nested"]["bogus"]` (each block is its message, a newline, and an indented
+`at [...]` path), then the two lines the layer appends,
+`Accepted params at the root: name, nested.` and
+`Accepted params at ["nested"]: value.` The reply follows the same per-revision split as any
+other `InvalidParams` (see [Failures on the wire](#failures-on-the-wire)):
 on `2024-11-05`, `2025-03-26` and `2025-06-18` this same call gets a
-JSON-RPC error, code `-32602`, not `isError`.
+JSON-RPC error, code `-32602`, carrying the same text as its `message`,
+not `isError`.
 
 `McpToolkit.layer`'s `strict` option defaults to `"all"`: every tool without
 its own `Tool.Strict` annotation is re-annotated strict and decoded that
@@ -131,7 +144,7 @@ default re-annotates it. If a test pins the served schema's
 
 `ToolInputSchema.unknownKeys`/`formatUnknownKeys` are for a **`Tool.dynamic`**
 tool's own handler only — core decodes a `Tool.make` tool's payload
-*before* the handler ever runs (`unstable/ai/McpServer.ts:1888`), so by the
+*before* the handler ever runs (`ai/McpServer.ts:1910`), so by the
 time a `Tool.make` handler executes, an excess key has already been dropped
 or rejected; there is nothing left for the handler to check. A `Tool.dynamic`
 tool's raw JSON Schema is never decoded that way, so its handler is the only
@@ -139,25 +152,51 @@ place left to check it — usually against the same schema rewritten with
 `ToolInputSchema.objectRooted`, since a dynamic tool with a raw top-level
 union needs that rewrite for the same registration-time reason a
 `Schema.Union` parameter does (see [Failures on the wire](#failures-on-the-wire)).
+`unknownKeys` returns one level per object node with an unknown key:
+`path`, `unknown`, `accepted`, and `acceptedPatterns` when the node also
+accepts keys through `patternProperties`. `formatUnknownKeys` renders a
+level as `Unrecognized parameter(s): env.lower. Accepted keys matching:
+^X_[A-Z]+$.` in that case, with `Accepted params: …` before it when the
+node also declares named keys, and never claims `Accepted params: (none).`
+for a node that accepts keys by pattern.
+
+A pattern-keyed `Schema.Record` is served with `patternProperties` (and
+`additionalProperties: false` when strict) only when the key pattern's
+RegExp has the `u` flag: `Schema.isPattern(/^X_[A-Z]+$/u)`. Without the
+flag Effect cannot export the pattern, so the record is served **open** —
+`propertyNames: { type: "string" }` beside a schema-valued
+`additionalProperties` — while core's strict decode still rejects a key
+that misses the pattern. The advertised schema then promises more than the
+server accepts. `McpToolAudit.check` with `input: "closed"` reports such a
+node as open and names the `u` flag as the fix.
 
 ## Failures on the wire
 
-A tool call's result on success carries **both** shapes: `structuredContent`
-is the encoded success value, and `content[0].text` is that same value
-JSON-stringified — an agent that only reads `content` still gets the data.
+A tool call's result on success carries **both** shapes when the success
+value is an object: `structuredContent` is the encoded value, and
+`content[0].text` is that same value JSON-stringified — an agent that only
+reads `content` still gets the data. A **string** success value
+(`success: Schema.String`) is shaped per revision: on `2025-06-18` and
+`2025-11-25` the result has no `structuredContent` and `content[0].text`
+is the string itself, raw, not JSON-quoted; on the stateless `2026-07-28`
+it carries `structuredContent: "<the string>"` and a JSON-quoted
+`content[0].text`. Markdown returned as a string therefore reaches a
+`content`-reading client verbatim on the stateful revisions.
 
 A **declared** failure is different, and this is the fact `ToolFailure`
 exists to work around: when the failure is an `Error` instance — every
 `Schema.TaggedError` is — core sends `isError: true` with `error.message` as
 the **only** text, and no `structuredContent` at all
-(`unstable/ai/McpServer.ts:1842-1845`). Whatever is not folded into
-`message` when the error is constructed never reaches the agent:
+(`ai/McpServer.ts:1854-1858`). Only a failure whose `message` is empty, or
+that is no `Error` instance, is sent as its JSON-encoded value instead.
+Whatever is not folded into `message` when the error is constructed never
+reaches the agent:
 
 ~~~ts
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { Effect, Layer, Schema } from "effect"
-import { Tool, Toolkit } from "effect/unstable/ai"
+import { Tool, Toolkit } from "effect/ai"
 
 class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { ...ToolFailure.fields, id: Schema.String }) {}
 
@@ -227,7 +266,7 @@ of the matrix.
 import { McpStdio, McpToolkit } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { Effect, Layer, Schema } from "effect"
-import { McpProtocol, Tool, Toolkit } from "effect/unstable/ai"
+import { McpProtocol, Tool, Toolkit } from "effect/ai"
 
 const Echo = Tool.make("echo", { description: "Echo text back.", parameters: Schema.Struct({ text: Schema.String }) })
 const Tools = Toolkit.make(Echo)
@@ -271,21 +310,26 @@ not the real message, since an unclassified failure might carry anything.
 A top-level `Schema.Union` `parameters` schema dies the server at
 **registration**, the same way `Schema.Struct({})` does: `Tool.make`'s
 `parameters` has to resolve to an object schema for MCP's tool-JSON
-encoding, and the registration path's `orDie` decode
-(`unstable/ai/McpServer.ts:1864-1866`) kills the server layer while it is
-still building — a stdio server never even starts reading stdin, and a
+encoding, and the registration path's decode
+(`ai/McpServer.ts:1876-1889`) dies with a message naming the tool and
+the object-root requirement, killing the server layer while it is still
+building — a stdio server never even starts reading stdin, and a
 server exposed some other way never finishes coming up either. Design the
 tool with an object-rooted, field-discriminated shape from the start, or
 make it with `McpToolkit.unionTool` and write its handler with
 `McpToolkit.unionHandler`: the tool is a `Tool.dynamic` served with the
 union's strict, object-rooted JSON Schema, and under `McpToolkit.layer` a
 bad call is rejected exactly as a `Tool.make` decode failure is (`-32602` on
-`2025-06-18`, `isError` later). `unionHandler` runs the same unknown-keys
-check and strict decode itself, so a handler called directly from a test,
-or registered through core's `McpServer.toolkit`, fails with the identical
-per-level `ToolInputSchema.formatUnknownKeys` message (a declared `isError`
-there); give it the same `unknownKeyMessage` as the layer if you customise
-one. For a hand-written `Tool.dynamic` whose raw
+`2025-06-18`, `isError` later). The union is decoded with the options core
+uses for a strict `Tool.make` tool (`onExcessProperty: "error"`,
+`errors: "all"`): the discriminant picks the member, and one
+`InvalidParams`, worded as core words a `Tool.make` failure, names every
+excess, missing and invalid field of that member, followed by the same
+`Accepted params at <path>: …` lines. `unionHandler` runs the
+same decode itself, so a handler called directly from a test, or
+registered through core's `McpServer.toolkit`, fails with the identical
+message (a declared `isError` there). Its `unknownKeyMessage` option is
+deprecated and ignored. For a hand-written `Tool.dynamic` whose raw
 JSON Schema is a union, rewrite it with `ToolInputSchema.objectRooted`
 before registering.
 
@@ -315,7 +359,7 @@ import { Remediation } from "@effected/engine"
 import { McpStdio, McpToolkit } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { Effect, Layer, Schema } from "effect"
-import { Tool, Toolkit } from "effect/unstable/ai"
+import { Tool, Toolkit } from "effect/ai"
 
 class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { id: Schema.String }) {}
 

@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Result, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Result, Schema } from "effect";
 import type { Section, SectionReconciliation } from "../src/index.js";
 import { CommentStyle, SectionDialect, SectionDocument, SectionId } from "../src/index.js";
 
@@ -23,7 +22,7 @@ const Content = Schema.Array(
 	Schema.Literals(["", "a", "echo hi", "  indented", "# an ordinary comment", "trailing  "]),
 ).check(Schema.isMaxLength(4));
 
-const Declared = Schema.Array(Schema.Tuple([Key, StyleIndex, Content])).check(Schema.isLengthBetween(1, 4));
+const Declared = Schema.Array(Schema.Tuple([Key, StyleIndex, Content])).check(Schema.isBetweenLength(1, 4));
 
 /** Declared sets must be unique by identity, or reconciliation refuses by design. */
 const declaredArb = Arbitrary.schema(Declared).pipe(

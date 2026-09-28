@@ -9,7 +9,7 @@ const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xd
  * @remarks
  * Core sends a declared failure that is an `Error` instance — every
  * `Schema.TaggedError` is — as `isError: true` with `error.message` as the only
- * text and no `structuredContent` (effect `unstable/ai/McpServer.ts`,
+ * text and no `structuredContent` (effect `ai/McpServer.ts`,
  * `declaredFailureResult`). So the remediation must be folded into `message`
  * when the error is constructed: whatever is not in the message never reaches
  * the agent.

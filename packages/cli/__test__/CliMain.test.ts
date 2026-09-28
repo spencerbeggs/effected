@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Console, Context, Effect, Exit, Layer, MutableRef, Runtime } from "effect";
-import { CliError, Command } from "effect/unstable/cli";
+import { CliError, Command } from "effect/cli";
 import { CliExit, CliRuntime } from "../src/index.js";
 
 class Platform extends Context.Service<Platform, { readonly name: string }>()("test/Platform") {}

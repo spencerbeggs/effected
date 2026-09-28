@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { InvalidRangeError } from "@effected/semver";
 import { DateTime, Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { FreshnessError, NoMatchingVersionError, NodeResolver, UnresolvableDefaultError } from "../src/index.js";
 
 /**

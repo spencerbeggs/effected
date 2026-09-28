@@ -5,7 +5,7 @@
 
 import { CliLogger, CliRuntime } from "@effected/cli";
 import { Effect } from "effect";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import { ConfigLoadError } from "../ConfigLoader.js";
 import type { ExecuteDeps } from "./execute.js";
 import { makeCommands } from "./root.js";

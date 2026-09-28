@@ -1,6 +1,6 @@
 # @effected/cli
 
-The boundary layer of an `effect/unstable/cli` program: `CliLogger`,
+The boundary layer of an `effect/cli` program: `CliLogger`,
 `CliRuntime` (including `CliRuntime.main`), `CliExit`, `CliColor`,
 `SchemaIssueRenderer`, `ConfigIssueRenderer` — plus a `./testing` subpath
 exporting `CliTest`, for spawning a built bin hermetically in tests. Every
@@ -16,7 +16,7 @@ new request against what the first consumer actually reported.
 
 ## The rule that defines scope
 
-**Not a CLI framework.** `effect/unstable/cli` owns parsing, flags, the command
+**Not a CLI framework.** `effect/cli` owns parsing, flags, the command
 tree and help. If a change here starts to look like parsing, it belongs upstream
 or nowhere. No prompts, no spinners — `Prompt` already exists in core.
 
@@ -113,7 +113,7 @@ it imports `CliTest` or `testing.ts`, with a positive control proving the
 walker actually resolves imports (`./testing` DOES reach `CliTest`) and a
 second control proving it resolves the main entry too (`index.ts` reaches
 `CliRuntime`). A CLI that only imports `@effected/cli` therefore never pulls
-test-spawning machinery — `effect/unstable/process`'s `ChildProcessSpawner`
+test-spawning machinery — `effect/process`'s `ChildProcessSpawner`
 included — into its runtime bundle.
 
 ## The optional peer, and the rule that makes it honest

@@ -67,5 +67,5 @@ const program = Effect.gen(function* () {
 - No defect laundering: a throwing migration or `onRemoved` callback stays a defect, never a typed error.
 - `invalidateByTag` matches JSON-encoded tags with escaped LIKE metacharacters — tags containing backslashes/quotes won't match raw-string comparisons.
 - Eviction is least-recently-WRITTEN (rowid order), not LRU-read.
-- There is no `@effect/sql` package on v4 — `SqlClient`/`SqlError` live in `effect/unstable/sql`.
-- A database previously migrated by `effect/unstable/sql/Migrator` keeps its ledger in `effect_sql_migrations`, which Store does not read — first construction re-runs every migration. Harmless if they are idempotent; otherwise seed `_store_migrations` before the first layer build (exact SQL in the package README's "Adopting a database migrated by effect's Migrator").
+- There is no `@effect/sql` package on v4 — `SqlClient`/`SqlError` live in `effect/sql`.
+- A database previously migrated by `effect/sql/Migrator` keeps its ledger in `effect_sql_migrations`, which Store does not read — first construction re-runs every migration. Harmless if they are idempotent; otherwise seed `_store_migrations` before the first layer build (exact SQL in the package README's "Adopting a database migrated by effect's Migrator").

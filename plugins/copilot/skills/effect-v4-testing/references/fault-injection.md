@@ -61,7 +61,7 @@ not alongside.
 
 If the thing under test is a layer that *consumes* the service (rather than the
 test body reading it directly), `Layer.updateService` writes the same decoration
-in one call (`Layer.ts:2067`; it is defined as
+in one call (`Layer.ts:2065`; it is defined as
 `provide(layer, effect(service, map(service, f)))`, so the decorated service is
 built from the surrounding context and the result requires that service):
 
@@ -86,7 +86,7 @@ plumbing is written for you.
 
 ## Partial stubs of any service: `Layer.mock`
 
-`Layer.mock(Key, partial)` (`Layer.ts:2308`) builds a service from a partial
+`Layer.mock(Key, partial)` (`Layer.ts:2306`) builds a service from a partial
 implementation; any missing member
 that is an `Effect` / `Stream` / `Channel` — or a function returning one — dies
 with an `UnimplementedError` naming the method when it is exercised. Non-effect
@@ -166,7 +166,7 @@ honest memfs implementation untouched.
 
 ## Two instances of one layer in a single composition
 
-`Layer.fresh(L)` (`Layer.ts:2164`) rebuilds with a new `MemoMap`,
+`Layer.fresh(L)` (`Layer.ts:2162`) rebuilds with a new `MemoMap`,
 so two branches of one composition get separate instances. It does **not** reset state
 between tests inside a `layer(...)` group — that group builds its whole layer
 once, and `fresh` only affects sharing *within* that single build.

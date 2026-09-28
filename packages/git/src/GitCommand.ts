@@ -1,5 +1,5 @@
 import { Stream } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 /**
  * A pure `git` invocation: the spawnable command plus the diagnostic argv the

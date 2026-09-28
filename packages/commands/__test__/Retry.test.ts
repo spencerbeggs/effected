@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, Ref } from "effect";
+import { ChildProcess } from "effect/process";
 import { TestClock } from "effect/testing";
-import { ChildProcess } from "effect/unstable/process";
 import { Retry } from "../src/Retry.js";
 import { CommandFailedError, CommandOutput } from "../src/Run.js";
 import { ScriptedSpawner } from "../src/ScriptedSpawner.js";

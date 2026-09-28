@@ -1,12 +1,12 @@
 ---
 name: effect-v4-cli
-description: Use when building or reviewing a command-line program on Effect v4 — effect/unstable/cli in core, its exit-code contract, and the @effected/cli boundary that keeps stdout clean and failures on stderr.
-when_to_use: effect/unstable/cli, Command, Flag, Argument, @effect/cli, exit code, findings exit code, usage error, --format json, --version, stdout vs stderr, stdin, CliLogger, CliRuntime, CliExit, CliColor, CliTest, @effected/cli/testing, NO_COLOR, bin-only package, emitDts false, Command.Environment, ChildProcess vs Command
+description: Use when building or reviewing a command-line program on Effect v4 — effect/cli in core, its exit-code contract, and the @effected/cli boundary that keeps stdout clean and failures on stderr.
+when_to_use: effect/cli, Command, Flag, Argument, @effect/cli, exit code, findings exit code, usage error, --format json, --version, stdout vs stderr, stdin, CliLogger, CliRuntime, CliExit, CliColor, CliTest, @effected/cli/testing, NO_COLOR, bin-only package, emitDts false, Command.Environment, ChildProcess vs Command
 ---
 
 # Effect v4 CLIs
 
-Core owns parsing: `effect/unstable/cli` is the whole framework — `Command`,
+Core owns parsing: `effect/cli` is the whole framework — `Command`,
 `Flag`, `Argument`, help, exit-code mapping. It owns nothing about how output
 reaches a person. `@effected/cli` is the boundary that fixes that: it plugs a
 terminal-appropriate logger, a runtime wrapper that reports failures through
@@ -15,8 +15,8 @@ gap core leaves open.
 
 | construct | import | reach for it when |
 | --- | --- | --- |
-| `Command`, `Flag`, `Argument` | `effect/unstable/cli` | declaring the command tree, its flags and positional arguments |
-| `ChildProcess`, `ChildProcessSpawner` | `effect/unstable/process` | building or running a spawned command — **not** `effect/unstable/cli`'s `Command`, which only declares your own CLI |
+| `Command`, `Flag`, `Argument` | `effect/cli` | declaring the command tree, its flags and positional arguments |
+| `ChildProcess`, `ChildProcessSpawner` | `effect/process` | building or running a spawned command — **not** `effect/cli`'s `Command`, which only declares your own CLI |
 | `CliLogger` | `@effected/cli` | replacing the default `[00:33:56.619] INFO (#2)` logger with plain, level-routed output |
 | `CliRuntime.main`, `CliRuntime.reportFailures` | `@effected/cli` | assembling `main`, reporting failures through your own logger, and setting the process exit code |
 | `CliExit` | `@effected/cli` | a findings command (a linter that found problems) exiting non-zero by succeeding, never by failing |
@@ -27,7 +27,7 @@ gap core leaves open.
 
 ## Standards
 
-- Build the CLI on `effect/unstable/cli`, never `@effect/cli` — its releases still peer on `effect ^3.x`.
+- Build the CLI on `effect/cli`, never `@effect/cli` — its releases still peer on `effect ^3.x`.
 - Give every `Flag.Boolean` an explicit `Flag.withDefault` or `Flag.optional` — omission is a usage error, not `false`.
 - Provide `@effect/platform-node`'s `NodeServices.layer` once, at the program boundary, to satisfy `Command.Environment`.
 - Fail a usage error (`Effect.fail(new CliError.UserError(...))`); succeed a query that legitimately matches nothing.
@@ -71,7 +71,7 @@ Anchors in this skill and its references cite the vendored tag at
 ## Related skills
 
 - **`effect-v4-module-index`** — which core module owns a capability, including
-  `effect/unstable/process` and the `NodeServices.layer` boundary.
+  `effect/process` and the `NodeServices.layer` boundary.
 - **`effect-v4-idioms`** — `PlatformError`, typed errors and core patterns.
 - **`effect-v4-services-layers`** — providing `Command.Environment` once at the
   boundary, and the memoization discipline.

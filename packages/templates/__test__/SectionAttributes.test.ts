@@ -3,8 +3,7 @@
 // but never in which block a marker names.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Equal, Option, Result, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Effect, Equal, Option, Result, Schema } from "effect";
 import type { Section, SectionDocument, SectionRenderError } from "../src/index.js";
 import { CommentStyle, ManagedSection, SectionDialect, SectionId } from "../src/index.js";
 import { begin, block, end, id, lines, memoryFs, parse, parseFailure, section } from "./fixtures.js";

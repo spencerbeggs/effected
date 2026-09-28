@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, ConfigProvider, Effect, Exit, Fiber, Layer, Option, PlatformError, Result, Sink, Stream } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { TestClock } from "effect/testing";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
 	BranchEntry,
 	ConfigListEntry,

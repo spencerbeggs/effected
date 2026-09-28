@@ -88,7 +88,7 @@ member) so the instance type advertises it.
 docstring says "skip validation when you trust the data" (`Schema.ts:118`) and
 "skips constructor validation" (`Schema.ts:14644`). Both are misleading, and the
 vendored cluster code leans on it as the trusted-construction idiom
-(`unstable/cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129`),
+(`cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129`),
 so it looks blessed. What it actually does:
 
 | Passing `{ disableChecks: true }` | Effect |
@@ -178,7 +178,7 @@ Three distinct tools — pick by intent:
 
   Verified `is*` members: `isInt`, `isBetween`, `isGreaterThan`,
   `isGreaterThanOrEqualTo`, `isLessThan`, `isLessThanOrEqualTo`, `isMultipleOf`,
-  `isFinite`, `isMinLength`, `isMaxLength`, `isLengthBetween`, `isPattern`,
+  `isFinite`, `isMinLength`, `isMaxLength`, `isBetweenLength`, `isPattern`,
   `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized` — all sixteen confirmed
   present. `positive`/`negative`/`nonNegative`/`nonPositive` do not exist —
   compose `isGreaterThan(0)` etc. `Schema.filter` is likewise `undefined`.
@@ -432,7 +432,7 @@ export type PackageName = string & Brand.Brand<"PackageName">;
 
 From any schema (the class included):
 
-- `Arbitrary.schema(S)` from `effect/unstable/arbitrary` — the native generator,
+- `Arbitrary.schema(S)` from `effect` — the native generator,
   honoring `.check(...)` bounds. **`Schema.toArbitrary` is `undefined`**
   (there is no fast-check bridge), and the module has
   no `oneof`/`constantFrom`/`array` — choice and collections are Schemas. Full

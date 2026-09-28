@@ -34,7 +34,7 @@ CWD="$(printf '%s' "$ENVELOPE" | jq -r '.cwd // empty' 2>/dev/null || true)"
 # advance, in the same commit that moves catalog:effect. Deliberately a constant
 # rather than read from the host repo's catalog — the point is to tell a LAGGING
 # repo what to move to.
-EFFECT_PIN="4.0.0-rc.117"
+EFFECT_PIN="4.0.0-rc.118"
 
 # Walk up from cwd to the repo root (Copilot gives cwd, not the root).
 PROJECT_DIR="$CWD"
@@ -125,10 +125,10 @@ Available via the Skill tool (several also auto-load on trigger):
   the memoization discipline (build-once-by-reference; the layer-function trap).
 - effect-v4-idioms — core Effect: typed errors, Result, generators,
   scope/resources, forking, structural equality.
-- effect-v4-cli — command-line programs: effect/unstable/cli in core plus
+- effect-v4-cli — command-line programs: effect/cli in core plus
   the @effected/cli boundary (main assembly, exit codes, stdout vs stderr,
   testing a built bin).
-- effect-v4-mcp — MCP servers on effect/unstable/ai: stdio wiring that keeps
+- effect-v4-mcp — MCP servers on effect/ai: stdio wiring that keeps
   stdout the wire, tools, failures an agent can read, resources, and the
   in-process and spawned test clients.
 - effect-v4-observability — spans/logging/metrics; OTel composed at the edge,

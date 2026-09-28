@@ -2,8 +2,8 @@ import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, PlatformError, Schedule, Sink, Stream } from "effect";
-import { McpProtocol } from "effect/unstable/ai";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { McpProtocol } from "effect/ai";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { McpProcess } from "../src/testing.js";
 
 const FAKE = join(import.meta.dirname, "fixtures", "fake-server.mjs");

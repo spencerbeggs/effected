@@ -15,8 +15,8 @@ the Iso and Differ conversion failures do throw a bare `Error("Schema validation
 The "Generating an Arbitrary from a Schema" section was REWRITTEN — there is no
 fast-check bridge (`Schema.toArbitrary`, `effect/testing/FastCheck`, the
 `toArbitrary`/`arbitrary` annotations); generation goes through the native
-`effect/unstable/arbitrary` module; the section's claims are settled against
-`unstable/arbitrary/Arbitrary.ts`, `ARBITRARY.md`,
+`Arbitrary` module; the section's claims are settled against
+`Arbitrary.ts`, `ARBITRARY.md`,
 `ARBITRARY-MIGRATION.md` and the probes named inline. `ToJsonSchemaOptions.additionalProperties`
 is `onExcessProperty: "ignore" | "error"`, defaulting OPEN — every object blob below shows
 `"additionalProperties": true`, which is what a bare `toJsonSchemaDocument` emits (probed;
@@ -477,11 +477,10 @@ console.log(JSON.stringify(document, null, 2))
 ### Generating an Arbitrary from a Schema
 
 Property-based generation is native to core:
-the module is **`effect/unstable/arbitrary`**, and it starts from a Schema.
+the module is **`Arbitrary`**, and it starts from a Schema.
 
 ```ts
-import { Effect, Schema } from "effect"
-import { Arbitrary } from "effect/unstable/arbitrary"
+import { Arbitrary, Effect, Schema } from "effect"
 
 const Person = Schema.Struct({
   name: Schema.String,
@@ -508,7 +507,7 @@ const samples = await Effect.runPromise(
 > and keeps it out of `@effect/vitest`, which does not accept raw fast-check
 > arbitraries.
 
-The public surface (`unstable/arbitrary/Arbitrary.ts`):
+The public surface (`Arbitrary.ts`):
 
 | name | what it is |
 | --- | --- |
@@ -534,7 +533,7 @@ house translations, each taken from a migrated property test:
 | --- | --- |
 | `fc.constantFrom("a", "b")` | `Arbitrary.schema(Schema.Literals(["a", "b"]))` |
 | `fc.integer({ min, max })` | `Schema.Int.check(Schema.isBetween({ minimum, maximum }))` — **bound it**: an unbounded `Schema.Int` generates within `±size²` (`±100` at the default size) rather than the 32-bit range |
-| `fc.array(x, { minLength, maxLength })` | `Schema.Array(X).check(Schema.isLengthBetween(min, max))` |
+| `fc.array(x, { minLength, maxLength })` | `Schema.Array(X).check(Schema.isBetweenLength(min, max))` |
 | `fc.stringMatching(/^[a-z]{1,12}$/)` | `Schema.String.check(Schema.isPattern(/^[a-z]{1,12}$/))` — generated **constructively** when the pattern compiles (see traps) |
 | `fc.record({ a: fc.option(x) })` — some keys absent | `Schema.Struct({ a: Schema.optionalKey(X) })` — **not** `Schema.Record(Literals, X)`, which always emits every key |
 | `fc.oneof(arbA, arbB)` over *Arbitraries* (not Schemas) | `Schema.Union([A, B])` when both sides are Schemas; otherwise `flatMap` over a generated index: `Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: rest.length }))).pipe(Arbitrary.flatMap((i) => i === 0 ? first : rest[i - 1]))` |
@@ -564,7 +563,7 @@ magnitude `size²` (`schema.ts:1170`).
 
 Generated values are always validated by the schema's checks before they are
 returned. Built-in checks (`isBetween`, `isMinLength`/`isMaxLength`/
-`isLengthBetween`, `isPattern`, `isUnique`, `isInt`, …) carry an
+`isBetweenLength`, `isPattern`, `isUnique`, `isInt`, …) carry an
 `arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7458`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
 matching values **constructively**. Any other check is a *residual filter*:
 values are generated without it and rejected when they fail. Rejections are

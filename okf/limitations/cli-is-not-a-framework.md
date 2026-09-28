@@ -7,8 +7,8 @@ bounds: ../modules/cli.md
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 6dde5938fb8870a3789a5106ba251603ec6b103a784f077fb35d218da6504a56
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 465a1831be713ee1eb863d9b9b360d2a53d578e1dc188624851e1d5b67f97d93
 ---
 
 # @effected/cli is not a CLI framework
@@ -22,8 +22,8 @@ progress bars) from `@effected/cli`.
 ## The symptom
 
 None of that surface exists in this package, and it will not be added
-there even when a change starts to look like it belongs. `effect/unstable/
-cli` already owns argument parsing, flags, the command tree and the help
+there even when a change starts to look like it belongs. `effect/cli`
+already owns argument parsing, flags, the command tree and the help
 system; `Prompt` already exists in core's CLI namespace for interactive
 input.
 
@@ -42,7 +42,7 @@ forced to carry.
 ## What the fix would take
 
 Nothing to fix inside this package: a consumer reaches for
-`effect/unstable/cli`'s own parsing and command-tree constructs directly,
+`effect/cli`'s own parsing and command-tree constructs directly,
 and for `Prompt` for interactive input. If a change here starts to look
 like parsing, it belongs upstream in core or nowhere. Colour-aware output
 is the one open question recorded as deferred rather than rejected —

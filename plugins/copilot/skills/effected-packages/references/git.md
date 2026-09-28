@@ -194,7 +194,7 @@ requirement stays discharged exactly once, at the outermost edge:
 ```ts
 import { Git } from "@effected/git";
 import { Context, Effect, Layer } from "effect";
-import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcessSpawner } from "effect/process";
 
 class Diff extends Context.Service<Diff, { readonly run: (cwd: string) => Effect.Effect<string> }>()("Diff") {}
 
@@ -223,7 +223,7 @@ const TestGit = Git.layerTest({ revParse: () => Effect.succeed("abc123") });
 Mock the spawner instead only when the thing under test is the argv or the
 classification: `Layer.succeed(ChildProcessSpawner.ChildProcessSpawner,
 ChildProcessSpawner.make(mockSpawn))` with `ChildProcessSpawner.makeHandle({...})`
-over in-memory streams (`effect/unstable/process`). For a consumer service that
+over in-memory streams (`effect/process`). For a consumer service that
 reads only a few methods, faking the narrowed `Pick<GitShape, ...>` type via
 `Layer.succeed` is less surface still.
 

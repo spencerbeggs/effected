@@ -1,7 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Duration, Effect, Exit, Fiber, Latch, Layer, Option, Schema } from "effect";
+import { Arbitrary, Duration, Effect, Exit, Fiber, Latch, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { Arbitrary } from "effect/unstable/arbitrary";
 import { Attestation } from "../src/Attestation.js";
 import { Annotation, CheckRun, CheckRunOutput } from "../src/CheckRun.js";
 import type { GitHubClient } from "../src/GitHubClient.js";

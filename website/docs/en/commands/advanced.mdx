@@ -140,7 +140,7 @@ Effect.runPromise(program.pipe(Effect.provide(ToolsLive))).then(console.log);
 
 ```ts with-api
 import { ExecContext, LocalExec } from "@effected/commands";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const npm = LocalExec.prefixes("npm");
 console.log(npm.prefix, npm.dlxPrefix, npm.scriptPrefix);
@@ -178,7 +178,7 @@ It scans stdout's non-empty lines **from the end** and takes the first that both
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Schema } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 // A required `ok` literal is what discriminates the envelope from any other
 // schema-valid line the child might emit.
@@ -205,7 +205,7 @@ Two rules follow from the scan direction. A child must not emit two schema-valid
 import { Retry, Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const install = Run.text(ChildProcess.make("npm", ["install"]), { timeout: "5 minutes" });
 
@@ -257,7 +257,7 @@ Three smaller combinators exist for shapes the main ones cannot express.
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const program = Run.detach(ChildProcess.make("my-daemon", ["--background"]));
 
@@ -288,7 +288,7 @@ Nothing here needs a mocking framework, because the spawner is a service. [`Scri
 import { CommandFailedError, Run, ScriptedSpawner } from "@effected/commands";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 describe("commit reader", () => {
   it.effect("returns the trimmed SHA", () =>

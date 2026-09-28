@@ -10,8 +10,8 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 973daa3e98f6199aea5d54bf43f8b53e17a2e74916c02a5ef9a98cbffe9ebe04
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 815f7e93174fd12eaa3c6b1ce6ebe67af29ec68ab7cbdc56ee3ddea68269eb4d
 ---
 
 # github-actions
@@ -217,7 +217,7 @@ topology; the reachability suite additionally asserts exact edge sets
 for the light modules (`CheckState.ts` reaches `effect` alone and in
 particular not `github`, `ManagedDocument.ts` and `CheckDocument.ts` reach
 `templates` and `effect` only, `ChildEnv.ts` reaches nothing, `Action.ts`
-reaches `@effect/platform-node`, `effect` and `effect/unstable/http`).
+reaches `@effect/platform-node`, `effect` and `effect/http`).
 
 ## The class of feedback this package absorbs
 

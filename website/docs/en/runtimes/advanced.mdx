@@ -18,7 +18,7 @@ The three resolvers share a service shape but not a transport, and that asymmetr
 ```ts with-api
 import { BunResolver, DenoResolver, GitHubClient, NodeResolver } from "@effected/runtimes";
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 // One layer for three runtimes; each transport wired to what that resolver needs.
 const ToolchainLive = Layer.mergeAll(
@@ -65,7 +65,7 @@ Anonymous GitHub requests share a much lower rate limit, so a tool that resolves
 ```ts with-api
 import { BunResolver, GitHubAuth, GitHubClient } from "@effected/runtimes";
 import { Layer, Redacted } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 // Bind the layer to a const — layers memoize by reference, so calling
 // GitHubAuth.token twice would build two of them and share neither.
@@ -82,7 +82,7 @@ The deeper seam is that `GitHubAuth` is a *service*, not a concrete token — wh
 ```ts with-api
 import { BunResolver, GitHubAuth, GitHubClient } from "@effected/runtimes";
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 // Your own installation-token minting lives behind this effect; GitHubAuth is
 // just a contract for "produce the headers to attach to each GitHub request".

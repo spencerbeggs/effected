@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Console, Effect, Exit, Layer, Runtime } from "effect";
-import { CliError, CliOutput, Command, Flag } from "effect/unstable/cli";
+import { CliError, CliOutput, Command, Flag } from "effect/cli";
 import { CliRuntime } from "../src/index.js";
 
 const sub = Command.make("sub", { count: Flag.Int("count").pipe(Flag.withDefault(1)) }, ({ count }) =>

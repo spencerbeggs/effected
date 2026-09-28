@@ -1,6 +1,6 @@
 import type { Cause, Scope } from "effect";
 import { Console, Deferred, Effect, Exit, Layer, Queue, Sink, Stdio, Stream } from "effect";
-import { McpProtocol } from "effect/unstable/ai";
+import { McpProtocol } from "effect/ai";
 import type { ClientInfo } from "./internal/wire.js";
 import {
 	DEFAULT_CLIENT_INFO,
@@ -91,11 +91,13 @@ interface HarnessParts {
  *   anything that went through `console.log`, which in a real server is
  *   the wire. Assert it empty.
  * - On a stateful revision (the default `2025-11-25`), send `initialize`
- *   first. Every other request before it fails with `NotInitialized` and
- *   is never written, `ping` included: the server would only answer an
- *   opaque refusal, `-32602 Invalid request metadata` when a stateless
- *   adapter is listed first (as in `McpStdio.protocols`), or
- *   `-32603 Internal error` when only stateful revisions are served.
+ *   first. `ping` is the exception: the server answers it `{}` before
+ *   initialization, so it is written. Every other request before
+ *   `initialize` fails with `NotInitialized` and is never written: the
+ *   server would only answer an opaque refusal,
+ *   `-32602 Invalid request metadata` when a stateless adapter is listed
+ *   first (as in `McpStdio.protocols`), or `-32603 Internal error` when
+ *   only stateful revisions are served.
  *
  * @public
  */
@@ -124,7 +126,7 @@ export class McpHarness {
 	readonly discover: Effect.Effect<JsonRpcMessage, McpTestFailure>;
 	/** Send a request and wait for its response. */
 	readonly request: (method: string, params?: unknown) => Effect.Effect<JsonRpcMessage, McpTestFailure>;
-	/** Send a request now; wait for its response later. Fails with `NotInitialized`, sending nothing, on a stateful revision before `initialize`. */
+	/** Send a request now; wait for its response later. Fails with `NotInitialized`, sending nothing, on a stateful revision before `initialize` (`ping` excepted). */
 	readonly startRequest: (
 		method: string,
 		params?: unknown,
@@ -293,9 +295,9 @@ export class McpHarness {
 				Effect.suspend(() =>
 					Deferred.isDoneUnsafe(waiter) ? Deferred.await(waiter) : stopAware(Deferred.await(waiter)),
 				);
-			// A stateful revision refuses every request before `initialize`, `ping` included,
-			// with an opaque -32602 or -32603 depending on the protocol list; fail those fast,
-			// naming the missing step.
+			// A stateful revision refuses every request before `initialize` except `ping`,
+			// which it answers `{}`, with an opaque -32602 or -32603 depending on the
+			// protocol list; fail those fast, naming the missing step.
 			const stateful = !isStateless(protocol);
 			let initializeSent = false;
 			const sent: Array<unknown> = [];
@@ -310,7 +312,7 @@ export class McpHarness {
 				});
 			const startRequest = (method: string, params?: unknown) =>
 				Effect.gen(function* () {
-					if (stateful && !initializeSent && method !== "initialize") {
+					if (stateful && !initializeSent && method !== "initialize" && method !== "ping") {
 						return yield* new McpTestFailure({
 							reason: "NotInitialized",
 							message: `${method} was not sent: call initialize first on stateful protocol ${protocol.protocolVersion}`,

@@ -144,7 +144,7 @@ Two properties to be deliberate about. **A resolver that finds nothing falls thr
 
 ### Wiring the flag to the layer
 
-A layer is built before a CLI parses anything, so the parsed `--config` has to reach `AppConfig.layer` somehow. `effect/unstable/cli` has two ways, and neither needs an `Effect.provide` inside the handler.
+A layer is built before a CLI parses anything, so the parsed `--config` has to reach `AppConfig.layer` somehow. `effect/cli` has two ways, and neither needs an `Effect.provide` inside the handler.
 
 For a single command, `Command.provide` takes **a function of the parsed input**, not just a finished layer:
 

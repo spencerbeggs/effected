@@ -1,5 +1,5 @@
 /**
- * Test clients for MCP servers built on `effect/unstable/ai`: an in-process
+ * Test clients for MCP servers built on `effect/ai`: an in-process
  * harness over queue-backed stdio, a spawned-bin client that never hangs, a
  * packed-install initialize probe, and a pure tools/list audit.
  *

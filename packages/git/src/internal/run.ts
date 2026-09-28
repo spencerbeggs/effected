@@ -1,7 +1,7 @@
 import type { PlatformError } from "effect";
 import { Effect, Stream } from "effect";
-import type { ChildProcess } from "effect/unstable/process";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcess } from "effect/process";
+import { ChildProcessSpawner } from "effect/process";
 
 /**
  * The stdout, stderr, and exit code of one completed run of a `Command`,

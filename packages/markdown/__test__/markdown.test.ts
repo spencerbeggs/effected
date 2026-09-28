@@ -9,8 +9,7 @@
 // `hardening.test.ts` at the carrier layer.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Result, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Effect, Result, Schema } from "effect";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
 import { Markdown, MarkdownParseError, MarkdownParseOptions } from "../src/Markdown.js";
 import type { MarkdownNode } from "../src/MarkdownNode.js";

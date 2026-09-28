@@ -4,7 +4,7 @@ Loaded from `effect-v4-cli`. Covers why a non-zero exit comes from the program f
 
 ## The exit-code contract
 
-`effect/unstable/cli` never calls `process.exit`. The non-zero exit comes from
+`effect/cli` never calls `process.exit`. The non-zero exit comes from
 the **program failing** — the runtime maps a failed effect to a non-zero status.
 Everything follows from that one fact:
 
@@ -12,7 +12,7 @@ Everything follows from that one fact:
 
 `CliError.UserError` is the general-purpose failure for "the user asked for
 something invalid". The full `CliError` union is nine members
-(`CliError.ts:74`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
+(`CliError.ts:78`): `UnrecognizedOption`, `DuplicateOption`, `MissingOption`,
 `MissingArgument`, `UnexpectedArgument`, `InvalidValue`, `UnknownSubcommand`,
 `ShowHelp`, `UserError`. An exhaustive `catchTags` or `Match` that omits any
 one of these nine will not compile — write the exhaustive check against the
@@ -20,7 +20,7 @@ full union rather than a partial list assembled from memory.
 
 ~~~ts
 import { Effect } from "effect"
-import { CliError } from "effect/unstable/cli"
+import { CliError } from "effect/cli"
 
 declare const input: string
 declare function isValid(value: string): boolean
@@ -56,7 +56,7 @@ wrong (fail), or did the *world* simply not contain what they asked for (succeed
 ## `CliRuntime.main` assembles the whole program, in one order
 
 `CliRuntime.main(program, { platform, logger?, render?, exitCode?, usageExitCode?
-})` wraps an `effect/unstable/cli` program so every failure — a parse error, a
+})` wraps an `effect/cli` program so every failure — a parse error, a
 layer-build failure, a domain error, a findings exit — reports the same way.
 The order it assembles in is the whole point, not an implementation detail:
 
@@ -79,7 +79,7 @@ still call your own runtime's runner:
 import { CliExit, CliRuntime } from "@effected/cli"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Effect } from "effect"
-import { Command } from "effect/unstable/cli"
+import { Command } from "effect/cli"
 
 const demo = Command.make("demo", {}, () =>
   Effect.gen(function* () {

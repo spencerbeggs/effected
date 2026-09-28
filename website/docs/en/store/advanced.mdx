@@ -114,7 +114,7 @@ Effect.runPromise(program.pipe(Effect.provide(StoreLive)));
 
 ## Adopting a database migrated by effect's Migrator
 
-`Store`'s ledger is its own. A database previously migrated by `effect/unstable/sql/Migrator` records what ran in `effect_sql_migrations` (`migration_id`, `name`, `created_at`), which `Store` never reads — so the first `Store` layer built over such a file sees an empty `_store_migrations` ledger and re-runs every migration. If your migrations are idempotent (`CREATE TABLE IF NOT EXISTS …`), the re-run is harmless and you can skip this section. If they are not — a bare `CREATE TABLE`, a seeding `INSERT` — seed the ledger **before** the first layer is built, because layer construction itself runs whatever looks pending.
+`Store`'s ledger is its own. A database previously migrated by `effect/sql/Migrator` records what ran in `effect_sql_migrations` (`migration_id`, `name`, `created_at`), which `Store` never reads — so the first `Store` layer built over such a file sees an empty `_store_migrations` ledger and re-runs every migration. If your migrations are idempotent (`CREATE TABLE IF NOT EXISTS …`), the re-run is harmless and you can skip this section. If they are not — a bare `CREATE TABLE`, a seeding `INSERT` — seed the ledger **before** the first layer is built, because layer construction itself runs whatever looks pending.
 
 Detect the old ledger, then copy it across. This is a one-time step against the closed database file, so plain `node:sqlite` is the right tool:
 

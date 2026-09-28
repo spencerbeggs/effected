@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import { HttpClient, HttpClientRequest } from "effect/http";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { payloadOf, unsignedJwt } from "./internal/jwt.js";
 import { unstubbed } from "./internal/unstubbed.js";

@@ -17,7 +17,7 @@ pnpm add @effected/mcp @effected/engine effect
 
 ## The one-line `main.ts`
 
-An MCP server built on `effect/unstable/ai` is a `Layer`. `McpStdio.launch`
+An MCP server built on `effect/ai` is a `Layer`. `McpStdio.launch`
 runs it and reports any failure itself, on stderr, and `McpStdio.teardown`
 maps stdin reaching EOF — the normal end of every session — to exit `0`
 instead of the `130` a plain interrupt would produce:
@@ -26,7 +26,7 @@ instead of the `130` a plain interrupt would produce:
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp";
 import { NodeRuntime, NodeStdio } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
   ...ToolFailure.fields,

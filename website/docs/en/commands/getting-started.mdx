@@ -33,7 +33,7 @@ The first move is to describe the command. That is core's job, not this package'
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 // 1. Describe the command with core's own constructor.
 const command = ChildProcess.make("git", ["rev-parse", "--short", "HEAD"]);
@@ -60,7 +60,7 @@ Each snippet below is a complete program built only from the package's real expo
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const program = Effect.gen(function* () {
   const output = yield* Run.collect(ChildProcess.make("git", ["diff", "--quiet"]));
@@ -80,7 +80,7 @@ Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const program = Run.lines(ChildProcess.make("git", ["tag", "--list", "v1.*"]));
 
@@ -96,7 +96,7 @@ Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Schema } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const Manifest = Schema.Struct({
   name: Schema.String,
@@ -120,7 +120,7 @@ Effect.runPromise(program.pipe(Effect.provide(NodeServices.layer))).then(console
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const program = Run.succeeds(ChildProcess.make("git", ["rev-parse", "--git-dir"]));
 
@@ -136,7 +136,7 @@ This is the one API here that exists to fix a footgun rather than to add a capab
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const command = ChildProcess.make("node", ["-p", "process.env.GREETING"]).pipe(
   Run.extendEnv({ GREETING: "hello" }),
@@ -156,7 +156,7 @@ A hermetic environment — deliberately dropping the parent's variables — is w
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Stream } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const program = Run.stream(ChildProcess.make("npm", ["install"]), { includeStderr: true }).pipe(
   Stream.runForEach((line) => Effect.log(line)),
@@ -175,7 +175,7 @@ Route on `_tag` with `Effect.catchTag`, then branch on `kind` — never on the m
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const program = Run.text(ChildProcess.make("definitely-not-installed", ["--version"]));
 
@@ -199,7 +199,7 @@ Failures you want to bound rather than route get `RunOptions` instead. `timeout`
 import { Run } from "@effected/commands";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Redacted } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 const token = Redacted.make("s3cr3t-token");
 

@@ -139,7 +139,7 @@ a devDependency.
   `references/schemastore.md`.
 - Designing the Effect Schema itself (Class vs Struct, optionality, checks,
   `toJsonSchemaDocument` options) → `effect-v4-schema`.
-- Building a CLI on `effect/unstable/cli` → `effect-v4-cli`.
+- Building a CLI on `effect/cli` → `effect-v4-cli`.
 
 ## Additional resources
 

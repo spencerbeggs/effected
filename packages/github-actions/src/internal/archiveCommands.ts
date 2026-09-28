@@ -59,12 +59,12 @@
  * one is doubled — the only escape a single-quoted PowerShell literal has.
  *
  * Pure: no filesystem, no environment, no spawn. `internal/spawn.ts` is the
- * execution half. Reaches `effect/unstable/process` alone, so it is safe for
+ * execution half. Reaches `effect/process` alone, so it is safe for
  * any module to import (`__test__/reachability.test.ts`).
  *
  * @internal
  */
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 /** A PowerShell single-quoted literal: `'` becomes `''`, nothing else is special. */
 const pwshLiteral = (value: string): string => `'${value.replaceAll("'", "''")}'`;

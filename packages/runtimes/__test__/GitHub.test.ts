@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Fiber, Layer, Redacted } from "effect";
+import { FetchHttpClient } from "effect/http";
 import { TestClock } from "effect/testing";
-import { FetchHttpClient } from "effect/unstable/http";
 import {
 	AuthenticationError,
 	GitHubAuth,

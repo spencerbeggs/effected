@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Deferred, Effect, Exit, Layer, Result, Stdio, Stream } from "effect";
-import { McpProtocol } from "effect/unstable/ai";
+import { McpProtocol } from "effect/ai";
 import { McpStdio } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
 import { fixtureServer, fixtureServerMerged } from "./fixtures/server.js";
@@ -295,6 +295,20 @@ describe("McpHarness", () => {
 			assert.deepStrictEqual(resultOf(yield* harness.callTool("echo", { text: "late" })).structuredContent, {
 				text: "late",
 			});
+		}),
+	);
+
+	it.effect("stateful: ping is written before initialize and the server answers it {}", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(fixtureServer());
+			const response = yield* harness.request("ping");
+			assert.deepStrictEqual(response.result, {});
+			// Control: every other request is still gated, and ping sent nothing else.
+			assert.strictEqual((yield* Effect.flip(harness.request("tools/list"))).reason, "NotInitialized");
+			assert.deepStrictEqual(
+				(yield* harness.sentSoFar).map((frame) => (frame as { readonly method?: unknown }).method),
+				["ping"],
+			);
 		}),
 	);
 

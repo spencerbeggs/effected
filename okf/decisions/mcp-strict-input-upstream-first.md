@@ -2,12 +2,12 @@
 type: Decision
 title: "D2: strict MCP input is upstream-first"
 description: Ship pure ToolInputSchema walkers now, and add an McpToolkit decorator only if probe P1 proves the registerToolkit port round-trips; do not consolidate a full port into the kit.
-status: stable
+status: deprecated
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
-  body_sha256: 085f2b4fa5fcf373e74892c6c2356dbb081405b569ed39fb653a2e2e063cb6de
+  at: 2026-09-28T18:00:23Z
+  body_sha256: edc87da649c7f90debe548e2514cf3f37b795bfcb06de15dd00e280729c882ab
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -29,7 +29,7 @@ unknown key rather than all of them (`McpServer.ts:1832` decodes without
 at boot rather than validating (`ToolJson` requires `type: "object"`,
 decoded with `orDie`). Consolidating a full `registerToolkit` port into
 the kit would mean owning a moving target against every future
-`effect/unstable/ai` release, and `okf/decisions/cli-handler-accessor-gap-filed-upstream.md`
+`effect/ai` release, and `okf/decisions/cli-handler-accessor-gap-filed-upstream.md`
 already set the kit's precedent for handling this class of gap by filing
 upstream rather than shimming around it.
 

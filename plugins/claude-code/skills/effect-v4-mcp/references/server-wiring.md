@@ -8,7 +8,7 @@ Loaded from `effect-v4-mcp`. Covers the complete `main.ts`, why `Stdio` is provi
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp"
 import { NodeRuntime, NodeStdio } from "@effect/platform-node"
 import { Effect, Layer, Schema } from "effect"
-import { Tool, Toolkit } from "effect/unstable/ai"
+import { Tool, Toolkit } from "effect/ai"
 
 class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
   ...ToolFailure.fields,
@@ -121,48 +121,55 @@ this.
 
 ### Stdin guard
 
-Core's own stdio decoder (`RpcSerialization.makeNdjson`) runs `JSON.parse`
-on each line inside its read loop and throws before it trims the consumed
-line from its buffer. A line that is not JSON therefore stays at the head of
-that buffer forever: every later chunk re-throws on the same line, the
-server never answers another request, and stdin EOF still exits `0` — a
-silent hang, not a crash. A blank line does the same (`JSON.parse("")`
-throws), and so does a U+FEFF opening any line but the first, since core's
-streaming decoder strips a byte-order mark only at the very start of the
-stream. A line over the 16 Mi-UTF-16-code-unit cap fails differently but no
-better: `failMaxBufferSize` clears the buffer before throwing, so the rest of
-that line arrives as an unanswered fresh line and the client never gets a
-reply either way.
+Core's own stdio decoder (`RpcSerialization.makeNdjson`) skips a line it
+cannot use and keeps serving: a line that is not JSON, a blank line, a line
+opening with a U+FEFF anywhere but the start of the stream (core's
+streaming decoder strips a byte-order mark only there), a JSON value that is
+not an object, and an object that is neither a request nor a response. A
+line over the 16 Mi-UTF-16-code-unit cap is dropped too, after core logs a
+`MaxBufferSizeExceeded` error on stderr. Core sends **no reply** for any of
+them, where JSON-RPC 2.0 requires one: a client that wrote a malformed
+request waits for an answer that never comes.
 
 `McpStdio.layer` provides the server a `Stdio` wrapped by an internal
 stdin-framing guard that frames stdin exactly as core's decoder does — one streaming UTF-8
 decoder, the same BOM-at-stream-start rule, the same 16 Mi-code-unit cap —
-and answers every line core would choke on itself, on `stdout`, before core
-ever sees it:
+and answers such a line itself, on `stdout`, before core ever sees it:
 
 - a non-JSON or over-cap line gets `{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}`,
   the over-cap case answered once, as soon as the held text passes the cap,
-  discarding the rest of that line up to its newline;
+  discarding the rest of that line up to its newline, with nothing logged;
 - a line of JSON whitespace is dropped, not answered;
 - a line that is JSON but no JSON-RPC message core can handle gets
   `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}}`
-  and never reaches core. That is a value that is neither an object nor an
-  array (core throws on a bare `null`, dropping every other frame that
-  arrived in the same chunk, and ignores a number, string or boolean with no
-  reply), an object whose `method` is not a string and whose `id` is absent
-  or `null` (core throws on that too), and an object with neither `method`
-  nor `id`, which is neither a request nor a response. A request co-batched
-  in the same write after such a line is still answered.
+  and never reaches core: a value that is neither an object nor an array,
+  an object whose `method` is not a string and whose `id` is absent or
+  `null`, and an object with neither `method` nor `id`, which is neither a
+  request nor a response. A request written in the same chunk after such a
+  line is still answered.
+
+The guard also keeps core's internal RPC control methods off the wire.
+Core's JSON-RPC decoder reads a message whose `method` starts with
+`@effect/rpc/` and has no `id` as one of its own control messages, so a
+client line `{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}` would silently
+stop the server. The guard drops such a notification and answers such a
+request `-32601` Method not found, echoing its `id`, as for any method the
+server does not serve. A control method inside a batch array is harmless
+and goes to core with the array.
 
 Everything else goes to core, which handles it: an array gets core's own
 `-32600` (it serves no batches), an object with an `id` and no `method` is a
 response and gets no reply, and a request with an `id` is answered even when
-its `method` is malformed.
+its `method` is malformed (`-32601`).
+
+Replies are matched by `id`, not by order: a guard reply can reach stdout
+before core's answer to an earlier line.
 
 The guard's own state — the held partial line — lives once per `Stdio`, not
-per subscription, so it survives core re-subscribing to stdin after any
-failure in its read loop. Hand-wiring `McpServer.layerStdio` directly, without
-`McpStdio.layer`, skips all of this and wedges on the first bad line.
+per subscription, so it survives core re-subscribing to stdin. Hand-wiring
+`McpServer.layerStdio` directly, without `McpStdio.layer`, keeps serving
+through bad lines but never answers them, and stops for good on one
+`@effect/rpc/Eof` line.
 
 ~~~ts
 import { unlinkSync, writeFileSync } from "node:fs"
@@ -170,10 +177,10 @@ import { join } from "node:path"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { McpProcess } from "@effected/mcp/testing"
 import { Effect } from "effect"
-import { ChildProcess } from "effect/unstable/process"
+import { ChildProcess } from "effect/process"
 
-// A minimal server, written to disk so it can be spawned as a real process —
-// the guard only matters over a real pipe, not the in-process test harness.
+// A minimal server, written to disk so it can be spawned as a real process:
+// this proves the guard over a real pipe, end to end.
 const serverFile = join(import.meta.dirname, "mcp-guard-demo-server.mjs")
 writeFileSync(
   serverFile,
@@ -181,7 +188,7 @@ writeFileSync(
 import { McpStdio, McpToolkit } from "@effected/mcp"
 import { NodeRuntime, NodeStdio } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
-import { Tool, Toolkit } from "effect/unstable/ai"
+import { Tool, Toolkit } from "effect/ai"
 
 const Ping = Tool.make("ping", { description: "Liveness check.", parameters: Tool.EmptyParams })
 const Tools = Toolkit.make(Ping)
@@ -210,8 +217,8 @@ await Effect.runPromise(program).finally(() => unlinkSync(serverFile))
 ~~~
 
 Prints `answered the bad line itself: true` and `kept serving after it:
-true` — the malformed line got its own `-32700` reply and the server never
-wedged.
+true` — the malformed line got its own `-32700` reply and the request written
+after it in the same chunk was answered.
 
 ## `McpStdio.launch`
 

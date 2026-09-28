@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 89b740ff674bbd1217bc7ad0812a03b69181a3474f3b5bc77a1113d818d4f08b
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 095d9972ae55ad0e2b5bc13a4a1716b2e5e54e6a131f84593d62345775e28f67
 ---
 
 # `@effected/jsonl`
@@ -73,7 +73,7 @@ kit is `@effected/config-file`: a pure core under one opinionated service,
 where the opinion — there codec × resolver × strategy, here the envelope —
 is what makes the package worth having.
 
-Core's `effect/unstable/eventlog` was declined as a foundation:
+Core's `effect/eventlog` was declined as a foundation:
 it is a replication-oriented event-sourcing system (MessagePack-encoded
 entries, encryption, SQL-backed journals, remote sync, session auth) — the
 right goals for a distributed event log and the wrong goals for a file a

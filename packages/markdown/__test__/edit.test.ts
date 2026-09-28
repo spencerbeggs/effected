@@ -8,8 +8,7 @@
 // pin that choice.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Equal, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Equal, Schema } from "effect";
 import { MarkdownEdit, MarkdownRange } from "../src/MarkdownEdit.js";
 
 describe("MarkdownRange", () => {
@@ -84,7 +83,7 @@ describe("MarkdownEdit", () => {
 	const Nat = (max: number) => Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: max }));
 	const disjointEdits = Arbitrary.schema(
 		Schema.Tuple([
-			Schema.String.check(Schema.isLengthBetween(8, 64)),
+			Schema.String.check(Schema.isBetweenLength(8, 64)),
 			Schema.Array(Schema.Tuple([Nat(7), Nat(3), Schema.String.check(Schema.isMaxLength(5))])).check(
 				Schema.isMaxLength(4),
 			),

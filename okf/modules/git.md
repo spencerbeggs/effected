@@ -10,8 +10,8 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: d8b9965b6004300a307f566b74039505674edbd754f5a72a89e8fafdff6ac944
+  at: 2026-09-28T18:00:23Z
+  body_sha256: d6423fe9863bfeee9b1c6a0ef5039c6ddf2d98a00847be296f689c0adfe6d322
 ---
 
 # git
@@ -23,7 +23,7 @@ generated:
 working tree, and a clearly-marked **mutating tier** that changes it (see
 `packages/git/src/Git.ts` for the surface). It programs against core's
 subprocess contract (`ChildProcessSpawner` and `ChildProcess.Command`
-values from `effect/unstable/process`), requiring the spawner in its `R`
+values from `effect/process`), requiring the spawner in its `R`
 channel exactly as the kit's boundary packages require core
 `FileSystem`; the consumer's platform layer discharges it once at the
 edge.

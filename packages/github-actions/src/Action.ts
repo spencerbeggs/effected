@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { Cause, Effect, Exit, Layer, Option, Result } from "effect";
-import type { HttpClient } from "effect/unstable/http";
-import { FetchHttpClient } from "effect/unstable/http";
+import type { HttpClient } from "effect/http";
+import { FetchHttpClient } from "effect/http";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { ActionInput } from "./ActionInput.js";
 import { ActionLogger } from "./ActionLogger.js";

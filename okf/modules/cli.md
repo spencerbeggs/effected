@@ -1,23 +1,23 @@
 ---
 type: Module
 title: "@effected/cli"
-description: The boundary layer of an effect/unstable/cli program — a plain-text logger, a failure-reporting combinator, and two schema-issue renderers.
+description: The boundary layer of an effect/cli program — a plain-text logger, a failure-reporting combinator, and two schema-issue renderers.
 status: stable
 kind: package
 resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T19:42:55Z
-  body_sha256: 8ac18f4782c09128767f429f1fba8da155d0a3603b3169941ebb676b593ee0c4
+  at: 2026-09-28T18:00:23Z
+  body_sha256: e449652e9829ff1b3089639ba67b57ff05d511eaae94d35f33061b0443f472b2
 ---
 
 # @effected/cli
 
 `@effected/cli` is the boundary layer of a command-line program built on
-`effect/unstable/cli`: how output reaches a human, how a failure is
+`effect/cli`: how output reaches a human, how a failure is
 reported, and how a schema issue is rendered into a sentence a user can act
-on. It is emphatically not a CLI framework — `effect/unstable/cli` owns
+on. It is emphatically not a CLI framework — `effect/cli` owns
 argument parsing, flags, the command tree and the help system, and this
 package must never grow a second one.
 
@@ -33,7 +33,7 @@ Each of these is found by running a binary, never by reading the code.
 1. **Effect's default logger is a service log line, not CLI output.** It
    emits `[00:33:56.619] INFO (#2): message` — correct for a long-running
    service being scraped, wrong for a tool a person is watching. Every
-   `effect/unstable/cli` program needs a logger that renders the message
+   `effect/cli` program needs a logger that renders the message
    plainly.
 2. **An unhandled failure reports through the default logger, on stdout.**
    `NodeRuntime.runMain` reports an unhandled failure using Effect's
@@ -85,7 +85,7 @@ Exports are static classes with a private constructor — never an
 | `CliExit` | A `Context.Service` holding a `MutableRef<number>`; `CliExit.set(code)` and `CliExit.layer` for in-process tests. **`CliExit.layer` is `Layer.fresh`** — every provide mints a new cell, so a program run under `CliRuntime.main` must not provide `CliExit.layer` itself, or `CliExit.set` writes to a second, unread cell and the run silently exits `0`. See "Findings are success" below. |
 | `CliColor.enabled` | `Effect<boolean, never, Stdio>` — `Stdio.stdoutIsTerminal` and a non-empty `NO_COLOR` read through `Config.option`, never `process` (D8). |
 | `CliColor.formatterLayer` | `(overrides?: Partial<CliOutput.Formatter>) => Layer<never, never, Stdio>` — builds `CliOutput.defaultFormatter({ colors })` from the same `CliColor.enabled` decision, so help text, parse errors and rendered output always agree. |
-| `MainOptions.helpOnUsageError` | `"stdout" \| "stderr"`, default `"stdout"` (core's behaviour). Under `"stderr"`, `main` wraps `program` (inside the platform provide, so it sees the platform's Formatter) with `internal/HelpRouting.ts`: a recording `CliOutput.Formatter` notes the strings `formatHelpDoc`/`formatErrors` return, and a routing `Console` holds a `log` of a recorded help string until the next console call. If that call is `error` of a recorded errors string, the help goes to stderr ahead of it; anything else, or the program ending (`ensuring`), releases it to stdout. Needed because core prints help with the same `Console.log` for `--help`, a bare group invocation (a `ShowHelp` with no errors) and a usage error, and only the usage error prints `Console.error(formatErrors)` next (`unstable/cli/Command.ts` `showHelp`). Caveats: a Formatter or Console provided inside `program` bypasses it, and `renderErrors: false` prints no errors, so help stays on stdout. |
+| `MainOptions.helpOnUsageError` | `"stdout" \| "stderr"`, default `"stdout"` (core's behaviour). Under `"stderr"`, `main` wraps `program` (inside the platform provide, so it sees the platform's Formatter) with `internal/HelpRouting.ts`: a recording `CliOutput.Formatter` notes the strings `formatHelpDoc`/`formatErrors` return, and a routing `Console` holds a `log` of a recorded help string until the next console call. If that call is `error` of a recorded errors string, the help goes to stderr ahead of it; anything else, or the program ending (`ensuring`), releases it to stdout. Needed because core prints help with the same `Console.log` for `--help`, a bare group invocation (a `ShowHelp` with no errors) and a usage error, and only the usage error prints `Console.error(formatErrors)` next (`cli/Command.ts` `showHelp`). Caveats: a Formatter or Console provided inside `program` bypasses it, and `renderErrors: false` prints no errors, so help stays on stdout. |
 | `ReportFailuresOptions.render` | `(error: unknown, details: FailureDetails) => string \| ReadonlyArray<string>`. `error` is `Cause.squash(cause)`; `FailureDetails` is `{ cause, isDefect }`, with `isDefect = !Cause.hasFails(cause)` — exact because `squash` prefers a `Fail` over a `Die`. Added so a consumer stops guessing "typed" from an `Error` carrying a string `_tag`, which a defect can also be. A one-parameter renderer still fits. |
 | `ReportFailuresOptions.usageExitCode` | Remaps a `ShowHelp` that carries errors to this code, default 64 (D7). A `ShowHelp` with no errors keeps exit 0. |
 | `SchemaIssueRenderer` | `SchemaIssue` tree → actionable lines, over core's formatter |
@@ -177,8 +177,7 @@ assign.
 
 `Command.runWith` already printed the help text or the parse errors before
 a `ShowHelp` reaches `reportFailures` (the `ShowHelp` `catchFilter` in
-`runWith`: `Command.ts:1958-1964` in the vendored `.repos/effect` tree,
-`:3094-3100` in the published `node_modules/effect/src` copy, both rc.117) — rendering
+`runWith`: `Command.ts:1996-2001` in the vendored `.repos/effect` tree) — rendering
 it a second time is what produced the stray "Help requested" line every
 consumer previously worked around by hand. `reportFailures` now never
 renders a `ShowHelp`, and never renders the `CliExit` sentinel either.

@@ -2,7 +2,7 @@
 	"name": "@effected/cli",
 	"version": "0.9.0",
 	"private": true,
-	"description": "The boundary layer of an effect/unstable/cli program: plain CLI output, failure reporting, and schema-issue rendering",
+	"description": "The boundary layer of an effect/cli program: plain CLI output, failure reporting, and schema-issue rendering",
 	"keywords": ["effect", "cli", "logger", "terminal"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/cli#readme",
 	"bugs": {

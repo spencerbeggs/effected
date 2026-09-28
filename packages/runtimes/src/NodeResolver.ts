@@ -6,7 +6,7 @@
 
 import type { InvalidRangeError } from "@effected/semver";
 import { Context, DateTime, Effect, Layer, Option, Ref, Schema } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import type { HttpClient } from "effect/http";
 import type { GitHubError } from "./GitHub.js";
 import { nodeDefaults, nodeScheduleDefaults } from "./internal/defaults/node.js";
 import { buildNodeReleases, fetchNodeReleases, fetchNodeSchedule } from "./internal/feeds.js";

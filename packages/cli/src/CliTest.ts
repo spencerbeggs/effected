@@ -1,6 +1,6 @@
 import type { PlatformError, Scope } from "effect";
 import { Effect, FileSystem, Path, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 /**
  * A hermetic temp directory minted by {@link CliTest.sandbox}, removed when its
@@ -106,7 +106,7 @@ export class CliTest {
 	 * @remarks
 	 * `stdin` is never left as an inherited open pipe: when omitted or `""`
 	 * the child gets an already-ended empty input (`Stream.empty`), so a
-	 * stdin-reading bin exits instead of hanging on `effect/unstable/process`'s
+	 * stdin-reading bin exits instead of hanging on `effect/process`'s
 	 * default `"pipe"` stdio, which stays open until something writes to and
 	 * ends it.
 	 */

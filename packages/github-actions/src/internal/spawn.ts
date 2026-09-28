@@ -23,7 +23,7 @@
  */
 import type { PlatformError } from "effect";
 import { Effect, Stream } from "effect";
-import type { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 /** What one run produced: stdout and stderr interleaved, and the exit code. */
 export interface SpawnOnceResult {

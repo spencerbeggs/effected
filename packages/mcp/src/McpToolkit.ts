@@ -1,6 +1,7 @@
 import type { JsonSchema } from "effect";
 import { Context, Effect, Layer, Schema } from "effect";
-import { McpSchema, McpServer, Tool, Toolkit } from "effect/unstable/ai";
+import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
+import { ToolFailure } from "./ToolFailure.js";
 import type { UnknownKeysLevel } from "./ToolInputSchema.js";
 import { ToolInputSchema } from "./ToolInputSchema.js";
 
@@ -15,16 +16,16 @@ export interface McpToolkitOptions {
 	 * annotation is served and decoded strict. `"annotated"`: only tools
 	 * annotated `Tool.Strict` true are. In both modes an explicit annotation,
 	 * true or false, always wins, and a `Tool.dynamic` tool is never
-	 * re-annotated (core dies at registration on a strict dynamic tool). Only
-	 * a tool that ends up strict gets the unknown-key pre-check; a lenient
-	 * one is passed through untouched even if its raw schema is closed.
+	 * re-annotated (core dies at registration on a strict dynamic tool).
 	 */
 	readonly strict?: "all" | "annotated" | undefined;
 	/**
-	 * Replaces the default `ToolInputSchema.formatUnknownKeys` rendering. It
-	 * runs per rejected call inside the handler's effect, so a throw becomes
-	 * a defect of that call alone — the client receives a JSON-RPC internal
-	 * error (-32603) — never a crash of the server.
+	 * Ignored. Core's strict decode reports every excess key at every depth,
+	 * together with every missing or invalid field, in one `InvalidParams`,
+	 * and the layer appends a fixed `Accepted params at <path>: …` line per
+	 * level that carries an unknown key; this option changes neither.
+	 *
+	 * @deprecated A no-op, scheduled for removal in a later minor.
 	 */
 	readonly unknownKeyMessage?: ((levels: ReadonlyArray<UnknownKeysLevel>) => string) | undefined;
 }
@@ -95,9 +96,12 @@ export interface UnionToolOptions<
  */
 export interface UnionHandlerOptions {
 	/**
-	 * Replaces the default `ToolInputSchema.formatUnknownKeys` rendering, as
-	 * {@link McpToolkitOptions.unknownKeyMessage} does for the layer. Pass the
-	 * same function to both for one report on every path.
+	 * Ignored. The union decode reports every excess, missing and invalid
+	 * field in one `InvalidParams`, followed by the same fixed
+	 * `Accepted params at <path>: …` lines {@link McpToolkit.layer} appends;
+	 * this option changes neither.
+	 *
+	 * @deprecated A no-op, scheduled for removal in a later minor.
 	 */
 	readonly unknownKeyMessage?: ((levels: ReadonlyArray<UnknownKeysLevel>) => string) | undefined;
 }
@@ -124,74 +128,123 @@ const invalidParameters = (name: string, message: string): McpSchema.InvalidPara
 	// Core's own wording for a `Tool.make` decode failure (`AiError.ToolParameterValidationError`).
 	new McpSchema.InvalidParams({ message: `Invalid parameters for tool '${name}': ${message}` });
 
-/** The rendering both union paths use when the caller names none: `ToolInputSchema.formatUnknownKeys`. */
-const defaultUnknownKeyMessage = (levels: ReadonlyArray<UnknownKeysLevel>): string =>
-	ToolInputSchema.formatUnknownKeys(levels);
+const MAX_ACCEPTED_LINES = 20;
+
+/**
+ * `path` as core renders an issue path, `["a"][0]["b"]`: a segment indexing
+ * an array in `payload` is bare, any other is a JSON string. Truncated, since
+ * the segments are the caller's keys.
+ */
+const issuePath = (payload: unknown, path: ReadonlyArray<string>): string => {
+	let node = payload;
+	let out = "";
+	for (const segment of path) {
+		out += Array.isArray(node) ? `[${segment}]` : `[${JSON.stringify(segment)}]`;
+		node = typeof node === "object" && node !== null ? (node as Record<string, unknown>)[segment] : undefined;
+	}
+	return ToolFailure.truncate(out);
+};
+
+/**
+ * One line per level of `payload` that carries a key the served
+ * `inputSchema` does not accept: `Accepted params at <path>: a, b.`, with
+ * `keys matching <pattern>` for a level that also accepts keys by
+ * `patternProperties`, and `This tool accepts no params.` for a
+ * zero-parameter root. At most 20 lines; empty when no level has an
+ * unknown key.
+ */
+const acceptedParamsLines = (payload: unknown, inputSchema: JsonSchema.JsonSchema): ReadonlyArray<string> =>
+	ToolInputSchema.unknownKeys(payload, inputSchema)
+		.slice(0, MAX_ACCEPTED_LINES)
+		.map((level) => {
+			const patterns = level.acceptedPatterns ?? [];
+			if (level.path.length === 0 && level.accepted.length === 0 && patterns.length === 0) {
+				return "This tool accepts no params.";
+			}
+			const parts = [
+				...(level.accepted.length > 0 ? [level.accepted.join(", ")] : []),
+				...(patterns.length > 0 ? [`keys matching ${patterns.join(", ")}`] : []),
+			];
+			const where = level.path.length === 0 ? "the root" : issuePath(payload, level.path);
+			return `Accepted params at ${where}: ${parts.length > 0 ? parts.join("; ") : "(none)"}.`;
+		});
+
+/**
+ * `error` with {@link acceptedParamsLines} appended to its message, one per
+ * line after core's own report; `error` itself when there is nothing to add.
+ * Core stays the decoder: this only annotates the report it produced.
+ */
+const withAcceptedParams = (
+	error: McpSchema.InvalidParams,
+	payload: unknown,
+	inputSchema: JsonSchema.JsonSchema,
+): McpSchema.InvalidParams => {
+	const lines = acceptedParamsLines(payload, inputSchema);
+	return lines.length === 0
+		? error
+		: new McpSchema.InvalidParams({
+				message: [error.message, ...lines].join("\n"),
+				...(error.data !== undefined ? { data: error.data } : {}),
+			});
+};
 
 /**
  * The one decode a union tool's payload gets, shared by the `McpToolkit.layer`
- * decorator and {@link McpToolkit.unionHandler}: every unknown key at every
- * depth named in one `InvalidParams` (walked over the served `inputSchema`),
- * then the union's strict decode, whose failure is worded as core words a
- * `Tool.make` one. Suspended, so a throwing `format` dies inside the call.
+ * decorator and {@link McpToolkit.unionHandler}: the union's strict decode
+ * with the options core decodes a strict `Tool.make` tool with
+ * (`onExcessProperty: "error"`, `errors: "all"`), so every excess, missing and
+ * invalid field of the matched member is reported together, worded as core
+ * words a `Tool.make` failure, with the accepted params appended as the layer
+ * appends them to core's own report.
  */
 const decodeUnionPayload = <A>(
 	name: string,
 	union: Schema.Decoder<A>,
 	inputSchema: JsonSchema.JsonSchema,
-	format: (levels: ReadonlyArray<UnknownKeysLevel>) => string,
 ): ((payload: unknown) => Effect.Effect<A, McpSchema.InvalidParams>) => {
 	const decode = Schema.decodeUnknownEffect(union);
-	return (payload) =>
-		Effect.suspend(() => {
-			const raw = payload ?? {};
-			const levels = ToolInputSchema.unknownKeys(raw, inputSchema);
-			if (levels.length > 0) return Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }));
-			return decode(raw, { onExcessProperty: "error" }).pipe(
-				Effect.mapError((error) => invalidParameters(name, error.message)),
-			);
-		});
+	return (payload) => {
+		const raw = payload ?? {};
+		return decode(raw, { onExcessProperty: "error", errors: "all" }).pipe(
+			Effect.mapError((error) => withAcceptedParams(invalidParameters(name, error.message), raw, inputSchema)),
+		);
+	};
 };
 
 type Registration = Parameters<McpServer.McpServer["Service"]["addTool"]>[0];
 
 /**
  * The registration `McpToolkit.layer` hands core in place of `registration`:
- * a union tool gets its payload decoded first, a strict tool its unknown keys
- * refused first, and anything else passes through untouched. The wrapped
- * handler is built only after the check passes, so a rejected payload never
- * reaches it.
+ * a union tool gets its payload decoded first, with the wrapped handler built
+ * only after the decode passes, so a rejected payload never reaches it.
+ * Anything else is decoded by core as before, and core's parameter failure,
+ * the only `InvalidParams` its `handle` fails with, gets the accepted params
+ * appended.
  *
  * @internal
  */
-export const guardRegistration = (
-	registration: Registration,
-	format: (levels: ReadonlyArray<UnknownKeysLevel>) => string,
-): Registration => {
+export const guardRegistration = (registration: Registration): Registration => {
 	const union = Context.get(registration.annotations, UnionParameters);
-	if (union !== undefined) {
-		// Outside core's handler, so an InvalidParams here lands where core's own
-		// parameter failure does: -32602 on 2025-06-18, isError on later revisions.
-		const check = decodeUnionPayload(registration.tool.name, union, registration.tool.inputSchema, format);
+	if (union === undefined) {
 		return {
 			...registration,
-			handle: (payload) => check(payload).pipe(Effect.flatMap(() => registration.handle(payload))),
+			handle: (payload) =>
+				registration
+					.handle(payload)
+					.pipe(
+						Effect.catchTag("InvalidParams", (error) =>
+							Effect.fail(withAcceptedParams(error, payload ?? {}, registration.tool.inputSchema)),
+						),
+					),
 		};
 	}
-	// Same predicate core uses to pick strict decoding (`Tool.getStrictMode(tool) === true`):
-	// a tool core decodes leniently is never rejected here, whatever its schema looks like.
-	return Context.get(registration.annotations, Tool.Strict) === true
-		? {
-				...registration,
-				handle: (payload) =>
-					Effect.suspend(() => {
-						const levels = ToolInputSchema.unknownKeys(payload ?? {}, registration.tool.inputSchema);
-						return levels.length > 0
-							? Effect.fail(new McpSchema.InvalidParams({ message: format(levels) }))
-							: registration.handle(payload);
-					}),
-			}
-		: registration;
+	// Outside core's handler, so an InvalidParams here lands where core's own
+	// parameter failure does: -32602 on 2025-06-18, isError on later revisions.
+	const check = decodeUnionPayload(registration.tool.name, union, registration.tool.inputSchema);
+	return {
+		...registration,
+		handle: (payload) => check(payload).pipe(Effect.flatMap(() => registration.handle(payload))),
+	};
 };
 
 // Set from probe P2: Claude Code 2.1.281 sends a tool call's `arguments` with
@@ -214,32 +267,35 @@ const strictened = <Tools extends Record<string, Tool.Any>>(
 			) as unknown as Toolkit.Toolkit<Tools>);
 
 /**
- * Register a toolkit exactly as core's `McpServer.toolkit` does, except that a
- * strict tool's unknown arguments are all named, at every depth, in one
- * response.
+ * Register a toolkit exactly as core's `McpServer.toolkit` does, except that
+ * every tool is strict by default and a {@link McpToolkit.unionTool} gets its
+ * union decoded.
  *
  * @remarks
- * Rejection itself is core's: a tool annotated `Tool.Strict` is served with
- * `additionalProperties: false` on every object node and decoded with
- * `onExcessProperty: "error"`. But core reports only the FIRST excess key
- * (`Expected no excess property at ["extra"]`), so an agent fixes one typo
- * per round trip and never learns about a nested one until the next call.
- * This layer is the better report, not the rejecter: it runs core's
+ * Rejection and reporting are core's: a tool annotated `Tool.Strict` is
+ * served with `additionalProperties: false` on every object node and decoded
+ * with `onExcessProperty: "error"` and `errors: "all"`, so one
+ * `InvalidParams` names every excess key at every depth together with every
+ * missing or invalid field. The layer appends to that report, never in place
+ * of it: for every object level of the payload that carries a key the served
+ * input schema does not accept, one line naming what that level does accept,
+ * `Accepted params at the root: query, filter.` or
+ * `Accepted params at ["filter"]: kind, tag.` (the path as core writes it),
+ * with `keys matching <pattern>` for keys a `patternProperties` level
+ * accepts, and `This tool accepts no params.` for a zero-parameter tool. An
+ * agent can fix the call from the reply alone. A failure with no unknown key
+ * (a missing or mistyped field only) is core's report unchanged. The lines
+ * are appended to core's `InvalidParams` as it leaves the tool's registered
+ * handler, the one failure that handler has for bad parameters.
+ *
+ * On top of that is the policy: under
+ * `strict: "all"` (the default) it annotates every tool that carries no
+ * `Tool.Strict` annotation of its own as strict, skipping `Tool.dynamic`
+ * tools (core dies at registration on a strict dynamic tool). It runs core's
  * `registerToolkit` unchanged under a registration-scoped `McpServer` whose
- * `addTool` puts a `ToolInputSchema.unknownKeys` pre-check in front of each
- * handler. The pre-check walks the input schema the tool actually serves
- * (after core's own top-level `$ref` inlining), follows `$ref`, `allOf` and
- * discriminated `oneOf`/`anyOf` members, and fails with one
- * `McpSchema.InvalidParams` naming every unknown key path plus the accepted
- * params, before core decodes. Core's strict decode stays behind it as the
- * backstop. The pre-check is gated on the same predicate core uses to choose
- * strict decoding — the registered tool's `Tool.Strict` annotation is
- * `true` — so a lenient tool (explicit `Tool.Strict` false, a
- * `Tool.dynamic` tool, or any unannotated tool under `"annotated"`) is
- * never rejected here, even when its raw JSON Schema carries
- * `additionalProperties: false`. The pre-check runs under `Effect.suspend`,
- * so a throwing `unknownKeyMessage` dies inside the call's effect. No core
- * internals are patched, so this survives an rc bump without re-diffing.
+ * `addTool` puts the union decode in front of a union tool's handler and
+ * passes every other registration through untouched. It patches no core
+ * internals: it uses only `McpServer.registerToolkit` and `addTool`.
  *
  * Registration goes through core's module-level `McpServer.McpServer.layer`,
  * shared by reference with `McpStdio.layer`'s own copy — provide both into
@@ -279,9 +335,11 @@ export class McpToolkit {
 	 * {@link McpToolkit.unionHandler}, which receives the decoded member.
 	 *
 	 * Registered through {@link McpToolkit.layer}, a union tool gets the same
-	 * treatment as a strict `Tool.make` tool: every unknown key named in one
-	 * `InvalidParams`, then a strict decode, both before the handler runs, so
-	 * bad arguments answer JSON-RPC `-32602` on `2025-06-18` and an `isError`
+	 * treatment as a strict `Tool.make` tool: a strict decode with
+	 * `errors: "all"` before the handler runs, reporting every excess, missing
+	 * and invalid field of the matched member in one `InvalidParams`, with the
+	 * same `Accepted params at <path>: …` lines appended, so bad
+	 * arguments answer JSON-RPC `-32602` on `2025-06-18` and an `isError`
 	 * result on the later revisions, exactly as a `Tool.make` decode failure
 	 * does. Registered through core's `McpServer.toolkit` it still decodes
 	 * strictly, in the handler, but the `InvalidParams` is then a declared
@@ -327,21 +385,22 @@ export class McpToolkit {
 	};
 
 	/**
-	 * The handler for a {@link McpToolkit.unionTool}: checks and decodes the
-	 * raw payload exactly as {@link McpToolkit.layer} does, and passes the
-	 * decoded member to `handler`.
+	 * The handler for a {@link McpToolkit.unionTool}: decodes the raw payload
+	 * exactly as {@link McpToolkit.layer} does, and passes the decoded member
+	 * to `handler`.
 	 *
 	 * @remarks
-	 * A payload carrying unknown keys fails with one `McpSchema.InvalidParams`
-	 * naming every one of them, at every depth, in the
-	 * `ToolInputSchema.formatUnknownKeys` report (or `options.unknownKeyMessage`'s),
-	 * walked over the tool's served input schema. A payload that then does
-	 * not decode fails `InvalidParams` worded as core words a `Tool.make`
-	 * decode failure. It is the same implementation the layer runs, so a
-	 * handler called directly (a test helper, or a toolkit registered through
-	 * core's `McpServer.toolkit`) reports what a client of the layer sees.
-	 * Under {@link McpToolkit.layer} the layer has already rejected a bad
-	 * call before the handler runs, and its own `unknownKeyMessage` wins.
+	 * A payload that does not decode strictly fails with one
+	 * `McpSchema.InvalidParams`, worded as core words a `Tool.make` decode
+	 * failure, naming every excess key at every depth together with every
+	 * missing or invalid field of the matched member, then one
+	 * `Accepted params at <path>: …` line per level with an unknown key. It
+	 * is the same
+	 * implementation the layer runs, so a handler called directly (a test
+	 * helper, or a toolkit registered through core's `McpServer.toolkit`)
+	 * reports what a client of the layer sees. Under {@link McpToolkit.layer}
+	 * the layer has already rejected a bad call before the handler runs.
+	 * `options.unknownKeyMessage` is deprecated and ignored.
 	 */
 	static readonly unionHandler = <
 		Name extends string,
@@ -355,20 +414,15 @@ export class McpToolkit {
 	>(
 		tool: UnionTool<Name, P, S, F, R>,
 		handler: (params: P["Type"]) => Effect.Effect<A, E, RH>,
-		options: UnionHandlerOptions = {},
+		_options: UnionHandlerOptions = {},
 	): ((payload: unknown) => Effect.Effect<A, E | McpSchema.InvalidParams, RH>) => {
-		const check = decodeUnionPayload(
-			tool.name,
-			tool.unionParameters,
-			tool.jsonSchema,
-			options.unknownKeyMessage ?? defaultUnknownKeyMessage,
-		);
+		const check = decodeUnionPayload(tool.name, tool.unionParameters, tool.jsonSchema);
 		return (payload) => check(payload).pipe(Effect.flatMap(handler));
 	};
 
 	/**
-	 * `McpServer.toolkit`'s registration layer, strict by default and naming
-	 * every unknown argument in one `InvalidParams`.
+	 * `McpServer.toolkit`'s registration layer, strict by default.
+	 * `options.unknownKeyMessage` is deprecated and ignored.
 	 */
 	static readonly layer = <Tools extends Record<string, Tool.Any>>(
 		toolkit: Toolkit.Toolkit<Tools>,
@@ -381,10 +435,9 @@ export class McpToolkit {
 		Layer.effectDiscard(
 			Effect.gen(function* () {
 				const registry = yield* McpServer.McpServer;
-				const format = options.unknownKeyMessage ?? defaultUnknownKeyMessage;
 				const decorated = McpServer.McpServer.of({
 					...registry,
-					addTool: (registration) => registry.addTool(guardRegistration(registration, format)),
+					addTool: (registration) => registry.addTool(guardRegistration(registration)),
 				});
 				yield* McpServer.registerToolkit(strictened(toolkit, options.strict ?? DEFAULT_STRICT)).pipe(
 					Effect.provideService(McpServer.McpServer, decorated),

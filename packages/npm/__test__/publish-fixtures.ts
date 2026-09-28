@@ -1,5 +1,5 @@
 import { Crypto, Effect, FileSystem, Layer, PlatformError, Sink, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 /** One scripted outcome for a spawned command. */
 export type ScriptResult =

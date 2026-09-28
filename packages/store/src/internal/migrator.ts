@@ -1,6 +1,6 @@
 import { DateTime, Effect } from "effect";
-import type { SqlClient } from "effect/unstable/sql/SqlClient";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import type { SqlClient } from "effect/sql/SqlClient";
+import type { SqlError } from "effect/sql/SqlError";
 
 /**
  * The migration-ledger engine shared by `Store` (user migrations over

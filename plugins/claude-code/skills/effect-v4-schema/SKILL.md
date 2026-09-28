@@ -564,7 +564,7 @@ source + the prerelease-skew warning).
 | [08-flipping-schemas](./references/08-flipping-schemas.md) | `Schema.flip` — swapping Type and Encoded, and what it does to constructors. |
 | [09-classes-and-opaque-types](./references/09-classes-and-opaque-types.md) | Opaque structs, schema-as-a-class, the `Schema.Class` family (methods, statics, extension). |
 | [10-serialization](./references/10-serialization.md) | JSON, string-encoding, FormData, URLSearchParams, canonical codecs, the XML encoder. |
-| [11-generation-and-tooling](./references/11-generation-and-tooling.md) | Deriving JSON Schema (`onExcessProperty`, open by default), the native `effect/unstable/arbitrary` generator (no fast-check bridge; size clamp, `-0`, exhaustion and regexp traps), Equivalence, Optic; type-safe JSON patches via Differ. |
+| [11-generation-and-tooling](./references/11-generation-and-tooling.md) | Deriving JSON Schema (`onExcessProperty`, open by default), the native `Arbitrary` generator (no fast-check bridge; size clamp, `-0`, exhaustion and regexp traps), Equivalence, Optic; type-safe JSON patches via Differ. |
 | [12-schema-representation](./references/12-schema-representation.md) | The introspectable representation data model, its limitations, JSON round-tripping, rebuilding runtime schemas, code generation. |
 | [13-error-handling-and-formatting](./references/13-error-handling-and-formatting.md) | `SchemaError`/`SchemaIssue`, formatters, Standard-Schema-v1 issue output. |
 | [14-middlewares](./references/14-middlewares.md) | Decode/encode middlewares and fallbacks. |

@@ -1,11 +1,11 @@
 ---
 title: "@effected/mcp"
-description: "The boundary layer of an effect/unstable/ai MCP server: stdio wiring that keeps stdout the JSON-RPC wire, tool-failure shaping, strict-input walkers, and in-process and spawned test clients."
+description: "The boundary layer of an effect/ai MCP server: stdio wiring that keeps stdout the JSON-RPC wire, tool-failure shaping, strict-input walkers, and in-process and spawned test clients."
 ---
 
 # @effected/mcp
 
-The boundary layer of an `effect/unstable/ai` MCP server: stdio wiring that
+The boundary layer of an `effect/ai` MCP server: stdio wiring that
 keeps stdout the JSON-RPC wire, tool-failure shaping, and strict-input
 walkers, plus a `./testing` subpath for driving a built server from a test.
 Protocol handling, tool registration and the wire format stay core's; this
@@ -68,7 +68,7 @@ reads no `process` token, imports no `node:` module, and calls no
 
 ## Reach for it when
 
-- You are building an MCP server on `effect/unstable/ai` and want the
+- You are building an MCP server on `effect/ai` and want the
   stdio wiring, failure shaping and strict-input handling done once,
   correctly, rather than three times across three repos.
 - A tool's declared failure needs to read as a sentence an agent can act

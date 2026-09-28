@@ -26,7 +26,7 @@ because core dies at boot on a union root.
 ```ts
 import { McpToolkit, ToolInputSchema } from "@effected/mcp";
 import { Effect, Layer, Schema } from "effect";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 // A top-level union, written as raw JSON Schema and rewritten to an object root.
 const EditInput = ToolInputSchema.objectRooted({
@@ -147,7 +147,7 @@ decoded member:
 ```ts
 import { McpToolkit, ToolRefusal } from "@effected/mcp";
 import { Effect, Schema } from "effect";
-import { Tool, Toolkit } from "effect/unstable/ai";
+import { Tool, Toolkit } from "effect/ai";
 
 const Note = McpToolkit.unionTool("note", {
   parameters: Schema.Union([
@@ -280,7 +280,7 @@ For a test that must exercise a **built** bin rather than a layer:
 
 ```ts
 import { McpProcess } from "@effected/mcp/testing";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 import { Effect } from "effect";
 
 const test = Effect.gen(function* () {

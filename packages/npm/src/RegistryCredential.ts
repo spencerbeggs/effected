@@ -1,4 +1,5 @@
-import { Encoding, Redacted } from "effect";
+import { Redacted } from "effect";
+import * as Base64 from "effect/encoding/Base64";
 
 /**
  * A bearer token — npm's `_authToken`, and the form every modern registry
@@ -77,6 +78,6 @@ export const basicCredentialFromPair = (username: string, password: Redacted.Red
 	}
 	return {
 		kind: "basic",
-		encoded: Redacted.make(Encoding.encodeBase64(`${username}:${Redacted.value(password)}`)),
+		encoded: Redacted.make(Base64.encode(`${username}:${Redacted.value(password)}`)),
 	};
 };

@@ -3,8 +3,8 @@ import { pathToFileURL } from "node:url";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it, vi } from "@effect/vitest";
 import { Cause, Context, Effect, Exit, Layer, References, Runtime, Sink, Stdio, Stream } from "effect";
-import { McpProtocol } from "effect/unstable/ai";
-import { ChildProcess } from "effect/unstable/process";
+import { McpProtocol } from "effect/ai";
+import { ChildProcess } from "effect/process";
 import { McpStdio } from "../src/index.js";
 import { McpProcess } from "../src/testing.js";
 
@@ -165,7 +165,7 @@ describe("McpStdio.layer over a real process's stdio", () => {
 		Effect.gen(function* () {
 			const server = yield* McpProcess.spawn(STDIO_MAIN);
 			// A blank line, the bad frame and a good one in one write, then more in later writes.
-			// A blank line is not a frame: it gets no answer, and it too stopped the server before the guard.
+			// A blank line is not a frame: it gets no answer.
 			yield* server.sendRaw(`\n{not json\n${INITIALIZE}\n`);
 			const first = yield* server.readUntilResponse(1);
 			assert.deepStrictEqual(
@@ -210,15 +210,14 @@ describe("McpStdio.layer over a real process's stdio", () => {
 			Effect.gen(function* () {
 				const server = yield* McpProcess.spawn(STDIO_MAIN);
 				yield* server.handshake();
-				// Before the guard answered these, core's decoder threw on `null` and on a method-less-id object with a
-				// non-string method, dropping every other frame in the same chunk: id 2 below never got a reply.
+				// Core skips these without a reply; JSON-RPC 2.0 requires an Invalid Request for each.
 				yield* server.sendRaw(`null\n${toolsList(2)}\n`);
 				const first = yield* server.readUntilResponse(2);
 				assert.deepStrictEqual(
 					first.seen.filter((frame) => idOf(frame) === null),
 					[INVALID_REQUEST],
 				);
-				// Scalars and an object that is neither a request nor a response got no reply at all.
+				// Scalars and an object that is neither a request nor a response get one too.
 				yield* server.sendRaw(`{"method":1}\n7\n{}\n${toolsList(3)}\n`);
 				const second = yield* server.readUntilResponse(3);
 				assert.deepStrictEqual(
@@ -230,6 +229,32 @@ describe("McpStdio.layer over a real process's stdio", () => {
 				assert.isArray((response.result as { readonly tools: unknown }).tools);
 				assert.notInclude(yield* server.stderrSoFar, "ERROR");
 			}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
+	);
+
+	it.live("keeps serving after an @effect/rpc/Eof notification, and answers an @effect/rpc/ request -32601", () =>
+		Effect.gen(function* () {
+			const server = yield* McpProcess.spawn(STDIO_MAIN);
+			yield* server.handshake();
+			// Unguarded, core reads this as its own end-of-input control message and stops serving
+			// (Effect-TS/effect#8499): id 2 below would never get a reply.
+			yield* server.sendRaw(`{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}\n${toolsList(2)}\n`);
+			const first = yield* server.readUntilResponse(2);
+			assert.deepStrictEqual(
+				first.seen.filter((frame) => idOf(frame) !== 2),
+				[],
+			);
+			assert.isArray((first.response.result as { readonly tools: unknown }).tools);
+			yield* server.send({ jsonrpc: "2.0", id: 3, method: "@effect/rpc/Eof" });
+			const second = yield* server.readUntilResponse(3);
+			assert.deepStrictEqual(second.response, {
+				jsonrpc: "2.0",
+				id: 3,
+				error: { code: -32601, message: "Method not found" },
+			});
+			yield* server.send({ jsonrpc: "2.0", id: 4, method: "ping" });
+			const { response } = yield* server.readUntilResponse(4);
+			assert.deepStrictEqual(response.result, {});
+		}).pipe(Effect.timeout("3 seconds"), Effect.provide(NodeServices.layer)),
 	);
 
 	it.live("answers a bare null and keeps the partial frame written after it", () =>
