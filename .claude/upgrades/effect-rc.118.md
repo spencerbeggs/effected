@@ -28,6 +28,11 @@ If the project does not vendor Effect, skip this step.
 - **Reinstall from scratch:** run `pnpm clean --lockfile && pnpm install` (or delete the lockfile and install). A plain install keeps the old resolved versions.
 - **Check the lockfile diff:** make sure platform binaries (turbo, biome, tsgo) were not dropped, and that exactly one `effect` version is resolved: `grep -c "rc.117" pnpm-lock.yaml` must be 0. `pnpm why effect` alone can miss a second copy built against rc.117.
 
+**Tooling still built on rc.117.** Dev tools that pin `effect` rc.117 exactly (okfit, tsdoctor, silk, `@savvy-web/bundler` and so on) keep working after you upgrade, but they need two things:
+
+- **Their own `platform-node-shared` pin.** Without it they crash on the same caret bug that prompted this upgrade. `@effected/pnpm-plugin-effect` `0.12.1` and later applies it for you. Without the plugin, add the scoped override yourself: `"@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared": "4.0.0-rc.117"`.
+- **Keep their old kit copies out of the new kit's peers.** Those tools install the previous `@effected/*` versions at the workspace root, and pnpm can use those root copies to satisfy the new kit's peer dependencies. For example, `@effected/cli@0.10.0` peers `@effected/config-file`, and the rc.117 `0.12.x` copy gets picked. Set `resolvePeersFromWorkspaceRoot: false`, and have each package that uses a kit package also declare the `@effected/*` peers that package expects (for `@effected/cli`: `config-file` and `walker`). `pnpm peers check` should come back clean.
+
 **Interim fix, only if you cannot upgrade yet:** pin `@effect/platform-node-shared` to `4.0.0-rc.117` explicitly in every package that depends on `@effect/platform-node`.
 
 ## 3. Apply the mechanical renames

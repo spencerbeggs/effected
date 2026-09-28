@@ -376,6 +376,15 @@ await build({
 				},
 			},
 			minimumReleaseAgeExclude: ["effect", "@effect/*", "@effect/tsgo-*"],
+			// Tools still built on effect rc.117 depend on @effect/platform-node@4.0.0-rc.117,
+			// which takes @effect/platform-node-shared with a caret. A fresh resolve pairs it
+			// with the rc.118 shared package, which imports effect/process/ChildProcess
+			// that rc.117 does not ship, and the tool crashes at startup. Scoped to the
+			// rc.117 parent, so it never touches an rc.118 install. Remove once no tool
+			// consumers run is built on rc.117.
+			overrides: {
+				"@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared": "4.0.0-rc.117",
+			},
 		}),
 	],
 	bundleNodeModules: true,
