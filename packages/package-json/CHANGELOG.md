@@ -1,5 +1,23 @@
 # @effected/package-json
 
+## 0.19.1
+
+### Bug Fixes
+
+- JSON Schemas derived from this package's schemas carry their string `pattern` again. Effect's JSON Schema export emits a `Schema.isPattern` check as `pattern` only when its regular expression has the `u` flag, and without it the pattern was dropped silently, leaving a bare `{ "type": "string" }`. Decoding was never affected. Every pattern in the package now has the `u` flag, which does not change what it accepts. [#866][#866]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.10.0 | 0.10.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#866]: https://github.com/spencerbeggs/effected/pull/866
+
 ## 0.19.0
 
 ### Breaking Changes

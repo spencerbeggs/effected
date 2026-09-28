@@ -1,5 +1,29 @@
 # @effected/pnpm-plugin-effect
 
+## 0.12.1
+
+### Bug Fixes
+
+- Consumers get a scoped override that keeps tools still built on effect rc.117 from crashing at startup. `@effect/platform-node@4.0.0-rc.117` takes `@effect/platform-node-shared` with a caret, so a fresh resolve paired it with the rc.118 shared package. That package imports `effect/process/ChildProcess`, which rc.117 does not ship. The override pins the shared package to `4.0.0-rc.117` under that parent only, so no install on rc.118 is touched, and a consumer's own `overrides` are kept alongside it; a consumer value for the same selector wins. [#866][#866]
+
+### Maintenance
+
+#### Updates 7 catalog:effected versions
+
+- `@effected/git` ^0.18.0 -> ^0.18.1 (peer ^0.18.0)
+- `@effected/github-actions` ^0.18.0 -> ^0.18.1 (peer ^0.18.0)
+- `@effected/package-json` ^0.19.0 -> ^0.19.1 (peer ^0.19.0)
+- `@effected/sbom` ^0.9.0 -> ^0.9.1 (peer ^0.9.0)
+- `@effected/semver` ^0.10.0 -> ^0.10.1 (peer ^0.10.0)
+- `@effected/templates` ^0.9.0 -> ^0.9.1 (peer ^0.9.0)
+- `@effected/workspaces` ^0.30.0 -> ^0.30.1 (peer ^0.30.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) and [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
+[#866]: https://github.com/spencerbeggs/effected/pull/866
+
 ## 0.12.0
 
 ### Breaking Changes
