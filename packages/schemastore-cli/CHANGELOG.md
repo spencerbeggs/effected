@@ -1,5 +1,13 @@
 # @effected/schemastore-cli
 
+## 0.16.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/schemastore | dependency | updated | 0.16.0 | 0.16.1 |
+
 ## 0.16.0
 
 ### Breaking Changes
@@ -266,7 +274,7 @@ Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributio
 | @effect/platform-node | dependency | added | — | 4.0.0-rc.115 |
 | @effected/cli | dependency | added | — | workspace:^ |
 | jiti | dependency | added | — | ^2.6.0 |
-| @effected/schemastore | peerDependency | added | — | workspace:\* |
+| @effected/schemastore | peerDependency | added | — | workspace:* |
 | effect | peerDependency | added | — | 4.0.0-rc.115 |
 
 - `@effected/schemastore` and `effect` are peer dependencies; the package ships nothing importable, only the bin. [#721][#721]
