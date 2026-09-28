@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import type { SectionRenderError } from "../src/index.js";
 import { CommentStyle, SectionDialect, SectionId } from "../src/index.js";
 
@@ -139,6 +139,16 @@ describe("SectionDialect", () => {
 
 		it("refuses an empty style set, which would make every section unrenderable", () => {
 			assert.throws(() => SectionDialect.make({ phrase: "MANAGED SECTION", styles: [] }));
+		});
+	});
+
+	describe("JSON Schema export", () => {
+		it("phrase exports its pattern", () => {
+			assert.nestedPropertyVal(
+				Schema.toJsonSchemaDocument(SectionDialect),
+				"definitions.SectionDialectEncoded.properties.phrase.pattern",
+				"^[A-Za-z0-9][A-Za-z0-9 _]*$",
+			);
 		});
 	});
 });

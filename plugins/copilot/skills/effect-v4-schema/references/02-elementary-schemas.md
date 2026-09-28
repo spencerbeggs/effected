@@ -127,7 +127,7 @@ import { Schema } from "effect"
 Schema.String.check(Schema.isMaxLength(5))
 Schema.String.check(Schema.isMinLength(5))
 Schema.String.check(Schema.isBetweenLength(5, 5))
-Schema.String.check(Schema.isPattern(/^[a-z]+$/))
+Schema.String.check(Schema.isPattern(/^[a-z]+$/u))
 Schema.String.check(Schema.isStartingWith("aaa"))
 Schema.String.check(Schema.isEndingWith("zzz"))
 Schema.String.check(Schema.isIncluding("---"))

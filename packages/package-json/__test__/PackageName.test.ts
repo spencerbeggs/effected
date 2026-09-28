@@ -85,3 +85,15 @@ describe("InvalidPackageNameError", () => {
 		assert.include(error.message, "BAD");
 	});
 });
+
+describe("PackageName JSON Schema export", () => {
+	it("scoped and unscoped names export their patterns", () => {
+		const scoped = String.raw`^@[a-z0-9-][a-z0-9._-]*\/[a-z0-9-][a-z0-9._-]*$`;
+		const unscoped = "^[a-z0-9-][a-z0-9._-]*$";
+		assert.nestedPropertyVal(Schema.toJsonSchemaDocument(ScopedPackageName), "schema.pattern", scoped);
+		assert.nestedPropertyVal(Schema.toJsonSchemaDocument(UnscopedPackageName), "schema.pattern", unscoped);
+		const union = Schema.toJsonSchemaDocument(PackageName);
+		assert.nestedPropertyVal(union, "schema.anyOf[0].pattern", scoped);
+		assert.nestedPropertyVal(union, "schema.anyOf[1].pattern", unscoped);
+	});
+});

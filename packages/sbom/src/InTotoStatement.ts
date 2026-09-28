@@ -58,7 +58,7 @@ export class InvalidSha256DigestError extends Schema.TaggedError<InvalidSha256Di
 }
 
 /** 64 hex characters, lowercase — the normalized form. */
-const SHA256_RE = /^[0-9a-f]{64}$/;
+const SHA256_RE = /^[0-9a-f]{64}$/u;
 
 /** The `sha256:` prefix a caller may have carried in from a digest reference. */
 const SHA256_PREFIX_RE = /^sha256:/i;

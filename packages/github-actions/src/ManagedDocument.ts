@@ -12,7 +12,7 @@ import { Effect, Option, Result, Schema } from "effect";
  * key written to the wire (`namespace.key.region`), and a dot inside a part
  * would make two different documents spell the same marker.
  */
-const NamePart = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]*$/));
+const NamePart = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]*$/u));
 
 /**
  * The marker vocabulary every managed document is written with: HTML comments

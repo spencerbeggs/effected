@@ -1,6 +1,6 @@
 import { assert, describe, it, layer } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { LayerPolicy } from "../src/testing.js";
 
 const VALID = { layers: [["app"], ["core"]], tooling: [], unconstrained: ["@e2e/*"] };
@@ -90,6 +90,16 @@ describe("LayerPolicy.load", () => {
 				const policy = yield* LayerPolicy.load("/repo/foreign.json", { allowKeys: ["harness"] });
 				assert.deepStrictEqual(policy.layers, [["app"], ["core"]]);
 			}),
+		);
+	});
+});
+
+describe("LayerPolicy JSON Schema export", () => {
+	it("each required edge exports its pattern", () => {
+		assert.nestedPropertyVal(
+			Schema.toJsonSchemaDocument(LayerPolicy),
+			"definitions.LayerPolicyEncoded.properties.requiredEdges.items.pattern",
+			String.raw`^\S+ -> \S+$`,
 		);
 	});
 });

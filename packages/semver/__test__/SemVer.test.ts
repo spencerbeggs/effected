@@ -416,4 +416,16 @@ describe("SemVer", () => {
 			assert.isTrue(Result.isFailure(decodePinnable(" 1.2.3")));
 		});
 	});
+
+	describe("JSON Schema export", () => {
+		it("prerelease and build identifiers export their patterns", () => {
+			const document = Schema.toJsonSchemaDocument(SemVer);
+			assert.nestedPropertyVal(
+				document,
+				"definitions.SemVerEncoded.properties.prerelease.items.anyOf[0].pattern",
+				"^[0-9]*[A-Za-z-][0-9A-Za-z-]*$",
+			);
+			assert.nestedPropertyVal(document, "definitions.SemVerEncoded.properties.build.items.pattern", "^[0-9A-Za-z-]+$");
+		});
+	});
 });

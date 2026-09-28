@@ -48,12 +48,12 @@ const nonNegativeInteger = Schema.Number.check(
 // requiring a non-digit keeps decode/encode round-trips canonical. Written
 // without lookahead so `Arbitrary.schema` can derive a generator.
 const prereleaseIdentifier = Schema.Union([
-	Schema.String.check(Schema.isPattern(/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/)),
+	Schema.String.check(Schema.isPattern(/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u)),
 	nonNegativeInteger,
 ]);
 
 // Build identifiers allow leading zeros and all-digit tokens (SemVer §10).
-const buildIdentifier = Schema.String.check(Schema.isPattern(/^[0-9A-Za-z-]+$/));
+const buildIdentifier = Schema.String.check(Schema.isPattern(/^[0-9A-Za-z-]+$/u));
 
 /**
  * A parsed SemVer 2.0.0 version: an Effect `Schema.Class` whose fields are

@@ -21,7 +21,7 @@ import { CommentStyle } from "./CommentStyle.js";
  *
  * @public
  */
-export const SectionKey = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/));
+export const SectionKey = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u));
 
 /**
  * What identifies a managed section inside a document: its key and the

@@ -424,6 +424,22 @@
 		},
 		{
 			"file": "effect-v4-testing/SKILL.md",
+			"anchor": "regexp.ts:835",
+			"source": "effect:internal/arbitrary/regexp.ts",
+			"symbols": {
+				"835": "const restricted = flags.includes(\"u\") ? parsed : restrictCharacterCodePoints(parsed, 0xffff)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/SKILL.md",
+			"anchor": "Schema.ts:6636",
+			"source": "effect:Schema.ts",
+			"symbols": {
+				"6636": "const canExport = /^[dg]*uy?$/.test(flags)"
+			}
+		},
+		{
+			"file": "effect-v4-testing/SKILL.md",
 			"anchor": "schema.ts:1051-1052",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {

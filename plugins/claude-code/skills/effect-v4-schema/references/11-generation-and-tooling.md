@@ -534,7 +534,7 @@ house translations, each taken from a migrated property test:
 | `fc.constantFrom("a", "b")` | `Arbitrary.schema(Schema.Literals(["a", "b"]))` |
 | `fc.integer({ min, max })` | `Schema.Int.check(Schema.isBetween({ minimum, maximum }))` — **bound it**: an unbounded `Schema.Int` generates within `±size²` (`±100` at the default size) rather than the 32-bit range |
 | `fc.array(x, { minLength, maxLength })` | `Schema.Array(X).check(Schema.isBetweenLength(min, max))` |
-| `fc.stringMatching(/^[a-z]{1,12}$/)` | `Schema.String.check(Schema.isPattern(/^[a-z]{1,12}$/))` — generated **constructively** when the pattern compiles (see traps) |
+| `fc.stringMatching(/^[a-z]{1,12}$/)` | `Schema.String.check(Schema.isPattern(/^[a-z]{1,12}$/u))` — generated **constructively** when the pattern compiles (see traps); the `u` flag is what lets JSON Schema export the `pattern` |
 | `fc.record({ a: fc.option(x) })` — some keys absent | `Schema.Struct({ a: Schema.optionalKey(X) })` — **not** `Schema.Record(Literals, X)`, which always emits every key |
 | `fc.oneof(arbA, arbB)` over *Arbitraries* (not Schemas) | `Schema.Union([A, B])` when both sides are Schemas; otherwise `flatMap` over a generated index: `Arbitrary.schema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: rest.length }))).pipe(Arbitrary.flatMap((i) => i === 0 ? first : rest[i - 1]))` |
 | `fc.array(arb)` over an *Arbitrary* | `flatMap` a generated length into `Arbitrary.all(Array.from({ length }, () => item))` |
@@ -598,23 +598,35 @@ never "raise `maxDiscards`" — it is one of:
 constructive generator. When it **cannot** — lookahead and lookbehind
 (`regexp.ts:344` for `(?<=`/`(?<!`, `:350` for `(?=`/`(?!`), backreferences, the `i`/`m`/`v` flags
 (`regexp.ts:832`) — `compile` returns `undefined` and the string node
-**silently skips the pattern** (`schema.ts:1111-1112`), generating plain
+**silently skips the pattern** (`schema.ts:1051-1052`), generating plain
 random strings and leaving the regex as a residual filter. Probed,
 `{ count: 20, seed: 1 }` each:
 
 | pattern | result |
 | --- | --- |
-| `/^[a-f]{8}$/` (control) | constructive, 20 samples |
-| `/^(?=.*[0-9])[a-f0-9]{8}$/` | `SampleError { generated: 0, discards: 201 }` |
-| `/^(?!x)[a-f]{8}$/` | `SampleError` |
-| `/^[a-f]{8}$/i` | `SampleError` — the flag alone defeats it |
-| `/^([a-f]{4})\1$/` | `SampleError` |
-| `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` | 20 samples — but only because the fallback strings are biased toward identifiers like `toString`; a permissive lookahead *works by accident* |
+| `/^[a-f]{8}$/u` (control) | constructive, 20 samples |
+| `/^(?=.*[0-9])[a-f0-9]{8}$/u` | `SampleError { generated: 0, discards: 201 }` |
+| `/^(?!x)[a-f]{8}$/u` | `SampleError` |
+| `/^[a-f]{8}$/iu` | `SampleError` — the `i` flag alone defeats it |
+| `/^([a-f]{4})\1$/u` | `SampleError` |
+| `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/u` | 20 samples — but only because the fallback strings are biased toward identifiers like `toString`; a permissive lookahead *works by accident* |
 
-So keep pattern schemas **lookaround-free and flag-free**, rewriting
-`/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/` —
+So keep pattern schemas **lookaround-free, free of the `i`/`m`/`v` flags,
+and always flagged `u`**, rewriting
+`/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u` —
 `packages/semver/src/SemVer.ts` and `packages/schema-org/src/NodeRef.ts` are
 the house examples. Named groups (`(?<h>…)`) and non-capturing groups compile fine.
+
+`u` is the one flag both consumers of the regex want. The compiler supports
+it (`regexp.ts:835`: without `u` generation is held to code points up to
+`0xffff`; with it a negated class or `\S` can yield astral characters), and
+JSON Schema export requires it: `isPattern` exports `pattern` only when the
+flags match `/^[dg]*uy?$/` (`Schema.ts:6636`). A flag-free
+`Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
+`{"type":"string"}` — decoding still enforces the regex, but every published
+JSON Schema (a config schema, an MCP tool's `inputSchema`, schemastore output)
+silently loses it. Under `u`, an escape that is not a syntax character
+(`\-` outside a class) is a `SyntaxError`, so check each regex still compiles.
 
 #### `-0` — the integer JSON cannot carry
 

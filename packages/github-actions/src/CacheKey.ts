@@ -72,7 +72,7 @@ const MAX_KEY_LENGTH = 512;
  * Commas and newlines are refused because the runner uses both to delimit the
  * restore-key list — a segment carrying one would silently become two keys.
  */
-const Segment = Schema.String.check(Schema.isPattern(/^[^,\n\r]+$/));
+const Segment = Schema.String.check(Schema.isPattern(/^[^,\n\r]+$/u));
 
 const Segments = Schema.NonEmptyArray(Segment).check(
 	Schema.makeFilter((values) => values.join(SEPARATOR).length <= MAX_KEY_LENGTH, {

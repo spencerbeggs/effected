@@ -22,7 +22,7 @@ export class GitmodulesEntry extends Schema.Class<GitmodulesEntry>("GitmodulesEn
 	 * lines — so the check bites only on hand-built entries, matching
 	 * `GitConfig.addSection`'s refusal of `[\n\r\0]` subsections.
 	 */
-	name: Schema.String.check(Schema.isPattern(/^[^\n\r\0]*$/)),
+	name: Schema.String.check(Schema.isPattern(/^[^\n\r\0]*$/u)),
 	/** The submodule's path relative to the superproject root (`submodule.<name>.path`). */
 	path: Schema.String,
 	/** The submodule's remote URL (`submodule.<name>.url`). */

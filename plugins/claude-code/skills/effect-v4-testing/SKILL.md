@@ -558,15 +558,21 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   tiny key domain samples lengths 0-3 but never the *some-keys-present*
   dictionary a lockfile carries. `Schema.Struct({ a: optionalKey(V), b: optionalKey(V) })`
   samples key counts 0, 1, 2 and 3.
-- **`isPattern` regexes must be lookaround-free and flag-free.** The native
-  regexp compiler returns `undefined` for lookahead/lookbehind, backreferences
-  and the `i`/`m`/`v` flags (`internal/arbitrary/regexp.ts:344,350,832`), and
-  the string node then **silently drops the pattern** (`schema.ts:1051-1052`)
-  and filters random strings — which exhausts for any selective pattern
-  (`/^(?=.*[0-9])[a-f0-9]{8}$/` and `/^[a-f]{8}$/i` both died with
-  `discards: 201`). Rewrite `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as
-  `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/` (`packages/semver/src/SemVer.ts`,
-  `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
+- **`isPattern` regexes must be lookaround-free, free of the `i`/`m`/`v`
+  flags, and always carry `u`.** The native regexp compiler returns
+  `undefined` for lookahead/lookbehind, backreferences and the `i`/`m`/`v`
+  flags (`internal/arbitrary/regexp.ts:344,350,832`), and the string node
+  then **silently drops the pattern** (`schema.ts:1051-1052`) and filters
+  random strings — which exhausts for any selective pattern
+  (`/^(?=.*[0-9])[a-f0-9]{8}$/u` and `/^[a-f]{8}$/iu` both died with
+  `discards: 201`). `u` is the flag the compiler supports
+  (`regexp.ts:835` generates full code points under it, so a negated class
+  or `\S` can yield astral characters), and JSON Schema export needs it:
+  `isPattern` exports `pattern` only when the flags match `/^[dg]*uy?$/`
+  (`Schema.ts:6636`), so a flag-free regex exports a bare
+  `{"type":"string"}` while decoding still enforces it. Rewrite
+  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
+  (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
   as **code points** (`Schema.Array(Schema.Int.check(isBetween({ minimum: 0, maximum: 0x10ffff })))`
   mapped through `String.fromCodePoint`), because the native string
   generator stays in printable ASCII and the module has no

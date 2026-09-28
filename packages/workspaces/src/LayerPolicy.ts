@@ -3,7 +3,7 @@ import { DependencyField } from "@effected/npm";
 import { Effect, FileSystem, Result, Schema } from "effect";
 import { ALL_DEPENDENCY_FIELDS } from "./internal/dependencyFields.js";
 
-const REQUIRED_EDGE = /^\S+ -> \S+$/;
+const REQUIRED_EDGE = /^\S+ -> \S+$/u;
 
 /** `input` without `keys`, when it is a plain object; anything else passes through for the schema to reject. */
 const withoutKeys = (input: unknown, keys: ReadonlyArray<string>): unknown => {

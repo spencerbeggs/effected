@@ -1329,7 +1329,7 @@ console.log(String(Schema.decodeUnknownExit(schema)(["a", "b", "a"])))
 
 A record schema describes an object whose keys are dynamic (not known ahead of time). The key schema selects which own properties belong to the record, and the value schema validates the selected property values.
 
-Properties that are not selected by the key schema are ignored by that record. For example, `Schema.Record(Schema.String.check(Schema.isPattern(/^a/)), Schema.Number)` decodes only string keys that start with `"a"`.
+Properties that are not selected by the key schema are ignored by that record. For example, `Schema.Record(Schema.String.check(Schema.isPattern(/^a/u)), Schema.Number)` decodes only string keys that start with `"a"`.
 
 ### Key Transformations
 
