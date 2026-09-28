@@ -1,8 +1,8 @@
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import type { Duration } from "effect";
 import { Cause, Context, DateTime, Effect, Layer, Option, PubSub, Schema } from "effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import * as SqlError from "effect/unstable/sql/SqlError";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlError from "effect/sql/SqlError";
 import { bytesToUtf8, utf8ToBytes } from "./Bytes.js";
 import type { MigratorMigration } from "./internal/migrator.js";
 import { ensureLedger, runPending } from "./internal/migrator.js";

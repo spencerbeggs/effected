@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Encoding, Redacted } from "effect";
+import { Effect, Redacted } from "effect";
+import * as Base64 from "effect/encoding/Base64";
 import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { Repo, RepoRef } from "../src/Repo.js";
@@ -7,7 +8,7 @@ import type { SecretScope } from "../src/RepositorySecret.js";
 import { RepositorySecret } from "../src/RepositorySecret.js";
 
 /** A base64 Curve25519 public key, so the seal has something real to work against. */
-const PUBLIC_KEY = { key: Encoding.encodeBase64(new Uint8Array(32).fill(7)), key_id: "key-123" };
+const PUBLIC_KEY = { key: Base64.encode(new Uint8Array(32).fill(7)), key_id: "key-123" };
 
 const run = <A, E>(
 	effect: Effect.Effect<A, E, RepositorySecret | GitHubClient | Repo>,

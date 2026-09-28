@@ -123,7 +123,7 @@ describe("ToolInputSchema.unknownKeys", () => {
 	it("accepts a key matched by patternProperties", () => {
 		const schema = closed({ id: str }, { patternProperties: { "^x-": str } });
 		assert.deepStrictEqual(ToolInputSchema.unknownKeys({ id: "1", "x-trace": "t", y: 1 }, schema), [
-			{ path: [], unknown: ["y"], accepted: ["id"] },
+			{ path: [], unknown: ["y"], accepted: ["id"], acceptedPatterns: ["^x-"] },
 		]);
 	});
 
@@ -158,14 +158,25 @@ describe("ToolInputSchema.unknownKeys", () => {
 	});
 
 	it("honours patternProperties on a closed node with no properties, as core serves a pattern-keyed Record", () => {
+		// Core exports a key pattern as `patternProperties` only when the RegExp
+		// carries the Unicode flag; without it the pattern is approximate and
+		// the record is served open (next test).
 		const params = Schema.Struct({
-			headers: Schema.Record(Schema.String.check(Schema.isPattern(/^x-/)), Schema.String),
+			headers: Schema.Record(Schema.String.check(Schema.isPattern(/^x-/u)), Schema.String),
 		});
 		const schema = served(params, true);
 		assert.deepStrictEqual(ToolInputSchema.unknownKeys({ headers: { "x-a": "1" } }, schema), []);
 		assert.deepStrictEqual(ToolInputSchema.unknownKeys({ headers: { "x-a": "1", "y-b": "2" } }, schema), [
-			{ path: ["headers"], unknown: ["y-b"], accepted: [] },
+			{ path: ["headers"], unknown: ["y-b"], accepted: [], acceptedPatterns: ["^x-"] },
 		]);
+	});
+
+	it("reports nothing under a non-Unicode key pattern, which core serves as an open record", () => {
+		const params = Schema.Struct({
+			headers: Schema.Record(Schema.String.check(Schema.isPattern(/^x-/)), Schema.String),
+		});
+		const schema = served(params, true);
+		assert.deepStrictEqual(ToolInputSchema.unknownKeys({ headers: { "x-a": "1", "y-b": "2" } }, schema), []);
 	});
 
 	it("descends into a pattern-matched value with its pattern schema", () => {
@@ -250,6 +261,27 @@ describe("ToolInputSchema.formatUnknownKeys", () => {
 				{ path: ["nested"], unknown: ["bogus"], accepted: ["flag"] },
 			]),
 			"Unrecognized parameter(s): extra. Accepted params: text, nested. Unrecognized parameter(s): nested.bogus. Accepted params: flag.",
+		);
+	});
+
+	it("names the accepted patterns, not (none), for a level that accepts keys only by pattern", () => {
+		const schema = { type: "object", patternProperties: { "^X_[A-Z]+$": str }, additionalProperties: false };
+		const levels = ToolInputSchema.unknownKeys({ env: { X_A: "1", lower: "2" } }, closed({ env: schema }));
+		assert.deepStrictEqual(levels, [
+			{ path: ["env"], unknown: ["lower"], accepted: [], acceptedPatterns: ["^X_[A-Z]+$"] },
+		]);
+		assert.strictEqual(
+			ToolInputSchema.formatUnknownKeys(levels),
+			"Unrecognized parameter(s): env.lower. Accepted keys matching: ^X_[A-Z]+$.",
+		);
+	});
+
+	it("names declared params and accepted patterns together", () => {
+		assert.strictEqual(
+			ToolInputSchema.formatUnknownKeys([
+				{ path: [], unknown: ["zz"], accepted: ["id"], acceptedPatterns: ["^x-", "^y-"] },
+			]),
+			"Unrecognized parameter(s): zz. Accepted params: id. Accepted keys matching: ^x-, ^y-.",
 		);
 	});
 

@@ -4,7 +4,7 @@ Loaded from `effect-v4-cli`. Covers the three defaults core gets wrong at a term
 
 ## The boundary core does not give you — reach for `@effected/cli`
 
-`effect/unstable/cli` owns parsing, flags, the command tree and help. It owns
+`effect/cli` owns parsing, flags, the command tree and help. It owns
 **nothing** about how output reaches a person, and the three defaults you get
 are all wrong at a terminal. Each is invisible from the code and only shows up
 when a user looks at the output:

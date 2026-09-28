@@ -132,13 +132,15 @@ The baseline failure this fixes: agents produce a good error by instinct but nev
 
 **Contract inventory — the gate that runs before any service is modeled.**
 Before designing any service, seam, or vocabulary, grep the vendored core
-(the tree's `packages/effect/src`, **including `effect/unstable/*`** — resolve
-the root via `effect-v4-source-lookup`)
+(the tree's `packages/effect/src` — **including the `@stability unstable`
+namespace modules**, which import exactly like any other core module and are
+not partitioned into a separate directory; resolve the root via
+`effect-v4-source-lookup`)
 for an existing contract. If core declares it, **require it in `R`** — do not
 re-declare it, re-implement it, or wrap it in a parallel vocabulary; the app
 provides the platform layer at the edge. Evidence for why this is a hard gate:
 the `@effected/commands` package survived four review gates before a source
-check found `effect/unstable/process` already declared its entire surface —
+check found `effect/process` already declared its entire surface —
 it was deleted the same day it was built. State the inventory result in the
 design summary ("core declares X → required in R" or "no core contract found
 for X"). When a question survives the source read — semantics, not existence —

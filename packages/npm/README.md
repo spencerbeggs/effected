@@ -127,7 +127,7 @@ Effect.runPromise(Effect.provide(program, Default)).then(console.log);
 
 ```ts
 import { NpmRegistry } from "@effected/npm";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { Effect } from "effect";
 
 const program = Effect.gen(function* () {

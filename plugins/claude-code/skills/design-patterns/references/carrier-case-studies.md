@@ -95,7 +95,9 @@ What it does best:
   directly, only its bin shims do.
 - **What the kit now ships in its place:** the hand-rolled
   `register-toolkit.ts` port (strict-by-default registration, naming every
-  unknown key) is `@effected/mcp`'s `McpToolkit` — see `effect-v4-mcp`'s
+  unknown key) is `@effected/mcp`'s `McpToolkit` for the strict default, and
+  core's own strict decode, which names every bad key and field in one
+  response, for the report — see `effect-v4-mcp`'s
   [tools.md](../../effect-v4-mcp/references/tools.md#strict-input).
 
 Gaps and notable deviations:

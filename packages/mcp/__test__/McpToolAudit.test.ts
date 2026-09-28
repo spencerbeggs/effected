@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
-import { McpProtocol } from "effect/unstable/ai";
+import { McpProtocol } from "effect/ai";
 import type { McpToolAuditPolicy, ServedTool } from "../src/testing.js";
 import { McpHarness, McpToolAudit } from "../src/testing.js";
 import { fixtureServer } from "./fixtures/server.js";
@@ -203,4 +203,24 @@ describe("McpToolAudit.check against a real served tools/list", () => {
 			);
 		}),
 	);
+});
+
+describe("McpToolAudit.check on a pattern-keyed Record", () => {
+	const served = (pattern: RegExp): ServedTool => ({
+		...clean,
+		inputSchema: Schema.toJsonSchemaDocument(
+			Schema.Struct({ env: Schema.Record(Schema.String.check(Schema.isPattern(pattern)), Schema.String) }),
+			{ onExcessProperty: "error" },
+		).schema as ServedTool["inputSchema"],
+	});
+
+	it("reports a key pattern without the u flag as open, and suggests the flag", () => {
+		assert.deepStrictEqual(McpToolAudit.check([served(/^X_[A-Z]+$/)], { input: "closed" }), [
+			"get_thing: input schema is open at env (a Record whose key check was not served; a key pattern is served closed, as patternProperties, only when its RegExp has the u flag, e.g. Schema.isPattern(/^x-/u))",
+		]);
+	});
+
+	it("passes the same Record once the pattern has the u flag", () => {
+		assert.deepStrictEqual(McpToolAudit.check([served(/^X_[A-Z]+$/u)], { input: "closed" }), []);
+	});
 });

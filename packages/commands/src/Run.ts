@@ -1,6 +1,6 @@
 import type { Duration, Redacted } from "effect";
 import { Effect, Function as Fn, PlatformError, Result, Schema, Stdio, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { OutputTooLarge, collectBounded } from "./internal/capture.js";
 import { REDACTED, Redaction } from "./Redaction.js";
 

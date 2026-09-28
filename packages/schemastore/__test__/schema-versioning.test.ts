@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Result, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Effect, Option, Result, Schema } from "effect";
 import type { SchemaVersion, WriteChange } from "../src/index.js";
 import { CanonicalJson, InvalidSchemaVersionError, SchemaVersioning } from "../src/index.js";
 

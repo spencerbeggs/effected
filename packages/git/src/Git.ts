@@ -1,5 +1,5 @@
 import { Config, Context, DateTime, Duration, Effect, Layer, Option, PlatformError, Result, Schema } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { GitConfigScope, GitInvocation } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
 import type { Collected } from "./internal/run.js";

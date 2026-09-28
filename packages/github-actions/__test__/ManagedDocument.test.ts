@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Result } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { ManagedDocument, ManagedDocumentError } from "../src/ManagedDocument.js";
 
 const NS = "savvy-web";
@@ -275,5 +275,18 @@ describe("ManagedDocument", () => {
 				assert.strictEqual(applyError.kind, "markerInContent");
 			}),
 		);
+	});
+
+	describe("JSON Schema export", () => {
+		it("namespace and key export their name-part pattern", () => {
+			const document = Schema.toJsonSchemaDocument(ManagedDocument);
+			for (const field of ["namespace", "key"]) {
+				assert.nestedPropertyVal(
+					document,
+					`definitions.ManagedDocumentEncoded.properties.${field}.pattern`,
+					"^[A-Za-z0-9][A-Za-z0-9_-]*$",
+				);
+			}
+		});
 	});
 });

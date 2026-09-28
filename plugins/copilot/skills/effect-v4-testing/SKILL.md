@@ -21,7 +21,7 @@ APIs — with one exception (`vi.mock`, below). Effect programs run through
 `runPromise`. Our house test files (`packages/jsonc/__test__/Jsonc.test.ts`,
 `packages/yaml/__test__/Yaml.test.ts`) are the canonical shapes. (The
 `effect/testing/*` modules — TestClock, TestConsole, TestSchema — and the
-property engine `effect/unstable/arbitrary` are indexed in
+property engine `Arbitrary` are indexed in
 `effect-v4-module-index`; this skill owns how to use them. There is no
 `FastCheck` module.)
 
@@ -92,8 +92,8 @@ describe("Jsonc", () => {
 
 - **`it.effect` runs the returned Effect** and provides the default test
   environment — `TestEnv = Layer.mergeAll(TestConsole.layer, TestClock.layer())`
-  (`packages/vitest/src/internal/internal.ts:56`), piped through
-  `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:382`). Its type is
+  (`packages/vitest/src/internal/internal.ts:59`), piped through
+  `flow(Effect.scoped, Effect.provide(TestEnv))` (`internal.ts:386`). Its type is
   `Tester<R | Scope.Scope>`, so scoped effects (`Effect.acquireRelease`, scoped
   layers) run **directly** under `it.effect`.
 - **There is no `it.scoped`** (zero `scoped` matches in
@@ -281,7 +281,7 @@ describe("foo", () => {
 ### `layer()` memoizes; plain `Effect.provide` does NOT. That asymmetry is the whole decision
 
 The top-level `layer` builds its layer once per group through a `MemoMap` and an
-`Effect.cached` build (`packages/vitest/src/internal/internal.ts:264,266,268`),
+`Effect.cached` build (`packages/vitest/src/internal/internal.ts:268,270,272`),
 keeps the scope open for the group, and closes it in `afterAll`. A per-test
 `.pipe(Effect.provide(L))` carries no memo map and rebuilds per test.
 
@@ -327,7 +327,7 @@ Where state must vary per test, keep the per-test provide, or use **distinct
 keys per test** and flush explicitly before asserting counts.
 
 Other `layer(...)` mechanics (surface checked against
-`packages/vitest/src/index.ts:112-127` and `:241-252`):
+`packages/vitest/src/index.ts:116-131` and `:245-256`):
 
 - The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
   **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the
@@ -336,7 +336,7 @@ Other `layer(...)` mechanics (surface checked against
 - Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })` — the
   nested form takes **`concurrent` and `timeout` only** (no `memoMap`, no
   `excludeTestServices`), forks the parent's memo map and inherits the parent's
-  `excludeTestServices` setting (`internal.ts:300-301`).
+  `excludeTestServices` setting (`internal.ts:303-304`).
 - `layer(L, { excludeTestServices: true })` runs the group **without** the
   `TestClock`/`TestConsole` overrides — the block-wide alternative when every
   test in the group needs the real clock, rather than pulling one wall-clock
@@ -432,8 +432,8 @@ For "behaves like the real service except this one method fails on demand",
 `layerNoop` is the wrong tool (it stubs everything) and there is still no
 `FileSystem.layerWith` / `Layer.mapService` in the vendored source (no `export const mapService` in `Layer.ts`). The house recipe is
 `Layer.effect` + spread the base + `Layer.provide(base)` — with
-`Layer.updateService` (`Layer.ts:2067`) as the shorter form when the subject is
-itself a layer, and `Layer.mock` (`Layer.ts:2308`) for partial stubs that die
+`Layer.updateService` (`Layer.ts:2065`) as the shorter form when the subject is
+itself a layer, and `Layer.mock` (`Layer.ts:2306`) for partial stubs that die
 loudly. Full scaffold and the three ways to get the spread wrong →
 **[references/fault-injection.md](./references/fault-injection.md)**.
 
@@ -484,19 +484,18 @@ covers the same reference from the production side.
 ## Property testing with `it.effect.prop` and `it.prop`
 
 Feed a Schema (or class — the class *is* the schema) directly as an arbitrary.
-The engine is core's native **`effect/unstable/arbitrary`**, not
+The engine is core's native **`Arbitrary`**, not
 fast-check — there is no `FastCheck` module: both `it.prop` and `it.effect.prop`
 compile every input through
 `Arbitrary.isArbitrary(input) ? input : Arbitrary.schema(input)`
-(`packages/vitest/src/internal/internal.ts:86-93`) and run
-`Arbitrary.checkEffect` (`:117`), so inputs may be Schemas, `Arbitrary`
+(`packages/vitest/src/internal/internal.ts:89-96`) and run
+`Arbitrary.checkEffect` (`:120`), so inputs may be Schemas, `Arbitrary`
 values, or a mix, in the array or the named-record form:
 
 ```ts
 import { assert, it } from "@effect/vitest";
 import { Yaml } from "@effected/yaml";
-import { Effect, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Effect, Schema } from "effect";
 
 const Sample = Schema.Struct({
   name: Schema.String,
@@ -516,14 +515,14 @@ it.prop("mixed inputs", { name: Name, n: Schema.Int }, ({ name, n }) => typeof n
 ```
 
 The options bag is **`arbitrary?: Arbitrary.CheckOptions`** on the
-`timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:104,157`):
-`{ runs, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:182`).
+`timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:108,161`):
+`{ runs, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:195`).
 There is **no `fastCheck: { numRuns }` option** — `numRuns` is `runs`, `path` is the
 opaque `replay` token, `maxSkipsPerRun` is one absolute `maxDiscards`. A raw
 fast-check arbitrary in the inputs is a type error and a runtime failure;
 compose an `Arbitrary` instead. The module's surface, the fast-check → native
 translation table (`constantFrom` → `Schema.Literals`, `array` →
-`Schema.Array(...).check(isLengthBetween)`, `stringMatching` → `isPattern`,
+`Schema.Array(...).check(isBetweenLength)`, `stringMatching` → `isPattern`,
 `oneof` over Arbitraries → `flatMap` over a Schema-generated index — there is
 **no** `oneof`/`constantFrom`/`array`/`weighted` in the module) and the
 declaration-level `toCodecArbitrary` contract live in
@@ -532,8 +531,8 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 
 - **The `size` clamp silently shrinks a domain.** Every unconstrained string
   and array length is generated up to `min(maxLength, max(minLength, size))`
-  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1037-1038`,
-  `:1252-1253`; `runner.ts:464,605`), ramping from 0 across the runs. A
+  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1080-1085`,
+  `:1298-1299`; `runner.ts:472,615`), ramping from 0 across the runs. A
   `Schema.String.check(Schema.isMaxLength(40_000))` input never exceeded 10
   characters at the default and reached 40 000 with `arbitrary: { size: 40_000 }`.
   A byte-budget or long-input property that does not pass `size: <cap>`
@@ -568,15 +567,21 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   tiny key domain samples lengths 0-3 but never the *some-keys-present*
   dictionary a lockfile carries. `Schema.Struct({ a: optionalKey(V), b: optionalKey(V) })`
   samples key counts 0, 1, 2 and 3.
-- **`isPattern` regexes must be lookaround-free and flag-free.** The native
-  regexp compiler returns `undefined` for lookahead/lookbehind, backreferences
-  and the `i`/`m`/`v` flags (`internal/arbitrary/regexp.ts:344,350,832`), and
-  the string node then **silently drops the pattern** (`schema.ts:1024-1025`)
-  and filters random strings — which exhausts for any selective pattern
-  (`/^(?=.*[0-9])[a-f0-9]{8}$/` and `/^[a-f]{8}$/i` both died with
-  `discards: 201`). Rewrite `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as
-  `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/` (`packages/semver/src/SemVer.ts`,
-  `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
+- **`isPattern` regexes must be lookaround-free, free of the `i`/`m`/`v`
+  flags, and always carry `u`.** The native regexp compiler returns
+  `undefined` for lookahead/lookbehind, backreferences and the `i`/`m`/`v`
+  flags (`internal/arbitrary/regexp.ts:344,350,832`), and the string node
+  then **silently drops the pattern** (`schema.ts:1051-1052`) and filters
+  random strings — which exhausts for any selective pattern
+  (`/^(?=.*[0-9])[a-f0-9]{8}$/u` and `/^[a-f]{8}$/iu` both died with
+  `discards: 201`). `u` is the flag the compiler supports
+  (`regexp.ts:835` generates full code points under it, so a negated class
+  or `\S` can yield astral characters), and JSON Schema export needs it:
+  `isPattern` exports `pattern` only when the flags match `/^[dg]*uy?$/`
+  (`Schema.ts:6636`), so a flag-free regex exports a bare
+  `{"type":"string"}` while decoding still enforces it. Rewrite
+  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
+  (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
   as **code points** (`Schema.Array(Schema.Int.check(isBetween({ minimum: 0, maximum: 0x10ffff })))`
   mapped through `String.fromCodePoint`), because the native string
   generator stays in printable ASCII and the module has no
@@ -588,11 +593,11 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   `x instanceof StyleVote` takes the real branch. In-repo reference:
   `packages/yaml/__test__/inference.test.ts`.
 - **`it.prop` accepts a Schema directly.** Both runners share `makeArbitrary`
-  (`internal.ts:89`). Hand-built inputs are `Arbitrary` values, not
+  (`internal.ts:92`). Hand-built inputs are `Arbitrary` values, not
   `FastCheck.*` ones.
 
 **Reading a property failure.** `@effect/vitest` dies with
-`Arbitrary.formatCheckFailure` (`Arbitrary.ts:314`): runs, shrinks, the
+`Arbitrary.formatCheckFailure` (`Arbitrary.ts:367`): runs, shrinks, the
 **shrunk input**, the failure and the **replay token**. The vitest-agent
 reporter that owns this repo's CLI output compacts that to its first line —
 `Property falsified after 33 run(s) and 1 shrink(s)` — and drops the input
@@ -681,7 +686,7 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   scheduled up to the new time; `TestClock.setTime(timestamp)` jumps to an
   absolute time. Both return `Effect<void>`. All the time helpers live under the
   **`effect/testing`** subpath — `TestClock`, `TestConsole`, `TestSchema`
-  (property generation is `effect/unstable/arbitrary`), not `@effect/vitest`.
+  (property generation is `Arbitrary`), not `@effect/vitest`.
 - **Do not manually provide `TestClock.layer()` under `it.effect`.** They
   compose — `Clock` is a `Context.Reference` (`Clock.ts:189`), `TestClock.layer()`
   merely sets it via `Layer.effect(Clock.Clock)` (`TestClock.ts:436`), and

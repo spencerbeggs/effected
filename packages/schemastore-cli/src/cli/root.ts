@@ -1,4 +1,4 @@
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import { makeBuildCommand } from "./commands/build.js";
 import { makeCheckCommand } from "./commands/check.js";
 import type { ExecuteDeps } from "./execute.js";

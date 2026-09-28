@@ -2,7 +2,7 @@
 
 Teaching skill: `effect-v4-cli`.
 
-The presentation boundary of a command-line program built on `effect/unstable/cli`: how output reaches a human, how a failure is reported, how a findings command exits non-zero without crashing, and how a schema or config issue becomes a sentence someone can act on. **It is not a CLI framework and must never grow into one** — `effect/unstable/cli` owns argument parsing, flags, the command tree and help, and core already ships `Prompt`. Boundary tier: `effect` is the only required peer, with **no platform package, required or optional** (a `@effect/platform-node` edge here would make the package unusable from Bun and Deno for no gain); `@effected/config-file` is an **optional** peer used by one module. Nothing in the kit may depend on it but an application — it and `@effected/app` are siblings, not layers.
+The presentation boundary of a command-line program built on `effect/cli`: how output reaches a human, how a failure is reported, how a findings command exits non-zero without crashing, and how a schema or config issue becomes a sentence someone can act on. **It is not a CLI framework and must never grow into one** — `effect/cli` owns argument parsing, flags, the command tree and help, and core already ships `Prompt`. Boundary tier: `effect` is the only required peer, with **no platform package, required or optional** (a `@effect/platform-node` edge here would make the package unusable from Bun and Deno for no gain); `@effected/config-file` is an **optional** peer used by one module. Nothing in the kit may depend on it but an application — it and `@effected/app` are siblings, not layers.
 
 What the surface has in common: **a consumer only discovers the need by shipping bad output to a person.** None of it fails a type-check, a test, or a review of the call site.
 
@@ -13,7 +13,7 @@ import { CliColor, CliExit, CliLogger, CliRuntime, ConfigIssueRenderer, SchemaIs
 import { CliTest } from "@effected/cli/testing"; // test-only; never reachable from the main entrypoint
 ```
 
-Two entrypoints. Defining commands, flags and help is `effect/unstable/cli`'s job, not this package's.
+Two entrypoints. Defining commands, flags and help is `effect/cli`'s job, not this package's.
 
 ## Feature surface
 
@@ -26,7 +26,7 @@ Two entrypoints. Defining commands, flags and help is `effect/unstable/cli`'s jo
 | `CliRuntime.reported(error, code)` | your command already printed its own diagnostics and must not be reported twice — outside `reportFailures`/`main` only; under them, put the rendering in `render` instead |
 | `CliExit.set(code)` | a handler found findings and must exit non-zero without failing — under `CliRuntime.main` only |
 | `CliColor.enabled` | a renderer needs a plain `boolean` colour decision |
-| `CliColor.formatterLayer()` | wiring `effect/unstable/cli`'s `CliOutput.Formatter` so help text, parse errors and rendered output agree on colour |
+| `CliColor.formatterLayer()` | wiring `effect/cli`'s `CliOutput.Formatter` so help text, parse errors and rendered output agree on colour |
 | `SchemaIssueRenderer.render(issue)` | a `SchemaError`'s issue tree must become one actionable line per rejected value |
 | `ConfigIssueRenderer.render(error)` | the same, for a `@effected/config-file` `ConfigValidationError` |
 | `CliTest.sandbox()` / `CliTest.run()` | a test needs to spawn a **built** bin hermetically and read its exit code and streams as data |

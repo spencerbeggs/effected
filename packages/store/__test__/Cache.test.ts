@@ -5,9 +5,9 @@ import { DatabaseSync } from "node:sqlite";
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
 import { afterAll, assert, describe, it, layer } from "@effect/vitest";
 import { Cause, Duration, Effect, Exit, Layer, Option, PubSub, Ref, Schema } from "effect";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlError from "effect/sql/SqlError";
 import { TestClock } from "effect/testing";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
-import * as SqlError from "effect/unstable/sql/SqlError";
 import type { CacheEvent } from "../src/index.js";
 import { Cache, CacheError, Uint8ArrayFromUtf8 } from "../src/index.js";
 

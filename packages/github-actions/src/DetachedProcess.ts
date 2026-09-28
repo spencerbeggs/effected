@@ -2,8 +2,8 @@ import { spawn as spawnChild } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 import type { Duration } from "effect";
 import { Effect, Schedule, Schema } from "effect";
-import { HttpClient } from "effect/unstable/http";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { HttpClient } from "effect/http";
+import { ChildProcessSpawner } from "effect/process";
 import { isErrno } from "./internal/fsProbe.js";
 import { unstubbed } from "./internal/unstubbed.js";
 

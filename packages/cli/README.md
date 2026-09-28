@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-The boundary layer of a command-line program built on `effect/unstable/cli`: how output reaches a human, how a failure is reported, and how a schema issue becomes a sentence someone can act on. `CliLogger` renders log records as plain lines and routes diagnostics to stderr, reading the `Console` off the fiber so it needs no platform package and the stream split is actually testable. `CliRuntime.reportFailures` catches inside your program so a failure prints through *your* logger instead of Effect's default one on stdout, then re-fails with the exit code and the no-double-report mark; `CliRuntime.main` assembles a whole program — platform layer, a fresh `CliExit`, failure reporting, and the logger — in the one order that reports every failure well. `CliExit` lets a findings command (a linter that found problems, say) succeed with a non-zero exit code, with finalizers intact on any runtime. `CliColor` decides once, per the no-color.org rule, whether output carries ANSI colour, and hands core's own `CliOutput.Formatter` the same decision. `SchemaIssueRenderer` and `ConfigIssueRenderer` turn issue trees into `unknown key at groups.g.rulesetz`. The `./testing` subpath's `CliTest` spawns a built bin hermetically for a test that wants a real subprocess.
+The boundary layer of a command-line program built on `effect/cli`: how output reaches a human, how a failure is reported, and how a schema issue becomes a sentence someone can act on. `CliLogger` renders log records as plain lines and routes diagnostics to stderr, reading the `Console` off the fiber so it needs no platform package and the stream split is actually testable. `CliRuntime.reportFailures` catches inside your program so a failure prints through *your* logger instead of Effect's default one on stdout, then re-fails with the exit code and the no-double-report mark; `CliRuntime.main` assembles a whole program — platform layer, a fresh `CliExit`, failure reporting, and the logger — in the one order that reports every failure well. `CliExit` lets a findings command (a linter that found problems, say) succeed with a non-zero exit code, with finalizers intact on any runtime. `CliColor` decides once, per the no-color.org rule, whether output carries ANSI colour, and hands core's own `CliOutput.Formatter` the same decision. `SchemaIssueRenderer` and `ConfigIssueRenderer` turn issue trees into `unknown key at groups.g.rulesetz`. The `./testing` subpath's `CliTest` spawns a built bin hermetically for a test that wants a real subprocess.
 
 > **Pre-release.** This package is part of the `@effected/*` kit, in pre-`1.0.0`
 > development against a single pinned Effect v4 prerelease. Packages graduate to
@@ -25,7 +25,7 @@ Everything here shares one property: **you only discover you needed it by shippi
 
 Effect's default logger emits `[00:33:56.619] INFO (#2): message`. That is correct for a service being scraped and wrong for a tool someone is watching — it turns a formatted table into noise — and nothing at the call site suggests it. A platform `runMain` then reports an unhandled failure through that *same* default logger, which sits outside the layers your program was provided, so a program that carefully installs a CLI logger still prints its failures in the format that logger exists to replace, on **stdout**, the one stream errors must not use. And a decode failure arrives as a structured tree when what a user needs is a sentence naming the key they got wrong; core does ship formatters for this, but they live on `SchemaIssue` rather than `SchemaError`, are named `makeFormatter*`, and are not referenced by `SchemaError.message` — two engineers searched for two rounds and concluded they did not exist.
 
-This package is **not a CLI framework**. `effect/unstable/cli` owns argument parsing, flags, the command tree and help, and this package must never grow a second one.
+This package is **not a CLI framework**. `effect/cli` owns argument parsing, flags, the command tree and help, and this package must never grow a second one.
 
 ## Install
 
@@ -104,13 +104,13 @@ Print-then-`reported` is for a program run **without** `CliRuntime.main` or `rep
 
 A findings command — one whose non-zero exit reports a result rather than a
 crash — wires `CliRuntime.main`, `CliExit.set` and `CliColor.formatterLayer`
-around an ordinary `effect/unstable/cli` command:
+around an ordinary `effect/cli` command:
 
 ```ts
 import { CliColor, CliExit, CliRuntime } from "@effected/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect, Layer } from "effect";
-import { Command, Flag } from "effect/unstable/cli";
+import { Command, Flag } from "effect/cli";
 
 const findProblems = (strict: boolean): ReadonlyArray<string> =>
   strict ? ["missing changeset", "unpinned dependency"] : ["missing changeset"];

@@ -25,12 +25,12 @@ export class InvalidPackageNameError extends Schema.TaggedError<InvalidPackageNa
 }
 
 // npm name grammar, written lookahead-free so `Arbitrary.schema` can derive a
-// generator: the native regex compiler in `effect/unstable/arbitrary` rejects
+// generator: the native regex compiler in `effect/Arbitrary` rejects
 // `(?=`/`(?!` and would fall back to filtering random strings, none of which
 // is ever a package name. The first character may not be `.` or `_`; the
 // remainder is URL-safe lowercase.
-const UNSCOPED_RE = /^[a-z0-9-][a-z0-9._-]*$/;
-const SCOPED_RE = /^@[a-z0-9-][a-z0-9._-]*\/[a-z0-9-][a-z0-9._-]*$/;
+const UNSCOPED_RE = /^[a-z0-9-][a-z0-9._-]*$/u;
+const SCOPED_RE = /^@[a-z0-9-][a-z0-9._-]*\/[a-z0-9-][a-z0-9._-]*$/u;
 const MAX_LENGTH = 214;
 
 /**

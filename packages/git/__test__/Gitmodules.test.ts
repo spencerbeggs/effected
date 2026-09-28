@@ -278,4 +278,15 @@ describe("Gitmodules", () => {
 			assert.strictEqual(decoded.entries[1]?.path, "vendor/docs");
 		});
 	});
+
+	describe("JSON Schema export", () => {
+		it("GitmodulesEntry exports its name pattern", () => {
+			const document = Schema.toJsonSchemaDocument(GitmodulesEntry);
+			assert.nestedPropertyVal(
+				document,
+				"definitions.GitmodulesEntryEncoded.properties.name.pattern",
+				String.raw`^[^\n\r\0]*$`,
+			);
+		});
+	});
 });

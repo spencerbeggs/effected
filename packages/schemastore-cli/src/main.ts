@@ -8,7 +8,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { CliRuntime } from "@effected/cli";
 import { Effect } from "effect";
-import { CliError } from "effect/unstable/cli";
+import { CliError } from "effect/cli";
 import { loggerLayer, program } from "./cli/program.js";
 
 // `Command.runWith` already rendered a `ShowHelp`; everything else prints

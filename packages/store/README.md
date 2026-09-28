@@ -87,7 +87,7 @@ Both services expose the same three statics, and the split is the seam:
 | `layerSqlite(options & { filename })` | The service plus the SQLite driver | none |
 | `layerTest(options)` | `layerSqlite` at `:memory:`; hermetic, what the suites use | none |
 
-The SQL core lives in `effect` itself, under `effect/unstable/sql` — there is no `@effect/sql` package on the v4 line, so `SqlClient` is imported from `effect/unstable/sql/SqlClient`.
+The SQL core lives in `effect` itself, under `effect/sql` — there is no `@effect/sql` package on the v4 line, so `SqlClient` is imported from `effect/sql/SqlClient`.
 
 ### Driver options
 
@@ -127,7 +127,7 @@ Duplicate ids, non-positive-integer ids and a non-integer `toId` are wiring erro
 
 ### Adopting a database migrated by effect's Migrator
 
-`Store` is your schema — migrations create your tables, `client` queries them — but its ledger is its own. A database previously migrated by `effect/unstable/sql/Migrator` records what ran in `effect_sql_migrations` (`migration_id`, `name`, `created_at`), which `Store` does not read: on first construction over such a file, `Store` sees an empty `_store_migrations` ledger and re-runs every migration. If your migrations are idempotent (`CREATE TABLE IF NOT EXISTS …`), that re-run is harmless and you can skip all of this. If they are not — a bare `CREATE TABLE`, a seeding `INSERT` — seed the ledger **before** the first `Store` layer is built, because layer construction itself runs pending migrations.
+`Store` is your schema — migrations create your tables, `client` queries them — but its ledger is its own. A database previously migrated by `effect/sql/Migrator` records what ran in `effect_sql_migrations` (`migration_id`, `name`, `created_at`), which `Store` does not read: on first construction over such a file, `Store` sees an empty `_store_migrations` ledger and re-runs every migration. If your migrations are idempotent (`CREATE TABLE IF NOT EXISTS …`), that re-run is harmless and you can skip all of this. If they are not — a bare `CREATE TABLE`, a seeding `INSERT` — seed the ledger **before** the first `Store` layer is built, because layer construction itself runs pending migrations.
 
 Detect the old ledger:
 

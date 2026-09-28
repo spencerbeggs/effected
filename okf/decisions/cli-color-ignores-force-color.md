@@ -6,8 +6,8 @@ status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
-  body_sha256: 8ece33ca3827f08d6e9bf90cc3b5aac192c74adcd6c0fc8a0a366edfff1ca9d7
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 27128e6290b1601dfd4fb959f2cf10612681836da867075d7b9ab2985b182e08
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -25,7 +25,7 @@ bug; and `FORCE_COLOR` is unhandled everywhere, including in core itself.
 Designing `CliColor.enabled` invites fixing all three at once, and
 `FORCE_COLOR` support looks like an obvious inclusion since many CLI
 ecosystems honour it. But core's own colour decision — the one
-`CliOutput.defaultFormatter` and the rest of `effect/unstable/cli`
+`CliOutput.defaultFormatter` and the rest of `effect/cli`
 already build on — does not read `FORCE_COLOR`, and diverging from it
 here would mean this package's colour behaviour disagrees with the help
 text and command output core renders through the same formatter, for

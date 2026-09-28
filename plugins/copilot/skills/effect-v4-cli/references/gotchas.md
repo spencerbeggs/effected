@@ -4,7 +4,7 @@ Loaded from `effect-v4-cli`. Seven traps that pass a type-check and a casual tes
 
 ## `Command.provide` builds its layer before the handler runs
 
-`Command.provide` (`unstable/cli/Command.ts:1448`) wraps the handler in
+`Command.provide` (`cli/Command.ts:1480`) wraps the handler in
 `Effect.provide(handler, layer)`. The layer is built to satisfy the handler's
 requirements before the handler's own body can execute — so a handler cannot
 validate an input the layer itself depends on (a `--config` path, say)
@@ -14,8 +14,8 @@ the layer might fail on a value the handler needs to check first.
 
 ~~~ts
 import { Effect, FileSystem, Layer, Path, Stdio, Terminal } from "effect"
-import { Command, Flag } from "effect/unstable/cli"
-import { ChildProcessSpawner } from "effect/unstable/process"
+import { Command, Flag } from "effect/cli"
+import { ChildProcessSpawner } from "effect/process"
 
 const CliTestLayer = Layer.mergeAll(
   FileSystem.layerNoop({}),
@@ -57,7 +57,7 @@ site suggests an ordering.
 ## `Flag.File(name, { mustExist: true })` fails at parse time — exit 64 only under `CliRuntime.main`
 
 The existence check runs inside the primitive's own parser
-(`unstable/cli/Primitive.ts:498`), before any handler sees the value. A
+(`cli/Primitive.ts:516`), before any handler sees the value. A
 failure there does not reach the handler as a domain error: `Command.runWith`
 wraps every parse failure in a `CliError.ShowHelp`, which reports as a usage
 error — wrong for a `--config` whose *absence* is meant to be an
@@ -78,8 +78,8 @@ for *any* path, existing or not, and prove nothing about the check itself:
 ~~~ts
 import { MemoryFileSystem } from "@effected/memfs"
 import { Effect, Layer, Path, Stdio, Terminal } from "effect"
-import { CliError, Command, Flag } from "effect/unstable/cli"
-import { ChildProcessSpawner } from "effect/unstable/process"
+import { CliError, Command, Flag } from "effect/cli"
+import { ChildProcessSpawner } from "effect/process"
 
 const CliTestLayer = Layer.mergeAll(
   MemoryFileSystem.layerWith({ "/config.toml": "port = 8080\n" }),
@@ -124,8 +124,8 @@ second stays `Option.none()` regardless of which one the invocation "meant."
 
 ~~~ts
 import { Effect, FileSystem, Layer, Option, Path, Stdio, Terminal } from "effect"
-import { Argument, Command } from "effect/unstable/cli"
-import { ChildProcessSpawner } from "effect/unstable/process"
+import { Argument, Command } from "effect/cli"
+import { ChildProcessSpawner } from "effect/process"
 
 const CliTestLayer = Layer.mergeAll(
   FileSystem.layerNoop({}),
@@ -225,7 +225,7 @@ them apart.
 ## `Argument.Path` resolves a relative path against the process's own cwd, at parse time
 
 The primitive resolves a non-absolute value with `path.resolve(value)`
-(`unstable/cli/Primitive.ts:489`) — Node's own cwd-relative resolution, run
+(`cli/Primitive.ts:507`) — Node's own cwd-relative resolution, run
 the moment the argument is parsed, not when the handler later reads it. A
 handler that expects the raw string it was passed, or that resolves relative
 to a directory the user supplied elsewhere, gets a different path than it
@@ -236,9 +236,9 @@ behavior with `Argument.Path` — both kinds route through the same
 ## The built-in global flags are on by default, program-wide, not per command
 
 `--help`, `--version`, `--wizard`, `--completions` and `--log-level`
-(`unstable/cli/GlobalFlag.ts:156,179,202,222,249`) are registered on every
+(`cli/GlobalFlag.ts:166,190,214,235,263`) are registered on every
 command tree by default — a subcommand cannot "not have" `--help` on its own.
 Trim them program-wide with `CliConfig.layer({ builtIns: [] })`
-(`unstable/cli/CliConfig.ts`), read by `Command.runWith` when it collects the
-active flag set (`Command.ts:1856`) — there is no per-command opt-out, only
+(`cli/CliConfig.ts`), read by `Command.runWith` when it collects the
+active flag set (`Command.ts:1894`) — there is no per-command opt-out, only
 this one program-wide switch.

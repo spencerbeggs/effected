@@ -88,7 +88,7 @@ member) so the instance type advertises it.
 docstring says "skip validation when you trust the data" (`Schema.ts:118`) and
 "skips constructor validation" (`Schema.ts:14644`). Both are misleading, and the
 vendored cluster code leans on it as the trusted-construction idiom
-(`unstable/cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129`),
+(`cluster/EntityAddress.ts:93`, `RunnerAddress.ts:112`, `Runner.ts:129`),
 so it looks blessed. What it actually does:
 
 | Passing `{ disableChecks: true }` | Effect |
@@ -178,7 +178,7 @@ Three distinct tools — pick by intent:
 
   Verified `is*` members: `isInt`, `isBetween`, `isGreaterThan`,
   `isGreaterThanOrEqualTo`, `isLessThan`, `isLessThanOrEqualTo`, `isMultipleOf`,
-  `isFinite`, `isMinLength`, `isMaxLength`, `isLengthBetween`, `isPattern`,
+  `isFinite`, `isMinLength`, `isMaxLength`, `isBetweenLength`, `isPattern`,
   `isNonEmpty`, `isUUID`, `isULID`, `isCapitalized` — all sixteen confirmed
   present. `positive`/`negative`/`nonNegative`/`nonPositive` do not exist —
   compose `isGreaterThan(0)` etc. `Schema.filter` is likewise `undefined`.
@@ -432,7 +432,7 @@ export type PackageName = string & Brand.Brand<"PackageName">;
 
 From any schema (the class included):
 
-- `Arbitrary.schema(S)` from `effect/unstable/arbitrary` — the native generator,
+- `Arbitrary.schema(S)` from `effect` — the native generator,
   honoring `.check(...)` bounds. **`Schema.toArbitrary` is `undefined`**
   (there is no fast-check bridge), and the module has
   no `oneof`/`constantFrom`/`array` — choice and collections are Schemas. Full
@@ -471,15 +471,21 @@ fields must be `Equal.equals` AND have identical `Hash.hash`.
 `Arbitrary.schema` derives generators from `.check(...)` constraints, and
 `it.effect.prop` accepts the class schema directly as an arbitrary. Two traps:
 
-- **No lookaround and no flags in `isPattern` regexes.** The native regexp
-  compiler cannot take lookahead/lookbehind, backreferences or the `i`/`m`/`v`
-  flags (`internal/arbitrary/regexp.ts:344,350,832`); it does not throw — the
+- **`isPattern` regexes: no lookaround, no `i`/`m`/`v` flags, and always
+  the `u` flag.** The native regexp compiler cannot take
+  lookahead/lookbehind, backreferences or the `i`/`m`/`v` flags
+  (`internal/arbitrary/regexp.ts:344,350,832`); it does not throw — the
   pattern is **silently dropped** from constructive generation and left as a
   residual filter over random strings, which exhausts (`SampleError` /
-  `Exhausted`) for any selective pattern: `/^(?=.*[0-9])[a-f0-9]{8}$/`
-  and `/^[a-f]{8}$/i` both die with `discards: 201`; the flag-free,
-  lookaround-free control generates. Rewrite
-  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/`
+  `Exhausted`) for any selective pattern: `/^(?=.*[0-9])[a-f0-9]{8}$/u`
+  and `/^[a-f]{8}$/iu` both die with `discards: 201`; the lookaround-free
+  `/^[a-f]{8}$/u` control generates. `u` is the flag the compiler supports
+  (`regexp.ts:835` generates full code points under it), and it is the flag
+  JSON Schema export requires: `isPattern` exports `pattern` only when the
+  flags match `/^[dg]*uy?$/` (`Schema.ts:6636`), so
+  `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
+  `{"type":"string"}` while decoding still enforces the regex. Rewrite
+  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
   (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`).
 - **Make the field model canonical or round-trips lie.** If two type-level
   values print to the same string (e.g. prerelease `"7"` vs `7` both print

@@ -12,8 +12,8 @@
 
 import type { Schema } from "effect";
 import { Duration, Effect, Schedule } from "effect";
-import { HttpClient } from "effect/unstable/http";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import { HttpClient } from "effect/http";
+import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { DEFAULT_MAX_PAGES, DEFAULT_PER_PAGE, PAGE_CEILING } from "./limits.js";
 
 /**

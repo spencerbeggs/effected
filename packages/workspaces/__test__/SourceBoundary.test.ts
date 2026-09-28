@@ -74,7 +74,7 @@ describe("SourceBoundary.referencesProcess", () => {
 		["template text", "const help = `run process.exit to quit`;"],
 		["a regex literal", "const re = /process\\.env/g;"],
 		["a member of another object", "const pid = child.process;"],
-		["an identifier containing the word", 'import { ChildProcess } from "effect/unstable/process";'],
+		["an identifier containing the word", 'import { ChildProcess } from "effect/process";'],
 		["a private field", "class A { #process = 1; }"],
 		["the exempt build-time constant", "const version = process.env.__PACKAGE_VERSION__;"],
 		["an object-literal key", "const o = { process: 1, other: 2 };"],
@@ -157,7 +157,7 @@ describe("SourceBoundary.importsNode", () => {
 		assert.isTrue(SourceBoundary.importsNode('import { env } from "node:process";', "process"));
 		assert.isTrue(SourceBoundary.importsNode('import process from "process";', "process"));
 		assert.isTrue(SourceBoundary.importsNode('const p = await import("node:process");', "process"));
-		assert.isFalse(SourceBoundary.importsNode('import { ChildProcess } from "effect/unstable/process";', "process"));
+		assert.isFalse(SourceBoundary.importsNode('import { ChildProcess } from "effect/process";', "process"));
 		assert.isFalse(SourceBoundary.importsNode('const s = "node:process";', "process"));
 		assert.isFalse(SourceBoundary.importsNode('import x from "processor";', "process"));
 	});
@@ -348,6 +348,6 @@ describe("SourceBoundary on the real tree", () => {
 			[],
 		);
 		assert.notInclude(SourceBoundary.importSpecifiers(text), "url");
-		assert.include(SourceBoundary.importSpecifiers(text), "effect/unstable/process");
+		assert.include(SourceBoundary.importSpecifiers(text), "effect/process");
 	});
 });

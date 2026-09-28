@@ -1,5 +1,52 @@
 # @effected/mcp
 
+## 0.3.0
+
+### Breaking Changes
+
+- The kit now builds on and peers `effect` `4.0.0-rc.118`, pinned exactly. Consumers must move `effect` and every `@effect/*` package to `4.0.0-rc.118` in the same install. Effect removed the `effect/unstable/*` export paths in this release, so an `@effected` package built on rc.118 cannot share an install with `effect` rc.117.
+
+- Moving the pin also closes a fresh-install failure on rc.117. `@effect/platform-node@4.0.0-rc.117` depends on `@effect/platform-node-shared` with a caret, so an install without a lockfile paired the rc.118 shared package with `effect` rc.117 and failed at startup with `ERR_MODULE_NOT_FOUND`.
+
+- Consumers moving to this release: effect removed the `effect/unstable/*` export paths (imports become `effect/<module>`), moved `Arbitrary` to `effect`, split `effect/Encoding` into `effect/encoding/Base64`, `Base64Url` and `Hex`, and renamed the `Schema` range and string checks (`isLengthBetween` → `isBetweenLength`, `isStartsWith` → `isStartingWith`, and so on). Kit exports are otherwise unchanged; the kit's own imports moved onto the new paths. [#864][#864]
+
+* Strict tool input is now decoded and reported by core, and `McpToolkit.layer` no longer rejects unknown keys with its own `Unrecognized parameter(s): … Accepted params: …` sentence first. A rejected call now gets core's full report in one `InvalidParams`: every excess key, nested excess key, missing field and wrong type. The toolkit then appends one line per level that had an unknown key:
+
+```text
+Invalid parameters for tool 'search': Expected no excess property
+  at ["extra"]
+Accepted params at the root: query, filter.
+Accepted params at ["filter"]: kind, tag.
+```
+
+- A zero-parameter tool appends `This tool accepts no params.`. A pattern-keyed `Record` lists `keys matching <pattern>`. A failure with no unknown key is core's report unchanged. Update assertions that match the old sentence. `strict: "all"` remains the default.
+
+- `McpToolkitOptions.unknownKeyMessage` and `UnionHandlerOptions.unknownKeyMessage` are deprecated and ignored.
+
+- Union tools (`unionTool` / `unionHandler`) decode with every error reported against the matched member, followed by the same accepted-params lines.
+
+### Features
+
+- `UnknownKeysLevel.acceptedPatterns` records the `patternProperties` keys of a closed level, and `formatUnknownKeys` lists them as `Accepted keys matching: …` instead of `(none)`.
+- `McpToolAudit` with `input: "closed"` points at the regex `u` flag when a `Record`'s key check was not served. A pattern-keyed `Record` is served as `patternProperties` only when its pattern has `u`.
+
+### Bug Fixes
+
+- `McpStdio.layer` answers a request whose method starts with `@effect/rpc/` with `-32601` Method not found, and drops such a notification, before it reaches the server. A single `@effect/rpc/Eof` line on stdin previously stopped the server silently (Effect-TS/effect#8499).
+- `McpHarness` lets `ping` through before `initialize`, matching the server. Every other method still fails with `NotInitialized`. [#864][#864]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/engine | dependency | updated | 0.1.0 | 0.2.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#864]: https://github.com/spencerbeggs/effected/pull/864
+
 ## 0.2.0
 
 ### Features

@@ -1,5 +1,31 @@
 # @effected/copilot-plugin
 
+## 0.12.1
+
+### Documentation
+
+- The schema and testing skills now tell agents to write every `Schema.isPattern` regular expression with the `u` flag, and never lookaround or the `i`, `m` or `v` flags. Without `u`, the JSON Schema export silently drops the pattern, and the earlier "flag-free" advice led agents to remove exactly the flag that keeps it. [#866][#866]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#866]: https://github.com/spencerbeggs/effected/pull/866
+
+## 0.12.0
+
+### Features
+
+- The skills teach the current Effect core module layout: every former `effect/unstable/*` module is imported from `effect/<module>`, `Arbitrary` from `effect`, and base64 and hex helpers from `effect/encoding/*`. The `Schema` check names follow core's `isBetween*` and `isStartingWith` / `isEndingWith` / `isIncluding` forms. Source citations and the vendored-source pin now point at the current tag.
+
+- The `effect-v4-mcp` skill and the `@effected/mcp` reference describe core's all-errors strict report with the toolkit's appended accepted-params lines, the stdin guard's reason for existing (core skips a malformed line without the reply JSON-RPC requires) and its `@effect/rpc/*` handling, `ping` passing the test harness before `initialize`, string-result shapes per protocol revision, and the regex `u` flag a pattern-keyed `Record` needs to be served closed. [#864][#864]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#864]: https://github.com/spencerbeggs/effected/pull/864
+
 ## 0.11.1
 
 ### Documentation

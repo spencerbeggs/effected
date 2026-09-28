@@ -10,7 +10,7 @@ import { BunResolver, DenoResolver, GitHubClient, NodeResolver, NodeSchedule } f
 
 Single entrypoint; no subpaths.
 
-**Platform**: no platform package — provide an `HttpClient` at the edge; `FetchHttpClient.layer` (`effect/unstable/http`) works on any fetch-capable runtime. `.layerOffline` needs nothing at all.
+**Platform**: no platform package — provide an `HttpClient` at the edge; `FetchHttpClient.layer` (`effect/http`) works on any fetch-capable runtime. `.layerOffline` needs nothing at all.
 
 ## Core API
 
@@ -23,7 +23,7 @@ Single entrypoint; no subpaths.
 ```ts
 import { BunResolver, GitHubClient, NodeResolver } from "@effected/runtimes";
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 const RuntimesLive = Layer.mergeAll(
  NodeResolver.layer.pipe(Layer.provide(FetchHttpClient.layer)),

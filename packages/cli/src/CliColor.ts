@@ -1,5 +1,5 @@
 import { Config, Effect, Layer, Option, Stdio } from "effect";
-import { CliOutput } from "effect/unstable/cli";
+import { CliOutput } from "effect/cli";
 
 const noColor = Config.option(Config.String("NO_COLOR"));
 

@@ -13,8 +13,8 @@
 
 import type { Redacted } from "effect";
 import { Effect, Schedule } from "effect";
-import type { HttpClient } from "effect/unstable/http";
-import { HttpClientRequest } from "effect/unstable/http";
+import type { HttpClient } from "effect/http";
+import { HttpClientRequest } from "effect/http";
 
 /**
  * Returned instead of a failure when the backend answers HTTP 409.

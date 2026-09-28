@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Option, PlatformError, Sink, Stream } from "effect";
+import { FetchHttpClient } from "effect/http";
 import { badArgument } from "effect/PlatformError";
+import { ChildProcessSpawner } from "effect/process";
 import { TestClock } from "effect/testing";
-import { FetchHttpClient } from "effect/unstable/http";
-import { ChildProcessSpawner } from "effect/unstable/process";
 import { ActionEnvironment, ToolInstaller, ToolInstallerError } from "../src/index.js";
 import { settle } from "./results.js";
 

@@ -1,13 +1,13 @@
 ---
 type: Decision
 title: "cli files the Command handler-accessor gap upstream rather than shimming it"
-description: Why a missing accessor on effect/unstable/cli's Command type is reported to core instead of patched locally.
+description: Why a missing accessor on effect/cli's Command type is reported to core instead of patched locally.
 status: draft
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: e50f598c62911ad174ac8ad9b03be5f11a4c1db32a16228a2fdb3536a0373380
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 74f947a296868ceb7ece2156eedc0024a93291c690afed2825dc95797edab464
 ---
 
 # cli files the Command handler-accessor gap upstream rather than shimming it
@@ -15,7 +15,7 @@ generated:
 ## Context
 
 While building `@effected/cli`'s test surface, a gap surfaced in
-`effect/unstable/cli`'s `Command` type: there is no supported accessor for
+`effect/cli`'s `Command` type: there is no supported accessor for
 a command's handler, which would otherwise make certain testing patterns
 more convenient to write.
 
@@ -24,7 +24,7 @@ more convenient to write.
 The gap is filed upstream against core, not shimmed inside
 `@effected/cli`. This package's whole claim is that it owns the
 *boundary* — presentation over a CLI program — rather than patching the
-framework `effect/unstable/cli` itself provides.
+framework `effect/cli` itself provides.
 
 ## Alternatives rejected
 
@@ -37,6 +37,6 @@ framework `effect/unstable/cli` itself provides.
 ## Consequences
 
 `@effected/cli`'s test surface works around the gap without touching
-`effect/unstable/cli`'s internals, and the fix — if and when core ships
+`effect/cli`'s internals, and the fix — if and when core ships
 one — lands upstream rather than as a local patch this package would then
 have to un-shim later.

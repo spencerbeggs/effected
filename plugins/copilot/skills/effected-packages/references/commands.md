@@ -10,7 +10,7 @@ Task-by-task teaching lives in the `running-commands-and-tools` skill; this is t
 import { LocalExec, Redaction, Retry, Run, ScriptedSpawner, Tool, ToolDiscovery } from "@effected/commands";
 ```
 
-Single entrypoint; no subpaths. Commands themselves are core values — `ChildProcess.make(...)` from `effect/unstable/process`, composed with core's own combinators.
+Single entrypoint; no subpaths. Commands themselves are core values — `ChildProcess.make(...)` from `effect/process`, composed with core's own combinators.
 
 ## Feature surface
 

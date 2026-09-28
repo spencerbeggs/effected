@@ -10,7 +10,7 @@
  */
 
 import { Config, Context, Effect, Layer, Option, Redacted, Schema } from "effect";
-import { FetchHttpClient, HttpClient } from "effect/unstable/http";
+import { FetchHttpClient, HttpClient } from "effect/http";
 import type { HttpFailure } from "./internal/http.js";
 import { paginate } from "./internal/http.js";
 

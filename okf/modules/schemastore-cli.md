@@ -33,8 +33,8 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 89418d7e6c6d39c0afadb3a92c93762a61489974aa64d720670fafec025ede93
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 8b2d66efc826091f66b3cc0bc5d60a25e55d7357c69023bbcf82fe34653dcda5
 ---
 
 # @effected/schemastore-cli
@@ -496,7 +496,7 @@ becomes moot: there is no longer a canonical generator script to copy.
   under either `onDrift`; `--format=json` parses with nothing else on
   stdout; step summary appended when set, logged-not-fatal when
   unwritable.
-- Two `effect/unstable/cli` notes the tests pin: a `Flag.Boolean` must
+- Two `effect/cli` notes the tests pin: a `Flag.Boolean` must
   carry `withDefault(false)` or its omission is a parse error rather
   than `false`, and `CliLogger` must be given `stderrFrom: "All"` for the
   JSON-mode stdout assertion to hold.

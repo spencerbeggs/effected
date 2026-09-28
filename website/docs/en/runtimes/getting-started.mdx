@@ -28,7 +28,7 @@ That is exactly what `NodeResolver.layer` does: it fetches live, falls back to t
 ```ts with-api
 import { NodeResolver } from "@effected/runtimes";
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 const program = Effect.gen(function* () {
   const node = yield* NodeResolver;
@@ -148,7 +148,7 @@ All four are tagged errors, so `Effect.catchTag` routes each by its `_tag` with 
 ```ts with-api
 import { NodeResolver } from "@effected/runtimes";
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 const program = Effect.gen(function* () {
   const node = yield* NodeResolver;

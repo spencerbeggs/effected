@@ -107,6 +107,11 @@ pnpm rewrites `catalog:` specifiers to concrete ranges when it publishes, so wha
 
 It also ships a pnpmfile, which pnpm loads from the config dependency automatically. There is nothing to import and nothing to call — the package has no code API, only configuration.
 
+Besides the catalogs, the pnpmfile applies two settings to every consumer:
+
+- **Release-age exclusion:** `effect` and `@effect/*` are exempt from `minimumReleaseAge`, so a pinned Effect release that is only hours old still installs.
+- **One scoped override:** `@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared` is pinned to `4.0.0-rc.117`. Tools still built on effect rc.117 depend on that `platform-node`, which takes its shared package with a caret. On a fresh resolve, the rc.118 shared package imports a module rc.117 does not ship, and the tool crashes at startup. The override applies only under the rc.117 parent, and your own `overrides` are kept alongside it. If you set the same selector yourself, your value wins and the plugin warns.
+
 The `effect` catalogs move when the Effect pin advances, which is a deliberate, human-run upgrade. The `effected` catalogs are rebuilt automatically as kit packages release, so each new version of this package carries the kit's current versions; upgrading the config dependency is how a consumer picks them up.
 
 ```bash

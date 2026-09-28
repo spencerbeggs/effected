@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Equal } from "effect";
-import { CommentStyle, Section, SectionId } from "../src/index.js";
+import { Equal, Schema } from "effect";
+import { CommentStyle, Section, SectionId, SectionKey } from "../src/index.js";
 
 describe("SectionId", () => {
 	it("builds a Section from an identity plus content", () => {
@@ -79,5 +79,17 @@ describe("Section", () => {
 		// template change reported Unchanged and never reached the file.
 		assert.isFalse(Equal.equals(make("a b"), make("a  b")));
 		assert.isFalse(Equal.equals(make("body"), make("  body")));
+	});
+});
+
+describe("SectionKey JSON Schema export", () => {
+	it("exports its key pattern, standalone and inside SectionId", () => {
+		const pattern = "^[A-Za-z0-9][A-Za-z0-9._-]*$";
+		assert.nestedPropertyVal(Schema.toJsonSchemaDocument(SectionKey), "schema.pattern", pattern);
+		assert.nestedPropertyVal(
+			Schema.toJsonSchemaDocument(SectionId),
+			"definitions.SectionIdEncoded.properties.key.pattern",
+			pattern,
+		);
 	});
 });

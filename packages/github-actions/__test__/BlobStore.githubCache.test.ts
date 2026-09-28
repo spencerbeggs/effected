@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Layer, Option, Schema } from "effect";
+import { FetchHttpClient } from "effect/http";
 import { TestClock } from "effect/testing";
-import { FetchHttpClient } from "effect/unstable/http";
 import type { DataBlobTransfer } from "../src/index.js";
 import { BlobStore, BlobStoreError, BlobTransferError, GitHubCacheBlobStore } from "../src/index.js";
 import { json, resultsEnv, settle, twirpFetch } from "./results.js";

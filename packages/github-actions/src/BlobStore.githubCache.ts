@@ -1,7 +1,7 @@
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import type { Schema } from "effect";
 import { Effect, Layer, Option } from "effect";
-import { HttpClient } from "effect/unstable/http";
+import { HttpClient } from "effect/http";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { BlobEnvelope } from "./BlobEnvelope.js";
 import type { BlobStoreShape, StoredBlob } from "./BlobStore.js";

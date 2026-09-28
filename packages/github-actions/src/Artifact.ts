@@ -1,8 +1,8 @@
 import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
-import { HttpClient } from "effect/unstable/http";
-import type { ChildProcess } from "effect/unstable/process";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { HttpClient } from "effect/http";
+import type { ChildProcess } from "effect/process";
+import { ChildProcessSpawner } from "effect/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import type { FileBlobTransfer } from "./BlobTransfer.js";
 import { BlobTransferError } from "./BlobTransfer.js";

@@ -433,7 +433,7 @@ The first test is its own evidence: the control `logError` line reaches
 `logLines` nor `errorLines`. Outside the test services it is the same — run
 under `Effect.runPromise`, the program prints only the control line on stdout
 and nothing on stderr. `References.UnhandledLogLevel` does not change this:
-core reads it only in `Pool.ts:1028`. A test whose only assertions live in
+core reads it only in `Pool.ts:1047`. A test whose only assertions live in
 code paths that never observe a forked child's outcome is exercising nothing
 about that child. Join it, or route its `Exit` into a `Deferred` the test
 explicitly awaits — never assume a green run means every fiber it started
@@ -484,20 +484,20 @@ is the block-wide equivalent.
 Three sharp edges, all clock-adjacent:
 
 - **`PubSub.takeAll` suspends on an empty subscription.** Its return type is
-  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1198`) — that *is*
+  `Effect<NonEmptyArray<A>>` (`PubSub.ts:1332`) — that *is*
   the proof. Under the virtual clock it hangs to the vitest timeout. Use
-  `PubSub.takeUpTo(sub, n)` (`PubSub.ts:1278`), which returns what is there.
-- **`PubSub.subscribe` requires a `Scope`** (`PubSub.ts:1083`) and there is no
+  `PubSub.takeUpTo(sub, n)` (`PubSub.ts:1411`), which returns what is there.
+- **`PubSub.subscribe` requires a `Scope`** (`PubSub.ts:1217`) and there is no
   `it.scoped` — but you do **not** need one. `it.effect` already runs its body
   through `Effect.scoped`:
   `makeTester<Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it)`
-  (`@effect/vitest` `internal/internal.ts:382`), and its type is
-  `Tester<R | Scope.Scope>` (`index.ts:113`), so a `Scope` requirement is
+  (`@effect/vitest` `internal/internal.ts:386`), and its type is
+  `Tester<R | Scope.Scope>` (`index.ts:117`), so a `Scope` requirement is
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.
-- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8578`) /
-  `forkIn` (`:8621`) / `forkScoped` (`:8664`) / `forkDetach` (`:8704`). And
+- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8580`) /
+  `forkIn` (`:8623`) / `forkScoped` (`:8666`) / `forkDetach` (`:8706`). And
   `Stream.fromQueue` takes a `Queue.Dequeue`
   (`Stream.ts:1139`), so it rejects a `Subscription`.
 

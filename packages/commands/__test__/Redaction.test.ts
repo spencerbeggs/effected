@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Redacted, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Redacted, Schema } from "effect";
 import { REDACTED, Redaction } from "../src/Redaction.js";
 
 const secret = (value: string) => Redacted.make(value);

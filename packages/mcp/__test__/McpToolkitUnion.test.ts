@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { JsonSchema } from "effect";
 import { Context, Effect, Layer, Schema } from "effect";
-import { McpProtocol, McpSchema, McpServer, Tool, Toolkit } from "effect/unstable/ai";
+import { McpProtocol, McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import type { UnionTool } from "../src/index.js";
 import { McpStdio, McpToolkit, ToolInputSchema, ToolOutputSchema, ToolRefusal } from "../src/index.js";
 import { guardRegistration } from "../src/McpToolkit.js";
@@ -41,6 +41,19 @@ export const dependenciesInferExactly: [NoteRequirements] extends [Clock]
 		? true
 		: false
 	: false = true;
+
+/** An excess key at the root, a bad value, and an excess key inside an array item, in one payload. */
+const ALL_AT_ONCE = { action: "record", content: 42, extra: 1, citations: [{ id: "a", line: 1, typo: true }] };
+const ALL_AT_ONCE_MESSAGE = [
+	"Invalid parameters for tool 'note': Expected no excess property",
+	'  at ["extra"]',
+	"Expected string",
+	'  at ["content"]',
+	"Expected no excess property",
+	'  at ["citations"][0]["typo"]',
+	"Accepted params at the root: action, content, citations.",
+	'Accepted params at ["citations"][0]: id, line.',
+].join("\n");
 
 const Echo = Tool.make("echo", {
 	parameters: Schema.Struct({ text: Schema.String }),
@@ -146,22 +159,14 @@ describe("McpToolkit.unionTool", () => {
 				}),
 			);
 
-			it.effect("names every unknown key, nested ones included, in one rejection", () =>
+			it.effect("names every unknown key, nested ones included, and every bad value in one rejection", () =>
 				Effect.gen(function* () {
 					const harness = yield* McpHarness.make(kitServer, { protocol });
 					yield* harness.initialize;
-					const got = rejection(
-						yield* harness.callTool("note", {
-							action: "record",
-							content: "hi",
-							extra: 1,
-							citations: [{ id: "a", line: 1, typo: true }],
-						}),
-					);
+					const got = rejection(yield* harness.callTool("note", ALL_AT_ONCE));
 					assert.strictEqual(got.via, jsonRpc ? "error" : "isError");
 					if (jsonRpc) assert.strictEqual(got.code, -32602);
-					assert.include(got.text, "extra");
-					assert.include(got.text, "citations.0.typo");
+					assert.strictEqual(got.text, ALL_AT_ONCE_MESSAGE);
 				}),
 			);
 
@@ -208,7 +213,7 @@ describe("McpToolkit.unionTool", () => {
 				assert.isTrue(result.isError);
 				assert.strictEqual(
 					result.content[0]?.text,
-					"Unrecognized parameter(s): extra. Accepted params: action, content, citations.",
+					"Invalid parameters for tool 'note': Expected no excess property\n  at [\"extra\"]\nAccepted params at the root: action, content, citations.",
 				);
 				const badValue = (yield* harness.callTool("note", { action: "record", content: 42 })).result as ToolResult;
 				assert.isTrue(badValue.isError);
@@ -222,20 +227,21 @@ describe("McpToolkit.unionTool", () => {
 	}
 });
 
-/** Unknown keys at the root and inside an array item: core's own decode names only the first. */
+/** Unknown keys at the root and inside an array item. */
 const TWO_LEVELS = { action: "record", content: "hi", extra: 1, citations: [{ id: "a", line: 1, typo: true }] };
 
 describe("McpToolkit.unionHandler", () => {
-	it.effect("names every unknown key, per level, in the formatUnknownKeys report", () =>
+	it.effect("reports every excess key, every bad value and every missing key of the matched member at once", () =>
 		Effect.gen(function* () {
 			const handler = McpToolkit.unionHandler(Note, (params) => Effect.succeed(params.action));
-			const error = yield* Effect.flip(handler(TWO_LEVELS));
+			const error = yield* Effect.flip(handler(ALL_AT_ONCE));
 			assert.instanceOf(error, McpSchema.InvalidParams);
-			const expected = ToolInputSchema.formatUnknownKeys(ToolInputSchema.unknownKeys(TWO_LEVELS, Note.jsonSchema));
-			assert.strictEqual(error.message, expected);
-			assert.include(error.message, "extra");
-			assert.include(error.message, "citations.0.typo");
-			assert.notInclude(error.message, "Invalid parameters for tool");
+			assert.strictEqual(error.message, ALL_AT_ONCE_MESSAGE);
+			const missing = yield* Effect.flip(handler({ action: "record", extra: 1 }));
+			assert.strictEqual(
+				missing.message,
+				'Invalid parameters for tool \'note\': Expected no excess property\n  at ["extra"]\nMissing key\n  at ["content"]\nAccepted params at the root: action, content, citations.',
+			);
 			assert.strictEqual(yield* handler({ action: "list" }), "list");
 		}),
 	);
@@ -249,14 +255,13 @@ describe("McpToolkit.unionHandler", () => {
 		}),
 	);
 
-	it.effect("honours a custom unknownKeyMessage", () =>
+	it.effect("ignores the deprecated unknownKeyMessage", () =>
 		Effect.gen(function* () {
 			const handler = McpToolkit.unionHandler(Note, (params) => Effect.succeed(params.action), {
-				unknownKeyMessage: (levels) =>
-					`custom:${levels.map((level) => [...level.path, ...level.unknown].join(".")).join("|")}`,
+				unknownKeyMessage: () => "custom",
 			});
-			const error = yield* Effect.flip(handler(TWO_LEVELS));
-			assert.strictEqual(error.message, "custom:extra|citations.0.typo");
+			const error = yield* Effect.flip(handler(ALL_AT_ONCE));
+			assert.strictEqual(error.message, ALL_AT_ONCE_MESSAGE);
 		}),
 	);
 
@@ -299,7 +304,7 @@ describe("McpToolkit.layer's union guard", () => {
 				return Effect.succeed(new McpSchema.CallToolResult({ content: [] }));
 			},
 		};
-		const guarded = guardRegistration(registration, ToolInputSchema.formatUnknownKeys);
+		const guarded = guardRegistration(registration);
 		// The recorder never reads the request context; an empty one satisfies the requirement.
 		const call = (payload: unknown) =>
 			guarded.handle(payload).pipe(Effect.provideService(McpSchema.McpRequestContext, {} as never));

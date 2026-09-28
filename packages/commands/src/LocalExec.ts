@@ -1,6 +1,6 @@
 import type { Effect } from "effect";
 import { Context, Effect as Eff, Layer, Option, Schema } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 /**
  * The package managers whose project-local exec argv this package knows.

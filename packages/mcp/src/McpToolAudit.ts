@@ -53,6 +53,13 @@ interface ObjectNode {
 	 * node. Missing, `true`, or a schema value all leave it open.
 	 */
 	readonly closed: boolean;
+	/**
+	 * `true` when the node is a `Schema.Record` served open whose key schema
+	 * carried a check core could not export: a schema-valued
+	 * `additionalProperties` beside a `propertyNames`. A key pattern without the
+	 * RegExp `u` flag is served this way.
+	 */
+	readonly droppedKeyCheck: boolean;
 }
 
 const objectNodes = (schema: JsonSchema.JsonSchema): ReadonlyArray<ObjectNode> => {
@@ -75,7 +82,10 @@ const objectNodes = (schema: JsonSchema.JsonSchema): ReadonlyArray<ObjectNode> =
 						return acc;
 					}, Object.create(null));
 		const closed = merged.some((part) => part.additionalProperties === false);
-		if (isNode(properties) || merged.some((part) => part.type === "object")) out.push({ path, properties, closed });
+		const droppedKeyCheck = merged.some((part) => isNode(part.additionalProperties) && isNode(part.propertyNames));
+		if (isNode(properties) || merged.some((part) => part.type === "object")) {
+			out.push({ path, properties, closed, droppedKeyCheck });
+		}
 
 		if (isNode(properties)) {
 			for (const [key, child] of Object.entries(properties)) visit(child, join(path, key));
@@ -139,9 +149,17 @@ export class McpToolAudit {
 			seen.add(tool.name);
 
 			if (policy.input !== "any") {
-				for (const { path, properties, closed } of objectNodes(tool.inputSchema)) {
+				for (const { path, properties, closed, droppedKeyCheck } of objectNodes(tool.inputSchema)) {
 					const where = path === "" ? "the root" : path;
-					if (policy.input === "closed" && !closed) report(`input schema is open at ${where}`);
+					if (policy.input === "closed" && !closed) {
+						report(
+							`input schema is open at ${where}${
+								droppedKeyCheck
+									? " (a Record whose key check was not served; a key pattern is served closed, as patternProperties, only when its RegExp has the u flag, e.g. Schema.isPattern(/^x-/u))"
+									: ""
+							}`,
+						);
+					}
 					if (policy.input === "open" && isNode(properties) && closed) report(`input schema is closed at ${where}`);
 				}
 			}

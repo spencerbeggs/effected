@@ -16,8 +16,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-17T04:41:11Z
-  body_sha256: b463542a624ca095a3ed44b24eb157ec10da10ae42015607bd3f7d876c2e5398
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 9a9450555b1fa1b4fa1f454ff6494fe214c2dfa07b7ab25c67317b3cbb1bdc84
 ---
 
 # store
@@ -103,7 +103,7 @@ where it bites hardest).
 Deliberately not done: no `mkdir: true` on `layerSqlite` — directory
 creation is path policy, owned by the caller or [xdg](xdg.md). No
 `Store.adoptLedger(fromTable)` API — adoption from core's own
-`effect/unstable/sql/Migrator` ledger is a documented one-time SQL recipe
+`effect/sql/Migrator` ledger is a documented one-time SQL recipe
 in the package README rather than an API, until a consumer's migrations
 are not idempotent enough to run the recipe by hand.
 
@@ -186,7 +186,7 @@ hook, not the package's own telemetry.
 
 ## Relationship to core persistence
 
-Core's `effect/unstable/persistence/KeyValueStore` is the plain-KV subset
+Core's `effect/persistence/KeyValueStore` is the plain-KV subset
 of this package's noun. It has no TTL, no tag invalidation, no eviction
 policy, no event stream and no reversible migration ledger — the
 value-add that justifies `Cache` and `Store`. A future surface here that

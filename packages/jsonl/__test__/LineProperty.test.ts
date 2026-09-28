@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option, Result, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Effect, Option, Result, Schema } from "effect";
 import { Line } from "../src/index.js";
 
 // Array form ONLY: the named-record form of it.effect.prop silently discards
@@ -194,7 +193,7 @@ describe("Line properties", () => {
 
 	it.effect.prop(
 		"truncating a journal mid-final-line walks back to the previous line",
-		[Schema.Array(objectPayload).check(Schema.isLengthBetween(2, 8)), nat],
+		[Schema.Array(objectPayload).check(Schema.isBetweenLength(2, 8)), nat],
 		([payloads, cut]) =>
 			Effect.sync(() => {
 				// OBJECT payloads only, and the reason is a real property of JSONL: every

@@ -124,3 +124,38 @@ describe("effected catalog", () => {
 		assert.include(publishable, PLUGIN, "the plugin is publishable; it is excluded from the catalog deliberately");
 	});
 });
+
+describe("rc.117 platform-node-shared override", () => {
+	const SELECTOR = "@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared";
+	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
+
+	/**
+	 * The built hook, not the source literal: what a consumer runs is the
+	 * `updateConfig` the bundler emits, so this is the only place the merge with a
+	 * consumer's own overrides can be observed. `dist/dev/pkg` is the
+	 * `publishConfig.directory`, so it is the published hook, and it is the
+	 * target the test pre-build keeps fresh.
+	 */
+	async function updateConfig(config: Record<string, unknown>): Promise<Record<string, unknown>> {
+		assert.isTrue(existsSync(PNPMFILE), "build the plugin before testing its pnpmfile");
+		const { hooks } = (await import(PNPMFILE)) as {
+			hooks: { updateConfig: (config: Record<string, unknown>) => Promise<Record<string, unknown>> };
+		};
+		return hooks.updateConfig(config);
+	}
+
+	it("pins the shared package only under the rc.117 parent", async () => {
+		const { overrides } = await updateConfig({});
+		assert.deepStrictEqual(overrides, { [SELECTOR]: "4.0.0-rc.117" });
+	});
+
+	it("keeps a consumer's own overrides", async () => {
+		const { overrides } = await updateConfig({ overrides: { foo: "1.0.0" } });
+		assert.deepStrictEqual(overrides, { [SELECTOR]: "4.0.0-rc.117", foo: "1.0.0" });
+	});
+
+	it("lets a consumer's value for the same selector win", async () => {
+		const { overrides } = await updateConfig({ overrides: { [SELECTOR]: "4.0.0-rc.116" } });
+		assert.deepStrictEqual(overrides, { [SELECTOR]: "4.0.0-rc.116" });
+	});
+});

@@ -26,7 +26,7 @@ own version of this layout:
 import { CliColor, CliRuntime } from "@effected/cli"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Layer } from "effect"
-import { Command } from "effect/unstable/cli"
+import { Command } from "effect/cli"
 
 declare const rootCommand: Command.Command<"demo", Record<string, never>>
 
@@ -68,8 +68,8 @@ package substitution for it.
 import { CliColor } from "@effected/cli"
 import { CurrentDistribution, distributionSuffix } from "@effected/engine"
 import { Effect, FileSystem, Layer, Option, Path, Stdio, Terminal } from "effect"
-import { Command } from "effect/unstable/cli"
-import { ChildProcessSpawner } from "effect/unstable/process"
+import { Command } from "effect/cli"
+import { ChildProcessSpawner } from "effect/process"
 
 const versionLayer = Layer.unwrap(
   Effect.map(CurrentDistribution, (distribution) =>
@@ -168,7 +168,7 @@ generalizes.
 
 ~~~ts
 import { Cause, Effect, Schema, Stdio, Stream } from "effect"
-import { CliError } from "effect/unstable/cli"
+import { CliError } from "effect/cli"
 
 const Payload = Schema.Struct({ name: Schema.String })
 

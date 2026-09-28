@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Crypto, Effect, Layer, PlatformError, Schema } from "effect";
-import { HttpClient, HttpClientError, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import type { TarballError } from "../src/index.js";
 import { PackageTarball, PublishedVersion } from "../src/index.js";
 import { scripted } from "./publish-fixtures.js";

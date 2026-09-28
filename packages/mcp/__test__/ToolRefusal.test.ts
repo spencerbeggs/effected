@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
-import { McpProtocol, McpServer, Tool, Toolkit } from "effect/unstable/ai";
+import { McpProtocol, McpServer, Tool, Toolkit } from "effect/ai";
 import { McpStdio, ToolFailure, ToolRefusal } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
 

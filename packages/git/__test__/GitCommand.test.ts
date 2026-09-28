@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Stream } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 
 import type { GitInvocation } from "../src/GitCommand.js";
 import { GitCommand } from "../src/GitCommand.js";

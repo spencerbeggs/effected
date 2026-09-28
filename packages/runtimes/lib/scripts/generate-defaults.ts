@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Effect, Layer, Option } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { parseSync } from "oxc-parser";
 import { GitHubClient } from "../../src/GitHub.js";
 import { fetchGitHubReleases, fetchNodeReleases, fetchNodeSchedule, tryParseSemVer } from "../../src/internal/feeds.js";

@@ -7,7 +7,7 @@ description: Give a command-line program plain output, a correct stderr split, f
 
 Reach for `@effected/cli` the first time you run your own binary and wince at what it printed. Effect's defaults are tuned for a long-running service: log records carry a timestamp, a level and a fiber id, and an unhandled failure is reported by the runtime's *own* logger on stdout. Both are correct for something being scraped by a log collector and wrong for a tool a person is watching. This package fixes exactly those defaults — plain lines, diagnostics on stderr, failures rendered by the logger *you* installed — and it does it without importing a platform package, so the same code runs on Node, Bun and Deno.
 
-It is **not** a CLI framework. `effect/unstable/cli` still owns argument parsing, flags, the command tree and help.
+It is **not** a CLI framework. `effect/cli` still owns argument parsing, flags, the command tree and help.
 
 ## Install
 
@@ -200,7 +200,7 @@ This exists because `process.exitCode` cannot be trusted to reach teardown: Node
 
 ### Match core's colour decision with `CliColor`
 
-[`CliColor.enabled`](/cli/api/class/clicolor) follows the [no-color.org](https://no-color.org) rule: off when stdout is not a terminal, or when `NO_COLOR` is set to any non-empty value (`FORCE_COLOR` is ignored, matching core's own formatter). [`CliColor.formatterLayer`](/cli/api/class/clicolor) hands that same decision to `effect/unstable/cli`'s own `CliOutput.Formatter`, so help text, parse errors and anything you render agree with each other:
+[`CliColor.enabled`](/cli/api/class/clicolor) follows the [no-color.org](https://no-color.org) rule: off when stdout is not a terminal, or when `NO_COLOR` is set to any non-empty value (`FORCE_COLOR` is ignored, matching core's own formatter). [`CliColor.formatterLayer`](/cli/api/class/clicolor) hands that same decision to `effect/cli`'s own `CliOutput.Formatter`, so help text, parse errors and anything you render agree with each other:
 
 ```ts
 import { CliColor } from "@effected/cli";

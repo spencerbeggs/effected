@@ -1,8 +1,9 @@
 import { Run } from "@effected/commands";
 import type { Scope } from "effect";
-import { Context, Crypto, Effect, Encoding, FileSystem, Layer, Option, Schema } from "effect";
-import { HttpClient } from "effect/unstable/http";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { Context, Crypto, Effect, FileSystem, Layer, Option, Schema } from "effect";
+import * as Base64 from "effect/encoding/Base64";
+import { HttpClient } from "effect/http";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { IntegrityHash } from "./IntegrityHash.js";
 import type { PublishedVersion } from "./NpmRegistry.js";
 
@@ -154,7 +155,7 @@ const make = Effect.fnUntraced(function* () {
 					// docstring — a failure to verify presented as a measured
 					// mismatch is the exact class this package fixes elsewhere.
 					.pipe(Effect.mapError((cause) => fail("integrityUnverifiable", { expected, cause })));
-				const actual = `${expected.slice(0, expected.indexOf("-"))}-${Encoding.encodeBase64(digest)}`;
+				const actual = `${expected.slice(0, expected.indexOf("-"))}-${Base64.encode(digest)}`;
 				// Compared without base64 padding: the SRI grammar permits an
 				// unpadded value, and a padding difference is not a byte
 				// difference. Refusing a valid tarball over one would be the

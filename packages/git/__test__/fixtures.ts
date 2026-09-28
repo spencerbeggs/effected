@@ -1,5 +1,5 @@
 import { Effect, Layer, PlatformError, Sink, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 /**
  * One scripted outcome for a spawned `git` invocation: a completed run

@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Context, Effect, Layer, Schema } from "effect";
-import { McpProtocol, McpServer, Tool, Toolkit } from "effect/unstable/ai";
+import { McpProtocol, McpServer, Tool, Toolkit } from "effect/ai";
 import type { McpToolkitOptions } from "../src/index.js";
 import { McpStdio, McpToolkit, ToolInputSchema } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
@@ -129,22 +129,28 @@ const resultOf = (response: { readonly result?: unknown }): ToolResult => respon
 
 describe("McpToolkit.layer", () => {
 	it.effect(
-		"rejects every unknown key at every depth in one response, including inside the selected union member",
+		"core reports every unknown key at every depth and every missing field in one response, union members included",
 		() =>
 			Effect.gen(function* () {
 				const harness = yield* McpHarness.make(strictServer());
 				yield* harness.initialize;
 				const result = resultOf(
-					yield* harness.callTool("search", {
-						query: "q",
-						extra: 1,
-						filter: { kind: "tag", tag: "t", text: "sneaky" },
-					}),
+					yield* harness.callTool("search", { extra: 1, filter: { kind: "tag", tag: "t", text: "sneaky" } }),
 				);
 				assert.isTrue(result.isError);
-				const text = result.content[0]?.text ?? "";
-				assert.include(text, "Unrecognized parameter(s): extra.");
-				assert.include(text, "filter.text");
+				assert.strictEqual(
+					result.content[0]?.text,
+					[
+						"Invalid parameters for tool 'search': Expected no excess property",
+						'  at ["extra"]',
+						"Missing key",
+						'  at ["query"]',
+						"Expected no excess property",
+						'  at ["filter"]["text"]',
+						"Accepted params at the root: query, filter.",
+						'Accepted params at ["filter"]: kind, tag.',
+					].join("\n"),
+				);
 			}),
 	);
 
@@ -159,8 +165,10 @@ describe("McpToolkit.layer", () => {
 			});
 			const error = response.error as { readonly code: number; readonly message: string };
 			assert.strictEqual(error.code, -32602);
-			assert.include(error.message, "extra");
-			assert.include(error.message, "filter.tag");
+			assert.include(error.message, 'at ["extra"]');
+			assert.include(error.message, 'at ["filter"]["tag"]');
+			assert.include(error.message, "\nAccepted params at the root: query, filter.");
+			assert.include(error.message, '\nAccepted params at ["filter"]: kind, text.');
 		}),
 	);
 
@@ -222,22 +230,75 @@ describe("McpToolkit.layer", () => {
 			});
 			const tight = resultOf(yield* harness.callTool("tight", { query: "q", a: 1, b: 2 }));
 			assert.isTrue(tight.isError);
-			assert.include(tight.content[0]?.text ?? "", "a, b");
+			assert.include(tight.content[0]?.text ?? "", 'at ["a"]');
+			assert.include(tight.content[0]?.text ?? "", 'at ["b"]');
 		}),
 	);
 
-	it.effect("unknownKeyMessage replaces the rendered message", () =>
+	it.effect("the deprecated unknownKeyMessage is ignored", () =>
 		Effect.gen(function* () {
-			const harness = yield* McpHarness.make(
-				strictServer({
-					strict: "all",
-					unknownKeyMessage: (levels) => `nope: ${levels.flatMap((level) => level.unknown).join("|")}`,
-				}),
-			);
+			const harness = yield* McpHarness.make(strictServer({ strict: "all", unknownKeyMessage: () => "nope" }));
 			yield* harness.initialize;
 			assert.strictEqual(
 				resultOf(yield* harness.callTool("search", { query: "q", extra: 1 })).content[0]?.text,
-				"nope: extra",
+				"Invalid parameters for tool 'search': Expected no excess property\n  at [\"extra\"]\nAccepted params at the root: query, filter.",
+			);
+		}),
+	);
+
+	it.effect("a zero-parameter tool says it accepts no params", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(strictServer());
+			yield* harness.initialize;
+			const text = resultOf(yield* harness.callTool("stamp", { bogus: 1 })).content[0]?.text ?? "";
+			assert.strictEqual(
+				text,
+				"Invalid parameters for tool 'stamp': Expected never\n  at [\"bogus\"]\nThis tool accepts no params.",
+			);
+		}),
+	);
+
+	it.effect("appends nothing when no key is unknown: a missing field is core's report alone", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(strictServer());
+			yield* harness.initialize;
+			assert.strictEqual(
+				resultOf(yield* harness.callTool("search", {})).content[0]?.text,
+				"Invalid parameters for tool 'search': Missing key\n  at [\"query\"]",
+			);
+			// Control: a lenient tool's own decode failure is left alone too.
+			assert.strictEqual(
+				resultOf(yield* harness.callTool("loose", { extra: 1 })).content[0]?.text,
+				"Invalid parameters for tool 'loose': Missing key\n  at [\"query\"]",
+			);
+		}),
+	);
+
+	it.effect("names the accepted key patterns of a pattern-keyed Record", () =>
+		Effect.gen(function* () {
+			const Env = Tool.make("env", {
+				parameters: Schema.Struct({
+					env: Schema.Record(Schema.String.check(Schema.isPattern(/^X_[A-Z]+$/u)), Schema.String),
+				}),
+				success: Schema.String,
+			});
+			const EnvKit = Toolkit.make(Env);
+			const server = McpToolkit.layer(EnvKit).pipe(
+				Layer.provide(EnvKit.toLayer({ env: () => Effect.succeed("ok") })),
+				Layer.provideMerge(McpStdio.layer({ name: "toolkit-env-test", version: "0.0.0" })),
+			);
+			const harness = yield* McpHarness.make(server);
+			yield* harness.initialize;
+			assert.strictEqual(
+				resultOf(yield* harness.callTool("env", { env: { X_A: "1", lower: "2" }, extra: 1 })).content[0]?.text,
+				[
+					"Invalid parameters for tool 'env': Expected no excess property",
+					'  at ["extra"]',
+					"Expected no excess property",
+					'  at ["env"]["lower"]',
+					"Accepted params at the root: env.",
+					'Accepted params at ["env"]: keys matching ^X_[A-Z]+$.',
+				].join("\n"),
 			);
 		}),
 	);
@@ -260,7 +321,7 @@ describe("McpToolkit.layer", () => {
 				yield* harness.callTool("search", { query: "q", filter: { kind: "tag", tag: "t", text: "sneaky" } }),
 			);
 			assert.isTrue(result.isError);
-			assert.include(result.content[0]?.text ?? "", "filter.text");
+			assert.include(result.content[0]?.text ?? "", 'at ["filter"]["text"]');
 		}),
 	);
 
@@ -274,7 +335,7 @@ describe("McpToolkit.layer", () => {
 		}),
 	);
 
-	it.effect("a lenient tool whose raw schema is closed is never rejected by the pre-check", () =>
+	it.effect("a lenient tool whose raw schema is closed is never rejected", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(dynamicServer);
 			yield* harness.initialize;
@@ -283,12 +344,12 @@ describe("McpToolkit.layer", () => {
 				assert.notStrictEqual(result.isError, true, name);
 				assert.deepStrictEqual(result.structuredContent, { query: "q", extra: 1 }, name);
 			}
-			// Control: the same server still pre-checks its strict tool.
+			// Control: the same server still rejects on its strict tool.
 			assert.isTrue(resultOf(yield* harness.callTool("search", { query: "q", extra: 1 })).isError);
 		}),
 	);
 
-	it.effect("a throwing unknownKeyMessage fails only that call, and the server keeps answering", () =>
+	it.effect("a throwing deprecated unknownKeyMessage is never called", () =>
 		Effect.gen(function* () {
 			const harness = yield* McpHarness.make(
 				strictServer({
@@ -300,7 +361,8 @@ describe("McpToolkit.layer", () => {
 			);
 			yield* harness.initialize;
 			const failed = yield* harness.callTool("search", { query: "q", extra: 1 });
-			assert.strictEqual((failed.error as { readonly code: number }).code, -32603);
+			assert.isUndefined(failed.error);
+			assert.isTrue(resultOf(failed).isError);
 			assert.deepStrictEqual(resultOf(yield* harness.callTool("search", { query: "q" })).structuredContent, {
 				query: "q",
 			});

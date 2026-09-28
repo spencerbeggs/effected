@@ -14,7 +14,7 @@ is:
 ~~~ts
 import { McpStdio } from "@effected/mcp"
 import { Effect, Layer } from "effect"
-import { McpServer } from "effect/unstable/ai"
+import { McpServer } from "effect/ai"
 
 const Notes = McpServer.resource({
   uri: "notes://all",
@@ -32,7 +32,7 @@ A resource read failure is `new McpSchema.InternalError({ message })`.
 
 `content` can return a bare `string`, a `Uint8Array`, or a whole
 `ReadResourceResult` (`{ contents: [{ uri, mimeType, text }] }`). Core's own
-`resolveResourceContent` (`unstable/ai/McpServer.ts:2525-2545`) wraps a bare
+`resolveResourceContent` (`ai/McpServer.ts:2556-2576`) wraps a bare
 string as `{ contents: [{ uri, text }] }` — **no `mimeType` field at
 all** — and passes a full `ReadResourceResult` through unchanged. The
 declared `mimeType` option still appears correctly in `resources/list`
@@ -44,7 +44,7 @@ itself, not only in the listing.
 import { McpStdio } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { Effect, Layer } from "effect"
-import { McpServer } from "effect/unstable/ai"
+import { McpServer } from "effect/ai"
 
 const StringForm = McpServer.resource({
   uri: "x://string",
@@ -103,7 +103,7 @@ URI, named with `McpSchema.param`:
 
 ~~~ts
 import { Effect, Schema } from "effect"
-import { McpSchema, McpServer } from "effect/unstable/ai"
+import { McpSchema, McpServer } from "effect/ai"
 
 const id = McpSchema.param("id", Schema.String)
 const Item = McpServer.resource`x://item/${id}`({
@@ -114,7 +114,7 @@ const Item = McpServer.resource`x://item/${id}`({
 
 ## A template variable cannot span a slash
 
-The router behind a template match is `FindMyWay` (`unstable/ai/McpServer.ts:36`,
+The router behind a template match is `FindMyWay` (`ai/McpServer.ts:23`,
 `makeUriMatcher`), and its route syntax (`:paramName`, built by
 `compileUriTemplate`) matches exactly one path segment — the same
 single-segment rule any `FindMyWay`-backed router applies. An id containing
@@ -126,7 +126,7 @@ decode error.
 import { McpStdio } from "@effected/mcp"
 import { McpHarness } from "@effected/mcp/testing"
 import { Effect, Layer, Schema } from "effect"
-import { McpSchema, McpServer } from "effect/unstable/ai"
+import { McpSchema, McpServer } from "effect/ai"
 
 const id = McpSchema.param("id", Schema.String)
 const Template = McpServer.resource`x://item/${id}`({

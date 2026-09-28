@@ -10,8 +10,7 @@
 // are tested separately and excluded from oracle comparison.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Effect, Schema } from "effect";
 import type { MinimatchOptions } from "minimatch";
 import { Minimatch as OracleMinimatch, minimatch as oracle } from "minimatch";
 import type { EngineOptions } from "../src/internal/minimatch.js";
@@ -242,10 +241,10 @@ const magicSeg = Schema.Literals([
 	"!x",
 ]);
 const patternArb = Arbitrary.schema(
-	Schema.Array(Schema.Union([literalSeg, magicSeg])).check(Schema.isLengthBetween(1, 5)),
+	Schema.Array(Schema.Union([literalSeg, magicSeg])).check(Schema.isBetweenLength(1, 5)),
 ).pipe(Arbitrary.map((xs) => xs.join("/")));
 const candidateArb = Arbitrary.schema(
-	Schema.Array(Schema.Literals(["a", "b", "abc", ".hidden", "x", "a.b+c", ""])).check(Schema.isLengthBetween(1, 6)),
+	Schema.Array(Schema.Literals(["a", "b", "abc", ".hidden", "x", "a.b+c", ""])).check(Schema.isBetweenLength(1, 6)),
 ).pipe(Arbitrary.map((xs) => xs.join("/")));
 // Every key is optional so the bag ranges from `{}` to fully specified — the
 // generator draws a random subset of the optional keys per run.
@@ -271,7 +270,7 @@ const optionBagArb = Arbitrary.schema(
 const printableNoSlashArb = Arbitrary.schema(Schema.String.check(Schema.isPattern(/^[ -.0-9:-@A-Z[\]-~]{1,30}$/)));
 const braceSegArb = Arbitrary.schema(
 	Schema.Array(Schema.Literals(["a", "{b,c}", "{1..4}", "x{y,z}w", "{a,{b,c}}", "plain"])).check(
-		Schema.isLengthBetween(1, 4),
+		Schema.isBetweenLength(1, 4),
 	),
 ).pipe(Arbitrary.map((xs) => xs.join("/")));
 

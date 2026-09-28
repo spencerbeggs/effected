@@ -14,7 +14,8 @@
 // value is a typed failure carrying the JSON-pointer path to fix.
 
 import type { PlatformError } from "effect";
-import { Crypto, Effect, Encoding, Result, Schema } from "effect";
+import { Crypto, Effect, Result, Schema } from "effect";
+import * as Hex from "effect/encoding/Hex";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 
 /**
@@ -320,14 +321,14 @@ const digestHexResult = (text: string, digest: JsoncDigest): Result.Result<strin
 			}),
 		);
 	}
-	return Result.succeed(Encoding.encodeHex(bytes));
+	return Result.succeed(Hex.encode(bytes));
 };
 
 const digestHex = (text: string): Effect.Effect<string, PlatformError.PlatformError, Crypto.Crypto> =>
 	Effect.gen(function* () {
 		const crypto = yield* Crypto.Crypto;
 		const digest = yield* crypto.digest("SHA-256", encoder.encode(text));
-		return Encoding.encodeHex(digest);
+		return Hex.encode(digest);
 	});
 
 // ── Facade ──────────────────────────────────────────────────────────────────

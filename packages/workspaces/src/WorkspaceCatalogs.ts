@@ -16,7 +16,7 @@ import {
 } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
-import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcessSpawner } from "effect/process";
 import type {
 	ConfigDependencyHooksShape,
 	HookInjection,

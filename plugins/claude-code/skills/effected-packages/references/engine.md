@@ -94,7 +94,7 @@ Where the positionals exist decides where `projectDir` is called:
   from `process.argv.slice(2)` with every flag filtered out, or from an env
   var alone with `argv: []` — `effect-v4-mcp`'s `server-wiring.md`, "Project
   directory", has the runnable shape.
-- **A CLI on `effect/unstable/cli`** has no parsed positionals in `main.ts`:
+- **A CLI on `effect/cli`** has no parsed positionals in `main.ts`:
   `Command.run` reads the raw arguments from the platform `Stdio` and parses
   them after `main.ts` has already handed the program to the runner, so the
   command's own `Argument` values exist only inside its handler. Call
@@ -106,7 +106,7 @@ import { CliRuntime } from "@effected/cli";
 import { LaunchContext } from "@effected/engine";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect, Option } from "effect";
-import { Argument, Command } from "effect/unstable/cli";
+import { Argument, Command } from "effect/cli";
 
 // index.ts: the command tree. It reads no `process`; the launch facts it
 // needs arrive as plain values.

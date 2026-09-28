@@ -12,8 +12,8 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 2a3dbf1ed6d5912f6710dfd6bd6d771fbc46beb49a8282c3cee907a4ff85fa86
+  at: 2026-09-28T18:00:23Z
+  body_sha256: f446e5a2d425c545c9f91cad355fa642cf8518a894e2a08e016b4dae7dc5525c
 ---
 
 # Store is built on effect's own SQL core and @effect/sql-sqlite-node
@@ -24,18 +24,18 @@ generated:
 `SqlClient`) and `Cache` (a key-value cache over the same primitive). On
 the v4 line, the SQL abstraction — `SqlClient`, `Statement`, `SqlError`,
 transactions — lives inside `effect` itself, under
-`effect/unstable/sql/*`; there is **no separate `@effect/sql` package**
+`effect/sql/*`; there is **no separate `@effect/sql` package**
 on this release line.
 
 ## Decision
 
-The abstract seam is `SqlClient` from `effect/unstable/sql`; the concrete
+The abstract seam is `SqlClient` from `effect/sql`; the concrete
 driver is `@effect/sql-sqlite-node`, published on the same version train
 as `effect` and implemented over Node's built-in `node:sqlite` — no
 native compile step, no `better-sqlite3`, no transitive
 peers.[^store-package-json] Two facts are load-bearing:
 
-- `effect/unstable/sql` is an unstable namespace upstream. The whole repo
+- `effect/sql` is an unstable namespace upstream. The whole repo
   pins one catalog version, so surface drift is caught at catalog bumps
   rather than by consumers.
 - `SqliteClient.layer` has no error channel. Driver construction
@@ -46,7 +46,7 @@ peers.[^store-package-json] Two facts are load-bearing:
   the layer is built; see [app](../modules/app.md#the-ensure-before-open-contract)
   for where that ordering lives.
 
-Core's own `effect/unstable/sql/Migrator` is deliberately **not** used:
+Core's own `effect/sql/Migrator` is deliberately **not** used:
 it is forward-only — no `down`, no rollback, no status projection — and
 `Store`'s contract carries all three, so `src/internal/migrator.ts` owns
 a hand-rolled reversible ledger engine instead.
@@ -56,7 +56,7 @@ a hand-rolled reversible ledger engine instead.
 - **Depend on a separate `@effect/sql` package.** Rejected: no such
   package exists on the v4 line; the SQL core shipped into `effect` core
   itself.
-- **Use `effect/unstable/sql/Migrator` for the ledger.** Rejected: it is
+- **Use `effect/sql/Migrator` for the ledger.** Rejected: it is
   forward-only, and `Store`'s contract requires rollback and status
   projection that core's migrator does not provide.
 - **A different SQLite driver (`better-sqlite3`, a WASM build).**

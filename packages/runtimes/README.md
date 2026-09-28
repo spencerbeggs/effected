@@ -25,7 +25,7 @@ Every answer carries an honest `source`. A resolver that fetches live data, sile
 
 The freshness policy is a layer, not a flag, and the layers are lazy: building one performs no IO, the first `resolve` fetches the feed, and every later resolve shares that population. The types follow: `layerOffline` requires nothing, because a snapshot read needs no transport. Under `layerFresh`, `resolve` fails with `FreshnessError`, because you chose it to say a snapshot is not an acceptable substitute — and because the fetch happens at resolve time, that failure arrives where you can catch it, retry it or fall back, not buried in layer construction.
 
-There is no HTTP client in the dependency tree either. The v3 library carried Octokit and `@octokit/auth-app` to fund exactly two REST GETs; this one goes through `HttpClient` from `effect/unstable/http` and lets you supply the transport. `@effected/semver` is the only runtime dependency, and it is first-party.
+There is no HTTP client in the dependency tree either. The v3 library carried Octokit and `@octokit/auth-app` to fund exactly two REST GETs; this one goes through `HttpClient` from `effect/http` and lets you supply the transport. `@effected/semver` is the only runtime dependency, and it is first-party.
 
 ## Install
 
@@ -43,7 +43,7 @@ All `@effected/*` packages are ESM-only: the exports maps publish only `import` 
 
 `effect` v4 is the only peer dependency. `@effected/semver` is a regular dependency and comes along automatically; nothing else reaches your tree.
 
-Live resolution needs an `HttpClient`, provided at the edge with `FetchHttpClient.layer` from `effect/unstable/http` — that layer has no requirements of its own, so it works anywhere `fetch` does. If you only ever use `layerOffline`, you need no HTTP client at all.
+Live resolution needs an `HttpClient`, provided at the edge with `FetchHttpClient.layer` from `effect/http` — that layer has no requirements of its own, so it works anywhere `fetch` does. If you only ever use `layerOffline`, you need no HTTP client at all.
 
 The command-line interface ships as a separate package, so this package's consumers never install `@effect/platform-node`.
 
@@ -52,7 +52,7 @@ The command-line interface ships as a separate package, so this package's consum
 ```ts
 import { NodeResolver } from "@effected/runtimes";
 import { Effect } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 const program = Effect.gen(function* () {
   const node = yield* NodeResolver;
@@ -97,7 +97,7 @@ The transport differs by runtime, and that is not an accident:
 ```ts
 import { BunResolver, DenoResolver, GitHubClient, NodeResolver } from "@effected/runtimes";
 import { Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 
 export const ResolversLive = Layer.mergeAll(
   NodeResolver.layer.pipe(Layer.provide(FetchHttpClient.layer)),

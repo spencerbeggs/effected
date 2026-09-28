@@ -3,7 +3,7 @@
 ## `server.ts`
 
 - **Producing tool:** none. Hand-authored against `effect@4.0.0-rc.117`'s
-  `effect/unstable/ai` (`Tool`, `Toolkit`, `McpServer`) and this package's
+  `effect/ai` (`Tool`, `Toolkit`, `McpServer`) and this package's
   `McpStdio.layer` and `ToolFailure`.
 - **Why hand-authored:** no real server produces every wire shape the
   harness, audit and toolkit tests need in one place. Each tool exists to

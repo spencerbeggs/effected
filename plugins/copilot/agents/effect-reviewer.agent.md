@@ -42,7 +42,9 @@ holds. Not for writing feature code from scratch — that is the developer.
 
    **Review the brief against core, not just the code against the brief.** When
    the change introduces a service, seam, or vocabulary, check the vendored
-   source (including `effect/unstable/*`) for an existing core contract before
+   source (`packages/effect/src`, including the `@stability unstable`
+   namespace modules — `ai`, `cli`, `http`, `sql`, and the rest, which import
+   the same as any other core module) for an existing core contract before
    approving the design premise. A package once survived four review gates
    because every reviewer verified the code faithfully implemented a brief
    whose entire surface core already declared — it was deleted the same day a
@@ -80,8 +82,8 @@ holds. Not for writing feature code from scratch — that is the developer.
 `@effect/vitest` with `it.effect` + `Effect.gen` as the default (never plain
 `it()` + `Effect.runSync`/`runPromise` for an Effect). Assert typed errors with
 `Effect.flip` or `Effect.result` + `Result.isFailure`. Property tests via
-`it.effect.prop` / `it.prop` over a `Schema` or an `effect/unstable/arbitrary`
-`Arbitrary` (the fast-check bridge is gone; options go under `arbitrary: { runs, size, seed }`).
+`it.effect.prop` / `it.prop` over a `Schema` or an `Arbitrary`
+(the fast-check bridge is gone; options go under `arbitrary: { runs, size, seed }`).
 There is no `it.scoped` — scoped effects run under `it.effect`. Test
 utilities (`TestClock`, `TestConsole`) import from `effect/testing`. Construct via
 `X.make`, tests in `__test__/`.

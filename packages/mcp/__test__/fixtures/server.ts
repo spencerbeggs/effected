@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema, Stdio, Stream } from "effect";
-import { McpSchema, McpServer, Tool, Toolkit } from "effect/unstable/ai";
+import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import { McpStdio, type McpStdioOptions, ToolFailure } from "../../src/index.js";
 
 /** A consumer-shaped declared failure: ToolFailure's fields spread into a TaggedError. */

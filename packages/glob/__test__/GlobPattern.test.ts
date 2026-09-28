@@ -3,8 +3,7 @@
 // options surface, the FromString codec and the escape statics.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Result, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Effect, Result, Schema } from "effect";
 import { minimatch as oracle } from "minimatch";
 import { GlobPattern, GlobPatternError, GlobPatternOptions } from "../src/index.js";
 
@@ -281,10 +280,10 @@ describe("GlobPattern oracle (public seam)", () => {
 	const literalSeg = Schema.Literals(["a", "b", "abc", "x-y", "a.b+c", ".hidden", ""]);
 	const magicSeg = Schema.Literals(["*", "?", "**", "*.js", "a*", "+(a|b)", "[abc]", "{a,b}", "!x"]);
 	const patternArb = Arbitrary.schema(
-		Schema.Array(Schema.Union([literalSeg, magicSeg])).check(Schema.isLengthBetween(1, 4)),
+		Schema.Array(Schema.Union([literalSeg, magicSeg])).check(Schema.isBetweenLength(1, 4)),
 	).pipe(Arbitrary.map((xs) => xs.join("/")));
 	const candidateArb = Arbitrary.schema(
-		Schema.Array(Schema.Literals(["a", "b", "abc", ".hidden", "x", ""])).check(Schema.isLengthBetween(1, 5)),
+		Schema.Array(Schema.Literals(["a", "b", "abc", ".hidden", "x", ""])).check(Schema.isBetweenLength(1, 5)),
 	).pipe(Arbitrary.map((xs) => xs.join("/")));
 
 	it.effect.prop(

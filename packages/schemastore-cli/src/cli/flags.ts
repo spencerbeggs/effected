@@ -2,7 +2,7 @@
 // optional so `execute` can tell "the user said" from "the config says" and
 // report the effective policy's source.
 
-import { Argument, Flag } from "effect/unstable/cli";
+import { Argument, Flag } from "effect/cli";
 
 /**
  * The optional positional config path; omitted, the config is discovered

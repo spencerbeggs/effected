@@ -1,6 +1,6 @@
 import { LocalExec } from "@effected/commands";
 import { Effect, Option, Schema } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 import { PublishError } from "./PublishError.js";
 
 /**

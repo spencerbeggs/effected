@@ -13,7 +13,7 @@
  * ```ts
  * import { GitHubClient, BunResolver, NodeResolver } from "@effected/runtimes";
  * import { Effect, Layer } from "effect";
- * import { FetchHttpClient } from "effect/unstable/http";
+ * import { FetchHttpClient } from "effect/http";
  *
  * const program = Effect.gen(function* () {
  *   const node = yield* NodeResolver;

@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Stdio } from "effect";
-import { CliError, CliOutput } from "effect/unstable/cli";
+import { CliError, CliOutput } from "effect/cli";
 import { CliColor } from "../src/index.js";
 
 const decide = (options: {

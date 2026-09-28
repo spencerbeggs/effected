@@ -3,7 +3,7 @@
 //
 // The `integrity` and `specifier` leaves are NOT schema-derivable as
 // arbitraries (re-probed against effect@4.0.0-rc.115's native
-// `effect/unstable/arbitrary`, which replaced the fast-check bridge):
+// `effect/Arbitrary`, which replaced the fast-check bridge):
 //   - `ResolvedPackage.integrity` is the `@effected/npm` `IntegrityHash` brand,
 //     a `makeFilter` predicate over three grammars. The filter carries no
 //     `arbitraryConstraint` pattern, so the native compiler cannot generate it
@@ -31,8 +31,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { IntegrityHashBrand } from "@effected/npm";
 import { DependencySpecifier } from "@effected/npm";
-import { Effect, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Effect, Schema } from "effect";
 import { ImporterDependency } from "../src/ImporterDependency.js";
 import { Lockfile } from "../src/Lockfile.js";
 import { LockfileImporter } from "../src/LockfileImporter.js";

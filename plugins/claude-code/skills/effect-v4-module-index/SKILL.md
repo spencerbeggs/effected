@@ -12,16 +12,19 @@ already ships (the `effect-v4-planning` contract-inventory gate).
 
 **Where things live.** Every row's source is the vendored tree's
 `packages/effect/src/<Name>.ts` (testing modules under
-`src/testing/`, unstable namespaces under `src/unstable/<ns>/`; resolve the
+`src/testing/`, the namespace modules below under `src/<ns>/`; resolve the
 tree root via `effect-v4-source-lookup`). The vendored
 submodule is pinned to the installed prerelease and is the authority on existence,
 signatures, and — read alongside a probe — semantics (`effect-v4-source-lookup`
 owns the evidence ladder). It is also the **style oracle**: before building
 anything module-shaped, read how core writes the analogous module.
 
-**Stability split.** Modules outside `unstable/` follow strict semver. The
-`effect/unstable/*` namespaces may break in minor releases and graduate to
-top level as they stabilize.
+**Stability split.** A module's stability is an annotation, not a separate
+import path — every module in core imports as `effect/<Name>` or
+`effect/<ns>/<Name>` alike. The namespace modules below (`ai`, `cli`, `http`,
+`http-api`, `sql`, and the rest of the table under "The unstable-stability
+namespaces") carry `@stability unstable` and may still break in a minor
+release; everything else follows strict semver.
 
 ## Routing by task
 
@@ -31,7 +34,7 @@ phrasing and missed on its module name.
 
 | You want to… | Reach for | Note |
 | --- | --- | --- |
-| **spawn a subprocess / run a command / shell out** | `effect/unstable/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `unstable/cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. |
+| **spawn a subprocess / run a command / shell out** | `effect/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. |
 | **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:116`). Do not build a promise-map de-duplicator beside it — but read the two `Cache` sharp corners below before choosing a TTL. |
 | **write to stdout/stderr, or read argv/stdin, from a library** | core `Stdio` — require `Stdio` in `R` | `Stdio.layerTest(impl)` (`Stdio.ts:152`) takes a `Partial<Stdio>` and lets you echo-test the output **with no platform package installed**. The real implementation still comes from `@effect/platform-*` at the app edge. Do not `console.log` from library code to dodge the wiring. |
 
@@ -179,12 +182,13 @@ phrasing and missed on its module name.
 | `Utils` | internal generator machinery behind `Effect.gen`/HKT | internal — skip |
 | `testing/TestClock` | controllable `Clock` service driving virtual time | make sleep/timeout/schedule/retry tests deterministic by advancing time |
 | `testing/TestConsole` | test `Console` capturing log/error calls in memory | assert on console output deterministically in tests |
-| `testing/TestSchema` | assertions for schema construct/decode/encode/arbitrary/round-trip (its arbitrary assertions run `unstable/arbitrary`'s `checkEffect`, `TestSchema.ts:22-25`) | testing that a schema decodes, encodes, and round-trips correctly. **There is no `testing/FastCheck`** — there is no fast-check bridge; property generation is `unstable/arbitrary` |
+| `testing/TestSchema` | assertions for schema construct/decode/encode/arbitrary/round-trip (its arbitrary assertions run `Arbitrary.ts`'s `checkEffect`, `TestSchema.ts:22-25`) | testing that a schema decodes, encodes, and round-trips correctly. **There is no `testing/FastCheck`** — there is no fast-check bridge; property generation is `Arbitrary` |
 
-## The unstable namespaces (`effect/unstable/<ns>`)
+## The unstable-stability namespaces (`effect/<ns>`)
 
-Breaking changes allowed in minors; graduate to top level as they stabilize.
-These namespaces are where the consolidated core put functionality that ships as
+Breaking changes allowed in minors; the `@stability unstable` annotation is what
+marks these, not a separate import path — they import exactly like any other
+core module. These namespaces are where the consolidated core put functionality that ships as
 separate packages nowhere else: HTTP, RPC, cluster, SQL, CLI and the rest live
 here, and the only packages outside `effect` are platform-, provider- or
 technology-specific *implementations* (`@effect/platform-*`, `@effect/sql-*`,
@@ -201,9 +205,9 @@ follows from it.
 | `devtools` | client/server wiring an Effect runtime to the devtools tracer | connecting a program to Effect devtools |
 | `encoding` | channel codecs: `Msgpack`, `Ndjson`, `Sse` | framing streams as NDJSON/MsgPack/server-sent events |
 | `eventlog` | typed, replicated (optionally encrypted) event journal with SQL backends | event-sourced state that syncs/replicates |
-| `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below; MIME lookup is `unstable/http/Mime` (`getType`/`getExtension`/`getAllExtensions`) — there is no `mime` npm dependency |
+| `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below; MIME lookup is `http/Mime` (`getType`/`getExtension`/`getAllExtensions`) — there is no `mime` npm dependency |
 | `net` | `IpInterface`, `IpNetwork`, `NetAddress` — pure, canonical IPv4/IPv6 addresses and CIDR prefixes (three modules) | parsing/normalizing an address or network prefix without a third-party `ipaddr`-style library |
-| `httpapi` | schema-first declarative HTTP APIs with OpenAPI/Swagger output | defining a typed HTTP API contract shared by server and client |
+| `http-api` | schema-first declarative HTTP APIs with OpenAPI/Swagger output | defining a typed HTTP API contract shared by server and client |
 | `observability` | OTLP + Prometheus exporters for traces/metrics/logs | exporting telemetry without the `@effect/opentelemetry` SDK |
 | `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter` | durable KV, request-level durable caching, rate limiting |
 | `process` | `ChildProcess` Command values + `ChildProcessSpawner` service | spawning subprocesses (`@effected/git` is the house example; require in `R`) |
@@ -273,7 +277,7 @@ follows from it.
   ```
 
 - `HttpClientRequest.bearerToken` accepts a **`Redacted` directly**
-  (`token: string | Redacted.Redacted`, `unstable/http/HttpClientRequest.ts:396`;
+  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:396`;
   `basicAuth` likewise). A runtime token flows into request construction with **no
   declassification step at all** — which is what lets a package keep its
   secret-handling seam to one module instead of granting every request builder an
@@ -284,7 +288,7 @@ follows from it.
 This index routes. For patterns: `effect-v4-idioms` (errors, resources,
 fibers), `effect-v4-schema` (everything Schema), `effect-v4-services-layers`
 (Context/Layer discipline), `effect-v4-testing` (the test idioms),
-`effect-v4-observability` (spans/logs/metrics), `effect-v4-cli` (unstable/cli),
+`effect-v4-observability` (spans/logs/metrics), `effect-v4-cli` (`cli`),
 `effect-v4-source-lookup` (how to verify any row here against the source).
 
 ### `HttpClientError`: the `reason` tags are not the type names
@@ -293,7 +297,7 @@ A client failure is one `HttpClientError` whose top-level `_tag` is always
 `"HttpClientError"`, so branch on `error.reason._tag`. The values are the trap.
 The reason type is declared in two layers, and **both layer names are
 themselves unions, so neither ever appears as a `_tag`** (verified against
-`unstable/http/HttpClientError.ts:277,285,293`):
+`http/HttpClientError.ts:277,285,293`):
 
 ```ts
 export type RequestError = TransportError | EncodeError | InvalidUrlError
@@ -308,6 +312,6 @@ So `error.reason._tag` is exactly one of **six** values: `"TransportError"`,
 a live-looking branch that is dead code, and green tests will not catch it.
 
 What makes the wrong guess feel confirmed: `ResponseError` *is* a real tagged
-class elsewhere, at `unstable/http/HttpServerError.ts:197`. Same name, different
+class elsewhere, at `http/HttpServerError.ts:197`. Same name, different
 module, and it is a server error rather than a client one. Timeouts are separate
 again — `Cause.isTimeoutError`, not a `reason`.

@@ -26,7 +26,7 @@ import { NodeServices } from "@effect/platform-node";
 import { afterAll, assert, describe, layer } from "@effect/vitest";
 import { Run } from "@effected/commands";
 import { Duration, Effect, Layer } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 import type { PackageManagerName } from "../../src/index.js";
 import { Workspaces } from "../../src/index.js";
 import type { InstalledConsumer, PackedInstallBudget } from "../../src/testing.js";

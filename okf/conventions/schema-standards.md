@@ -17,8 +17,8 @@ sources:
     resource: ../../packages/package-json/src/Person.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 1d12ab478c3055a1603e4edc3017b9b87cf787f86e85562123702bf11d4d60d1
+  at: 2026-09-28T20:05:42Z
+  body_sha256: 1bba05d1ec78bbc54c90a99edd14e5f990068a34ff73004d032400a0f85fe8b0
 ---
 
 # Schema standards
@@ -50,9 +50,17 @@ generated:
   (`isMinLength`, `isPattern`, `isUUID`, …); business-rule validation
   that depends on service state stays outside the schema.
 - String-codec field models must be canonical — exactly one type-level
-  value per encoded string — or decode/encode round-trips fail; and
-  `isPattern` regexes must avoid lookahead if `toArbitrary` derivation is
-  wanted (fast-check's `stringMatching` cannot synthesize lookahead).
+  value per encoded string — or decode/encode round-trips fail.
+- Write every `isPattern` regex with no lookaround or backreferences, none
+  of the `i`/`m`/`v` flags, and always the `u` flag. Effect's native
+  Arbitrary regexp compiler (`internal/arbitrary/regexp.ts`) cannot compile
+  lookaround, backreferences or `i`/`m`/`v`, and then silently drops the
+  pattern from generation, leaving a residual filter that exhausts; `u` is
+  the flag it supports. JSON Schema export needs `u` too: `isPattern`
+  exports `pattern` only when the regex's flags match `/^[dg]*uy?$/`, so a
+  flag-free regex publishes a bare `{"type":"string"}` while decoding still
+  enforces it. Every `isPattern` in `packages/*/src` carries `u`, pinned per
+  package by a `toJsonSchemaDocument` test.
 - `Schema.suspend` for recursive schemas.
 - In Effect code prefer `Schema.decodeUnknownEffect` /
   `encodeUnknownEffect`; the `Sync` variants are for explicit sync

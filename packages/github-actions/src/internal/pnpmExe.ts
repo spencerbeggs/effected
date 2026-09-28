@@ -14,7 +14,9 @@
  * @internal
  */
 
-import { Encoding, Option, Result } from "effect";
+import { Option, Result } from "effect";
+import * as Base64 from "effect/encoding/Base64";
+import * as Hex from "effect/encoding/Hex";
 
 /** The prefix every native-binary package name carries. @internal */
 export const PNPM_EXE_PREFIX = "@pnpm/exe.";
@@ -122,8 +124,8 @@ export const strongestSri = (
 			}
 			// Options (`?opt`) may trail the digest per the SRI grammar; drop them.
 			const digest = entry.slice(dash + 1).split("?")[0] ?? "";
-			const decoded = Encoding.decodeBase64(digest);
-			return Result.isSuccess(decoded) ? [{ algorithm, hex: Encoding.encodeHex(decoded.success) }] : [];
+			const decoded = Base64.decode(digest);
+			return Result.isSuccess(decoded) ? [{ algorithm, hex: Hex.encode(decoded.success) }] : [];
 		});
 	for (const algorithm of SRI_ALGORITHMS) {
 		const found = entries.find((entry) => entry.algorithm === algorithm);

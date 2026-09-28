@@ -1,5 +1,49 @@
 # @effected/pnpm-plugin-effect
 
+## 0.12.1
+
+### Bug Fixes
+
+- Consumers get a scoped override that keeps tools still built on effect rc.117 from crashing at startup. `@effect/platform-node@4.0.0-rc.117` takes `@effect/platform-node-shared` with a caret, so a fresh resolve paired it with the rc.118 shared package. That package imports `effect/process/ChildProcess`, which rc.117 does not ship. The override pins the shared package to `4.0.0-rc.117` under that parent only, so no install on rc.118 is touched, and a consumer's own `overrides` are kept alongside it; a consumer value for the same selector wins. [#866][#866]
+
+### Maintenance
+
+#### Updates 7 catalog:effected versions
+
+- `@effected/git` ^0.18.0 -> ^0.18.1 (peer ^0.18.0)
+- `@effected/github-actions` ^0.18.0 -> ^0.18.1 (peer ^0.18.0)
+- `@effected/package-json` ^0.19.0 -> ^0.19.1 (peer ^0.19.0)
+- `@effected/sbom` ^0.9.0 -> ^0.9.1 (peer ^0.9.0)
+- `@effected/semver` ^0.10.0 -> ^0.10.1 (peer ^0.10.0)
+- `@effected/templates` ^0.9.0 -> ^0.9.1 (peer ^0.9.0)
+- `@effected/workspaces` ^0.30.0 -> ^0.30.1 (peer ^0.30.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) and [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
+[#866]: https://github.com/spencerbeggs/effected/pull/866
+
+## 0.12.0
+
+### Breaking Changes
+
+- The kit now builds on and peers `effect` `4.0.0-rc.118`, pinned exactly. Consumers must move `effect` and every `@effect/*` package to `4.0.0-rc.118` in the same install. Effect removed the `effect/unstable/*` export paths in this release, so an `@effected` package built on rc.118 cannot share an install with `effect` rc.117.
+
+- Moving the pin also closes a fresh-install failure on rc.117. `@effect/platform-node@4.0.0-rc.117` depends on `@effect/platform-node-shared` with a caret, so an install without a lockfile paired the rc.118 shared package with `effect` rc.117 and failed at startup with `ERR_MODULE_NOT_FOUND`.
+
+- Consumers moving to this release: effect removed the `effect/unstable/*` export paths (imports become `effect/<module>`), moved `Arbitrary` to `effect`, split `effect/Encoding` into `effect/encoding/Base64`, `Base64Url` and `Hex`, and renamed the `Schema` range and string checks (`isLengthBetween` → `isBetweenLength`, `isStartsWith` → `isStartingWith`, and so on). Kit exports are otherwise unchanged; the kit's own imports moved onto the new paths. [#864][#864]
+
+### Features
+
+- The `effect` and `effect:peers` catalogs pin `effect` and every `@effect/*` package to exactly `4.0.0-rc.118`, and `catalog:effected` names every `@effected` package at its new minor (for example `@effected/workspaces ^0.30.0`). Bump the `configDependencies` pin (version and integrity together), then reinstall without the old lockfile, or the previous catalog versions keep resolving. [#864][#864]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#864]: https://github.com/spencerbeggs/effected/pull/864
+
 ## 0.11.4
 
 ### Maintenance

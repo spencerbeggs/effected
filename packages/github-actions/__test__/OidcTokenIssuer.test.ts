@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Redacted } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient } from "effect/http";
 import { ActionEnvironment, OidcClaims, OidcTokenIssuer } from "../src/index.js";
 
 const TOKEN_ENV = {

@@ -373,7 +373,7 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 	},
 	{
 		name: "node:process: an unrelated specifier",
-		source: 'import { ChildProcess } from "effect/unstable/process";',
+		source: 'import { ChildProcess } from "effect/process";',
 		rule: "node:process",
 		flagged: false,
 	},

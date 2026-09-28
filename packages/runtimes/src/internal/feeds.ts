@@ -11,7 +11,7 @@ import type { InvalidVersionError } from "@effected/semver";
 import { SemVer } from "@effected/semver";
 import type { DateTime } from "effect";
 import { Effect, Option, Schema } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import type { HttpClient } from "effect/http";
 import type { GitHubClient, GitHubError } from "../GitHub.js";
 import { mapHttpFailure } from "../GitHub.js";
 import { NodeRelease } from "../NodeRelease.js";

@@ -1,11 +1,11 @@
 ---
 title: "@effected/cli"
-description: "The boundary layer of an effect/unstable/cli program: plain output, failure reporting and schema-issue rendering."
+description: "The boundary layer of an effect/cli program: plain output, failure reporting and schema-issue rendering."
 ---
 
 # @effected/cli
 
-The boundary layer of a command-line program built on `effect/unstable/cli`: how output reaches a human, how a failure is reported, how a findings command exits non-zero without crashing, and how a schema issue becomes a sentence someone can act on. `CliLogger` renders log records as plain lines and routes diagnostics to stderr. `CliRuntime.reportFailures` reports failures through *your* logger, inside your program, then re-fails with the exit code the runtime should use; `CliRuntime.main` assembles a whole program from a platform layer, a `CliExit`, and a logger, in the one order that reports every failure well. `CliColor` decides once, per the no-color.org rule, whether output carries colour. `SchemaIssueRenderer` and `ConfigIssueRenderer` flatten an issue tree into `unknown key at groups.g.rulesetz`. A separate `@effected/cli/testing` entrypoint spawns a built bin hermetically for tests.
+The boundary layer of a command-line program built on `effect/cli`: how output reaches a human, how a failure is reported, how a findings command exits non-zero without crashing, and how a schema issue becomes a sentence someone can act on. `CliLogger` renders log records as plain lines and routes diagnostics to stderr. `CliRuntime.reportFailures` reports failures through *your* logger, inside your program, then re-fails with the exit code the runtime should use; `CliRuntime.main` assembles a whole program from a platform layer, a `CliExit`, and a logger, in the one order that reports every failure well. `CliColor` decides once, per the no-color.org rule, whether output carries colour. `SchemaIssueRenderer` and `ConfigIssueRenderer` flatten an issue tree into `unknown key at groups.g.rulesetz`. A separate `@effected/cli/testing` entrypoint spawns a built bin hermetically for tests.
 
 ## Why @effected/cli
 
@@ -13,7 +13,7 @@ Everything here shares one property: **you only discover you needed it by shippi
 
 Effect's default logger emits `[00:33:56.619] INFO (#2): message`. That is right for a service being scraped and wrong for a tool someone is watching — it turns a formatted table into noise — and nothing at the call site suggests it. A platform `runMain` then reports an unhandled failure through that *same* default logger, which sits outside the layers your program was provided, so a program that carefully installs a CLI logger still prints its failures in the format that logger exists to replace, on **stdout**, the one stream errors must not use. And a decode failure arrives as a structured tree when what a user needs is a sentence naming the key they got wrong.
 
-This package is **not a CLI framework**. `effect/unstable/cli` owns argument parsing, flags, the command tree and help; there are no prompts and no spinners, because `Prompt` already exists in core. Everything under `@effected/cli` is presentation, and `CliTest` — behind the separate `@effected/cli/testing` entrypoint — is test tooling for spawning a built bin, never reachable from a CLI's own runtime import graph.
+This package is **not a CLI framework**. `effect/cli` owns argument parsing, flags, the command tree and help; there are no prompts and no spinners, because `Prompt` already exists in core. Everything under `@effected/cli` is presentation, and `CliTest` — behind the separate `@effected/cli/testing` entrypoint — is test tooling for spawning a built bin, never reachable from a CLI's own runtime import graph.
 
 ## Install
 
@@ -101,7 +101,7 @@ A validation command that finds problems has not failed — it succeeded at tell
 
 ## Colour, decided once
 
-`CliColor.enabled` is the no-color.org decision — off when stdout is not a terminal, or `NO_COLOR` is a non-empty value; `FORCE_COLOR` is ignored — read through the ambient `ConfigProvider`, never `process`. `CliColor.formatterLayer()` builds `effect/unstable/cli`'s own `CliOutput.Formatter` from that same decision, so help text, parse errors and any output you render never disagree about whether colour is on.
+`CliColor.enabled` is the no-color.org decision — off when stdout is not a terminal, or `NO_COLOR` is a non-empty value; `FORCE_COLOR` is ignored — read through the ambient `ConfigProvider`, never `process`. `CliColor.formatterLayer()` builds `effect/cli`'s own `CliOutput.Formatter` from that same decision, so help text, parse errors and any output you render never disagree about whether colour is on.
 
 ## Testing a built bin
 

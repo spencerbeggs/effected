@@ -123,7 +123,7 @@ export class ChildEnv {
 	 * @example
 	 * ```ts
 	 * import { ChildEnv } from "@effected/github-actions";
-	 * import { ChildProcess } from "effect/unstable/process";
+	 * import { ChildProcess } from "effect/process";
 	 *
 	 * const command = ChildProcess.make("pnpm", ["install"], {
 	 *   ...ChildEnv.prependPath(["/opt/hostedtoolcache/pnpm/10.13.1/x64/bin"], {

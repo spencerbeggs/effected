@@ -354,7 +354,7 @@ Annotate the collection where it is built —
 
 Effect v4's consolidated core **declares** the platform service contracts —
 `FileSystem`, `Path`, `Terminal`, `Stdio` as stable `effect/*` modules, and
-`ChildProcessSpawner` (subprocesses) under `effect/unstable/process` — while the
+`ChildProcessSpawner` (subprocesses) under `effect/process` — while the
 **implementations** live in `@effect/platform-*` (Node's `NodeServices.layer`
 provides `ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal`
 in one layer). That split fixes the house default:
@@ -377,11 +377,12 @@ in one layer). That split fixes the house default:
   default layer or a sync escape hatch — never a contract or a
   business-logic path.
 
-Before designing any service or seam, grep the core source — `unstable/`
-included — for an existing contract (`effect-v4-source-lookup` resolves the
-tree). A parallel subprocess vocabulary (`Command`/`CommandRunner` plus a
+Before designing any service or seam, grep the core source — the
+`@stability unstable` namespace modules included, since they import exactly
+like any other core module rather than living under a separate path — for an
+existing contract (`effect-v4-source-lookup` resolves the tree). A parallel subprocess vocabulary (`Command`/`CommandRunner` plus a
 hand-rolled `node:child_process` layer) survived four review gates in this repo
-before a source check found `effect/unstable/process` already declared all of it.
+before a source check found `effect/process` already declared all of it.
 
 ## Sync facades: per-call service values, not layers
 

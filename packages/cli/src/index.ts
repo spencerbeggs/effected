@@ -1,9 +1,9 @@
 /**
- * The boundary layer of a command-line program built on `effect/unstable/cli`:
+ * The boundary layer of a command-line program built on `effect/cli`:
  * how output reaches a human, how a failure is reported, and how a schema issue
  * becomes a sentence someone can act on.
  *
- * This is emphatically **not** a CLI framework. `effect/unstable/cli` owns
+ * This is emphatically **not** a CLI framework. `effect/cli` owns
  * argument parsing, flags, the command tree and help; this package must never
  * grow a second one.
  *

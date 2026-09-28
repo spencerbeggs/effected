@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option } from "effect";
-import { ChildProcess } from "effect/unstable/process";
+import { ChildProcess } from "effect/process";
 import { ExecContext, LocalExec, LocalExecError } from "../src/LocalExec.js";
 
 /** The argv a command would actually spawn with. */

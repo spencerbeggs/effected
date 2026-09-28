@@ -1,6 +1,6 @@
 import { Context, DateTime, Effect, Layer, Option, Redacted, Schema } from "effect";
-import type { HttpClientError } from "effect/unstable/http";
-import { HttpClient } from "effect/unstable/http";
+import type { HttpClientError } from "effect/http";
+import { HttpClient } from "effect/http";
 import { IntegrityHash } from "./IntegrityHash.js";
 import type { RegistryCredential } from "./RegistryCredential.js";
 import { classifyRegistry } from "./RegistryKind.js";

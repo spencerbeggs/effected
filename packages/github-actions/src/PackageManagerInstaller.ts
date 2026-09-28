@@ -1,7 +1,7 @@
 import type { IntegrityHashBrand } from "@effected/npm";
 import { CorepackIntegrityHash, DEFAULT_REGISTRY, PackageManagerPin, PackageManagerPinName } from "@effected/npm";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { digestFileHex } from "./internal/digest.js";
 import { typeAt } from "./internal/fsProbe.js";

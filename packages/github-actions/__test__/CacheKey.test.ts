@@ -542,4 +542,15 @@ describe("CacheKey", () => {
 			}),
 		);
 	});
+
+	describe("JSON Schema export", () => {
+		it("each segment exports its pattern", () => {
+			const document = Schema.toJsonSchemaDocument(CacheKey);
+			assert.nestedPropertyVal(
+				document,
+				"definitions.CacheKeyEncoded.properties.segments.items.pattern",
+				String.raw`^[^,\n\r]+$`,
+			);
+		});
+	});
 });

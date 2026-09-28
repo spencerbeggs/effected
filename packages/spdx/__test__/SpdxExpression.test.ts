@@ -1,6 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Equal, Exit, Option, Result, Schema } from "effect";
-import { Arbitrary } from "effect/unstable/arbitrary";
+import { Arbitrary, Cause, Effect, Equal, Exit, Option, Result, Schema } from "effect";
 import { InvalidSpdxExpressionError, License } from "../src/License.js";
 import type { SpdxExpression as SpdxExpressionAst } from "../src/SpdxExpression.js";
 import {

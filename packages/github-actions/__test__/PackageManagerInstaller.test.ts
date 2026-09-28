@@ -8,8 +8,8 @@ import { assert, describe, it } from "@effect/vitest";
 import type { IntegrityHashBrand } from "@effected/npm";
 import { CorepackIntegrityHash, IntegrityHash, PackageManagerPin } from "@effected/npm";
 import { Effect, Layer, Logger, Option, PlatformError, Schema, Stream } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { FetchHttpClient } from "effect/http";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import {
 	ActionEnvironment,
 	AmbientPackageManager,

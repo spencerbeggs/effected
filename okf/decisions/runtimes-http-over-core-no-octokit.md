@@ -1,15 +1,15 @@
 ---
 type: Decision
 title: runtimes reads GitHub over core HttpClient, never Octokit
-description: "@effected/runtimes' two authenticated REST reads go through effect/unstable/http directly, with GitHub App auth left as a pluggable seam rather than a built-in."
+description: "@effected/runtimes' two authenticated REST reads go through effect/http directly, with GitHub App auth left as a pluggable seam rather than a built-in."
 status: draft
 tags:
   - architecture
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 6be54f4649176712e2ecf5a2aad338a4be6d5d81e49e80a4442a04e2ad277469
+  at: 2026-09-28T18:00:23Z
+  body_sha256: 6d253355e54940b9353f5135e8e6b86a64869ae150261a46dd667f2c9b8388ac
 ---
 
 # runtimes reads GitHub over core HttpClient, never Octokit
@@ -25,7 +25,7 @@ REST GETs.
 ## Decision
 
 All network access in `@effected/runtimes` goes through `HttpClient` from
-`effect/unstable/http`, with the consumer providing a fetch-backed layer
+`effect/http`, with the consumer providing a fetch-backed layer
 at the edge (`packages/runtimes/src/internal/http.ts`). That layer has no
 requirements of its own, so providing it costs a consumer one import from
 `effect`. There is no octokit dependency: the [dependency
