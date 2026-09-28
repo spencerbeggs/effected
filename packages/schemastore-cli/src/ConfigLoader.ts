@@ -1,5 +1,5 @@
 import type { SchemastoreConfig } from "@effected/schemastore";
-import { isSchemastoreConfig } from "@effected/schemastore";
+import { SchemaVersioning, isSchemastoreConfig } from "@effected/schemastore";
 import { Effect, FileSystem, Path, Predicate, Schema } from "effect";
 import { createJiti } from "jiti";
 
@@ -21,9 +21,11 @@ export class ConfigNotFoundError extends Schema.TaggedError<ConfigNotFoundError>
 /**
  * The config file exists but could not be turned into a `SchemastoreConfig`:
  * the module threw on import, its default export is not a `defineConfig(...)`
- * value, `outputDir`/`catalogPath` is not a string, a `schemas` element is
- * not resolved-schema-shaped (or its `target`, `catalog`, or a `frozen`
- * entry is not shaped), or two outputs resolve to one absolute path.
+ * value, `name` is not a simple file base name, `outputDir`/`catalogDir` is
+ * not a string, a `schemas` element is not resolved-schema-shaped (or its
+ * `target`, `catalog`, or a `frozen` entry is not shaped), two outputs
+ * resolve to one absolute path, a document resolves into `catalogDir`, or
+ * `catalogDir` resolves to `outputDir` or to the merged catalog's path.
  *
  * @public
  */
@@ -38,7 +40,7 @@ export class ConfigLoadError extends Schema.TaggedError<ConfigLoadError>()("Conf
 
 /**
  * A loaded config: where it came from and its contents with every relative
- * `path` (`outputDir`, `catalogPath`, each schema's current target, and every
+ * `path` (`outputDir`, `catalogDir`, each schema's current target, and every
  * frozen predecessor) resolved against `directory`.
  *
  * @public
@@ -95,11 +97,14 @@ const isCatalogEntryShaped = (catalog: unknown): boolean =>
 	typeof catalog.url === "string";
 
 const describeMalformed = (config: SchemastoreConfig): string | undefined => {
+	if (typeof config.name !== "string" || !SchemaVersioning.isSimpleName(config.name)) {
+		return "name is not a simple file base name";
+	}
 	if (typeof config.outputDir !== "string") {
 		return "outputDir is not a string";
 	}
-	if (typeof config.catalogPath !== "string") {
-		return "catalogPath is not a string";
+	if (typeof config.catalogDir !== "string") {
+		return "catalogDir is not a string";
 	}
 	if (!Array.isArray(config.schemas)) {
 		return "schemas is not an array";
@@ -138,18 +143,33 @@ const describeMalformed = (config: SchemastoreConfig): string | undefined => {
 // spellings it could not unify (`../x/a.json` from one directory, `a.json`
 // after resolution) can still collide once absolute, so the check re-runs
 // here on the resolved paths, across every declared output: each schema's
-// current target, every frozen predecessor, and the catalog file.
-const describeDuplicatePath = (config: SchemastoreConfig): string | undefined => {
+// current target, every frozen predecessor, this config's catalog slice and
+// the merged catalog. The same resolved paths re-run the catalogDir rule a
+// lexical pass cannot settle: every `*.json` file in `catalogDir` is read as
+// a slice, so neither `outputDir` nor any document may live there, and
+// `catalogDir` may not be the merged catalog's own path (a directory there
+// would make writing the merged file fail EISDIR).
+const describeClashingPath = (config: SchemastoreConfig, path: Path.Path): string | undefined => {
+	const documents = config.schemas.flatMap((schema) => [schema.target.path, ...schema.frozen.map((f) => f.path)]);
+	const catalogDir = path.normalize(config.catalogDir);
+	if (catalogDir === path.normalize(ConfigLoader.mergedCatalogPath(config, path))) {
+		return `catalogDir "${config.catalogDir}" must not be the merged catalog's path (catalog.json in its parent)`;
+	}
+	if (catalogDir === path.normalize(config.outputDir)) {
+		return `catalogDir "${config.catalogDir}" must not be outputDir: every *.json file in it is read as a catalog slice`;
+	}
+	for (const document of documents) {
+		if (path.normalize(path.dirname(document)) === catalogDir) {
+			return `output path "${document}" sits in catalogDir "${config.catalogDir}", which holds only catalog slices`;
+		}
+	}
 	const seen = new Set<string>();
-	const paths = [
-		...config.schemas.flatMap((schema) => [schema.target.path, ...schema.frozen.map((f) => f.path)]),
-		config.catalogPath,
-	];
-	for (const p of paths) {
-		if (seen.has(p)) {
+	for (const p of [...documents, ConfigLoader.slicePath(config, path), ConfigLoader.mergedCatalogPath(config, path)]) {
+		const normalized = path.normalize(p);
+		if (seen.has(normalized)) {
 			return `output path "${p}" is declared twice after resolution`;
 		}
-		seen.add(p);
+		seen.add(normalized);
 	}
 	return undefined;
 };
@@ -203,8 +223,22 @@ export class ConfigLoader {
 		}
 	});
 
+	/** This config's own catalog slice: `<catalogDir>/<name>.json`. */
+	static slicePath(config: SchemastoreConfig, path: Path.Path): string {
+		return path.join(config.catalogDir, `${config.name}.json`);
+	}
+
 	/**
-	 * Resolve every relative `path` in the config (`outputDir`, `catalogPath`,
+	 * The merged catalog every config sharing `catalogDir` maintains:
+	 * `catalog.json` in `catalogDir`'s parent (`<outputDir>/catalog.json` under
+	 * the default `catalogDir`).
+	 */
+	static mergedCatalogPath(config: SchemastoreConfig, path: Path.Path): string {
+		return path.join(path.dirname(config.catalogDir), "catalog.json");
+	}
+
+	/**
+	 * Resolve every relative `path` in the config (`outputDir`, `catalogDir`,
 	 * each schema's current target, and every frozen predecessor) against
 	 * `directory`; absolute paths are left alone. `defineConfig` already
 	 * prefixes `outputDir` onto every target/frozen `path`, so resolving them
@@ -224,7 +258,7 @@ export class ConfigLoader {
 		const resolved: SchemastoreConfig = {
 			...config,
 			outputDir: absolute(config.outputDir),
-			catalogPath: absolute(config.catalogPath),
+			catalogDir: absolute(config.catalogDir),
 			schemas: config.schemas.map((schema) => ({
 				...schema,
 				target: { ...schema.target, path: absolute(schema.target.path) },
@@ -267,7 +301,7 @@ export class ConfigLoader {
 		}
 		const directory = path.dirname(configPath);
 		const config = yield* ConfigLoader.resolvePaths(exported, directory);
-		const duplicate = describeDuplicatePath(config);
+		const duplicate = describeClashingPath(config, path);
 		if (duplicate !== undefined) {
 			return yield* Effect.fail(new ConfigLoadError({ path: configPath, reason: duplicate }));
 		}

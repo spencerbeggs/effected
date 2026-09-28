@@ -193,6 +193,8 @@ import { defineConfig } from "@effected/schemastore";
 import { ScanResult, ScanResultIdentity } from "../../src/schema/scan-result.js";
 
 export default defineConfig({
+  // This config's identity: its catalog slice is <outputDir>/catalogs/<name>.json.
+  name: "scan-result",
   // Relative paths resolve against this file's directory, not the repo root.
   outputDir: "../../schemas",
   schemas: {
@@ -228,7 +230,7 @@ Four things in that shape are load-bearing:
   file. It also fails on an output nothing claims — a document left at a
   sibling shape of a derived path (an `appendVersion` flip or a `layout`
   change moved it; nothing else in `outputDir` is inspected), or an
-  orphaned `catalog.json` no schema declares; `build` reports orphans and never
+  orphaned catalog slice no schema declares; `build` reports orphans and never
   deletes them, so delete by hand.
 - **Objects are closed.** The library emits `additionalProperties: false`
   by default (a published document is a contract; it does not follow core's
@@ -334,7 +336,7 @@ There is none to write. `schema:check` *is* the drift test — the same walk
 as `build` with no writes, exit `1` on anything a build would write, a gate
 failure, drift on a published document, or an output nothing claims — an
 orphaned document an `appendVersion` or `layout` rename left behind, or
-an orphaned catalog file (`build` reports orphans, never deletes them) —
+an orphaned catalog slice or merged catalog (`build` reports orphans, never deletes them) —
 and it runs the command's own
 loader, engine and policy, so it cannot pass against wiring the build never
 uses (the failure a hand-rolled vitest drift test over an exported `targets`

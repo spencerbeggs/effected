@@ -1,7 +1,7 @@
 ---
 name: building-schemastore-schemas
 description: Use when publishing JSON Schema documents from Effect Schemas with @effected/schemastore and the schemastore CLI — writing or fixing a schemastore.config.ts, deciding whether a schema is published, reading a DRIFT or held line, choosing a version label, annotating a schema for VS Code / taplo / tombi / IntelliJ, wiring schema:build and schema:check into package scripts, turbo and CI, or retiring a hand-rolled generate-schema.ts.
-when_to_use: schemastore.config.ts, defineConfig, SchemaTarget.make, published flag, schemastore build, schemastore check, schema:build, schema:check, DRIFT contract, held (drift elsewhere), --on-drift, --force, --drift=allow, nextVersion, suggest 1.3, catalog.json, FrozenVersionMissingError, FrozenVersionIdMismatchError, orphaned catalog, HostedSchema, hosted, fileMatch, baseUrl, markdownDescription, x-taplo, x-tombi-, x-intellij-, x-ai-hint, UndeclaredAnnotationKeyError, onExcessProperty, generate-schema.ts, SchemaStore submission, JSON Schema from Effect Schema
+when_to_use: schemastore.config.ts, defineConfig, SchemaTarget.make, published flag, schemastore build, schemastore check, schema:build, schema:check, DRIFT contract, held (drift elsewhere), --on-drift, --force, --drift=allow, nextVersion, suggest 1.3, catalog.json, catalogDir, catalog slice, merged catalog, CatalogMergeError, FrozenVersionMissingError, FrozenVersionIdMismatchError, orphaned catalog, HostedSchema, hosted, fileMatch, baseUrl, markdownDescription, x-taplo, x-tombi-, x-intellij-, x-ai-hint, UndeclaredAnnotationKeyError, onExcessProperty, generate-schema.ts, SchemaStore submission, JSON Schema from Effect Schema
 ---
 
 # Building SchemaStore schemas

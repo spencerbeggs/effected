@@ -9,7 +9,7 @@ import { CliError } from "effect/cli";
 import { ChildProcessSpawner } from "effect/process";
 import { TestConsole } from "effect/testing";
 import { ConfigLoadError, ConfigNotFoundError } from "../src/ConfigLoader.js";
-import { ConflictingFlagsError, DriftError, GateError, StaleError } from "../src/cli/execute.js";
+import { CatalogMergeError, ConflictingFlagsError, DriftError, GateError, StaleError } from "../src/cli/execute.js";
 import type { ProgramDeps } from "../src/cli/program.js";
 import { loggerLayer, program } from "../src/cli/program.js";
 import { FrozenVersionIdMismatchError, FrozenVersionMissingError } from "../src/Runner.js";
@@ -55,12 +55,14 @@ const emitted = (schema: Schema.Constraint, $id: string): string =>
 const BASIC_ID = "https://example.com/schemas/basic-1.0.json";
 const BASIC_PATH = "/repo/schemas/basic-1.0.json";
 const CATALOG_PATH = "/repo/schemas/catalog.json";
+const SLICE_PATH = "/repo/schemas/catalogs/test.json";
 const CONFIG_PATH = "/repo/schemastore.config.ts";
 
 const basicConfig = (
 	options: { readonly onDrift?: OnDrift; readonly versions?: ReadonlyArray<string>; readonly outputDir?: string } = {},
 ) =>
 	defineConfig({
+		name: "test",
 		outputDir: options.outputDir ?? "/repo/schemas",
 		baseUrl: "https://example.com/schemas",
 		...(options.onDrift !== undefined ? { onDrift: options.onDrift } : {}),
@@ -128,6 +130,7 @@ const catalogEntryOf = (config: SchemastoreConfig): CatalogEntry => {
 const builtSeed: MemoryFileSystemSeed = {
 	[CONFIG_PATH]: "",
 	[BASIC_PATH]: emitted(Config, BASIC_ID),
+	[SLICE_PATH]: `${JSON.stringify([Schema.encodeSync(CatalogEntry)(catalogEntryOf(basicConfig()))])}\n`,
 	[CATALOG_PATH]: `${JSON.stringify([Schema.encodeSync(CatalogEntry)(catalogEntryOf(basicConfig()))])}\n`,
 };
 
@@ -138,11 +141,12 @@ describe("schemastore CLI", () => {
 				const error = yield* Effect.flip(program(["check"], deps(basicConfig())));
 				assert.instanceOf(error, StaleError);
 				assert.strictEqual(exitCodeOf(error), 1);
-				assert.strictEqual(error.count, 2, "one schema plus one catalog entry");
-				assert.include(error.message, "2 document(s) are stale");
+				assert.strictEqual(error.count, 3, "one schema, the catalog slice and the merged catalog");
+				assert.include(error.message, "3 document(s) are stale");
 				const out = yield* stdout;
 				assert.include(out, `would write (created) ${BASIC_PATH} [policy semantic]`);
-				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
+				assert.include(out, `would write catalog slice ${SLICE_PATH} (1 entries)`);
+				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries from 1 slice(s))`);
 				assert.include(
 					out,
 					"1 schema(s): 0 written, 0 unchanged, 0 drift, 0 gate failed — drift per schema (config), on-drift error",
@@ -160,13 +164,13 @@ describe("schemastore CLI", () => {
 				yield* program(["check"], deps(basicConfig()));
 				const out = yield* stdout;
 				assert.include(out, `unchanged ${BASIC_PATH} [policy semantic]`);
-				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries)`);
+				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries from 1 slice(s))`);
 			}),
 			builtSeed,
 		),
 	);
 
-	it.effect("check with only a stale catalog entry fails stale at exit 1", () =>
+	it.effect("check with only a stale merged catalog fails stale at exit 1", () =>
 		run(
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(program(["check"], deps(basicConfig())));
@@ -175,7 +179,8 @@ describe("schemastore CLI", () => {
 				assert.strictEqual(error.count, 1);
 				const out = yield* stdout;
 				assert.include(out, `unchanged ${BASIC_PATH} [policy semantic]`);
-				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
+				assert.include(out, `unchanged catalog slice ${SLICE_PATH} (1 entries)`);
+				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries from 1 slice(s))`);
 			}),
 			{ ...builtSeed, [CATALOG_PATH]: '{"name":"basic","description":"old"}\n' },
 		),
@@ -187,7 +192,7 @@ describe("schemastore CLI", () => {
 				yield* program(["build"], deps(basicConfig()));
 				const out = yield* stdout;
 				assert.include(out, `unchanged ${BASIC_PATH} [policy semantic]`);
-				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries)`);
+				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries from 1 slice(s))`);
 			}),
 			builtSeed,
 		),
@@ -199,6 +204,7 @@ describe("schemastore CLI", () => {
 				// A relative `outputDir` resolves against the CONFIG's directory, not
 				// `cwd` — the point of this test.
 				const config = defineConfig({
+					name: "test",
 					outputDir: "schemas",
 					baseUrl: "https://example.com/schemas",
 					schemas: {
@@ -214,6 +220,7 @@ describe("schemastore CLI", () => {
 				yield* program(["build", "lib/schemastore.config.ts"], deps(config));
 				const fs = yield* FileSystem.FileSystem;
 				assert.isTrue(yield* fs.exists("/repo/lib/schemas/basic-1.0.json"));
+				assert.isTrue(yield* fs.exists("/repo/lib/schemas/catalogs/test.json"));
 				assert.isTrue(yield* fs.exists("/repo/lib/schemas/catalog.json"));
 				const out = yield* stdout;
 				assert.include(out, "written (created) /repo/lib/schemas/basic-1.0.json [policy semantic]");
@@ -308,8 +315,8 @@ describe("schemastore CLI", () => {
 				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID));
 				assert.isFalse(yield* fs.exists(CATALOG_PATH), "check never writes");
 				const out = yield* stdout;
-				assert.include(out, `held catalog ${CATALOG_PATH} (1 entries)`);
-				assert.notInclude(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
+				assert.include(out, `held catalog ${CATALOG_PATH} (1 entries from 1 slice(s))`);
+				assert.notInclude(out, `would write catalog ${CATALOG_PATH} (1 entries from 1 slice(s))`);
 			}),
 			driftedSeed,
 		),
@@ -323,7 +330,7 @@ describe("schemastore CLI", () => {
 				const fs = yield* FileSystem.FileSystem;
 				assert.strictEqual(yield* fs.readFileString(BASIC_PATH), emitted(Wider, BASIC_ID), "check never writes");
 				const out = yield* stdout;
-				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries)`);
+				assert.include(out, `would write catalog ${CATALOG_PATH} (1 entries from 1 slice(s))`);
 				const err = yield* stderr;
 				assert.isTrue(
 					err.some((line) =>
@@ -523,21 +530,93 @@ describe("schemastore CLI", () => {
 		),
 	);
 
-	it.effect("an orphaned catalog file is stale under check and reported but kept under build", () =>
+	it.effect("a url another config's slice advertises fails build and check with CatalogMergeError at exit 1", () =>
+		run(
+			Effect.gen(function* () {
+				const other = "/repo/schemas/catalogs/other.json";
+				for (const command of ["build", "check"]) {
+					const error = yield* Effect.flip(program([command], deps(basicConfig())));
+					assert.instanceOf(error, CatalogMergeError, command);
+					assert.strictEqual(exitCodeOf(error), 1);
+					assert.deepStrictEqual(error.conflicts, [{ url: BASIC_ID, slices: [other, SLICE_PATH] }]);
+					assert.include(error.message, `url ${BASIC_ID} is advertised by ${other}, ${SLICE_PATH}`);
+				}
+				assert.include(yield* stdout, `CATALOG BLOCKED ${CATALOG_PATH} (not written: fix the slices below)`);
+			}),
+			{ ...builtSeed, "/repo/schemas/catalogs/other.json": builtSeed[SLICE_PATH] as string },
+		),
+	);
+
+	it.effect("CatalogMergeError names why each invalid slice is invalid", () =>
+		run(
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(program(["check"], deps(basicConfig())));
+				assert.instanceOf(error, CatalogMergeError);
+				assert.strictEqual(exitCodeOf(error), 1);
+				assert.include(
+					error.message,
+					'  /repo/schemas/catalogs/extra.json is invalid: Expected no excess property at [0]["extra"]',
+				);
+				assert.include(error.message, "  /repo/schemas/catalogs/text.json is invalid: not JSON");
+			}),
+			{
+				...builtSeed,
+				"/repo/schemas/catalogs/extra.json": `${JSON.stringify([{ name: "e", description: "d", fileMatch: [], url: "https://example.com/e.json", extra: 1 }])}\n`,
+				"/repo/schemas/catalogs/text.json": "not json\n",
+			},
+		),
+	);
+
+	it.effect("a catalogDir that is a file is a config error at exit 2 under both commands", () =>
+		run(
+			Effect.gen(function* () {
+				for (const command of ["build", "check"]) {
+					const error = yield* Effect.flip(program([command], deps(basicConfig())));
+					assert.strictEqual(exitCodeOf(error), 2, command);
+					assert.include(
+						String((error as { message?: string }).message),
+						"catalogDir /repo/schemas/catalogs cannot be listed (not a directory)",
+						command,
+					);
+				}
+			}),
+			{ [CONFIG_PATH]: "", "/repo/schemas/catalogs": "not a directory\n" },
+		),
+	);
+
+	it.effect("an orphaned slice and merged catalog are stale under check and reported but kept under build", () =>
 		run(
 			Effect.gen(function* () {
 				const uncataloged = defineConfig({
+					name: "test",
 					outputDir: "/repo/schemas",
 					baseUrl: "https://example.com/schemas",
 					schemas: { basic: { schema: Config, layout: "flat", published: true, versions: ["1.0"] } },
 				});
 				const error = yield* Effect.flip(program(["check"], deps(uncataloged)));
 				assert.instanceOf(error, StaleError);
-				assert.strictEqual(error.count, 1, "the orphan alone");
-				assert.include(yield* stdout, `orphaned catalog ${CATALOG_PATH} (no schema declares a catalog)`);
+				assert.strictEqual(error.count, 1, "the orphaned slice alone: the merged catalog still carries it");
+				assert.strictEqual(error.orphaned, 1);
+				const out = yield* stdout;
+				assert.include(
+					out,
+					`orphaned catalog slice ${SLICE_PATH} (no schema declares a catalog; the merged catalog keeps advertising its entries until it is deleted — delete it by hand; build never will)`,
+				);
+				assert.include(out, `unchanged catalog ${CATALOG_PATH} (1 entries from 1 slice(s))`);
 				yield* program(["build"], deps(uncataloged));
 				const fs = yield* FileSystem.FileSystem;
-				assert.isTrue(yield* fs.exists(CATALOG_PATH), "build reports the orphan but never deletes it");
+				assert.isTrue(yield* fs.exists(SLICE_PATH), "build reports the orphaned slice but never deletes it");
+				// Deleting the slice leaves the merged catalog as the orphan.
+				yield* fs.remove(SLICE_PATH);
+				const next = yield* Effect.flip(program(["check"], deps(uncataloged)));
+				assert.instanceOf(next, StaleError);
+				assert.strictEqual(next.orphaned, 1);
+				assert.include(
+					yield* stdout,
+					`orphaned catalog ${CATALOG_PATH} (no catalog slice remains — delete it by hand; build never will)`,
+				);
+				yield* program(["build"], deps(uncataloged));
+				assert.isTrue(yield* fs.exists(CATALOG_PATH), "build reports the orphaned merged catalog but never deletes it");
 			}),
 			builtSeed,
 		),

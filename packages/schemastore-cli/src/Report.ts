@@ -3,7 +3,7 @@
 // total function of the report value.
 
 import type { PipelineFinding } from "@effected/schemastore";
-import type { CatalogReport, RunReport, SchemaReport } from "./Runner.js";
+import type { CatalogReport, CatalogSliceReport, MergedCatalogReport, RunReport, SchemaReport } from "./Runner.js";
 
 const findingLine = (finding: PipelineFinding): string => `  ${finding.label} at "${finding.path}": ${finding.message}`;
 
@@ -55,22 +55,89 @@ const schemaLines = (schema: SchemaReport, report: RunReport): ReadonlyArray<str
 	}
 };
 
-const catalogLine = (entry: CatalogReport): string => {
-	switch (entry.outcome) {
+// The config name a slice path carries: its base name without `.json`.
+const sliceOwner = (slicePath: string): string => (slicePath.split(/[\\/]/).pop() ?? slicePath).replace(/\.json$/, "");
+
+// A case-folded claim is never silent: the line names the file it took.
+const sliceCounts = (slice: CatalogSliceReport): string =>
+	slice.caseFoldedMatch !== undefined
+		? `(${slice.entries} entries; claimed ${slice.caseFoldedMatch} by case-folded match for "${sliceOwner(slice.path)}")`
+		: `(${slice.entries} entries)`;
+
+const sliceLine = (slice: CatalogSliceReport): string => {
+	switch (slice.outcome) {
 		case "written":
-			return `written catalog ${entry.path} (${entry.entries} entries)`;
+			return `written catalog slice ${slice.path} ${sliceCounts(slice)}`;
 		case "unchanged":
-			return `unchanged catalog ${entry.path} (${entry.entries} entries)`;
+			return `unchanged catalog slice ${slice.path} ${sliceCounts(slice)}`;
 		case "would-write":
-			return `would write catalog ${entry.path} (${entry.entries} entries)`;
+			return `would write catalog slice ${slice.path} ${sliceCounts(slice)}`;
 		case "held":
-			return `held catalog ${entry.path} (${entry.entries} entries)`;
+			return `held catalog slice ${slice.path} ${sliceCounts(slice)}`;
 		case "orphaned":
-			return `orphaned catalog ${entry.path} (no schema declares a catalog)`;
+			return `orphaned catalog slice ${slice.path} (no schema declares a catalog; the merged catalog keeps advertising its entries until it is deleted — delete it by hand; build never will)`;
 		default:
-			return entry.outcome satisfies never;
+			return slice.outcome satisfies never;
 	}
 };
+
+const mergedLines = (merged: MergedCatalogReport): ReadonlyArray<string> => {
+	const counts = `(${merged.entries} entries from ${merged.slices.length} slice(s))`;
+	switch (merged.outcome) {
+		case "written":
+			return [`written catalog ${merged.path} ${counts}`];
+		case "unchanged":
+			return [`unchanged catalog ${merged.path} ${counts}`];
+		case "would-write":
+			return [`would write catalog ${merged.path} ${counts}`];
+		case "held":
+			return [`held catalog ${merged.path} ${counts}`];
+		case "orphaned":
+			return [`orphaned catalog ${merged.path} (no catalog slice remains — delete it by hand; build never will)`];
+		case "blocked":
+			return [
+				`CATALOG BLOCKED ${merged.path} (not written: fix the slices below)`,
+				...merged.conflicts.map((conflict) => `  url ${conflict.url} advertised by ${conflict.slices.join(", ")}`),
+				...merged.invalid.map(({ path, reason }) => `  slice ${path} is invalid: ${reason}`),
+			];
+		default:
+			return merged.outcome satisfies never;
+	}
+};
+
+const catalogLines = (catalog: CatalogReport): ReadonlyArray<string> => [
+	...(catalog.slice !== undefined ? [sliceLine(catalog.slice)] : []),
+	...(catalog.merged !== undefined ? mergedLines(catalog.merged) : []),
+];
+
+const catalogJson = (catalog: CatalogReport) => ({
+	...(catalog.slice !== undefined
+		? {
+				slice: {
+					path: catalog.slice.path,
+					entries: catalog.slice.entries,
+					outcome: catalog.slice.outcome,
+					...(catalog.slice.caseFoldedMatch !== undefined ? { caseFoldedMatch: catalog.slice.caseFoldedMatch } : {}),
+				},
+			}
+		: {}),
+	...(catalog.merged !== undefined
+		? {
+				merged: {
+					path: catalog.merged.path,
+					entries: catalog.merged.entries,
+					outcome: catalog.merged.outcome,
+					slices: catalog.merged.slices,
+					...(catalog.merged.conflicts.length > 0
+						? { conflicts: catalog.merged.conflicts.map(({ url, slices }) => ({ url, slices })) }
+						: {}),
+					...(catalog.merged.invalid.length > 0
+						? { invalid: catalog.merged.invalid.map(({ path, reason }) => ({ path, reason })) }
+						: {}),
+				},
+			}
+		: {}),
+});
 
 // An orphaned document's remedy is its own: `build` never deletes it, so the
 // line says what to do rather than letting the summary's build-prescription
@@ -99,7 +166,12 @@ const summaryLine = (report: RunReport): string => {
 const warningLine = (schema: SchemaReport, report: RunReport): string =>
 	`warning: DRIFT ${schema.change}${publishedClause(schema)} ${report.mode === "build" ? "written" : "would write"} under --on-drift=warn — ${schema.path}`;
 
-const tableRow = (columns: ReadonlyArray<string>): string => `| ${columns.join(" | ")} |`;
+// Cells carry untrusted text (a slice's key names, a path), so a `|` is
+// escaped and a line break folded to a space: neither can add a column or
+// end the row.
+const tableCell = (cell: string): string => cell.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+
+const tableRow = (columns: ReadonlyArray<string>): string => `| ${columns.map(tableCell).join(" | ")} |`;
 
 /**
  * Renders a {@link RunReport} for a terminal, a JSON consumer or a GitHub
@@ -125,7 +197,7 @@ export class Report {
 			lines.push(...schemaLines(schema, report));
 		}
 		if (report.catalog !== undefined) {
-			lines.push(catalogLine(report.catalog));
+			lines.push(...catalogLines(report.catalog));
 		}
 		for (const orphan of report.orphaned ?? []) {
 			lines.push(orphanedLine(orphan));
@@ -175,9 +247,7 @@ export class Report {
 					message: finding.message,
 				})),
 			})),
-			...(report.catalog !== undefined
-				? { catalog: { path: report.catalog.path, entries: report.catalog.entries, outcome: report.catalog.outcome } }
-				: {}),
+			...(report.catalog !== undefined ? { catalog: catalogJson(report.catalog) } : {}),
 			...(report.orphaned !== undefined ? { orphaned: report.orphaned } : {}),
 			drifted: report.drifted,
 			gateFailed: report.gateFailed,
@@ -206,12 +276,34 @@ export class Report {
 			);
 		}
 		if (report.catalog !== undefined) {
+			const { slice, merged } = report.catalog;
 			lines.push(
 				"",
-				tableRow(["catalog", "entries", "outcome"]),
-				tableRow(["---", "---", "---"]),
-				tableRow([report.catalog.path, String(report.catalog.entries), report.catalog.outcome]),
+				tableRow(["catalog", "file", "entries", "outcome"]),
+				tableRow(["---", "---", "---", "---"]),
+				...(slice !== undefined
+					? [
+							tableRow([
+								"slice",
+								slice.path,
+								String(slice.entries),
+								slice.caseFoldedMatch !== undefined
+									? `${slice.outcome} (case-folded match: ${slice.caseFoldedMatch})`
+									: slice.outcome,
+							]),
+						]
+					: []),
+				...(merged !== undefined ? [tableRow(["merged", merged.path, String(merged.entries), merged.outcome])] : []),
 			);
+			if (merged !== undefined && (merged.conflicts.length > 0 || merged.invalid.length > 0)) {
+				lines.push(
+					"",
+					tableRow(["catalog problem", "slices"]),
+					tableRow(["---", "---"]),
+					...merged.conflicts.map((conflict) => tableRow([`url ${conflict.url}`, conflict.slices.join(", ")])),
+					...merged.invalid.map(({ path, reason }) => tableRow([`invalid: ${reason}`, path])),
+				);
+			}
 		}
 		if (report.orphaned !== undefined) {
 			lines.push(

@@ -60,6 +60,8 @@ import { defineConfig } from "@effected/schemastore";
 import { OutputSchemaIdentity, ReleaseOutput } from "./src/schema/output.js";
 
 export default defineConfig({
+  // This config's identity: its catalog slice is catalogs/<name>.json.
+  name: "silk-release-action",
   // Relative paths resolve against this file's directory.
   outputDir: "schemas",
   schemas: {
@@ -79,10 +81,11 @@ export default defineConfig({
 
 `schema:build` writes `schemas/5.2/silk-release-action.output-5.2.json`; `schema:check` in CI fails whenever a build would write anything. Bumping the version is one constant, and once a label has shipped it stays in `versions` as a frozen file the command verifies but never regenerates.
 
-A schema published to SchemaStore itself uses `HostedSchema.schemastore` and declares its catalog entry; the command assembles every entry into one `catalog.json`:
+A schema published to SchemaStore itself uses `HostedSchema.schemastore` and declares its catalog entry; the command assembles every entry into the config's catalog slice and the merged `catalog.json`:
 
 ```ts
 export default defineConfig({
+  name: "okfit",
   outputDir: "schemas",
   schemas: {
     okfit: {
@@ -102,7 +105,8 @@ export default defineConfig({
 - `appendVersion` (default `true`) keeps SchemaStore's `-<version>` file suffix; `false` lets the version directory name the file alone (`schemas/6.0/output.json`) and requires the `"versioned"` layout. Like `baseUrl`, it belongs to `hosted` when that is given, and flipping it is a re-publish event for every frozen label.
 - `published` (default `false`) marks a version other people already depend on: an unpublished schema regenerates in place through any change, a published one is held to the drift policy.
 - `drift` (`strict` / `semantic` / `allow`, default `semantic`) and `onDrift` (`error` / `warn`) are top-level defaults; `drift`, `published`, `jsonSchema` and `rootAnnotations` may be set per entry. Objects are emitted closed (`additionalProperties: false`); `jsonSchema: { onExcessProperty: "ignore" }` reopens one document.
-- `catalog` is required under SchemaStore hosting and optional under a custom host; every entry lands in ONE file at `catalogPath` (default `<outputDir>/catalog.json`).
+- `name` (required, top-level) is the config's identity: a simple file base name, distinct among configs sharing a `catalogDir` — case-insensitively, since on a case-insensitive volume `docs` and `Docs` are one slice file that each build overwrites. A slice claimed by a case-only match is flagged on its report line.
+- `catalog` is required under SchemaStore hosting and optional under a custom host. Every entry the config declares lands in ONE slice file, `<catalogDir>/<name>.json` (`catalogDir` defaults to `<outputDir>/catalogs`), and the command maintains the merged `catalog.json` in `catalogDir`'s parent — `<outputDir>/catalog.json` by default — as the union of every slice there, sorted by `url`. Several configs can therefore share one `outputDir`: each rewrites only its own slice, and whichever builds last writes the identical merged file, so `check` is green for all of them. `catalogDir` holds slices only: `defineConfig` rejects one that is `outputDir`, that is the merged catalog's own path, or that a derived document sits in. Every config that shares a merged catalog must share the same `catalogDir` — sibling directories merging into one `catalog.json` overwrite each other, and no single config can see it.
 - A typo'd key anywhere in the config is named and rejected, never ignored, and every issue on an entry is reported at once.
 
 ## Commands
@@ -113,10 +117,10 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 ```
 
 - Before anything is generated, every frozen label is verified — present on disk, and self-identified by the derived `$id`.
-- `build` generates every schema, runs the gates (the structural lint and ajv strict mode), applies the drift policy, and writes what passes — content-compared, so an unchanged file is untouched — plus the catalog file when any entry declares one.
-- `check` is the identical walk with no writes: it reports what `build` would do under the same flags and exits the same way, and also fails (exit `1`) whenever a build would write anything — a stale or missing document is fixed by running `schemastore build` and committing the result. A `catalog.json` left behind after the last `catalog` block was removed is reported `orphaned` and fails `check` the same way, but `build` never deletes it: delete the file by hand, or restore a `catalog` block. So is a document left behind under an old derived name — an `appendVersion` flip or a `layout` change moved its path, and nothing claims the old file any more: both commands probe the sibling shapes (`<name>.json`, `<name>-<v>.json`, `<v>/<name>.json`, `<v>/<name>-<v>.json`) of every label the config still declares and report each one that exists as an orphaned document, failed by `check`, never deleted by `build`. Nothing else in `outputDir` is looked at, so sharing it with another config, a deploy folder, or the repository root is safe (unless two configs derive the same schema name and version under different layouts into it); a `name` change or a dropped label leaves a file the command cannot know about — delete those by hand.
+- `build` generates every schema, runs the gates (the structural lint and ajv strict mode), applies the drift policy, and writes what passes — content-compared, so an unchanged file is untouched — plus the config's catalog slice when any entry declares one, and the merged catalog over every slice.
+- `check` is the identical walk with no writes: it reports what `build` would do under the same flags and exits the same way, and also fails (exit `1`) whenever a build would write anything — a stale or missing document is fixed by running `schemastore build` and committing the result. A catalog slice left behind after the config's last `catalog` block was removed is reported `orphaned` and fails `check` the same way, but `build` never deletes it — and the merged catalog keeps advertising its entries until it is gone: delete the file by hand, or restore a `catalog` block; a merged `catalog.json` with no slice left is orphaned the same way. So is a document left behind under an old derived name — an `appendVersion` flip or a `layout` change moved its path, and nothing claims the old file any more: both commands probe the sibling shapes (`<name>.json`, `<name>-<v>.json`, `<v>/<name>.json`, `<v>/<name>-<v>.json`) of every label the config still declares and report each one that exists as an orphaned document, failed by `check`, never deleted by `build`. Nothing else in `outputDir` is looked at, so sharing it with another config, a deploy folder, or the repository root is safe (unless two configs derive the same schema name and version under different layouts into it); a `name` change or a dropped label leaves a file the command cannot know about — delete those by hand. A catalog URL advertised by two slices, or a slice that cannot be read or is not a catalog entry array (an undeclared key included), blocks the merged catalog: both commands fail (exit `1`) naming the URL and its slices or the invalid slice, and the merged file is left as it is until the configs or slices are fixed.
 - `--drift` and `--on-drift` override the config for one run; `--force` is sugar for `--drift=allow` (combined with a different explicit `--drift` it is a usage error).
-- `--format=json` emits one JSON document on stdout (per-schema outcome and effective tolerance, the catalog outcome, the `orphaned` document paths when any, `drift: { onDrift, policy? }`); human text moves to stderr. When `GITHUB_STEP_SUMMARY` is set, both commands append a markdown table.
+- `--format=json` emits one JSON document on stdout (per-schema outcome and effective tolerance, the catalog slice and merged-catalog outcomes, the `orphaned` document paths when any, `drift: { onDrift, policy? }`); human text moves to stderr. When `GITHUB_STEP_SUMMARY` is set, both commands append a markdown table.
 
 ## The engine, as a library export
 
@@ -140,8 +144,8 @@ Findings come back as values; the error channel carries `SchemaValidatorError` o
 | code | meaning |
 | ---- | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
-| 1 | drift under `onDrift: error` (one line per drifting schema: `$id`, change, current and next version), a gate failure, a missing or mis-identified frozen version, or — for `check` — anything `build` would write or an output nothing claims (an orphaned catalog file, or an orphaned document at a sibling shape of a derived path) |
-| 2 | config not found, failed to load, or failed `defineConfig` validation |
+| 1 | drift under `onDrift: error` (one line per drifting schema: `$id`, change, current and next version), a gate failure, a missing or mis-identified frozen version, a merged catalog blocked by a URL two slices advertise or an invalid slice, or — for `check` — anything `build` would write or an output nothing claims (an orphaned catalog slice or merged catalog, or an orphaned document at a sibling shape of a derived path) |
+| 2 | config not found, failed to load, failed `defineConfig` validation, or a `catalogDir` that is a file or cannot be listed (checked before anything is written) |
 | 3 | infrastructure failure |
 | 64 | usage error |
 

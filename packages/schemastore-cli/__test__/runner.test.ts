@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { MemoryFileSystemSeed } from "@effected/memfs";
+import type { MemoryFileSystemFaults, MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import type { DriftTolerance } from "@effected/schemastore";
 import {
@@ -11,10 +11,10 @@ import {
 	ValidationFinding,
 	defineConfig,
 } from "@effected/schemastore";
-import { Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
+import { Effect, FileSystem, Layer, Path, PlatformError, Result, Schema } from "effect";
 import { AjvValidator } from "../src/AjvValidator.js";
-import type { RunOptions, RunReport } from "../src/Runner.js";
-import { FrozenVersionIdMismatchError, FrozenVersionMissingError, Runner } from "../src/Runner.js";
+import type { CatalogReport, MergedCatalogReport, RunOptions, RunReport } from "../src/Runner.js";
+import { CatalogDirError, FrozenVersionIdMismatchError, FrozenVersionMissingError, Runner } from "../src/Runner.js";
 
 // ── Layers ────────────────────────────────────────────────────────────────
 //
@@ -28,6 +28,15 @@ const layers = (seed: MemoryFileSystemSeed = {}, validator: Layer.Layer<SchemaVa
 	Layer.mergeAll(SchemaFile.layer, validator).pipe(
 		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith(seed), Path.layer)),
 	);
+
+// The same stack over a volume whose listed methods are fault-injected.
+const faultyLayers = (seed: MemoryFileSystemSeed, faults: MemoryFileSystemFaults) =>
+	Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
+		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerFaultyWith(seed, faults), Path.layer)),
+	);
+
+const platformFailure = (tag: "NotFound" | "PermissionDenied", method: string, path: string) =>
+	PlatformError.systemError({ _tag: tag, module: "FileSystem", method, pathOrDescriptor: path });
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -50,12 +59,29 @@ const PINNED_PATH = "/repo/schemas/5.0.0/pinned-5.0.0.json";
 const FROZEN_PATH = "/repo/schemas/4.0.0/pinned-4.0.0.json";
 const PLAIN_ID = `${BASE}/plain.json`;
 const PLAIN_PATH = "/repo/schemas/plain.json";
-const CATALOG_PATH = "/repo/schemas/catalog.json";
+// The config's own catalog slice, and the merged catalog every config
+// sharing `catalogDir` maintains beside it. With one config the two hold
+// the same entries.
+const SLICE_PATH = "/repo/schemas/catalogs/test.json";
+const MERGED_PATH = "/repo/schemas/catalog.json";
+const CATALOG_PATHS = [SLICE_PATH, MERGED_PATH] as const;
+
+// Both catalog files seeded with one text.
+const catalogSeed = (text: string): MemoryFileSystemSeed => ({ [SLICE_PATH]: text, [MERGED_PATH]: text });
+
+// The one-config catalog report: the slice and the merged file agree on
+// entry count and outcome, and the merge reads only this config's slice.
+const assertCatalog = (report: RunReport, outcome: "written" | "unchanged" | "would-write" | "held", entries = 1) =>
+	assert.deepStrictEqual(report.catalog, {
+		slice: { path: SLICE_PATH, entries, outcome },
+		merged: { path: MERGED_PATH, entries, outcome, slices: [SLICE_PATH], conflicts: [], invalid: [] },
+	});
 
 const twoSchemas = (
 	options: { readonly schema?: Schema.Constraint; readonly published?: boolean; readonly drift?: DriftTolerance } = {},
 ) =>
 	defineConfig({
+		name: "test",
 		outputDir: "/repo/schemas",
 		baseUrl: BASE,
 		schemas: {
@@ -136,13 +162,13 @@ describe("Runner.run", () => {
 			assert.isUndefined(byId(report, PINNED_ID).nextVersion, "a created document needs no bump");
 			assert.deepStrictEqual(byId(report, PINNED_ID).frozen, [version("4.0.0")]);
 			assert.deepStrictEqual(byId(report, PLAIN_ID).frozen, []);
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "would-write" });
+			assertCatalog(report, "would-write");
 			assert.isFalse(report.drifted);
 			assert.isFalse(report.gateFailed);
 			assert.isFalse(report.wrote);
 			assert.isFalse(yield* fs.exists(PINNED_PATH));
 			assert.isFalse(yield* fs.exists(PLAIN_PATH));
-			assert.isFalse(yield* fs.exists(CATALOG_PATH));
+			assert.isFalse((yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)));
 		}).pipe(Effect.provide(layers(frozenSeed))),
 	);
 
@@ -155,13 +181,13 @@ describe("Runner.run", () => {
 				assert.strictEqual(schema.change, "created");
 				assert.strictEqual(schema.outcome, "written");
 			}
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "written" });
+			assertCatalog(report, "written");
 			assert.isTrue(report.wrote);
 			assert.isFalse(report.drifted);
 			assert.isFalse(report.gateFailed);
 			assert.strictEqual(yield* fs.readFileString(PINNED_PATH), emitted(Config, PINNED_ID));
 			assert.strictEqual(yield* fs.readFileString(PLAIN_PATH), emitted(Config, PLAIN_ID));
-			const parsed = JSON.parse(yield* fs.readFileString(CATALOG_PATH)) as ReadonlyArray<unknown>;
+			const parsed = JSON.parse(yield* fs.readFileString(MERGED_PATH)) as ReadonlyArray<unknown>;
 			assert.strictEqual(parsed.length, 1);
 			const entry = Schema.decodeUnknownSync(CatalogEntry)(parsed[0]);
 			assert.strictEqual(entry.name, "pinned");
@@ -178,7 +204,7 @@ describe("Runner.run", () => {
 			// First run, on its own fresh volume: capture what it wrote.
 			const first = yield* Effect.gen(function* () {
 				yield* Runner.run(twoSchemas(), options("build"));
-				return yield* readAll([PINNED_PATH, PLAIN_PATH, CATALOG_PATH]);
+				return yield* readAll([PINNED_PATH, PLAIN_PATH, ...CATALOG_PATHS]);
 			}).pipe(Effect.provide(layers(frozenSeed)));
 
 			// Second run, seeded with the first run's texts plus the frozen file.
@@ -190,11 +216,11 @@ describe("Runner.run", () => {
 					assert.strictEqual(schema.verdict, "write");
 					assert.strictEqual(schema.outcome, "unchanged");
 				}
-				assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "unchanged" });
+				assertCatalog(report, "unchanged");
 				assert.isFalse(report.wrote);
 				assert.isFalse(report.drifted);
-				assert.deepStrictEqual(yield* readAll([PINNED_PATH, PLAIN_PATH, CATALOG_PATH]), first);
-				assert.isTrue(yield* fs.exists(CATALOG_PATH));
+				assert.deepStrictEqual(yield* readAll([PINNED_PATH, PLAIN_PATH, ...CATALOG_PATHS]), first);
+				assert.isTrue((yield* fs.exists(SLICE_PATH)) && (yield* fs.exists(MERGED_PATH)));
 			}).pipe(Effect.provide(layers({ ...frozenSeed, ...first })));
 		}),
 	);
@@ -213,9 +239,12 @@ describe("Runner.run", () => {
 			assert.isTrue(report.drifted);
 			assert.isFalse(report.gateFailed);
 			assert.isFalse(report.wrote);
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "held" });
+			assertCatalog(report, "held");
 			assert.strictEqual(yield* fs.readFileString(PINNED_PATH), predecessor, "the predecessor is left alone");
-			assert.isFalse(yield* fs.exists(CATALOG_PATH), "the catalog is held with the schemas");
+			assert.isFalse(
+				(yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)),
+				"the catalog is held with the schemas",
+			);
 		}).pipe(Effect.provide(layers({ ...frozenSeed, [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
 	);
 
@@ -224,6 +253,7 @@ describe("Runner.run", () => {
 		const PRE_PATH = "/repo/schemas/2.0.0-beta.1/pre-2.0.0-beta.1.json";
 		const predecessor = emitted(Wider, PRE_ID);
 		const config = defineConfig({
+			name: "test",
 			outputDir: "/repo/schemas",
 			baseUrl: BASE,
 			schemas: { pre: { schema: Config, versions: ["2.0.0-beta.1"], published: true } },
@@ -250,9 +280,9 @@ describe("Runner.run", () => {
 			assert.strictEqual(schema.nextVersion, version("5.1.0"));
 			assert.isTrue(report.drifted);
 			assert.isTrue(report.wrote);
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "written" });
+			assertCatalog(report, "written");
 			assert.strictEqual(yield* fs.readFileString(PINNED_PATH), emitted(Config, PINNED_ID), "rewritten in place");
-			assert.isTrue(yield* fs.exists(CATALOG_PATH));
+			assert.isTrue((yield* fs.exists(SLICE_PATH)) && (yield* fs.exists(MERGED_PATH)));
 		}).pipe(Effect.provide(layers({ ...frozenSeed, [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
 	);
 
@@ -320,13 +350,13 @@ describe("Runner.run", () => {
 			const clean = byId(report, PLAIN_ID);
 			assert.strictEqual(clean.outcome, "held");
 			assert.strictEqual(clean.verdict, "write");
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "held" });
+			assertCatalog(report, "held");
 			assert.isTrue(report.gateFailed);
 			assert.isFalse(report.drifted);
 			assert.isFalse(report.wrote);
 			assert.isFalse(yield* fs.exists(PINNED_PATH));
 			assert.isFalse(yield* fs.exists(PLAIN_PATH));
-			assert.isFalse(yield* fs.exists(CATALOG_PATH));
+			assert.isFalse((yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)));
 		}).pipe(
 			Effect.provide(
 				layers(
@@ -353,11 +383,11 @@ describe("Runner.run", () => {
 			const report = yield* Runner.run(twoSchemas(), options("check"));
 			assert.strictEqual(byId(report, PINNED_ID).outcome, "gate-failed");
 			assert.strictEqual(byId(report, PLAIN_ID).outcome, "held", "check holds what build would hold");
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "held" });
+			assertCatalog(report, "held");
 			assert.isTrue(report.gateFailed);
 			assert.isFalse(report.wrote);
 			assert.isFalse(yield* fs.exists(PLAIN_PATH), "check never writes");
-			assert.isFalse(yield* fs.exists(CATALOG_PATH), "check never writes");
+			assert.isFalse((yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)), "check never writes");
 		}).pipe(
 			Effect.provide(
 				layers(
@@ -398,11 +428,11 @@ describe("Runner.run", () => {
 			const clean = byId(report, PLAIN_ID);
 			assert.strictEqual(clean.verdict, "write");
 			assert.strictEqual(clean.outcome, "held", "check holds what build would hold");
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "held" });
+			assertCatalog(report, "held");
 			assert.isTrue(report.drifted);
 			assert.isFalse(report.wrote);
 			assert.isFalse(yield* fs.exists(PLAIN_PATH), "check never writes");
-			assert.isFalse(yield* fs.exists(CATALOG_PATH), "check never writes");
+			assert.isFalse((yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)), "check never writes");
 		}).pipe(Effect.provide(layers({ ...frozenSeed, [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
 	);
 
@@ -413,7 +443,7 @@ describe("Runner.run", () => {
 			const report = yield* Runner.run(twoSchemas(), options("check", { onDrift: "warn" }));
 			assert.strictEqual(byId(report, PINNED_ID).outcome, "drift");
 			assert.strictEqual(byId(report, PLAIN_ID).outcome, "would-write");
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "would-write" });
+			assertCatalog(report, "would-write");
 			assert.isFalse(report.wrote);
 		}).pipe(Effect.provide(layers({ ...frozenSeed, [PINNED_PATH]: emitted(Wider, PINNED_ID) }))),
 	);
@@ -422,11 +452,11 @@ describe("Runner.run", () => {
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const report = yield* Runner.run(twoSchemas(), options("build"));
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "written" });
-			const parsed = JSON.parse(yield* fs.readFileString(CATALOG_PATH)) as ReadonlyArray<unknown>;
+			assertCatalog(report, "written");
+			const parsed = JSON.parse(yield* fs.readFileString(MERGED_PATH)) as ReadonlyArray<unknown>;
 			const entry = Schema.decodeUnknownSync(CatalogEntry)(parsed[0]);
 			assert.strictEqual(entry.name, "pinned");
-		}).pipe(Effect.provide(layers({ ...frozenSeed, [CATALOG_PATH]: "{ not json" }))),
+		}).pipe(Effect.provide(layers({ ...frozenSeed, ...catalogSeed("{ not json") }))),
 	);
 
 	it.effect("a stale but parseable catalog entry would-write under check and is left alone", () => {
@@ -434,10 +464,12 @@ describe("Runner.run", () => {
 		return Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const report = yield* Runner.run(twoSchemas(), options("check"));
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "would-write" });
+			assertCatalog(report, "would-write");
 			assert.isFalse(report.wrote);
-			assert.strictEqual(yield* fs.readFileString(CATALOG_PATH), stale);
-		}).pipe(Effect.provide(layers({ ...frozenSeed, [CATALOG_PATH]: stale })));
+			for (const file of CATALOG_PATHS) {
+				assert.strictEqual(yield* fs.readFileString(file), stale);
+			}
+		}).pipe(Effect.provide(layers({ ...frozenSeed, ...catalogSeed(stale) })));
 	});
 
 	it.effect("a catalog file with reordered keys and different indentation is unchanged by content", () =>
@@ -445,9 +477,11 @@ describe("Runner.run", () => {
 			const fs = yield* FileSystem.FileSystem;
 			const reformatted = reorderedCatalogText();
 			const report = yield* Runner.run(twoSchemas(), options("build"));
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "unchanged" });
-			assert.strictEqual(yield* fs.readFileString(CATALOG_PATH), reformatted, "the reformatted text is left alone");
-		}).pipe(Effect.provide(layers({ ...frozenSeed, [CATALOG_PATH]: reorderedCatalogText() }))),
+			assertCatalog(report, "unchanged");
+			for (const file of CATALOG_PATHS) {
+				assert.strictEqual(yield* fs.readFileString(file), reformatted, "the reformatted text is left alone");
+			}
+		}).pipe(Effect.provide(layers({ ...frozenSeed, ...catalogSeed(reorderedCatalogText()) }))),
 	);
 
 	it.effect("a catalog file that another tool reformatted is unchanged by content", () =>
@@ -455,9 +489,11 @@ describe("Runner.run", () => {
 			const fs = yield* FileSystem.FileSystem;
 			const reformatted = compactCatalogText();
 			const report = yield* Runner.run(twoSchemas(), options("build"));
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "unchanged" });
-			assert.strictEqual(yield* fs.readFileString(CATALOG_PATH), reformatted, "the compact text is left alone");
-		}).pipe(Effect.provide(layers({ ...frozenSeed, [CATALOG_PATH]: compactCatalogText() }))),
+			assertCatalog(report, "unchanged");
+			for (const file of CATALOG_PATHS) {
+				assert.strictEqual(yield* fs.readFileString(file), reformatted, "the compact text is left alone");
+			}
+		}).pipe(Effect.provide(layers({ ...frozenSeed, ...catalogSeed(compactCatalogText()) }))),
 	);
 
 	it.effect("fails typed before any write when a frozen version is missing on disk", () =>
@@ -467,7 +503,7 @@ describe("Runner.run", () => {
 			assert.deepStrictEqual(error.missing, [{ name: "pinned", version: "4.0.0", path: FROZEN_PATH }]);
 			const fs = yield* FileSystem.FileSystem;
 			assert.isFalse(yield* fs.exists(PINNED_PATH));
-			assert.isFalse(yield* fs.exists(CATALOG_PATH));
+			assert.isFalse((yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)));
 		}).pipe(Effect.provide(layers({}))),
 	);
 
@@ -498,7 +534,7 @@ describe("Runner.run", () => {
 			]);
 			const fs = yield* FileSystem.FileSystem;
 			assert.isFalse(yield* fs.exists(PINNED_PATH));
-			assert.isFalse(yield* fs.exists(CATALOG_PATH));
+			assert.isFalse((yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)));
 		}).pipe(
 			Effect.provide(
 				layers({ [FROZEN_PATH]: emitted(Config, "https://old.example.com/schemas/4.0.0/pinned-4.0.0.json") }),
@@ -509,6 +545,7 @@ describe("Runner.run", () => {
 	it.effect("a frozen file with no $id, or one that does not parse, is a mismatch with its own reason", () =>
 		Effect.gen(function* () {
 			const config = defineConfig({
+				name: "test",
 				outputDir: "/repo/schemas",
 				baseUrl: BASE,
 				schemas: { pinned: { schema: Config, versions: ["3.0.0", "4.0.0", "5.0.0"], published: true } },
@@ -546,21 +583,50 @@ describe("Runner.run", () => {
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			const config = defineConfig({
+				name: "test",
 				outputDir: "/repo/schemas",
 				baseUrl: BASE,
 				schemas: { plain: { schema: Config } },
 			});
-			const checked = yield* Runner.run(config, options("check"));
-			assert.deepStrictEqual(checked.catalog, { path: CATALOG_PATH, entries: 0, outcome: "orphaned" });
-			const built = yield* Runner.run(config, options("build"));
-			assert.deepStrictEqual(built.catalog, { path: CATALOG_PATH, entries: 0, outcome: "orphaned" });
-			assert.strictEqual(yield* fs.readFileString(CATALOG_PATH), "[]\n", "the orphan is left for the user to delete");
-		}).pipe(Effect.provide(layers({ [CATALOG_PATH]: "[]\n" }))),
+			// While the orphaned slice is on disk it is still merged, as every
+			// config sharing the directory sees it: the merged catalog keeps
+			// advertising its entries, unchanged, until the slice is deleted.
+			const whileSliceRemains: CatalogReport = {
+				slice: { path: SLICE_PATH, entries: 0, outcome: "orphaned" },
+				merged: {
+					path: MERGED_PATH,
+					entries: 1,
+					outcome: "unchanged",
+					slices: [SLICE_PATH],
+					conflicts: [],
+					invalid: [],
+				},
+			};
+			assert.deepStrictEqual((yield* Runner.run(config, options("check"))).catalog, whileSliceRemains);
+			assert.deepStrictEqual((yield* Runner.run(config, options("build"))).catalog, whileSliceRemains);
+			for (const file of CATALOG_PATHS) {
+				assert.strictEqual(
+					yield* fs.readFileString(file),
+					compactCatalogText(),
+					"the orphan is left for the user to delete",
+				);
+			}
+			// Once the slice is deleted by hand, no slice remains: the merged
+			// catalog is the orphan, reported and still never deleted.
+			yield* fs.remove(SLICE_PATH);
+			const afterDelete: CatalogReport = {
+				merged: { path: MERGED_PATH, entries: 0, outcome: "orphaned", slices: [], conflicts: [], invalid: [] },
+			};
+			assert.deepStrictEqual((yield* Runner.run(config, options("check"))).catalog, afterDelete);
+			assert.deepStrictEqual((yield* Runner.run(config, options("build"))).catalog, afterDelete);
+			assert.isTrue(yield* fs.exists(MERGED_PATH));
+		}).pipe(Effect.provide(layers({ ...catalogSeed(compactCatalogText()) }))),
 	);
 
 	it.effect("no catalog block and no catalog file reports no catalog at all", () =>
 		Effect.gen(function* () {
 			const config = defineConfig({
+				name: "test",
 				outputDir: "/repo/schemas",
 				baseUrl: BASE,
 				schemas: { plain: { schema: Config } },
@@ -600,7 +666,7 @@ describe("Runner.run", () => {
 						...frozenSeed,
 						[PINNED_PATH]: emitted(Config, PINNED_ID),
 						[PLAIN_PATH]: emitted(Config, PLAIN_ID),
-						[CATALOG_PATH]: compactCatalogText(),
+						...catalogSeed(compactCatalogText()),
 						"/repo/schemas/pinned-5.0.0.json": "{}\n",
 						"/repo/schemas/5.0.0/pinned.json": "{}\n",
 						"/repo/schemas/4.0.0/pinned.json": "{}\n",
@@ -619,7 +685,7 @@ describe("Runner.run", () => {
 					...frozenSeed,
 					[PINNED_PATH]: emitted(Config, PINNED_ID),
 					[PLAIN_PATH]: emitted(Config, PLAIN_ID),
-					[CATALOG_PATH]: compactCatalogText(),
+					...catalogSeed(compactCatalogText()),
 				}),
 			),
 		),
@@ -639,7 +705,7 @@ describe("Runner.run", () => {
 					...frozenSeed,
 					[PINNED_PATH]: emitted(Config, PINNED_ID),
 					[PLAIN_PATH]: emitted(Config, PLAIN_ID),
-					[CATALOG_PATH]: compactCatalogText(),
+					...catalogSeed(compactCatalogText()),
 					"/repo/schemas/other-config.json": "{}\n",
 					"/repo/schemas/5.0.0/stray.json": "{}\n",
 					"/repo/schemas/6.0.0/pinned-6.0.0.json": "{}\n",
@@ -660,7 +726,7 @@ describe("Runner.run", () => {
 					...frozenSeed,
 					[PINNED_PATH]: emitted(Config, PINNED_ID),
 					[PLAIN_PATH]: emitted(Config, PLAIN_ID),
-					[CATALOG_PATH]: compactCatalogText(),
+					...catalogSeed(compactCatalogText()),
 					"/repo/schemas/pinned.json/inner.txt": "a directory wearing a derived name\n",
 				}),
 			),
@@ -670,6 +736,7 @@ describe("Runner.run", () => {
 	it.effect("reports every missing frozen version, not just the first", () =>
 		Effect.gen(function* () {
 			const config = defineConfig({
+				name: "test",
 				outputDir: "/repo/schemas",
 				baseUrl: BASE,
 				schemas: {
@@ -688,7 +755,7 @@ describe("Runner.run", () => {
 			]);
 			const fs = yield* FileSystem.FileSystem;
 			assert.isFalse(yield* fs.exists(PINNED_PATH));
-			assert.isFalse(yield* fs.exists(CATALOG_PATH));
+			assert.isFalse((yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)));
 		}).pipe(Effect.provide(layers({}))),
 	);
 
@@ -712,9 +779,9 @@ describe("Runner.run", () => {
 	it.effect("writes one catalog.json holding every entry, and none when no schema opts in", () =>
 		Effect.gen(function* () {
 			const report = yield* Runner.run(twoSchemas(), options("build"));
-			assert.deepStrictEqual(report.catalog, { path: CATALOG_PATH, entries: 1, outcome: "written" });
+			assertCatalog(report, "written");
 			const fs = yield* FileSystem.FileSystem;
-			const parsed = JSON.parse(yield* fs.readFileString(CATALOG_PATH)) as ReadonlyArray<{ name: string; url: string }>;
+			const parsed = JSON.parse(yield* fs.readFileString(MERGED_PATH)) as ReadonlyArray<{ name: string; url: string }>;
 			assert.strictEqual(parsed.length, 1);
 			assert.strictEqual(parsed[0]?.url, PINNED_ID);
 			assert.deepStrictEqual(report.schemas[0]?.frozen, [version("4.0.0")]);
@@ -727,7 +794,8 @@ describe("Runner.run", () => {
 			for (const schema of report.schemas) {
 				assert.strictEqual(schema.outcome, "unchanged");
 			}
-			assert.strictEqual(report.catalog?.outcome, "written");
+			assert.strictEqual(report.catalog?.slice?.outcome, "written");
+			assert.strictEqual(report.catalog?.merged?.outcome, "written");
 			assert.isTrue(report.wrote);
 		}).pipe(
 			Effect.provide(
@@ -735,7 +803,7 @@ describe("Runner.run", () => {
 					...frozenSeed,
 					[PINNED_PATH]: emitted(Config, PINNED_ID),
 					[PLAIN_PATH]: emitted(Config, PLAIN_ID),
-					[CATALOG_PATH]: "[]\n",
+					...catalogSeed("[]\n"),
 				}),
 			),
 		),
@@ -744,6 +812,7 @@ describe("Runner.run", () => {
 	it.effect("omits the catalog report when no schema declares one", () =>
 		Effect.gen(function* () {
 			const config = defineConfig({
+				name: "test",
 				outputDir: "/repo/schemas",
 				baseUrl: BASE,
 				schemas: { plain: { schema: Config } },
@@ -751,7 +820,459 @@ describe("Runner.run", () => {
 			const report = yield* Runner.run(config, options("build"));
 			assert.isUndefined(report.catalog);
 			const fs = yield* FileSystem.FileSystem;
-			assert.isFalse(yield* fs.exists(CATALOG_PATH));
+			assert.isFalse((yield* fs.exists(SLICE_PATH)) || (yield* fs.exists(MERGED_PATH)));
+		}).pipe(Effect.provide(layers({}))),
+	);
+});
+
+// #754 — configs sharing an `outputDir` share `catalogDir`: each owns its
+// slice, and the merged catalog is the union every one of them converges on.
+describe("Runner.run catalog slices", () => {
+	const DIR = "/repo/schemas/catalogs";
+	const MERGED = "/repo/schemas/catalog.json";
+	const sliceOf = (name: string) => `${DIR}/${name}.json`;
+
+	// A config named `name` declaring one cataloged, unversioned schema per key.
+	const cataloged = (name: string, keys: ReadonlyArray<string>) =>
+		defineConfig({
+			name,
+			outputDir: "/repo/schemas",
+			baseUrl: BASE,
+			schemas: Object.fromEntries(
+				keys.map((key) => [
+					key,
+					{ schema: Config, catalog: { description: `${key} config`, fileMatch: [`${key}.json`] } },
+				]),
+			),
+		});
+
+	const urlsIn = Effect.fn(function* (file: string) {
+		const fs = yield* FileSystem.FileSystem;
+		const parsed = JSON.parse(yield* fs.readFileString(file)) as ReadonlyArray<{ url: string }>;
+		return parsed.map((entry) => entry.url);
+	});
+
+	it.effect("two configs sharing outputDir both check green after both build", () =>
+		Effect.gen(function* () {
+			const a = cataloged("a", ["zeta", "alpha"]);
+			const b = cataloged("b", ["mid"]);
+			const builtA = yield* Runner.run(a, options("build"));
+			assert.strictEqual(builtA.catalog?.merged?.outcome, "written");
+			const builtB = yield* Runner.run(b, options("build"));
+			assert.strictEqual(builtB.catalog?.slice?.outcome, "written");
+			assert.strictEqual(builtB.catalog?.merged?.outcome, "written", "B's build adds its slice to the merge");
+			// Building A again is a no-op: the merge it computes is the one B wrote.
+			const rebuiltA = yield* Runner.run(a, options("build"));
+			assert.isFalse(rebuiltA.wrote);
+			for (const config of [a, b]) {
+				const checked = yield* Runner.run(config, options("check"));
+				assert.strictEqual(checked.catalog?.slice?.outcome, "unchanged", config.name);
+				assert.deepStrictEqual(checked.catalog?.merged, {
+					path: MERGED,
+					entries: 3,
+					outcome: "unchanged",
+					slices: [sliceOf("a"), sliceOf("b")],
+					conflicts: [],
+					invalid: [],
+				});
+			}
+			assert.deepStrictEqual(yield* urlsIn(sliceOf("a")), [`${BASE}/zeta.json`, `${BASE}/alpha.json`]);
+			assert.deepStrictEqual(yield* urlsIn(sliceOf("b")), [`${BASE}/mid.json`]);
+			assert.deepStrictEqual(
+				yield* urlsIn(MERGED),
+				[`${BASE}/alpha.json`, `${BASE}/mid.json`, `${BASE}/zeta.json`],
+				"the merged catalog is sorted by url",
+			);
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("the merged catalog is identical whichever config builds last", () =>
+		Effect.gen(function* () {
+			const texts = [];
+			for (const order of [
+				["a", "b"],
+				["b", "a"],
+			] as const) {
+				const merged = yield* Effect.gen(function* () {
+					for (const name of order) {
+						yield* Runner.run(cataloged(name, name === "a" ? ["zeta", "alpha"] : ["mid"]), options("build"));
+					}
+					const fs = yield* FileSystem.FileSystem;
+					return yield* fs.readFileString(MERGED);
+				}).pipe(Effect.provide(layers({})));
+				texts.push(merged);
+			}
+			assert.strictEqual(texts[0], texts[1]);
+		}),
+	);
+
+	it.effect("a removed schema's entry drops out of the slice and the merged catalog", () =>
+		Effect.gen(function* () {
+			yield* Runner.run(cataloged("a", ["alpha", "beta"]), options("build"));
+			yield* Runner.run(cataloged("b", ["mid"]), options("build"));
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			assert.deepStrictEqual(report.catalog?.slice, { path: sliceOf("a"), entries: 1, outcome: "written" });
+			assert.strictEqual(report.catalog?.merged?.outcome, "written");
+			assert.strictEqual(report.catalog?.merged?.entries, 2);
+			assert.deepStrictEqual(yield* urlsIn(sliceOf("a")), [`${BASE}/alpha.json`]);
+			assert.deepStrictEqual(yield* urlsIn(MERGED), [`${BASE}/alpha.json`, `${BASE}/mid.json`]);
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("check merges the running config's fresh entries, not its stale slice on disk", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			yield* Runner.run(cataloged("b", ["mid"]), options("build"));
+			yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			const merged = yield* fs.readFileString(MERGED);
+			// A's slice goes stale on disk (a hand edit, a bad merge); the merged
+			// file still holds exactly what a build of A would produce.
+			const stale = `${JSON.stringify([{ name: "alpha", description: "old", fileMatch: [], url: `${BASE}/old.json` }])}\n`;
+			yield* fs.writeFileString(sliceOf("a"), stale);
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("check"));
+			assert.strictEqual(report.catalog?.slice?.outcome, "would-write");
+			assert.strictEqual(report.catalog?.merged?.outcome, "unchanged", "the stale slice is not what is merged");
+			assert.strictEqual(yield* fs.readFileString(MERGED), merged);
+			assert.strictEqual(yield* fs.readFileString(sliceOf("a")), stale, "check never writes");
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("a url two slices advertise blocks the merged write and names both slices", () =>
+		Effect.gen(function* () {
+			yield* Runner.run(cataloged("a", ["shared", "alpha"]), options("build"));
+			const mergedBefore = yield* urlsIn(MERGED);
+			const report = yield* Runner.run(cataloged("b", ["shared"]), options("build"));
+			assert.strictEqual(report.catalog?.slice?.outcome, "written", "B's own slice is still written");
+			assert.deepStrictEqual(report.catalog?.merged, {
+				path: MERGED,
+				entries: 2,
+				outcome: "blocked",
+				slices: [sliceOf("a"), sliceOf("b")],
+				conflicts: [{ url: `${BASE}/shared.json`, slices: [sliceOf("a"), sliceOf("b")] }],
+				invalid: [],
+			});
+			assert.deepStrictEqual(yield* urlsIn(MERGED), mergedBefore, "a blocked merge writes nothing");
+			const checked = yield* Runner.run(cataloged("a", ["shared", "alpha"]), options("check"));
+			assert.strictEqual(checked.catalog?.merged?.outcome, "blocked", "every config sees the conflict");
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("a slice that is not a catalog entry array is reported invalid, never silently dropped", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			assert.strictEqual(report.catalog?.merged?.outcome, "blocked");
+			assert.deepStrictEqual(report.catalog?.merged?.invalid, [
+				{ path: sliceOf("broken"), reason: "not JSON" },
+				{ path: sliceOf("notarray"), reason: "Expected array" },
+				{ path: sliceOf("wrong"), reason: 'Expected string at [0]["name"]' },
+			]);
+			assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("a")]);
+			const fs = yield* FileSystem.FileSystem;
+			assert.isFalse(yield* fs.exists(MERGED));
+		}).pipe(
+			Effect.provide(
+				layers({
+					[sliceOf("broken")]: "{ not json",
+					[sliceOf("notarray")]: `${JSON.stringify({ name: "x" })}\n`,
+					[sliceOf("wrong")]:
+						`${JSON.stringify([{ name: 1, description: "d", fileMatch: [], url: `${BASE}/w.json` }])}\n`,
+				}),
+			),
+		),
+	);
+
+	it.effect("only *.json files directly in catalogDir are slices", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			assert.strictEqual(report.catalog?.merged?.outcome, "written");
+			assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("a")]);
+		}).pipe(
+			Effect.provide(
+				layers({
+					[`${DIR}/README.md`]: "# slices\n",
+					[`${DIR}/nested.json/inner.json`]: "[]\n",
+				}),
+			),
+		),
+	);
+
+	it.effect("an orphaned slice is merged as it sits on disk, like every other config sees it", () =>
+		Effect.gen(function* () {
+			yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			yield* Runner.run(cataloged("b", ["mid"]), options("build"));
+			const uncataloged = defineConfig({
+				name: "a",
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: { alpha: { schema: Config } },
+			});
+			const report = yield* Runner.run(uncataloged, options("check"));
+			assert.deepStrictEqual(report.catalog?.slice, { path: sliceOf("a"), entries: 0, outcome: "orphaned" });
+			// The orphan is merged as it sits on disk — exactly as B sees it —
+			// so the merged catalog is unchanged and keeps advertising it until
+			// the slice is deleted by hand.
+			assert.strictEqual(report.catalog?.merged?.outcome, "unchanged");
+			assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("a"), sliceOf("b")]);
+			assert.strictEqual(report.catalog?.merged?.entries, 2);
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	// Round-6 dogfood: while a config's slice is orphaned, the merge must stay
+	// a pure function of disk plus NON-EMPTY fresh entries, or the owner and
+	// every other config disagree on the merged file and ping-pong it.
+	it.effect("an orphaned slice does not make the merged catalog flip-flop between configs", () =>
+		Effect.gen(function* () {
+			const b = cataloged("b", ["mid"]);
+			const uncatalogedA = defineConfig({
+				name: "a",
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: { alpha: { schema: Config } },
+			});
+			yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			yield* Runner.run(b, options("build"));
+			const fs = yield* FileSystem.FileSystem;
+			const merged = yield* fs.readFileString(MERGED);
+			// A drops its catalog; its slice stays on disk, orphaned.
+			const steps = [
+				["check", b],
+				["build", b],
+				["check", uncatalogedA],
+				["build", uncatalogedA],
+				["check", b],
+			] as const;
+			for (const [mode, config] of steps) {
+				const report = yield* Runner.run(config, options(mode));
+				const label = `${mode} ${config.name}`;
+				assert.strictEqual(report.catalog?.merged?.outcome, "unchanged", label);
+				assert.strictEqual(report.catalog?.merged?.entries, 2, label);
+				assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("a"), sliceOf("b")], label);
+				assert.isFalse(report.wrote, label);
+				if (config === uncatalogedA) {
+					assert.deepStrictEqual(report.catalog?.slice, { path: sliceOf("a"), entries: 0, outcome: "orphaned" }, label);
+				}
+			}
+			assert.strictEqual(yield* fs.readFileString(MERGED), merged, "nobody rewrote the merged catalog");
+			// Both configs' views of the merged catalog, side by side: identical.
+			const fromA = yield* Runner.run(uncatalogedA, options("check"));
+			const fromB = yield* Runner.run(b, options("check"));
+			assert.deepStrictEqual(fromA.catalog?.merged, fromB.catalog?.merged);
+		}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("both configs compute an identical merged catalog while one slice is orphaned", () =>
+		Effect.gen(function* () {
+			const uncatalogedA = defineConfig({
+				name: "a",
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: { alpha: { schema: Config } },
+			});
+			const b = cataloged("b", ["mid"]);
+			yield* Runner.run(b, options("build"));
+			const fromA = yield* Runner.run(uncatalogedA, options("check"));
+			const fromB = yield* Runner.run(b, options("check"));
+			assert.deepStrictEqual(fromA.catalog?.merged, fromB.catalog?.merged);
+			assert.strictEqual(fromA.catalog?.merged?.entries, 2, "the orphan's entry stays advertised until it is deleted");
+			assert.strictEqual(fromA.catalog?.merged?.outcome, "unchanged");
+		}).pipe(
+			Effect.provide(
+				layers({
+					[sliceOf("a")]:
+						`${JSON.stringify([{ name: "alpha", description: "alpha config", fileMatch: ["alpha.json"], url: `${BASE}/alpha.json` }])}\n`,
+				}),
+			),
+		),
+	);
+
+	const entryText = (key: string) =>
+		`${JSON.stringify([{ name: key, description: `${key} config`, fileMatch: [`${key}.json`], url: `${BASE}/${key}.json` }])}\n`;
+
+	it.effect("a slice that vanishes between listing and reading is skipped", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("check"));
+			assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("a")]);
+			assert.deepStrictEqual(report.catalog?.merged?.invalid, []);
+			assert.strictEqual(report.catalog?.merged?.outcome, "would-write");
+		}).pipe(
+			Effect.provide(
+				faultyLayers(
+					{ [sliceOf("gone")]: entryText("gone"), [sliceOf("gone2")]: entryText("gone2") },
+					{
+						stat: (path) =>
+							path === sliceOf("gone") ? Effect.fail(platformFailure("NotFound", "stat", path)) : undefined,
+						readFileString: (path) =>
+							path === sliceOf("gone2") ? Effect.fail(platformFailure("NotFound", "readFileString", path)) : undefined,
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("a slice that cannot be read is invalid and blocks the merge, never an untyped abort", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			assert.strictEqual(report.catalog?.merged?.outcome, "blocked");
+			assert.deepStrictEqual(report.catalog?.merged?.invalid, [
+				{ path: sliceOf("dangling"), reason: "unreadable: a dangling symlink" },
+				{ path: sliceOf("locked"), reason: "unreadable: PermissionDenied" },
+				{ path: sliceOf("unstattable"), reason: "unreadable: PermissionDenied" },
+			]);
+			assert.strictEqual(report.catalog?.slice?.outcome, "written", "the config's own slice is still written");
+		}).pipe(
+			Effect.provide(
+				faultyLayers(
+					{
+						[sliceOf("dangling")]: MemoryFileSystem.symlink("/nowhere/catalog.json"),
+						[sliceOf("locked")]: entryText("locked"),
+						[sliceOf("unstattable")]: entryText("unstattable"),
+					},
+					{
+						readFileString: (path) =>
+							path === sliceOf("locked")
+								? Effect.fail(platformFailure("PermissionDenied", "readFileString", path))
+								: undefined,
+						stat: (path) =>
+							path === sliceOf("unstattable")
+								? Effect.fail(platformFailure("PermissionDenied", "stat", path))
+								: undefined,
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("the running config's own slice is recognised case-insensitively", () =>
+		Effect.gen(function* () {
+			// On a case-insensitive volume, `Docs.json` and a leftover `docs.json`
+			// are one file; it must never conflict with the config's own entries.
+			const report = yield* Runner.run(cataloged("Docs", ["alpha"]), options("check"));
+			assert.strictEqual(report.catalog?.merged?.outcome, "would-write");
+			assert.deepStrictEqual(report.catalog?.merged?.conflicts, []);
+			assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("Docs")]);
+			// The case-folded claim is visible, never silent: two configs whose
+			// names differ only in case share one file on such a volume.
+			assert.deepStrictEqual(report.catalog?.slice, {
+				path: sliceOf("Docs"),
+				entries: 1,
+				outcome: "would-write",
+				caseFoldedMatch: sliceOf("docs"),
+			});
+		}).pipe(Effect.provide(layers({ [sliceOf("docs")]: entryText("alpha") }))),
+	);
+
+	it.effect(
+		"an exact own-slice match wins over a case-folded one: docs and Docs are two slices on a case-sensitive volume",
+		() =>
+			Effect.gen(function* () {
+				const configs = [cataloged("docs", ["alpha"]), cataloged("Docs", ["beta"]), cataloged("other", ["gamma"])];
+				for (const config of configs) {
+					yield* Runner.run(config, options("build"));
+				}
+				const views = [];
+				for (const config of configs) {
+					const report = yield* Runner.run(config, options("check"));
+					assert.isFalse(report.wrote, config.name);
+					views.push(report.catalog?.merged);
+				}
+				const expected: MergedCatalogReport = {
+					path: MERGED,
+					entries: 3,
+					outcome: "unchanged",
+					slices: [sliceOf("Docs"), sliceOf("docs"), sliceOf("other")],
+					conflicts: [],
+					invalid: [],
+				};
+				for (const view of views) {
+					assert.deepStrictEqual(view, expected);
+				}
+				// An exact match is never reported as a case-folded claim.
+				for (const config of configs) {
+					const report = yield* Runner.run(config, options("check"));
+					assert.isUndefined(report.catalog?.slice?.caseFoldedMatch, config.name);
+				}
+				// A second round of builds leaves the merged file alone: no ping-pong.
+				const fs = yield* FileSystem.FileSystem;
+				const merged = yield* fs.readFileString(MERGED);
+				for (const config of configs) {
+					assert.isFalse((yield* Runner.run(config, options("build"))).wrote, config.name);
+				}
+				assert.strictEqual(yield* fs.readFileString(MERGED), merged);
+			}).pipe(Effect.provide(layers({}))),
+	);
+
+	it.effect("a catalogDir that is a file fails typed before anything is written", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(Runner.run(cataloged("a", ["alpha"]), options("build")));
+			assert.instanceOf(error, CatalogDirError);
+			assert.strictEqual(error.path, DIR);
+			assert.strictEqual(error.reason, "not a directory");
+			assert.strictEqual(
+				error.message,
+				"catalogDir /repo/schemas/catalogs cannot be listed (not a directory); it must be a directory holding only catalog slices, or not exist yet. Nothing was written.",
+			);
+			const fs = yield* FileSystem.FileSystem;
+			assert.isFalse(yield* fs.exists("/repo/schemas/alpha.json"), "nothing is written");
+			assert.isFalse(yield* fs.exists(MERGED));
+		}).pipe(Effect.provide(layers({ [DIR]: "not a directory\n" }))),
+	);
+
+	it.effect("a catalogDir that cannot be listed fails typed, never an untyped abort", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(Runner.run(cataloged("a", ["alpha"]), options("check")));
+			assert.instanceOf(error, CatalogDirError);
+			assert.strictEqual(error.path, DIR);
+			assert.strictEqual(error.reason, "permission denied");
+		}).pipe(
+			Effect.provide(
+				faultyLayers(
+					{ [sliceOf("b")]: entryText("b") },
+					{
+						readDirectory: (path) =>
+							path === DIR ? Effect.fail(platformFailure("PermissionDenied", "readDirectory", path)) : undefined,
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("a slice carrying a key a catalog entry does not declare is invalid, never silently stripped", () =>
+		Effect.gen(function* () {
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("check"));
+			assert.strictEqual(report.catalog?.merged?.outcome, "blocked");
+			// A well-formed array whose entry has unknown keys names each key.
+			assert.deepStrictEqual(report.catalog?.merged?.invalid, [
+				{
+					path: sliceOf("extra"),
+					reason: 'Expected no excess property at [0]["unexpected"]; Expected no excess property at [0]["more"]',
+				},
+			]);
+		}).pipe(
+			Effect.provide(
+				layers({
+					[sliceOf("extra")]:
+						`${JSON.stringify([{ name: "x", description: "d", fileMatch: [], url: `${BASE}/x.json`, unexpected: true, more: 1 }])}\n`,
+				}),
+			),
+		),
+	);
+
+	it.effect("the slice and merged catalog are claimed, never orphaned documents", () =>
+		Effect.gen(function* () {
+			// A schema keyed `catalog` in a versioned layout derives the sibling
+			// shape `<outputDir>/catalog.json`: the merged catalog is claimed.
+			const config = defineConfig({
+				name: "a",
+				outputDir: "/repo/schemas",
+				baseUrl: BASE,
+				schemas: {
+					catalog: { schema: Config, versions: ["1.0"], catalog: { description: "d", fileMatch: ["c.json"] } },
+				},
+			});
+			yield* Runner.run(config, options("build"));
+			const report = yield* Runner.run(config, options("check"));
+			assert.isUndefined(report.orphaned);
+			assert.strictEqual(report.catalog?.merged?.outcome, "unchanged");
 		}).pipe(Effect.provide(layers({}))),
 	);
 });

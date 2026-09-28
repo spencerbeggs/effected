@@ -8,8 +8,8 @@ tags:
   - monorepo
 generated:
   by: okfit/claude-code
-  at: 2026-09-16T18:59:18Z
-  body_sha256: ad9957ecd6368a7b3acf2f97fa89e3e4936b02b950dacd6c9328960848bf889c
+  at: 2026-09-28T23:39:57Z
+  body_sha256: 0ee68c028d4b65efdad62c730d59f117e9af74a8df71135f73b3d09533c7dead
 ---
 
 # A schemastore outputDir is never exclusively the CLI's
@@ -22,7 +22,7 @@ generated:
 
 The CLI never lists `outputDir` (or any directory under it) to decide what is stale. It reads exactly the paths it can derive: the claimed paths, and — for orphan detection — the sibling shapes of each claimed path (`<name>.json`, `<name>-<v>.json`, `<v>/<name>.json`, `<v>/<name>-<v>.json`) for every label the config still declares. A file at a sibling shape is an orphan; a file anywhere else is invisible to the command.
 
-Any future feature that needs "what else is here" — a `name`-change orphan, a dropped-label orphan, a merged catalog across configs (#754) — must carry its own ownership record (a per-config identity and a manifest of what that config wrote), never infer ownership from a directory.
+Any feature that needs "what else is here" — a `name`-change orphan, a dropped-label orphan, a merged catalog across configs — must carry its own ownership record (a per-config identity and a record of what that config wrote), never infer ownership from a directory. The merged catalog (#754) is the first such feature: each config carries a required `name` and owns the slice `<catalogDir>/<name>.json`, and `catalogDir` — a directory that holds only slices by construction — is the one directory the CLI lists.
 
 ## Alternatives rejected
 
@@ -33,5 +33,5 @@ Any future feature that needs "what else is here" — a `name`-change orphan, a 
 ## Consequences
 
 - The sibling-shape probe reports nothing on a shared directory that this config could not itself have written, and catches both config-driven renames (`appendVersion`, `layout`) in both directions — one more than the walk did. The one residual false positive is two configs that derive the same `name` and label under different layouts into one `outputDir`: `defineConfig` rejects duplicate paths only within a config, so config A's `<v>/<name>.json` is config B's sibling shape. That is two configs publishing one schema identity to one host — an error in its own right, so no cross-config uniqueness check is added.
-- A `name` change and a dropped version label are **not** caught; the old name is unknowable from the config. The docs say so, and the remedy is a hand delete. Closing that gap is the manifest design, tracked with #754, not a wider walk.
-- The two configs sharing an `outputDir` that this decision protects still collide on the default `catalogPath` (#754); until that is designed, they must set distinct `catalogPath`s.
+- A `name` change and a dropped version label are **not** caught; the old name is unknowable from the config. The docs say so, and the remedy is a hand delete. Closing that gap is a per-config manifest keyed on the config `name` (#754 supplied the identity, not the manifest), not a wider walk.
+- Two configs sharing an `outputDir` share the default `catalogDir` and converge on one merged `catalog.json` (#754): each writes only its own slice, and every one of them computes the same union.

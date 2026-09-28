@@ -61,6 +61,7 @@ import { defineConfig } from "@effected/schemastore";
 import { OutputSchemaIdentity, ReleaseOutput } from "./src/schema/output.js";
 
 export default defineConfig({
+  name: "silk-release-action",
   outputDir: "schemas",
   schemas: {
     [OutputSchemaIdentity.name]: { schema: ReleaseOutput, hosted: OutputSchemaIdentity },
@@ -130,7 +131,7 @@ const program = SchemaPipeline.run(targets).pipe(
 ## What the library owns
 
 - `HostedSchema` — a schema's hosted identity (`github`, `schemastore`, `custom`), deriving `$id`, the catalog URL and the file name for the current or any advertised version.
-- `defineConfig` — the `schemastore.config.ts` contract: validated with one `Schema.Struct` per level (a typo'd key is named, every issue on an entry reported at once), every path and URL derived from the entry key and its identity, frozen labels resolved, a branded result the CLI recognises.
+- `defineConfig` — the `schemastore.config.ts` contract: validated with one `Schema.Struct` per level (a typo'd key is named, every issue on an entry reported at once), a required config `name` (the base name of its catalog slice), every path and URL derived from the entry key and its identity, frozen labels resolved, a branded result the CLI recognises.
 - `StoreDocument` — assembly: `fromSchema` / `fromSchemaResult`, the `draft07` constructor for hand-built documents, the flat `toJson()` publication shape, `serializeResult()`, `DRAFT_07_META_SCHEMA`.
 - `KeywordFamilies` — the one registry of declared non-standard keyword families (the vscode five, `x-taplo`, `x-tombi-`, `x-intellij-`, and the house `x-ai-` machine-annotation namespace). Anything outside it fails `fromSchema` with `UndeclaredAnnotationKeyError`; nothing is silently dropped.
 - `SchemaVersioning` / `SchemaVersion` — one-to-three-component version labels, `Order`, `latest`, `isPinned`, `next`, and the `fileName` / `schemaUrl` / `catalogUrls` derivations.

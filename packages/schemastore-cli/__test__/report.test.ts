@@ -36,9 +36,15 @@ const unchangedSchema: SchemaReport = {
 };
 
 const writtenCatalog: CatalogReport = {
-	path: "schemas/catalog.json",
-	entries: 1,
-	outcome: "written",
+	slice: { path: "schemas/catalogs/okfit.json", entries: 1, outcome: "written" },
+	merged: {
+		path: "schemas/catalog.json",
+		entries: 2,
+		outcome: "written",
+		slices: ["schemas/catalogs/okfit.json", "schemas/catalogs/other.json"],
+		conflicts: [],
+		invalid: [],
+	},
 };
 
 const cleanBuild: RunReport = {
@@ -110,9 +116,15 @@ const gateFailedSchema: SchemaReport = {
 };
 
 const heldCatalog: CatalogReport = {
-	path: "schemas/catalog.json",
-	entries: 1,
-	outcome: "held",
+	slice: { path: "schemas/catalogs/okfit.json", entries: 1, outcome: "held" },
+	merged: {
+		path: "schemas/catalog.json",
+		entries: 1,
+		outcome: "held",
+		slices: ["schemas/catalogs/okfit.json"],
+		conflicts: [],
+		invalid: [],
+	},
 };
 
 const driftAndGate: RunReport = {
@@ -223,12 +235,95 @@ const orphanedCheck: RunReport = {
 	wrote: false,
 };
 
+// A merge blocked by a URL two slices advertise and a slice that is not a
+// catalog entry array; an orphaned slice beside it.
+const blockedCheck: RunReport = {
+	mode: "check",
+	configPath: "/repo/schemastore.config.ts",
+	onDrift: "error",
+	schemas: [unchangedSchema],
+	catalog: {
+		slice: { path: "schemas/catalogs/okfit.json", entries: 0, outcome: "orphaned" },
+		merged: {
+			path: "schemas/catalog.json",
+			entries: 2,
+			outcome: "blocked",
+			slices: ["schemas/catalogs/a.json", "schemas/catalogs/b.json"],
+			conflicts: [
+				{ url: "https://example.com/a.json", slices: ["schemas/catalogs/a.json", "schemas/catalogs/b.json"] },
+			],
+			invalid: [{ path: "schemas/catalogs/broken.json", reason: 'Expected no excess property at [0]["extra"]' }],
+		},
+	},
+	drifted: false,
+	gateFailed: false,
+	wrote: false,
+};
+
 describe("Report.human", () => {
+	it("renders an orphaned slice and a blocked merge with one line per problem", () => {
+		assert.deepStrictEqual(Report.human(blockedCheck), [
+			"unchanged schemas/plain.json [policy semantic]",
+			"orphaned catalog slice schemas/catalogs/okfit.json (no schema declares a catalog; the merged catalog keeps advertising its entries until it is deleted — delete it by hand; build never will)",
+			"CATALOG BLOCKED schemas/catalog.json (not written: fix the slices below)",
+			"  url https://example.com/a.json advertised by schemas/catalogs/a.json, schemas/catalogs/b.json",
+			'  slice schemas/catalogs/broken.json is invalid: Expected no excess property at [0]["extra"]',
+			"1 schema(s): 0 written, 1 unchanged, 0 drift, 0 gate failed — drift per schema (config), on-drift error",
+		]);
+	});
+
+	it("renders a case-folded slice claim on the slice line, in JSON and in the step summary", () => {
+		const report: RunReport = {
+			...cleanBuild,
+			catalog: {
+				slice: {
+					path: "schemas/catalogs/Docs.json",
+					entries: 1,
+					outcome: "written",
+					caseFoldedMatch: "schemas/catalogs/docs.json",
+				},
+			},
+		};
+		assert.include(
+			Report.human(report),
+			'written catalog slice schemas/catalogs/Docs.json (1 entries; claimed schemas/catalogs/docs.json by case-folded match for "Docs")',
+		);
+		const doc = JSON.parse(Report.json(report)) as { catalog: { slice: Record<string, unknown> } };
+		assert.strictEqual(doc.catalog.slice.caseFoldedMatch, "schemas/catalogs/docs.json");
+		assert.include(
+			Report.markdown(report),
+			"| slice | schemas/catalogs/Docs.json | 1 | written (case-folded match: schemas/catalogs/docs.json) |",
+		);
+		const plain = JSON.parse(Report.json(cleanBuild)) as { catalog: { slice: Record<string, unknown> } };
+		assert.isFalse(Object.hasOwn(plain.catalog.slice, "caseFoldedMatch"));
+	});
+
+	it("renders an orphaned merged catalog", () => {
+		const report: RunReport = {
+			...orphanedCheck,
+			catalog: {
+				merged: {
+					path: "schemas/catalog.json",
+					entries: 0,
+					outcome: "orphaned",
+					slices: [],
+					conflicts: [],
+					invalid: [],
+				},
+			},
+		};
+		assert.include(
+			Report.human(report),
+			"orphaned catalog schemas/catalog.json (no catalog slice remains — delete it by hand; build never will)",
+		);
+	});
+
 	it("renders a clean build", () => {
 		assert.deepStrictEqual(Report.human(cleanBuild), [
 			"written (created) schemas/1.2/okfit-1.2.json [policy semantic]",
 			"unchanged schemas/plain.json [policy semantic]",
-			"written catalog schemas/catalog.json (1 entries)",
+			"written catalog slice schemas/catalogs/okfit.json (1 entries)",
+			"written catalog schemas/catalog.json (2 entries from 2 slice(s))",
 			"2 schema(s): 1 written, 1 unchanged, 0 drift, 0 gate failed — drift per schema (config), on-drift error",
 		]);
 	});
@@ -247,7 +342,8 @@ describe("Report.human", () => {
 			"GATE FAILED schemas/broken.json (2 blocking finding(s))",
 			'  UnresolvedRef at "#/properties/x": ref not found',
 			'  validator at "#/properties/y": invalid',
-			"held catalog schemas/catalog.json (1 entries)",
+			"held catalog slice schemas/catalogs/okfit.json (1 entries)",
+			"held catalog schemas/catalog.json (1 entries from 1 slice(s))",
 			"3 schema(s): 0 written, 0 unchanged, 1 drift, 1 gate failed — drift strict (flag), on-drift error",
 		]);
 	});
@@ -328,7 +424,15 @@ describe("Report.json", () => {
 			outcome: "written",
 			findings: [],
 		});
-		assert.deepStrictEqual(doc.catalog, { path: "schemas/catalog.json", entries: 1, outcome: "written" });
+		assert.deepStrictEqual(doc.catalog, {
+			slice: { path: "schemas/catalogs/okfit.json", entries: 1, outcome: "written" },
+			merged: {
+				path: "schemas/catalog.json",
+				entries: 2,
+				outcome: "written",
+				slices: ["schemas/catalogs/okfit.json", "schemas/catalogs/other.json"],
+			},
+		});
 		assert.strictEqual(doc.drifted, false);
 		assert.strictEqual(doc.gateFailed, false);
 		assert.strictEqual(doc.wrote, true);
@@ -357,6 +461,19 @@ describe("Report.json", () => {
 			{ source: "lint", severity: "warning", check: "UnresolvedRef", path: "#/properties/x", message: "ref not found" },
 			{ source: "validator", severity: "warning", path: "#/properties/y", message: "invalid" },
 		]);
+	});
+
+	it("carries conflicts and invalid only on a merge that has them", () => {
+		const doc = JSON.parse(Report.json(blockedCheck)) as { catalog: { merged: Record<string, unknown> } };
+		assert.deepStrictEqual(doc.catalog.merged.conflicts, [
+			{ url: "https://example.com/a.json", slices: ["schemas/catalogs/a.json", "schemas/catalogs/b.json"] },
+		]);
+		assert.deepStrictEqual(doc.catalog.merged.invalid, [
+			{ path: "schemas/catalogs/broken.json", reason: 'Expected no excess property at [0]["extra"]' },
+		]);
+		const clean = JSON.parse(Report.json(cleanBuild)) as { catalog: { merged: Record<string, unknown> } };
+		assert.isFalse(Object.hasOwn(clean.catalog.merged, "conflicts"));
+		assert.isFalse(Object.hasOwn(clean.catalog.merged, "invalid"));
 	});
 
 	it("omits catalog when the report has none", () => {
@@ -421,10 +538,46 @@ describe("Report.markdown", () => {
 		assert.include(markdown, "**Drift:** 1 schema(s) drifted — drift per schema (config), on-drift warn");
 	});
 
-	it("renders the single catalog row when the report has one", () => {
+	it("renders a slice row and a merged row when the report has a catalog", () => {
 		const markdown = Report.markdown(cleanBuild);
-		assert.include(markdown, "| catalog | entries | outcome |");
-		assert.include(markdown, "| schemas/catalog.json | 1 | written |");
+		assert.include(markdown, "| catalog | file | entries | outcome |");
+		assert.include(markdown, "| slice | schemas/catalogs/okfit.json | 1 | written |");
+		assert.include(markdown, "| merged | schemas/catalog.json | 2 | written |");
+		assert.notInclude(markdown, "| catalog problem |");
+	});
+
+	it("renders a blocked merge's conflicts and invalid slices", () => {
+		const markdown = Report.markdown(blockedCheck);
+		assert.include(markdown, "| merged | schemas/catalog.json | 2 | blocked |");
+		assert.include(markdown, "| url https://example.com/a.json | schemas/catalogs/a.json, schemas/catalogs/b.json |");
+		assert.include(markdown, '| invalid: Expected no excess property at [0]["extra"] | schemas/catalogs/broken.json |');
+	});
+
+	it("escapes pipes and newlines in every table cell, so an untrusted key cannot add a column", () => {
+		const report: RunReport = {
+			...blockedCheck,
+			catalog: {
+				merged: {
+					path: "schemas/catalog.json",
+					entries: 0,
+					outcome: "blocked",
+					slices: [],
+					conflicts: [],
+					invalid: [
+						{ path: "schemas/catalogs/a|b.json", reason: 'Expected no excess property at [0]["x|y"]\nsecond line' },
+					],
+				},
+			},
+		};
+		const markdown = Report.markdown(report);
+		assert.include(
+			markdown,
+			'| invalid: Expected no excess property at [0]["x\\|y"] second line | schemas/catalogs/a\\|b.json |',
+		);
+		// Every row of the problem table keeps exactly its two columns.
+		const row = markdown.split("\n").find((line) => line.startsWith("| invalid:"));
+		assert.isDefined(row);
+		assert.strictEqual(row.replace(/\\\|/g, "").split("|").length - 2, 2);
 	});
 
 	it("omits the catalog table when the report has none", () => {

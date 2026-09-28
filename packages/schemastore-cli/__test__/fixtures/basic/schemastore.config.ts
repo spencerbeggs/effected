@@ -2,6 +2,7 @@ import { defineConfig } from "@effected/schemastore";
 import { BasicConfig } from "./src/config-schema.js";
 
 export default defineConfig({
+	name: "basic",
 	outputDir: "schemas",
 	baseUrl: "https://example.com/schemas",
 	schemas: {

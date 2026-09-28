@@ -21,7 +21,8 @@ library is exact.
 
 ## `defineConfig`
 
-The default export is a `defineConfig(...)` value, keyed by schema name.
+The default export is a `defineConfig(...)` value: a required config
+`name`, and the schemas keyed by schema name.
 `defineConfig` is pure — no IO, no Effect — and validates the whole input,
 derives every `$id`/`path`/catalog URL from ONE layout, fills drift
 defaults, assembles every catalog entry, and brands the result so the
@@ -33,6 +34,7 @@ import { defineConfig } from "@effected/schemastore";
 import { OkfitConfig } from "./src/config-schema.js";
 
 export default defineConfig({
+  name: "okfit",
   outputDir: "schemas",
   baseUrl: "schemastore",
   schemas: {
@@ -116,14 +118,55 @@ any schema.
 and `1.2.0` are the same version (missing components read as `0` for
 ordering), so declaring both is an error rather than two files.
 
-### `catalog` — one file for every entry
+### `name` — the config's identity
+
+`name` is required and top-level: a simple file base name (no separators,
+no whitespace), the base name of the catalog slice this config owns.
+Configs whose catalogs share a directory — several `schemastore.config.ts`
+files writing into one `outputDir` — must carry names distinct
+**case-insensitively**: on a case-insensitive volume (macOS) `docs` and
+`Docs` are one slice file, and each build silently overwrites the other.
+When a config claims a slice whose file name matches only by case, its
+slice line says `claimed <path> by case-folded match for "<name>"`. Omitting it
+fails with `defineConfig: name is required — the base name of this config's
+catalog slice (<catalogDir>/<name>.json)`.
+
+### `catalog` — one slice per config, one merged catalog
 
 Each schema's `catalog` block carries `description` and `fileMatch`;
 `name`, `url` and `versions` are **derived** from the schema's own key,
 `baseUrl`, `layout` and `versions` — never written by hand, so a version
 bump on a schema and its catalog entry cannot disagree. Every schema's
-assembled entry lands in **one file** at `catalogPath` (default
-`<outputDir>/catalog.json`) — never one file per schema.
+assembled entry lands in the config's **slice**, `<catalogDir>/<name>.json`
+— a bare catalog entry array, never one file per schema, rewritten
+wholesale so a removed schema's entry drops out. `catalogDir` defaults to
+`<outputDir>/catalogs`.
+
+The command also maintains the **merged** `catalog.json` in `catalogDir`'s
+parent — `<outputDir>/catalog.json` by default, the URL a host serves —
+as the union of every slice in `catalogDir`, sorted by `url`. The running
+config's own slice is replaced by the entries it computes now (when it
+declares any), so every config sharing the directory produces the
+identical merged file and `check` is green for all of them once each has
+built. A config that drops its last `catalog` block leaves its slice
+orphaned: `check` fails on it, and the merged catalog keeps advertising
+its entries until the slice is deleted by hand. Two slices
+advertising one `url`, or a slice that is not a catalog entry array,
+blocks the merged file (`CatalogMergeError`, exit `1`) until a config or
+slice is fixed.
+
+`catalogDir` holds slices only — every `*.json` file directly in it is
+read as one — so `defineConfig` rejects a `catalogDir` that is
+`outputDir`, that is the merged catalog's own path, or that a derived
+document sits in. Keep hand-written files out of it. A slice that cannot
+be read, or that carries a key a catalog entry does not declare, blocks
+the merge like an unparseable one.
+
+**Every config that shares a merged catalog must share the same
+`catalogDir`, under names unique case-insensitively.** Two sibling directories (`schemas/catalogs` and
+`schemas/more`) both merge into `schemas/catalog.json`, each from its own
+slice set, and overwrite each other; no single config can see the other
+directory, so nothing reports it.
 
 That derivation fixes the file layout under a custom `baseUrl`: each
 versioned schema's `path` sits directly under the directory `baseUrl`
@@ -133,6 +176,8 @@ override to drift from it). The convention is therefore a flat layout:
 ```text
 schemas/
   catalog.json
+  catalogs/
+    my-tool.json
   my-tool-1.0.json
   my-tool-1.1.json
 ```
@@ -160,7 +205,7 @@ appears only when a flag forced one tolerance over every schema's own.
 
 ## Path resolution
 
-Relative `outputDir`, `catalogPath`, and every derived schema/frozen `path`
+Relative `outputDir`, `catalogDir`, and every derived schema/frozen `path`
 resolve against the **config file's directory**, never the working
 directory. A root-level `schemastore build packages/x/schemastore.config.ts`
 and a `pnpm --filter x schema:build` must write identical files. Absolute

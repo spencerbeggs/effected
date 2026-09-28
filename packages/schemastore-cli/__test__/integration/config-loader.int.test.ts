@@ -22,7 +22,8 @@ describe("ConfigLoader through jiti (integration)", () => {
 			assert.strictEqual(loaded.config.schemas.length, 1);
 			assert.strictEqual(loaded.config.schemas[0]?.target.version, "1.0");
 			assert.isTrue(loaded.config.schemas[0]?.target.path.endsWith("/fixtures/basic/schemas/basic-1.0.json"));
-			assert.isTrue(loaded.config.catalogPath.endsWith("/fixtures/basic/schemas/catalog.json"));
+			assert.strictEqual(loaded.config.name, "basic");
+			assert.isTrue(loaded.config.catalogDir.endsWith("/fixtures/basic/schemas/catalogs"));
 			assert.strictEqual(loaded.config.schemas[0]?.catalog?.url, "https://example.com/schemas/basic-1.0.json");
 		}).pipe(Effect.provide(Platform)),
 	);
@@ -48,7 +49,12 @@ describe("ConfigLoader through jiti (integration)", () => {
 				onDrift: "error",
 			}).pipe(Effect.provide(SchemaFile.layer), Effect.provide(AjvValidator.layer));
 			assert.strictEqual(report.schemas[0]?.outcome, "would-write");
-			assert.strictEqual(report.catalog?.outcome, "would-write");
+			assert.strictEqual(report.catalog?.slice?.outcome, "would-write");
+			assert.isTrue(
+				report.catalog?.slice?.path.endsWith("/fixtures/release-action/schemas/catalogs/release-action.json"),
+			);
+			assert.strictEqual(report.catalog?.merged?.outcome, "would-write");
+			assert.isTrue(report.catalog?.merged?.path.endsWith("/fixtures/release-action/schemas/catalog.json"));
 		}).pipe(Effect.provide(Platform)),
 	);
 });

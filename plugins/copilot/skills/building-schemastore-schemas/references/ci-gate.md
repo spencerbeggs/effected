@@ -37,7 +37,7 @@ the generated files as `schema:build`'s outputs:
 Locally, `schema:build` regenerates and you commit the result; in CI,
 `schema:check` proves the committed documents match the schemas. A `check`
 that reports `would write` means someone changed a schema and did not run
-the build; it fails with ``N document(s) are stale; run `schemastore build` and commit the result.`` at exit `1`. An orphaned output (a catalog file no schema declares, a document an `appendVersion` or `layout` rename left behind) fails the same way, but its line reads `N orphaned output(s) must be deleted by hand; build never will.` — a build does not clear it.
+the build; it fails with ``N document(s) are stale; run `schemastore build` and commit the result.`` at exit `1`. An orphaned output (a catalog slice no schema declares, a merged catalog with no slice left, a document an `appendVersion` or `layout` rename left behind) fails the same way, but its line reads `N orphaned output(s) must be deleted by hand; build never will.` — a build does not clear it.
 
 ## Commands and flags
 
@@ -62,8 +62,8 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 | code | meaning |
 | --- | --- |
 | `0` | success, including drift under `--on-drift=warn` |
-| `1` | drift under `--on-drift=error`, a gate failure (lint warning, ajv strict finding), a missing frozen version (`FrozenVersionMissingError`), or — for `check` — any document `build` would write or an orphaned output (a catalog file no schema declares, a document an `appendVersion` or `layout` rename left behind) |
-| `2` | config not found, failed to load, or failed `defineConfig` validation |
+| `1` | drift under `--on-drift=error`, a gate failure (lint warning, ajv strict finding), a missing frozen version (`FrozenVersionMissingError`), a merged catalog blocked by a `url` two slices advertise or an invalid slice (`CatalogMergeError`), or — for `check` — any document `build` would write (the slice and merged catalog included) or an orphaned output (a catalog slice no schema declares, a merged catalog with no slice left, a document an `appendVersion` or `layout` rename left behind) |
+| `2` | config not found, failed to load, failed `defineConfig` validation, or a `catalogDir` that is a file or cannot be listed (`CatalogDirError`, before anything is written) |
 | `3` | infrastructure failure |
 | `64` | usage error (an unknown flag, a bad literal) |
 
@@ -104,7 +104,15 @@ drift or gate finding.
       "findings": []
     }
   ],
-  "catalog": { "path": "/abs/path/schemas/catalog.json", "entries": 1, "outcome": "held" },
+  "catalog": {
+    "slice": { "path": "/abs/path/schemas/catalogs/my-tool.json", "entries": 1, "outcome": "held" },
+    "merged": {
+      "path": "/abs/path/schemas/catalog.json",
+      "entries": 3,
+      "outcome": "held",
+      "slices": ["/abs/path/schemas/catalogs/my-tool.json", "/abs/path/schemas/catalogs/other.json"]
+    }
+  },
   "drifted": true,
   "gateFailed": false,
   "wrote": false
@@ -131,19 +139,27 @@ drift or gate finding.
   verified exist on disk.
 - `findings` — every finding, blocking or not: `source`, `severity`,
   optional `check`, `path`, `message`.
-- `catalog` — a single optional object: `{ path, entries, outcome }` for
-  the one catalog file, never one entry per schema, present when at least
-  one schema declared a `catalog` block or a file still sits at
-  `catalogPath` without one. Outcomes are `written` | `unchanged` |
-  `would-write` | `held` | `orphaned`.
+- `catalog` — optional `{ slice?, merged? }`, never one entry per schema.
+  `slice` is `{ path, entries, outcome, caseFoldedMatch? }` for this config's
+  `<catalogDir>/<name>.json`, present when a schema declares a `catalog`
+  block or the slice still sits on disk without one; outcomes are
+  `written` | `unchanged` | `would-write` | `held` | `orphaned`. `merged`
+  is `{ path, entries, outcome, slices, conflicts?, invalid? }` for the
+  merged `catalog.json`; its outcomes add `blocked` (a `url` two slices
+  advertise, listed in `conflicts` as `{ url, slices }`, or a slice that
+  cannot be used, listed in `invalid` as `{ path, reason }` — the reason
+  is `unreadable: …`, `not JSON`, or the decode issue itself, e.g.
+  `Expected no excess property at [0]["extra"]` for an entry carrying a
+  key outside `CatalogEntry`).
 - `orphaned` — optional `string[]`: the documents left at a sibling shape of
   a derived path that nothing claims; `build` never deletes them.
 
 ## The GitHub step summary
 
 When `GITHUB_STEP_SUMMARY` is set, both commands append a markdown table
-(schema · version · frozen · published · change · outcome) and the drift
-verdict. It is
+(schema · version · frozen · published · change · outcome), a catalog
+table (a slice row and a merged row, plus the conflicts and invalid slices
+of a blocked merge), and the drift verdict. It is
 read through Effect `Config`, so an empty value counts as unset. A failure to
 write the summary is logged and never fatal. Nothing in the consumer has to
 opt in; a `schema:check` step on a GitHub runner gets the table for free.

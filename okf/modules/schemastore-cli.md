@@ -33,8 +33,8 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: 8b2d66efc826091f66b3cc0bc5d60a25e55d7357c69023bbcf82fe34653dcda5
+  at: 2026-09-28T23:39:57Z
+  body_sha256: 58e9bd27bb80cda12b028ca5c7c441d809011e10a299f6b1ea35aba890404150
 ---
 
 # @effected/schemastore-cli
@@ -150,6 +150,7 @@ import { defineConfig } from "@effected/schemastore";
 import { OkfitConfig } from "./src/config-schema.js";
 
 export default defineConfig({
+  name: "okfit",
   outputDir: "schemas",
   baseUrl: "schemastore",
   schemas: {
@@ -217,8 +218,10 @@ in as `hosted: OutputSchema` instead of spelling `baseUrl`/`versions`/
   key IS the name). Required under `baseUrl: "schemastore"` (hosting
   there means being in its catalog); optional under a custom host, with
   an empty `fileMatch` rejected. Every schema's declared `catalog` entry
-  lands in **one file** at `catalogPath` — never one file per
-  schema.[^runner]
+  lands in **one slice file** for the whole config,
+  `<catalogDir>/<name>.json` — never one file per schema — and the CLI
+  maintains the merged `catalog.json` over every slice (see
+  [the catalog](#the-catalog-slices-and-the-merged-file)).[^runner]
 - `drift` — this schema's tolerance, overriding the config's top-level
   default, which itself defaults to `"semantic"` (`DriftPolicy.defaults.policy`).
 - `outputDir` — top-level only, one destination per config; every
@@ -226,9 +229,32 @@ in as `hosted: OutputSchema` instead of spelling `baseUrl`/`versions`/
 - `onDrift` — run-wide, top-level only, never overridable per schema.
   Defaults to `"error"` (`DriftPolicy.defaults.onDrift`). Command-line
   flags override the effective policy for one run.
-- `catalogPath` — where the single catalog file is written. Defaults to
-  `<outputDir>/catalog.json`.
-- Relative `outputDir`, `catalogPath`, and every derived schema/frozen
+- `name` — top-level, **required**: the config's identity, the base name
+  of the catalog slice it owns. A simple file base name under the same
+  rule as a schema key. Configs sharing a `catalogDir` carry names that
+  are distinct **case-insensitively**: on a case-insensitive volume
+  (macOS APFS) `docs` and `Docs` name one slice file and overwrite each
+  other, with both builds exiting `0` — a bare-array slice records no
+  owner, so it cannot be detected in general. When a config claims a file
+  that matches its name only case-insensitively, the slice line says so
+  (`claimed <path> by case-folded match for "<name>"`; JSON and the step
+  summary carry `caseFoldedMatch`). A missing `name` fails with `defineConfig: name is required —
+  the base name of this config's catalog slice (<catalogDir>/<name>.json)`
+  rather than the bare decode message, since a `.js` config gets no
+  compile-time hint.
+- `catalogDir` — the directory of catalog slices. Defaults to
+  `<outputDir>/catalogs`, so the merged catalog lands at
+  `<outputDir>/catalog.json`. Every `*.json` file directly in it is read
+  as a slice, so `defineConfig` rejects a `catalogDir` that is `outputDir`,
+  that is the merged catalog's own path (`schemas/catalog.json`), or that
+  a derived document sits directly in (the loader re-checks all three on
+  resolved paths, as `ConfigLoadError`, exit `2`). **Every config sharing
+  a merged catalog must share the same `catalogDir`**: sibling
+  directories (`schemas/catalogs`, `schemas/more`) both merge into
+  `schemas/catalog.json` from different slice sets and overwrite each
+  other, which no single config can detect; and their `name`s must be
+  unique case-insensitively.
+- Relative `outputDir`, `catalogDir`, and every derived schema/frozen
   `path` resolve against the **config file's directory**, never the
   working directory — a root-level
   `schemastore build packages/x/schemastore.config.ts` and a
@@ -250,9 +276,11 @@ in as `hosted: OutputSchema` instead of spelling `baseUrl`/`versions`/
   among them, `layout` under `"schemastore"`, a `baseUrl` that is neither
   `"schemastore"` nor `https://`) are `HostedSchema`'s and surface under
   the same prefix; the rest — an empty `schemas` record, a key that fails
-  the simple-name rule, a `hosted` mismatch, a missing `catalog` under
-  `"schemastore"`, a duplicate output path after lexical normalisation —
-  stay in `defineConfig`. The CLI wraps the throw into `ConfigLoadError`
+  the simple-name rule, a config `name` that fails it, a `hosted`
+  mismatch, a missing `catalog` under `"schemastore"`, a `catalogDir`
+  that is `outputDir` or holds a derived document, a duplicate output path
+  (the slice and the merged catalog included) after lexical
+  normalisation — stay in `defineConfig`. The CLI wraps the throw into `ConfigLoadError`
   (exit `2`).
 
 ## Drift
@@ -315,28 +343,21 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
   place `$id` and the advertised URL can still disagree.[^runner]
 - `build` generates, gates, applies the drift table, writes what passes
   (content-compared, so unchanged files are untouched) and writes the
-  single `catalog.json` the same way: `Runner` reads the existing file
-  once (`NotFound` → absent, so a build creates it) and compares the
-  parsed content with the library's `CanonicalJson.equals`, so key order
-  is a serialization detail and unparseable text is simply different and
-  gets repaired. Every schema's declared `catalog` entry lands in that
-  one file at `config.catalogPath` — never one file per schema. When no
-  schema declares a catalog but a file still sits at `catalogPath` (the
-  last `catalog` block was removed), the report carries
-  `catalog: { path, entries: 0, outcome: "orphaned" }` — stale (exit `1`)
-  under `check`, reported but **never deleted** under `build`, since the
-  CLI may not have written it; the human line reads
-  `orphaned catalog <path> (no schema declares a catalog)`. The report
-  omits `catalog` only when there is no such file either. Both modes
+  config's catalog slice and the merged catalog the same way — see
+  [the catalog](#the-catalog-slices-and-the-merged-file) below. Each
+  catalog file is read once (`NotFound` → absent, so a build creates it)
+  and compared by parsed content with the library's
+  `CanonicalJson.equals`, so key order is a serialization detail and
+  unparseable text is simply different and gets repaired. Both modes
   also probe the sibling shapes of every derived path —
   `SchemaVersioning.fileName` has exactly four per name and label
   (`<name>.json`, `<name>-<v>.json`, `<v>/<name>.json`,
   `<v>/<name>-<v>.json`) — for every label the config still declares,
   and report each FILE that exists and that no target, frozen version,
-  or `catalogPath` claims in `orphaned`: the document an `appendVersion`
+  catalog slice, or merged catalog claims in `orphaned`: the document an `appendVersion`
   flip or a `layout` change left behind under its old name (for a
   `published` label, the advertised URL keeps serving the stale document
-  with no report — the same shape the orphaned catalog closes). Stale
+  with no report — the same shape an orphaned catalog slice closes). Stale
   (exit `1`) under `check`, reported but **never deleted** under `build`;
   the human line reads `orphaned document <path> (no target, frozen
   version, or catalog entry claims it — delete it by hand; build never
@@ -363,6 +384,12 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
   tests. Because `check` reports what `build` would do, it also reports
   `held` for the clean siblings of a gate failure or a refused drift,
   exactly as a build would.
+- A merged catalog that cannot be assembled — a catalog URL two slices
+  advertise, or a slice that is not a catalog entry array — fails both
+  modes with `CatalogMergeError` (exit `1`, evaluated after the gate and
+  drift verdicts and before `StaleError`), naming every conflicting URL
+  with its slices and every invalid slice. `build` still writes the
+  schemas and its own slice; only the merged file is left as it is.
 - `--force` is sugar for `--drift=allow` — and nothing more: combined
   with an explicit `--drift` other than `allow` it is a contradiction,
   refused before the config loads as `ConflictingFlagsError` at exit
@@ -373,9 +400,14 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
   one tolerance over every schema's own, never a `source` field),
   per-schema `{ $id, path, name, version?, published, change, verdict,
   policy, outcome, nextVersion?, frozen?, findings }`, one optional
-  `catalog: { path, entries, outcome }` for the single catalog file
+  `catalog: { slice?, merged? }` — `slice: { path, entries, outcome,
+  caseFoldedMatch? }`
   (`outcome` is `written`, `unchanged`, `would-write`, `held` or
-  `orphaned`), one optional `orphaned: string[]` (the unclaimed-document
+  `orphaned`) and `merged: { path, entries, outcome, slices, conflicts?,
+  invalid? }` (`outcome` adds `blocked`; `conflicts` —
+  `[{ url, slices }]` — and `invalid` — `[{ path, reason }]` — appear only
+  when non-empty) — one
+  optional `orphaned: string[]` (the unclaimed-document
   paths, in config order), and
   `drifted`/`gateFailed`/`wrote`. Human text moves to stderr in this mode
   so stdout stays parseable.
@@ -387,10 +419,76 @@ Exit codes:
 | code | meaning |
 | ------ | -------------------------------------------------------------------------- |
 | 0 | success, including drift under `onDrift: warn` |
-| 1 | drift under `onDrift: error`, a gate failure, a missing frozen version (`FrozenVersionMissingError`), a frozen file without its derived `$id` (`FrozenVersionIdMismatchError`), or — for `check` — any document `build` would write, an orphaned catalog file, or an orphaned document at a sibling shape of a derived path |
-| 2 | config not found, failed to load, or failed `SchemastoreConfig` validation |
+| 1 | drift under `onDrift: error`, a gate failure, a missing frozen version (`FrozenVersionMissingError`), a frozen file without its derived `$id` (`FrozenVersionIdMismatchError`), a merged catalog blocked by a URL conflict or an invalid slice (`CatalogMergeError`), or — for `check` — any document `build` would write (a catalog slice or the merged catalog included), an orphaned slice or merged catalog, or an orphaned document at a sibling shape of a derived path |
+| 2 | config not found, failed to load, failed `SchemastoreConfig` validation, or a `catalogDir` that is a file or cannot be listed (`CatalogDirError`, raised before anything is written) |
 | 3 | infrastructure failure (`CliRuntime.reportFailures` fallback) |
 | 64 | usage error — `ShowHelp` carrying parse errors, or `--force` combined with an explicit non-`allow` `--drift` (`ConflictingFlagsError`) |
+
+## The catalog: slices and the merged file
+
+Several `schemastore.config.ts` files may share one `outputDir` — a
+monorepo publishing into a shared deploy folder — and so one catalog.
+Each config therefore owns a **slice**, and the merged catalog is
+derived from every slice:
+
+- **The slice** is `<catalogDir>/<name>.json`: a bare SchemaStore
+  catalog entry array of every entry the config declares, canonical
+  JSON, content-compared, and rewritten wholesale — so a removed
+  schema's entry drops out of it. A config that declares no entry writes
+  no slice; one still on disk is `orphaned` (stale under `check`, never
+  deleted by `build`) and is still merged, so the merged catalog keeps
+  advertising its entries until it is deleted by hand.
+- **The merged catalog** is `catalog.json` in `catalogDir`'s parent
+  (`<outputDir>/catalog.json` under the default `catalogDir`, the same
+  URL a host serves): the union of every `*.json` slice in `catalogDir`,
+  sorted by entry `url` in code-unit order, canonical JSON,
+  content-compared. When the running config declares entries, its slice
+  is **replaced by the entries it computes now**, never read from disk,
+  so `check` compares against what a build would produce; when it
+  declares none, its on-disk slice (an orphan) is merged **as-is**,
+  exactly as every other config sees it. The merge is a pure function of
+  disk plus the running config's non-empty fresh entries, so whichever
+  config builds last writes the identical file — `check` is green for all
+  of them at once, and an orphaned slice is the single thing its owner's
+  `check` reports.[^runner]
+- `catalogDir` is the ownership record, and the one directory the CLI
+  lists: every `*.json` file directly in it is one config's slice by
+  construction (anything else there — a README, a subdirectory — is
+  ignored). It is listed before anything is generated: absent is fine, but
+  a `catalogDir` that is a file or cannot be listed fails
+  `CatalogDirError` (exit `2`) with nothing written. The running config's
+  own slice on disk is an **exact** `<name>.json` match; only when there is
+  none, and exactly one file case-folds to that name, is that file taken
+  as its own — so on a case-insensitive volume a leftover `docs.json` is
+  the file `Docs.json` names and never conflicts with the entries
+  replacing it, while on a case-sensitive volume configs `docs` and
+  `Docs` keep two slices that every config merges alike. Another config's slice that vanished
+  between listing and reading is skipped. `outputDir` is still never listed
+  ([decision](../decisions/output-dir-is-never-exclusively-owned.md)).
+- **Two slices advertising one `url` is a conflict**, and **a slice that
+  cannot be read (a dangling symlink, a permission failure), is not JSON,
+  or is not a catalog entry array — one carrying a key a catalog entry
+  does not declare included, since the decode rejects excess keys rather
+  than stripping them — is invalid**, and each invalid slice carries its
+  reason: `unreadable: <reason>` (`a dangling symlink`, `PermissionDenied`),
+  `not JSON`, or the decode's own issues, one semicolon-separated clause each
+  (`Expected array` for a document that is not an array; `Expected no
+  excess property at [0]["extra"]` names every key outside
+  `CatalogEntry`). Neither is
+  merged silently or dropped: which entry a host serves would otherwise
+  depend on which config built last. The merged report's outcome is
+  `blocked`, the merged file is left as it is, and both modes fail
+  `CatalogMergeError` (exit `1`) — the fix is an edit to the configs or
+  the slices, never a rebuild.
+- With no slice left (no slice file in `catalogDir` and no entry in the
+  running config) but a merged file on disk, the merged catalog is
+  `orphaned` — reported, never deleted. Deleting the last orphaned slice
+  by hand is what leads there.
+- `RunReport.catalog` is `{ slice?, merged? }` — `CatalogSliceReport`
+  `{ path, entries, outcome, caseFoldedMatch? }` and `MergedCatalogReport`
+  `{ path, entries, outcome, slices, conflicts, invalid }` — and is
+  absent only when there is neither a slice nor a merged catalog to
+  report.
 
 ## Reporting
 
@@ -400,7 +498,11 @@ Exit codes:
   elsewhere)` for a schema that passed but was not (or, under `check`,
   would not be) written because a sibling refused the run — with
   advisory findings indented beneath, one
-  line for the single catalog file, one line per orphaned document, and a
+  line for the catalog slice (`written catalog slice <path> (N entries)`),
+  one for the merged catalog (`written catalog <path> (N entries from K
+  slice(s))`; a blocked merge renders `CATALOG BLOCKED <path>` with one
+  indented line per conflicting URL and per invalid slice), one line per
+  orphaned document, and a
   summary line whose `drift` count is
   verdict-based — the number of schemas classified `drift`, independent
   of `written`/`unchanged`, so under `onDrift: warn` a drifting schema
@@ -417,7 +519,9 @@ Exit codes:
   `fromEnv` provider — tests substitute `ConfigProvider.fromMap`), never
   `process.env`; `__PACKAGE_VERSION__` stays the bundler's compile-time
   substitution.[^owner] When it is set, both commands append a markdown table (schema · version · frozen · published
-  · change · outcome) and the drift verdict. This is a short append in the CLI, not
+  · change · outcome), a catalog table (slice and merged rows: file ·
+  entries · outcome, plus a problem table for a blocked merge), and the
+  drift verdict. This is a short append in the CLI, not
   a dependency on `@effected/github-actions`, whose weight is wrong for a
   bin that appends one file. A failure to write the summary is logged and
   never fatal.
@@ -514,4 +618,4 @@ becomes moot: there is no longer a canonical generator script to copy.
 [^config]: `SchemastoreConfig.ts` — `defineConfig`, `SchemastoreConfigInput`, `SchemaEntryInput` (including `hosted`), `ResolvedSchema`, `FrozenVersion` (`version`/`path`/`$id`/`url`); the keyed-by-name shape, the per-level `Schema.Struct` decode, and the delegation of hosting and version rules to `HostedSchema`.
 [^ajv-validator]: `packages/schemastore-cli/src/AjvValidator.ts` — `AjvValidator.layer`: strict mode, `KeywordFamilies` registration, `addFormats(ajv, { keywords: false })`, a fresh `Ajv` per call.
 [^cli-package-json]: `packages/schemastore-cli/package.json` — the `.` export to `src/index.ts`, `ajv` and `ajv-formats` as regular dependencies, `effect` and `@effected/schemastore` as peers.
-[^runner]: `packages/schemastore-cli/src/Runner.ts` — `FrozenVersionMissingError`, `FrozenVersionIdMismatchError`, the frozen pre-flight (existence, then declared `$id`) that runs before generation, the single-`catalog.json` write, the `orphaned` `CatalogReport` outcome, and the sibling-shape probe that reports unclaimed leftover documents in `RunReport.orphaned`.
+[^runner]: `packages/schemastore-cli/src/Runner.ts` — `FrozenVersionMissingError`, `FrozenVersionIdMismatchError`, the frozen pre-flight (existence, then declared `$id`) that runs before generation, the catalog slice and merged-catalog writes, the `orphaned` and `blocked` catalog outcomes, and the sibling-shape probe that reports unclaimed leftover documents in `RunReport.orphaned`.

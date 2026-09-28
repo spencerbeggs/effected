@@ -11,6 +11,7 @@ const CUSTOM = "https://raw.githubusercontent.com/o/r/main/schemas";
 
 const one = (entry: Record<string, unknown>, top: Record<string, unknown> = {}) =>
 	defineConfig({
+		name: "test",
 		outputDir: "schemas",
 		baseUrl: "schemastore",
 		schemas: { okfit: { schema: Config, catalog, ...entry } },
@@ -99,30 +100,35 @@ describe("defineConfig derivation", () => {
 	});
 
 	it("catalog is optional on a custom host and absent from the resolved schema when omitted", () => {
-		const config = defineConfig({ outputDir: "schemas", schemas: { okfit: { schema: Config, baseUrl: CUSTOM } } });
+		const config = defineConfig({
+			name: "test",
+			outputDir: "schemas",
+			schemas: { okfit: { schema: Config, baseUrl: CUSTOM } },
+		});
 		assert.isUndefined(only(config).catalog);
 	});
 
-	it("fills top-level defaults: drift semantic, onDrift error, catalogPath under outputDir", () => {
+	it("fills top-level defaults: drift semantic, onDrift error, catalogDir under outputDir", () => {
 		const config = one({});
+		assert.strictEqual(config.name, "test");
 		assert.strictEqual(config.outputDir, "schemas");
 		assert.strictEqual(config.onDrift, "error");
-		assert.strictEqual(config.catalogPath, "schemas/catalog.json");
+		assert.strictEqual(config.catalogDir, "schemas/catalogs");
 		assert.strictEqual(only(config).drift, "semantic");
 		assert.isFalse(only(config).target.published);
 		assert.isTrue(isSchemastoreConfig(config));
 	});
 
-	it("per-entry drift, published and baseUrl override the top level; onDrift and catalogPath are top-level", () => {
+	it("per-entry drift, published and baseUrl override the top level; onDrift and catalogDir are top-level", () => {
 		const config = one(
 			{ drift: "allow", published: true, baseUrl: CUSTOM },
-			{ drift: "strict", onDrift: "warn", catalogPath: "catalog/okfit.json" },
+			{ drift: "strict", onDrift: "warn", catalogDir: "public/catalogs/" },
 		);
 		assert.strictEqual(only(config).drift, "allow");
 		assert.isTrue(only(config).target.published);
 		assert.strictEqual(only(config).target.$id, `${CUSTOM}/okfit.json`);
 		assert.strictEqual(config.onDrift, "warn");
-		assert.strictEqual(config.catalogPath, "catalog/okfit.json");
+		assert.strictEqual(config.catalogDir, "public/catalogs", "a trailing slash is trimmed");
 	});
 
 	it("forwards jsonSchema and rootAnnotations onto the target", () => {
@@ -141,7 +147,7 @@ describe("defineConfig with a HostedSchema", () => {
 
 	it("derives target, frozen and catalog from the hosted identity, so $id equals hosted.$id", () => {
 		const schema = only(
-			defineConfig({ outputDir: "schemas", schemas: { okfit: { schema: Config, hosted, catalog } } }),
+			defineConfig({ name: "test", outputDir: "schemas", schemas: { okfit: { schema: Config, hosted, catalog } } }),
 		);
 		assert.strictEqual(schema.target.$id, hosted.$id);
 		assert.strictEqual(schema.target.$id, `${CUSTOM}/1.1/okfit-1.1.json`);
@@ -160,7 +166,12 @@ describe("defineConfig with a HostedSchema", () => {
 
 	it("ignores the config-level baseUrl default when hosted is given", () => {
 		const schema = only(
-			defineConfig({ outputDir: "s", baseUrl: "schemastore", schemas: { okfit: { schema: Config, hosted } } }),
+			defineConfig({
+				name: "test",
+				outputDir: "s",
+				baseUrl: "schemastore",
+				schemas: { okfit: { schema: Config, hosted } },
+			}),
 		);
 		assert.strictEqual(schema.target.$id, hosted.$id);
 	});
@@ -174,7 +185,11 @@ describe("defineConfig with a HostedSchema", () => {
 			appendVersion: false,
 		});
 		const schema = only(
-			defineConfig({ outputDir: "schemas", schemas: { output: { schema: Config, hosted: bare, catalog } } }),
+			defineConfig({
+				name: "test",
+				outputDir: "schemas",
+				schemas: { output: { schema: Config, hosted: bare, catalog } },
+			}),
 		);
 		assert.strictEqual(schema.target.path, "schemas/6.0/output.json");
 		assert.strictEqual(schema.target.$id, `${CUSTOM}/6.0/output.json`);
@@ -194,14 +209,19 @@ describe("defineConfig with a HostedSchema", () => {
 			/"okfit".*appendVersion.*flat/,
 		);
 		assert.throws(
-			() => defineConfig({ outputDir: "s", schemas: { okfit: { schema: Config, hosted, appendVersion: false } } }),
+			() =>
+				defineConfig({
+					name: "test",
+					outputDir: "s",
+					schemas: { okfit: { schema: Config, hosted, appendVersion: false } },
+				}),
 			/schema "okfit".*"appendVersion".*hosted/,
 		);
 	});
 
 	it("rejects a key that differs from hosted.name", () => {
 		assert.throws(
-			() => defineConfig({ outputDir: "s", schemas: { other: { schema: Config, hosted } } }),
+			() => defineConfig({ name: "test", outputDir: "s", schemas: { other: { schema: Config, hosted } } }),
 			/schema "other".*hosted.*"okfit"/,
 		);
 	});
@@ -209,7 +229,7 @@ describe("defineConfig with a HostedSchema", () => {
 	it("rejects an entry that spells baseUrl, versions, current or layout beside hosted", () => {
 		for (const extra of [{ baseUrl: CUSTOM }, { versions: ["1.0"] }, { current: "1.0" }, { layout: "flat" as const }]) {
 			assert.throws(
-				() => defineConfig({ outputDir: "s", schemas: { okfit: { schema: Config, hosted, ...extra } } }),
+				() => defineConfig({ name: "test", outputDir: "s", schemas: { okfit: { schema: Config, hosted, ...extra } } }),
 				/schema "okfit".*hosted/,
 			);
 		}
@@ -218,7 +238,11 @@ describe("defineConfig with a HostedSchema", () => {
 	it("rejects a hosted that is not a HostedSchema", () => {
 		assert.throws(
 			() =>
-				defineConfig({ outputDir: "s", schemas: { okfit: { schema: Config, hosted: { name: "okfit" } as never } } }),
+				defineConfig({
+					name: "test",
+					outputDir: "s",
+					schemas: { okfit: { schema: Config, hosted: { name: "okfit" } as never } },
+				}),
 			/schema "okfit".*hosted/,
 		);
 	});
@@ -229,25 +253,28 @@ describe("defineConfig validation", () => {
 		assert.throws(() => one(entry, top), pattern);
 
 	it("rejects an empty schemas record", () => {
-		assert.throws(() => defineConfig({ outputDir: "schemas", schemas: {} }), /at least one schema/);
+		assert.throws(() => defineConfig({ name: "test", outputDir: "schemas", schemas: {} }), /at least one schema/);
 	});
 
 	it("rejects a missing or empty outputDir", () => {
 		assert.throws(
-			() => defineConfig({ outputDir: "", schemas: { okfit: { schema: Config, baseUrl: CUSTOM } } }),
+			() => defineConfig({ name: "test", outputDir: "", schemas: { okfit: { schema: Config, baseUrl: CUSTOM } } }),
 			/outputDir/,
 		);
 	});
 
 	it("rejects a key that is not a simple file base name", () => {
 		assert.throws(
-			() => defineConfig({ outputDir: "s", baseUrl: CUSTOM, schemas: { "a/b": { schema: Config } } }),
+			() => defineConfig({ name: "test", outputDir: "s", baseUrl: CUSTOM, schemas: { "a/b": { schema: Config } } }),
 			/schema "a\/b".*simple file base name/,
 		);
 	});
 
 	it("rejects an entry with no baseUrl anywhere", () => {
-		assert.throws(() => defineConfig({ outputDir: "s", schemas: { okfit: { schema: Config } } }), /"okfit".*baseUrl/);
+		assert.throws(
+			() => defineConfig({ name: "test", outputDir: "s", schemas: { okfit: { schema: Config } } }),
+			/"okfit".*baseUrl/,
+		);
 	});
 
 	it("rejects a custom baseUrl that is not https", () => {
@@ -272,7 +299,8 @@ describe("defineConfig validation", () => {
 
 	it("requires catalog under schemastore and a non-empty fileMatch", () => {
 		assert.throws(
-			() => defineConfig({ outputDir: "s", baseUrl: "schemastore", schemas: { okfit: { schema: Config } } }),
+			() =>
+				defineConfig({ name: "test", outputDir: "s", baseUrl: "schemastore", schemas: { okfit: { schema: Config } } }),
 			/"okfit".*catalog.*schemastore/,
 		);
 		rejects({ catalog: { description: "d", fileMatch: [] } }, {}, /"okfit".*fileMatch/);
@@ -298,13 +326,54 @@ describe("defineConfig validation", () => {
 		);
 	});
 
-	it("rejects an empty catalogPath", () => {
-		assert.throws(() => one({}, { catalogPath: "" }), /catalogPath/);
+	it("rejects an empty catalogDir", () => {
+		assert.throws(() => one({}, { catalogDir: "" }), /catalogDir/);
+	});
+
+	it("rejects catalogPath: the merged catalog's place is derived from catalogDir", () => {
+		assert.throws(
+			() => one({}, { catalogPath: "schemas/catalog.json" }),
+			/^defineConfig: Expected no excess property at \["catalogPath"\]/,
+		);
+	});
+
+	it("requires a name", () => {
+		assert.throws(
+			() => defineConfig({ outputDir: "s", baseUrl: CUSTOM, schemas: { okfit: { schema: Config } } } as never),
+			/^defineConfig: name is required — the base name of this config's catalog slice \(<catalogDir>\/<name>\.json\)$/,
+		);
+	});
+
+	it("rejects a name that is not a simple file base name", () => {
+		for (const name of ["", "a/b", "a b", "a\\b", "tab\there"]) {
+			assert.throws(() => one({}, { name }), /^defineConfig: name ".*" must be a simple file base name/, name);
+		}
+	});
+
+	it("rejects a catalogDir that is outputDir, after lexical normalisation", () => {
+		assert.throws(() => one({}, { catalogDir: "./schemas/" }), /catalogDir "\.\/schemas" must not be outputDir/);
+	});
+
+	it("rejects a catalogDir that is the merged catalog's own path", () => {
+		for (const catalogDir of ["schemas/catalog.json", "./schemas/x/../catalog.json/"]) {
+			assert.throws(
+				() => one({}, { catalogDir }),
+				/^defineConfig: catalogDir ".*" must not be the merged catalog's path/,
+				catalogDir,
+			);
+		}
+	});
+
+	it("rejects a catalogDir a derived document sits in", () => {
+		assert.throws(
+			() => one({ baseUrl: CUSTOM, versions: ["1.0"], layout: "versioned" }, { catalogDir: "schemas/1.0" }),
+			/output path "schemas\/1\.0\/okfit-1\.0\.json" sits in catalogDir/,
+		);
 	});
 
 	it("rejects an untyped schema entry", () => {
 		assert.throws(
-			() => defineConfig({ outputDir: "s", baseUrl: CUSTOM, schemas: { okfit: null as never } }),
+			() => defineConfig({ name: "test", outputDir: "s", baseUrl: CUSTOM, schemas: { okfit: null as never } }),
 			/"okfit" Expected object/,
 		);
 	});
@@ -313,14 +382,21 @@ describe("defineConfig validation", () => {
 		rejects({ catalog: { description: "d" } as never }, {}, /"okfit".*Missing key at \["catalog"\]\["fileMatch"\]/);
 	});
 
-	it("rejects a catalogPath colliding with a derived file, after lexical normalisation", () => {
-		assert.throws(() => one({}, { catalogPath: "./schemas/x/../okfit.json" }), /output path .* is declared twice/);
+	it("rejects a merged catalog colliding with a derived file, after lexical normalisation", () => {
+		// A schema keyed `catalog` in the flat layout derives `schemas/catalog.json`,
+		// which is exactly where the merged catalog lands under the default catalogDir.
+		assert.throws(
+			() =>
+				defineConfig({ name: "test", outputDir: "schemas", baseUrl: CUSTOM, schemas: { catalog: { schema: Config } } }),
+			/output path "schemas\/catalogs\/\.\.\/catalog\.json" is declared twice/,
+		);
 	});
 
 	it("rejects two entries deriving one file (mixed layouts)", () => {
 		assert.throws(
 			() =>
 				defineConfig({
+					name: "test",
 					outputDir: "s",
 					baseUrl: CUSTOM,
 					schemas: {
@@ -336,6 +412,7 @@ describe("defineConfig validation", () => {
 		assert.throws(
 			() =>
 				defineConfig({
+					name: "test",
 					outputDir: "s",
 					baseUrl: null as never,
 					schemas: { okfit: { schema: Config, catalog } },
@@ -387,10 +464,11 @@ describe("defineConfig validation", () => {
 		// as omitted, as the hand guards this decode replaced treated it.
 		const schema = only(
 			defineConfig({
+				name: "test",
 				outputDir: "schemas",
 				baseUrl: CUSTOM,
 				drift: undefined,
-				catalogPath: undefined,
+				catalogDir: undefined,
 				schemas: {
 					okfit: { schema: Config, versions: undefined, current: undefined, published: undefined, catalog: undefined },
 				},
@@ -409,6 +487,7 @@ describe("defineConfig validation", () => {
 		const cases: ReadonlyArray<() => unknown> = [
 			() =>
 				defineConfig({
+					name: "test",
 					outputDir: "s",
 					baseUrl: null as never,
 					schemas: { okfit: { schema: Config, catalog } },

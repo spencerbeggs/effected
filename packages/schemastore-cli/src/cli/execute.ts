@@ -56,10 +56,33 @@ export class GateError extends Schema.TaggedError<GateError>()("GateError", { co
 }
 
 /**
+ * The merged catalog could not be assembled: a catalog URL is advertised by
+ * more than one slice, or a slice in `catalogDir` is not a catalog entry
+ * array. Nothing is merged silently, so the merged catalog was left as it
+ * is. Exit `1` under both `build` and `check`: only an edit to the slices
+ * or the configs clears it.
+ *
+ * @public
+ */
+export class CatalogMergeError extends Schema.TaggedError<CatalogMergeError>()("CatalogMergeError", {
+	path: Schema.String,
+	conflicts: Schema.Array(Schema.Struct({ url: Schema.String, slices: Schema.Array(Schema.String) })),
+	invalid: Schema.Array(Schema.Struct({ path: Schema.String, reason: Schema.String })),
+}) {
+	override get message(): string {
+		const lines = [
+			...this.conflicts.map((conflict) => `  url ${conflict.url} is advertised by ${conflict.slices.join(", ")}`),
+			...this.invalid.map(({ path, reason }) => `  ${path} is invalid: ${reason}`),
+		];
+		return `The merged catalog ${this.path} was not written.\n${lines.join("\n")}\nGive each catalog URL to exactly one config, and fix or delete every invalid slice.`;
+	}
+}
+
+/**
  * `check` found committed documents that differ from what the config
  * generates (or are missing), so a `build` would write — or outputs
- * nothing claims (an orphaned catalog file, an orphaned document), which
- * `build` never deletes. `check` is the CI drift gate, so a stale tree
+ * nothing claims (an orphaned catalog slice or merged catalog, an orphaned
+ * document), which `build` never deletes. `check` is the CI drift gate, so a stale tree
  * fails it. Exit `1`. `count` is every finding; `orphaned` the part of it
  * a build cannot clear, so the message names both remedies.
  *
@@ -161,9 +184,11 @@ const emit = Effect.fn("schemastore.emit")(function* (report: RunReport, format:
  * `64` — a usage error, not a run outcome. Otherwise loads the config,
  * applies the flag overrides, runs the shared walk, emits the report in the
  * requested format, appends the step summary, and fails typed —
- * `GateError`, then `DriftError`, then (for `check` only) `StaleError`,
- * each carrying exit `1` — when the report says the run refused to write
- * or, under `check`, that a build would write. `SchemaFile` is built here
+ * `GateError`, then `DriftError`, then `CatalogMergeError`, then (for
+ * `check` only) `StaleError`, each carrying exit `1` — when the report says
+ * the run refused to write, the merged catalog was blocked by a URL
+ * conflict or an invalid slice, or, under `check`, that a build would
+ * write. `SchemaFile` is built here
  * over the environment's `FileSystem`; the validator is `deps.validator` or
  * the real engine.
  *
@@ -194,6 +219,8 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 		Effect.catchTags({
 			FrozenVersionMissingError: (error) => Effect.fail(CliRuntime.reported(error, 1)),
 			FrozenVersionIdMismatchError: (error) => Effect.fail(CliRuntime.reported(error, 1)),
+			// A config problem, like a load failure: exit 2.
+			CatalogDirError: (error) => Effect.fail(CliRuntime.reported(error, 2)),
 		}),
 	);
 	yield* emit(report, input.format);
@@ -213,11 +240,21 @@ export const execute = Effect.fn("schemastore.execute")(function* (
 			}));
 		return yield* Effect.fail(CliRuntime.reported(new DriftError({ drifted }), 1));
 	}
+	const merged = report.catalog?.merged;
+	if (merged?.outcome === "blocked") {
+		return yield* Effect.fail(
+			CliRuntime.reported(
+				new CatalogMergeError({ path: merged.path, conflicts: merged.conflicts, invalid: merged.invalid }),
+				1,
+			),
+		);
+	}
 	if (mode === "check") {
-		const orphaned = (report.catalog?.outcome === "orphaned" ? 1 : 0) + (report.orphaned?.length ?? 0);
+		const catalogFiles = [report.catalog?.slice?.outcome, merged?.outcome];
+		const orphaned = catalogFiles.filter((outcome) => outcome === "orphaned").length + (report.orphaned?.length ?? 0);
 		const count =
 			report.schemas.filter((schema) => schema.outcome === "would-write").length +
-			(report.catalog?.outcome === "would-write" ? 1 : 0) +
+			catalogFiles.filter((outcome) => outcome === "would-write").length +
 			orphaned;
 		if (count > 0) {
 			return yield* Effect.fail(

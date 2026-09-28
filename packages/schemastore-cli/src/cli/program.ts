@@ -46,7 +46,8 @@ const trimLoadError = Effect.fn("schemastore.trimLoadError")(function* (error: C
  * `ShowHelp` is `64` with parse errors and `0` without (help itself was
  * already rendered); `ConfigNotFoundError` / `ConfigLoadError` are `2`;
  * `ConflictingFlagsError` arrives already marked `64`; `DriftError` /
- * `GateError` / `StaleError` arrive already marked `1`.
+ * `GateError` / `CatalogMergeError` / `StaleError` arrive already marked
+ * `1`.
  *
  * @public
  */

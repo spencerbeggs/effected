@@ -108,6 +108,15 @@ export interface SchemaEntryInput {
  * @public
  */
 export interface SchemastoreConfigInput {
+	/**
+	 * This config's identity: the base name of the catalog slice it owns
+	 * (`<catalogDir>/<name>.json`). Configs sharing a `catalogDir` must each
+	 * carry a distinct one — distinct case-insensitively, since on a
+	 * case-insensitive volume `docs` and `Docs` name one file and overwrite
+	 * each other; it must be a simple file base name (no separators, no
+	 * whitespace).
+	 */
+	readonly name: string;
 	/** The directory every derived `path` is written under; a trailing slash is trimmed. */
 	readonly outputDir: string;
 	/** The default {@link SchemaEntryInput.baseUrl} for an entry that declares none. */
@@ -116,8 +125,20 @@ export interface SchemastoreConfigInput {
 	readonly drift?: DriftTolerance;
 	/** What a build does when it finds drift. Defaults to `"error"`. */
 	readonly onDrift?: OnDrift;
-	/** Where the assembled catalog is written. Defaults to `<outputDir>/catalog.json`. */
-	readonly catalogPath?: string;
+	/**
+	 * The directory of catalog slices, one per config: this config writes its
+	 * own entries to `<catalogDir>/<name>.json`, and the CLI maintains the
+	 * merged `catalog.json` — every slice in the directory, united — in the
+	 * directory's parent. Defaults to `<outputDir>/catalogs`, so
+	 * the merged catalog lands at `<outputDir>/catalog.json`. Every `*.json`
+	 * file in it is read as a slice, so it holds nothing else, must not be
+	 * `outputDir` itself, and must not be the merged catalog's own path.
+	 * Every config that shares a merged catalog must share the same
+	 * `catalogDir`, under a `name` unique case-insensitively among them: two sibling directories (`schemas/catalogs`,
+	 * `schemas/more`) both merge into `schemas/catalog.json` from different
+	 * slice sets and overwrite each other — no single config can detect it.
+	 */
+	readonly catalogDir?: string;
 	/**
 	 * The schemas to derive, keyed by file base name — the key IS the
 	 * `name` every derived path and URL is built from, so it must be a
@@ -173,12 +194,14 @@ export interface ResolvedSchema {
  */
 export interface SchemastoreConfig {
 	readonly [ConfigBrand]: true;
+	/** This config's identity: the base name of its catalog slice. */
+	readonly name: string;
 	/** The directory every derived `path` is written under, trailing slash trimmed. */
 	readonly outputDir: string;
 	/** What a build does when it finds drift. */
 	readonly onDrift: OnDrift;
-	/** Where the assembled catalog is written. */
-	readonly catalogPath: string;
+	/** The directory of catalog slices; this config's own is `<catalogDir>/<name>.json`. */
+	readonly catalogDir: string;
 	/** Every schema, resolved. */
 	readonly schemas: ReadonlyArray<ResolvedSchema>;
 }
@@ -234,11 +257,12 @@ const EntryInput = Schema.Struct({
 });
 
 const ConfigInput = Schema.Struct({
+	name: Schema.String,
 	outputDir: Schema.NonEmptyString,
 	baseUrl: Schema.optionalKey(Schema.String),
 	drift: Schema.optionalKey(DriftToleranceInput),
 	onDrift: Schema.optionalKey(OnDriftInput),
-	catalogPath: Schema.optionalKey(Schema.NonEmptyString),
+	catalogDir: Schema.optionalKey(Schema.NonEmptyString),
 	schemas: Schema.Record(Schema.String, Schema.Unknown),
 });
 
@@ -392,6 +416,29 @@ const normalizePath = (raw: string): string => {
 	return `${absolute ? "/" : ""}${out.join("/")}`;
 };
 
+// Every `*.json` file directly in `catalogDir` is read as a catalog slice,
+// so a derived document there would be merged as a (malformed) slice by
+// every config sharing the directory. `outputDir` itself is refused
+// outright: another config's documents may sit there too.
+const assertCatalogDirHoldsOnlySlices = (
+	catalogDir: string,
+	outputDir: string,
+	documents: ReadonlyArray<string>,
+): void => {
+	const dir = normalizePath(catalogDir);
+	if (dir === normalizePath(`${catalogDir}/../catalog.json`)) {
+		fail(`catalogDir "${catalogDir}" must not be the merged catalog's path (catalog.json in its parent)`);
+	}
+	if (dir === normalizePath(outputDir)) {
+		fail(`catalogDir "${catalogDir}" must not be outputDir: every *.json file in it is read as a catalog slice`);
+	}
+	for (const document of documents) {
+		if (normalizePath(`${document}/..`) === dir) {
+			fail(`output path "${document}" sits in catalogDir "${catalogDir}", which holds only catalog slices`);
+		}
+	}
+};
+
 const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
 	const seen = new Set<string>();
 	for (const p of paths) {
@@ -428,18 +475,32 @@ const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
  * {@link HostedSchema}, or one built from `baseUrl`/`versions`/`current`/
  * `layout` and the config default — is validated by `HostedSchema` itself
  * (a `hosted` entry must be keyed by `hosted.name` and must not spell those
- * four fields beside it); a schema key must be a simple file base name; a
- * `catalog` is required under `baseUrl: "schemastore"`; an empty `schemas`
- * record is rejected; and an output path (a target, a frozen file, or the
- * catalog path) declared twice is rejected after a lexical normalisation
- * (`./`, `..`, trailing `/`) — the CLI's loader re-checks on the resolved
- * absolute paths. Branding the result lets a loader recognise a config
+ * four fields beside it); the config `name` is required (a missing one
+ * fails `defineConfig: name is required — …`, naming what it is for), and
+ * it and every schema key must be simple file base names; a `catalog` is required under
+ * `baseUrl: "schemastore"`; an empty `schemas` record is rejected; a
+ * `catalogDir` that is `outputDir`, that is the merged catalog's own path,
+ * or that a derived document sits directly in, is rejected (every `*.json`
+ * file there is read as a catalog slice); and an output path (a target, a frozen file, this config's
+ * catalog slice `<catalogDir>/<name>.json`, or the merged catalog
+ * `catalog.json` in `catalogDir`'s parent) declared twice is rejected after
+ * a lexical normalisation (`./`, `..`, trailing `/`) — the CLI's loader
+ * re-checks on the resolved absolute paths. Branding the result lets a loader recognise a config
  * module's default export via {@link isSchemastoreConfig}.
  *
  * @public
  */
 export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig => {
-	const config = decodeOrThrow(ConfigInput, withoutUndefined(input), "");
+	const raw = withoutUndefined(input);
+	// A plain-JS config gets no compile-time hint that `name` is required, so
+	// its absence names what the field is for rather than the bare decode.
+	if (Predicate.isObject(raw) && !Array.isArray(raw) && !Object.hasOwn(raw, "name")) {
+		return fail("name is required — the base name of this config's catalog slice (<catalogDir>/<name>.json)");
+	}
+	const config = decodeOrThrow(ConfigInput, raw, "");
+	if (!SchemaVersioning.isSimpleName(config.name)) {
+		return fail(`name "${config.name}" must be a simple file base name (no separators, no whitespace)`);
+	}
 	const outputDir = trimSlashes(config.outputDir);
 	if (Object.keys(config.schemas).length === 0) {
 		return fail("at least one schema is required");
@@ -447,13 +508,16 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 	// Validated once here, even when every entry overrides it.
 	const defaults = { baseUrl: config.baseUrl, drift: config.drift ?? DriftPolicy.defaults.policy };
 	const schemas = Object.entries(config.schemas).map(([name, entry]) => resolveEntry(name, entry, defaults, outputDir));
-	const catalogPath = config.catalogPath ?? `${outputDir}/catalog.json`;
-	assertUniquePaths([...schemas.flatMap((s) => [s.target.path, ...s.frozen.map((f) => f.path)]), catalogPath]);
+	const catalogDir = config.catalogDir !== undefined ? trimSlashes(config.catalogDir) : `${outputDir}/catalogs`;
+	const documents = schemas.flatMap((s) => [s.target.path, ...s.frozen.map((f) => f.path)]);
+	assertCatalogDirHoldsOnlySlices(catalogDir, outputDir, documents);
+	assertUniquePaths([...documents, `${catalogDir}/${config.name}.json`, `${catalogDir}/../catalog.json`]);
 	return {
 		[ConfigBrand]: true,
+		name: config.name,
 		outputDir,
 		onDrift: config.onDrift ?? DriftPolicy.defaults.onDrift,
-		catalogPath,
+		catalogDir,
 		schemas,
 	};
 };

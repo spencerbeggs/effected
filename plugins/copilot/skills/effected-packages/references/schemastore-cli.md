@@ -19,6 +19,7 @@ import { defineConfig } from "@effected/schemastore";
 import { MyConfig } from "./src/schema/my-config.js";
 
 export default defineConfig({
+ name: "my-config",
  outputDir: "schemas",
  baseUrl: "https://example.com/schemas",
  schemas: {
@@ -36,7 +37,8 @@ export default defineConfig({
 ```
 
 - Discovered as `schemastore.config.{ts,mts,js,mjs}` walking upward from the working directory, or named by the optional positional argument. Loaded through `jiti` **relative to the config file**, so `./x.js` specifiers resolve to `.ts` sources and `effect` resolves from the consumer's own `node_modules`.
-- `schemas` is keyed by file base name — the key IS the schema's `name`. Relative `outputDir`, `catalogPath` and every derived schema/frozen `path` resolve against the **config file's directory**, never the working directory.
+- `name` is required: the config's identity, the base name of its catalog slice `<catalogDir>/<name>.json` (`catalogDir` defaults to `<outputDir>/catalogs`). The command also maintains the merged `catalog.json` in `catalogDir`'s parent — the union of every slice there, sorted by `url` — so several configs can share one `outputDir` and all check green; a `url` two slices advertise, or an invalid slice, fails both commands (`CatalogMergeError`, exit `1`).
+- `schemas` is keyed by file base name — the key IS the schema's `name`. Relative `outputDir`, `catalogDir` and every derived schema/frozen `path` resolve against the **config file's directory**, never the working directory.
 - `$id`, the write `path` and every catalog URL are derived from ONE layout (`outputDir`/`baseUrl`, this entry's or the config's default `baseUrl`, and `layout`), so they cannot disagree with each other — there is no `$id` override. A first-run config declares a single `versions` label; a second is appended only once the first is published and its file already exists on disk.
 - `drift` is a top-level default an entry may override; `onDrift` is top-level and run-wide, never overridable per schema. Together they default to `{ policy: "semantic", onDrift: "error" }`; the flags below override the effective policy for one run.
 
@@ -48,7 +50,7 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
 ```
 
 - **`build`** generates, gates (structural lint + ajv strict mode), applies the drift table, and writes what passes — content-compared, so an unchanged or merely reformatted file is untouched — then the catalog entries the same way. When any schema fails the gate, or drifts under `onDrift: "error"`, **nothing is written** and every otherwise-writable schema reports `held`.
-- **`check`** is the identical walk with no writes: it reports exactly what `build` would do under the same flags (`would write`, `unchanged`, `DRIFT`, `held`, `GATE FAILED`) and exits under the same conditions — and, as the CI gate, it also exits `1` whenever a build would write anything (`StaleError`: ``N document(s) are stale; run `schemastore build` and commit the result.``), evaluated after the gate and drift verdicts, or when an output nothing claims sits on disk — an orphaned `catalog.json` no schema declares, or a document left behind at a sibling shape of a derived path (`<name>.json`, `<name>-<v>.json`, `<v>/<name>.json`, `<v>/<name>-<v>.json` — an `appendVersion` flip or a `layout` change moved it) that no target, frozen version, or catalog path names; nothing else in `outputDir` is looked at, so a shared or deploy directory is safe unless two configs derive one schema name and version under different layouts into it; `build` reports both and deletes neither — delete by hand. It replaces a hand-written drift test.
+- **`check`** is the identical walk with no writes: it reports exactly what `build` would do under the same flags (`would write`, `unchanged`, `DRIFT`, `held`, `GATE FAILED`) and exits under the same conditions — and, as the CI gate, it also exits `1` whenever a build would write anything (`StaleError`: ``N document(s) are stale; run `schemastore build` and commit the result.``), evaluated after the gate and drift verdicts, or when an output nothing claims sits on disk — an orphaned catalog slice no schema declares (or a merged `catalog.json` with no slice left), or a document left behind at a sibling shape of a derived path (`<name>.json`, `<name>-<v>.json`, `<v>/<name>.json`, `<v>/<name>-<v>.json` — an `appendVersion` flip or a `layout` change moved it) that no target, frozen version, catalog slice or merged catalog names; nothing else in `outputDir` is looked at, so a shared or deploy directory is safe unless two configs derive one schema name and version under different layouts into it; `build` reports both and deletes neither — delete by hand. It replaces a hand-written drift test.
 - **`--force`** is `--drift=allow` for one run, announced loudly; it never overrides a gate failure. Combined with an explicit non-`allow` `--drift` (`strict` or `semantic`) it is refused as a usage error (`ConflictingFlagsError`, exit `64`) before the config loads — a contradiction, not a precedence question; `--force --drift=allow` is redundant and accepted.
 - **`--format=json`** emits one document on stdout — `mode`, `configPath`, `drift: { onDrift, policy? }` (`policy` present only when a flag forced one tolerance over every schema's own), per-schema `{ $id, path, name, version?, published, change, verdict, policy, outcome, nextVersion?, frozen?, findings }`, one optional `catalog: { path, entries, outcome }` for the single catalog file, one optional `orphaned: string[]` of leftover document paths in config order, `drifted`, `gateFailed`, `wrote` — and moves every human line to stderr.
 - When `GITHUB_STEP_SUMMARY` is set (read through Effect `Config`), both commands append a markdown table and the drift verdict; a failure to write it is logged, never fatal.
@@ -69,8 +71,8 @@ schemastore check [config] [--drift=…] [--on-drift=…] [--force] [--format=hu
 | code | meaning |
 | ------ | --------- |
 | 0 | success, including drift under `onDrift: "warn"` |
-| 1 | drift under `onDrift: "error"`, a gate failure, or — for `check` — any document `build` would write or an output nothing claims (an orphaned catalog file or document) |
-| 2 | config not found, failed to load, or not a `defineConfig(...)` value |
+| 1 | drift under `onDrift: "error"`, a gate failure, a merged catalog blocked by a URL conflict or an invalid slice, or — for `check` — any document `build` would write or an output nothing claims (an orphaned catalog slice, merged catalog or document) |
+| 2 | config not found, failed to load, not a `defineConfig(...)` value, or a `catalogDir` that is a file or cannot be listed |
 | 3 | infrastructure failure |
 | 64 | usage error |
 

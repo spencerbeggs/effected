@@ -108,6 +108,7 @@ import { defineConfig } from "@effected/schemastore";
 import { okfitConfigDocumentFields, okfitConfigSchemaHost } from "../../src/OkfitConfig.js";
 
 export default defineConfig({
+  name: "okfit",
   outputDir: "../../../../schemas",
   schemas: {
     [okfitConfigSchemaHost.name]: {

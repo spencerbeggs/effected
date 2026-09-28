@@ -8,6 +8,7 @@ const platform = (seed: Record<string, string>) => Layer.mergeAll(MemoryFileSyst
 
 const Config = Schema.Struct({ name: Schema.String });
 const config = defineConfig({
+	name: "test",
 	outputDir: "schemas",
 	baseUrl: "https://x/s",
 	schemas: {
@@ -63,7 +64,7 @@ describe("ConfigLoader.load", () => {
 				assert.strictEqual(loaded.path, "/repo/lib/scripts/schemastore.config.ts");
 				assert.strictEqual(loaded.directory, "/repo/lib/scripts");
 				assert.strictEqual(loaded.config.outputDir, "/repo/lib/scripts/schemas");
-				assert.strictEqual(loaded.config.catalogPath, "/repo/lib/scripts/schemas/catalog.json");
+				assert.strictEqual(loaded.config.catalogDir, "/repo/lib/scripts/schemas/catalogs");
 				assert.strictEqual(loaded.config.schemas[0]?.target.path, "/repo/lib/scripts/schemas/1.1/a-1.1.json");
 				assert.strictEqual(loaded.config.schemas[0]?.frozen[0]?.path, "/repo/lib/scripts/schemas/1.0/a-1.0.json");
 				assert.isTrue(isSchemastoreConfig(loaded.config));
@@ -73,6 +74,7 @@ describe("ConfigLoader.load", () => {
 	it.effect("leaves an absolute outputDir alone", () =>
 		Effect.gen(function* () {
 			const absoluteConfig = defineConfig({
+				name: "test",
 				outputDir: "/abs/schemas",
 				baseUrl: "https://x/s",
 				schemas: { a: { schema: Config } },
@@ -127,18 +129,63 @@ describe("ConfigLoader.load", () => {
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
-	it.effect("fails typed when catalogPath is not a string (forged brand)", () =>
+	// A forged brand skips defineConfig, so every field the loader and the
+	// Runner dereference is re-checked; each case is one field wrong.
+	const loadForged = (overrides: Record<string, unknown>) =>
+		Effect.flip(
+			ConfigLoader.load({
+				explicit: "schemastore.config.js",
+				cwd: "/repo",
+				importModule: () =>
+					Promise.resolve({ default: Object.assign({}, config, overrides) as unknown as typeof config }),
+			}),
+		);
+
+	it.effect("fails typed when catalogDir is not a string (forged brand)", () =>
 		Effect.gen(function* () {
-			const forged = Object.assign({}, config, { catalogPath: 123 }) as unknown as typeof config;
-			const error = yield* Effect.flip(
-				ConfigLoader.load({
-					explicit: "schemastore.config.js",
-					cwd: "/repo",
-					importModule: () => Promise.resolve({ default: forged }),
-				}),
-			);
+			const error = yield* loadForged({ catalogDir: 123 });
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, "catalogPath is not a string");
+			assert.strictEqual(error.reason, "catalogDir is not a string");
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when name is missing or not a simple file base name (forged brand)", () =>
+		Effect.gen(function* () {
+			for (const name of [undefined, 123, "", "a/b", "a b"]) {
+				const error = yield* loadForged({ name });
+				assert.instanceOf(error, ConfigLoadError);
+				assert.strictEqual(error.reason, "name is not a simple file base name", String(name));
+			}
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when catalogDir resolves to outputDir (forged brand)", () =>
+		Effect.gen(function* () {
+			const error = yield* loadForged({ catalogDir: "/repo/schemas" });
+			assert.instanceOf(error, ConfigLoadError);
+			assert.match(error.reason, /^catalogDir "\/repo\/schemas" must not be outputDir/);
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when catalogDir resolves to the merged catalog's path (forged brand)", () =>
+		Effect.gen(function* () {
+			const error = yield* loadForged({ catalogDir: "/repo/elsewhere/catalog.json" });
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(
+				error.reason,
+				'catalogDir "/repo/elsewhere/catalog.json" must not be the merged catalog\'s path (catalog.json in its parent)',
+			);
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
+	);
+
+	it.effect("fails typed when a document resolves into catalogDir (forged brand)", () =>
+		Effect.gen(function* () {
+			const error = yield* loadForged({ catalogDir: "/repo/schemas/1.1" });
+			assert.instanceOf(error, ConfigLoadError);
+			assert.strictEqual(
+				error.reason,
+				'output path "/repo/schemas/1.1/a-1.1.json" sits in catalogDir "/repo/schemas/1.1", which holds only catalog slices',
+			);
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.js": "" }))),
 	);
 
@@ -261,11 +308,17 @@ describe("ConfigLoader.load", () => {
 
 	it.effect("fails typed when two outputs resolve to one absolute path", () =>
 		Effect.gen(function* () {
-			// The forged catalogPath is lexically distinct from the target path but
-			// resolves against the same directory to one absolute path.
-			const colliding = Object.assign({}, config, {
-				catalogPath: config.schemas[0]?.target.path,
-			}) as unknown as typeof config;
+			// A schema keyed `catalog` derives `schemas/catalog.json`; the forged
+			// absolute catalogDir is lexically unrelated, but its merged catalog
+			// resolves to that same absolute path.
+			const flat = defineConfig({
+				name: "test",
+				outputDir: "schemas",
+				baseUrl: "https://x/s",
+				catalogDir: "elsewhere/catalogs",
+				schemas: { catalog: { schema: Config } },
+			});
+			const colliding = Object.assign({}, flat, { catalogDir: "/repo/schemas/catalogs" }) as unknown as typeof config;
 			const error = yield* Effect.flip(
 				ConfigLoader.load({
 					explicit: "schemastore.config.ts",
@@ -274,7 +327,7 @@ describe("ConfigLoader.load", () => {
 				}),
 			);
 			assert.instanceOf(error, ConfigLoadError);
-			assert.strictEqual(error.reason, 'output path "/repo/schemas/1.1/a-1.1.json" is declared twice after resolution');
+			assert.strictEqual(error.reason, 'output path "/repo/schemas/catalog.json" is declared twice after resolution');
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
 	);
 

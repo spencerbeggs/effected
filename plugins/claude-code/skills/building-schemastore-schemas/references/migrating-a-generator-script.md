@@ -14,7 +14,7 @@ program. What varies between them is exactly the config it takes.
 
 | In the script | In the config / CLI |
 | --- | --- |
-| `export const targets: ReadonlyArray<SchemaTarget> = [ … ]` | `defineConfig({ outputDir, schemas: { <name>: { schema, … } } })` — one entry per schema, keyed by its file base name |
+| `export const targets: ReadonlyArray<SchemaTarget> = [ … ]` | `defineConfig({ name, outputDir, schemas: { <name>: { schema, … } } })` — a config `name` (its catalog slice's base name), then one entry per schema, keyed by its file base name |
 | `resolve(REPO_ROOT, "schemas", …)` paths | `outputDir` plus paths resolved against the config file's directory (absolute paths still pass through) |
 | `SchemaVersioning.parseResult("5.0.0")` + `Result.getOrThrowWith` | `versions: ["5.0.0"]` (and `current`, if not the newest) — `defineConfig` parses each label and throws naming an invalid one |
 | `SchemaVersioning.fileName(name, version)` in `path` | derived — `$id`, `path` and every catalog URL come from the schema's key, `outputDir`, `baseUrl` and `layout`; there is no `path` or `$id` to spell by hand |
@@ -23,7 +23,7 @@ program. What varies between them is exactly the config it takes.
 | `--check` / `--dry-run` → `SchemaPipeline.check` | `schemastore check` |
 | `--force` / `--allow-contract-change` → `contractChanges: "allow"` | `--force` (sugar for `--drift=allow`) |
 | `const CATALOGUED = false` selecting `"allow"` vs `"block-versioned"` | `published: false` on the schema entry; flip to `true` when the entry is accepted |
-| `CatalogEntry.assemble({ name, description, fileMatch, baseUrl, versions })` + `Schema.encodeSync` + a file write | the `catalog: { description, fileMatch }` block on each schema entry — `name`, `url` and `versions` derive from the schema's own key and `versions`, and every entry lands in the single `catalogPath` file |
+| `CatalogEntry.assemble({ name, description, fileMatch, baseUrl, versions })` + `Schema.encodeSync` + a file write | the `catalog: { description, fileMatch }` block on each schema entry — `name`, `url` and `versions` derive from the schema's own key and `versions`, and every entry lands in the config's slice `<catalogDir>/<name>.json`, merged into `catalog.json` beside `catalogDir` |
 | a previous published label kept as a second `SchemaTarget` in the array | append the new label to `versions` and set `current`; the old label freezes and is verified, not regenerated |
 | the `SchemaContractChangeError` handler printing `version → nextVersion` | the `DRIFT contract at published X → suggest Y` line and `nextVersion` in the JSON report |
 | per-result `Effect.logInfo` of advisory findings | the indented finding lines under each schema |

@@ -28,8 +28,8 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 78ed1f3350a3ad8acc958d5609a85cd25f2a562ffd6fb521eab4a080460544f3
+  at: 2026-09-28T23:39:57Z
+  body_sha256: 6551ebd4e6b98549488eb68e2509ce532dc6dcd8d105ae26f119793266adc295
 ---
 
 # @effected/schemastore
@@ -358,6 +358,7 @@ import { defineConfig } from "@effected/schemastore";
 import { OkfitConfig } from "./src/config-schema.js";
 
 export default defineConfig({
+  name: "okfit",
   outputDir: "schemas",
   baseUrl: "schemastore",
   schemas: {
@@ -454,11 +455,14 @@ plain `Error` shaped `defineConfig: schema "<name>" Expected string at
 literal unions for `drift`, `onDrift` and `layout` are derived from the
 exported types through an exhaustive-`Record` helper, so the accepted
 lists cannot drift from the types. The rules a decode cannot express stay
-hand-written after it: an empty `schemas` record; a key that fails the
-simple-name rule; a `hosted` entry keyed differently from `hosted.name`,
+hand-written after it: an empty `schemas` record; a config `name` or a
+key that fails the simple-name rule; a `catalogDir` that is `outputDir`
+or that a derived document sits directly in; a `hosted` entry keyed differently from `hosted.name`,
 or spelling a hosting field beside it; an entry with no `baseUrl` and no
 config default; a missing `catalog` under `"schemastore"`; and an output
-path (a target, a frozen file or the catalog path) declared twice,
+path (a target, a frozen file, the config's catalog slice
+`<catalogDir>/<name>.json` or the merged `catalog.json` in `catalogDir`'s
+parent) declared twice,
 compared after lexical normalisation. The version and hosting rules — an
 empty `versions` array, an unparseable or duplicate label, `current`
 without `versions` or not among them, `layout` under `"schemastore"`, a

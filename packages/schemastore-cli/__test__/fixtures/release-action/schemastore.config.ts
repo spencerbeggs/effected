@@ -2,6 +2,7 @@ import { defineConfig } from "@effected/schemastore";
 import { ReleaseOutput } from "./src/output-schema.js";
 
 export default defineConfig({
+	name: "release-action",
 	outputDir: "schemas",
 	baseUrl: "https://raw.githubusercontent.com/o/release-action/main/schemas",
 	schemas: {
