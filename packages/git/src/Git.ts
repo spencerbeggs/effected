@@ -2115,6 +2115,22 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
+	const commonDir = Effect.fn("Git.commonDir")(function* (cwd: string) {
+		yield* Effect.annotateCurrentSpan({ cwd });
+		const classified = yield* runFor(GitCommand.commonDir(), cwd, "generic");
+		switch (classified._tag) {
+			case "success":
+				return classified.output.trim();
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				// rev-parse --git-common-dir names no ref, so no ref-error stderr can reach here.
+				return yield* Effect.die(`Git.commonDir: unexpected classification "${classified._tag}"`);
+		}
+	});
+
 	const configGet = Effect.fn("Git.configGet")(function* (
 		cwd: string,
 		key: string,
@@ -3021,6 +3037,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		defaultBranch,
 		currentBranch,
 		repoRoot,
+		commonDir,
 		configGet,
 		remoteUrl,
 		commitInfo,
@@ -3534,8 +3551,31 @@ export interface GitShape {
 	readonly currentBranch: (
 		cwd: string,
 	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
-	/** `git rev-parse --show-toplevel` — the absolute repository root path, trimmed. */
+	/**
+	 * `git rev-parse --show-toplevel` — the absolute repository root path, trimmed.
+	 *
+	 * @remarks
+	 * The path is PHYSICAL: git resolves symlinks, so it need not match the
+	 * spelling the caller reached the repository by (every macOS tmpdir:
+	 * `/var` → `/private/var`). Bound an upward walk by it with
+	 * `@effected/walker`'s `Walker.ascendWithin`, never `Walker.ascend`'s
+	 * lexical `stopAt`. For identity across worktrees, use `commonDir`.
+	 */
 	readonly repoRoot: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git rev-parse --path-format=absolute --git-common-dir` — the absolute,
+	 * symlink-resolved directory a repository shares with all of its linked
+	 * worktrees, trimmed.
+	 *
+	 * @remarks
+	 * Repository identity that holds across worktrees: every checkout of one
+	 * repository — the main worktree, any subdirectory, any linked worktree,
+	 * and any path reached through a symlink — answers the same string, so two
+	 * results compare with `===`. `repoRoot` cannot serve here, because each
+	 * worktree has its own toplevel. A bare repository answers its own
+	 * directory. Needs git 2.31 or later.
+	 */
+	readonly commonDir: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError>;
 	/**
 	 * `git config [--<scope>] --get <key>` — the trimmed value, or `Option.none`
 	 * when the key is unset.
@@ -4153,6 +4193,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		defaultBranch: notStubbed("defaultBranch"),
 		currentBranch: notStubbed("currentBranch"),
 		repoRoot: notStubbed("repoRoot"),
+		commonDir: notStubbed("commonDir"),
 		configGet: notStubbed("configGet"),
 		remoteUrl: notStubbed("remoteUrl"),
 		commitInfo: notStubbed("commitInfo"),

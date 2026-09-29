@@ -254,6 +254,9 @@ const currentBranch = (): GitInvocation => git(["rev-parse", "--abbrev-ref", "HE
 // Implementation of GitCommand.repoRoot; the public contract lives on the static.
 const repoRoot = (): GitInvocation => git(["rev-parse", "--show-toplevel"]);
 
+// Implementation of GitCommand.commonDir; the public contract lives on the static.
+const commonDir = (): GitInvocation => git(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+
 // Implementation of GitCommand.commitInfo; the public contract lives on the static.
 const commitInfo = (ref = "HEAD"): GitInvocation => git(["log", "-1", "--format=%H%x00%G?%x00%B", ref]);
 
@@ -884,6 +887,19 @@ export class GitCommand {
 	 * enclosing git repository.
 	 */
 	static readonly repoRoot = repoRoot;
+
+	/**
+	 * `git rev-parse --path-format=absolute --git-common-dir` — the absolute,
+	 * symlink-resolved path of the directory a repository and all of its linked
+	 * worktrees share.
+	 *
+	 * @remarks
+	 * Without `--path-format=absolute` git prints this relative to the working
+	 * directory in a plain checkout (`.git`) but absolute from inside a linked
+	 * worktree, so two answers cannot be compared as strings. The flag needs
+	 * git 2.31 or later.
+	 */
+	static readonly commonDir = commonDir;
 
 	/**
 	 * `git log -1 --format=%H%x00%G?%x00%B <ref>` — a NUL-separated triple: the

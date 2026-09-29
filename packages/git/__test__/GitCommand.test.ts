@@ -288,6 +288,10 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.repoRoot(), ["rev-parse", "--show-toplevel"]);
 	});
 
+	it("commonDir builds `git rev-parse --path-format=absolute --git-common-dir`", () => {
+		assertGitCommand(GitCommand.commonDir(), ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+	});
+
 	it("commitInfo builds a NUL-separated single-commit log format", () => {
 		assertGitCommand(GitCommand.commitInfo(), ["log", "-1", "--format=%H%x00%G?%x00%B", "HEAD"]);
 		assertGitCommand(GitCommand.commitInfo("v1.0.0"), ["log", "-1", "--format=%H%x00%G?%x00%B", "v1.0.0"]);

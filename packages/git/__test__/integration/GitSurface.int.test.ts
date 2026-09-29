@@ -18,7 +18,7 @@
 // set to "always" — the superproject (and any clone of it) sets that BEFORE
 // the submodule operation that would otherwise be refused.
 
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
@@ -668,6 +668,90 @@ describe("Git.log — history repository (fixture C)", () => {
 				const git = yield* Git;
 				const error = yield* Effect.flip(git.log(tmpdir()));
 				assert.isTrue(error instanceof NotARepositoryError);
+			}),
+		),
+	);
+});
+
+describe("Git surface — repository identity across worktrees (commonDir)", () => {
+	let base: string;
+	let main: string;
+	let worktree: string;
+	let linked: string;
+	let bare: string;
+	let outside: string;
+
+	/**
+	 * A repository with a subdirectory and one linked worktree, a directory
+	 * symlink onto the repository, a bare repository, and a plain directory.
+	 * `base` is the UNRESOLVED tmpdir path, so on macOS every cwd below sits
+	 * behind the `/var` -> `/private/var` link, and `linked` adds an explicit
+	 * symlink so the same trap is exercised on Linux, whose tmpdir is real.
+	 */
+	beforeAll(async () => {
+		base = await mkdtemp(join(tmpdir(), "effected-git-common-dir-"));
+		main = join(base, "main");
+		worktree = join(base, "worktree");
+		linked = join(base, "linked");
+		bare = join(base, "bare.git");
+		outside = join(base, "outside");
+		await mkdir(join(main, "sub"), { recursive: true });
+		await mkdir(outside);
+		await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					yield* runFixtureGit(main, ["-c", "init.defaultBranch=main", "init"]);
+					yield* runFixtureGit(main, [
+						"-c",
+						"user.email=git-integration@example.com",
+						"-c",
+						"user.name=Git Integration",
+						"-c",
+						"commit.gpgsign=false",
+						"commit",
+						"--allow-empty",
+						"-m",
+						"init",
+					]);
+					yield* runFixtureGit(main, ["worktree", "add", "-b", "side", worktree]);
+					yield* runFixtureGit(base, ["init", "--bare", bare]);
+				}),
+			),
+		);
+		await symlink(main, linked, "dir");
+	});
+
+	afterAll(async () => {
+		await rm(base, { recursive: true, force: true });
+	});
+
+	it.effect("answers one realpath'd directory from the checkout, a subdirectory, a worktree and a symlink", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const expected = yield* Effect.promise(() => realpath(join(main, ".git")));
+				for (const cwd of [main, join(main, "sub"), worktree, linked, join(linked, "sub")]) {
+					assert.strictEqual(yield* git.commonDir(cwd), expected, cwd);
+				}
+			}),
+		),
+	);
+
+	it.effect("answers the repository directory itself for a bare repository", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				assert.strictEqual(yield* git.commonDir(bare), yield* Effect.promise(() => realpath(bare)));
+			}),
+		),
+	);
+
+	it.effect("fails NotARepositoryError outside any repository", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const failure = yield* Effect.flip(git.commonDir(outside));
+				assert.instanceOf(failure, NotARepositoryError);
 			}),
 		),
 	);
