@@ -3583,7 +3583,7 @@ export interface GitShape {
 	/**
 	 * `git rev-parse --path-format=absolute --git-common-dir` — the absolute,
 	 * symlink-resolved directory a repository shares with all of its linked
-	 * worktrees, trimmed.
+	 * worktrees, with git's terminating newline removed.
 	 *
 	 * @remarks
 	 * Repository identity that holds across worktrees: every checkout of one
