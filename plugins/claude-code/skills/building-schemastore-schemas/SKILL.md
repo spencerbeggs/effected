@@ -129,6 +129,10 @@ a devDependency.
   fails the ajv compile; so does a key with a dot, space, slash, `@`, `+` or
   non-ASCII character after the prefix. See
   [references/document-authoring.md](references/document-authoring.md).
+- Configs sharing a merged catalog must share one `catalogDir`, with names
+  unique case-insensitively and schema keys unique across configs, or they
+  overwrite each other. See
+  [references/multi-config.md](references/multi-config.md).
 - A `--format=json` run puts human text on stderr; parse stdout only. See
   [references/ci-gate.md](references/ci-gate.md).
 
@@ -162,6 +166,11 @@ a devDependency.
   exit codes, the JSON report shape, the GitHub step summary, the
   dependency-bump posture, local vs CI. Load when: wiring `schema:check` into
   a workflow or parsing its output.
+- [references/multi-config.md](references/multi-config.md) — several
+  `schemastore.config.ts` files publishing into one shared folder and one
+  merged `catalog.json`: the worked layout, the convergence rules, removing
+  or renaming a config, and reading a blocked merge. Load when: a monorepo
+  has more than one config, or configs share an `outputDir`.
 - [references/migrating-a-generator-script.md](references/migrating-a-generator-script.md) —
   the `generate-schema.ts` → `schemastore.config.ts` mapping and what to
   delete. Load when: a repository still owns a hand-rolled generator over

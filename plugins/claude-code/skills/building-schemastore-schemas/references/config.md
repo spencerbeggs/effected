@@ -172,6 +172,8 @@ the merge like an unparseable one.
 `schemas/more`) both merge into `schemas/catalog.json`, each from its own
 slice set, and overwrite each other; no single config can see the other
 directory, so nothing reports it.
+[multi-config.md](multi-config.md) walks through a two-config layout end to
+end.
 
 That derivation fixes the file layout under a custom `baseUrl`: each
 versioned schema's `path` sits directly under the directory `baseUrl`
