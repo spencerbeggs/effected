@@ -1,5 +1,14 @@
 # @effected/xdg
 
+## 0.8.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.13.0 | 0.13.1 |
+| @effected/walker | dependency | updated | 0.13.0 | 0.14.0 |
+
 ## 0.8.0
 
 ### Breaking Changes

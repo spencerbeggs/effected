@@ -1,5 +1,14 @@
 # @effected/workspaces
 
+## 0.30.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/git | dependency | updated | 0.18.1 | 0.19.0 |
+| @effected/walker | dependency | updated | 0.13.0 | 0.14.0 |
+
 ## 0.30.1
 
 ### Bug Fixes

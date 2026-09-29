@@ -1,5 +1,18 @@
 # @effected/memfs
 
+## 0.12.0
+
+### Features
+
+- `MemoryFileSystem.die(defect)` is a fault handler that fails a member as a defect, which `Effect.catch` cannot absorb.
+- `makeFaulty`, `layerFaulty` and `layerFaultyWith` accept a `(base) => faults` factory as well as a fault map. `base` is the unfaulted volume, so a handler can rewrite arguments and delegate to it. The factory type is exported as `MemoryFileSystemFaultsFactory`. [#882][#882]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#882]: https://github.com/spencerbeggs/effected/pull/882
+
 ## 0.11.0
 
 ### Breaking Changes

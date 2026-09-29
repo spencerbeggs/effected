@@ -1,5 +1,18 @@
 # @effected/copilot-plugin
 
+## 0.12.4
+
+### Documentation
+
+- The effect-v4-testing fault-injection and false-greens references and the effected-packages memfs reference now cover `MemoryFileSystem.die` and the `(base) => faults` factory form.
+- The effected-packages walker and git references cover `Walker.ascendWithin` and `Git.commonDir`, and warn that `ascend`'s lexical `stopAt` never matches `Git.repoRoot`'s symlink-resolved answer. [#882][#882]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#882]: https://github.com/spencerbeggs/effected/pull/882
+
 ## 0.12.3
 
 ### Documentation
