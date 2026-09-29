@@ -580,6 +580,33 @@ describe("Report.markdown", () => {
 		assert.strictEqual(row.replace(/\\\|/g, "").split("|").length - 2, 2);
 	});
 
+	it("escapes a backslash before a pipe, so an input `\\|` cannot turn into an escaped backslash and a live pipe", () => {
+		const report: RunReport = {
+			...blockedCheck,
+			catalog: {
+				merged: {
+					path: "schemas/catalog.json",
+					entries: 0,
+					outcome: "blocked",
+					slices: [],
+					conflicts: [],
+					invalid: [{ path: "schemas/catalogs/a\\|b.json", reason: 'Expected no excess property at [0]["x\\|y"]' }],
+				},
+			},
+		};
+		const markdown = Report.markdown(report);
+		// `\` → `\\` first, then `|` → `\|`: the input `\|` renders `\\\|`.
+		assert.include(
+			markdown,
+			'| invalid: Expected no excess property at [0]["x\\\\\\|y"] | schemas/catalogs/a\\\\\\|b.json |',
+		);
+		// Strip escaped backslashes, then escaped pipes: what remains are the
+		// live column separators, exactly three for two columns.
+		const row = markdown.split("\n").find((line) => line.startsWith("| invalid:"));
+		assert.isDefined(row);
+		assert.strictEqual(row.replace(/\\\\/g, "").replace(/\\\|/g, "").split("|").length - 2, 2);
+	});
+
 	it("omits the catalog table when the report has none", () => {
 		const markdown = Report.markdown(warnBuild);
 		assert.notInclude(markdown, "| catalog |");

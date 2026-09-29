@@ -212,11 +212,13 @@ export interface CatalogSliceReport {
 	 */
 	readonly outcome: "written" | "unchanged" | "would-write" | "held" | "orphaned";
 	/**
-	 * Present when no file matched `<name>.json` exactly and the config
-	 * claimed the one file whose name matches it case-insensitively (a
-	 * leftover `docs.json` for a config named `Docs`) — the on-disk path it
-	 * claimed. On a case-insensitive volume two configs whose names differ
-	 * only in case share, and overwrite, that one file.
+	 * Present when no file matched `<name>.json` exactly and the volume
+	 * resolved that exact path to the one listed file whose name matches it
+	 * case-insensitively (a leftover `docs.json` for a config named `Docs`
+	 * on a case-insensitive volume) — the on-disk path it claimed. Never set
+	 * on a case-sensitive volume, where that file is another slice. On a
+	 * case-insensitive volume two configs whose names differ only in case
+	 * share, and overwrite, that one file.
 	 */
 	readonly caseFoldedMatch?: string;
 }
@@ -465,18 +467,25 @@ const syncCatalog = Effect.fn("Runner.syncCatalog")(function* (
 		schema.catalog !== undefined ? [schema.catalog] : [],
 	);
 
-	// The config's own slice on disk: an EXACT `<name>.json` wins; failing
-	// that, the one file whose name case-folds to it — on a case-insensitive
-	// volume a leftover `docs.json` IS the file `Docs.json` names, and must
-	// never conflict with the entries replacing it. Never a fold when an exact
-	// match exists or several files fold alike: on a case-sensitive volume
-	// `docs.json` and `Docs.json` are two configs' slices, and hiding one would
-	// make every config merge a different set. A fold is reported on the slice
-	// line, never silent: on a case-insensitive volume two configs named
-	// `docs` and `Docs` would share — and overwrite — this one file.
+	// The config's own slice on disk: an EXACT `<name>.json` wins. Failing
+	// that, the volume decides, never the name: when exactly one listed file
+	// case-folds to `<name>.json`, stat the exact path. A case-insensitive
+	// volume resolves it to that one file — a leftover `docs.json` IS the file
+	// `Docs.json` names, and must never conflict with the entries replacing
+	// it — so the file is claimed. A case-sensitive volume answers NotFound
+	// (any failure claims nothing): `docs.json` is another file, merged as
+	// another slice, so a case-only rename leftover blocks on the first build
+	// like any rename leftover, and configs `docs` and `Docs` never hide each
+	// other's slice. Several files folding alike claim nothing. A claim is
+	// reported on the slice line, never silent: on a case-insensitive volume
+	// two configs named `docs` and `Docs` share — and overwrite — this file.
 	const exact = `${config.name}.json`;
 	const folded = names.filter((name) => name.toLowerCase() === exact.toLowerCase());
-	const ownOnDisk = names.includes(exact) ? exact : folded.length === 1 ? folded[0] : undefined;
+	const ownOnDisk = names.includes(exact)
+		? exact
+		: own.length > 0 && folded.length === 1 && Result.isSuccess(yield* Effect.result(fs.stat(slicePath)))
+			? folded[0]
+			: undefined;
 	const caseFolded =
 		own.length > 0 && ownOnDisk !== undefined && ownOnDisk !== exact
 			? { caseFoldedMatch: path.normalize(path.join(config.catalogDir, ownOnDisk)) }
@@ -646,8 +655,13 @@ const syncCatalog = Effect.fn("Runner.syncCatalog")(function* (
  * in it is a slice by construction. It is listed before anything is
  * generated; one that is a file or cannot be listed fails typed with
  * {@link CatalogDirError}, nothing written. The running config's own slice
- * on disk is an exact `<name>.json` match, or — only when there is none —
- * the single file whose name case-folds to it.
+ * on disk is an exact `<name>.json` match, or — only when there is none,
+ * exactly one listed file case-folds to it, and the volume itself resolves
+ * the exact path to that file (a `stat` that succeeds, i.e. a
+ * case-insensitive volume) — that one file, reported as
+ * {@link CatalogSliceReport.caseFoldedMatch}. On a case-sensitive volume the
+ * variant is another slice: a case-only rename leftover blocks the merge on
+ * the first build like any other rename leftover.
  *
  * **A moved path leaves an orphan the derivation cannot see**: an
  * `appendVersion` flip or a `layout` change renames a document's derived

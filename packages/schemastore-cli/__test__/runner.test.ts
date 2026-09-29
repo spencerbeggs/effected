@@ -1142,23 +1142,92 @@ describe("Runner.run catalog slices", () => {
 		),
 	);
 
-	it.effect("the running config's own slice is recognised case-insensitively", () =>
+	// A case-insensitive volume, simulated over memfs: fault handlers resolve
+	// every call on `from` to the one file `to` already on disk, exactly as
+	// such a volume resolves `Docs.json` to a stored `docs.json`. The listing
+	// still names the stored file, so only the probe and the own-slice
+	// read/write see the fold — the three calls the Runner makes on its slice.
+	const caseInsensitiveLayers = (seed: MemoryFileSystemSeed, from: string, to: string) =>
+		Layer.unwrap(
+			Effect.gen(function* () {
+				const { fileSystem: base } = yield* Effect.orDie(MemoryFileSystem.makeInspectableWith(seed));
+				const faulty = MemoryFileSystem.layerFaulty({
+					stat: (path) => (path === from ? base.stat(to) : undefined),
+					readFileString: (path, encoding) => (path === from ? base.readFileString(to, encoding) : undefined),
+					writeFileString: (path, data, options) =>
+						path === from ? base.writeFileString(to, data, options) : undefined,
+				}).pipe(Layer.provide(Layer.succeed(FileSystem.FileSystem, base)));
+				return Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
+					Layer.provideMerge(Layer.mergeAll(faulty, Path.layer)),
+				);
+			}),
+		);
+
+	it.effect("on a case-insensitive volume a case-only rename leftover is the config's own slice", () =>
 		Effect.gen(function* () {
-			// On a case-insensitive volume, `Docs.json` and a leftover `docs.json`
-			// are one file; it must never conflict with the config's own entries.
-			const report = yield* Runner.run(cataloged("Docs", ["alpha"]), options("check"));
-			assert.strictEqual(report.catalog?.merged?.outcome, "would-write");
-			assert.deepStrictEqual(report.catalog?.merged?.conflicts, []);
-			assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("Docs")]);
-			// The case-folded claim is visible, never silent: two configs whose
-			// names differ only in case share one file on such a volume.
-			assert.deepStrictEqual(report.catalog?.slice, {
-				path: sliceOf("Docs"),
-				entries: 1,
-				outcome: "would-write",
-				caseFoldedMatch: sliceOf("docs"),
-			});
+			// The volume resolves `Docs.json` to the stored `docs.json`: one file,
+			// so it must never conflict with the entries replacing it.
+			for (let round = 0; round < 2; round++) {
+				const report = yield* Runner.run(cataloged("Docs", ["alpha"]), options("build"));
+				assert.strictEqual(report.catalog?.merged?.outcome, round === 0 ? "written" : "unchanged", `round ${round}`);
+				assert.deepStrictEqual(report.catalog?.merged?.conflicts, []);
+				assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("Docs")]);
+				// The case-folded claim is visible, never silent: two configs whose
+				// names differ only in case share one file on such a volume.
+				assert.deepStrictEqual(report.catalog?.slice, {
+					path: sliceOf("Docs"),
+					entries: 1,
+					outcome: "unchanged",
+					caseFoldedMatch: sliceOf("docs"),
+				});
+			}
+			const checked = yield* Runner.run(cataloged("Docs", ["alpha"]), options("check"));
+			assert.isFalse(checked.wrote);
+			assert.strictEqual(checked.catalog?.merged?.outcome, "unchanged");
+		}).pipe(
+			Effect.provide(
+				caseInsensitiveLayers({ [sliceOf("docs")]: entryText("alpha") }, sliceOf("Docs"), sliceOf("docs")),
+			),
+		),
+	);
+
+	it.effect("on a case-sensitive volume a case-only rename leftover blocks the first build like any rename", () =>
+		Effect.gen(function* () {
+			// The name alone decides nothing: memfs is case-sensitive, so
+			// `docs.json` is another file — a leftover advertising the same URL.
+			for (let round = 0; round < 2; round++) {
+				const report = yield* Runner.run(cataloged("Docs", ["alpha"]), options("build"));
+				assert.strictEqual(report.catalog?.merged?.outcome, "blocked", `round ${round}`);
+				assert.deepStrictEqual(report.catalog?.merged?.conflicts, [
+					{ url: `${BASE}/alpha.json`, slices: [sliceOf("Docs"), sliceOf("docs")] },
+				]);
+				assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("Docs"), sliceOf("docs")]);
+				assert.isUndefined(report.catalog?.slice?.caseFoldedMatch, `round ${round}`);
+			}
 		}).pipe(Effect.provide(layers({ [sliceOf("docs")]: entryText("alpha") }))),
+	);
+
+	it.effect("on a case-sensitive volume Docs never claims the docs config's slice", () =>
+		Effect.gen(function* () {
+			// `docs` has built; `Docs` builds for the first time and must merge
+			// `docs.json` as another config's slice, never hide it as its own.
+			yield* Runner.run(cataloged("docs", ["alpha"]), options("build"));
+			const report = yield* Runner.run(cataloged("Docs", ["beta"]), options("build"));
+			assert.isUndefined(report.catalog?.slice?.caseFoldedMatch);
+			assert.deepStrictEqual(report.catalog?.merged, {
+				path: MERGED,
+				entries: 2,
+				outcome: "written",
+				slices: [sliceOf("Docs"), sliceOf("docs")],
+				conflicts: [],
+				invalid: [],
+			});
+			for (const config of [cataloged("docs", ["alpha"]), cataloged("Docs", ["beta"])]) {
+				const checked = yield* Runner.run(config, options("check"));
+				assert.isFalse(checked.wrote, config.name);
+				assert.strictEqual(checked.catalog?.merged?.outcome, "unchanged", config.name);
+			}
+		}).pipe(Effect.provide(layers({}))),
 	);
 
 	it.effect(

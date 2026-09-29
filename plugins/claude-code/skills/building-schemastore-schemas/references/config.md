@@ -126,8 +126,13 @@ Configs whose catalogs share a directory — several `schemastore.config.ts`
 files writing into one `outputDir` — must carry names distinct
 **case-insensitively**: on a case-insensitive volume (macOS) `docs` and
 `Docs` are one slice file, and each build silently overwrites the other.
-When a config claims a slice whose file name matches only by case, its
-slice line says `claimed <path> by case-folded match for "<name>"`. Omitting it
+When `<name>.json` is not listed but the volume resolves it to the one
+file whose name matches only by case (a case-insensitive volume), the
+config claims that file and its slice line says
+`claimed <path> by case-folded match for "<name>"`. On a case-sensitive
+volume nothing is claimed: that file is another slice, so a case-only
+rename leftover blocks the merged catalog until you delete it, like any
+rename leftover. Omitting it
 fails with `defineConfig: name is required — the base name of this config's
 catalog slice (<catalogDir>/<name>.json)`.
 

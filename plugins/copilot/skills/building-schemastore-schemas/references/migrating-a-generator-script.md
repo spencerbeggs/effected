@@ -36,7 +36,11 @@ program. What varies between them is exactly the config it takes.
 1. Add `@effected/schemastore-cli` as a devDependency at the same version as
    `@effected/schemastore`. Keep `effect` and `@effected/schemastore`.
 2. Write `schemastore.config.ts` beside the script (or at the repository
-   root, where upward discovery finds it). Set `outputDir` to the directory
+   root, where upward discovery finds it). Set the required top-level
+   `name` — a simple file base name (no separators, no whitespace) that is
+   the base name of this config's catalog slice `<catalogDir>/<name>.json`,
+   unique case-insensitively among every config sharing that `catalogDir`.
+   Set `outputDir` to the directory
    the script wrote into, and for each target turn the `SchemaTarget.make`
    call into a keyed `schemas.<name>` entry: `name` becomes the key, `$id`
    and `path` are dropped (they are now derived), and `version` becomes

@@ -33,8 +33,8 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T23:39:57Z
-  body_sha256: 58e9bd27bb80cda12b028ca5c7c441d809011e10a299f6b1ea35aba890404150
+  at: 2026-09-29T00:43:39Z
+  body_sha256: 7f932ed3c3fde0c969f63c363d9c5f1d0f5aac40db89ab38823bbc05bb3585f8
 ---
 
 # @effected/schemastore-cli
@@ -236,9 +236,10 @@ in as `hosted: OutputSchema` instead of spelling `baseUrl`/`versions`/
   (macOS APFS) `docs` and `Docs` name one slice file and overwrite each
   other, with both builds exiting `0` — a bare-array slice records no
   owner, so it cannot be detected in general. When a config claims a file
-  that matches its name only case-insensitively, the slice line says so
-  (`claimed <path> by case-folded match for "<name>"`; JSON and the step
-  summary carry `caseFoldedMatch`). A missing `name` fails with `defineConfig: name is required —
+  that matches its name only case-insensitively — which it does only when
+  the volume itself resolves `<name>.json` to that file — the slice line
+  says so (`claimed <path> by case-folded match for "<name>"`; JSON and
+  the step summary carry `caseFoldedMatch`). A missing `name` fails with `defineConfig: name is required —
   the base name of this config's catalog slice (<catalogDir>/<name>.json)`
   rather than the bare decode message, since a `.js` config gets no
   compile-time hint.
@@ -457,12 +458,20 @@ derived from every slice:
   ignored). It is listed before anything is generated: absent is fine, but
   a `catalogDir` that is a file or cannot be listed fails
   `CatalogDirError` (exit `2`) with nothing written. The running config's
-  own slice on disk is an **exact** `<name>.json` match; only when there is
-  none, and exactly one file case-folds to that name, is that file taken
-  as its own — so on a case-insensitive volume a leftover `docs.json` is
-  the file `Docs.json` names and never conflicts with the entries
-  replacing it, while on a case-sensitive volume configs `docs` and
-  `Docs` keep two slices that every config merges alike. Another config's slice that vanished
+  own slice on disk is an **exact** `<name>.json` match. Only when there is
+  none, and exactly one listed file case-folds to that name, does the
+  Runner ask the **volume**, never the name: it `stat`s the exact
+  `<catalogDir>/<name>.json`. A case-insensitive volume resolves that path
+  to the one folded file, so the file is claimed as its own (reported as
+  `caseFoldedMatch`) — a leftover `docs.json` is the file `Docs.json`
+  names and never conflicts with the entries replacing it. A
+  case-sensitive volume answers `NotFound`, so nothing is claimed: the
+  variant is another config's slice, merged like any other. A case-only
+  rename leftover there blocks the merge on the **first** build, as any
+  rename leftover does, and every later build gives the same outcome;
+  configs `docs` and `Docs` keep two slices that every config merges
+  alike, and neither ever claims the other's. Several files folding alike
+  claim nothing. Another config's slice that vanished
   between listing and reading is skipped. `outputDir` is still never listed
   ([decision](../decisions/output-dir-is-never-exclusively-owned.md)).
 - **Two slices advertising one `url` is a conflict**, and **a slice that

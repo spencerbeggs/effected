@@ -166,10 +166,11 @@ const summaryLine = (report: RunReport): string => {
 const warningLine = (schema: SchemaReport, report: RunReport): string =>
 	`warning: DRIFT ${schema.change}${publishedClause(schema)} ${report.mode === "build" ? "written" : "would write"} under --on-drift=warn — ${schema.path}`;
 
-// Cells carry untrusted text (a slice's key names, a path), so a `|` is
-// escaped and a line break folded to a space: neither can add a column or
-// end the row.
-const tableCell = (cell: string): string => cell.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+// Cells carry untrusted text (a slice's key names, a path), so a `\` is
+// escaped FIRST, then a `|`, and a line break folded to a space: none can
+// add a column or end the row. Backslashes go first, or an input `\|` would
+// render as an escaped backslash followed by a live pipe.
+const tableCell = (cell: string): string => cell.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 
 const tableRow = (columns: ReadonlyArray<string>): string => `| ${columns.map(tableCell).join(" | ")} |`;
 
