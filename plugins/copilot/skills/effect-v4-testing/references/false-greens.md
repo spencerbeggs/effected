@@ -268,8 +268,11 @@ Three distinct false greens, one per row:
 rule, a test needing `FileSystem` provides `@effected/memfs`:
 `MemoryFileSystem` implements all three rows honestly, so misbehaviour is
 injected as a **fault handler** rather than encoded in a stub body that records
-only what its author remembered. Keep `layerNoop` for the
-one-trivially-stubbed-member case.
+only what its author remembered. Each row has its own memfs spelling when a
+test needs that behaviour on purpose: an `Effect.fail(...)` handler or
+`MemoryFileSystem.failTimes` for row one, a handler returning
+`Effect.succeed(...)` for row two, and `MemoryFileSystem.die(defect)` for row
+three. Keep `layerNoop` for the one-trivially-stubbed-member case.
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`

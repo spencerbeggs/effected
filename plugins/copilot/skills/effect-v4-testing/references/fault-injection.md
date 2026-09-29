@@ -11,6 +11,14 @@ partial-stub case; neither decorates a *real* implementation. There is no
 is the house recipe until a kit helper exists
 ([#145](https://github.com/spencerbeggs/effected/issues/145)).
 
+For `FileSystem` specifically, `@effected/memfs` is that helper:
+`MemoryFileSystem.layerFaulty(faults)` decorates whatever volume is provided
+beneath it, delegate-by-default, with the suspend and argument forwarding
+already correct. Its factory form, `layerFaulty((base) => faults)`, hands each
+handler the undecorated volume, so rewriting an argument and delegating is one
+line: `stat: (path) => base.stat(path.toLowerCase())`. Use the scaffold below
+for every other service.
+
 ## The scaffold: `Layer.effect` + spread the base + `Layer.provide(base)`
 
 ```ts
