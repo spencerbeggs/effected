@@ -96,6 +96,19 @@ const ascend = (start: string, options?: AscendOptions): Effect.Effect<ReadonlyA
 // Implementation of Walker.ascendWithin; the public contract lives on the static.
 const ascendWithin = (
 	start: string,
+	ceiling: Option.Option<string>,
+	options?: Pick<AscendOptions, "maxDepth">,
+): Effect.Effect<ReadonlyArray<string>, never, FileSystem.FileSystem | Path.Path> =>
+	Effect.gen(function* () {
+		// Absence is explicit: `Option.none()` is the only way to ask for an
+		// unbounded walk, so a stray `undefined` cannot become one by accident.
+		if (Option.isNone(ceiling)) return yield* ascend(start, options);
+		return yield* ascendToPhysical(start, ceiling.value, options);
+	});
+
+// ascendWithin with a ceiling present: the lexical chain, stopped physically.
+const ascendToPhysical = (
+	start: string,
 	ceiling: string,
 	options?: Pick<AscendOptions, "maxDepth">,
 ): Effect.Effect<ReadonlyArray<string>, never, FileSystem.FileSystem | Path.Path> =>
@@ -204,8 +217,12 @@ export class Walker {
 	 * one. A ceiling that names no ancestor, or cannot itself be resolved,
 	 * leaves the chain running to the filesystem root, as `ascend` does.
 	 *
-	 * The ceiling must be absolute; a relative one **dies**, for the reasons
-	 * {@link AscendOptions.stopAt} gives.
+	 * The ceiling is an `Option` so "no ceiling" is spelled explicitly:
+	 * `Option.none()` ascends to the filesystem root exactly as `ascend(start)`
+	 * does, which is the natural answer outside any repository —
+	 * `Walker.ascendWithin(start, yield* Effect.option(git.repoRoot(start)))`.
+	 * A present ceiling must be absolute; a relative one **dies**, for the
+	 * reasons {@link AscendOptions.stopAt} gives.
 	 */
 	static readonly ascendWithin = ascendWithin;
 

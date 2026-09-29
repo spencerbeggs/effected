@@ -435,42 +435,57 @@ layer(linkedRepo)("Walker.ascendWithin", (it) => {
 
 	it.effect("stops at the lexical ancestor whose real path is the physical ceiling", () =>
 		Effect.gen(function* () {
-			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/real/repo");
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", Option.some("/real/repo"));
 			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages", "/link/repo"]);
 		}),
 	);
 
 	it.effect("stops at a ceiling spelled lexically, like ascend", () =>
 		Effect.gen(function* () {
-			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/link/repo/");
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", Option.some("/link/repo/"));
 			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages", "/link/repo"]);
 		}),
 	);
 
 	it.effect("stops at the ceiling when no symlink is involved", () =>
 		Effect.gen(function* () {
-			const dirs = yield* Walker.ascendWithin("/real/repo/packages/foo", "/real/repo");
+			const dirs = yield* Walker.ascendWithin("/real/repo/packages/foo", Option.some("/real/repo"));
 			assert.deepStrictEqual(dirs, ["/real/repo/packages/foo", "/real/repo/packages", "/real/repo"]);
 		}),
 	);
 
 	it.effect("runs to the root when the ceiling names no ancestor", () =>
 		Effect.gen(function* () {
-			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/elsewhere");
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", Option.some("/elsewhere"));
 			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages", "/link/repo", "/link", "/"]);
 		}),
 	);
 
 	it.effect("truncates a chain longer than maxDepth", () =>
 		Effect.gen(function* () {
-			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/real/repo", { maxDepth: 2 });
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", Option.some("/real/repo"), { maxDepth: 2 });
+			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages"]);
+		}),
+	);
+
+	it.effect("ascends to the root, exactly as ascend does, when there is no ceiling", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", Option.none());
+			assert.deepStrictEqual(dirs, yield* Walker.ascend("/link/repo/packages/foo"));
+			assert.strictEqual(dirs.at(-1), "/");
+		}),
+	);
+
+	it.effect("honours maxDepth when there is no ceiling", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", Option.none(), { maxDepth: 2 });
 			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages"]);
 		}),
 	);
 
 	it.effect("dies on a relative ceiling, like ascend", () =>
 		Effect.gen(function* () {
-			const exit = yield* Effect.exit(Walker.ascendWithin("/link/repo/packages/foo", "real/repo"));
+			const exit = yield* Effect.exit(Walker.ascendWithin("/link/repo/packages/foo", Option.some("real/repo")));
 			assert.isTrue(exit._tag === "Failure" && Cause.hasDies(exit.cause));
 		}),
 	);
@@ -484,7 +499,7 @@ layer(
 )("Walker.ascendWithin, an ancestor that cannot be resolved", (it) => {
 	it.effect("absorbs the failed probe and still stops at the ceiling above it", () =>
 		Effect.gen(function* () {
-			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/real/repo");
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", Option.some("/real/repo"));
 			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages", "/link/repo"]);
 		}),
 	);
