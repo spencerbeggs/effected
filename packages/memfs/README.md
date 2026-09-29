@@ -127,6 +127,20 @@ const Faulty = MemoryFileSystem.layerFaulty({
 
 `MemoryFileSystem.layerFaultyWith(seed, faults)` is the seeded one-step form, and `MemoryFileSystem.failTimes(n, error)` is a transient fault — fail `n` intercepted calls, then delegate — for exercising retry policies (attempts are counted per execution, so `Effect.retry` outlasts it). Every method is interceptable, `stream`/`sink`/`watch` included (their handlers return replacement Streams/Sinks; `failTimes` is confined to the Effect-returning methods at the type level), and faults on core methods also propagate into the members derived from them (`access` → `exists`, `readFile` → `readFileString`, `writeFile` → `writeFileString`, `open` → `stream`/`sink`).
 
+`MemoryFileSystem.die(defect)` fails a member as a **defect** instead of a typed `PlatformError`. That distinction matters: a caller's defensive `Effect.catch` absorbs a typed failure and cannot absorb a defect, which is how core's `FileSystem.layerNoop` answers its five `make*` members. A handler returning `Effect.succeed(...)` covers the third, silent-success shape (`layerNoop`'s `exists` → `false`).
+
+Anywhere a fault map is accepted, a factory `(base) => faults` is too. It receives the wrapped volume unfaulted, so a handler can rewrite its arguments and delegate without re-entering its own fault:
+
+```ts
+// A case-insensitive lookup over a case-sensitive volume.
+const Folded = MemoryFileSystem.layerFaultyWith({ "/docs.json": "{}" }, (base) => ({
+  stat: (path) => base.stat(path.toLowerCase()),
+  readFileString: (path, encoding) => base.readFileString(path.toLowerCase(), encoding),
+}));
+```
+
+Only the members you list are folded; a whole-volume case-insensitive mode is not provided.
+
 ## Permission modes are metadata, never enforced
 
 Modes set by seeding, `chmod`, `makeDirectory` or `writeFile` are recorded faithfully and readable via `stat`, but no operation checks them: the volume models no process identity (no uid/gid/umask), so nothing ever fails `PermissionDenied` on its own — `access` checks existence only. To exercise a permission-failure code path, inject the failure with `layerFaulty` instead of arranging modes.

@@ -31,6 +31,7 @@ export {
 	type MemoryFileSystemFaultHandler,
 	type MemoryFileSystemFaultMethod,
 	type MemoryFileSystemFaults,
+	type MemoryFileSystemFaultsFactory,
 	type MemoryFileSystemInspectable,
 	type MemoryFileSystemSeed,
 	type MemoryFileSystemSeedDirectory,

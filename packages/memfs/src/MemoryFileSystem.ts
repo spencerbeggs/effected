@@ -316,6 +316,22 @@ export type MemoryFileSystemFaults = {
 				: never);
 };
 
+/**
+ * The factory form of {@link MemoryFileSystemFaults}: called with the
+ * filesystem being wrapped, it returns the fault map. Accepted wherever a
+ * fault map is.
+ *
+ * @remarks
+ * `base` is the UNFAULTED filesystem, so a handler can rewrite a call's
+ * arguments and delegate — `stat: (path) => base.stat(fold(path))` — without
+ * re-entering its own fault. A declining handler (`undefined`) still reaches
+ * the same `base`. The factory runs once per volume build, so any
+ * {@link MemoryFileSystem.failTimes} it creates is armed per build too.
+ *
+ * @public
+ */
+export type MemoryFileSystemFaultsFactory = (base: FileSystem.FileSystem) => MemoryFileSystemFaults;
+
 const encoder = new TextEncoder();
 
 const seedVolume = (
@@ -548,7 +564,11 @@ const armFault = (fault: NonNullable<MemoryFileSystemFaults[MemoryFileSystemFaul
 	};
 };
 
-const wrapFaulty = (base: FileSystem.FileSystem, faults: MemoryFileSystemFaults): FileSystem.FileSystem => {
+const wrapFaulty = (
+	base: FileSystem.FileSystem,
+	registration: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory,
+): FileSystem.FileSystem => {
+	const faults = typeof registration === "function" ? registration(base) : registration;
 	const armed = new Map<MemoryFileSystemFaultMethod, ArmedHandler>();
 	for (const method of Object.keys(faults) as Array<MemoryFileSystemFaultMethod>) {
 		const fault = faults[method];
@@ -760,10 +780,14 @@ export class MemoryFileSystem {
 	 * own transient-fault counters.
 	 *
 	 * @param base - The filesystem to wrap; any implementation works.
-	 * @param faults - The fault registration map.
+	 * @param faults - The fault registration map, or a
+	 *   {@link MemoryFileSystemFaultsFactory} that builds it from the wrapped
+	 *   filesystem.
 	 */
-	static readonly makeFaulty = (base: FileSystem.FileSystem, faults: MemoryFileSystemFaults): FileSystem.FileSystem =>
-		wrapFaulty(base, faults);
+	static readonly makeFaulty = (
+		base: FileSystem.FileSystem,
+		faults: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory,
+	): FileSystem.FileSystem => wrapFaulty(base, faults);
 
 	/**
 	 * A layer that wraps whatever `FileSystem` is provided to it with fault
@@ -835,10 +859,12 @@ export class MemoryFileSystem {
 	 * }).pipe(Layer.provide(Volume));
 	 * ```
 	 *
-	 * @param faults - The fault registration map.
+	 * @param faults - The fault registration map, or a
+	 *   {@link MemoryFileSystemFaultsFactory} that builds it from the wrapped
+	 *   filesystem.
 	 */
 	static readonly layerFaulty = (
-		faults: MemoryFileSystemFaults,
+		faults: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory,
 	): Layer.Layer<FileSystem.FileSystem, never, FileSystem.FileSystem> =>
 		Layer.effect(
 			FileSystem.FileSystem,
@@ -859,11 +885,13 @@ export class MemoryFileSystem {
 	 * apply.
 	 *
 	 * @param seed - Absolute POSIX paths mapped to seed entries.
-	 * @param faults - The fault registration map.
+	 * @param faults - The fault registration map, or a
+	 *   {@link MemoryFileSystemFaultsFactory} that builds it from the wrapped
+	 *   filesystem.
 	 */
 	static readonly layerFaultyWith = (
 		seed: MemoryFileSystemSeed,
-		faults: MemoryFileSystemFaults,
+		faults: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory,
 	): Layer.Layer<FileSystem.FileSystem> =>
 		Layer.provide(MemoryFileSystem.layerFaulty(faults), MemoryFileSystem.layerWith(seed));
 
@@ -923,6 +951,42 @@ export class MemoryFileSystem {
 		}
 		return { _tag: "MemoryFileSystemTransientFault", times, error };
 	};
+
+	/**
+	 * A fault handler that fails its member as a DEFECT (`Effect.die`) rather
+	 * than a typed `PlatformError`.
+	 *
+	 * @remarks
+	 * The two are not interchangeable to the code under test. A caller's
+	 * defensive `Effect.catch` absorbs a typed failure and cannot absorb a
+	 * defect, so a suite that injects a typed fault passes while the real code
+	 * path dies. Core's `FileSystem.layerNoop` splits its unstubbed members
+	 * three ways: typed `NotFound` for most, silent success for `exists`
+	 * (`false`) and `remove`, and a defect for the five `make*` members
+	 * (`makeDirectory`, `makeTempDirectory`, `makeTempDirectoryScoped`,
+	 * `makeTempFile`, `makeTempFileScoped`). `failTimes` or an
+	 * `Effect.fail` handler models the first arm, a handler returning
+	 * `Effect.succeed(...)` models the second, and `die` models the third.
+	 *
+	 * Usable on any `Effect`-returning member; it is not assignable to
+	 * `stream`, `sink` or `watch` (use a handler returning `Stream.die` there).
+	 *
+	 * @example
+	 * ```ts
+	 * import { MemoryFileSystem } from "@effected/memfs";
+	 *
+	 * const layer = MemoryFileSystem.layerFaultyWith(
+	 *   {},
+	 *   { makeDirectory: MemoryFileSystem.die(new Error("makeDirectory is not stubbed")) },
+	 * );
+	 * ```
+	 *
+	 * @param defect - The defect every intercepted call dies with.
+	 */
+	static readonly die =
+		(defect: unknown): (() => Effect.Effect<never>) =>
+		() =>
+			Effect.die(defect);
 
 	/**
 	 * A seed entry for a file, optionally carrying its initial permission mode.
