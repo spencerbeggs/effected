@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: the fixtures are unsubstituted ${...} launch placeholders, and a literal placeholder is what the tests assert on
 import { assert, describe, it } from "@effect/vitest";
 import { Schema } from "effect";
 import { LaunchContext } from "../src/index.js";
