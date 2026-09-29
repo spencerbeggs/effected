@@ -270,9 +270,10 @@ rule, a test needing `FileSystem` provides `@effected/memfs`:
 injected as a **fault handler** rather than encoded in a stub body that records
 only what its author remembered. Each row has its own memfs spelling when a
 test needs that behaviour on purpose: an `Effect.fail(...)` handler or
-`MemoryFileSystem.failTimes` for row one, a handler returning
-`Effect.succeed(...)` for row two, and `MemoryFileSystem.die(defect)` for row
-three. Keep `layerNoop` for the one-trivially-stubbed-member case.
+`MemoryFileSystem.failTimes` for row one's `Effect`-returning members (its
+`stream`/`watch` take a handler returning `Stream.fail`, and `sink` one
+returning `Sink.fail`), a handler returning `Effect.succeed(...)` for row two,
+and `MemoryFileSystem.die(defect)` for row three. Keep `layerNoop` for the one-trivially-stubbed-member case.
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`

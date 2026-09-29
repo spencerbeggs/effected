@@ -11,11 +11,12 @@ import type { DescendError, DescendOptions } from "@effected/walker";
 
 Single entrypoint; no subpaths. Note `descend` is a top-level named export sitting ALONGSIDE `Walker`, not a static on it — the package's own `index.d.ts` re-export line is `export { type AscendOptions, type CompileAndExpandOptions, DescendError, type DescendOptions, type DescendRecordOptions, type DescendResult, GlobExpansionError, type UnreadableDirectory, Walker, compileAndExpand, descend };`.
 
-**Platform**: `ascend` needs only `Path` (core ships a POSIX `Path.layer`); anything touching the filesystem (`findUpward`, an `fs.exists` predicate, `descend`) needs `FileSystem` at the edge — `@effect/platform-node`'s `NodeFileSystem.layer` + `NodePath.layer`, or `@effect/platform-bun`.
+**Platform**: `ascend` needs only `Path` (core ships a POSIX `Path.layer`); anything touching the filesystem (`ascendWithin`, `findUpward`, an `fs.exists` predicate, `descend`) needs `FileSystem` at the edge — `@effect/platform-node`'s `NodeFileSystem.layer` + `NodePath.layer`, or `@effect/platform-bun`.
 
 ## Core API
 
-- **`Walker.ascend(start, options?: { stopAt?, maxDepth? })`** — each directory from `start` to the root, nearest first: `Effect<ReadonlyArray<string>, never, Path.Path>`. `start` is required; the walker never reads `process.cwd()` itself.
+- **`Walker.ascend(start, options?: { stopAt?, maxDepth? })`** — each directory from `start` to the root, nearest first: `Effect<ReadonlyArray<string>, never, Path.Path>`. `start` is required; the walker never reads `process.cwd()` itself. `stopAt` is compared **lexically**, so it never matches a symlink-resolved ceiling from a start reached through a symlink (every macOS tmpdir, any symlinked checkout) and the walk runs silently to the root — never feed it `Git.repoRoot`'s answer.
+- **`Walker.ascendWithin(start, ceiling: Option<string>, options?: { maxDepth? })`** — `Effect<ReadonlyArray<string>, never, FileSystem.FileSystem | Path.Path>`. The same lexical chain, stopped at the nearest ancestor whose `realPath` equals the ceiling's: the way to bound a walk by the git root. `Option.none()` ascends exactly as `ascend(start)`, so the whole recipe is `Walker.ascendWithin(start, yield* Effect.option(git.repoRoot(start)))`. A ceiling the chain already spells costs no I/O; an ancestor whose `realPath` fails is absorbed; a relative ceiling dies.
 - **`Walker.firstMatch(candidates, predicate)`** — the single primitive: first candidate whose `Effect<boolean, E, R>` predicate is true; per-candidate failures are absorbed, defects propagate. `Effect<Option<string>, never, R>`.
 - **`Walker.findUpward(dirs, candidatesFor)`** — flattens candidates directory-major, then `firstMatch(..., fs.exists)`.
 - **`Walker.findRoot(dirs, isRoot)`** — marker-based root detection.

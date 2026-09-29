@@ -968,8 +968,9 @@ export class MemoryFileSystem {
 	 * `Effect.fail` handler models the first arm, a handler returning
 	 * `Effect.succeed(...)` models the second, and `die` models the third.
 	 *
-	 * Usable on any `Effect`-returning member; it is not assignable to
-	 * `stream`, `sink` or `watch` (use a handler returning `Stream.die` there).
+	 * Usable on any `Effect`-returning member; it is not assignable to the lazy
+	 * members, whose handlers return their own type: `Stream.die` for `stream`
+	 * and `watch`, `Sink.die` for `sink`.
 	 *
 	 * @example
 	 * ```ts

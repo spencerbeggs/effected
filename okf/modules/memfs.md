@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-29T06:16:45Z
-  body_sha256: 98b9f5d3aeaed7b1e41c9d493fd8624f063d0ea34a0f1304563fc1e982b2c478
+  at: 2026-09-29T07:46:45Z
+  body_sha256: 82e21fa88c7178c15288d7900624e72540093b6e9cb59ee5f6040e852a26c48b
 ---
 
 # @effected/memfs
@@ -156,8 +156,8 @@ A delegate-by-default wrapper over any `FileSystem`:
   members. A caller's defensive `Effect.catch` absorbs a typed fault and
   cannot absorb a defect, so a suite injecting a typed failure where the
   real double dies passes while the real code path dies. Effect-returning
-  members only; `stream`/`sink`/`watch` take a handler returning
-  `Stream.die`.
+  members only; the lazy members take a handler returning their own
+  type — `Stream.die` for `stream`/`watch`, `Sink.die` for `sink`.
 - `MemoryFileSystemFaultsFactory` — `(base) => MemoryFileSystemFaults`,
   accepted by all three wrapping constructors anywhere a fault map is.
   `base` is the **unfaulted** wrapped filesystem, so a handler can

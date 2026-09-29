@@ -47,7 +47,11 @@ Effect.runPromise(program.pipe(Effect.provide(GitLive))).then(console.log);
 
 ## A read tier and a mutating tier
 
-The read tier is total in intent: `show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `unstagedChanges`, `stagedChanges`, `untrackedFiles`, `revParse`, `nameStatus`, `defaultBranch`, `currentBranch`, `repoRoot`, `commitInfo`, `configGet`, `remoteUrl` and `status` observe a repository without changing it. Absence — a ref that does not resolve, a remote that is not configured — is `Option.none`, not a failure. The mutating tier (`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) is named apart precisely so a read-only consumer can see, at a glance, that it never reaches for it.
+The read tier is total in intent: `show`, `lsTree`, `refExists`, `mergeBase`, `changedFiles`, `unstagedChanges`, `stagedChanges`, `untrackedFiles`, `revParse`, `nameStatus`, `defaultBranch`, `currentBranch`, `repoRoot`, `commonDir`, `commitInfo`, `configGet`, `remoteUrl` and `status` observe a repository without changing it. Absence — a ref that does not resolve, a remote that is not configured — is `Option.none`, not a failure. The mutating tier (`checkout`, `fetch`, `fetchAny`, `submoduleUpdate`, `submoduleAdd`, `sparseCheckoutSet`, `configSet`, `add`) is named apart precisely so a read-only consumer can see, at a glance, that it never reaches for it.
+
+## Locating a repository
+
+`repoRoot` and `commonDir` both answer physical paths, with symlinks resolved. `commonDir` is the directory a repository shares with all of its linked worktrees, so it is the same string from any checkout and two answers compare with `===`; `repoRoot` is different in every worktree. It needs git 2.31 or later, and an older git fails typed rather than returning a wrong answer. To bound an upward walk by `repoRoot`, use `@effected/walker`'s `Walker.ascendWithin`: `ascend`'s lexical `stopAt` never matches the resolved spelling from a start reached through a symlink.
 
 ## Errors
 

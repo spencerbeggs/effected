@@ -53,7 +53,9 @@ Defects still propagate. Absorption catches failures, not defects, so a genuine 
 
 ## The surface
 
-`Walker.ascend(start, options?)` returns the directory chain from `start` toward the filesystem root, nearest first. `stopAt` halts the ascent inclusively, and `maxDepth` (default 256) caps it. `start` is required — walker never reads `process.cwd()` on your behalf.
+`Walker.ascend(start, options?)` returns the directory chain from `start` toward the filesystem root, nearest first. `stopAt` halts the ascent inclusively, and `maxDepth` (default 256) caps it. `start` is required — walker never reads `process.cwd()` on your behalf. The ceiling is compared lexically, so a symlink-resolved one never matches a start reached through a symlink.
+
+`Walker.ascendWithin(start, ceiling, options?)` is the ascent bounded by a physical ceiling: it keeps the lexical chain but stops at the nearest ancestor whose real path is the ceiling's. It is how to bound a walk by the git root, which `Git.repoRoot` answers with symlinks resolved — every macOS temporary directory, and any symlinked checkout, reaches it by a different spelling. The ceiling is an `Option`: `Option.none()` ascends exactly as `ascend(start)` does, so `Walker.ascendWithin(start, yield* Effect.option(git.repoRoot(start)))` covers the case with no repository too.
 
 `Walker.firstMatch(candidates, predicate)` is the absorbing loop itself, and it short-circuits: the scan stops at the first match and later candidates are never probed. That matters when a predicate is expensive, such as one that reads and parses a `package.json` to decide whether a directory is a workspace root.
 
