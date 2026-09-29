@@ -10,8 +10,8 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-29T06:16:45Z
-  body_sha256: 3b4409aa7c697b8e5a5a825d62d36bc541075d9b564cc91fa605fa61c4ed4fbf
+  at: 2026-09-29T07:46:37Z
+  body_sha256: 9e31a15102a84036509a2b471078370589fd958307a306e3dd76b762613af3c2
 ---
 
 # git
@@ -184,8 +184,13 @@ symlinked path (probed on git 2.55), so two answers compare with `===`,
 where `repoRoot` cannot serve because each worktree has its own toplevel.
 A bare repository answers its own directory. `--path-format=absolute` is
 load-bearing and needs git 2.31 or later: without it git prints `.git`
-relative in a plain checkout but absolute inside a linked worktree. The
-canonicalization is git's, deliberately — resolving symlinks in this
+relative in a plain checkout but absolute inside a linked worktree. An
+older git does not refuse the flag: `rev-parse` echoes it to stdout,
+answers the relative form and exits 0, so `commonDir` rejects an answer
+that starts with `-` or spans lines as a `GitCommandError` rather than
+letting it pass as an identity. Only git's terminating newline is
+stripped, never `trim`, because a directory name may end in whitespace.
+The canonicalization is git's, deliberately — resolving symlinks in this
 package would add `FileSystem` to `Git.layer`'s `R`, which stays
 `ChildProcessSpawner` alone.
 

@@ -679,6 +679,7 @@ describe("Git surface — repository identity across worktrees (commonDir)", () 
 	let worktree: string;
 	let linked: string;
 	let bare: string;
+	let spaced: string;
 	let outside: string;
 
 	/**
@@ -694,6 +695,7 @@ describe("Git surface — repository identity across worktrees (commonDir)", () 
 		worktree = join(base, "worktree");
 		linked = join(base, "linked");
 		bare = join(base, "bare.git");
+		spaced = join(base, "spaced.git ");
 		outside = join(base, "outside");
 		await mkdir(join(main, "sub"), { recursive: true });
 		await mkdir(outside);
@@ -715,6 +717,7 @@ describe("Git surface — repository identity across worktrees (commonDir)", () 
 					]);
 					yield* runFixtureGit(main, ["worktree", "add", "-b", "side", worktree]);
 					yield* runFixtureGit(base, ["init", "--bare", bare]);
+					yield* runFixtureGit(base, ["init", "--bare", spaced]);
 				}),
 			),
 		);
@@ -742,6 +745,17 @@ describe("Git surface — repository identity across worktrees (commonDir)", () 
 			Effect.gen(function* () {
 				const git = yield* Git;
 				assert.strictEqual(yield* git.commonDir(bare), yield* Effect.promise(() => realpath(bare)));
+			}),
+		),
+	);
+
+	it.effect("keeps a trailing space that belongs to the repository path", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const answer = yield* git.commonDir(spaced);
+				assert.strictEqual(answer, yield* Effect.promise(() => realpath(spaced)));
+				assert.isTrue(answer.endsWith(" "));
 			}),
 		),
 	);

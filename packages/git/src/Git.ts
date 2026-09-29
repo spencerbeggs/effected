@@ -2117,10 +2117,28 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 
 	const commonDir = Effect.fn("Git.commonDir")(function* (cwd: string) {
 		yield* Effect.annotateCurrentSpan({ cwd });
-		const classified = yield* runFor(GitCommand.commonDir(), cwd, "generic");
+		const invocation = GitCommand.commonDir();
+		const classified = yield* runFor(invocation, cwd, "generic");
 		switch (classified._tag) {
-			case "success":
-				return classified.output.trim();
+			case "success": {
+				// Strip only git's terminating newline, never `trim`: the answer is an
+				// identity, and a directory name may end in whitespace.
+				const answer = classified.output.replace(/\r?\n$/, "");
+				// git before 2.31 does not know --path-format: rev-parse echoes the flag
+				// to stdout, answers the relative form on the next line, and exits 0.
+				if (answer.startsWith("-") || answer.includes("\n")) {
+					return yield* Effect.fail(
+						new GitCommandError({
+							kind: "failed",
+							args: invocation.redactedArgs,
+							cwd,
+							stderr: "",
+							detail: `unparseable common-dir output (--path-format needs git 2.31 or later): ${JSON.stringify(answer)}`,
+						}),
+					);
+				}
+				return answer;
+			}
 			case "notARepository":
 				return yield* Effect.fail(new NotARepositoryError({ cwd }));
 			case "failure":
@@ -3573,7 +3591,12 @@ export interface GitShape {
 	 * and any path reached through a symlink — answers the same string, so two
 	 * results compare with `===`. `repoRoot` cannot serve here, because each
 	 * worktree has its own toplevel. A bare repository answers its own
-	 * directory. Needs git 2.31 or later.
+	 * directory. Only git's terminating newline is removed, so a path ending in
+	 * whitespace keeps it.
+	 *
+	 * Needs git 2.31 or later. An older git echoes the unknown
+	 * `--path-format` flag and exits 0; that answer fails as a
+	 * `GitCommandError` (`kind: "failed"`) rather than passing as an identity.
 	 */
 	readonly commonDir: (cwd: string) => Effect.Effect<string, GitCommandError | NotARepositoryError>;
 	/**
