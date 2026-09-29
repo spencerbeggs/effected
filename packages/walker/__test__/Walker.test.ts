@@ -1,6 +1,7 @@
 import { assert, describe, it, layer } from "@effect/vitest";
 import { Cause, Effect, FileSystem, Option, Path, PlatformError, Ref } from "effect";
 import { Walker } from "../src/Walker.js";
+import { platform } from "./fixtures.js";
 
 layer(Path.layer)("Walker.ascend", (it) => {
 	it.effect("yields each directory from start to the root, nearest first", () =>
@@ -414,6 +415,77 @@ describe("Walker.findRoot", () => {
 
 			assert.deepStrictEqual(found, Option.some("/a/b"));
 			assert.deepStrictEqual(yield* Ref.get(probed), ["/a/b/c", "/a/b"]);
+		}),
+	);
+});
+
+// `git rev-parse --show-toplevel` answers the PHYSICAL root; a start reached
+// through `/link -> /real` ascends a lexical chain that never spells it.
+const linkedRepo = platform({ "/real/repo/packages/foo/x.txt": "x" }, { symlinks: { "/link": "/real" } });
+
+layer(linkedRepo)("Walker.ascendWithin", (it) => {
+	// The control: this fixture really does make `ascend`'s lexical ceiling fail
+	// open, so the assertions below fail for the right reason.
+	it.effect("ascend's lexical stopAt misses the physical ceiling behind a symlink", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascend("/link/repo/packages/foo", { stopAt: "/real/repo" });
+			assert.strictEqual(dirs.at(-1), "/");
+		}),
+	);
+
+	it.effect("stops at the lexical ancestor whose real path is the physical ceiling", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/real/repo");
+			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages", "/link/repo"]);
+		}),
+	);
+
+	it.effect("stops at a ceiling spelled lexically, like ascend", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/link/repo/");
+			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages", "/link/repo"]);
+		}),
+	);
+
+	it.effect("stops at the ceiling when no symlink is involved", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascendWithin("/real/repo/packages/foo", "/real/repo");
+			assert.deepStrictEqual(dirs, ["/real/repo/packages/foo", "/real/repo/packages", "/real/repo"]);
+		}),
+	);
+
+	it.effect("runs to the root when the ceiling names no ancestor", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/elsewhere");
+			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages", "/link/repo", "/link", "/"]);
+		}),
+	);
+
+	it.effect("truncates a chain longer than maxDepth", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/real/repo", { maxDepth: 2 });
+			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages"]);
+		}),
+	);
+
+	it.effect("dies on a relative ceiling, like ascend", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(Walker.ascendWithin("/link/repo/packages/foo", "real/repo"));
+			assert.isTrue(exit._tag === "Failure" && Cause.hasDies(exit.cause));
+		}),
+	);
+});
+
+layer(
+	platform(
+		{ "/real/repo/packages/foo/x.txt": "x" },
+		{ symlinks: { "/link": "/real" }, unresolvable: { "/link/repo/packages": "PermissionDenied" } },
+	),
+)("Walker.ascendWithin, an ancestor that cannot be resolved", (it) => {
+	it.effect("absorbs the failed probe and still stops at the ceiling above it", () =>
+		Effect.gen(function* () {
+			const dirs = yield* Walker.ascendWithin("/link/repo/packages/foo", "/real/repo");
+			assert.deepStrictEqual(dirs, ["/link/repo/packages/foo", "/link/repo/packages", "/link/repo"]);
 		}),
 	);
 });
