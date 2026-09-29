@@ -1,5 +1,6 @@
 {
 	"$schema": "https://turborepo.com/schema.v2.json",
+	"agentGuidance": false,
 	"globalPassThroughEnv": ["GITHUB_ACTIONS", "CI"],
 	"tasks": {
 		"build:dev": {
