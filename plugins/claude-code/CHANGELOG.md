@@ -1,5 +1,23 @@
 # @effected/claude-code-plugin
 
+## 0.24.3
+
+### Documentation
+
+- The building-schemastore-schemas skill gains a worked multi-config reference: several `schemastore.config.ts` files publishing into one shared folder and one merged `catalog.json`, the rules that make their builds converge, removing or renaming a config, and reading a blocked merge. [#875][#875]
+
+* The Actions skills read `isDebug` as a member of the `ActionEnvironment` service and teach that `Action.run` lowers the log level under step debugging, so hand-wired log-level wrappers are deleted.
+* The output-contracts example annotates the inner `Schema.Struct` of a `Schema.Class`, and the schemastore skills state that an undeclared `x-*` annotation on a node is dropped silently while one passed through `rootAnnotations` or `includeAnnotationKey` fails the build.
+* The action canon places `schemastore.config.ts` in `lib/scripts/` with the path passed explicitly; bootstrapping-an-action covers removing the structured output, the schema identity in its rename list, and shipping `published: false` until first release. [#878][#878]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#875]: https://github.com/spencerbeggs/effected/pull/875
+
+[#878]: https://github.com/spencerbeggs/effected/pull/878
+
 ## 0.24.2
 
 ### Documentation
