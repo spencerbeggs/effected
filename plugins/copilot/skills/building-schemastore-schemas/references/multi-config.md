@@ -97,8 +97,10 @@ paths above make them location-independent:
 - **Names unique regardless of case.** `name` is the slice's file base
   name. On a case-insensitive volume (the macOS and Windows defaults)
   `docs` and `Docs` are one file, and whichever config builds last
-  overwrites the other's slice. The slice line reports `caseFoldedMatch`
-  when that happens, but nothing blocks it.
+  overwrites the other's slice. The slice line of the config whose casing
+  differs from the file on disk says `claimed … by case-folded match`
+  (`caseFoldedMatch` in JSON); the config matching the file exactly
+  reports nothing, and nothing blocks either build.
 - **Schema keys unique across configs.** Each key derives a document path
   and a catalog url under the shared `outputDir`. Two configs keying a
   schema `config` write one document file, each build overwriting the
@@ -147,7 +149,8 @@ unchanged catalog …/public/schemas/catalog.json (2 entries from 2 slice(s))
   `CatalogMergeError` (the url appears in two slices) until the old file is
   deleted. On a case-insensitive volume a case-only rename is the
   exception: the volume resolves the new name to the old file, so it is
-  claimed and reported as `caseFoldedMatch`.
+  claimed, and its slice line says `claimed … by case-folded match`
+  (`caseFoldedMatch` in JSON).
 
 ## When the merge is blocked
 
