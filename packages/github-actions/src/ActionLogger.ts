@@ -202,7 +202,10 @@ export interface ActionLoggerShape {
 	 * the ambient minimum log level is already `Debug` or lower — someone asking
 	 * for verbose output wants it live, and that overrides
 	 * `onSuccess: "discard"` too: asking for debug output means wanting to see
-	 * what a green step did.
+	 * what a green step did. Under `Action.run` the two conditions coincide,
+	 * because step debugging is what lowers the ambient level to `Debug`; the
+	 * step-debug check still stands on its own for a program that opted out
+	 * with `stepDebugLogLevel: false` or runs outside `Action.run`.
 	 */
 	readonly withBuffer: <A, E, R>(
 		label: string,

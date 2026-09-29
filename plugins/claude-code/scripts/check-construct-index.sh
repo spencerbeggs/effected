@@ -104,8 +104,11 @@ echo "construct-index: verifying the generated index is current..." >&2
 out="$(node "$GEN" check --require-intent 2>&1)"
 status=$?
 
-if [ "$status" -eq 2 ]; then
-	echo "construct-index: doc models absent — building (turbo-cached)..." >&2
+# Exit 2 is a missing doc model, 3 a stale one (src/ newer than the model);
+# a build answers both. A model still stale after it was touched without
+# changing, and the generator's own message then names the --force rebuild.
+if [ "$status" -eq 2 ] || [ "$status" -eq 3 ]; then
+	echo "construct-index: doc models absent or stale — building (turbo-cached)..." >&2
 	if ! pnpm build >/dev/null 2>&1; then
 		echo "construct-index: pnpm build failed; cannot verify the index." >&2
 		echo "  Run 'pnpm build' and read its output." >&2

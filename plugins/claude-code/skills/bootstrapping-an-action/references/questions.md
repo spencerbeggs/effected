@@ -6,7 +6,16 @@ Ask in order, one per message. Lead with the recommended default. Record every a
 
 > What is the action called, which org publishes it, and what does it do in one line? Any branding icon and colour preference?
 
-Adds to the plan: the rename list — `package.json` name/description/repository/homepage/bugs/author; `.changeset/config.json` `changelog[1].repo`; `action.yml` name/description/branding; `README.md` usage line; `.github/CODEOWNERS`; `dependabot.yml` assignees; any hardcoded `owner:` in workflows.
+Adds to the plan: the rename list — `package.json` name/description/repository/homepage/bugs/author; `.changeset/config.json` `changelog[1].repo`; `action.yml` name/description/branding; `README.md`'s `uses:` line (`<org>/<repo>@<ref>`, not the template's own slug); `.github/CODEOWNERS`; `dependabot.yml` assignees; any hardcoded `owner:` in workflows.
+
+When question 5 keeps the structured `result` output, the rename list also carries the **schema identity**, which the template ships under its own name:
+
+- `src/schema/result.ts` — the `HostedSchema.github({ repo, name, … })` identity's `repo` and `name`, and the documentation URL on the last line of the `result` schema's `description`.
+- `schemas/<version>/<name>-<version>.json` — the committed document's file name derives from the identity's `name`. Run `schema:build` after the rename to write the new file, then **delete the old one by hand**: `schema:check` flags an orphan only at a sibling shape of a name the config still derives, so a file under a retired name is invisible to it.
+- `action.yml`'s `result` output description, which names the document path (`.github/actions/local/action.yml` is regenerated from it by the build).
+- `docs/04-output-schema.md`, which names the same file.
+
+When question 5 removes the structured output, these rows are deleted rather than renamed.
 
 ## 2. Phases
 
@@ -30,7 +39,11 @@ Adds: `INPUT_NAMES` tuple and count; defaults mirrored from `action.yml`; cross-
 
 > List the outputs. Is any of them a structured document that a downstream job, a bot or an LLM will parse? **Default: scalars only.**
 
-Adds: `OUTPUT_NAMES` tuple and count; the all-disabled baseline values; for a structured `result`: one exported `Schema.Class` asserting `$schema` from a `HostedSchema` declared beside it, `ActionOutputs.setJson` through it, a versioned schema under `schemas/<version>/`, `lib/scripts/schemastore.config.ts` handing that identity to `defineConfig` as `hosted`, `schema:build` / `schema:check` scripts over the `schemastore` command (`schema:check` in `ci:test` is the drift gate — no drift test to write), `@effected/schemastore` in `dependencies` and `@effected/schemastore-cli` in `devDependencies`.
+Adds: `OUTPUT_NAMES` tuple and count; the all-disabled baseline values; for a structured `result`: one exported `Schema.Class` asserting `$schema` from a `HostedSchema` declared beside it, `ActionOutputs.setJson` through it, a versioned schema under `schemas/<version>/`, `lib/scripts/schemastore.config.ts` handing that identity to `defineConfig` as `hosted`, `schema:build` / `schema:check` scripts that name that path (`schemastore build lib/scripts/schemastore.config.ts`, `schemastore check lib/scripts/schemastore.config.ts` — the command's upward discovery never looks inside `lib/scripts/`), `schema:check` in `ci:test` as the drift gate (no drift test to write), `@effected/schemastore` in `dependencies` and `@effected/schemastore-cli` in `devDependencies`. If the template copy carries its config at the repository root, the plan moves it to `lib/scripts/` and re-points its relative paths (`outputDir: "../../schemas"`, the `../../src/schema/…` import) — relative paths resolve against the config file's own directory.
+
+**The template ships the structured output, so the default is a removal, not a no-op.** A fresh template copy already carries a `result` output and the whole publication pipeline. Answering "scalars only" puts a removal step in the plan; the template's `docs/04-output-schema.md` "Remove the structured output" section is the authoritative checklist — cite it in the plan and follow it rather than improvising. It covers, in outline: the `result` output in `action.yml`; `src/schema/result.ts`; `"result"` in `OUTPUT_NAMES` and the `setJson` call in `src/schema/outputs.ts`; `schemas/` and the config file; both `@effected/schemastore*` packages and the two `schema:*` scripts in `package.json`; the `schema:build` turbo task and its `dependsOn` edge; the `schema-freshness` CI job and the `act-test.yml` payload-validation step; the `result` tests and assertions; and the docs that name any of it. The output-mirror and dependency-honesty tests fail on anything missed.
+
+**Kept, it ships unpublished.** A freshly bootstrapped action declares its config entry `published: false` and the plan says so: an unpublished schema regenerates in place through any change, contract included, which is what the skeleton and fill phases need. Flipping it to `true` is a first-release task — the day a consumer can pin the document — and belongs in the plan's build order at that point, never earlier; a published entry refuses every contract change at its current label.
 
 ## 6. Runner capabilities
 

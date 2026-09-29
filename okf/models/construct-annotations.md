@@ -12,9 +12,9 @@ sources:
   - id: generate-constructs-mts
     resource: ../../plugins/claude-code/scripts/generate-constructs.mts
 generated:
-  by: "claude-code/sonnet-5"
-  at: 2026-09-14T04:45:45Z
-  body_sha256: 65a82676c929c2e093fbcbe3e7518c3e5680063fce5d6828a0487ac5618d1b94
+  by: "claude-code/opus-5.5"
+  at: 2026-09-29T01:35:14Z
+  body_sha256: 052bd2b3668d74925a6d1c54ee44ac908a6513a004a2b17e76313b62eaaa71df
 ---
 
 # construct-annotations.json
@@ -46,8 +46,29 @@ The generator, `plugins/claude-code/scripts/generate-constructs.mts`, is
 api-extractor doc model as plain JSON rather than through
 `@microsoft/api-extractor-model`, which is only in the tree transitively
 and would need a new devDependency.[^generate-constructs-mts] Its CLI is
-`generate` / `check [--require-intent]`, exiting 0 (ok), 1 (annotation
-problems) or 2 (missing doc models).
+`generate` / `check [--require-intent]`, each taking `--only <pkg,...>`
+(directory or npm names), exiting 0 (ok), 1 (annotation problems or a usage
+error), 2 (missing doc models) or 3 (stale doc models).
+
+`--only` confines a run to the named packages: `generate` reads and
+rewrites only their tables, leaving every other committed table
+byte-identical, and `check` validates only their annotations plus the
+models their `implements` links target. Without it every package's model
+is read, so a stale local build of an unrelated package would silently
+rewrite its table (effected#839).
+
+Every model a run reads is guarded for freshness: if any file under the
+package's `src/` is newer than its `.api.json`, the run exits 3 naming the
+package, both timestamps and the `pnpm build --filter` command. The
+signal is file mtime, not the `generatedAt` in `issues.json`: a turbo
+cache restore replays `generatedAt` verbatim, so a fresh CI checkout
+restored from the remote cache would call every model stale, while the
+restore rewrites the model and gives it a current mtime. Two blind spots
+remain. A cache hit whose outputs are already on disk rewrites nothing, so
+a source file touched without changing reads as stale until `pnpm build
+--force` rebuilds it: loud, never a wrong table. And a model built by an
+older toolchain from unchanged source passes the guard, which is why
+`--only` exists.
 
 The canonical doc-model input is the package build output,
 `packages/<dir>/dist/prod/npm/meta/<dir>.api.json`, produced by `pnpm
@@ -75,9 +96,10 @@ documented discoverability miss on record was a value-level capability.
 `plugins/claude-code/__test__/construct-index.bats` pins the index:
 fixture tests for the generator, a repo drift test that regenerates the
 committed index into a temp dir and diffs it against the committed one,
-and the strict `check --require-intent` test. A `setup_file()` hook
-self-provisions missing doc models by running `pnpm build`, triggered by
-the generator's exit code 2, so CI's auto-discovered shell-test check
+the strict `check --require-intent` test, and fixture tests pinning the
+staleness guard and `--only` with positive and negative controls. A
+`setup_file()` hook self-provisions missing or stale doc models by running
+`pnpm build`, triggered by the generator's exit code 2 or 3, so CI's auto-discovered shell-test check
 needs no custom build step.
 
 ## Maintenance
@@ -106,4 +128,5 @@ checked.
     package → construct keyed intent strings, with an optional
     `implements` field per entry.
 [^generate-constructs-mts]: `plugins/claude-code/scripts/generate-constructs.mts` —
-    the dependency-free generator, CLI `generate` / `check [--require-intent]`.
+    the dependency-free generator, CLI `generate` / `check [--require-intent]`
+    with `--only <pkg,...>` and the exit-3 staleness guard.

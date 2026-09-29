@@ -46,9 +46,10 @@ const program = Effect.gen(function* () {
   entirely — the effect just runs, overriding `onSuccess: "discard"` too —
   when the runner has step debugging on or the ambient minimum log level is
   already `Debug` or lower: someone who asked for verbose output gets it
-  live, not replayed at the end. `isDebug` alone does not lower that
-  ambient minimum — see `actions-runtime`'s `isDebug` → `MinimumLogLevel`
-  reference for the wiring a program still has to do itself.
+  live, not replayed at the end. Under `Action.run` the two conditions
+  coincide: step debugging is what lowers the ambient minimum to `Debug`
+  (unless the program opted out with `stepDebugLogLevel: false`) — see
+  `actions-runtime`'s logging reference.
 - **`notice(message, properties?)`** — emits `::notice::`. A dedicated
   member, not a log level, because Effect has no level between `Info` and
   `Warn` to map a notice onto.

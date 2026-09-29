@@ -13,15 +13,21 @@ the drift test every generator script used to carry.
 ```json
 {
   "scripts": {
-    "schema:build": "schemastore build",
-    "schema:check": "schemastore check"
+    "schema:build": "schemastore build lib/scripts/schemastore.config.ts",
+    "schema:check": "schemastore check lib/scripts/schemastore.config.ts"
   }
 }
 ```
 
-Pass the config path as the positional argument when it does not sit where
-upward discovery finds it (`schemastore build lib/scripts/schemastore.config.ts`).
-In a turbo pipeline, make `build` depend on `schema:build` so the committed
+The config path is the positional argument. Without one the command
+discovers a `schemastore.config.*` by walking **upward** from the working
+directory, so bare `schemastore build` / `schemastore check` find a config
+only in the working directory or one of its ancestors — never one under
+`lib/scripts/`. A GitHub
+Action repository keeps `src/` for action source alone, so its config lives
+at `lib/scripts/schemastore.config.ts` and both scripts name that path, as
+above; the bare commands suit a library package whose config sits at its own
+root. In a turbo pipeline, make `build` depend on `schema:build` so the committed
 documents are regenerated before anything bundles against them, and declare
 the generated files as `schema:build`'s outputs:
 

@@ -10,9 +10,9 @@ sources:
   - id: generate-constructs-mts
     resource: ../../plugins/claude-code/scripts/generate-constructs.mts
 generated:
-  by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 1f999e057fdc20968baa18557122baa05bbc8db705fdc924a51e7ce1f0ffbc85
+  by: "claude-code/opus-5.5"
+  at: 2026-09-29T01:35:14Z
+  body_sha256: 8cf3387402a54345bb4837b4017d355d454c6985774f6acc55fc4b8f2d19a303
 ---
 
 # Never hand-edit the construct index — regenerate it
@@ -33,8 +33,14 @@ To change what the index says:
    build --filter @effected/<pkg>`.
 2. Edit the intent keywords or `implements` link in
    `plugins/claude-code/scripts/construct-annotations.json`.
-3. Regenerate with bare Node:
-   `node plugins/claude-code/scripts/generate-constructs.mts generate`.
+3. Regenerate with bare Node, naming the packages you changed:
+   `node plugins/claude-code/scripts/generate-constructs.mts generate
+   --only <pkg,...>`. `--only` leaves every other table byte-identical,
+   so a stale local build of an unrelated package cannot rewrite its
+   rows. A bare `generate` reads every package's model and exits 3,
+   naming the package, when any model is older than its `src/`; rebuild
+   that package, or add `--force` to the build if turbo replayed a cache
+   hit onto an unchanged model.
 4. Confirm coverage with `... check --require-intent`, which fails
    naming any Class, Function or Variable construct still missing an
    intent annotation.

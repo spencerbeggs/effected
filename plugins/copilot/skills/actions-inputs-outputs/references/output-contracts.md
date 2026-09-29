@@ -108,16 +108,34 @@ whatever generates the committed JSON Schema below. Two schemas describing
 ```ts
 import { Schema } from "effect";
 
-export class ScanResult extends Schema.Class<ScanResult>("ScanResult")({
-  findingsCount: Schema.Number.annotate({ description: "Total findings across all severities." }),
-  severity: Schema.Literals(["none", "low", "medium", "high", "critical"]),
-  reportUrl: Schema.String.annotate({ description: "Fully-qualified URL to the human-readable report." }),
-}) {}
+export class ScanResult extends Schema.Class<ScanResult>("ScanResult")(
+  Schema.Struct({
+    findingsCount: Schema.Number.annotate({ description: "Total findings across all severities." }),
+    severity: Schema.Literals(["none", "low", "medium", "high", "critical"]),
+    reportUrl: Schema.String.annotate({ description: "Fully-qualified URL to the human-readable report." }),
+  }).annotate({
+    title: "Scan result",
+    description: "The structured result output of scan-action.\nhttps://github.com/your-org/scan-action#outputs",
+  }),
+) {}
 ```
 
 `Schema.annotate` is a real instance method on every schema — it returns
 the same schema with metadata attached, so annotating does not change `A`
 or `I`.
+
+**The document's own `title` and `description` go on the inner
+`Schema.Struct` handed to `Schema.Class`, never on the class.** Core emits a
+class as a root `$ref` to a `$defs` entry (`#/$defs/ScanResultEncoded`)
+generated from the class's *encoded* form — that inner struct. Annotations on
+the struct land on the entry; annotations on the class node — `Schema.Class`'s
+second argument, or `.annotate()` on the class — reach nothing, and the
+document comes out with no title or description and no error to tell you. That
+is core's design, not a bug to wait out. When a root annotation cannot be put
+on the schema at all, the config entry's `rootAnnotations` (standard annotation
+keywords and the declared families only) places it on that same `$defs` entry.
+The description ending in a documentation URL on its own line is SchemaStore's
+convention, which the structural lint checks as `DescriptionWithoutUrl`.
 
 ### Pure projections, not the internal model
 
@@ -177,13 +195,19 @@ export const ScanResultIdentity = HostedSchema.github({
   versions: [SCAN_RESULT_SCHEMA_VERSION],
 });
 
-export class ScanResult extends Schema.Class<ScanResult>("ScanResult")({
-  // Every payload names the document it was written against.
-  $schema: Schema.Literal(ScanResultIdentity.$id),
-  findingsCount: Schema.Number.annotate({ description: "Total findings across all severities." }),
-  severity: Schema.Literals(["none", "low", "medium", "high", "critical"]),
-  reportUrl: Schema.String.annotate({ description: "Fully-qualified URL to the human-readable report." }),
-}) {}
+export class ScanResult extends Schema.Class<ScanResult>("ScanResult")(
+  Schema.Struct({
+    // Every payload names the document it was written against.
+    $schema: Schema.Literal(ScanResultIdentity.$id),
+    findingsCount: Schema.Number.annotate({ description: "Total findings across all severities." }),
+    severity: Schema.Literals(["none", "low", "medium", "high", "critical"]),
+    reportUrl: Schema.String.annotate({ description: "Fully-qualified URL to the human-readable report." }),
+  }).annotate({
+    // On the inner struct, not the class: see "Schema as the single source of truth".
+    title: "Scan result",
+    description: "The structured result output of scan-action.\nhttps://github.com/your-org/scan-action#outputs",
+  }),
+) {}
 ```
 
 ```ts
@@ -295,19 +319,23 @@ label.
 Field-level prose that a human or an LLM reads to understand a value goes in
 `description`, annotated at the **definition site** of the schema (a
 usage-site annotation on a hoisted schema reaches nothing, even before
-lowering).
-The Draft-07 lowering **carries unknown and custom
-keywords through as opaque values**, so an *undeclared* custom `x-` key on
-an output contract **is published** — do not rely on the lowering filtering
-it out; the failure mode is shipping a key you assumed could not escape.
-Whether an undeclared key can reach the
-document at all is decided upstream of the lowering, by whatever admits it:
-`@effected/schemastore`'s `StoreDocument.fromSchema` refuses one outright
-with `UndeclaredAnnotationKeyError` rather than emitting it. Prefer the
+lowering). The document's own `title` and `description` go on the inner
+struct a `Schema.Class` wraps, as above.
+
+The non-standard keys a published document can carry are exactly the
 declared families (the vscode five, `x-taplo`, `x-tombi-`, `x-intellij-`,
-`x-ai-`) — `x-ai-*` **is** declared: recommend `x-ai-hint` (a string) at the
-definition site for an instruction to a machine reader that doesn't belong
-in `description` itself.
+`x-ai-`), emitted in place on the node they annotate. `x-ai-*` **is**
+declared: recommend `x-ai-hint` (a string) at the definition site for an
+instruction to a machine reader that doesn't belong in `description` itself.
+**Any other custom key is never published, and how it fails depends on where
+you put it.** Annotated on a schema node (`Schema.String.annotate({ "x-foo":
+… })`), it is **silently dropped** — the build succeeds and the key is simply
+absent from the document, with no error or finding. Admitted through the
+entry's `rootAnnotations`, or through a `jsonSchema.includeAnnotationKey`
+predicate, it **fails the build** with `UndeclaredAnnotationKeyError`. So a
+misspelled family prefix (`x-ai_hint`, `x-intelij-language-injection`) on a node costs you
+the key without a word; check an unfamiliar key with
+`KeywordFamilies.isDeclared(key)` before relying on it.
 
 The key must be one ajv can register: after the prefix it may use only
 `[A-Za-z0-9_$:-]`, because ajv holds a keyword name to

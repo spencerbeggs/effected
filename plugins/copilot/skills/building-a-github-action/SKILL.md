@@ -113,7 +113,7 @@ This table routes a capability to the package and skill that own it; it does not
 - No fan-out-and-accumulate construct — `Effect.partition(items, f)` returns `[failures, successes]` and never fails; `Effect.all(effects, { mode: "result" })` is the per-effect form.
 - No ANSI/colour API — GitHub's log viewer colours the workflow commands itself; do not invent one.
 - No shared `*Test` module family or a `./testing` subpath — every service ships its own `makeTest`/`layerTest`. Grep the installed packages for `makeTest` to see the current set; it is large, not a handful.
-- No named log-level resolver — `ActionEnvironment.isDebug` (`Effect.Effect<boolean>`, reads `RUNNER_DEBUG === "1"`) is what a program reaches for instead.
+- No named log-level resolver — `Action.run` already lowers `References.MinimumLogLevel` to `Debug` under `RUNNER_DEBUG=1` (opt out with `{ stepDebugLogLevel: false }`). For the raw flag, obtain the service and read its member — `const env = yield* ActionEnvironment; const stepDebug = yield* env.isDebug` — never `ActionEnvironment.isDebug`, which is not a static. See `actions-runtime`.
 
 ## Present, and easy to miss
 

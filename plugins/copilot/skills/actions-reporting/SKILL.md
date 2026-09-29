@@ -38,7 +38,7 @@ For the general `Effect.log*`/span rules every package follows, see `effect-v4-o
 ## Footguns
 
 - `Info`-level logs are deliberately plain text with no workflow command — prefixing every informational line would turn it into an annotation in the workflow summary. There is no ANSI/colour API to reach for either; GitHub's log viewer colours the commands itself.
-- `isDebug` alone does not lower the ambient minimum log level — a program that wants `Effect.logDebug` calls to actually fire still has to wire it into `MinimumLogLevel` itself. See `actions-runtime`'s logging reference.
+- `Effect.logDebug` renders as `::debug::` only if it survives core's `MinimumLogLevel` filter first. `Action.run` lowers that level to `Debug` under `RUNNER_DEBUG=1` — do not hand-wire it — but a program that opted out (`stepDebugLogLevel: false`) or runs outside `Action.run`, such as a test, keeps core's `Info` default and drops every debug entry. See `actions-runtime`'s logging reference.
 - Passing a bare object literal where a `CheckRunOutput` is expected fails to compile with an error naming a missing `truncated` property — that's the instance method, not a data field; construct through `CheckRunOutput.make` instead. See `references/check-runs-and-comments.md`.
 - `find`ing a marked PR comment must paginate — a single-page lookup silently misses a marker past the first page on a busy pull request and duplicates the comment on every `upsert`. See `references/check-runs-and-comments.md`.
 

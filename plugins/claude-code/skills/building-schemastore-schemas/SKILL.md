@@ -70,8 +70,10 @@ a devDependency.
   [references/document-authoring.md](references/document-authoring.md).
 - **Use only the declared keyword families for non-standard keys** — the
   vscode five by exact name, the `x-taplo`, `x-tombi-`, `x-intellij-`
-  prefixes, and the house `x-ai-` namespace. An undeclared key fails the
-  build; it is never silently dropped. See
+  prefixes, and the house `x-ai-` namespace. An undeclared key annotated on
+  a schema node is silently dropped — the build passes and the key is gone;
+  admitted through `rootAnnotations` or an `includeAnnotationKey` predicate
+  it fails the build with `UndeclaredAnnotationKeyError`. See
   [references/document-authoring.md](references/document-authoring.md).
 - **Classify a change by what a validator asserts or a tool writes, not by
   Draft-07's taxonomy.** `default`, `examples`, `readOnly` and `writeOnly`

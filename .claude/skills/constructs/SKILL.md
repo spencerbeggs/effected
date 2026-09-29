@@ -21,15 +21,24 @@ TSDoc summary; annotating them is optional.
 
 ## The loop
 
-1. `pnpm build` — the doc models must postdate the source (a missing model
-   fails the generator with exit 2 and a `build first:` message).
-2. `node plugins/claude-code/scripts/generate-constructs.mts check --require-intent` —
-   lists stale annotations and unannotated value constructs.
+1. `pnpm build --filter @effected/<pkg>` for each package you changed — the
+   doc models must postdate the source. A missing model fails the generator
+   with exit 2 and a `build first:` message; a model older than any file in
+   its package's `src/` fails with exit 3 and a `stale doc model:` message
+   naming the package, both timestamps and the rebuild command.
+2. `node plugins/claude-code/scripts/generate-constructs.mts check --require-intent --only <pkg,...>` —
+   lists stale annotations and unannotated value constructs for those
+   packages (drop `--only` to check the whole kit; every model must then be
+   fresh).
 3. Author what it lists in `plugins/claude-code/scripts/construct-annotations.json`
    (shape below). Read the construct's source first — never write intent
    keywords from the name alone.
-4. `node plugins/claude-code/scripts/generate-constructs.mts generate` — rewrites the
-   committed tables.
+4. `node plugins/claude-code/scripts/generate-constructs.mts generate --only <pkg,...>` —
+   rewrites only those packages' committed tables, leaving every other table
+   byte-identical. Name every package whose table the change touches,
+   including the other side of an `implements` link. A bare `generate` reads
+   every package's model, so a stale local build of an unrelated package
+   would otherwise rewrite its rows (effected#839).
 5. `bats plugins/claude-code/__test__/construct-index.bats` — must be green before commit.
 
 ## Annotations file shape
@@ -76,7 +85,7 @@ misses documented in #188). Rules:
 ## Repairing a red construct-index.bats
 
 - "has drifted" — someone changed exports or annotations without
-  regenerating: run step 4 and commit the result. Never hand-edit the tables.
+  regenerating: run step 4 for the drifted packages and commit the result. Never hand-edit the tables.
   If it goes red AGAIN after that regeneration+commit, the markdown fixer
   mutated a cell at commit time — code-span the offending emphasis-active
   token in the annotation (rule above) and regenerate once more. Never loop on
@@ -89,5 +98,10 @@ misses documented in #188). Rules:
   every `implements` target, not just staleness of the annotated name itself.
 - "missing intent annotation" — a new value-kind export landed: author it
   (rules above), regenerate.
-- "build first" — the doc models are missing or the checkout is stale:
-  `pnpm build`, then rerun.
+- "build first" (exit 2) — the doc models are missing: `pnpm build`, then
+  rerun.
+- "stale doc model" (exit 3) — a package's `src/` is newer than its model:
+  run the `pnpm build --filter …` command the message prints, then rerun. If
+  the same package is still stale after that build, turbo replayed a cache
+  hit onto an unchanged model (the source was touched without changing — a
+  branch switch or rebase): rebuild it with `--force`.

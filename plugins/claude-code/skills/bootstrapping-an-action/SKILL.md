@@ -31,7 +31,7 @@ Ask the eight questions in [references/questions.md](references/questions.md) in
 | 2 | Phases | main-only / main+post / pre+main+post |
 | 3 | GitHub access | none / token input / App auth (adds `pre.ts` and `@effected/github`) |
 | 4 | Inputs | each input line-list or JSON; any JSON input publishes an input schema |
-| 5 | Outputs | scalars only, or a structured `result` for a downstream consumer (publishes a versioned output schema) |
+| 5 | Outputs | scalars only (removes the `result` output and schema pipeline the template ships), or a structured `result` for a downstream consumer (publishes a versioned output schema, `published: false` until first release) |
 | 6 | Runner capabilities | which kit packages the steps will import |
 | 7 | Reporting | job summary / check run / sticky comment / managed document |
 | 8 | Self-dogfood | the workflow that runs the action against its own repository |

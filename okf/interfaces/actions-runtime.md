@@ -10,8 +10,8 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 6b61c42142335208ee0672015818f281f2b298ec2a7df7148e4f0a35ea0aa5a7
+  at: 2026-09-29T01:39:10Z
+  body_sha256: 35d0b244f09be3414afff1f4d7c8e7194da2074d78b53ac8173cebfd14bb1cd4
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:31.377Z
@@ -125,7 +125,11 @@ discarded with the transcript it replaces) and a failure header ahead of
 the spilled transcript — a plain `Console` line, deliberately not a
 second `::error::` beside the one `Action.run` renders. Buffering is
 skipped when the runner has step debugging on, and the summary line
-survives that too. Log annotations use a readable property
+survives that too. Step debugging also reaches the log level: under
+`RUNNER_DEBUG=1`, `Action.run` lowers `References.MinimumLogLevel` from
+core's `Info` default to `Debug` (never raising a lower one) so
+`Effect.logDebug` renders as `::debug::`; `{ stepDebugLogLevel: false }`
+opts out. Log annotations use a readable property
 vocabulary set through a combinator, never a spelled-out wire key.
 
 ### Outputs and state

@@ -15,7 +15,7 @@ The canonical shape of a GitHub Action repository built on `@effected`: what fil
 ```text
 action.yml              # single source of every input/output name AND default; code mirrors it, never re-declares it
 action.config.ts         # builder entries, minify, persistLocal; escape hatches added per need with a forensic comment
-lib/scripts/             # non-compilable scripts (a cache-invalidating location) + bundle-truth guards; schemastore.config.ts lives here when schemas/ exists
+lib/scripts/             # non-compilable scripts (a cache-invalidating location) + bundle-truth guards; schemastore.config.ts lives here when schemas/ exists, named explicitly by the schema:* scripts
 schemas/                  # versioned output-contract documents, <version>/<name>-<version>.json; only when a JSON contract crosses the boundary
 <action>.input.schema.json  # unversioned input schema at the root, only when a JSON input crosses the boundary
 src/
@@ -62,7 +62,7 @@ CLAUDE.md                 # how to use this repo, plus the shim register
 - **Let `services/` and `shims/` be conventions, not tracked empty directories.** An action that needs neither ships neither; document the convention in `src/CLAUDE.md` so the slot is discoverable without a placeholder file pretending something lives there.
 - **Test every declared dependency against what `src/` actually imports, closed over required peers.** A dependency that's neither imported nor a required peer of one that is gets flagged; a required peer legitimately goes unimported and must be resolved out of that closure before anything is deleted.
 - **Prove layer minimalism at compile time, from both sides.** One type-level assertion that the app layer's requirements minus the runtime's services is `never`, and a second over the *program's* requirements, because a service resolved inside a step method never appears in the layer's input channel. See [references/tests.md](references/tests.md).
-- **Publish a structured output through one schema and one identity.** When a `setJson` output leaves the action, the schema that encodes it is the schema the committed JSON Schema is generated from, the `HostedSchema` declared beside it is what both the payload's `$schema` and `lib/scripts/schemastore.config.ts` read, and `schemastore check` is the drift gate — there is no generator script and no drift test to write. `actions-inputs-outputs` owns the recipe.
+- **Publish a structured output through one schema and one identity.** When a `setJson` output leaves the action, the schema that encodes it is the schema the committed JSON Schema is generated from, the `HostedSchema` declared beside it is what both the payload's `$schema` and `lib/scripts/schemastore.config.ts` read, and `schemastore check lib/scripts/schemastore.config.ts` is the drift gate, with the path passed explicitly because the command's upward discovery from the working directory never looks inside `lib/scripts/`. There is no generator script and no drift test to write. `actions-inputs-outputs` owns the recipe.
 
 ## Footguns
 

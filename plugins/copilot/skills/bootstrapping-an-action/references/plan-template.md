@@ -45,8 +45,12 @@ Derived from the purpose (question 1) and capabilities (question 6); the enginee
 ## Reporting
 - Surfaces, the single format module, stamp decision.
 
-## Schema publication (only when a JSON contract crosses the boundary)
-- Generator path, targets, version label, scripts, drift test.
+## Schema publication (when a JSON contract crosses the boundary, or its removal when none does)
+- Config file: `lib/scripts/schemastore.config.ts` (`defineConfig`: `name`, `outputDir`, one entry per contract keyed by and `hosted` by its `HostedSchema`).
+- `published`: `false` at bootstrap; flipped to `true` at first release.
+- Version label(s) in the identity's `versions`.
+- Scripts: `schema:build` / `schema:check` over `schemastore build|check lib/scripts/schemastore.config.ts`; `schema:check` in `ci:test` is the drift gate.
+- Structured output declined (question 5 "scalars only"): the removal step, citing the template's `docs/04-output-schema.md` "Remove the structured output" checklist.
 
 ## Self-dogfood
 - Workflow, trigger, act target, freshness gate.
@@ -60,5 +64,6 @@ One row per enabling surface not confirmed in the installed tree, plus any check
 1. Freeze the contract in schema/inputs.ts and schema/outputs.ts; let the sync tests fail and fix them.
 2. Walking skeleton: domain schema, inputs, outputs, state, step contracts as succeeding stubs, program and entries, layers proof.
 3. Fill each step red/green/refactor in the order above.
-4. Schema publication (if any), self-dogfood workflow, docs refresh, shim register audit.
+4. Schema publication (if any) or its removal, self-dogfood workflow, docs refresh, shim register audit.
+5. At first release: flip each schema entry to `published: true`.
 ```

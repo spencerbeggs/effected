@@ -11,13 +11,14 @@ FIXTURES="$PLUGIN_ROOT/__test__/fixtures"
 
 setup_file() {
 	# CI's shell-tests job runs this suite on a fresh checkout with no dist/
-	# artifacts. Generator exit 2 is specifically the missing-doc-model
-	# signal — provision them ourselves; turbo's remote cache makes the
-	# build cheap there. Exit 0/1 (ok / annotation problems) need no build.
+	# artifacts. Generator exit 2 is the missing-doc-model signal and 3 the
+	# stale-doc-model one (src/ newer than the model) — provision them
+	# ourselves; turbo's remote cache makes the build cheap there. Exit 0/1
+	# (ok / annotation problems) need no build.
 	local status=0
 	node "$GEN" check >/dev/null 2>&1 || status=$?
-	if [ "$status" -eq 2 ]; then
-		echo "# doc models missing — running pnpm build to provision them" >&3
+	if [ "$status" -eq 2 ] || [ "$status" -eq 3 ]; then
+		echo "# doc models missing or stale — running pnpm build to provision them" >&3
 		(cd "$REPO_ROOT" && pnpm build) >&2 || return 1
 	fi
 }
@@ -152,12 +153,133 @@ setup_file() {
 	[[ "$output" == *"dangling implements: demo.NtiaReport -> demo.DoesNotExist"* ]]
 }
 
+# --- staleness guard and --only (effected#839) ------------------------------
+# A doc model is stale when a file under its package's src/ is newer than it.
+# Each test works on a private copy of the fixture tree, with a src/ file per
+# package dated before its model (fresh), and ages a model to make it stale.
+# `touch -t` takes local time; noon keeps the UTC date on 2020-01-01 in any
+# timezone.
+
+_copy_fixture_repo() {
+	repo="$BATS_TEST_TMPDIR/repo"
+	cp -R "$FIXTURES/constructs-repo" "$repo"
+	local pkg
+	for pkg in demo impl; do
+		mkdir -p "$repo/packages/$pkg/src"
+		printf 'export {};\n' > "$repo/packages/$pkg/src/index.ts"
+		touch -t 201901011200 "$repo/packages/$pkg/src/index.ts"
+	done
+}
+
+_age_model() { # $1 = package: its model now predates its src/
+	touch -t 202001011200 "$repo/packages/$1/dist/prod/npm/meta/$1.api.json"
+	touch "$repo/packages/$1/src/index.ts"
+}
+
+@test "staleness positive control: models newer than their src/ generate and check cleanly" {
+	_copy_fixture_repo
+	run node "$GEN" generate --packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" --out "$BATS_TEST_TMPDIR/out"
+	[ "$status" -eq 0 ]
+	[ -f "$BATS_TEST_TMPDIR/out/demo.md" ]
+	run node "$GEN" check --packages "$repo/packages" --annotations "$FIXTURES/constructs-annotations.json"
+	[ "$status" -eq 0 ]
+}
+
+@test "staleness: a src/ file newer than the doc model fails generate with exit 3, naming the package, both timestamps and the build" {
+	_copy_fixture_repo
+	_age_model impl
+	out="$BATS_TEST_TMPDIR/out"
+	run node "$GEN" generate --packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" --out "$out"
+	[ "$status" -eq 3 ]
+	[[ "$output" == *"stale doc model"* ]]
+	[[ "$output" == *"impl: model built 2020-01-01T"* ]]
+	[[ "$output" == *"src/index.ts modified 20"* ]]
+	[[ "$output" == *"pnpm build --filter @effected/impl"* ]]
+	# only the stale package is named, and nothing was written
+	[[ "$output" != *"  demo:"* ]]
+	[ ! -e "$out" ]
+}
+
+@test "staleness: check fails with exit 3 on a stale doc model too" {
+	_copy_fixture_repo
+	_age_model impl
+	run node "$GEN" check --packages "$repo/packages" --annotations "$FIXTURES/constructs-annotations.json"
+	[ "$status" -eq 3 ]
+	[[ "$output" == *"impl: model built 2020-01-01T"* ]]
+}
+
+@test "--only: regenerates only the named package, leaving every other table byte-identical even when its model is stale" {
+	_copy_fixture_repo
+	_age_model impl
+	out="$BATS_TEST_TMPDIR/out"
+	mkdir -p "$out"
+	printf 'sentinel: committed impl table\n' > "$out/impl.md"
+	cp "$out/impl.md" "$BATS_TEST_TMPDIR/impl.before"
+	run node "$GEN" generate --only demo --packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" --out "$out"
+	[ "$status" -eq 0 ]
+	# the stale impl model was never read, and its table was never touched
+	cmp "$out/impl.md" "$BATS_TEST_TMPDIR/impl.before"
+	# demo was regenerated, cross-link to impl intact (derived from annotations)
+	grep -q 'implemented by `OidcTokenIssuer` in `@effected/impl`' "$out/demo.md"
+	[ "$(ls "$out" | wc -l | tr -d ' ')" -eq 2 ]
+}
+
+@test "--only: the negative half — without it the same tree fails on the stale package" {
+	_copy_fixture_repo
+	_age_model impl
+	run node "$GEN" generate --packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" --out "$BATS_TEST_TMPDIR/out"
+	[ "$status" -eq 3 ]
+	[[ "$output" == *"--only <pkg,...>"* ]]
+}
+
+@test "--only: accepts npm names and comma lists" {
+	_copy_fixture_repo
+	out="$BATS_TEST_TMPDIR/out"
+	run node "$GEN" generate --only @effected/demo,impl --packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" --out "$out"
+	[ "$status" -eq 0 ]
+	[ -f "$out/demo.md" ]
+	[ -f "$out/impl.md" ]
+}
+
+@test "--only: an unknown package or a missing list is a usage error naming it" {
+	run node "$GEN" generate --only ghost --packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" --out "$BATS_TEST_TMPDIR/out"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"--only names no package"*"ghost"* ]]
+	run node "$GEN" generate --only --packages "$FIXTURES/constructs-repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json" --out "$BATS_TEST_TMPDIR/out"
+	[ "$status" -eq 1 ]
+	[[ "$output" == *"--only needs"* ]]
+}
+
+@test "check --only: also reads (and guards) the packages its implements links target" {
+	_copy_fixture_repo
+	_age_model demo
+	# impl.OidcTokenIssuer implements demo.IdentityToken, so checking impl
+	# must read demo's model — and a stale one fails rather than misjudging
+	run node "$GEN" check --only impl --packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json"
+	[ "$status" -eq 3 ]
+	[[ "$output" == *"demo: model built 2020-01-01T"* ]]
+	# demo's annotations link nowhere, so checking demo alone ignores stale impl
+	touch "$repo/packages/demo/dist/prod/npm/meta/demo.api.json"
+	_age_model impl
+	run node "$GEN" check --only demo --packages "$repo/packages" \
+		--annotations "$FIXTURES/constructs-annotations.json"
+	[ "$status" -eq 0 ]
+}
+
 @test "repo: committed constructs/ is exactly what regeneration produces" {
 	committed="$PLUGIN_ROOT/skills/effected-packages/references/constructs"
 	regenerated="$BATS_TEST_TMPDIR/regenerated"
 	run node "$GEN" generate --out "$regenerated"
-	if [ "$status" -eq 2 ]; then
-		echo "doc models missing — run \`pnpm build\` before this suite" >&2
+	if [ "$status" -eq 2 ] || [ "$status" -eq 3 ]; then
+		echo "doc models missing or stale — run \`pnpm build\` before this suite" >&2
 		echo "$output" >&2
 		return 1
 	fi

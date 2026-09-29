@@ -10,8 +10,8 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: 815f7e93174fd12eaa3c6b1ce6ebe67af29ec68ab7cbdc56ee3ddea68269eb4d
+  at: 2026-09-29T01:39:10Z
+  body_sha256: 50155032385fd5ce603e99e8f41a71d348642ab982c4d16115841555e3d3ecb0
 ---
 
 # github-actions
@@ -159,6 +159,18 @@ package handles tokens by definition and a span annotation is the easiest
 place to leak one. The pure modules carry no spans. The package emits
 Effect logs and ships the `Logger` that renders them as workflow commands;
 it composes no OpenTelemetry itself.
+
+Step debugging reaches the log level, not just the renderer. When the
+runner sets `RUNNER_DEBUG=1`, `Action.run` lowers core's
+`References.MinimumLogLevel` from its `Info` default to `Debug` for the
+whole program, so `Effect.logDebug` from the action or any kit library
+arrives as `::debug::` instead of being filtered before the `Logger` sees
+it. It only ever lowers — a `layer` that already set `Trace` keeps it —
+and `ActionRunOptions.stepDebugLogLevel: false` opts out. Before this,
+every consuming action hand-wired the same few lines
+([#853](https://github.com/spencerbeggs/effected/issues/853)); the four
+cases (set, unset, opt-out, never-raise) are pinned in
+`__test__/Action.test.ts`.
 
 ## Testing
 

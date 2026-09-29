@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Config, ConfigProvider, Context, Effect, FileSystem, Layer, Schema } from "effect";
+import { Cause, Config, ConfigProvider, Context, Effect, FileSystem, Layer, References, Schema } from "effect";
 import { vi } from "vitest";
 import { Action, ActionEnvironment, ActionInput, ActionOutputs, ActionRuntime, describeCause } from "../src/index.js";
 
@@ -58,6 +58,34 @@ const captured = async (run: (lines: ReadonlyArray<string>) => Promise<void>): P
 		}
 	}
 };
+
+/**
+ * {@link captured} with extra environment variables on top of `RUNNER_ENV`.
+ *
+ * @remarks
+ * `undefined` DELETES the variable rather than leaving it alone: a suite run on
+ * a runner with step debugging on inherits `RUNNER_DEBUG=1`, and a test of the
+ * unset case must not silently become a test of the set one.
+ */
+const capturedWith = (
+	env: Readonly<Record<string, string | undefined>>,
+	run: (lines: ReadonlyArray<string>) => Promise<void>,
+): Promise<void> =>
+	captured(async (lines) => {
+		const previous = new Map(Object.keys(env).map((name) => [name, process.env[name]]));
+		const apply = (values: Iterable<readonly [string, string | undefined]>) => {
+			for (const [name, value] of values) {
+				if (value === undefined) delete process.env[name];
+				else process.env[name] = value;
+			}
+		};
+		apply(Object.entries(env));
+		try {
+			await run(lines);
+		} finally {
+			apply(previous);
+		}
+	});
 
 describe("describeCause", () => {
 	it("renders a typed failure as [Tag]: message", () => {
@@ -339,5 +367,52 @@ describe("Action.run", () => {
 		// memoize by reference, so a factory would re-read `process.env` at every
 		// composition site.
 		assert.strictEqual(ActionRuntime.layer, ActionRuntime.layer);
+	});
+});
+
+describe("Action.run step debugging", () => {
+	// Info goes out in both cases, so an absent debug line is a filtered entry
+	// and not a program that never ran — the positive control every "absent"
+	// assertion below leans on.
+	const probe = Effect.gen(function* () {
+		yield* Effect.logInfo("probe-info");
+		yield* Effect.logDebug("probe-debug");
+	});
+
+	it("lowers the minimum log level to Debug when RUNNER_DEBUG=1, so Effect.logDebug reaches the runner", async () => {
+		await capturedWith({ RUNNER_DEBUG: "1" }, async (lines) => {
+			await Action.run(probe);
+			assert.include(lines, "probe-info");
+			// Rendered as `::debug::`, not merely printed: the entry survived
+			// core's filter AND went through the workflow-command logger.
+			assert.include(lines, "::debug::probe-debug");
+		});
+	});
+
+	it("leaves the Info default alone when step debugging is off", async () => {
+		await capturedWith({ RUNNER_DEBUG: undefined }, async (lines) => {
+			await Action.run(probe);
+			assert.include(lines, "probe-info");
+			assert.isFalse(lines.some((line) => line.includes("probe-debug")));
+		});
+	});
+
+	it("honours an explicit opt-out even with step debugging on", async () => {
+		await capturedWith({ RUNNER_DEBUG: "1" }, async (lines) => {
+			await Action.run(probe, { stepDebugLogLevel: false });
+			assert.include(lines, "probe-info");
+			assert.isFalse(lines.some((line) => line.includes("probe-debug")));
+		});
+	});
+
+	it("only ever lowers the level: a caller that already asked for Trace keeps it", async () => {
+		await capturedWith({ RUNNER_DEBUG: "1" }, async (lines) => {
+			await Action.run(Effect.logTrace("probe-trace"), {
+				layer: Layer.succeed(References.MinimumLogLevel, "Trace"),
+			});
+			// Clamping to Debug here would silently RAISE the caller's floor and
+			// drop every Trace entry the moment someone turned step debugging on.
+			assert.include(lines, "::debug::probe-trace");
+		});
 	});
 });

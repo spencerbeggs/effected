@@ -94,16 +94,27 @@ Rules the gate enforces on a declared-family value:
   value; a `$ref`-shaped string inside one means whatever the tool says it
   means.
 
-## An undeclared key fails the build
+## An undeclared key is dropped on a node and fails the build when admitted
 
-The declared families are the whole non-standard surface, and the gate is the
-package's own — it fails, it does not drop. A target's `jsonSchema` may carry
-an `includeAnnotationKey` predicate, but one that admits a key outside the
-families fails generation with `UndeclaredAnnotationKeyError`, naming the
-document's `$id` and the sorted offending keys. The declared families are
-admitted regardless of what that predicate answers, so the predicate's only
-remaining role is admitting a key that fails the build. Do not rely on the
-lowering to drop a stray key; it preserves custom keywords.
+The declared families are the whole non-standard surface; no other custom key
+is ever published. How an undeclared key fails depends on the route it takes:
+
+- **Annotated on a schema node** (`Schema.String.annotate({ "x-foo": … })`),
+  it is **silently dropped**. The package answers core's annotation filter
+  with the declared families only, so core never emits the key: the build
+  succeeds, the key is absent from the document, and no error or lint finding
+  says so. A misspelled family prefix (`x-ai_hint`,
+  `x-intelij-language-injection`) is lost this way without a word.
+- **Admitted through a target's `jsonSchema.includeAnnotationKey`
+  predicate**, it **fails generation** with `UndeclaredAnnotationKeyError`,
+  naming the document's `$id` and the sorted offending keys. The declared
+  families are admitted regardless of what that predicate answers, so its only
+  remaining role is admitting a key that fails the build.
+- **Named in `rootAnnotations`**, it fails the same way, checked before
+  anything is generated.
+
+Silence is the trap: the node route is the common one, and the loud error
+fires only on the two routes a stray key rarely takes.
 
 Ask `KeywordFamilies.isDeclared(key)` before annotating with an unfamiliar
 key; it is the same predicate the lint and the gate consume.

@@ -1,5 +1,5 @@
 import { NodeServices } from "@effect/platform-node";
-import { Cause, Effect, Exit, Layer, Option, Result } from "effect";
+import { Cause, Effect, Exit, Layer, LogLevel, Option, References, Result } from "effect";
 import type { HttpClient } from "effect/http";
 import { FetchHttpClient } from "effect/http";
 import { ActionEnvironment } from "./ActionEnvironment.js";
@@ -98,7 +98,39 @@ export interface ActionRunOptions<R> {
 	 * what makes `{ layer: ActionCache.layer }` compile with no further wiring.
 	 */
 	readonly layer?: Layer.Layer<R, never, ActionServices> | undefined;
+	/**
+	 * Whether step debugging lowers the minimum log level to `Debug`.
+	 *
+	 * @remarks
+	 * Defaults to `true`. With step debugging on (`RUNNER_DEBUG=1`, read through
+	 * {@link ActionEnvironmentShape.isDebug}), `Action.run` lowers core's
+	 * `References.MinimumLogLevel` — `Info` by default — to `Debug` for the whole
+	 * program, so `Effect.logDebug` calls reach the runner as `::debug::` lines
+	 * instead of being filtered before any logger sees them. It only ever
+	 * **lowers**: a level already at `Debug` or below, from the `layer` option,
+	 * is left alone.
+	 *
+	 * Pass `false` to keep the ambient level regardless of step debugging — an
+	 * action whose debug output is too heavy to show even to someone who asked
+	 * for it. A program can still provide its own `MinimumLogLevel` either way;
+	 * the innermost provision wins.
+	 */
+	readonly stepDebugLogLevel?: boolean | undefined;
 }
+
+/**
+ * Lower the minimum log level to `Debug` for the program when the runner has
+ * step debugging on — and never raise it.
+ */
+const withStepDebugLogLevel = <A, E, R>(program: Effect.Effect<A, E, R>): Effect.Effect<A, E, R | ActionEnvironment> =>
+	Effect.gen(function* () {
+		const env = yield* ActionEnvironment;
+		const stepDebug = yield* env.isDebug;
+		const minimum = yield* References.MinimumLogLevel;
+		return yield* stepDebug && LogLevel.isGreaterThan(minimum, "Debug")
+			? Effect.provideService(program, References.MinimumLogLevel, "Debug")
+			: program;
+	});
 
 /**
  * A readable one-line summary of why an action failed.
@@ -146,6 +178,14 @@ const describeError = (error: unknown): string => {
  * `ActionOutputs.setFailed` deliberately leaves alone, so an action that
  * reports a failure and then recovers is not doomed by a side effect it cannot
  * undo.
+ *
+ * It also honours **step debugging**: when the runner sets `RUNNER_DEBUG=1`, it
+ * lowers core's `References.MinimumLogLevel` from its `Info` default to
+ * `Debug`, so `Effect.logDebug` anywhere in the program — or in any
+ * `@effected` library it calls — reaches the runner as a `::debug::` line
+ * rather than being filtered before a logger sees it. It only ever lowers the
+ * level, and `{ stepDebugLogLevel: false }` ({@link ActionRunOptions}) opts
+ * out.
  *
  * Two things it deliberately does **not** do:
  *
@@ -200,7 +240,11 @@ export class Action {
 					// the environment snapshot is taken once rather than twice.
 					Layer.mergeAll(ActionRuntime.layer, Layer.provide(extra, ActionRuntime.layer));
 
-		const runnable = program.pipe(
+		// Inside the provide, so the level read is the one the composed runtime —
+		// including a caller's `layer` — actually installed.
+		const leveled = options.stepDebugLogLevel === false ? program : withStepDebugLogLevel(program);
+
+		const runnable = leveled.pipe(
 			Effect.provide(composed as Layer.Layer<ActionServices | R>),
 			Effect.exit,
 			Effect.flatMap((exit) =>

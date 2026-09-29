@@ -22,6 +22,10 @@ what matches what you touch:
 - Environment, inputs, logging, outputs/state, secrets, the App-token bridge,
   detached processes and `ChildEnv` → `okf/interfaces/actions-runtime.md` —
   Load when: touching anything `Action.run` composes.
+- `RUNNER_DEBUG=1` lowering `References.MinimumLogLevel` to `Debug` inside
+  `Action.run` (only ever lowers; opt out with `stepDebugLogLevel: false`)
+  → `okf/modules/github-actions.md` §Observability — Load when: touching
+  `Action.run`'s composition or why `Effect.logDebug` does or does not show.
 - Cache, artifacts, blob store, cache keys, tool and package-manager install
   → `okf/interfaces/actions-storage.md` — Load when: touching `ActionCache`,
   `Artifact`, `BlobStore*`, `CacheKey`, `ToolInstaller` or
