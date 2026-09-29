@@ -1,5 +1,38 @@
 # Log
 
+## 2026-09-29
+
+* Updated @effected/schemastore
+* Updated @effected/schemastore-cli
+* Updated A schemastore outputDir is never exclusively the CLI's
+* Updated Never hand-edit the construct index — regenerate it
+* Updated actions-runtime
+* Updated construct-annotations.json
+* Updated github-actions
+
+## 2026-09-28
+
+* Updated @effected/cli
+* Updated @effected/cli is not a CLI framework
+* Updated @effected/commands
+* Updated @effected/jsonl
+* Updated @effected/mcp
+* Updated @effected/workspaces: monorepo tooling
+* Updated D2: strict MCP input is upstream-first
+* Updated D7: usageExitCode defaults to 64 (BSD EX_USAGE)
+* Updated D8: CliColor ignores FORCE_COLOR, matching core
+* Updated Require the consolidated core's contract in R; never re-implement or re-declare it
+* Updated Schema standards
+* Updated Store is built on effect's own SQL core and @effect/sql-sqlite-node
+* Added Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking
+* Updated Vendored Effect is pinned to the catalog tag, not main
+* Updated cli files the Command handler-accessor gap upstream rather than shimming it
+* Updated effected
+* Updated npm
+* Updated runtimes
+* Updated runtimes reads GitHub over core HttpClient, never Octokit
+* Updated store
+
 ## 2026-09-27
 
 * Updated @effected/workspaces catalogs and the config-dependency seam

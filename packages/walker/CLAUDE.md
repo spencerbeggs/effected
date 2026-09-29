@@ -1,7 +1,7 @@
 # @effected/walker
 
-Path traversal: upward (`Walker.ascend` / `firstMatch` / `findUpward` /
-`findRoot`) and downward (`descend`, the public glob-file walker). Sixth
+Path traversal: upward (`Walker.ascend` / `ascendWithin` / `firstMatch` /
+`findUpward` / `findRoot`) and downward (`descend`, the public glob-file walker). Sixth
 migration; the first package extracted from an already-merged sibling rather
 than ported from a `*-effect` repo.
 
@@ -107,7 +107,11 @@ hands in — never re-derived here.
 
 - `ascend` is **lexical, not physical**: `Path.dirname` does not resolve
   symlinks, so ascending out of a symlinked directory follows the given path.
-  Correct for config discovery.
+  Correct for config discovery. A **physical** ceiling (`Git.repoRoot`'s answer)
+  never matches `stopAt` from a symlinked start; that is `Walker.ascendWithin`,
+  a separate static so `ascend`'s `R` stays `Path` alone →
+  `okf/decisions/physical-ceiling-is-a-separate-static.md` — Load when:
+  touching `stopAt`, `ascendWithin`, or bounding a walk by a repository root.
 - `ascend` is a bounded `for` loop, not recursion. It terminates at `dirname`'s
   root fixpoint; `maxDepth` (default 256) guards a pathological `Path`.
 - `stopAt` must be **absolute** and is compared in **normalized** form

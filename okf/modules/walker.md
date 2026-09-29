@@ -15,8 +15,8 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T00:31:17Z
-  body_sha256: fbe3acecce0870225dc64cf670243e267beaf8eb918bd6e689258ed6c6124126
+  at: 2026-09-29T06:16:45Z
+  body_sha256: 1ba613bb7d2f79897bf2e1e47e1fe55a57fc14c46430a47764437626686b2d80
 ---
 
 # walker
@@ -101,6 +101,20 @@ resolved against `process.cwd()` — see
 for the full reasoning. Only the ceiling is constrained: a relative start
 still ascends to the relative root, and absoluteness is judged by the
 injected `Path`, so a win32 layer accepts `C:\repo`.
+
+## A physical ceiling is ascendWithin
+
+`stopAt` is lexical, so it never matches a symlink-resolved ceiling —
+`Git.repoRoot`'s answer is one — from a start reached through a symlink
+(every macOS tmpdir), and the ascent runs to the filesystem root.
+`Walker.ascendWithin(start, ceiling, options?)` is the physical form: the
+same lexical chain, stopped at the nearest ancestor whose `realPath`
+equals the ceiling's, inclusive. A ceiling the chain already spells costs
+no I/O, a failed ancestor probe is absorbed as "not the ceiling", a
+relative ceiling dies, and `Option.none()` is exactly `ascend(start)`.
+It is a separate static taking an `Option`, not a mode of `stopAt`, so
+`ascend`'s `R` stays `Path` alone — see [the physical-ceiling
+Decision](../decisions/physical-ceiling-is-a-separate-static.md).
 
 ## The downward walk (descend)
 
@@ -199,7 +213,8 @@ Walker parses nothing and has no recursion over untrusted text.
 pathological `Path` implementation. `ascend` is **lexical, not
 physical** — `Path.dirname` does not resolve symlinks, so ascending out
 of a symlinked directory follows the given path, which is correct for
-config discovery. `firstMatch` stays interruptible, yielding per
+config discovery; only `ascendWithin`'s stopping test touches the
+filesystem, and never its chain. `firstMatch` stays interruptible, yielding per
 candidate. Candidates materialize up front, bounded by the depth cap
 times the subpath count.
 
@@ -228,7 +243,9 @@ defect boundary; that an unreadable ancestor cannot hide a valid root
 above it; that the ceiling is inclusive and stops at the ancestor it
 *names* rather than the string it is spelled with; that a relative
 ceiling dies and survives the absorbing config-file caller reconstructed
-in the suite; and that nearer directories win.
+in the suite; that `ascendWithin` stops at a physical ceiling reached
+through a symlink and matches `ascend` under `Option.none()`; and that
+nearer directories win.
 
 ## Build
 

@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T22:33:35Z
-  body_sha256: d75af96070faaba5f5c6bb1efa32666c2f1a5025b9ec234b5fda20c476b5295a
+  at: 2026-09-29T06:16:45Z
+  body_sha256: 98b9f5d3aeaed7b1e41c9d493fd8624f063d0ea34a0f1304563fc1e982b2c478
 ---
 
 # @effected/memfs
@@ -151,6 +151,18 @@ A delegate-by-default wrapper over any `FileSystem`:
 - `MemoryFileSystem.failTimes(times, error)` — a transient fault: the
   first `times` intercepted calls fail with `error`, then delegation
   resumes forever.
+- `MemoryFileSystem.die(defect)` — a handler that fails its member as a
+  **defect**, the arm `FileSystem.layerNoop` uses for its five `make*`
+  members. A caller's defensive `Effect.catch` absorbs a typed fault and
+  cannot absorb a defect, so a suite injecting a typed failure where the
+  real double dies passes while the real code path dies. Effect-returning
+  members only; `stream`/`sink`/`watch` take a handler returning
+  `Stream.die`.
+- `MemoryFileSystemFaultsFactory` — `(base) => MemoryFileSystemFaults`,
+  accepted by all three wrapping constructors anywhere a fault map is.
+  `base` is the **unfaulted** wrapped filesystem, so a handler can
+  rewrite its arguments and delegate (`stat: (p) => base.stat(fold(p))`)
+  without re-entering its own fault.
 
 Design decisions worth keeping:
 
@@ -167,7 +179,9 @@ Design decisions worth keeping:
   so an injected failure must be a genuine `PlatformError`;
   `Effect.fail(new Error(...))` does not compile. A test named for the
   `PlatformError` channel that fails with a bare `Error` never exercises
-  it — exactly the silent fiction this package exists to kill.
+  it — exactly the silent fiction this package exists to kill. `die` is
+  the one deliberate exit from the channel, because a defect is not a
+  failure of it.
 - **Every function-valued member is interceptable** (derived, not
   enumerated by hand). The wrapper rebuilds the service through
   `FileSystem.make` over the primitive members, so a fault on a core
@@ -186,7 +200,9 @@ Design decisions worth keeping:
   invocation.
 - **`failTimes` counters are armed per build**, not per fault value:
   each `makeFaulty` call and each layer build starts a fresh countdown,
-  and `Layer.fresh` re-arms. `failTimes` throws `RangeError` on a
+  and `Layer.fresh` re-arms. A factory runs once per build too, so a
+  `failTimes` created inside it is armed per build. `failTimes` throws
+  `RangeError` on a
   negative or non-integer `times` — misuse is a wiring bug, the same
   posture as `layerWith`'s die on a contradictory seed.
 
@@ -406,7 +422,7 @@ authoritative list.
    is adjusted to match (the node adapter never enters that branch —
    node's `fs.cp` with `force: false` silently preserves the
    destination).
-7. **The fault-injection API** (`makeFaulty`/`layerFaulty`/`layerFaultyWith`/`failTimes`)
+7. **The fault-injection API** (`makeFaulty`/`layerFaulty`/`layerFaultyWith`/`failTimes`/`die`)
    is a kit extension; upstream has none. It lives in the facade, never
    in the ported engine — it wraps *any* `FileSystem`, so re-vendoring
    the engine cannot disturb it, and it is the piece that would need
@@ -602,7 +618,9 @@ Six layers of proof, largest first:
    alongside core-to-derived propagation; `watch` replacement *and*
    delegation; `failTimes` under `Effect.retry`, its per-build re-arm
    across two provides of one bound `const`, and `RangeError` on bad
-   counts; and `@ts-expect-error` tests pinning the type enforcement.
+   counts; `die` surviving a caller's `Effect.catch`; factories receiving
+   the unfaulted base and running once per build; and `@ts-expect-error`
+   tests pinning the type enforcement.
 5. **Errno-parity suite** (`__test__/ErrnoParityContract.ts`, kit-owned
    so the vendored suite stays unedited): one case per disputed failure
    from [ledger entry 10](#adaptation-ledger), run against both the
@@ -653,6 +671,10 @@ MIT license.
   requests carry the same question, owned by their own packages rather
   than this one, and both should be answered the same way — the shape
   of the answer is a kit convention, not a per-package taste.
+- **A whole-volume case-insensitive mode** (effected issue 874). The
+  fault factory covers a case-insensitive lookup member by member, with
+  each listed member folding its own paths; a volume that folds every
+  path itself is unbuilt and the issue stays open.
 
 ## Testing and build
 

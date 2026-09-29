@@ -10,8 +10,8 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: d6423fe9863bfeee9b1c6a0ef5039c6ddf2d98a00847be296f689c0adfe6d322
+  at: 2026-09-29T06:16:45Z
+  body_sha256: 3b4409aa7c697b8e5a5a825d62d36bc541075d9b564cc91fa605fa61c4ed4fbf
 ---
 
 # git
@@ -169,7 +169,27 @@ staged-but-uncommitted `160000` gitlink — and both are still reads.
 Introspection probes degrade "not there" to `Option.none`:
 `defaultBranch`, `currentBranch` (git's literal `"HEAD"` for detached HEAD
 maps to none — a fake branch name would be worse than an honest absence),
-`configGet`, `remoteUrl` and `mergeBaseOption`. Config reads are
+`configGet`, `remoteUrl` and `mergeBaseOption`.
+
+Two probes locate a repository, and both answer **physical** paths.
+`repoRoot` (`rev-parse --show-toplevel`) is git's symlink-resolved
+toplevel, so it need not match the spelling a caller reached the checkout
+by — every macOS tmpdir is `/var` reached as `/private/var` — and an
+upward walk bounded by it uses [walker](walker.md)'s
+`Walker.ascendWithin`, never `ascend`'s lexical `stopAt`. `commonDir`
+(`rev-parse --path-format=absolute --git-common-dir`) is repository
+**identity**: git answers the same absolute, symlink-resolved directory
+from the main checkout, any subdirectory, any linked worktree and any
+symlinked path (probed on git 2.55), so two answers compare with `===`,
+where `repoRoot` cannot serve because each worktree has its own toplevel.
+A bare repository answers its own directory. `--path-format=absolute` is
+load-bearing and needs git 2.31 or later: without it git prints `.git`
+relative in a plain checkout but absolute inside a linked worktree. The
+canonicalization is git's, deliberately — resolving symlinks in this
+package would add `FileSystem` to `Git.layer`'s `R`, which stays
+`ChildProcessSpawner` alone.
+
+Config reads are
 scopeable and config writes are not; [the merged-read
 gotcha](../gotchas/git-config-read-without-scope-is-merged.md) explains
 the asymmetry.
