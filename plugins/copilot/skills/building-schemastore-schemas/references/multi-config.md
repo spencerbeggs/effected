@@ -105,8 +105,9 @@ paths above make them location-independent:
   and a catalog url under the shared `outputDir`. Two configs keying a
   schema `config` write one document file, each build overwriting the
   other's. When both declare a `catalog`, the shared url blocks the merge
-  (`CatalogMergeError`). Without one, each config's `check` goes red after
-  the other builds.
+  (`CatalogMergeError`). Without one, when the two configs generate
+  different documents for that key, each config's `check` goes red after
+  the other builds; identical documents stay current.
 - **Build order does not matter.** The merged file is the union of every
   slice on disk, with the running config's slice replaced by the entries it
   computes now, so whichever config builds last writes the identical file.
