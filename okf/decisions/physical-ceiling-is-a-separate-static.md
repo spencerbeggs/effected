@@ -12,6 +12,9 @@ generated:
   by: "okfit/claude-code"
   at: 2026-09-29T06:16:45Z
   body_sha256: be6b99169429f34acc758c0fe7a6e4386fc9335811974401e0aaa2d15976b89f
+verified:
+  - by: human:spencer
+    at: 2026-09-29T06:17:45Z
 ---
 
 # A physical ascend ceiling is a separate static taking an Option, not a realpath mode of stopAt
