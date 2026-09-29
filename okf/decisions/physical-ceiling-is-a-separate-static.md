@@ -2,7 +2,7 @@
 type: Decision
 title: A physical ascend ceiling is a separate static taking an Option, not a realpath mode of stopAt
 description: Walker.ascendWithin bounds the upward walk by a symlink-resolved ceiling as its own static, so ascend's R stays Path alone, and takes the ceiling as an Option so a stray undefined cannot request an unbounded walk.
-status: draft
+status: stable
 tags:
   - architecture
 sources:
