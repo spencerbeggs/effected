@@ -1,5 +1,17 @@
 # @effected/copilot-plugin
 
+## 0.12.2
+
+### Documentation
+
+- The schemastore skills teach the required config `name`, `catalogDir` in place of `catalogPath`, and the slice-and-merge catalog behaviour. [#872][#872]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#872]: https://github.com/spencerbeggs/effected/pull/872
+
 ## 0.12.1
 
 ### Documentation
