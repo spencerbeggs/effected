@@ -34,7 +34,12 @@ export type CoreStatusName = "success" | "failure" | "warning" | "info" | "skip"
  * @public
  */
 export class Status<Names extends string> {
-	private constructor(private readonly defs: Readonly<Record<Names, StatusDef>>) {}
+	private readonly defs: Readonly<Record<Names, StatusDef>>;
+
+	// An explicit field, not a parameter property, so the source runs under Node's plain type stripping.
+	private constructor(defs: Readonly<Record<Names, StatusDef>>) {
+		this.defs = defs;
+	}
 
 	/** The core vocabulary: success, skip, pending, info, warning and failure, by rank 10, 20, 30, 40, 60, 90. */
 	static readonly core: Status<CoreStatusName> = new Status<CoreStatusName>({

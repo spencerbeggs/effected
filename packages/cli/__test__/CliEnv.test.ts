@@ -1,9 +1,10 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
-import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Runtime, Stdio, Terminal } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Queue, Runtime, Stdio, Terminal } from "effect";
 import { Command } from "effect/cli";
 import { CliEnv, CliInteractive, CliRuntime, CliTheme } from "../src/index.js";
+import { TestTerminal } from "../src/testing.js";
 
 const capturing = () => {
 	const out: string[] = [];
@@ -251,6 +252,65 @@ describe("CliRuntime.main with the env option", () => {
 				});
 			assert.include(yield* helpUnder({ FORCE_COLOR: "1" }), "\x1b[");
 			assert.notInclude(yield* helpUnder({}), "\x1b[");
+		}),
+	);
+
+	it.effect("installs the terminal gate: a non-interactive program's Terminal never reaches the real one", () =>
+		Effect.gen(function* () {
+			const real = yield* TestTerminal.make({ columns: 100 });
+			yield* real.input([{ name: "enter" }]);
+			const { double } = capturing();
+			let columns = 0;
+			let ended = false;
+			const exit = yield* CliRuntime.main(
+				Effect.gen(function* () {
+					const terminal = yield* Terminal.Terminal;
+					columns = yield* terminal.columns;
+					// Reading input on the gated terminal is quit at once, and display writes nothing.
+					ended = Exit.isFailure(
+						yield* Effect.exit(Effect.scoped(Effect.flatMap(terminal.readInput, (queue) => Queue.take(queue)))),
+					);
+					yield* terminal.display("never shown");
+				}),
+				{
+					platform: Layer.mergeAll(
+						Stdio.layerTest({ stdinIsTerminal: Effect.succeed(false), stdoutIsTerminal: Effect.succeed(false) }),
+						real.layer,
+					),
+					env: {},
+				},
+			).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, withEnv({})),
+				Effect.provideService(Console.Console, double),
+			);
+			assert.isTrue(Exit.isSuccess(exit));
+			assert.strictEqual(columns, 100, "the real terminal's size is delegated");
+			assert.isTrue(ended);
+			assert.strictEqual(yield* real.output, "");
+			assert.deepStrictEqual(yield* real.reads, { keys: 0, lines: 0, subscriptions: 0 });
+			assert.strictEqual(yield* real.pending, 1);
+		}),
+	);
+
+	it.effect("installs the wizard gate: --wizard is absent from --help when the run is not interactive", () =>
+		Effect.gen(function* () {
+			const app = Command.make("tool").pipe(Command.withSubcommands([Command.make("run", {}, () => Effect.void)]));
+			const helpOn = (io: Layer.Layer<Stdio.Stdio | Terminal.Terminal>) =>
+				Effect.gen(function* () {
+					const { double, out } = capturing();
+					yield* CliRuntime.main(Command.runWith(app, { version: "1.0.0" })(["--help"]), {
+						platform: Layer.mergeAll(NodeServices.layer, io),
+						env: {},
+					}).pipe(
+						Effect.exit,
+						Effect.provideService(ConfigProvider.ConfigProvider, withEnv({})),
+						Effect.provideService(Console.Console, double),
+					);
+					return out.join("\n");
+				});
+			assert.notInclude(yield* helpOn(PIPED), "--wizard");
+			assert.include(yield* helpOn(TTY), "--wizard");
 		}),
 	);
 });

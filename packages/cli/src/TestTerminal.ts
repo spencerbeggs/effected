@@ -36,10 +36,12 @@ export interface TestTerminalHandle {
 	/** How many queued key presses nobody has taken yet. */
 	readonly pending: Effect.Effect<number>;
 	/**
-	 * What the program read: `keys` taken from the input, `lines` read with `readLine`. Both `0` proves a code
-	 * path never read the terminal.
+	 * What the program did with the input: `keys` taken from it, `lines` read with `readLine`, and
+	 * `subscriptions` to `readInput`. All `0` proves a code path never touched the terminal's input. Counting the
+	 * subscription matters: on a real terminal merely subscribing attaches a reader to stdin, even when no key is
+	 * ever taken.
 	 */
-	readonly reads: Effect.Effect<{ readonly keys: number; readonly lines: number }>;
+	readonly reads: Effect.Effect<{ readonly keys: number; readonly lines: number; readonly subscriptions: number }>;
 }
 
 /**
@@ -47,7 +49,8 @@ export interface TestTerminalHandle {
  *
  * @remarks
  * Queue keys with `input` or `type`, run the program under `layer`, then read `output`. To assert that a code path
- * did NOT read, queue some keys first and check `reads` is all zero and `pending` is unchanged afterwards. Only
+ * did NOT touch the terminal, queue some keys first and check `reads` is all zero (no subscription, no key, no
+ * line) and `pending` is unchanged afterwards. Only
  * available from `@effected/cli/testing`.
  *
  * @public
@@ -69,6 +72,7 @@ export class TestTerminal {
 			const written: string[] = [];
 			let offered = 0;
 			let lines = 0;
+			let subscriptions = 0;
 
 			const offer = (inputs: ReadonlyArray<Terminal.UserInput>) =>
 				Effect.suspend(() => {
@@ -79,7 +83,10 @@ export class TestTerminal {
 			const terminal = Terminal.make({
 				columns: Effect.succeed(options?.columns ?? 80),
 				rows: Effect.succeed(options?.rows ?? 24),
-				readInput: Effect.succeed(queue),
+				readInput: Effect.sync(() => {
+					subscriptions++;
+					return queue;
+				}),
 				readLine: Effect.suspend(() => {
 					lines++;
 					return Effect.fail(new Terminal.QuitError({}));
@@ -109,7 +116,7 @@ export class TestTerminal {
 				end: Queue.end(queue).pipe(Effect.asVoid),
 				output: Effect.sync(() => written.join("")),
 				pending: Queue.size(queue),
-				reads: Effect.map(Queue.size(queue), (size) => ({ keys: offered - size, lines })),
+				reads: Effect.map(Queue.size(queue), (size) => ({ keys: offered - size, lines, subscriptions })),
 			} satisfies TestTerminalHandle;
 		});
 }

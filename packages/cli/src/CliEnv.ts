@@ -3,6 +3,7 @@ import type { Effect, Layer, Stdio, Terminal } from "effect";
 import { Layer as LayerModule } from "effect";
 import { CliInteractive } from "./CliInteractive.js";
 import type { CliLogOptions } from "./CliLog.js";
+import { CliPrompt } from "./CliPrompt.js";
 import type { CliThemeOptions } from "./CliTheme.js";
 import { CliTheme } from "./CliTheme.js";
 
@@ -36,7 +37,11 @@ export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliThe
  * The environment services a CLI reads, built once and in the right order.
  *
  * @remarks
- * Builds `CurrentRuntimeEnv`, `TerminalEnv`, `Audience`, `CliTheme` and sets `CliInteractive` from them. A
+ * Builds `CurrentRuntimeEnv`, `TerminalEnv`, `Audience`, `CliTheme` and sets `CliInteractive` from them, then
+ * installs the two gates for the program: `CliPrompt.gateTerminal`, which replaces `Terminal` with a quiet one when
+ * the run is not interactive so no prompt runner ever attaches to stdin, and `CliPrompt.gateWizard`, which drops
+ * `--wizard` then. `TerminalEnv` is built from the real terminal first. The layer therefore also outputs
+ * `Terminal`, the gated one, and consumers never compose the gates themselves. A
  * `Context.Reference`'s key type is `never`, so the layer's output type does not list `CliInteractive`: it sets
  * the reference rather than providing a service. Every read of the environment goes through `Config` and
  * degrades to "unset" when it fails, so building the layer does not fail on a bad provider; it fails only when
@@ -57,7 +62,7 @@ export class CliEnv {
 	 */
 	static readonly layer = (
 		options: CliEnvOptions = {},
-	): Layer.Layer<CliEnvServices, never, Stdio.Stdio | Terminal.Terminal> => {
+	): Layer.Layer<CliEnvServices | Terminal.Terminal, never, Stdio.Stdio | Terminal.Terminal> => {
 		const base = LayerModule.mergeAll(
 			CurrentRuntimeEnv.layer,
 			TerminalEnv.layer(
@@ -69,6 +74,11 @@ export class CliEnv {
 		).pipe(LayerModule.provideMerge(base));
 		const withTheme = CliTheme.layer(options.theme).pipe(LayerModule.provideMerge(withAudience));
 		// Sets the CliInteractive reference from the audience and terminal; it has no output type of its own.
-		return CliInteractive.layer.pipe(LayerModule.provideMerge(withTheme));
+		const withInteractive = CliInteractive.layer.pipe(LayerModule.provideMerge(withTheme));
+		// The gates read CliInteractive when built, and the terminal gate wraps the REAL Terminal, which the
+		// environment layers above have already read.
+		return LayerModule.mergeAll(CliPrompt.gateTerminal, CliPrompt.gateWizard).pipe(
+			LayerModule.provideMerge(withInteractive),
+		);
 	};
 }

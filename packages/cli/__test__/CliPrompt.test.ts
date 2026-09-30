@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";
-import { Cause, Console, Effect, Exit, Layer, Runtime } from "effect";
+import { Cause, Console, Effect, Exit, Layer, Queue, Runtime, Terminal } from "effect";
 import { Command, Flag, Prompt } from "effect/cli";
 import { CliInteractive, CliPrompt, CliRuntime } from "../src/index.js";
 import type { TestTerminalHandle } from "../src/testing.js";
@@ -50,7 +50,8 @@ const run = (
 		const interactive =
 			typeof options.interactive === "boolean" ? CliInteractive.layerTest(options.interactive) : options.interactive;
 		const program = CliRuntime.main(Command.runWith(root, { version: "1.0.0" })(argv), {
-			platform: Layer.mergeAll(NodeServices.layer, options.terminal.layer),
+			// The gate reads CliInteractive when it is built; CliEnv installs it for a real program.
+			platform: Layer.mergeAll(NodeServices.layer, CliPrompt.gateTerminal.pipe(Layer.provide(options.terminal.layer))),
 		}).pipe(
 			options.gate === true ? Effect.provide(CliPrompt.gateWizard) : (self) => self,
 			Effect.provide(interactive),
@@ -97,7 +98,7 @@ describe("CliPrompt.fallback", () => {
 			});
 			assert.strictEqual(code, 0);
 			assert.deepStrictEqual(out, ["profile=software-project"]);
-			assert.deepStrictEqual(yield* terminal.reads, { keys: 0, lines: 0 });
+			assert.deepStrictEqual(yield* terminal.reads, { keys: 0, lines: 0, subscriptions: 0 });
 			assert.strictEqual(yield* terminal.pending, 2);
 			assert.strictEqual(yield* terminal.output, "");
 		}),
@@ -115,7 +116,7 @@ describe("CliPrompt.fallback", () => {
 				err.some((line) => line.includes("Missing required flag: --profile")),
 				err.join("\n"),
 			);
-			assert.deepStrictEqual(yield* terminal.reads, { keys: 0, lines: 0 });
+			assert.deepStrictEqual(yield* terminal.reads, { keys: 0, lines: 0, subscriptions: 0 });
 			assert.strictEqual(yield* terminal.pending, 1);
 		}),
 	);
@@ -169,8 +170,68 @@ describe("CliPrompt.fallback", () => {
 			});
 			assert.strictEqual(code, 0);
 			assert.deepStrictEqual(out, ["profile=software-project"]);
-			assert.deepStrictEqual(yield* terminal.reads, { keys: 0, lines: 0 });
+			assert.deepStrictEqual(yield* terminal.reads, { keys: 0, lines: 0, subscriptions: 0 });
 			assert.strictEqual(yield* terminal.output, "");
+		}),
+	);
+});
+
+describe("CliPrompt.fallback otherwise", () => {
+	it.effect("`{ otherwise: undefined }` counts as not given", () =>
+		Effect.gen(function* () {
+			const terminal = yield* TestTerminal.make();
+			const { code } = yield* run(
+				app(
+					Flag.String("profile").pipe(
+						Flag.withFallbackPrompt(CliPrompt.fallback(select, { flag: "profile", otherwise: undefined as never })),
+					),
+				),
+				["run"],
+				{ interactive: false, terminal },
+			);
+			assert.strictEqual(code, 64);
+		}),
+	);
+});
+
+describe("CliPrompt.gateTerminal", () => {
+	const gated = (interactive: boolean, terminal: TestTerminalHandle) =>
+		Effect.gen(function* () {
+			return yield* Terminal.Terminal;
+		}).pipe(
+			Effect.provide(CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))),
+			Effect.provide(CliInteractive.layerTest(interactive)),
+		);
+
+	it.effect("non-interactive: a quiet terminal that never touches the real one, but keeps its size", () =>
+		Effect.gen(function* () {
+			const real = yield* TestTerminal.make({ columns: 120, rows: 40 });
+			yield* real.input([{ name: "enter" }]);
+			const terminal = yield* gated(false, real);
+			assert.strictEqual(yield* terminal.columns, 120);
+			assert.strictEqual(yield* terminal.rows, 40);
+			// The input is an already-ended queue: a prompt reading it is quit, and no key of the real one is taken.
+			const exit = yield* Effect.exit(Effect.scoped(Effect.flatMap(terminal.readInput, (queue) => Queue.take(queue))));
+			assert.isTrue(Exit.isFailure(exit));
+			const line = yield* Effect.exit(terminal.readLine);
+			assert.isTrue(Exit.isFailure(line));
+			yield* terminal.display("never shown");
+			assert.strictEqual(yield* real.output, "");
+			assert.deepStrictEqual(yield* real.reads, { keys: 0, lines: 0, subscriptions: 0 });
+			assert.strictEqual(yield* real.pending, 1);
+		}),
+	);
+
+	it.effect("interactive: the real terminal passes through untouched", () =>
+		Effect.gen(function* () {
+			const real = yield* TestTerminal.make();
+			yield* real.input([{ name: "enter" }]);
+			const terminal = yield* gated(true, real);
+			const key = yield* Effect.scoped(Effect.flatMap(terminal.readInput, (queue) => Queue.take(queue)));
+			assert.strictEqual(key.key.name, "enter");
+			yield* terminal.display("shown");
+			assert.strictEqual(yield* real.output, "shown");
+			assert.deepStrictEqual(yield* real.reads, { keys: 1, lines: 0, subscriptions: 1 });
 		}),
 	);
 });

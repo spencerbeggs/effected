@@ -1,4 +1,5 @@
-import { Effect, Layer } from "effect";
+import type { Cause } from "effect";
+import { Effect, Layer, Queue, Terminal } from "effect";
 import type { Param } from "effect/cli";
 import { CliConfig, CliError, GlobalFlag, Prompt } from "effect/cli";
 import { Cancelled } from "./Cancelled.js";
@@ -43,7 +44,15 @@ export class CliPrompt {
 	 * `withFallbackPrompt` turns a quit, such as Ctrl-C, into the original missing-parameter error, which would
 	 * exit `64` as if the flag had been forgotten. Here a quit is `Cancelled` with reason `interrupt`, exit `130`.
 	 * It is raised as a defect because core's parse step turns every typed failure into a usage error. Core then
-	 * runs the already-answered `Prompt.succeed` it is handed.
+	 * runs the already-answered `Prompt.succeed` it is handed. Because it travels as a defect, a handler's
+	 * `Effect.catchTag("Cancelled", ...)` cannot see it, and only `CliRuntime.main` (or
+	 * `CliRuntime.reportFailures`) renders it as one line with exit `130`; under a bare `runMain` it prints a
+	 * stack.
+	 *
+	 * Pair it with `CliPrompt.gateTerminal`, which `CliEnv.layer` installs: core still runs `Prompt.run` on the
+	 * answered prompt it is handed, and `Prompt.run` subscribes the terminal's input, which on a real terminal
+	 * attaches a reader to stdin and drops piped input. The gate makes that subscription harmless when the run is
+	 * not interactive.
 	 *
 	 * @param prompt - the prompt to show
 	 * @param options - the parameter it stands in for, and the non-interactive default
@@ -59,13 +68,46 @@ export class CliPrompt {
 				);
 				return Prompt.succeed(answer);
 			}
-			if ("otherwise" in options) return Prompt.succeed(options.otherwise as A);
+			// `{ otherwise: undefined }` counts as not given.
+			if ("otherwise" in options && options.otherwise !== undefined) return Prompt.succeed(options.otherwise);
 			return yield* Effect.fail(
 				"flag" in options
 					? new CliError.MissingOption({ option: options.flag })
 					: new CliError.MissingArgument({ argument: options.argument }),
 			);
 		});
+
+	/**
+	 * Swaps core's `Terminal` for a quiet one when the run is not interactive, so nothing touches the real one.
+	 *
+	 * @remarks
+	 * Core's prompt runner subscribes the terminal's input even for a prompt that is already answered, and the
+	 * real Node terminal then attaches a readline to stdin, which drops piped input and puts a TTY stdin into raw
+	 * mode. Not interactive, this layer provides a terminal whose input is an already-ended queue, whose
+	 * `readLine` fails as quit and whose `display` writes nothing, so any prompt, the wizard included, is quit at
+	 * once and the real terminal is never read. Its `columns` and `rows` still come from the real one, so layout
+	 * keeps working. Interactive, the real terminal passes through.
+	 *
+	 * It requires the real `Terminal` and reads `CliInteractive` when it is built. `CliEnv.layer` installs it,
+	 * after `TerminalEnv` is built from the real terminal, so consumers do not compose it.
+	 */
+	static readonly gateTerminal: Layer.Layer<Terminal.Terminal, never, Terminal.Terminal> = Layer.effect(
+		Terminal.Terminal,
+		Effect.gen(function* () {
+			const real = yield* Terminal.Terminal;
+			if (yield* CliInteractive) return real;
+			return Terminal.make({
+				columns: real.columns,
+				rows: real.rows,
+				readInput: Effect.map(Queue.unbounded<Terminal.UserInput, Cause.Done>(), (queue) => {
+					Queue.endUnsafe(queue);
+					return queue;
+				}),
+				readLine: Effect.fail(new Terminal.QuitError({})),
+				display: () => Effect.void,
+			});
+		}),
+	);
 
 	/**
 	 * Drops core's `--wizard` built-in flag when the run is not interactive.
