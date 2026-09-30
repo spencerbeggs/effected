@@ -1,6 +1,8 @@
-// KIT EXTENSION (sync port). The `node:fs` synchronous subset over the literal
-// inspection view. Absence throws a node-shaped error built by `nodeErrno`:
-// the only failure channel a synchronous signature has.
+// KIT EXTENSION (ports). The read-only `node:fs` sync port and `node:fs/promises`
+// port over the literal inspection view, the path resolver they share, the
+// fault wrapper, and the synchronous-run helpers behind `makeSync`. Failure is
+// a node-shaped error built by `nodeErrno` — the only channel a synchronous
+// signature has.
 
 import type { PlatformError } from "effect";
 import { Cause, Effect, Exit, Option } from "effect";
@@ -12,7 +14,7 @@ import type {
 	MemoryFileSystemVolume,
 	MemoryFileSystemVolumeStat,
 } from "../MemoryFileSystem.js";
-import { nodeErrno } from "./errno.js";
+import { errnoCodeForTag, nodeErrno } from "./errno.js";
 
 // The port is defined in `stat` terms, so it FOLLOWS symbolic links — unlike
 // the literal inspection view it is built on. `MAX_LINK_HOPS` mirrors the
@@ -189,22 +191,33 @@ export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFi
 const nodeSyscall = { write: "open", mkdir: "mkdir", remove: "rm", symlink: "symlink" } as const;
 
 /**
- * Runs a mutation synchronously. A typed `PlatformError` failure is rethrown
- * as the node-shaped error a `node:fs` call would throw (`code`, `syscall`, the
- * CALLER's `path`) — never a `FiberFailure` wrapper — and a defect is rethrown
- * unchanged, never converted into an errno.
+ * Runs an effect synchronously. A typed `PlatformError` failure is rethrown as
+ * the node-shaped error a `node:fs` call would throw (`code`, `syscall`,
+ * `path`) — never a `FiberFailure` wrapper — and a defect is rethrown
+ * unchanged, never converted into an errno. The code is the failure's own
+ * errno when it carries one, else derived from its tag (`BadArgument` is
+ * `EINVAL`).
  */
-export const runMutation = (
-	effect: Effect.Effect<void, PlatformError.PlatformError>,
-	op: keyof typeof nodeSyscall,
-	path: string,
-): void => {
+export const runNode = <A>(
+	effect: Effect.Effect<A, PlatformError.PlatformError>,
+	describe: (error: PlatformError.PlatformError) => { readonly syscall: string; readonly path: string },
+): A => {
 	const exit = Effect.runSyncExit(effect);
-	if (Exit.isSuccess(exit)) return;
+	if (Exit.isSuccess(exit)) return exit.value;
 	const error = Cause.findErrorOption(exit.cause);
 	if (Option.isNone(error)) throw Cause.squash(exit.cause);
 	const reason = error.value.reason;
 	const code =
-		reason._tag === "BadArgument" ? "EINVAL" : ((reason.cause as { code?: string } | undefined)?.code ?? "EIO");
-	throw nodeErrno(code, nodeSyscall[op], path);
+		reason._tag === "BadArgument"
+			? "EINVAL"
+			: ((reason.cause as { code?: string } | undefined)?.code ?? errnoCodeForTag(reason._tag));
+	const { syscall, path } = describe(error.value);
+	throw nodeErrno(code, syscall, path);
 };
+
+/** {@link runNode} for a handle mutator: node's syscall for the op and the CALLER's path. */
+export const runMutation = (
+	effect: Effect.Effect<void, PlatformError.PlatformError>,
+	op: keyof typeof nodeSyscall,
+	path: string,
+): void => runNode(effect, () => ({ syscall: nodeSyscall[op], path }));

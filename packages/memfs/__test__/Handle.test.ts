@@ -48,9 +48,33 @@ describe("MemoryFileSystem.makeSync", () => {
 		assert.strictEqual(thrown(() => vol.symlink("/x", "/f/l")).code, "ENOTDIR");
 	});
 
-	it("a contradictory seed throws synchronously", () => {
-		const e = thrown(() => MemoryFileSystem.makeSync({ "/a": "x", "/a/b": "y" }));
-		assert.isDefined(e);
+	it("a contradictory seed throws a node-shaped error synchronously", () => {
+		// Seeding "/a/b" needs "/a" as a directory; a recursive mkdir over the
+		// file "/a" is EEXIST, as `mkdirSync({ recursive: true })` reports it.
+		const e = thrown(() => MemoryFileSystem.makeSync({ "/a": "x", "/a/b": "y" })) as Record<string, unknown>;
+		assert.strictEqual(e.code, "EEXIST");
+		assert.isString(e.syscall);
+		assert.notStrictEqual(e.name, "FiberFailure");
+		assert.isUndefined(e._tag);
+	});
+
+	it("a bad root is EINVAL, node-shaped", () => {
+		const e = thrown(() => MemoryFileSystem.makeSync({ a: "" }, { root: "ws" })) as Record<string, unknown>;
+		assert.strictEqual(e.code, "EINVAL");
+		assert.strictEqual(e.syscall, "seed");
+		assert.isUndefined(e._tag);
+	});
+
+	it("write accepts bytes", () => {
+		const vol = MemoryFileSystem.makeSync();
+		vol.write("/b/data.bin", new Uint8Array([1, 2, 3]));
+		assert.deepStrictEqual([...(vol.volume.bytes("/b/data.bin") ?? [])], [1, 2, 3]);
+	});
+
+	it("mkdir over a file and symlink onto an existing path are EEXIST", () => {
+		const vol = MemoryFileSystem.makeSync({ "/f": "x" });
+		assert.strictEqual(thrown(() => vol.mkdir("/f")).code, "EEXIST");
+		assert.strictEqual(thrown(() => vol.symlink("/x", "/f")).code, "EEXIST");
 	});
 
 	it.effect("layer is stable across provides: two programs, one volume", () =>
@@ -87,9 +111,22 @@ describe("runMutation", () => {
 		assert.strictEqual(e, defect);
 	});
 
-	it("a typed failure without an errno cause becomes EIO, and a BadArgument EINVAL", () => {
-		const io = PlatformError.systemError({ _tag: "Unknown", module: "FileSystem", method: "m" });
-		assert.strictEqual(thrown(() => runMutation(Effect.fail(io), "mkdir", "/x")).code, "EIO");
+	it("a typed failure without an errno cause takes its code from the tag", () => {
+		const code = (tag: "NotFound" | "AlreadyExists" | "PermissionDenied" | "Unknown") =>
+			thrown(() =>
+				runMutation(
+					Effect.fail(PlatformError.systemError({ _tag: tag, module: "FileSystem", method: "m" })),
+					"mkdir",
+					"/x",
+				),
+			).code;
+		assert.strictEqual(code("NotFound"), "ENOENT");
+		assert.strictEqual(code("AlreadyExists"), "EEXIST");
+		assert.strictEqual(code("PermissionDenied"), "EACCES");
+		assert.strictEqual(code("Unknown"), "EIO");
+	});
+
+	it("a BadArgument is EINVAL", () => {
 		const bad = PlatformError.badArgument({ module: "FileSystem", method: "m", description: "d" });
 		assert.strictEqual(thrown(() => runMutation(Effect.fail(bad), "mkdir", "/x")).code, "EINVAL");
 	});

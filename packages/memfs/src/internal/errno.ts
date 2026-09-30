@@ -60,6 +60,21 @@ export const errnoTag = (code: string | undefined): SystemErrorTag => {
 	}
 };
 
+// The inverse of `errnoTag` for a failure that carries no errno of its own:
+// the code whose tag it is. Anything without a specific mapping is `EIO`.
+export const errnoCodeForTag = (tag: string): string => {
+	switch (tag) {
+		case "NotFound":
+			return "ENOENT";
+		case "AlreadyExists":
+			return "EEXIST";
+		case "PermissionDenied":
+			return "EACCES";
+		default:
+			return "EIO";
+	}
+};
+
 /** The `cause` of an errno-backed failure: an `Error` carrying node's `code` (and `path` for path operations). */
 export class ErrnoException extends Error {
 	readonly code: ErrnoCode;

@@ -4,9 +4,9 @@
 // of the vendored port.
 
 import type { PlatformError } from "effect";
-import { Cause, Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
+import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { nodeErrno } from "./internal/errno.js";
-import { makePromisesFileSystem, makeSyncFileSystem, runMutation, withFaults } from "./internal/ports.js";
+import { makePromisesFileSystem, makeSyncFileSystem, runMutation, runNode, withFaults } from "./internal/ports.js";
 import { normalizeAbsolute, seedWith } from "./internal/seed.js";
 import * as internal from "./internal/volume.js";
 
@@ -1263,9 +1263,11 @@ export class MemoryFileSystem {
 	 *
 	 * @remarks
 	 * For suites that construct their volume at `describe` scope and never
-	 * touch `Effect`. Throws synchronously when the seed contradicts itself
-	 * (a typed failure elsewhere), with a node-shaped error where an errno
-	 * applies.
+	 * touch `Effect`. Throws synchronously — a node-shaped error carrying
+	 * `code`, `syscall` and `path` — when the seed contradicts itself or the
+	 * `root` is invalid (`EINVAL`).
+	 *
+	 * The handle reads the real clock, so writes do not follow `TestClock`.
 	 *
 	 * @param seed - Seed entries; relative keys when `options.root` is given.
 	 * @param options - See {@link MemoryFileSystemOptions}.
@@ -1274,9 +1276,10 @@ export class MemoryFileSystem {
 		seed: MemoryFileSystemSeed = {},
 		options?: MemoryFileSystemOptions,
 	): MemoryFileSystemHandle => {
-		const exit = Effect.runSyncExit(MemoryFileSystem.makeInspectableWith(seed, options));
-		if (Exit.isFailure(exit)) throw Cause.squash(exit.cause);
-		const { fileSystem, volume } = exit.value;
+		const { fileSystem, volume } = runNode(MemoryFileSystem.makeInspectableWith(seed, options), (error) => ({
+			syscall: error.reason.method,
+			path: "pathOrDescriptor" in error.reason ? String(error.reason.pathOrDescriptor ?? "") : "",
+		}));
 		const parentOf = (path: string) => path.slice(0, Math.max(1, path.lastIndexOf("/")));
 		// Only creates a parent that is absent: an existing parent that is a file
 		// must reach the write itself, which fails ENOTDIR as `writeFileSync` does
