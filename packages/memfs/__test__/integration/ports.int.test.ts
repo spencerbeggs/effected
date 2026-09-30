@@ -184,3 +184,51 @@ describe("handle mutators resolve '..' after links, as the host does", () => {
 		assert.isFalse(vol.volume.has("/r/rel.txt"));
 	});
 });
+
+describe("handle mutators under a dangling or looping parent link, as the host reports", () => {
+	it("dangling parent: ENOENT on open; loop parent: ELOOP — host and memfs", () => {
+		const base = mkdtempSync(join(tmpdir(), "memfs-parentlink-"));
+		const hostCode = (f: () => void) => {
+			try {
+				f();
+				return "ok";
+			} catch (e) {
+				return (e as { code: string; syscall: string }).code;
+			}
+		};
+		try {
+			symlinkSync(join(base, "missing"), join(base, "dang"));
+			symlinkSync(join(base, "loop"), join(base, "loop"));
+			assert.strictEqual(
+				hostCode(() => writeFileSync(`${base}/dang/x.txt`, "")),
+				"ENOENT",
+			);
+			assert.strictEqual(
+				hostCode(() => writeFileSync(`${base}/loop/x.txt`, "")),
+				"ELOOP",
+			);
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
+		const vol = MemoryFileSystem.makeSync(
+			{ dang: MemoryFileSystem.symlink("/r/missing"), loop: MemoryFileSystem.symlink("/r/loop") },
+			{ root: "/r" },
+		);
+		const memCode = (f: () => void) => {
+			try {
+				f();
+				return "ok";
+			} catch (e) {
+				return (e as { code: string }).code;
+			}
+		};
+		assert.strictEqual(
+			memCode(() => vol.write("dang/x.txt", "")),
+			"ENOENT",
+		);
+		assert.strictEqual(
+			memCode(() => vol.write("loop/x.txt", "")),
+			"ELOOP",
+		);
+	});
+});

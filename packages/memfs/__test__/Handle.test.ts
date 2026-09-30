@@ -196,6 +196,21 @@ describe("MemoryFileSystem.makeSync", () => {
 		assert.strictEqual(vol.volume.text("/elsewhere/only-here/w.txt"), "w");
 	});
 
+	it("a dangling-link parent is ENOENT and a looping-link parent is ELOOP — never mkdir over the link", () => {
+		const vol = MemoryFileSystem.makeSync(
+			{ dang: MemoryFileSystem.symlink("/missing"), loop: MemoryFileSystem.symlink("/r/loop") },
+			{ root: "/r" },
+		);
+		const dangling = thrown(() => vol.write("dang/x.txt", ""));
+		assert.strictEqual(dangling.code, "ENOENT");
+		assert.strictEqual(dangling.syscall, "open");
+		assert.strictEqual(dangling.path, "dang/x.txt");
+		assert.strictEqual(vol.volume.readLink("/r/dang"), "/missing");
+		assert.isFalse(vol.volume.has("/missing"));
+		assert.strictEqual(thrown(() => vol.write("loop/x.txt", "")).code, "ELOOP");
+		assert.strictEqual(vol.volume.readLink("/r/loop"), "/r/loop");
+	});
+
 	it("without a root, a relative mutator path resolves from / and creates nothing else", () => {
 		const vol = MemoryFileSystem.makeSync();
 		assert.isUndefined(vol.root);

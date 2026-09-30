@@ -680,11 +680,23 @@ const buildHandle = (
 		// Only creates a parent that is absent: an existing parent that is a file
 		// must reach the write itself, which fails ENOTDIR as `writeFileSync` does
 		// (a recursive mkdir over an existing file would say EEXIST instead).
-		// Existence is checked through the link-following port, so it agrees with
-		// the engine's resolution of an unnormalized path — never the literal view.
+		// Presence is checked with the port's `lstat`: intermediate links and
+		// ".." resolve (so it agrees with the engine on an unnormalized path —
+		// never the lexical view), but the FINAL component is not followed. A
+		// dangling or looping link AS the parent is therefore present, so the
+		// write itself fails ENOENT / ELOOP, as `writeFileSync` does — never a
+		// mkdir over the link (EEXIST).
+		const present = (path: string) => {
+			try {
+				sync.lstat(path);
+				return true;
+			} catch {
+				return false;
+			}
+		};
 		const ensureParent = (path: string) => {
 			const parent = parentOf(path);
-			return sync.exists(parent) ? Effect.void : raw.makeDirectory(parent, { recursive: true });
+			return present(parent) ? Effect.void : raw.makeDirectory(parent, { recursive: true });
 		};
 		const handle: MemoryFileSystemHandle = {
 			fileSystem,
