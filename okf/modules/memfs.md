@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T01:39:09Z
-  body_sha256: 422f1fd21ad2b953e69bbe0dbc352a3527345127ec407447d95f29bd2592ef25
+  at: 2026-09-30T02:04:44Z
+  body_sha256: 0067c62631c6a98f6dfbcab94f8ce6892cf2dfc451c429f8f1aeca41f1944f0c
 ---
 
 # @effected/memfs
@@ -122,7 +122,14 @@ Eight constructors, all in the main entry:
   **any** `FileSystem`, not only this package's. `layerFaulty` is
   `Layer<FileSystem, never, FileSystem>`.
 
-`options` is `{ root?, caseSensitive?, faults? }`. One internal
+`options` is `{ root?, caseSensitive?, faults? }`. `root` is a lexical
+**join base, not a jail**: a seed key joins it as `path.posix.join` does,
+so a `..` key may normalize outside the root. A relative root, or an
+absolute key alongside a root, is still a typed `BadArgument`. Seed-key
+errors name the offending key or root; `makeSync` throws `EINVAL` with
+that key in the path slot (`EINVAL: invalid argument, seed '/abs.txt'`),
+not an empty one. `faults` faults the `FileSystem` service only, never the
+handle's ports. One internal
 `buildHandle(seed, options)` serves `makeWith`, `layer`, `layerWith`,
 `makeHandle` and `makeSync`; the seed is written through the **raw**
 filesystem, beneath any faults, so a fault can never break seeding. The
@@ -160,9 +167,28 @@ seeds beneath a directory other than `/`.
 
 `makeHandle` / `makeSync` return a `MemoryFileSystemHandle`: `fileSystem`,
 `volume`, `layer` (FileSystem + Volume + `Path`, pinned to one volume and
-stable across provides), `sync`, `promises`, and the mutators `write`,
+stable across provides), `sync`, `promises`, `root` (the normalized
+`options.root`, or `undefined`), `withFaults` and the mutators `write`,
 `mkdir`, `remove`, `symlink`. The mutators throw node-shaped errors and
-create a parent only when it is absent. **Assertion timing chooses the
+create a parent only when it is absent.
+
+- **`withFaults({ sync?, promises? })`** returns `{ sync, promises }` —
+  faulted ports over the same volume, through the same machinery as
+  `syncFileSystem` / `promisesFileSystem` (unknown-key `RangeError`,
+  async rejection of a synchronous throw). The handle's own `sync` and
+  `promises` stay unfaulted.
+- **Mutators join a relative path to `root`, or to `/` without one.** The
+  joined path reaches the engine **unnormalized**, so `..` resolves after
+  following links, POSIX-style, as node does (host-pinned: `link/../x`
+  lands beside the link's target, not beside the link). Seed keys stay
+  lexical — the one place the two differ. An absolute path is passed
+  through unchanged. `symlink` joins only the link path; its target text is
+  stored verbatim. Errors report the caller's own path.
+- **The parent check uses the port's `lstat`**, which follows intermediate
+  links but not the final component, so a dangling or looping parent link
+  fails `ENOENT` or `ELOOP` like node rather than being `mkdir`'d over.
+
+**Assertion timing chooses the
 family:** the layer forms serve tests that resolve `Volume` and assert
 *inside* the provided effect; when assertions run *after* it, build the
 handle once, wrap `handle.fileSystem` in `Layer.succeed`, and assert on
