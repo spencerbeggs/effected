@@ -3,6 +3,7 @@ import { Audience } from "@effected/env";
 import { Effect } from "effect";
 import type { Command } from "effect/cli";
 import { CliError, Command as CommandModule, Flag } from "effect/cli";
+import { CliInteractive } from "./CliInteractive.js";
 
 const KINDS: ReadonlyArray<AudienceKind> = ["human", "agent", "ci"];
 
@@ -37,19 +38,22 @@ export interface CliAudienceFlagsOptions {
 
 const CONFLICT = "Give at most one of --audience, --human, --agent, --ci (once).";
 
+/** Every audience the flags named, one entry per true occurrence. */
+const given = (input: AudienceFlagInput): ReadonlyArray<AudienceKind> => [
+	...input.audience,
+	// Only a true occurrence counts: `--agent=false` and `--no-agent` mean "not given".
+	...input.human.filter(Boolean).map((): AudienceKind => "human"),
+	...input.agent.filter(Boolean).map((): AudienceKind => "agent"),
+	...input.ci.filter(Boolean).map((): AudienceKind => "ci"),
+];
+
 /** Resolve the four flags into the audience to provide, failing when more than one occurrence was given. */
 const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliError.UserError, Audience> => {
-	const given: ReadonlyArray<AudienceKind> = [
-		...input.audience,
-		// Only a true occurrence counts: `--agent=false` and `--no-agent` mean "not given".
-		...input.human.filter(Boolean).map((): AudienceKind => "human"),
-		...input.agent.filter(Boolean).map((): AudienceKind => "agent"),
-		...input.ci.filter(Boolean).map((): AudienceKind => "ci"),
-	];
-	if (given.length > 1) {
+	const named = given(input);
+	if (named.length > 1) {
 		return Effect.fail(new CliError.UserError({ cause: new Error(CONFLICT), userMessage: CONFLICT }));
 	}
-	const [kind] = given;
+	const [kind] = named;
 	// No flag: the ambient audience, the override variable or detection, is read and provided back unchanged.
 	return kind === undefined ? Audience : Effect.succeed({ kind, source: "flag" });
 };
@@ -64,6 +68,10 @@ const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliErro
  * they agree; a boolean set to false (`--no-agent`, `--agent=false`) counts as not given. A bad `--audience` value is core's own parse error. Both exit `64` under `CliRuntime.main`. A
  * conflicting audience together with `--help` exits `0` and prints help, because core handles its action flags
  * before the resolver runs.
+ *
+ * A non-human flag (`--agent`, `--ci`, `--audience agent|ci`) also turns `CliInteractive` off for the handler. The
+ * flag is read after the parse step, so a prompt that runs during parsing, such as a fallback flag, still sees the
+ * interactivity the environment decided; use the audience override variable for that.
  *
  * @example
  * ```ts
@@ -123,5 +131,15 @@ export class CliAudience {
 	static readonly provide = <const Name extends string, Input extends AudienceFlagInput, ContextInput, E, R>(
 		command: Command.Command<Name, Input, ContextInput, E, R>,
 	): Command.Command<Name, Input, ContextInput, E | CliError.UserError, Exclude<R, Audience> | Audience> =>
-		CommandModule.provideEffect(command, Audience, (input: Input) => resolve(input));
+		CommandModule.provideEffect(command, Audience, (input: Input) => resolve(input)).pipe(
+			// A non-human flag narrows interactivity for the handler too: the env layer decided it from the DETECTED
+			// audience, before the flag was read, so `--agent` on a terminal would otherwise stay interactive. Only
+			// ever narrows, like `CliInteractive.unless`; `--human` never turns it on.
+			CommandModule.provideEffect(CliInteractive, (input: Input) =>
+				Effect.map(CliInteractive, (current) => {
+					const [flagged] = given(input);
+					return flagged === undefined ? current : current && flagged === "human";
+				}),
+			),
+		);
 }

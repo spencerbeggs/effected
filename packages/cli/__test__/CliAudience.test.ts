@@ -4,7 +4,7 @@ import type { AudienceShape } from "@effected/env";
 import { Audience } from "@effected/env";
 import { Cause, Console, Effect, Exit, Runtime } from "effect";
 import { Argument, Command } from "effect/cli";
-import { CliAudience, CliRuntime } from "../src/index.js";
+import { CliAudience, CliInteractive, CliRuntime } from "../src/index.js";
 
 const capturing = () => {
 	const out: string[] = [];
@@ -144,4 +144,47 @@ describe("CliAudience", () => {
 			}),
 		);
 	});
+});
+
+describe("CliAudience and CliInteractive", () => {
+	/** The interactivity the handler sees, given the ambient value the env layer decided. */
+	const observe = (argv: ReadonlyArray<string>, ambient: boolean) =>
+		Effect.gen(function* () {
+			const { double } = capturing();
+			const seen: boolean[] = [];
+			const verify = Command.make("verify", { target: Argument.String("target") }, () =>
+				Effect.gen(function* () {
+					seen.push(yield* CliInteractive);
+				}),
+			);
+			const root = Command.make("tool").pipe(
+				Command.withSharedFlags(CliAudience.flags()),
+				Command.withSubcommands([verify]),
+				CliAudience.provide,
+			);
+			yield* CliRuntime.main(Command.runWith(root, { version: "1.0.0" })(argv), { platform: NodeServices.layer }).pipe(
+				Effect.exit,
+				Effect.provideService(Console.Console, double),
+				Effect.provide(CliInteractive.layerTest(ambient)),
+				Effect.provide(Audience.layerTest("human", "detected")),
+			);
+			return seen;
+		});
+
+	it.effect("a non-human audience flag turns interactivity off for the handler", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* observe(["--agent", "verify", "x"], true), [false]);
+			assert.deepStrictEqual(yield* observe(["--ci", "verify", "x"], true), [false]);
+			assert.deepStrictEqual(yield* observe(["--audience", "agent", "verify", "x"], true), [false]);
+		}),
+	);
+
+	it.effect("no flag leaves it as decided, and --human never turns it on", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* observe(["verify", "x"], true), [true]);
+			assert.deepStrictEqual(yield* observe(["verify", "x"], false), [false]);
+			assert.deepStrictEqual(yield* observe(["--human", "verify", "x"], true), [true]);
+			assert.deepStrictEqual(yield* observe(["--human", "verify", "x"], false), [false]);
+		}),
+	);
 });
