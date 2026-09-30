@@ -2,6 +2,7 @@ import type { AudienceKind, ColorLevel } from "@effected/env";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
 import { renderAnsi } from "./internal/renderAnsi.js";
+import { renderGithubLog } from "./internal/renderGithubLog.js";
 import { renderMarkdown } from "./internal/renderMarkdown.js";
 import { renderPlain } from "./internal/renderPlain.js";
 import type { Style, TokenName } from "./Token.js";
@@ -138,4 +139,24 @@ export class Render {
 	 * @param ctx - where the output is going; its glyph set, audience and `displayPath` are used
 	 */
 	static readonly markdown = (doc: Document, ctx: RenderContext): string => renderMarkdown(doc, ctx);
+
+	/**
+	 * Render a document for a GitHub Actions log.
+	 *
+	 * @remarks
+	 * Everything is what {@link Render.plain} renders, except a collapsible that starts a line, which is a group:
+	 * `::group::title`, its body, `::endgroup::`. That is a top-level collapsible, or one that is a direct child of a
+	 * top-level section. GitHub does not nest groups, so a collapsible inside a group, or inside a list or callout
+	 * (where it would not start a line), keeps plain's rendering: its title on a line and its body indented.
+	 *
+	 * The runner reads a line as a command when, after its leading whitespace, it starts with `::` or `##`. A
+	 * document's text must not be able to do that (`::add-mask::`, `::error::`, `##[error]`), so such a line gets a
+	 * zero-width space in front, which the runner does not treat as whitespace. The text is otherwise unchanged. A
+	 * group's title is a command's data, so its `%`, CR and LF are escaped. There is no ANSI and `paint` and `link`
+	 * are never called.
+	 *
+	 * @param doc - the document
+	 * @param ctx - where the output is going; the width, glyph set and `displayPath` are used as plain uses them
+	 */
+	static readonly githubLog = (doc: Document, ctx: RenderContext): string => renderGithubLog(doc, ctx);
 }

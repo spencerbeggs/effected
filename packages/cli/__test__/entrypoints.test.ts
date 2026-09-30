@@ -62,6 +62,7 @@ describe("entrypoint boundary", () => {
 			"ConfigIssueRenderer",
 			"Doc",
 			"Fmt",
+			"GithubAnnotation",
 			"Glyphs",
 			"NotInteractive",
 			"Render",

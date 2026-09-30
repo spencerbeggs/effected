@@ -9,7 +9,7 @@ import { renderDoc, targetText } from "./renderDoc.js";
  * Inline content as spans of plain text: code in backticks, and a link as its label followed by its target in
  * parentheses unless the label already is the target. Tokens and links are dropped, as plain text has neither.
  */
-const inline = (inlines: ReadonlyArray<Inline>, ctx: RenderContext): ReadonlyArray<Span> => {
+export const plainInline = (inlines: ReadonlyArray<Inline>, ctx: RenderContext): ReadonlyArray<Span> => {
 	const flat = flatten(inlines, ctx);
 	const out: Array<Span> = [];
 	let i = 0;
@@ -31,7 +31,7 @@ const inline = (inlines: ReadonlyArray<Inline>, ctx: RenderContext): ReadonlyArr
 };
 
 const plain: Flavour = {
-	inline,
+	inline: plainInline,
 	finish: (line) => line.map((span) => span.text).join(""),
 };
 

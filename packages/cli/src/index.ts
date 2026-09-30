@@ -78,6 +78,7 @@ export {
 	type TreeNode,
 } from "./Doc.js";
 export { Fmt, type PercentOptions, type TruncateOptions } from "./Fmt.js";
+export { type AnnotationLevel, GithubAnnotation, type GithubAnnotationProperties } from "./GithubAnnotation.js";
 export { type GlyphSet, Glyphs } from "./Glyphs.js";
 export { NotInteractive } from "./NotInteractive.js";
 export { Render, type RenderContext } from "./Render.js";
