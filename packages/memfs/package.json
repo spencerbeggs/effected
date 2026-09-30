@@ -23,6 +23,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./node-sync": "./src/NodeSyncFileSystem.ts",
 		"./package.json": "./package.json"
 	},
 	"scripts": {
