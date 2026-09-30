@@ -26,22 +26,24 @@ const xdgPaths = (overrides: Partial<Omit<typeof XdgPaths.Type, "configDirs" | "
  * not name still works instead of failing as unimplemented.
  */
 const recordingFs = (made: Array<string>, failOn?: string) =>
-	MemoryFileSystem.layerFaultyWith(
+	MemoryFileSystem.layerWith(
 		{},
 		{
-			makeDirectory: (dir) => {
-				if (failOn !== undefined && dir === failOn) {
-					return Effect.fail(
-						PlatformError.systemError({
-							_tag: "PermissionDenied",
-							module: "FileSystem",
-							method: "makeDirectory",
-							pathOrDescriptor: dir,
-						}),
-					);
-				}
-				made.push(dir);
-				return undefined; // delegate: the volume really creates it
+			faults: {
+				makeDirectory: (dir) => {
+					if (failOn !== undefined && dir === failOn) {
+						return Effect.fail(
+							PlatformError.systemError({
+								_tag: "PermissionDenied",
+								module: "FileSystem",
+								method: "makeDirectory",
+								pathOrDescriptor: dir,
+							}),
+						);
+					}
+					made.push(dir);
+					return undefined; // delegate: the volume really creates it
+				},
 			},
 		},
 	);

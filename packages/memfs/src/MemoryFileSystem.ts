@@ -284,7 +284,7 @@ export interface MemoryFileSystemPromisesFileSystem {
 }
 
 /**
- * The encodings {@link MemoryFileSystemPromisesFileSystem.readFile} accepts:
+ * The encodings `MemoryFileSystemPromisesFileSystem.readFile` accepts:
  * UTF-8, spelled either way, bare or as node's `{ encoding }` options object.
  *
  * @public

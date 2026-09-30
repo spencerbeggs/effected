@@ -43,7 +43,7 @@ export const memoryFs = (
 	initial: MemoryFileSystemSeed = {},
 	options: { readonly unreadable?: string; readonly unwritable?: string } = {},
 ): MemoryFs => {
-	const { fileSystem, volume } = Effect.runSync(MemoryFileSystem.makeInspectableWith(initial));
+	const { fileSystem, volume } = Effect.runSync(MemoryFileSystem.makeHandle(initial));
 	let writeCount = 0;
 
 	const faulty = MemoryFileSystem.makeFaulty(fileSystem, {

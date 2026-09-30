@@ -13,9 +13,7 @@ const Token = Schema.Struct({ value: Schema.String, expires: Schema.Number });
  * append by concatenation. `/rf` is seeded because a write needs its parent.
  */
 const runnerFiles = () => {
-	const { fileSystem, volume } = Effect.runSync(
-		MemoryFileSystem.makeInspectableWith({ "/rf": MemoryFileSystem.directory() }),
-	);
+	const { fileSystem, volume } = Effect.runSync(MemoryFileSystem.makeHandle({ "/rf": MemoryFileSystem.directory() }));
 	return { written: volume, layer: Layer.succeed(FileSystem.FileSystem, fileSystem) };
 };
 

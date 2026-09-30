@@ -64,10 +64,12 @@ export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.L
 	// Each handler declines (returns `undefined`) for every path it does not
 	// name, delegating to the volume — so presence, directory listings and stat
 	// are the volume's real answers and only the misbehavior is simulated.
-	return MemoryFileSystem.layerFaultyWith(tree, {
-		exists: (path: string) => (unreadableExists.has(path) ? denied("access", path) : undefined),
-		readFileString: (path: string) => (unreadableFiles.has(path) ? denied("readFileString", path) : undefined),
-		readDirectory: (path: string) => (unreadable.has(path) ? denied("readDirectory", path) : undefined),
+	return MemoryFileSystem.layerWith(tree, {
+		faults: {
+			exists: (path: string) => (unreadableExists.has(path) ? denied("access", path) : undefined),
+			readFileString: (path: string) => (unreadableFiles.has(path) ? denied("readFileString", path) : undefined),
+			readDirectory: (path: string) => (unreadable.has(path) ? denied("readDirectory", path) : undefined),
+		},
 	});
 };
 

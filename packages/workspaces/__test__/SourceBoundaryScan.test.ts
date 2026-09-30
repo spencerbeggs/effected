@@ -111,18 +111,20 @@ describe("SourceBoundary.scan over a virtual tree", () => {
 	});
 
 	// A NotFound on an entry that is NOT a link (a file removed mid-scan, a broken volume) still fails.
-	const vanished = MemoryFileSystem.layerFaultyWith(SEED, {
-		stat: (path) =>
-			path === "/repo/src/a.ts"
-				? Effect.fail(
-						PlatformError.systemError({
-							_tag: "NotFound",
-							module: "FileSystem",
-							method: "stat",
-							pathOrDescriptor: path,
-						}),
-					)
-				: undefined,
+	const vanished = MemoryFileSystem.layerWith(SEED, {
+		faults: {
+			stat: (path) =>
+				path === "/repo/src/a.ts"
+					? Effect.fail(
+							PlatformError.systemError({
+								_tag: "NotFound",
+								module: "FileSystem",
+								method: "stat",
+								pathOrDescriptor: path,
+							}),
+						)
+					: undefined,
+		},
 	});
 	layer(
 		Layer.mergeAll(vanished, Path.layer),

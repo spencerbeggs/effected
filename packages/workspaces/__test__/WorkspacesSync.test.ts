@@ -538,7 +538,7 @@ describe("SyncFileSystem over a memfs volume", () => {
 
 	it.effect("enumerates a symlinked package directory, as the node binding does", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
 
 			const found = getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix })
@@ -553,7 +553,7 @@ describe("SyncFileSystem over a memfs volume", () => {
 
 	it.effect("resolves the workspace root through a symlinked directory", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
 			assert.strictEqual(findWorkspaceRootSync("/repo/packages/b", { fileSystem, path: nodePath.posix }), "/repo");
 		}),
@@ -578,7 +578,7 @@ describe("getWorkspacePackagesSync — version-less manifests and skip reporting
 
 	it.effect("a version-less root AND member are returned, root first, with `version` absent", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
 			const packages = getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix });
 			assert.deepStrictEqual(
@@ -595,7 +595,7 @@ describe("getWorkspacePackagesSync — version-less manifests and skip reporting
 
 	it.effect("every skipped manifest is reported with its path and kind through `onSkip`", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
 			const skipped: Array<{ readonly path: string; readonly kind: string; readonly root: string }> = [];
 			getWorkspacePackagesSync("/repo", {
@@ -619,7 +619,7 @@ describe("getWorkspacePackagesSync — version-less manifests and skip reporting
 
 	it.effect("a throwing `readFile` is reported as a `read` skip carrying the thrown cause", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const base = MemoryFileSystem.syncFileSystem(volume);
 			const boom = new Error("EACCES");
 			const fileSystem: SyncFileSystem = {
@@ -644,7 +644,7 @@ describe("getWorkspacePackagesSync — version-less manifests and skip reporting
 
 	it.effect("a skipped ROOT manifest is reported too, not silently dropped", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				...seed,
 				"/repo/package.json": "null",
 			});
@@ -662,7 +662,7 @@ describe("getWorkspacePackagesSync — version-less manifests and skip reporting
 
 	it.effect("a version that is PRESENT but EMPTY is skipped as invalidShape, never admitted", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				...seed,
 				"/repo/packages/empty/package.json": `{ "name": "@x/empty", "version": "" }`,
 			});
@@ -688,7 +688,7 @@ describe("getWorkspacePackagesSync — version-less manifests and skip reporting
 
 	it.effect("every skip carries the cause the Effect surface fails with; only missingName has none", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				...seed,
 				"/repo/packages/empty/package.json": `{ "name": "@x/empty", "version": "" }`,
 			});
@@ -718,7 +718,7 @@ describe("getWorkspacePackagesSync — version-less manifests and skip reporting
 
 	it.effect("without `onSkip` the call stays total and returns the same members", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const fileSystem = MemoryFileSystem.syncFileSystem(volume);
 			const names = getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix }).map((pkg) => pkg.name);
 			assert.deepStrictEqual(names, ["root", "@x/bare", "@x/versioned"]);
@@ -748,7 +748,7 @@ describe("the sync hatch and the Effect enumerator agree about `version`", () =>
 
 	it.effect("identical (name, hasOwn version, version) tuples, and one skip vocabulary", () =>
 		Effect.gen(function* () {
-			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith(paritySeed);
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeHandle(paritySeed);
 			const sync = MemoryFileSystem.syncFileSystem(volume);
 			const platform = Layer.mergeAll(Layer.succeed(FileSystem.FileSystem, fileSystem), Path.layer);
 			const roots = WorkspaceRoot.layer.pipe(Layer.provide(platform));
@@ -770,7 +770,7 @@ describe("the sync hatch and the Effect enumerator agree about `version`", () =>
 
 			// And the skip vocabulary: a nameless member fails the Effect surface
 			// with the kind the sync facade reports it under.
-			const { fileSystem: namelessFs, volume: namelessVolume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { fileSystem: namelessFs, volume: namelessVolume } = yield* MemoryFileSystem.makeHandle({
 				...paritySeed,
 				"/repo/packages/nameless/package.json": `{ "version": "1.0.0" }`,
 			});

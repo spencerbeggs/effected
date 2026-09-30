@@ -32,7 +32,7 @@ const layers = (seed: MemoryFileSystemSeed = {}, validator: Layer.Layer<SchemaVa
 // The same stack over a volume whose listed methods are fault-injected.
 const faultyLayers = (seed: MemoryFileSystemSeed, faults: MemoryFileSystemFaults) =>
 	Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
-		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerFaultyWith(seed, faults), Path.layer)),
+		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith(seed, { faults: faults }), Path.layer)),
 	);
 
 const platformFailure = (tag: "NotFound" | "PermissionDenied", method: string, path: string) =>

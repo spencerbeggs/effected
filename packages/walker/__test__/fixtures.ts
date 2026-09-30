@@ -77,15 +77,17 @@ export const fileSystem = (tree: Tree, options: FileSystemOptions = {}): Layer.L
 	// their existence — both cases must still be listed by their parent.
 	for (const dir of [...unreadable, ...vanished]) seed[dir] ??= MemoryFileSystem.directory();
 
-	return MemoryFileSystem.layerFaultyWith(seed, {
-		readDirectory: (path: string) => {
-			if (unreadable.has(path)) return failure("readDirectory", "PermissionDenied", path);
-			if (vanished.has(path)) return failure("readDirectory", "NotFound", path);
-			return undefined; // delegate to the real volume
-		},
-		realPath: (path: string) => {
-			const reason = unresolvable[path];
-			return reason === undefined ? undefined : failure("realPath", reason, path);
+	return MemoryFileSystem.layerWith(seed, {
+		faults: {
+			readDirectory: (path: string) => {
+				if (unreadable.has(path)) return failure("readDirectory", "PermissionDenied", path);
+				if (vanished.has(path)) return failure("readDirectory", "NotFound", path);
+				return undefined; // delegate to the real volume
+			},
+			realPath: (path: string) => {
+				const reason = unresolvable[path];
+				return reason === undefined ? undefined : failure("realPath", reason, path);
+			},
 		},
 	});
 };

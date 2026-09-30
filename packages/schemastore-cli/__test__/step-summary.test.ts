@@ -66,18 +66,20 @@ describe("StepSummary.append", () => {
 			assert.isFalse(appended);
 		}).pipe(
 			Effect.provide(
-				MemoryFileSystem.layerFaultyWith(
+				MemoryFileSystem.layerWith(
 					{ "/summary.md": "existing\n" },
 					{
-						writeFile: (path) =>
-							Effect.fail(
-								PlatformError.systemError({
-									_tag: "PermissionDenied",
-									module: "FileSystem",
-									method: "writeFile",
-									pathOrDescriptor: path,
-								}),
-							),
+						faults: {
+							writeFile: (path) =>
+								Effect.fail(
+									PlatformError.systemError({
+										_tag: "PermissionDenied",
+										module: "FileSystem",
+										method: "writeFile",
+										pathOrDescriptor: path,
+									}),
+								),
+						},
 					},
 				),
 			),
@@ -91,18 +93,20 @@ describe("StepSummary.append", () => {
 			assert.isFalse(appended);
 		}).pipe(
 			Effect.provide(
-				MemoryFileSystem.layerFaultyWith(
+				MemoryFileSystem.layerWith(
 					{ "/summary.md": "existing\n" },
 					{
-						readFile: (path) =>
-							Effect.fail(
-								PlatformError.systemError({
-									_tag: "PermissionDenied",
-									module: "FileSystem",
-									method: "readFile",
-									pathOrDescriptor: path,
-								}),
-							),
+						faults: {
+							readFile: (path) =>
+								Effect.fail(
+									PlatformError.systemError({
+										_tag: "PermissionDenied",
+										module: "FileSystem",
+										method: "readFile",
+										pathOrDescriptor: path,
+									}),
+								),
+						},
 					},
 				),
 			),

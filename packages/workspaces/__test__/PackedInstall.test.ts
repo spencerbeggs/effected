@@ -301,7 +301,7 @@ describe("PackedInstall.run past the pack", () => {
 	) =>
 		layer(
 			Layer.mergeAll(
-				MemoryFileSystem.layerFaultyWith(seed, { makeTempDirectoryScoped: () => Effect.succeed(SCRATCH) }),
+				MemoryFileSystem.layerWith(seed, { faults: { makeTempDirectoryScoped: () => Effect.succeed(SCRATCH) } }),
 				Path.layer,
 				spawner.layer,
 				Discovery,
@@ -601,7 +601,7 @@ describe("PackedInstall.run past the pack", () => {
 	const rootedSuite = (spawner: ScriptedSpawner, seed: MemoryFileSystemSeed, root = "/repo") =>
 		layer(
 			Layer.mergeAll(
-				MemoryFileSystem.layerFaultyWith(seed, { makeTempDirectoryScoped: () => Effect.succeed(SCRATCH) }),
+				MemoryFileSystem.layerWith(seed, { faults: { makeTempDirectoryScoped: () => Effect.succeed(SCRATCH) } }),
 				Path.layer,
 				spawner.layer,
 				WithRoot(root),
@@ -1210,17 +1210,19 @@ describe("InstalledConsumer.binProvenance", () => {
 
 	// Node reports "not a link" as EINVAL, tagged Unknown with the errno on the cause; anything else is a real failure.
 	const readLinkFails = (tag: "Unknown" | "PermissionDenied" | "BadResource", code: string) =>
-		MemoryFileSystem.layerFaultyWith(SEED, {
-			readLink: (path) =>
-				Effect.fail(
-					PlatformError.systemError({
-						_tag: tag,
-						module: "FileSystem",
-						method: "readLink",
-						pathOrDescriptor: path,
-						cause: Object.assign(new Error(code), { code }),
-					}),
-				),
+		MemoryFileSystem.layerWith(SEED, {
+			faults: {
+				readLink: (path) =>
+					Effect.fail(
+						PlatformError.systemError({
+							_tag: tag,
+							module: "FileSystem",
+							method: "readLink",
+							pathOrDescriptor: path,
+							cause: Object.assign(new Error(code), { code }),
+						}),
+					),
+			},
 		});
 	layer(Layer.mergeAll(readLinkFails("Unknown", "EINVAL"), Path.layer))((it) => {
 		it.effect("a Node-style EINVAL from readLink on an existing entry is a shim: undefined", () =>

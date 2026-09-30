@@ -128,7 +128,7 @@ const annotatedTarget = SchemaTarget.make({
 // provides. (Caught by the corrupted-file repair case, whose read-back is the
 // only assertion here that a fresh volume cannot satisfy.)
 const memLayers = (seed: MemoryFileSystemSeed, validator: Layer.Layer<SchemaValidator> = SchemaValidator.noop) => {
-	const memory = MemoryFileSystem.layerInspectableWith(seed);
+	const memory = MemoryFileSystem.layerWith(seed);
 	const base = Layer.mergeAll(memory, Path.layer);
 	return Layer.mergeAll(SchemaFile.layer.pipe(Layer.provide(base)), base, validator);
 };
