@@ -1,6 +1,20 @@
 import { Audience, TerminalEnv } from "@effected/env";
-import { Cause, Config, Console, Context, Effect, Layer, LogLevel, Logger, Option, References } from "effect";
+import type { Context, FileSystem } from "effect";
+import {
+	Cause,
+	Config,
+	Console,
+	Effect,
+	Layer,
+	LogLevel,
+	Logger,
+	Option,
+	Path as PathModule,
+	References,
+} from "effect";
 import { paintStyle } from "./internal/ansi.js";
+import { Level, passes } from "./internal/diagnostics.js";
+import { makeFileSink } from "./internal/fileSink.js";
 import type { Style } from "./Token.js";
 
 /**
@@ -90,10 +104,7 @@ export class CliLog {
 	 * {@link CliLog.layer} sets it from the environment variable. A scope may raise it to narrow the output; it
 	 * cannot lower it below the level the layer installed, because Effect has already dropped those records.
 	 */
-	static readonly Level: Context.Reference<LogLevel.LogLevel> = Context.Reference<LogLevel.LogLevel>(
-		"@effected/cli/CliLog/Level",
-		{ defaultValue: () => "None" },
-	);
+	static readonly Level: Context.Reference<LogLevel.LogLevel> = Level;
 
 	/**
 	 * A diagnostics logger composed onto the loggers already installed.
@@ -138,10 +149,8 @@ export class CliLog {
 				};
 
 				const sink = Logger.make<unknown, void>((record) => {
-					const current = record.fiber.getRef(References.MinimumLogLevel);
-					// While core's --log-level flag is in force, follow it: it is an explicit request for that level.
-					const threshold = current === lowered ? record.fiber.getRef(CliLog.Level) : current;
-					if (!LogLevel.isGreaterThanOrEqualTo(record.logLevel, threshold)) return;
+					// While core's --log-level flag is in force the sink follows it: an explicit request for that level.
+					if (!passes(record, lowered)) return;
 					record.fiber.getRef(Console.Console).error(render(record));
 				});
 
@@ -167,6 +176,45 @@ export class CliLog {
 					isLowered ? Layer.succeed(References.MinimumLogLevel, lowered) : Layer.empty,
 					loggers,
 				);
+			}),
+		);
+
+	/**
+	 * An asynchronous NDJSON file sink, composed onto the loggers already installed.
+	 *
+	 * @remarks
+	 * Each record is written as the same NDJSON line the stderr sink writes, filtered by the same
+	 * {@link CliLog.Level}. Lines are queued and appended by a fiber scoped to the layer, so logging never waits
+	 * on the disk. The first write error prints exactly one stderr line,
+	 * `diagnostics log file <path> failed: <message>; further file logging disabled`, and the program keeps
+	 * running with its normal exit code: from then on lines, including any still queued, are discarded silently.
+	 * Closing the layer's scope flushes the lines queued before it, unless the sink had disabled itself.
+	 *
+	 * `{ envVar }` names the variable that holds the file path; unset or empty, no file is written. The parent
+	 * directory is created. Build it over {@link CliLog.layer}, which sets the threshold and the minimum log
+	 * level the sink relies on, and keep that layer's outputs with `Layer.provideMerge`:
+	 * `CliLog.file(o).pipe(Layer.provideMerge(CliLog.layer(p)))`.
+	 *
+	 * @param options - the path, or the env var that holds it
+	 */
+	static readonly file = (
+		options: { readonly envVar: string } | { readonly path: string },
+	): Layer.Layer<never, never, FileSystem.FileSystem | PathModule.Path> =>
+		Layer.effect(
+			Logger.CurrentLoggers,
+			Effect.gen(function* () {
+				const existing = yield* Logger.CurrentLoggers;
+				const target =
+					"path" in options
+						? Option.some(options.path)
+						: yield* Config.option(Config.String(options.envVar)).pipe(
+								Effect.orElseSucceed(() => Option.none<string>()),
+							);
+				if (Option.isNone(target) || target.value === "") return existing;
+				const location = yield* PathModule.Path;
+				const installed = yield* References.MinimumLogLevel;
+				const sink = yield* makeFileSink(location.resolve(target.value), installed);
+				return new Set<Logger.Logger<unknown, unknown>>([...existing, sink]);
 			}),
 		);
 
