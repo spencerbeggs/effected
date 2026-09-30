@@ -110,7 +110,7 @@ describe("Doc string normalisation", () => {
 		const items: Array<Block> = [Doc.paragraph("x")];
 		const list = Doc.list(items);
 		items.push(Doc.paragraph("y"));
-		assert.strictEqual(list._tag === "List" && list.items.length, 1);
+		assert.strictEqual(list.items.length, 1);
 	});
 });
 
@@ -131,14 +131,13 @@ describe("Doc block constructors", () => {
 		assert.notProperty(bare, "cap");
 		assert.notProperty(bare, "overflow");
 		const capped = Doc.list([Doc.paragraph("a")], { cap: 1, overflow: (hidden) => `… ${hidden} more` });
-		assert.isTrue(capped._tag === "List" && capped.cap === 1);
+		assert.strictEqual(capped.cap, 1);
 		assert.isTrue(Object.isFrozen(capped));
 	});
 
 	it("an overflow function returns normalised Inline, and a frozen node may hold a function", () => {
 		const list = Doc.list([], { cap: 0, overflow: (hidden) => ["… ", Doc.code(String(hidden))] });
-		if (list._tag !== "List" || list.overflow === undefined) return assert.fail("no overflow");
-		assert.deepStrictEqual(list.overflow(12), [
+		assert.deepStrictEqual(list.overflow?.(12), [
 			{ _tag: "Text", value: "… " },
 			{ _tag: "Code", value: "12" },
 		]);
@@ -154,7 +153,6 @@ describe("Doc block constructors", () => {
 			],
 			{ cap: 2, overflow: () => "more" },
 		);
-		if (t._tag !== "Table") return assert.fail("not a table");
 		assert.deepStrictEqual(t.columns, [
 			{ header: [{ _tag: "Text", value: "Name" }] },
 			{ header: [{ _tag: "Code", value: "n" }], align: "right" },
@@ -201,7 +199,7 @@ describe("Doc block constructors", () => {
 			body: [{ _tag: "Paragraph", content: [{ _tag: "Text", value: "b" }] }],
 		});
 		const open = Doc.collapsible("T", body, { open: true });
-		assert.isTrue(open._tag === "Collapsible" && open.open === true);
+		assert.strictEqual(open.open, true);
 		assert.deepStrictEqual(Doc.callout("warning", body), {
 			_tag: "Callout",
 			kind: "warning",
@@ -214,7 +212,7 @@ describe("Doc block constructors", () => {
 			children: [{ _tag: "Paragraph", content: [{ _tag: "Text", value: "b" }] }],
 		});
 		const titled = Doc.section("S", body);
-		assert.deepStrictEqual(titled._tag === "Section" && titled.title, [{ _tag: "Text", value: "S" }]);
+		assert.deepStrictEqual(titled.title, [{ _tag: "Text", value: "S" }]);
 		for (const node of [Doc.collapsible("T", body), Doc.callout("note", body), Doc.section("S", body)]) {
 			assert.isTrue(deepFrozen(node));
 		}
@@ -228,7 +226,7 @@ describe("Doc.counts", () => {
 		const node = Doc.counts({ counters, layout: "row" });
 		assert.deepStrictEqual(node, { _tag: "Counts", counters, layout: "row" });
 		for (const key of ["label", "total", "qualifier", "durationMs"]) assert.notProperty(node, key);
-		assert.isTrue(Object.isFrozen(node) && Object.isFrozen((node as { counters: object }).counters));
+		assert.isTrue(Object.isFrozen(node) && Object.isFrozen(node.counters));
 		const full = Doc.counts({ label: "Tests", counters, qualifier: "(1 flaky)", durationMs: 1200, layout: "inline" });
 		assert.deepStrictEqual(full, {
 			_tag: "Counts",
@@ -274,6 +272,21 @@ describe("Doc.counts", () => {
 			["b", "c"],
 		);
 		assert.strictEqual(Doc.total(node), 4, "hiding never changes the total");
+	});
+
+	it("stores a frozen copy of a definition taken from the vocabulary's live entry", () => {
+		const live = Status.core.def("failure");
+		const node = Doc.counts({
+			counters: [{ key: "f", label: "failed", n: 1, status: { name: "failure", def: live } }],
+			layout: "inline",
+		});
+		assert.isTrue(deepFrozen(node));
+		assert.notStrictEqual(node.counters[0]?.status.def, live, "the node does not share the vocabulary's entry");
+		assert.isFalse(Object.isFrozen(live), "the live entry is untouched");
+		assert.throws(() => {
+			(node.counters[0]?.status.def as { rank: number }).rank = 0;
+		}, TypeError);
+		assert.strictEqual(Status.core.def("failure").rank, 90);
 	});
 
 	it("copies the counters it is given", () => {

@@ -250,7 +250,10 @@ const treeNode = (input: TreeInput): TreeNode =>
 	freeze({ label: inlines(input.label), children: frozenArray((input.children ?? []).map(treeNode)) });
 
 const counterOf = (counter: Counter): Counter =>
-	freeze({ ...counter, status: freeze({ name: counter.status.name, def: counter.status.def }) });
+	freeze({
+		...counter,
+		status: freeze({ name: counter.status.name, def: freeze({ ...counter.status.def }) }),
+	});
 
 /**
  * Constructors for the document IR, and two helpers a renderer shares.
@@ -262,6 +265,9 @@ const counterOf = (counter: Counter): Counter =>
  *
  * A node is plain data: nothing decodes or encodes one, so a function field such as `overflow` or `total` is fine
  * and a document is not meant to be serialised.
+ *
+ * Freezing covers what a `Doc` constructor builds. A literal you write by hand is not frozen, and a `Style` object
+ * given as a token is shared by reference (the freeze of a status definition is shallow for the same reason).
  *
  * @public
  */
@@ -291,7 +297,7 @@ export class Doc {
 	 * A link to a URL or a file position.
 	 *
 	 * @param target - `{ url }` or `{ file, line?, col? }`
-	 * @param label - what the link says; the URL or the file when omitted
+	 * @param label - what the link says; when omitted, the bare URL or file path, which leaves out `line` and `col`
 	 */
 	static link(target: LinkTarget, label?: InlineInput): InlineOf<"Link"> {
 		const fallback = "url" in target ? target.url : target.file;
