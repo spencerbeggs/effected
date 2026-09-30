@@ -13,7 +13,8 @@ import { assert, it } from "@effect/vitest";
 import { Cause, Effect, Exit } from "effect";
 
 class MyTypedError extends Error {}
-const program = Effect.die(new Error("unexpected"))
+const original = new Error("unexpected")
+const program = Effect.die(original)
 
 it.effect("a defect stays a defect — never laundered into the typed channel", () =>
   Effect.gen(function* () {
@@ -23,7 +24,7 @@ it.effect("a defect stays a defect — never laundered into the typed channel", 
     }
     assert.isFalse(exit.cause.reasons.some(Cause.isFailReason)); // NOT a typed Fail
     const die = exit.cause.reasons.find(Cause.isDieReason);
-    assert.instanceOf(die?.defect, Error);          // the ORIGINAL error, unmasked
+    assert.strictEqual(die?.defect, original);      // the ORIGINAL error, unmasked
     assert.notInstanceOf(die?.defect, MyTypedError); // not laundered into E
   }),
 );

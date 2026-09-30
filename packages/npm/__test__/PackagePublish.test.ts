@@ -275,6 +275,8 @@ describe("PackagePublish.setupAuth", () => {
 			assert.isTrue(error !== undefined && error._tag === "Some");
 			if (error !== undefined && error._tag === "Some") {
 				assert.strictEqual((error.value as PublishError).kind, "auth");
+				// Only the READ failure names the npmrc; a failed write carries no subject.
+				assert.strictEqual((error.value as PublishError).subject, NPMRC);
 			}
 		}),
 	);
