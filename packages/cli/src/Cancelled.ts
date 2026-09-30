@@ -16,6 +16,14 @@ import { Runtime, Schema } from "effect";
 export class Cancelled extends Schema.TaggedError<Cancelled>()("Cancelled", {
 	reason: Schema.Literals(["escape", "interrupt"]),
 }) {
-	/** The process exit code: `130`. */
-	readonly [Runtime.errorExitCode] = 130;
+	/**
+	 * The process exit code: `130`.
+	 *
+	 * @remarks
+	 * A prototype getter rather than an own field, so a JSON or logger dump of the error does not carry the
+	 * runtime marker.
+	 */
+	get [Runtime.errorExitCode](): number {
+		return 130;
+	}
 }

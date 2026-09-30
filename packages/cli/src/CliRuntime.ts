@@ -406,9 +406,14 @@ export class CliRuntime {
 	static reported(error: unknown, exitCode?: number): Error;
 	static reported(error: unknown, exitCode = 1): Error {
 		const marked = error instanceof Error ? error : new Error(String(error));
-		return Object.assign(marked, {
-			[Runtime.errorReported]: false,
-			[Runtime.errorExitCode]: exitCode,
-		});
+		// defineProperty, not assignment: a class may carry the exit code as a prototype getter, which a plain
+		// assignment cannot overwrite.
+		for (const [key, value] of [
+			[Runtime.errorReported, false],
+			[Runtime.errorExitCode, exitCode],
+		] as const) {
+			Object.defineProperty(marked, key, { value, writable: true, configurable: true, enumerable: false });
+		}
+		return marked;
 	}
 }

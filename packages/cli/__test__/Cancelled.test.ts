@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Console, Effect, Exit, Layer, Runtime, Schema } from "effect";
+import { Cause, Console, Effect, Equal, Exit, Layer, Runtime, Schema } from "effect";
 import { Cancelled, CliRuntime, NotInteractive } from "../src/index.js";
 
 const capturing = () => {
@@ -45,6 +45,22 @@ describe("Cancelled", () => {
 		}),
 	);
 
+	it("the exit-code marker is not an own enumerable property: a JSON dump or logger dump does not carry it", () => {
+		const cancelled = new Cancelled({ reason: "escape" });
+		assert.notInclude(JSON.stringify(cancelled), "errorExitCode");
+		assert.notInclude(Object.keys(cancelled).join(","), "errorExitCode");
+		// But core still finds it: `in` sees a prototype getter, and the code is read through it.
+		assert.isTrue(Runtime.errorExitCode in cancelled);
+		assert.strictEqual(Runtime.getErrorExitCode(cancelled), 130);
+	});
+
+	it("a decoded instance keeps its exit code, and two equal ones are equal", () => {
+		const decoded = Schema.decodeUnknownSync(Cancelled)({ _tag: "Cancelled", reason: "interrupt" });
+		assert.strictEqual(Runtime.getErrorExitCode(decoded), 130);
+		assert.isTrue(Equal.equals(new Cancelled({ reason: "escape" }), new Cancelled({ reason: "escape" })));
+		assert.isFalse(Equal.equals(new Cancelled({ reason: "escape" }), new Cancelled({ reason: "interrupt" })));
+	});
+
 	it("stays a tagged-error schema: the marker does not leak into encode, equality or the tag", () => {
 		const a = new Cancelled({ reason: "escape" });
 		assert.strictEqual(a._tag, "Cancelled");
@@ -66,6 +82,13 @@ describe("NotInteractive", () => {
 			assert.deepStrictEqual(out, []);
 		}),
 	);
+
+	it("its exit-code marker is not an own enumerable property either", () => {
+		const error = new NotInteractive();
+		assert.notInclude(JSON.stringify(error), "errorExitCode");
+		assert.isTrue(Runtime.errorExitCode in error);
+		assert.strictEqual(Runtime.getErrorExitCode(error), 64);
+	});
 
 	it("is a tagged error with no fields", () => {
 		const e = new NotInteractive();

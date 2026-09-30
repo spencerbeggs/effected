@@ -55,7 +55,8 @@ export class CliMessage {
 
 			let line: string;
 			if (audience.kind === "agent") {
-				line = `${theme.glyphs.kind === "ascii" ? def.ascii : def.glyph} ${text}`;
+				const glyph = theme.glyphs.kind === "ascii" ? def.ascii : def.glyph;
+				line = text === "" ? glyph : `${glyph} ${text}`;
 			} else {
 				line = theme.status(vocab, name, text);
 			}

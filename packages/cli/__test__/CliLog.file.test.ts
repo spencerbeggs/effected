@@ -1,7 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";
 import { MemoryFileSystem } from "@effected/memfs";
-import { ConfigProvider, Console, Effect, Exit, Layer, PlatformError, Scope } from "effect";
+import { ConfigProvider, Console, Effect, Exit, Fiber, Layer, PlatformError, Scope } from "effect";
+import { TestClock } from "effect/testing";
 import { CliLog } from "../src/index.js";
 
 const LEVEL_ENV = "TOOL_LOG_LEVEL";
@@ -31,14 +32,17 @@ const harness = (options: {
 	readonly file: { readonly envVar: string } | { readonly path: string };
 	readonly env?: Record<string, string>;
 	readonly failFirstAppend?: boolean;
+	readonly faults?: Parameters<typeof MemoryFileSystem.makeSync>[1] extends infer O
+		? NonNullable<O> extends { faults?: infer F }
+			? F
+			: never
+		: never;
 }) =>
 	Effect.gen(function* () {
-		const handle = MemoryFileSystem.makeSync(
-			{},
-			options.failFirstAppend === true
-				? { faults: { writeFileString: MemoryFileSystem.failTimes(1, deny) } }
-				: undefined,
-		);
+		const faults =
+			options.faults ??
+			(options.failFirstAppend === true ? { writeFileString: MemoryFileSystem.failTimes(1, deny) } : undefined);
+		const handle = MemoryFileSystem.makeSync({}, faults === undefined ? undefined : { faults });
 		const { double, out, err } = capturing();
 		const layer = CliLog.layer({ envVar: LEVEL_ENV, file: options.file }).pipe(
 			Layer.provide(Layer.mergeAll(Audience.layerTest("agent"), TerminalEnv.layerTest())),
@@ -193,6 +197,61 @@ describe("CliLog.layer file option", () => {
 				yield* h.close;
 				assert.strictEqual(plain(h.err).length, 1, h.err.join("\n"));
 				assert.isFalse(h.handle.volume.has(PATH));
+			}),
+		);
+	});
+
+	describe("a failing filesystem", () => {
+		it.effect("a write that never completes cannot hang scope close: it returns within the bound", () =>
+			Effect.gen(function* () {
+				const h = yield* harness({
+					file: { path: PATH },
+					env: { [LEVEL_ENV]: "debug" },
+					faults: { writeFileString: () => Effect.never },
+				});
+				yield* h.log(Effect.logError("first"));
+				// Let the drain start its (never finishing) append, then close the scope on a fiber.
+				yield* settle;
+				const closing = yield* Effect.forkChild(h.close);
+				yield* TestClock.adjust("10 seconds");
+				yield* Fiber.join(closing);
+			}),
+		);
+
+		it.effect("a DEFECT in the drain is treated like a write error: one line, then disabled", () =>
+			Effect.gen(function* () {
+				const h = yield* harness({
+					file: { path: PATH },
+					env: { [LEVEL_ENV]: "debug" },
+					faults: { writeFileString: MemoryFileSystem.die(new Error("disk exploded")) },
+				});
+				yield* h.log(Effect.logError("first"));
+				let spins = 0;
+				while (plain(h.err).length === 0 && spins++ < 1000) yield* Effect.yieldNow;
+				yield* h.log(Effect.logError("second"));
+				yield* settle;
+				yield* h.close;
+				assert.strictEqual(plain(h.err).length, 1, h.err.join("\n"));
+				assert.match(plain(h.err)[0] ?? "", /failed: .*disk exploded.*; further file logging disabled$/);
+				assert.isFalse(h.handle.volume.has(PATH));
+			}),
+		);
+
+		it.effect("a makeDirectory failure is one line, then disabled", () =>
+			Effect.gen(function* () {
+				const h = yield* harness({
+					file: { path: "/locked/dir/log.ndjson" },
+					env: { [LEVEL_ENV]: "debug" },
+					faults: { makeDirectory: MemoryFileSystem.failTimes(1, deny) },
+				});
+				yield* h.log(Effect.logError("first"));
+				let spins = 0;
+				while (plain(h.err).length === 0 && spins++ < 1000) yield* Effect.yieldNow;
+				yield* h.log(Effect.logError("second"));
+				yield* settle;
+				yield* h.close;
+				assert.strictEqual(plain(h.err).length, 1, h.err.join("\n"));
+				assert.isFalse(h.handle.volume.has("/locked/dir/log.ndjson"));
 			}),
 		);
 	});

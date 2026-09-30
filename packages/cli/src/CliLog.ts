@@ -37,6 +37,15 @@ export interface CliLogOptions {
 	readonly format?: "auto" | "json" | "pretty" | undefined;
 	/** Options for the `CliLogger` this layer builds for ordinary log lines; see {@link CliLoggerOptions}. */
 	readonly logger?: CliLoggerOptions | undefined;
+	/**
+	 * Loggers to keep beside the `CliLogger` and the sink, for example a telemetry logger: the layer owns the
+	 * whole set, so anything not listed here is dropped.
+	 *
+	 * @remarks
+	 * Each is floored at the `MinimumLogLevel` it had, like the `CliLogger`, so lowering the level for the
+	 * diagnostics sink never makes it see records it would not have seen otherwise.
+	 */
+	readonly extraLoggers?: ReadonlyArray<Logger.Logger<unknown, unknown>> | undefined;
 }
 
 /**
@@ -149,8 +158,9 @@ export class CliLog {
 	 * The whole logger set of a program: a `CliLogger` for ordinary lines plus the diagnostics sink.
 	 *
 	 * @remarks
-	 * Replaces the installed loggers without reading them. Provide it as `CliRuntime.main`'s `logger` option, or
-	 * at the edge of the program, and bind it to a constant.
+	 * Replaces the installed loggers without reading them. Provide it on the program you pass to
+	 * `CliRuntime.main`, or use `main`'s `env.log` option; never wrap it around `main`, whose own logger would
+	 * replace this one. Bind it to a constant.
 	 *
 	 * Level parsing is case-insensitive and accepts `warn`, `warning`, `error`, `info`, `debug`, `trace`,
 	 * `fatal`, `all` and `none`. An invalid value warns once, through the `CliLogger`, and leaves diagnostics
@@ -204,15 +214,17 @@ export class CliLog {
 					record.fiber.getRef(Console.Console).error(render(record));
 				});
 
-				// The CliLogger keeps filtering at the minimum it had, however far MinimumLogLevel was lowered.
-				const inner = CliLogger.make(options.logger);
-				const cliLogger = isLowered
-					? Logger.make<unknown, void>((record) => {
-							const current = record.fiber.getRef(References.MinimumLogLevel);
-							const threshold = current === lowered ? ambient : current;
-							if (LogLevel.isGreaterThanOrEqualTo(record.logLevel, threshold)) inner.log(record);
-						})
-					: inner;
+				// Every ordinary logger keeps filtering at the minimum it had, however far MinimumLogLevel was lowered.
+				const floor = (inner: Logger.Logger<unknown, unknown>): Logger.Logger<unknown, unknown> =>
+					isLowered
+						? Logger.make<unknown, unknown>((record) => {
+								const current = record.fiber.getRef(References.MinimumLogLevel);
+								const threshold = current === lowered ? ambient : current;
+								if (LogLevel.isGreaterThanOrEqualTo(record.logLevel, threshold)) inner.log(record);
+							})
+						: inner;
+				const cliLogger = floor(CliLogger.make(options.logger));
+				const extras = (options.extraLoggers ?? []).map(floor);
 
 				// An invalid level warns through the CliLogger only, never through the sink.
 				if (invalid !== undefined) {
@@ -227,7 +239,7 @@ export class CliLog {
 					Layer.effect(
 						Logger.CurrentLoggers,
 						Effect.gen(function* () {
-							const loggers: Array<Logger.Logger<unknown, unknown>> = [cliLogger, sink];
+							const loggers: Array<Logger.Logger<unknown, unknown>> = [cliLogger, sink, ...extras];
 							if (file !== undefined) {
 								const target =
 									"path" in file

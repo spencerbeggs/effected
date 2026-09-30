@@ -12,6 +12,14 @@ import { Runtime, Schema } from "effect";
  * @public
  */
 export class NotInteractive extends Schema.TaggedError<NotInteractive>()("NotInteractive", {}) {
-	/** The process exit code: `64`. */
-	readonly [Runtime.errorExitCode] = 64;
+	/**
+	 * The process exit code: `64`.
+	 *
+	 * @remarks
+	 * A prototype getter rather than an own field, so a JSON or logger dump of the error does not carry the
+	 * runtime marker. It is the error's own code, so `CliRuntime`'s `usageExitCode` option does not change it.
+	 */
+	get [Runtime.errorExitCode](): number {
+		return 64;
+	}
 }

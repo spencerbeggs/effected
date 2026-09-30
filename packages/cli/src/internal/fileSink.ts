@@ -1,6 +1,9 @@
-import type { Cause, LogLevel, Scope } from "effect";
-import { Console, Effect, Fiber, FileSystem, Logger, Path, Queue, Result } from "effect";
+import type { LogLevel, Scope } from "effect";
+import { Cause, Console, Effect, Exit, Fiber, FileSystem, Logger, Path, Queue } from "effect";
 import { formatNdjson, passes } from "./diagnostics.js";
+
+/** How long closing the scope waits for queued lines to reach the file before giving up on a hung filesystem. */
+const CLOSE_TIMEOUT = "2 seconds";
 
 /**
  * An asynchronous NDJSON file logger.
@@ -9,8 +12,9 @@ import { formatNdjson, passes } from "./diagnostics.js";
  * `Logger.make` takes a synchronous callback, so the logger only offers the line to a queue; a fiber scoped to the
  * layer drains it and appends each batch with `FileSystem.writeFileString(..., { flag: "a" })`. The first write
  * error prints one stderr line and disables the sink: later lines, including any still queued, are discarded
- * without a message. Closing the scope ends the queue and waits for the drain, so lines queued before the close
- * are flushed, unless the sink had already disabled itself.
+ * without a message. A defect from the filesystem counts as a write error. Closing the scope ends the queue and
+ * waits for the drain for at most two seconds, so lines queued before the close are flushed unless the sink had
+ * already disabled itself or the filesystem hangs; past the bound the drain is interrupted and the rest is lost.
  *
  * @internal
  */
@@ -34,19 +38,25 @@ export const makeFileSink = (
 				// Fails with Done once the queue has ended and emptied, which stops the loop.
 				const batch = yield* Queue.takeAll(queue);
 				if (disabled) continue;
-				const result = yield* Effect.result(append(batch));
-				if (Result.isFailure(result)) {
+				// Exit, not Effect.result: a defect from the filesystem is handled like a write error, not left to kill
+				// the drain (which would leave the queue to grow unbounded and the close to wait on it).
+				const exit = yield* Effect.exit(append(batch));
+				if (Exit.isFailure(exit)) {
 					disabled = true;
-					yield* Console.error(
-						`diagnostics log file ${path} failed: ${result.failure.message}; further file logging disabled`,
-					);
+					const error = Cause.squash(exit.cause);
+					const message = error instanceof Error ? error.message : String(error);
+					yield* Console.error(`diagnostics log file ${path} failed: ${message}; further file logging disabled`);
 				}
 			}
 		}).pipe(Effect.ignore);
 
 		const fiber = yield* Effect.forkScoped(drain);
-		// Runs before the fork's own interrupt: end the queue, let the drain write what is left, then it stops.
-		yield* Effect.addFinalizer(() => Queue.end(queue).pipe(Effect.andThen(Fiber.join(fiber)), Effect.ignore));
+		// Runs before the fork's own interrupt: end the queue and give the drain a bounded time to write what is left.
+		// A hung filesystem must not hang process exit, so past the bound the drain is interrupted with the scope and
+		// whatever it had not written is lost.
+		yield* Effect.addFinalizer(() =>
+			Queue.end(queue).pipe(Effect.andThen(Fiber.join(fiber).pipe(Effect.timeout(CLOSE_TIMEOUT))), Effect.ignore),
+		);
 
 		return Logger.make<unknown, void>((record) => {
 			if (!passes(record, installed)) return;

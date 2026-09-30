@@ -150,3 +150,43 @@ describe("CliMessage and the logger", () => {
 		}),
 	);
 });
+
+describe("CliMessage edge cases", () => {
+	it.effect("empty text prints the glyph alone, with no trailing space", () =>
+		Effect.gen(function* () {
+			const human = yield* run(CliMessage.success(""));
+			assert.deepStrictEqual(human.out, ["✓"]);
+			const agent = yield* run(CliMessage.failure(""), { audience: "agent" });
+			assert.deepStrictEqual(agent.err, ["✗"]);
+		}),
+	);
+
+	it.effect("an agent audience honours an explicit stream override, still plain", () =>
+		Effect.gen(function* () {
+			const { out, err } = yield* run(
+				Effect.gen(function* () {
+					yield* CliMessage.status(Status.core, "failure", "to stdout", { stream: "stdout" });
+					yield* CliMessage.status(Status.core, "success", "to stderr", { stream: "stderr" });
+				}),
+				{ audience: "agent", color: "truecolor" },
+			);
+			assert.deepStrictEqual(out, ["✗ to stdout"]);
+			assert.deepStrictEqual(err, ["✓ to stderr"]);
+		}),
+	);
+
+	it.effect("replacing the core warning with a low rank moves the stderr threshold for that vocabulary", () =>
+		Effect.gen(function* () {
+			const vocab = Status.extend({ warning: { glyph: "!", ascii: "!", token: "warning", rank: 5 } });
+			const { out, err } = yield* run(
+				Effect.gen(function* () {
+					yield* CliMessage.status(vocab, "warning", "low");
+					yield* CliMessage.status(vocab, "success", "above the new threshold");
+				}),
+			);
+			// success (10) is now at or above warning's rank (5), so it goes to stderr with it.
+			assert.deepStrictEqual(err, ["! low", "✓ above the new threshold"]);
+			assert.deepStrictEqual(out, []);
+		}),
+	);
+});

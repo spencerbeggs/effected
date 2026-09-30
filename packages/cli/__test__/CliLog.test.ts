@@ -2,7 +2,7 @@ import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
-import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Runtime } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Logger, Runtime } from "effect";
 import { Command } from "effect/cli";
 import type { CliLoggerOptions } from "../src/index.js";
 import { CliLog, CliLogger, CliRuntime } from "../src/index.js";
@@ -367,6 +367,51 @@ describe("CliLog owns the logger set", () => {
 			// With stderrFrom Error an Info record is program-facing output on stdout, not a diagnostic.
 			assert.deepStrictEqual(out, ["hello"]);
 			assert.deepStrictEqual(err, []);
+		}),
+	);
+});
+
+describe("CliLog.layer extraLoggers", () => {
+	it.effect("owning the set does not drop an extra logger: it receives records, at the minimum level it had", () =>
+		Effect.gen(function* () {
+			const seen: Array<string> = [];
+			const extra = Logger.make<unknown, void>((record) => {
+				seen.push(`${record.logLevel}:${String(record.message)}`);
+			});
+			const { double } = capturing();
+			yield* Effect.gen(function* () {
+				yield* Effect.logDebug("dbg");
+				yield* Effect.logError("boom");
+			}).pipe(
+				Effect.provide(
+					CliLog.layer({ envVar: ENV, extraLoggers: [extra] }).pipe(
+						Layer.provide(Layer.mergeAll(Audience.layerTest("agent"), TerminalEnv.layerTest())),
+					),
+				),
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ [ENV]: "debug" })),
+				Effect.provideService(Console.Console, double),
+			);
+			// The debug record reached the diagnostics sink but not the extra logger, which keeps filtering at Info.
+			assert.deepStrictEqual(seen, ["Error:boom"]);
+		}),
+	);
+
+	it.effect("an extra logger receives ordinary records when diagnostics are off", () =>
+		Effect.gen(function* () {
+			const seen: Array<string> = [];
+			const extra = Logger.make<unknown, void>((record) => {
+				seen.push(String(record.message));
+			});
+			const { double } = capturing();
+			yield* Effect.logInfo("hello").pipe(
+				Effect.provide(
+					CliLog.layer({ extraLoggers: [extra] }).pipe(
+						Layer.provide(Layer.mergeAll(Audience.layerTest("agent"), TerminalEnv.layerTest())),
+					),
+				),
+				Effect.provideService(Console.Console, double),
+			);
+			assert.deepStrictEqual(seen, ["hello"]);
 		}),
 	);
 });

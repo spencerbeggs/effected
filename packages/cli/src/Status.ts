@@ -63,6 +63,11 @@ export class Status<Names extends string> {
 	/**
 	 * This vocabulary plus `extra`; an entry that reuses a name replaces it.
 	 *
+	 * @remarks
+	 * An entry may replace a core name. Replacing `warning` with a lower rank moves the threshold at which
+	 * `CliMessage.status` defaults to stderr for this vocabulary, since that threshold is `warning`'s rank in the
+	 * vocabulary it is given.
+	 *
 	 * @param extra - the statuses to add, by name
 	 */
 	extend<const Extra extends Record<string, StatusDef>>(extra: Extra): Status<Names | (keyof Extra & string)> {

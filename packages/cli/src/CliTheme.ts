@@ -82,7 +82,7 @@ const make = (
 		status: (vocab, name, text) => {
 			const def = vocab.def(name);
 			const glyph = paint(def.token, glyphs.kind === "ascii" ? def.ascii : def.glyph);
-			return text === undefined ? glyph : `${glyph} ${text}`;
+			return text === undefined || text === "" ? glyph : `${glyph} ${text}`;
 		},
 	};
 };
