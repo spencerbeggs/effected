@@ -273,7 +273,7 @@ test needs that behaviour on purpose: an `Effect.fail(...)` handler or
 `MemoryFileSystem.failTimes` for row one's `Effect`-returning members (its
 `stream`/`watch` take a handler returning `Stream.fail`, and `sink` one
 returning `Sink.fail`), a handler returning `Effect.succeed(...)` for row two,
-and `MemoryFileSystem.die(defect)` for row three. Keep `layerNoop` for the one-trivially-stubbed-member case.
+and `MemoryFileSystem.die(defect)` for row three. A `FileSystem` double is `@effected/memfs`, never `layerNoop` — this table is for reading `layerNoop` in code you did not write.
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`

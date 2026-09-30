@@ -81,7 +81,7 @@ const walker = {
   readDirectory: (dir: string) => handle.promises.readdir(dir, { withFileTypes: true }),
   statEntry: (path: string) => handle.promises.stat(path),
 };
-void walker;
+const entries = await walker.readDirectory("/ws/repo/src"); // hand `walker` to the code under test
 ```
 
 Port members are standalone functions, not methods: pass `handle.sync.readFile`
@@ -187,9 +187,8 @@ handler can rewrite arguments and delegate without re-entering its own fault.
 same injection to ANY `FileSystem` (the node adapter, a hand-built double).
 
 **A fault key that names no member throws `RangeError` at construction** (a
-layer build dies), naming the key. A typo like `readFileSting` used to be
-ignored while the test passed without its fault ever firing; now the typo is
-the failure.
+layer build dies), naming the key — so a typo like `readFileSting` fails the
+test instead of leaving the fault silently unarmed.
 
 `options.faults` never reaches the handle's ports. Fault a port with
 `handle.withFaults({ sync, promises })`, which returns faulted ports over the

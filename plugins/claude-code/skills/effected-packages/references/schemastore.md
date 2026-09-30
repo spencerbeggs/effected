@@ -99,7 +99,27 @@ const drift = SchemaPipeline.check(targets).pipe(Effect.provide(AppLayer));
 
 ## Testing
 
-`SchemaValidator.layerTest({ validate })` for a scripted engine and `SchemaValidator.noop` to switch validation off. `SchemaFile` needs no package-specific double, but which `FileSystem` test double to reach for depends on whether the test needs **pre-existing content**: `@effected/memfs`'s `MemoryFileSystem.layerWith({ ...seed })` (plus `Path.layer`) seeds a file the pipeline's contract-change guard then reads back — the guard has to compare against something on disk, and `layerNoop` cannot express that. For "nothing written" proofs, `MemoryFileSystem.layerWith` plus a `Volume` read-back (resolved inside the same provide) is the sharpest tool. `layerNoop({ ... })` remains fine wherever no pre-existing content is needed — its members fail `NotFound` unless overridden, which is exactly a missing file, and to prove `"unchanged"` means untouched, override `makeDirectory`/`writeFileString` with `Effect.die`.
+`SchemaValidator.layerTest({ validate })` for a scripted engine and `SchemaValidator.noop` to switch validation off. `SchemaFile` needs no package-specific double: its `FileSystem` double is `@effected/memfs`, never `FileSystem.layerNoop`. `MemoryFileSystem.layerWith({ ...seed })` (plus `Path.layer`) seeds the file the pipeline's contract-change guard reads back, and an unseeded path is already a typed `NotFound` — a missing file needs no stub. For a "nothing written" proof, resolve `MemoryFileSystem.Volume` inside the same provide and assert on it. To prove `"unchanged"` means *untouched*, fault the two members `SchemaFile` writes through as defects, so any write dies loudly instead of landing:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { SchemaFile, SchemaValidator } from "@effected/schemastore";
+import { Layer, Path } from "effect";
+
+const untouched = MemoryFileSystem.die(new Error("an unchanged run must not write"));
+
+const ReadOnlyVolume = Layer.mergeAll(
+  MemoryFileSystem.layerWith(
+    { "/schemas/config.schema.json": "{}" },
+    { faults: { makeDirectory: untouched, writeFileString: untouched } },
+  ),
+  Path.layer,
+);
+
+const layers = Layer.mergeAll(SchemaFile.layer.pipe(Layer.provide(ReadOnlyVolume)), ReadOnlyVolume, SchemaValidator.noop);
+```
+
+`MemoryFileSystem.die` is a defect, not a typed failure, so a caller's `Effect.catch` cannot absorb the write and turn the proof green.
 
 ## Scope fence
 

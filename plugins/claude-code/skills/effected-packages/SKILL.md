@@ -218,8 +218,8 @@ Three standing directives for a downstream repo rebuilding against this kit:
 - Test machinery worth knowing: `ConfigFile.testLayer`, `Store.layerTest`,
   `Cache.layerTest`, `App.layerTest`, `@effected/npm`'s `Default` noop
   resolvers, and `@effected/runtimes`' `.layerOffline`. Everything else tests
-  against core layers (`Path.layer`, `FileSystem.layerNoop` for a single
-  trivially-stubbed member — `@effected/memfs` for anything more) or a mocked
+  against core layers (`Path.layer`; a `FileSystem` double is `@effected/memfs`,
+  never `FileSystem.layerNoop`) or a mocked
   `ChildProcessSpawner` — no platform package needed in unit tests.
 - If a package feels like it is missing a service, a construct reads awkwardly,
   or you re-implement something twice, surface it to the user as an

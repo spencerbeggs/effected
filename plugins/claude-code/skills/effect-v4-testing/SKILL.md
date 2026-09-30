@@ -392,14 +392,15 @@ needing `FileSystem` provides `@effected/memfs`, never a hand-rolled
 `layerNoop` double, because `layerNoop` is deny-by-default and a stub encodes
 only what its author remembered. `MemoryFileSystem` implements all three rows
 honestly — a directory really is created, a removal really removes — so
-misbehaviour is injected as a **fault handler**, not as a stub body. Keep
-`layerNoop` for the one-trivially-stubbed-member case only. Same tier:
+misbehaviour is injected as a **fault handler**, not as a stub body. The rule
+has no carve-out: a `FileSystem` double is `@effected/memfs`, never
+`FileSystem.layerNoop`. Same tier:
 **`readFileString` strips a leading BOM** (`FileSystem.ts:508` decodes
 `impl.readFile` through `TextDecoder` at `:511`, default `ignoreBOM: false`)
 → [references/false-greens.md](./references/false-greens.md).
 
-**Beyond a single trivially-stubbed member, prefer `@effected/memfs` over a
-hand-rolled `layerNoop` stub — or over a hand-rolled `node:fs` port stub.**
+**A `FileSystem` double is `@effected/memfs` — never a `layerNoop` stub, and
+never a hand-rolled `node:fs` port stub.**
 `MemoryFileSystem.layerWith(seed)` — seed: absolute POSIX path → `string` |
 `Uint8Array` | tagged `file`/`directory`/`symlink`, parents auto-created —
 provides a real in-memory `FileSystem` whose unseeded reads fail typed

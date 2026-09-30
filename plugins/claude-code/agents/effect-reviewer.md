@@ -138,8 +138,9 @@ reference). Flag, as findings:
   belongs there;
 - a `MemoryFileSystem.Volume` read under a SECOND `Effect.provide` of the same
   layer — it inspects a re-seeded, fresh volume, so the assertion is vacuous;
-- a `FileSystem.layerNoop` stub standing in for more than one trivially-stubbed
-  member.
+- ANY `FileSystem.layerNoop` double — the one rule is "a `FileSystem` double
+  is `@effected/memfs`, never `FileSystem.layerNoop`"; an "unchanged" proof
+  faults the write members with `MemoryFileSystem.die` instead.
 
 ## Output format
 
