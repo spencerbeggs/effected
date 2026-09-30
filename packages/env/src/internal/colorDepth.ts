@@ -6,7 +6,11 @@
  */
 import type { Env } from "./types.js";
 
-/** The colour support of one output stream. */
+/**
+ * The colour support of one output stream: none, 16 colours, 256 colours or truecolor.
+ *
+ * @public
+ */
 export type ColorLevel = "none" | "basic" | "256" | "truecolor";
 
 // Some entries were taken from `dircolors`. The corresponding terminals might
