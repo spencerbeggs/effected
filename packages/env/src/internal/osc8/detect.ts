@@ -1,14 +1,10 @@
-/**
- * Ported from std-osc8 v0.2.0 (MIT, C. Spencer Beggs), src/detect.ts. Pure: no process reads.
- *
- * @internal
- */
+// Ported from std-osc8 v0.2.0 (MIT, C. Spencer Beggs), src/detect.ts. Pure: no process reads.
 import { Option } from "effect";
 import type { Env } from "../types.js";
 import { envIsTruthy } from "./env.js";
 import { compareSemver } from "./semver.js";
 import type { KnownTerminal, Osc8Capabilities, TerminalMatch } from "./terminals.js";
-import { lookupTerminal } from "./terminals.js";
+import { NO_CAPS, lookupTerminal } from "./terminals.js";
 import type { WrapperInfo } from "./wrappers.js";
 import { detectWrapper } from "./wrappers.js";
 
@@ -61,12 +57,6 @@ export interface ProcessSnapshot {
 	readonly isStdoutTTY: boolean;
 	readonly isStderrTTY: boolean;
 }
-
-const NO_CAPS: Osc8Capabilities = {
-	params: false,
-	fileUrls: false,
-	fileUrlsRemoteUnsafe: false,
-};
 
 const explanationFor = (
 	reason: Osc8Reason,

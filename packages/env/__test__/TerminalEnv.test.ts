@@ -1,10 +1,10 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Option, Stdio, Terminal } from "effect";
 import type { ColorLevel } from "../src/internal/colorDepth.js";
+import type { Env } from "../src/internal/types.js";
 import { TerminalEnv } from "../src/TerminalEnv.js";
 
-const withEnv = (env: Record<string, string>) =>
-	Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env));
+const withEnv = (env: Env) => Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env));
 
 const stdio = (opts: { readonly stdin?: boolean; readonly stdout: boolean }) =>
 	Stdio.layerTest({
@@ -26,7 +26,7 @@ const terminal = (columns: number) =>
 
 /** Provide the platform doubles and the environment, build `TerminalEnv.layer`, and read the service. */
 const read = <A>(
-	env: Record<string, string>,
+	env: Env,
 	io: { readonly stdin?: boolean; readonly stdout: boolean; readonly columns?: number },
 	use: (terminalEnv: TerminalEnv["Service"]) => A,
 	options?: Parameters<typeof TerminalEnv.layer>[0],
@@ -120,6 +120,36 @@ describe("TerminalEnv.layer", () => {
 			([fromEnv, fallback]) => {
 				assert.strictEqual(fromEnv, 100);
 				assert.strictEqual(fallback, 60);
+			},
+		),
+	);
+
+	it.effect("COLUMNS must be a positive integer: anything else falls back", () =>
+		Effect.map(
+			Effect.all(
+				["-5", "0", "100abc", "abc", "1.5", " 100", "1e3"].map((value) =>
+					read({ COLUMNS: value }, { stdout: true }, (t) => t.width(60)),
+				),
+			),
+			(widths) => assert.deepStrictEqual(widths, [60, 60, 60, 60, 60, 60, 60]),
+		),
+	);
+
+	it.effect("a stderr that is a TTY under a non-TTY stdout gets colour and hyperlinks; stdout gets none", () =>
+		Effect.map(
+			read(
+				{ TERM: "xterm-256color", TERM_PROGRAM: "iTerm.app", TERM_PROGRAM_VERSION: "3.5.0" },
+				{ stdout: false },
+				(t) => t,
+				{ stderrIsTerminal: Effect.succeed(true) },
+			),
+			(t) => {
+				assert.strictEqual(t.stdout.isTerminal, false);
+				assert.strictEqual(t.stdout.color, "none");
+				assert.strictEqual(t.stdout.hyperlinks, false);
+				assert.strictEqual(t.stderr.isTerminal, true);
+				assert.strictEqual(t.stderr.color, "truecolor");
+				assert.strictEqual(t.stderr.hyperlinks, true);
 			},
 		),
 	);

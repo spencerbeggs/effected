@@ -1,9 +1,5 @@
-/**
- * Port of Node v26.10.0 lib/internal/tty.js getColorDepth (MIT). Differences: no win32 branch (no
- * process.platform read), no warning side effect, TTY gate applied here.
- *
- * @internal
- */
+// Port of Node v26.10.0 lib/internal/tty.js getColorDepth (MIT). Differences: no win32 branch (no
+// process.platform read), no warning side effect, TTY gate applied here.
 import type { Env } from "./types.js";
 
 /**

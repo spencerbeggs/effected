@@ -1,8 +1,4 @@
-/**
- * Ported from std-osc8 v0.2.0 (MIT, C. Spencer Beggs), src/semver.ts. Pure: no process reads.
- *
- * @internal
- */
+// Ported from std-osc8 v0.2.0 (MIT, C. Spencer Beggs), src/semver.ts. Pure: no process reads.
 const SEMVER_RE = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?/;
 
 /**

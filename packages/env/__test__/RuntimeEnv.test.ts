@@ -44,6 +44,21 @@ describe("RuntimeEnv", () => {
 		}).pipe(Effect.provide(CurrentRuntimeEnv.layerTest({ agent: Option.some("codex") })), withEnv({ CI: "true" })),
 	);
 
+	it.effect("a ConfigProvider whose reads fail yields an all-none snapshot", () =>
+		Effect.gen(function* () {
+			const env = yield* CurrentRuntimeEnv;
+			assert.deepStrictEqual(env.agent, Option.none());
+			assert.deepStrictEqual(env.ci, Option.none());
+			assert.deepStrictEqual(env.terminal, Option.none());
+		}).pipe(
+			Effect.provide(CurrentRuntimeEnv.layer),
+			Effect.provideService(
+				ConfigProvider.ConfigProvider,
+				ConfigProvider.make(() => Effect.fail(new ConfigProvider.SourceError({ message: "boom" }))),
+			),
+		),
+	);
+
 	it("round-trips through JSON text (persistable snapshot)", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
 		const value = new RuntimeEnv({

@@ -1,8 +1,4 @@
-/**
- * Ported from std-osc8 v0.2.0 (MIT, C. Spencer Beggs), src/terminals.ts. Pure: no process reads.
- *
- * @internal
- */
+// Ported from std-osc8 v0.2.0 (MIT, C. Spencer Beggs), src/terminals.ts. Pure: no process reads.
 import type { Env } from "../types.js";
 import { parseKonsoleVersion, parseVteVersion } from "./semver.js";
 
@@ -358,6 +354,6 @@ export const lookupTerminal = (env: Env): TerminalMatch | null => {
 	return null;
 };
 
-// `NO_CAPS` is exported so subsequent allowlist entries — and tests — can
-// reuse the all-false default without restating it.
+// `NO_CAPS` is the one definition of the all-false capability set: the unsupported entries above use it, and
+// detect.ts imports it for a terminal that is not identified at all.
 export { NO_CAPS };

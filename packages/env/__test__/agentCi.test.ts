@@ -63,6 +63,13 @@ describe("detectCi", () => {
 	it("GITHUB_ACTIONS=false is not github-actions", () =>
 		assert.deepStrictEqual(ci({ GITHUB_ACTIONS: "false" }), Option.none()));
 	it("nothing set → none", () => assert.deepStrictEqual(ci({}), Option.none()));
+	// Added by the hardening round: "" is falsy, as in detectAgent and std-env, for every CI variable.
+	it("an empty GITHUB_ACTIONS, CI or CONTINUOUS_INTEGRATION is none", () => {
+		assert.deepStrictEqual(ci({ GITHUB_ACTIONS: "" }), Option.none());
+		assert.deepStrictEqual(ci({ CI: "" }), Option.none());
+		assert.deepStrictEqual(ci({ CONTINUOUS_INTEGRATION: "" }), Option.none());
+		assert.deepStrictEqual(ci({ GITHUB_ACTIONS: "", CI: "", CONTINUOUS_INTEGRATION: "" }), Option.none());
+	});
 });
 
 // Added beyond the brief: the key list and the detector cannot drift.

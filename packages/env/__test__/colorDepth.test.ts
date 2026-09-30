@@ -47,9 +47,43 @@ const CASES: ReadonlyArray<Record<string, string>> = [
 	{ FORCE_COLOR: "1", TERM: "dumb" },
 ];
 
+const win32 = process.platform === "win32";
+
+// Added beyond the brief's table, which stays unedited above: terminals Node maps through its TERM table and
+// regex list, and the rows the first table skips. The Node oracle takes a win32 branch on Windows, so it is
+// skipped there.
+const EXTRA_CASES: ReadonlyArray<Record<string, string>> = [
+	{ TERM: "eterm" },
+	{ TERM: "putty" },
+	{ TERM: "st" },
+	{ TERM: "terminator" },
+	{ TERM: "mosh" },
+	{ TERM: "ansi" },
+	{ TERM: "color-foo" },
+	{ TERM: "linux" },
+	{ TERM: "direct" },
+	{ TERM: "vt220" },
+	{ TERM_PROGRAM: "MacTerm" },
+	{ TF_BUILD: "True" },
+];
+
 describe("colorDepth", () => {
+	for (const env of EXTRA_CASES) {
+		it.skipIf(win32)(`matches Node on a TTY for the extra row ${JSON.stringify(env)}`, () => {
+			assert.strictEqual(colorDepth(env, true), nodeDepth(env));
+		});
+	}
+
+	// Node looks TERM up in a plain object, so TERM=constructor reaches Object.prototype and returns a function
+	// as a depth. Here the table is a Map: these rows are pinned against colorDepth only, never against Node.
+	for (const term of ["constructor", "__proto__", "toString"]) {
+		it(`TERM=${term} cannot reach Object.prototype and reads as none`, () => {
+			assert.strictEqual(colorDepth({ TERM: term }, true), "none");
+		});
+	}
+
 	for (const env of CASES) {
-		it(`matches Node on a TTY for ${JSON.stringify(env)}`, () => {
+		it.skipIf(win32)(`matches Node on a TTY for ${JSON.stringify(env)}`, () => {
 			assert.strictEqual(colorDepth(env, true), nodeDepth(env));
 		});
 	}
@@ -65,16 +99,19 @@ describe("colorDepth", () => {
 		"GITLAB_CI",
 		"TRAVIS",
 	]) {
-		it(`matches Node for CI provider ${name}`, () => {
+		it.skipIf(win32)(`matches Node for CI provider ${name}`, () => {
 			const env = { CI: "true", [name]: "true" };
 			assert.strictEqual(colorDepth(env, true), nodeDepth(env));
 			assert.include(colorKeys, name);
 		});
 	}
 
-	it("the oracle is live: Node distinguishes at least three levels across the table (positive control)", () => {
-		assert.isAtLeast(new Set(CASES.map(nodeDepth)).size, 3);
-	});
+	it.skipIf(win32)(
+		"the oracle is live: Node distinguishes at least three levels across the table (positive control)",
+		() => {
+			assert.isAtLeast(new Set(CASES.map(nodeDepth)).size, 3);
+		},
+	);
 
 	it("a non-TTY stream is none unless FORCE_COLOR says otherwise", () => {
 		assert.strictEqual(colorDepth({ TERM: "xterm-256color" }, false), "none");
@@ -86,12 +123,15 @@ describe("colorDepth", () => {
 		assert.strictEqual(colorDepth({ FORCE_COLOR: "3", NO_COLOR: "1" }, false), "truecolor");
 	});
 
-	it('documented divergence: FORCE_COLOR="" is unset here because ConfigProvider drops empty strings', () => {
-		// Node: "" forces 16 colours. Our env record never carries "" (Config.option reads it as None),
-		// so the record the detector sees has no FORCE_COLOR key at all.
-		assert.strictEqual(nodeDepth({ FORCE_COLOR: "", TERM: "dumb" }), "basic");
-		assert.strictEqual(colorDepth({ TERM: "dumb" }, true), "none");
-	});
+	it.skipIf(win32)(
+		'documented divergence: FORCE_COLOR="" is unset here because readEnv normalizes empty strings to absent',
+		() => {
+			// Node: "" forces 16 colours. Our env record never carries "" (readEnv drops it),
+			// so the record the detector sees has no FORCE_COLOR key at all.
+			assert.strictEqual(nodeDepth({ FORCE_COLOR: "", TERM: "dumb" }), "basic");
+			assert.strictEqual(colorDepth({ TERM: "dumb" }, true), "none");
+		},
+	);
 
 	it("colorKeys lists every env key the detector reads", () => {
 		const dir = fileURLToPath(new URL("../src/internal/", import.meta.url));

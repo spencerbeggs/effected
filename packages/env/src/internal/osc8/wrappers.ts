@@ -1,8 +1,4 @@
-/**
- * Ported from std-osc8 v0.2.0 (MIT, C. Spencer Beggs), src/wrappers.ts. Pure: no process reads.
- *
- * @internal
- */
+// Ported from std-osc8 v0.2.0 (MIT, C. Spencer Beggs), src/wrappers.ts. Pure: no process reads.
 import type { Env } from "../types.js";
 
 /** Multiplexer info, when detected. */

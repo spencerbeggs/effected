@@ -48,7 +48,8 @@ const make = (
 	columns: Option.Option<number>,
 ): TerminalEnvShape => {
 	const links = detectOsc8(env, isTTY.stdout, isTTY.stderr);
-	const fromEnv = Number.parseInt(env.COLUMNS ?? "", 10);
+	// COLUMNS counts only as a positive integer: "-5", "0", "100abc" and "abc" all fall through to the fallback.
+	const fromEnv = /^\d+$/.test(env.COLUMNS ?? "") ? Number(env.COLUMNS) : 0;
 	return {
 		stdinIsTerminal: isTTY.stdin,
 		stdout: { isTerminal: isTTY.stdout, color: colorDepth(env, isTTY.stdout), hyperlinks: links.stdout, columns },

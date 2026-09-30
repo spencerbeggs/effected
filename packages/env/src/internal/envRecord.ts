@@ -6,7 +6,8 @@ import type { Env } from "./types.js";
  *
  * @remarks
  * A key that is absent, or whose read fails for any reason, is left out of the record, so the record carries
- * `Some` values only. The default providers drop empty strings, so an empty variable reads as absent.
+ * non-empty values only. An empty string is normalized to absent here, under every provider, including one built
+ * with `preserveEmptyStrings: true`, so `FORCE_COLOR=""` reads as unset whichever provider is ambient.
  *
  * @internal
  */
@@ -18,6 +19,8 @@ export const readEnv = (keys: ReadonlyArray<string>): Effect.Effect<Env> =>
 		),
 	).pipe(
 		Effect.map((entries) =>
-			Object.fromEntries(entries.flatMap(([key, value]) => (Option.isSome(value) ? [[key, value.value]] : []))),
+			Object.fromEntries(
+				entries.flatMap(([key, value]) => (Option.isSome(value) && value.value !== "" ? [[key, value.value]] : [])),
+			),
 		),
 	);

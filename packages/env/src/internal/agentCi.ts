@@ -1,15 +1,13 @@
-/**
- * Agent and CI detection from a pure env record. The agent table is transcribed, in order, from std-env 4.3.0
- * (dist/index.mjs); CI detection is deliberately narrower than std-env's provider table.
- *
- * @internal
- */
+// Agent and CI detection from a pure env record. The agent table is transcribed, in order, from std-env 4.3.0
+// (dist/index.mjs); CI detection is deliberately narrower than std-env's provider table.
 import { Option } from "effect";
 import type { Env } from "./types.js";
 
 type AgentRule =
 	| readonly [name: string, keys: ReadonlyArray<string>]
 	| readonly [name: string, test: (env: Env) => boolean];
+
+const matches = (value: string | undefined, pattern: RegExp): boolean => !!value && pattern.test(value);
 
 // std-env's order decides between two matching rows. `pi` and `devin` match a pattern on a variable every
 // shell sets, so they test the value rather than its presence.
@@ -31,8 +29,6 @@ const AGENT_RULES: ReadonlyArray<AgentRule> = [
 	["cursor", ["CURSOR_AGENT"]],
 ];
 
-const matches = (value: string | undefined, pattern: RegExp): boolean => !!value && pattern.test(value);
-
 /**
  * The name of the AI agent running this process, if any. `AI_AGENT` wins over every table row: it is
  * lower-cased, and the two `github_copilot_*` names collapse to `copilot`.
@@ -52,8 +48,9 @@ export const detectAgent = (env: Env): Option.Option<string> => {
 	return Option.none();
 };
 
+// "" is falsy, as in detectAgent and std-env: an empty variable is an unset one.
 const isFalsy = (value: string | undefined): boolean =>
-	value === undefined || value.toLowerCase() === "false" || value === "0";
+	value === undefined || value === "" || value.toLowerCase() === "false" || value === "0";
 
 /**
  * The CI this process runs in: `github-actions` when `GITHUB_ACTIONS` is truthy (even under `CI=false`, since the
