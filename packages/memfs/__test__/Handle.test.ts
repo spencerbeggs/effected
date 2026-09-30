@@ -53,9 +53,20 @@ describe("MemoryFileSystem.makeSync", () => {
 		// file "/a" is EEXIST, as `mkdirSync({ recursive: true })` reports it.
 		const e = thrown(() => MemoryFileSystem.makeSync({ "/a": "x", "/a/b": "y" })) as Record<string, unknown>;
 		assert.strictEqual(e.code, "EEXIST");
-		assert.isString(e.syscall);
+		// node's syscall for the failing seed step, never the Effect method name.
+		assert.strictEqual(e.syscall, "mkdir");
+		assert.strictEqual(e.path, "/a");
 		assert.notStrictEqual(e.name, "FiberFailure");
 		assert.isUndefined(e._tag);
+	});
+
+	it("each seed step reports node's syscall: an invalid directory mode fails in chmod", () => {
+		const e = thrown(() => MemoryFileSystem.makeSync({ "/d": MemoryFileSystem.directory({ mode: -1 }) })) as Record<
+			string,
+			unknown
+		>;
+		assert.strictEqual(e.code, "EINVAL");
+		assert.strictEqual(e.syscall, "chmod");
 	});
 
 	it("a bad root is EINVAL, node-shaped", () => {

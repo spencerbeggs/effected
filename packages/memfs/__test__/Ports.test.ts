@@ -192,6 +192,26 @@ describe("sync port faults", () => {
 	);
 });
 
+describe("unknown fault keys are a wiring bug", () => {
+	const typo = { readFileSting: () => undefined } as never;
+
+	it.effect("a port rejects an unknown member name at construction, naming it", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			assert.throws(() => MemoryFileSystem.syncFileSystem(volume, { faults: typo }), RangeError, /readFileSting/);
+			assert.throws(() => MemoryFileSystem.promisesFileSystem(volume, { faults: typo }), RangeError, /readFileSting/);
+		}),
+	);
+
+	it.effect("makeFaulty rejects an unknown method name at construction, naming it", () =>
+		Effect.gen(function* () {
+			const fs = yield* MemoryFileSystem.make;
+			assert.throws(() => MemoryFileSystem.makeFaulty(fs, typo), RangeError, /readFileSting/);
+			assert.throws(() => MemoryFileSystem.makeFaulty(fs, () => typo), RangeError, /readFileSting/);
+		}),
+	);
+});
+
 describe("sync port members are unbound-safe", () => {
 	it.effect("every member works when detached from the port object", () =>
 		Effect.gen(function* () {
@@ -266,6 +286,42 @@ describe("promises port", () => {
 		}),
 	);
 
+	it.effect("readFile without an encoding resolves bytes, with one a string — node's overloads", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume);
+			const bytes = yield* Effect.promise(() => fsp.readFile("/r/file.txt"));
+			assert.instanceOf(bytes, Uint8Array);
+			assert.deepStrictEqual([...bytes], [...new TextEncoder().encode("hello")]);
+			assert.strictEqual(yield* Effect.promise(() => fsp.readFile("/r/file.txt", "utf8")), "hello");
+			assert.strictEqual(yield* Effect.promise(() => fsp.readFile("/r/file.txt", "utf-8")), "hello");
+			assert.strictEqual(yield* Effect.promise(() => fsp.readFile("/r/file.txt", { encoding: "utf8" })), "hello");
+		}),
+	);
+
+	it.effect("a fault handler that throws synchronously rejects, never throws", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume, {
+				faults: {
+					stat: (path) => {
+						throw MemoryFileSystem.errno("EACCES", "stat", path);
+					},
+				},
+			});
+			let pending: Promise<unknown> | undefined;
+			try {
+				pending = fsp.stat("/r/dir");
+			} catch {
+				assert.fail("the call threw synchronously instead of returning a rejected promise");
+			}
+			const error = yield* Effect.flip(
+				Effect.tryPromise({ try: () => pending as Promise<unknown>, catch: (e) => e as { code: string } }),
+			);
+			assert.strictEqual(error.code, "EACCES");
+		}),
+	);
+
 	it.effect("members are unbound-safe", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* tree;
@@ -273,7 +329,7 @@ describe("promises port", () => {
 			assert.deepStrictEqual(yield* Effect.promise(() => readdir("/r/dir")), ["inner.txt"]);
 			assert.isTrue((yield* Effect.promise(() => stat("/r/file.txt"))).isFile());
 			assert.isTrue((yield* Effect.promise(() => lstat("/r/to-dir"))).isSymbolicLink());
-			assert.strictEqual(yield* Effect.promise(() => readFile("/r/file.txt")), "hello");
+			assert.strictEqual(yield* Effect.promise(() => readFile("/r/file.txt", "utf8")), "hello");
 		}),
 	);
 });

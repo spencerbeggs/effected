@@ -146,6 +146,10 @@ describe("sync port parity with node:fs", () => {
 			const real = readdirSync(host, { withFileTypes: true });
 			assert.deepStrictEqual(memory.map(kinds).sort(), real.map(kinds).sort());
 			for (const c of cases) {
+				// readFile without an encoding: bytes on both sides.
+				const memoryBytes = yield* settled(() => fsp.readFile(`/r/${c}`).then((b) => [...b]));
+				const realBytes = yield* settled(() => Promise.resolve().then(() => [...readFileSync(hostPath(c))]));
+				assert.deepStrictEqual(memoryBytes, realBytes, `promises readFile (no encoding) ${c}`);
 				const memoryStat = yield* settled(() => fsp.stat(`/r/${c}`).then((s) => s.isFile()));
 				const realStat = yield* settled(() => Promise.resolve().then(() => statSync(hostPath(c)).isFile()));
 				assert.deepStrictEqual(memoryStat, realStat, `promises stat ${c}`);

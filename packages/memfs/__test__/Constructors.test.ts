@@ -5,7 +5,7 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import type { Layer } from "effect";
-import { Effect, FileSystem, Path, PlatformError } from "effect";
+import { Cause, Effect, Exit, FileSystem, Path, PlatformError } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
 
 const denied = (method: string, path: string) =>
@@ -110,6 +110,20 @@ describe("options.faults", () => {
 			assert.strictEqual(yield* first.readFileString("/a.txt"), "a");
 			const second = yield* MemoryFileSystem.makeWith({ "/a.txt": "a" }, options);
 			assert.strictEqual((yield* Effect.flip(second.readFileString("/a.txt"))).reason._tag, "PermissionDenied");
+		}),
+	);
+
+	it.effect("an unknown fault key is a wiring bug: the layer dies at build, naming it", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				Effect.provide(
+					Effect.void,
+					MemoryFileSystem.layerWith(undefined, { faults: { readFileSting: () => undefined } as never }),
+				),
+			);
+			if (!Exit.isFailure(exit)) return assert.fail("expected the layer build to die");
+			assert.isTrue(Cause.hasDies(exit.cause));
+			assert.match(String(Cause.squash(exit.cause)), /readFileSting/);
 		}),
 	);
 

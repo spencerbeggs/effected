@@ -40,6 +40,7 @@ export {
 	type MemoryFileSystemPortStats,
 	type MemoryFileSystemPromisesFaults,
 	type MemoryFileSystemPromisesFileSystem,
+	type MemoryFileSystemReadFileEncoding,
 	type MemoryFileSystemSeed,
 	type MemoryFileSystemSeedDirectory,
 	type MemoryFileSystemSeedEntry,

@@ -10,11 +10,13 @@ import type {
 	MemoryFileSystemDirent,
 	MemoryFileSystemPortStats,
 	MemoryFileSystemPromisesFileSystem,
+	MemoryFileSystemReadFileEncoding,
 	MemoryFileSystemSyncFileSystem,
 	MemoryFileSystemVolume,
 	MemoryFileSystemVolumeStat,
 } from "../MemoryFileSystem.js";
 import { fallbackErrnoForTag, nodeErrno } from "./errno.js";
+import { assertKnownFaultKeys } from "./faults.js";
 
 // The port is defined in `stat` terms, so it FOLLOWS symbolic links — unlike
 // the literal inspection view it is built on. `MAX_LINK_HOPS` mirrors the
@@ -91,25 +93,57 @@ const statOf = (volume: MemoryFileSystemVolume, path: string, syscall: "stat" | 
 	return portStats(s);
 };
 
+const settle = <A>(f: () => A): Promise<Awaited<A>> => {
+	try {
+		return Promise.resolve(f()) as Promise<Awaited<A>>;
+	} catch (e) {
+		return Promise.reject(e);
+	}
+};
+
 /**
  * Wraps each named member of `port` so its handler runs first: a handler may
- * throw, return a replacement, or return `undefined` to delegate.
+ * throw, return a replacement, or return `undefined` to delegate. An unknown
+ * member name throws `RangeError` at construction. With `async`, the whole
+ * interception runs inside `settle`, so a handler that throws synchronously
+ * REJECTS — as a real `fs/promises` call does — instead of throwing.
  */
 export const withFaults = <Port extends object>(
 	port: Port,
 	faults: Partial<Record<keyof Port, (...args: ReadonlyArray<unknown>) => unknown>> | undefined,
+	subject: string,
+	async = false,
 ): Port => {
 	if (faults === undefined) return port;
+	assertKnownFaultKeys(faults, port, subject);
 	const out = Object.assign({}, port) as unknown as Record<string, unknown>;
 	for (const [name, handler] of Object.entries(faults)) {
 		const original = (port as Record<string, (...args: ReadonlyArray<unknown>) => unknown>)[name];
 		if (handler === undefined || original === undefined) continue;
-		out[name] = (...args: ReadonlyArray<unknown>) => {
+		const intercept = (...args: ReadonlyArray<unknown>) => {
 			const replaced = (handler as (...a: ReadonlyArray<unknown>) => unknown)(...args);
 			return replaced === undefined ? original(...args) : replaced;
 		};
+		out[name] = async ? (...args: ReadonlyArray<unknown>) => settle(() => intercept(...args)) : intercept;
 	}
 	return out as Port;
+};
+
+const decoder = new TextDecoder();
+
+// `readFileSync(path)`: the bytes of the regular file `path` resolves to, or
+// node's error — never fabricated content.
+const readBytes = (volume: MemoryFileSystemVolume, path: string): Uint8Array => {
+	const r = resolvePath(volume, path);
+	if ("code" in r) throw nodeErrno(r.code, "open", path);
+	const bytes = volume.bytes(r.path);
+	if (bytes === undefined) {
+		// Reading a directory as a file is EISDIR in `readFileSync`; anything
+		// else that is not a regular file is ENOTDIR. `read` works on a
+		// descriptor, so node's EISDIR carries no path.
+		throw volume.isDirectory(r.path) ? nodeErrno("EISDIR", "read", undefined) : nodeErrno("ENOTDIR", "open", path);
+	}
+	return bytes;
 };
 
 // The `syscall` on each thrown error is the one node reports for the same call:
@@ -117,18 +151,7 @@ export const withFaults = <Port extends object>(
 // readDirectory, `stat`/`lstat` for the stat pair.
 export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => ({
 	exists: (path) => !("code" in resolvePath(volume, path)),
-	readFile: (path) => {
-		const r = resolvePath(volume, path);
-		if ("code" in r) throw nodeErrno(r.code, "open", path);
-		const text = volume.text(r.path);
-		if (text === undefined) {
-			// Reading a directory as a file is EISDIR in `readFileSync`;
-			// anything else that is not a regular file is ENOTDIR.
-			// `read` works on a descriptor, so node's EISDIR carries no path.
-			throw volume.isDirectory(r.path) ? nodeErrno("EISDIR", "read", undefined) : nodeErrno("ENOTDIR", "open", path);
-		}
-		return text;
-	},
+	readFile: (path) => decoder.decode(readBytes(volume, path)),
 	readDirectory: (path) => {
 		const r = resolvePath(volume, path);
 		if ("code" in r) throw nodeErrno(r.code, "scandir", path);
@@ -143,14 +166,6 @@ export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSy
 	stat: (path) => statOf(volume, path, "stat", true),
 	lstat: (path) => statOf(volume, path, "lstat", false),
 });
-
-const settle = <A>(f: () => A): Promise<A> => {
-	try {
-		return Promise.resolve(f());
-	} catch (e) {
-		return Promise.reject(e);
-	}
-};
 
 export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemPromisesFileSystem => {
 	const sync = makeSyncFileSystem(volume);
@@ -180,16 +195,36 @@ export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFi
 			});
 		});
 	}
+	// node's overloads: bytes without an encoding, a string with one.
+	function readFile(path: string): Promise<Uint8Array>;
+	function readFile(path: string, encoding: MemoryFileSystemReadFileEncoding): Promise<string>;
+	function readFile(path: string, encoding?: MemoryFileSystemReadFileEncoding): Promise<Uint8Array | string> {
+		return settle(() => (encoding === undefined ? readBytes(volume, path) : sync.readFile(path)));
+	}
 	return {
 		readdir,
 		stat: (path) => settle(() => sync.stat(path)),
 		lstat: (path) => settle(() => sync.lstat(path)),
-		readFile: (path, _encoding) => settle(() => sync.readFile(path)),
+		readFile,
 	};
 };
 
 // The syscall node reports for each handle mutator.
 const nodeSyscall = { write: "open", mkdir: "mkdir", remove: "rm", symlink: "symlink" } as const;
+
+// The syscall node reports for the `FileSystem` method a seed step runs —
+// `makeSync` throws with it, never with the Effect method name.
+const methodSyscall: { readonly [method: string]: string | undefined } = {
+	writeFile: "open",
+	makeDirectory: "mkdir",
+	symlink: "symlink",
+	chmod: "chmod",
+	utimes: "utime",
+	remove: "rm",
+};
+
+/** node's syscall for a `FileSystem` method; a method with no node twin (the seed's own `root` check) keeps its name. */
+export const syscallForMethod = (method: string): string => methodSyscall[method] ?? method;
 
 /**
  * Runs an effect synchronously. A typed `PlatformError` failure is rethrown as

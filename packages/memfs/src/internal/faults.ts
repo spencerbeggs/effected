@@ -28,11 +28,30 @@ const armFault = (fault: NonNullable<MemoryFileSystemFaults[MemoryFileSystemFaul
 	};
 };
 
+/**
+ * Throws a `RangeError` naming any fault key that is not a function-valued
+ * member of `target`. A misspelled key would otherwise be ignored silently and
+ * the test would pass without its fault ever firing — a wiring bug, surfaced at
+ * construction like `failTimes`' invalid counts.
+ */
+export const assertKnownFaultKeys = (faults: object, target: object, subject: string): void => {
+	const members = new Set(
+		Object.keys(target).filter((key) => typeof (target as Record<string, unknown>)[key] === "function"),
+	);
+	const unknown = Object.keys(faults).filter((key) => !members.has(key));
+	if (unknown.length > 0) {
+		throw new RangeError(
+			`${subject}: unknown fault key(s) ${unknown.map((key) => `"${key}"`).join(", ")}; expected one of ${[...members].sort().join(", ")}`,
+		);
+	}
+};
+
 export const wrapFaulty = (
 	base: FileSystem.FileSystem,
 	registration: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory,
 ): FileSystem.FileSystem => {
 	const faults = typeof registration === "function" ? registration(base) : registration;
+	assertKnownFaultKeys(faults, base, "MemoryFileSystem faults");
 	const armed = new Map<MemoryFileSystemFaultMethod, ArmedHandler>();
 	for (const method of Object.keys(faults) as Array<MemoryFileSystemFaultMethod>) {
 		const fault = faults[method];

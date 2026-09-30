@@ -7,7 +7,14 @@ import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
 import { nodeErrno } from "./internal/errno.js";
 import { wrapFaulty } from "./internal/faults.js";
-import { makePromisesFileSystem, makeSyncFileSystem, runMutation, runNode, withFaults } from "./internal/ports.js";
+import {
+	makePromisesFileSystem,
+	makeSyncFileSystem,
+	runMutation,
+	runNode,
+	syscallForMethod,
+	withFaults,
+} from "./internal/ports.js";
 import { seedWith } from "./internal/seed.js";
 import { makeVolumeService } from "./internal/view.js";
 import * as internal from "./internal/volume.js";
@@ -267,21 +274,39 @@ export interface MemoryFileSystemPromisesFileSystem {
 	stat(path: string): Promise<MemoryFileSystemPortStats>;
 	/** `lstat`: does not follow a final link. */
 	lstat(path: string): Promise<MemoryFileSystemPortStats>;
+	/** The raw contents of the file at `path`, following links — node's Buffer-returning form. */
+	readFile(path: string): Promise<Uint8Array>;
 	/** The UTF-8 contents of the file at `path`, following links. */
-	readFile(path: string, encoding?: "utf8" | "utf-8"): Promise<string>;
+	readFile(path: string, encoding: MemoryFileSystemReadFileEncoding): Promise<string>;
 }
 
 /**
+ * The encodings {@link MemoryFileSystemPromisesFileSystem.readFile} accepts:
+ * UTF-8, spelled either way, bare or as node's `{ encoding }` options object.
+ *
+ * @public
+ */
+export type MemoryFileSystemReadFileEncoding = "utf8" | "utf-8" | { readonly encoding: "utf8" | "utf-8" };
+
+/**
  * Fault handlers for a {@link MemoryFileSystemPromisesFileSystem}: each may
- * return a replacement promise (e.g. a rejection built with
- * {@link MemoryFileSystem.errno}) or `undefined` to delegate.
+ * return a replacement promise, throw (an errno built with
+ * {@link MemoryFileSystem.errno}), or return `undefined` to delegate. A
+ * handler that throws synchronously makes the call REJECT, as a real
+ * `fs/promises` call does; it never throws at the call site.
  *
  * @public
  */
 export type MemoryFileSystemPromisesFaults = {
-	readonly [K in keyof MemoryFileSystemPromisesFileSystem]?: (
+	readonly [K in Exclude<keyof MemoryFileSystemPromisesFileSystem, "readFile">]?: (
 		...args: Parameters<MemoryFileSystemPromisesFileSystem[K]>
 	) => ReturnType<MemoryFileSystemPromisesFileSystem[K]> | undefined;
+} & {
+	/** Receives `encoding` as given; a replacement should match it (bytes without, a string with). */
+	readonly readFile?: (
+		path: string,
+		encoding?: MemoryFileSystemReadFileEncoding,
+	) => Promise<Uint8Array | string> | undefined;
 };
 
 /**
@@ -296,9 +321,16 @@ export type MemoryFileSystemPromisesFaults = {
  * sees the same state; it is not rebuilt per provide.
  *
  * `sync` and `promises` are read-only views. Mutate through `write`, `mkdir`,
- * `remove` and `symlink`, which create missing parent directories and throw
- * node-shaped errors (`code`, `syscall`, `path`) on failure, as the `node:fs`
- * calls they stand in for do.
+ * `remove` and `symlink`, which throw node-shaped errors (`code`, `syscall`,
+ * `path`) on failure, as the `node:fs` calls they stand in for do.
+ *
+ * `write` and `symlink` create a parent only when it is ABSENT, so their
+ * failures match the single node call they stand in for: writing under a
+ * parent that is a file fails `ENOTDIR` (as `writeFileSync` does), while
+ * `mkdir` — recursive, like `mkdirSync(p, { recursive: true })` — over an
+ * existing file fails `EEXIST`. A contradictory seed fails the same way,
+ * with node's syscall for the failing step (`mkdir`, `open`, `symlink`,
+ * `chmod`, `utime`).
  *
  * @public
  */
@@ -1098,6 +1130,7 @@ export class MemoryFileSystem {
 			options?.faults as
 				| Partial<Record<keyof MemoryFileSystemSyncFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
 				| undefined,
+			"MemoryFileSystem.syncFileSystem faults",
 		);
 
 	/**
@@ -1122,6 +1155,8 @@ export class MemoryFileSystem {
 			options?.faults as
 				| Partial<Record<keyof MemoryFileSystemPromisesFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
 				| undefined,
+			"MemoryFileSystem.promisesFileSystem faults",
+			true,
 		);
 
 	/**
@@ -1144,7 +1179,7 @@ export class MemoryFileSystem {
 		options?: MemoryFileSystemOptions,
 	): MemoryFileSystemHandle =>
 		runNode(buildHandle(seed, options), (error) => ({
-			syscall: error.reason.method,
+			syscall: syscallForMethod(error.reason.method),
 			path: "pathOrDescriptor" in error.reason ? String(error.reason.pathOrDescriptor ?? "") : "",
 		}));
 
