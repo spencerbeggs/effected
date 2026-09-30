@@ -84,6 +84,16 @@ describe("Render.plain: inline content", () => {
 		}),
 	);
 
+	it.effect("a line break in a link target cannot split the suffix: the target is one line", () =>
+		Effect.gen(function* () {
+			const out = yield* linesOf([
+				Doc.paragraph(Doc.link({ url: "https://example.test/a\nb\r\nc" }, "docs")),
+				Doc.paragraph(Doc.link({ file: "/repo/a\nb.ts", line: 3 }, "a")),
+			]);
+			assert.deepStrictEqual(out, ["docs (https://example.test/abc)", "a (/repo/ab.ts:3)"]);
+		}),
+	);
+
 	it.effect("a file link shows path:line:col through displayPath; a column needs a line", () =>
 		Effect.gen(function* () {
 			const displayPath = (absolute: string) => absolute.replace("/repo/", "");
@@ -389,6 +399,33 @@ describe("Render.plain: tables", () => {
 					for (const line of out) assert.isAtMost(displayWidth(line), 30, `${name}: "${line}"`);
 				}
 			}),
+	);
+
+	it.effect("a column that is empty in every row keeps its separators, so rows stay under their rule", () =>
+		Effect.gen(function* () {
+			const first = yield* linesOf([
+				Doc.table(
+					[{ header: [] }, { header: "b" }],
+					[
+						["", "1"],
+						["", "22"],
+					],
+				),
+			]);
+			assert.deepStrictEqual(first, ["  b", "  --", "  1", "  22"]);
+			const middle = yield* linesOf([
+				Doc.table(
+					[{ header: "a" }, { header: [] }, { header: "c" }],
+					[
+						["1", "", "3"],
+						["2", "", "4"],
+					],
+				),
+			]);
+			assert.deepStrictEqual(middle, ["a    c", "-    -", "1    3", "2    4"]);
+			const right = yield* linesOf([Doc.table([{ header: [] }, { header: "x y z", align: "right" }], [["", "1"]])]);
+			assert.deepStrictEqual(right, ["  x y z", "  -----", "      1"]);
+		}),
 	);
 
 	it.effect("never cuts below one column per cell, even when nothing fits", () =>

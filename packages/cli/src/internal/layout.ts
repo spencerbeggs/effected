@@ -47,8 +47,11 @@ export const sanitize = (input: string): string => stripAnsi(input).replace(/\t/
 const pathSeparator = (ctx: RenderContext): string =>
 	ctx.audience === "agent" ? ctx.glyphs.pathSeparator.agent : ` ${ctx.glyphs.pathSeparator.human} `;
 
+/** A link target is sanitized like content, and loses its line breaks, which no URL or path holds. */
+const safeTargetText = (text: string): string => sanitize(text).replace(/[\r\n]/g, "");
+
 const safeTarget = (target: LinkTarget): LinkTarget =>
-	"url" in target ? { url: sanitize(target.url) } : { ...target, file: sanitize(target.file) };
+	"url" in target ? { url: safeTargetText(target.url) } : { ...target, file: safeTargetText(target.file) };
 
 const spansOf = (inline: Inline, ctx: RenderContext): ReadonlyArray<Span> => {
 	switch (inline._tag) {

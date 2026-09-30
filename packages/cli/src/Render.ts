@@ -27,7 +27,15 @@ export interface RenderContext {
 	readonly paint: (token: TokenName | Style, text: string) => string;
 	/** The glyph set: status glyphs, separators, the ellipsis. */
 	readonly glyphs: GlyphSet;
-	/** Wraps a label as a link to a target; returns the label unchanged when links are off. */
+	/**
+	 * Wraps a label as a link to a target; returns the label unchanged when links are off.
+	 *
+	 * @remarks
+	 * It must be pure and cheap: a renderer may call it more than once for one link. `Render.ansi` calls it once with
+	 * the plain label to learn whether links are on (an unchanged label means off, and the target is then written
+	 * after the label), and again when it paints, with the painted label. So it must decide on whether links are
+	 * allowed, not on the label's content, and it must not count or record its calls.
+	 */
 	readonly link: (target: LinkTarget, label: string) => string;
 	/** Turns an absolute path into its display form; the identity by default. */
 	readonly displayPath: (absolute: string) => string;

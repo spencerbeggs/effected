@@ -82,6 +82,10 @@ const joinChunks = (chunks: ReadonlyArray<ReadonlyArray<Span>>, separator: strin
 		.filter((chunk) => chunk.length > 0)
 		.flatMap((chunk, index) => (index === 0 ? chunk : [span(separator), ...chunk]));
 
+/** Join table cells with a separator, keeping an empty one: a column that is empty in every row still takes its place. */
+const joinCells = (cells: ReadonlyArray<ReadonlyArray<Span>>, separator: string): Line =>
+	cells.flatMap((cell, index) => (index === 0 ? cell : [span(separator), ...cell]));
+
 const blank = (width: number): Span => span(" ".repeat(width));
 
 const pad = (spans: ReadonlyArray<Span>, width: number, align: "left" | "right" | "center"): Line => {
@@ -172,7 +176,7 @@ const tableLines = (
 
 	const render = (row: ReadonlyArray<Line>): Line =>
 		trimLine(
-			joinChunks(
+			joinCells(
 				row.map((cell, index) => {
 					const columnWidth = widths[index] as number;
 					const cut = widthOf(cell) > columnWidth ? truncateSpans(cell, columnWidth, walk.ctx.glyphs.ellipsis) : cell;
@@ -181,7 +185,7 @@ const tableLines = (
 				"  ",
 			),
 		);
-	const rule: Line = joinChunks(
+	const rule: Line = joinCells(
 		widths.map((w) => [span("-".repeat(w), "muted")]),
 		"  ",
 	);

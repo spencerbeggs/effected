@@ -92,6 +92,16 @@ describe("flatten", () => {
 		}),
 	);
 
+	it.effect("strips line breaks from a link target, which can never hold one", () =>
+		Effect.gen(function* () {
+			const ctx = yield* contextOf();
+			const [url] = flatten([Doc.link({ url: "https://a.test/x\ny\r\nz\r" }, "a")], ctx);
+			const [file] = flatten([Doc.link({ file: "/repo/a\nb.ts", line: 3 }, "b")], ctx);
+			assert.deepStrictEqual(url?.link, { url: "https://a.test/xyz" });
+			assert.deepStrictEqual(file?.link, { file: "/repo/ab.ts", line: 3 });
+		}),
+	);
+
 	it.effect("drops escape sequences and empty spans from content", () =>
 		Effect.gen(function* () {
 			const ctx = yield* contextOf();

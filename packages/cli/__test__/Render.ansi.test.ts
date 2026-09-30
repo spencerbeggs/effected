@@ -321,6 +321,85 @@ describe("Render.ansi: layout under colour (paint after cut)", () => {
 		}),
 	);
 
+	it.effect("a column that is empty in every row keeps its separators, and matches plain", () =>
+		Effect.gen(function* () {
+			const docs = [
+				Doc.table(
+					[{ header: [] }, { header: "b" }],
+					[
+						["", "1"],
+						["", "22"],
+					],
+				),
+				Doc.table(
+					[{ header: "a" }, { header: [] }, { header: "c" }],
+					[
+						["1", "", "3"],
+						["2", "", "4"],
+					],
+				),
+				Doc.table([{ header: [] }, { header: "x y z", align: "right" }], [["", "1"]]),
+			];
+			const expected = [
+				["  b", "  --", "  1", "  22"],
+				["a    c", "-    -", "1    3", "2    4"],
+				["  x y z", "  -----", "      1"],
+			];
+			for (const [index, doc] of docs.entries()) {
+				const a = yield* ansi([doc], OFF);
+				assert.deepStrictEqual(a.split("\n"), expected[index]);
+				assert.strictEqual(a, yield* plain([doc], OFF));
+			}
+		}),
+	);
+
+	it.effect("a cut linked table cell keeps exactly one balanced hyperlink around what is left", () =>
+		Effect.gen(function* () {
+			const doc = [
+				Doc.table(
+					[{ header: "id" }, { header: "where" }],
+					[
+						[
+							"1",
+							[
+								Doc.link({ url: "https://example.test/x" }, [
+									Doc.text("a long linked label that will be cut", "failure"),
+								]),
+							],
+						],
+					],
+				),
+			];
+			for (const width of [12, 16, 20, 30]) {
+				const out = yield* ansi(doc, { link, width });
+				const links = linksOf(out);
+				assert.isTrue(links.balanced, `width ${width}`);
+				assert.strictEqual(links.pairs, 1, `width ${width}: one pair`);
+				assert.match(links.wrapped, /^a .*…$/, `width ${width}: the pair wraps what is left, ending in the ellipsis`);
+				assert.deepStrictEqual(sgrProblems(out), [], `width ${width}: SGR balanced`);
+				for (const line of out.split("\n")) assert.isAtMost(displayWidth(line), width);
+			}
+		}),
+	);
+
+	it.effect("a line break in a link target cannot split the suffix or reach ctx.link", () =>
+		Effect.gen(function* () {
+			const seen: Array<string> = [];
+			const out = yield* ansi([Doc.paragraph(Doc.link({ url: "https://example.test/a\nb" }, "docs"))], {
+				paint: (_t, text) => text,
+				link: (target, label) => {
+					seen.push("url" in target ? target.url : target.file);
+					return label;
+				},
+			});
+			assert.strictEqual(out, "docs (https://example.test/ab)");
+			assert.isTrue(
+				seen.every((url) => url === "https://example.test/ab"),
+				JSON.stringify(seen),
+			);
+		}),
+	);
+
 	it.effect("tables use plain alignment, never box drawing, even with the unicode glyph set", () =>
 		Effect.gen(function* () {
 			const out = yield* ansi([Doc.table([{ header: "a" }, { header: "b" }], [["1", "2"]])], {
