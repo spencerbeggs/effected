@@ -1142,25 +1142,11 @@ describe("Runner.run catalog slices", () => {
 		),
 	);
 
-	// A case-insensitive volume, simulated over memfs: fault handlers resolve
-	// every call on `from` to the one file `to` already on disk, exactly as
-	// such a volume resolves `Docs.json` to a stored `docs.json`. The listing
-	// still names the stored file, so only the probe and the own-slice
-	// read/write see the fold — the three calls the Runner makes on its slice.
-	const caseInsensitiveLayers = (seed: MemoryFileSystemSeed, from: string, to: string) =>
-		Layer.unwrap(
-			Effect.gen(function* () {
-				const { fileSystem: base } = yield* Effect.orDie(MemoryFileSystem.makeInspectableWith(seed));
-				const faulty = MemoryFileSystem.layerFaulty({
-					stat: (path) => (path === from ? base.stat(to) : undefined),
-					readFileString: (path, encoding) => (path === from ? base.readFileString(to, encoding) : undefined),
-					writeFileString: (path, data, options) =>
-						path === from ? base.writeFileString(to, data, options) : undefined,
-				}).pipe(Layer.provide(Layer.succeed(FileSystem.FileSystem, base)));
-				return Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
-					Layer.provideMerge(Layer.mergeAll(faulty, Path.layer)),
-				);
-			}),
+	// A case-insensitive, case-preserving volume: `Docs.json` resolves to a
+	// stored `docs.json`, while the listing still names the stored file.
+	const caseInsensitiveLayers = (seed: MemoryFileSystemSeed) =>
+		Layer.mergeAll(SchemaFile.layer, AjvValidator.layer).pipe(
+			Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith(seed, { caseSensitive: false }), Path.layer)),
 		);
 
 	it.effect("on a case-insensitive volume a case-only rename leftover is the config's own slice", () =>
@@ -1184,11 +1170,7 @@ describe("Runner.run catalog slices", () => {
 			const checked = yield* Runner.run(cataloged("Docs", ["alpha"]), options("check"));
 			assert.isFalse(checked.wrote);
 			assert.strictEqual(checked.catalog?.merged?.outcome, "unchanged");
-		}).pipe(
-			Effect.provide(
-				caseInsensitiveLayers({ [sliceOf("docs")]: entryText("alpha") }, sliceOf("Docs"), sliceOf("docs")),
-			),
-		),
+		}).pipe(Effect.provide(caseInsensitiveLayers({ [sliceOf("docs")]: entryText("alpha") }))),
 	);
 
 	it.effect("on a case-sensitive volume a case-only rename leftover blocks the first build like any rename", () =>
