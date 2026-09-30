@@ -372,7 +372,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 		}),
 	);
 
-	it.effect("a link cycle resolves to absence rather than spinning", () =>
+	it.effect("a link cycle is absent to exists and ELOOP to readFile, as on a real filesystem", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
 				"/loop/a": MemoryFileSystem.symlink("/loop/b"),
@@ -380,7 +380,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 			});
 			const sync = MemoryFileSystem.syncFileSystem(volume);
 			assert.isFalse(sync.exists("/loop/a"));
-			assert.throws(() => sync.readFile("/loop/a"), /ENOENT/);
+			assert.throws(() => sync.readFile("/loop/a"), /ELOOP/);
 		}),
 	);
 
@@ -402,7 +402,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 					assert.fail("readFile should have thrown on an unseeded path");
 				} catch (error) {
 					assert.strictEqual((error as { code?: string }).code, "ENOENT");
-					assert.strictEqual((error as { syscall?: string }).syscall, "readFile");
+					assert.strictEqual((error as { syscall?: string }).syscall, "open");
 					assert.strictEqual((error as { path?: string }).path, "/repo/absent");
 				}
 			});

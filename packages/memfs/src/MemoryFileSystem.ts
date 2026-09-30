@@ -6,7 +6,7 @@
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer } from "effect";
 import { nodeErrno } from "./internal/errno.js";
-import { makeSyncFileSystem } from "./internal/ports.js";
+import { makeSyncFileSystem, withFaults } from "./internal/ports.js";
 import { normalizeAbsolute, seedWith } from "./internal/seed.js";
 import * as internal from "./internal/volume.js";
 
@@ -160,7 +160,7 @@ export type MemoryFileSystemErrnoError = Error & {
  *
  * @remarks
  * The shape is the `node:fs` synchronous subset — `existsSync`,
- * `readFileSync(p, "utf8")`, `readdirSync`, `statSync(p).isDirectory()` — which
+ * `readFileSync(p, "utf8")`, `readdirSync`, `statSync`/`lstatSync` — which
  * is also the port `@effected/workspaces` asks its sync entry points for.
  * Satisfaction is **structural**: this package declares its own type and
  * imports nothing, so no kit edge is created in either direction.
@@ -178,19 +178,70 @@ export type MemoryFileSystemErrnoError = Error & {
  * that fabricated-content case is the bug this package exists to prevent.
  * Errors carry the `code` the Node binding would raise: `ENOENT` for an absent
  * path, `EISDIR` for reading a directory as a file, `ENOTDIR` for listing a
- * non-directory.
+ * non-directory, `ELOOP` for a link cycle. The `syscall` matches node's for the
+ * same call (`open`, `read`, `scandir`, `stat`, `lstat`).
+ *
+ * Members are standalone functions, not methods: pass them as callbacks
+ * without binding.
  *
  * @public
  */
 export interface MemoryFileSystemSyncFileSystem {
 	/** Whether anything exists at `path`, following links. A dangling link is absent. Never throws. */
 	readonly exists: (path: string) => boolean;
-	/** The UTF-8 contents of the file at `path`, following links. Throws `ENOENT`/`EISDIR`/`ENOTDIR`. */
+	/** The UTF-8 contents of the file at `path`, following links. Throws `ENOENT`/`EISDIR`/`ENOTDIR`/`ELOOP`. */
 	readonly readFile: (path: string) => string;
-	/** The entry names inside the directory at `path`, following links. Throws `ENOENT`/`ENOTDIR`. */
+	/** The entry names inside the directory at `path`, following links. Throws `ENOENT`/`ENOTDIR`/`ELOOP`. */
 	readonly readDirectory: (path: string) => ReadonlyArray<string>;
 	/** Whether `path` resolves to a directory, following links — as `statSync(p).isDirectory()` does. */
 	readonly isDirectory: (path: string) => boolean;
+	/** `statSync`: follows links. Throws `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "stat"`. */
+	readonly stat: (path: string) => MemoryFileSystemPortStats;
+	/** `lstatSync`: does not follow a final link. Throws `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "lstat"`. */
+	readonly lstat: (path: string) => MemoryFileSystemPortStats;
+}
+
+/**
+ * The stats a {@link MemoryFileSystemSyncFileSystem} `stat`/`lstat` answers —
+ * the `node:fs` `Stats` subset a port consumer reads.
+ *
+ * @public
+ */
+export interface MemoryFileSystemPortStats {
+	/** Whether the entry is a regular file. */
+	isFile(): boolean;
+	/** Whether the entry is a directory. */
+	isDirectory(): boolean;
+	/** Whether the entry is a symbolic link (only ever true for `lstat`). */
+	isSymbolicLink(): boolean;
+	/** The modification time as epoch milliseconds. */
+	readonly mtimeMs: number;
+	/** File byte length, symlink target UTF-8 byte length, or `0` for a directory. */
+	readonly size: number;
+}
+
+/**
+ * Fault handlers for a {@link MemoryFileSystemSyncFileSystem}: each receives
+ * the real call arguments and may throw (an errno built with
+ * {@link MemoryFileSystem.errno}), return a replacement, or return `undefined`
+ * to delegate to the volume.
+ *
+ * @public
+ */
+export type MemoryFileSystemSyncFaults = {
+	readonly [K in keyof MemoryFileSystemSyncFileSystem]?: (
+		...args: Parameters<MemoryFileSystemSyncFileSystem[K]>
+	) => ReturnType<MemoryFileSystemSyncFileSystem[K]> | undefined;
+};
+
+/**
+ * Options for a synchronous port built over a volume.
+ *
+ * @public
+ */
+export interface MemoryFileSystemPortOptions<Faults> {
+	/** Handlers that intercept individual port members. */
+	readonly faults?: Faults | undefined;
 }
 
 /**
@@ -1077,8 +1128,16 @@ export class MemoryFileSystem {
 	 * sync.readDirectory("/repo"); // => ["package.json", "packages"]
 	 * ```
 	 */
-	static readonly syncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem =>
-		makeSyncFileSystem(volume);
+	static readonly syncFileSystem = (
+		volume: MemoryFileSystemVolume,
+		options?: MemoryFileSystemPortOptions<MemoryFileSystemSyncFaults>,
+	): MemoryFileSystemSyncFileSystem =>
+		withFaults(
+			makeSyncFileSystem(volume),
+			options?.faults as
+				| Partial<Record<keyof MemoryFileSystemSyncFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
+				| undefined,
+		);
 
 	/**
 	 * Builds a fresh, empty volume exposed twice: as the `FileSystem` service

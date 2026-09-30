@@ -55,3 +55,142 @@ describe("MemoryFileSystem.errno", () => {
 		assert.match(e.message, /EACCES/);
 	});
 });
+
+const tree = MemoryFileSystem.makeInspectableWith({
+	"/r/file.txt": MemoryFileSystem.file("hello", { mtime: 5_000 }),
+	"/r/dir/inner.txt": "x",
+	"/r/to-dir": MemoryFileSystem.symlink("/r/dir"),
+	"/r/dangling": MemoryFileSystem.symlink("/r/missing"),
+	"/r/loop-a": MemoryFileSystem.symlink("/r/loop-b"),
+	"/r/loop-b": MemoryFileSystem.symlink("/r/loop-a"),
+});
+
+const thrown = (f: () => unknown): { code?: string; syscall?: string; path?: string } => {
+	try {
+		f();
+	} catch (e) {
+		return e as { code?: string; syscall?: string; path?: string };
+	}
+	throw new Error("expected a throw");
+};
+
+describe("sync port stat/lstat", () => {
+	it.effect("stat follows links; lstat does not", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.isTrue(sync.stat("/r/to-dir").isDirectory());
+			assert.isFalse(sync.stat("/r/to-dir").isSymbolicLink());
+			assert.isTrue(sync.lstat("/r/to-dir").isSymbolicLink());
+			assert.isFalse(sync.lstat("/r/to-dir").isDirectory());
+			assert.strictEqual(sync.stat("/r/file.txt").mtimeMs, 5_000);
+			assert.strictEqual(sync.stat("/r/file.txt").size, 5);
+		}),
+	);
+
+	it.effect("absence throws ENOENT with code/syscall/path", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.deepInclude(
+				thrown(() => sync.stat("/r/nope")),
+				{ code: "ENOENT", syscall: "stat", path: "/r/nope" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.stat("/r/dangling")),
+				{ code: "ENOENT", syscall: "stat" },
+			);
+			assert.strictEqual(sync.lstat("/r/dangling").isSymbolicLink(), true);
+		}),
+	);
+
+	it.effect("a path through a file is ENOTDIR; a cycle is ELOOP; exists stays false for both", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(thrown(() => sync.stat("/r/file.txt/child")).code, "ENOTDIR");
+			assert.strictEqual(thrown(() => sync.stat("/r/loop-a")).code, "ELOOP");
+			assert.isFalse(sync.exists("/r/file.txt/child"));
+			assert.isFalse(sync.exists("/r/loop-a"));
+		}),
+	);
+
+	it.effect("a cycle spread across nested link targets still terminates as ELOOP", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+				"/c/a": MemoryFileSystem.symlink("/c/b/x"),
+				"/c/b": MemoryFileSystem.symlink("/c/a"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(thrown(() => sync.stat("/c/a")).code, "ELOOP");
+		}),
+	);
+
+	it.effect("readFile and readDirectory throw node's syscalls (open, read, scandir)", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.deepInclude(
+				thrown(() => sync.readFile("/r/nope")),
+				{ code: "ENOENT", syscall: "open" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.readFile("/r/dir")),
+				{ code: "EISDIR", syscall: "read" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.readDirectory("/r/nope")),
+				{ code: "ENOENT", syscall: "scandir" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.readDirectory("/r/file.txt")),
+				{ code: "ENOTDIR", syscall: "scandir" },
+			);
+		}),
+	);
+});
+
+describe("sync port faults", () => {
+	it.effect("a handler throwing errno replaces one path; others delegate", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume, {
+				faults: {
+					readFile: (path) => {
+						if (path.endsWith("file.txt")) throw MemoryFileSystem.errno("EACCES", "open", path);
+						return undefined;
+					},
+				},
+			});
+			assert.deepInclude(
+				thrown(() => sync.readFile("/r/file.txt")),
+				{ code: "EACCES", syscall: "open" },
+			);
+			assert.strictEqual(sync.readFile("/r/dir/inner.txt"), "x");
+			assert.isTrue(sync.exists("/r/file.txt"));
+		}),
+	);
+
+	it.effect("a handler may return a replacement value", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume, { faults: { exists: () => false } });
+			assert.isFalse(sync.exists("/r/file.txt"));
+		}),
+	);
+});
+
+describe("sync port members are unbound-safe", () => {
+	it.effect("every member works when detached from the port object", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const { exists, readFile, readDirectory, isDirectory, stat, lstat } = MemoryFileSystem.syncFileSystem(volume);
+			assert.isTrue(exists("/r/file.txt"));
+			assert.strictEqual(readFile("/r/file.txt"), "hello");
+			assert.deepStrictEqual(readDirectory("/r/dir"), ["inner.txt"]);
+			assert.isTrue(isDirectory("/r/dir"));
+			assert.isTrue(stat("/r/file.txt").isFile());
+			assert.isTrue(lstat("/r/to-dir").isSymbolicLink());
+		}),
+	);
+});
