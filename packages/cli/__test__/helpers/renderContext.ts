@@ -73,3 +73,38 @@ export const linksOf = (
 	}
 	return { pairs, wrapped: stripAnsi(wrapped), balanced: balanced && !open };
 };
+
+const TOKEN_IDS: Readonly<Record<string, number>> = {
+	success: 1,
+	failure: 2,
+	warning: 3,
+	info: 4,
+	error: 5,
+	muted: 6,
+	accent: 7,
+	emphasis: 8,
+};
+
+/**
+ * A `paint` that marks text with its token name, so a test can decode SGR back to tokens without pinning what a
+ * real theme emits. A style object is marked `style`.
+ */
+export const tokenPaint = (token: string | object, text: string): string =>
+	`\u001B[38;5;${typeof token === "string" ? (TOKEN_IDS[token] ?? 99) : 100}m${text}\u001B[39m`;
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: decoding SGR
+const TOKEN_RUN = /\u001B\[38;5;(\d+)m([^\u001B]*)\u001B\[39m/g;
+
+/** The tokens of a `tokenPaint` string, in order, as `[token, text]`; unpainted text is `[undefined, text]`. */
+export const decodeTokens = (painted: string): ReadonlyArray<readonly [string | undefined, string]> => {
+	const names = Object.fromEntries(Object.entries(TOKEN_IDS).map(([name, id]) => [String(id), name]));
+	const out: Array<readonly [string | undefined, string]> = [];
+	let last = 0;
+	for (const match of painted.matchAll(TOKEN_RUN)) {
+		if (match.index > last) out.push([undefined, painted.slice(last, match.index)]);
+		out.push([names[match[1] ?? ""] ?? (match[1] === "100" ? "style" : "?"), match[2] ?? ""]);
+		last = match.index + match[0].length;
+	}
+	if (last < painted.length) out.push([undefined, painted.slice(last)]);
+	return out;
+};

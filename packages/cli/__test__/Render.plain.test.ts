@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import type { Block, RenderContext } from "../src/index.js";
-import { Doc, Glyphs, Render, Status, Token } from "../src/index.js";
+import { Doc, Glyphs, Render, Status } from "../src/index.js";
 import { displayWidth } from "../src/internal/displayWidth.js";
+import { ESC, composite } from "./helpers/hostileDoc.js";
 import { contextOf } from "./helpers/renderContext.js";
 
 const plain = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
@@ -12,56 +13,8 @@ const linesOf = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = 
 	Effect.map(plain(doc, overrides), (out) => out.split("\n"));
 
 const BOX = /[─│┌┐└┘├┤┬┴┼═║╔╗╚╝]/;
-const ESC = "\u001B";
 
 describe("Render.plain: no escapes of any kind (Review Focus 2)", () => {
-	// User text that CONTAINS escape bytes in every place a string can enter a document.
-	const SGR = `${ESC}[31mred${ESC}[0m`;
-	const OSC = `${ESC}]8;;https://evil.test\u0007click${ESC}]8;;\u0007`;
-	const LONE = `lone${ESC}escape`;
-	const BELL = "bell\u0007\tafter";
-
-	const composite = (): ReadonlyArray<Block> => {
-		const vocab = Status.core;
-		return [
-			Doc.heading(1, [SGR, Doc.code(OSC)]),
-			Doc.paragraph(
-				Doc.status(vocab, "failure"),
-				" ",
-				Doc.text(SGR, "failure"),
-				" ",
-				Doc.text(LONE, Token.style({ bold: true, fg: "#ff0000" })),
-				" ",
-				Doc.path(SGR, LONE, BELL),
-				" ",
-				Doc.link({ url: `https://x.test/${LONE}` }, [Doc.text(OSC, "info")]),
-				" ",
-				Doc.link({ file: `/repo/${SGR}.ts`, line: 3, col: 4 }, LONE),
-			),
-			Doc.list([Doc.paragraph(SGR)], { cap: 0, overflow: (hidden) => [`${hidden} ${OSC}`] }),
-			Doc.table([{ header: SGR }, { header: LONE, align: "right" }], [[OSC, BELL]]),
-			Doc.tree({ label: SGR, children: [{ label: [Doc.code(LONE)] }] }),
-			Doc.collapsible(OSC, [Doc.paragraph(BELL)], { open: true }),
-			Doc.callout("warning", [Doc.paragraph(SGR)]),
-			Doc.codeBlock(`${SGR}\n${LONE}\n${OSC}`, "ts"),
-			Doc.diff(`${SGR}\n${LONE}`, `${OSC}\n${BELL}`),
-			Doc.section(SGR, [
-				Doc.counts({
-					label: SGR,
-					counters: [
-						Doc.counter(vocab, "failure", { key: "f", label: `fail ${SGR}`, n: 2 }),
-						Doc.counter(vocab, "success", { key: "p", label: LONE, n: 3 }),
-					],
-					qualifier: OSC,
-					durationMs: 1234,
-					layout: "inline",
-				}),
-				Doc.counts({ counters: [Doc.counter(vocab, "failure", { key: "f", label: OSC, n: 1 })], layout: "columns" }),
-				Doc.counts({ counters: [Doc.counter(vocab, "failure", { key: "f", label: BELL, n: 1 })], layout: "row" }),
-			]),
-		];
-	};
-
 	for (const [name, overrides] of [
 		["human audience, truecolor, hyperlinks available", {}],
 		["agent audience", { audience: "agent" as const }],
@@ -70,7 +23,7 @@ describe("Render.plain: no escapes of any kind (Review Focus 2)", () => {
 	] as const) {
 		it.effect(`${name}: no ESC, BEL or other control byte, whatever paint and link would have done`, () =>
 			Effect.gen(function* () {
-				const out = yield* plain(composite(), overrides);
+				const out = yield* plain(composite({ codeAndPath: true }), overrides);
 				assert.notInclude(out, ESC);
 				assert.notInclude(out, "\u0007");
 				// Everything but line feeds: no control character remains, a tab included.
@@ -85,7 +38,7 @@ describe("Render.plain: no escapes of any kind (Review Focus 2)", () => {
 	it.effect("paint and link are never called", () =>
 		Effect.gen(function* () {
 			const calls: Array<string> = [];
-			const out = yield* plain(composite(), {
+			const out = yield* plain(composite({ codeAndPath: true }), {
 				paint: (_token, text) => {
 					calls.push("paint");
 					return `${ESC}[1m${text}${ESC}[0m`;

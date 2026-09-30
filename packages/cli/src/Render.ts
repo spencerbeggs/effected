@@ -1,6 +1,7 @@
 import type { AudienceKind, ColorLevel } from "@effected/env";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
+import { renderAnsi } from "./internal/renderAnsi.js";
 import { renderPlain } from "./internal/renderPlain.js";
 import type { Style, TokenName } from "./Token.js";
 
@@ -69,4 +70,31 @@ export class Render {
 	 * @param ctx - where the output is going
 	 */
 	static readonly plain = (doc: Document, ctx: RenderContext): string => renderPlain(doc, ctx);
+
+	/**
+	 * Render a document for a person: the same layout as {@link Render.plain}, painted and linked.
+	 *
+	 * @remarks
+	 * The context's `paint` and `link` do the styling, so a context at colour `none` with links off gives exactly
+	 * what `plain` gives, apart from two things: code has no backticks (it is painted `accent` instead), and a path
+	 * joins with the audience's separator (`›` for a person) rather than ` > `. Tokens:
+	 *
+	 * - headings, section and collapsible titles, and table headers are `emphasis`; the rule under a header, tree
+	 *   lines and overflow rows are `muted`;
+	 * - a status glyph takes its definition's token, and a diff's `-` lines are `failure` and `+` lines `success`;
+	 * - a callout's label takes its kind's token (`note` info, `tip` success, `important` accent, `warning` warning,
+	 *   `caution` error), and a counter the token of its status, with the qualifier and the duration `muted`.
+	 *
+	 * A link goes through `ctx.link`, which makes an OSC 8 hyperlink only when the policy allows it. When it does
+	 * not (it returns the label unchanged), the target follows the label in parentheses, muted, as in plain text.
+	 *
+	 * Text is cut and wrapped before it is painted, so a colour or a hyperlink is never cut in half, and a table
+	 * cut to the width keeps the colour of what remains. Tables are plain aligned columns, never box drawing:
+	 * box drawing costs two columns of every row for nothing a rule and the padding do not already say, and it
+	 * cannot be matched to plain text.
+	 *
+	 * @param doc - the document
+	 * @param ctx - where the output is going
+	 */
+	static readonly ansi = (doc: Document, ctx: RenderContext): string => renderAnsi(doc, ctx);
 }
