@@ -47,15 +47,21 @@ export const sanitize = (input: string): string => stripAnsi(input).replace(/\t/
 const pathSeparator = (ctx: RenderContext): string =>
 	ctx.audience === "agent" ? ctx.glyphs.pathSeparator.agent : ` ${ctx.glyphs.pathSeparator.human} `;
 
+const safeTarget = (target: LinkTarget): LinkTarget =>
+	"url" in target ? { url: sanitize(target.url) } : { ...target, file: sanitize(target.file) };
+
 const spansOf = (inline: Inline, ctx: RenderContext): ReadonlyArray<Span> => {
 	switch (inline._tag) {
 		case "Text":
 			return [{ text: sanitize(inline.value), ...(inline.token === undefined ? {} : { token: inline.token }) }];
 		case "Code":
 			return [{ text: sanitize(inline.value), code: true }];
-		case "Link":
-			// Links do not nest: the outer target wins over one inside the label.
-			return inline.label.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, link: inline.target }));
+		case "Link": {
+			// Links do not nest: the outer target wins over one inside the label. The target is sanitized like content,
+			// since a control character in a URL ends an OSC 8 early; one copy is shared by every span of the link.
+			const link = safeTarget(inline.target);
+			return inline.label.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, link }));
+		}
 		case "StatusMark":
 			return [
 				{ text: sanitize(ctx.glyphs.kind === "ascii" ? inline.def.ascii : inline.def.glyph), token: inline.def.token },
@@ -71,7 +77,8 @@ const spansOf = (inline: Inline, ctx: RenderContext): ReadonlyArray<Span> => {
  * @remarks
  * A `Path` becomes its segments joined by the audience's separator (`›` with spaces around it for a person, ` > `
  * for an agent), a `StatusMark` its glyph from the context's glyph set painted with the definition's token, and a
- * `Code` its text with `code` set. Escape sequences in content are removed and empty spans dropped.
+ * `Code` its text with `code` set. Escape sequences in content and in link targets are removed and empty spans
+ * dropped.
  *
  * @internal
  */

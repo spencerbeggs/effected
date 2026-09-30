@@ -76,6 +76,22 @@ describe("flatten", () => {
 		}),
 	);
 
+	it.effect("sanitizes a link target too, so a hostile URL cannot end an OSC 8 early", () =>
+		Effect.gen(function* () {
+			const ctx = yield* contextOf();
+			const hostile = "\u001B]8;;x\u0007https://evil.test/\u0007\u001B[2J";
+			const [url, file] = [
+				flatten([Doc.link({ url: hostile }, "a")], ctx),
+				flatten([Doc.link({ file: `/repo/${hostile}.ts`, line: 3, col: 4 }, "b")], ctx),
+			];
+			assert.deepStrictEqual(url[0]?.link, { url: "https://evil.test/" });
+			assert.deepStrictEqual(file[0]?.link, { file: "/repo/https://evil.test/.ts", line: 3, col: 4 });
+			const links = linksOf(paintSpans(url, ctx));
+			assert.isTrue(links.balanced);
+			assert.strictEqual(links.pairs, 1);
+		}),
+	);
+
 	it.effect("drops escape sequences and empty spans from content", () =>
 		Effect.gen(function* () {
 			const ctx = yield* contextOf();
