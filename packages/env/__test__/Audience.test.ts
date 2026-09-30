@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Logger, Option } from "effect";
+import type { AudienceOptions } from "../src/Audience.js";
 import { Audience } from "../src/Audience.js";
 import { CurrentRuntimeEnv, RuntimeEnv } from "../src/RuntimeEnv.js";
 
@@ -15,7 +16,7 @@ const capture = (lines: Array<{ readonly level: string; readonly text: string }>
 	]);
 
 const runtime = (fields: { agent?: string; ci?: string }) =>
-	new RuntimeEnv({
+	RuntimeEnv.make({
 		agent: Option.fromNullishOr(fields.agent),
 		ci: Option.fromNullishOr(fields.ci),
 		terminal: Option.none(),
@@ -136,6 +137,13 @@ describe("Audience.layer", () => {
 	);
 });
 
+describe("Audience options", () => {
+	it("the named options type is the one layer takes", () => {
+		const options: AudienceOptions = { envVar: "OKFIT_AUDIENCE" };
+		assert.isDefined(Audience.layer(options));
+	});
+});
+
 describe("Audience.layerTest", () => {
 	it.effect("fixes the kind as an override and needs nothing", () =>
 		Effect.gen(function* () {
@@ -150,6 +158,7 @@ describe("Audience.layerTest", () => {
 				yield* Audience.pipe(Effect.provide(Audience.layerTest("human", "detected"))),
 				yield* Audience.pipe(Effect.provide(Audience.layerTest("human", "override"))),
 				yield* Audience.pipe(Effect.provide(Audience.layerTest("agent"))),
+				yield* Audience.pipe(Effect.provide(Audience.layerTest("ci", "flag"))),
 			];
 			assert.deepStrictEqual(
 				audiences.map((audience) => ({ ...audience })),
@@ -157,6 +166,7 @@ describe("Audience.layerTest", () => {
 					{ kind: "human", source: "detected" },
 					{ kind: "human", source: "override" },
 					{ kind: "agent", source: "override" },
+					{ kind: "ci", source: "flag" },
 				],
 			);
 		}),

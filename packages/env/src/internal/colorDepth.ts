@@ -1,13 +1,7 @@
 // Port of Node v26.10.0 lib/internal/tty.js getColorDepth (MIT). Differences: no win32 branch (no
 // process.platform read), no warning side effect, TTY gate applied here.
+import type { ColorLevel } from "../ColorLevel.js";
 import type { Env } from "./types.js";
-
-/**
- * The colour support of one output stream: none, 16 colours, 256 colours or truecolor.
- *
- * @public
- */
-export type ColorLevel = "none" | "basic" | "256" | "truecolor";
 
 // Some entries were taken from `dircolors`. The corresponding terminals might
 // support more than 16 colours, but this was not tested for.

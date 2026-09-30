@@ -18,10 +18,21 @@ export interface AudienceShape {
 	/** Who the output is for. */
 	readonly kind: AudienceKind;
 	/**
-	 * Whether the override environment variable decided the kind, so a layer stacked on top (a CLI flag) knows
-	 * whether the variable already spoke.
+	 * What decided the kind: the override environment variable, detection, or a flag. `Audience.layer` produces
+	 * `override` or `detected`; `flag` is for a layer stacked on top (a CLI's `--audience` flag re-provides
+	 * `Audience`), which lets its own consumers tell what spoke last.
 	 */
-	readonly source: "override" | "detected";
+	readonly source: "override" | "detected" | "flag";
+}
+
+/**
+ * The options {@link Audience.layer} takes.
+ *
+ * @public
+ */
+export interface AudienceOptions {
+	/** The environment variable that overrides detection; without it the audience is always detected. */
+	readonly envVar?: string;
 }
 
 const KINDS: ReadonlyArray<AudienceKind> = ["human", "agent", "ci"];
@@ -45,12 +56,14 @@ export class Audience extends Context.Service<Audience, AudienceShape>()("@effec
 	 * The variable is read through `Config`, lower-cased and matched against `human`, `agent` and `ci`. An empty
 	 * or absent variable is unset. An invalid value logs one warning through `Effect.logWarning` and falls back to
 	 * detection; it never fails the run. That warning is once per layer build, so building the layer a second time
-	 * warns again. Without `options.envVar` the audience is always detected. A layer-returning function mints a
+	 * warns again. The warning goes through `Effect.logWarning`, and Effect's default logger writes to stdout unless
+	 * `References.LogToStderr` is set: an MCP server or any stdio-sensitive host must route logs to stderr (the `cli`
+	 * package's `CliLogger` does). Without `options.envVar` the audience is always detected. A layer-returning function mints a
 	 * fresh layer per call: call it once and bind the result to a constant.
 	 *
 	 * @param options - `envVar` names the override variable
 	 */
-	static layer(options?: { readonly envVar?: string }): Layer.Layer<Audience, never, CurrentRuntimeEnv> {
+	static layer(options?: AudienceOptions): Layer.Layer<Audience, never, CurrentRuntimeEnv> {
 		return Layer.effect(
 			Audience,
 			Effect.gen(function* () {
@@ -77,10 +90,11 @@ export class Audience extends Context.Service<Audience, AudienceShape>()("@effec
 	 *
 	 * @remarks
 	 * `source` defaults to `override`, since a test that fixes the kind has decided it. Pass `detected` to test a
-	 * layer stacked on top, such as a CLI flag that only applies when the environment variable did not decide.
+	 * layer stacked on top, such as a CLI flag that only applies when the environment variable did not decide, or
+	 * `flag` to test a consumer of that layer's result.
 	 *
 	 * @param kind - the audience to fix
-	 * @param source - whether the override variable or detection decided it; defaults to `override`
+	 * @param source - what decided it: `override` (the default), `detected`, or `flag`
 	 */
 	static readonly layerTest = (
 		kind: AudienceKind,

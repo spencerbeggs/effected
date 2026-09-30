@@ -21,7 +21,9 @@ export class EnvOverride {
 	 * Matching is case-insensitive and yields the accepted literal, so the result narrows to the union of every
 	 * audience's literals. An unset or empty variable is `None`. A value the current audience does not accept logs
 	 * one warning through `Effect.logWarning`, naming the accepted values, and is `None`; it never fails the run.
-	 * The warning is once per read, so reading again warns again.
+	 * The warning is once per read, so reading again warns again. It goes through `Effect.logWarning`, and Effect's
+	 * default logger writes to stdout unless `References.LogToStderr` is set: an MCP server or any stdio-sensitive
+	 * host must route logs to stderr (the `cli` package's `CliLogger` does).
 	 *
 	 * @param options - `envVar` is the variable; `accepts` lists, per audience, the literals it accepts
 	 */

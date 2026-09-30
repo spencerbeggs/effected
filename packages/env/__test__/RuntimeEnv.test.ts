@@ -61,7 +61,7 @@ describe("RuntimeEnv", () => {
 
 	it("round-trips through JSON text (persistable snapshot)", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
-		const value = new RuntimeEnv({
+		const value = RuntimeEnv.make({
 			agent: Option.some("claude"),
 			ci: Option.none(),
 			terminal: Option.some({ name: "iTerm.app", version: Option.some("3.5.0") }),
@@ -97,7 +97,7 @@ describe("RuntimeEnv", () => {
 
 	it("round-trips the all-none snapshot", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
-		const value = new RuntimeEnv({ agent: Option.none(), ci: Option.none(), terminal: Option.none() });
+		const value = RuntimeEnv.make({ agent: Option.none(), ci: Option.none(), terminal: Option.none() });
 		assert.strictEqual(Schema.encodeSync(codec)(value), '{"agent":null,"ci":null,"terminal":null}');
 		assert.deepStrictEqual(Schema.decodeSync(codec)('{"agent":null,"ci":null,"terminal":null}'), value);
 	});

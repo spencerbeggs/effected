@@ -1,6 +1,6 @@
 import type { Stdio as StdioModule, Terminal as TerminalModule } from "effect";
 import { Context, Effect, Layer, Option, Stdio, Terminal } from "effect";
-import type { ColorLevel } from "./internal/colorDepth.js";
+import type { ColorLevel } from "./ColorLevel.js";
 import { colorDepth, colorKeys } from "./internal/colorDepth.js";
 import { readEnv } from "./internal/envRecord.js";
 import { allKeys } from "./internal/keys.js";
@@ -16,10 +16,46 @@ export interface StreamEnv {
 	readonly isTerminal: boolean;
 	/** The colour level: `none` unless the stream is a terminal or `FORCE_COLOR` says otherwise. */
 	readonly color: ColorLevel;
-	/** Whether OSC 8 hyperlinks render on this stream: a hyperlink-capable terminal, and the stream is a terminal. */
+	/**
+	 * Whether the terminal can render OSC 8 hyperlinks on this stream: a hyperlink-capable terminal, and the stream
+	 * is a terminal.
+	 *
+	 * @remarks
+	 * This is terminal capability only and does not consider the audience. Turning links off for an agent audience
+	 * is applied by `@effected/cli`, where the audience is known.
+	 */
 	readonly hyperlinks: boolean;
-	/** The terminal width in columns, or `None` when it is unknown. */
+	/**
+	 * The terminal width in columns, or `None` when it is unknown.
+	 *
+	 * @remarks
+	 * Core's `Terminal` exposes one width, so `stderr.columns` reports stdout's width.
+	 */
 	readonly columns: Option.Option<number>;
+}
+
+/**
+ * The options {@link TerminalEnv.layer} takes.
+ *
+ * @public
+ */
+export interface TerminalEnvOptions {
+	/** Overrides the stderr TTY check; `Stdio` reports only stdout, so stderr mirrors stdout when this is omitted. */
+	readonly stderrIsTerminal?: Effect.Effect<boolean>;
+}
+
+/**
+ * The options {@link TerminalEnv.layerTest} takes: fields to set over the quiet terminal.
+ *
+ * @public
+ */
+export interface TerminalEnvTestOptions {
+	/** Whether standard input is a terminal. */
+	readonly stdinIsTerminal?: boolean;
+	/** Fields merged over the quiet stdout. */
+	readonly stdout?: Partial<StreamEnv>;
+	/** Fields merged over the quiet stderr. */
+	readonly stderr?: Partial<StreamEnv>;
 }
 
 /**
@@ -32,7 +68,7 @@ export interface TerminalEnvShape {
 	readonly stdinIsTerminal: boolean;
 	/** The capabilities of standard output. */
 	readonly stdout: StreamEnv;
-	/** The capabilities of standard error. */
+	/** The capabilities of standard error; its `columns` is stdout's width, since core's `Terminal` has one. */
 	readonly stderr: StreamEnv;
 	/**
 	 * The width to lay output out at: the stdout columns, else the `COLUMNS` variable, else `fallback`.
@@ -82,9 +118,9 @@ export class TerminalEnv extends Context.Service<TerminalEnv, TerminalEnvShape>(
 	 *
 	 * @param options - `stderrIsTerminal` overrides the stderr TTY check
 	 */
-	static layer(options?: {
-		readonly stderrIsTerminal?: Effect.Effect<boolean>;
-	}): Layer.Layer<TerminalEnv, never, StdioModule.Stdio | TerminalModule.Terminal> {
+	static layer(
+		options?: TerminalEnvOptions,
+	): Layer.Layer<TerminalEnv, never, StdioModule.Stdio | TerminalModule.Terminal> {
 		return Layer.effect(
 			TerminalEnv,
 			Effect.gen(function* () {
@@ -106,11 +142,7 @@ export class TerminalEnv extends Context.Service<TerminalEnv, TerminalEnvShape>(
 	 *
 	 * @param partial - the fields to set; `stdout` and `stderr` are merged over the quiet stream
 	 */
-	static readonly layerTest = (partial?: {
-		readonly stdinIsTerminal?: boolean;
-		readonly stdout?: Partial<StreamEnv>;
-		readonly stderr?: Partial<StreamEnv>;
-	}): Layer.Layer<TerminalEnv> => {
+	static readonly layerTest = (partial?: TerminalEnvTestOptions): Layer.Layer<TerminalEnv> => {
 		const stdout: StreamEnv = { ...quiet, ...partial?.stdout };
 		return Layer.succeed(TerminalEnv, {
 			stdinIsTerminal: partial?.stdinIsTerminal ?? false,
@@ -121,16 +153,20 @@ export class TerminalEnv extends Context.Service<TerminalEnv, TerminalEnvShape>(
 	};
 
 	/**
-	 * The colour level of a stream, decided from `Config` and `Stdio` alone.
+	 * The colour level of a stream.
 	 *
 	 * @remarks
-	 * Requires only `Stdio`, never `Terminal`, so a caller that only decides colour (a CLI's output formatter)
-	 * keeps a `Stdio`-only requirement.
+	 * An ambient `TerminalEnv`, when one is provided, answers with its stdout colour, so a test that fixes the
+	 * terminal with `layerTest` also fixes this. Without one it is decided from `Config` and `Stdio` alone. It
+	 * requires only `Stdio`, never `Terminal` or `TerminalEnv`, so a caller that only decides colour (a CLI's
+	 * output formatter) keeps a `Stdio`-only requirement.
 	 *
 	 * @param _stream - the stream to decide for; only `stdout` is available, since `Stdio` reports no other
 	 */
 	static colorLevel(_stream: "stdout"): Effect.Effect<ColorLevel, never, StdioModule.Stdio> {
 		return Effect.gen(function* () {
+			const ambient = yield* Effect.serviceOption(TerminalEnv);
+			if (Option.isSome(ambient)) return ambient.value.stdout.color;
 			const stdio = yield* Stdio.Stdio;
 			const isTTY = yield* stdio.stdoutIsTerminal;
 			return colorDepth(yield* readEnv(colorKeys), isTTY);

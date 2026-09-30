@@ -67,14 +67,12 @@ export class CurrentRuntimeEnv extends Context.Service<CurrentRuntimeEnv, Runtim
 	 */
 	static readonly layer: Layer.Layer<CurrentRuntimeEnv> = Layer.effect(
 		this,
-		Effect.map(
-			readEnv(allKeys),
-			(env) =>
-				new RuntimeEnv({
-					agent: detectAgent(env),
-					ci: detectCi(env),
-					terminal: detectOsc8(env, false, false).terminal,
-				}),
+		Effect.map(readEnv(allKeys), (env) =>
+			RuntimeEnv.make({
+				agent: detectAgent(env),
+				ci: detectCi(env),
+				terminal: detectOsc8(env, false, false).terminal,
+			}),
 		),
 	);
 
@@ -86,7 +84,7 @@ export class CurrentRuntimeEnv extends Context.Service<CurrentRuntimeEnv, Runtim
 	static readonly layerTest = (overrides: RuntimeEnvOverrides = {}): Layer.Layer<CurrentRuntimeEnv> =>
 		Layer.succeed(
 			CurrentRuntimeEnv,
-			new RuntimeEnv({
+			RuntimeEnv.make({
 				agent: overrides.agent ?? Option.none(),
 				ci: overrides.ci ?? Option.none(),
 				terminal: overrides.terminal ?? Option.none(),

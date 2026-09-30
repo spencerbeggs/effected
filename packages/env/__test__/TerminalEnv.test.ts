@@ -1,7 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Option, Stdio, Terminal } from "effect";
-import type { ColorLevel } from "../src/internal/colorDepth.js";
+import type { ColorLevel } from "../src/ColorLevel.js";
 import type { Env } from "../src/internal/types.js";
+import type { TerminalEnvOptions, TerminalEnvTestOptions } from "../src/TerminalEnv.js";
 import { TerminalEnv } from "../src/TerminalEnv.js";
 
 const withEnv = (env: Env) => Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env));
@@ -209,6 +210,25 @@ describe("TerminalEnv.colorLevel", () => {
 			program.pipe(Effect.provide(stdio({ stdout: true })), withEnv({ TERM: "xterm-256color" })),
 			(level) => assert.strictEqual(level, "256"),
 		);
+	});
+
+	it.effect("defers to an ambient TerminalEnv: its stdout colour wins over the Config and Stdio computation", () =>
+		Effect.map(
+			TerminalEnv.colorLevel("stdout").pipe(
+				Effect.provide(TerminalEnv.layerTest({ stdout: { color: "256" } })),
+				Effect.provide(stdio({ stdout: false })),
+				withEnv({}),
+			),
+			(level) => assert.strictEqual(level, "256"),
+		),
+	);
+
+	it.effect("the named options types are the ones layer and layerTest take", () => {
+		const layerOptions: TerminalEnvOptions = { stderrIsTerminal: Effect.succeed(true) };
+		const testOptions: TerminalEnvTestOptions = { stdinIsTerminal: true, stdout: { color: "basic" } };
+		assert.isDefined(TerminalEnv.layer(layerOptions));
+		assert.isDefined(TerminalEnv.layerTest(testOptions));
+		return Effect.void;
 	});
 
 	it.effect("a non-TTY stdout without FORCE_COLOR is none", () =>
