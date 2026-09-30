@@ -1,0 +1,149 @@
+// The case-insensitive volume contract. It runs against the host filesystem
+// first (integration/case-insensitive.int.test.ts, on a case-folding volume
+// such as default APFS) so every expectation below is observed behaviour, not
+// assumed behaviour; the memory engine (CaseInsensitive.test.ts) must then
+// match it. Every case works under a scoped temp directory.
+
+import { assert, describe, it } from "@effect/vitest";
+import type { Layer } from "effect";
+import { Effect, FileSystem } from "effect";
+
+export const caseInsensitiveSuite = (
+	name: string,
+	layer: Layer.Layer<FileSystem.FileSystem, unknown>,
+	options?: { readonly skip?: boolean },
+) =>
+	describe.skipIf(options?.skip === true)(`case-insensitive volume (${name})`, () => {
+		const run = <A>(body: (fs: FileSystem.FileSystem, d: string) => Effect.Effect<A, unknown>) =>
+			Effect.scoped(
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const d = yield* fs.makeTempDirectoryScoped();
+					return yield* body(fs, d);
+				}),
+			).pipe(Effect.provide(layer));
+
+		it.effect("a differently-cased lookup resolves the stored entry", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.writeFileString(`${d}/docs.json`, "{}");
+					assert.strictEqual(yield* fs.readFileString(`${d}/Docs.json`), "{}");
+					assert.strictEqual((yield* fs.stat(`${d}/DOCS.JSON`)).type, "File");
+				}),
+			),
+		);
+
+		it.effect("listings keep the stored spelling", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.writeFileString(`${d}/Docs.json`, "{}");
+					assert.deepStrictEqual(yield* fs.readDirectory(d), ["Docs.json"]);
+				}),
+			),
+		);
+
+		it.effect("a write under a folded name overwrites and keeps the stored spelling", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.writeFileString(`${d}/Docs.json`, "1");
+					yield* fs.writeFileString(`${d}/docs.json`, "2");
+					assert.deepStrictEqual(yield* fs.readDirectory(d), ["Docs.json"]);
+					assert.strictEqual(yield* fs.readFileString(`${d}/DOCS.json`), "2");
+				}),
+			),
+		);
+
+		it.effect("an exclusive create under a folded name is AlreadyExists", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.writeFileString(`${d}/a.txt`, "");
+					const error = yield* Effect.flip(fs.writeFileString(`${d}/A.txt`, "", { flag: "wx" }));
+					assert.strictEqual(error.reason._tag, "AlreadyExists");
+				}),
+			),
+		);
+
+		it.effect("makeDirectory under a folded name is AlreadyExists", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.makeDirectory(`${d}/Dir`);
+					const error = yield* Effect.flip(fs.makeDirectory(`${d}/dir`));
+					assert.strictEqual(error.reason._tag, "AlreadyExists");
+				}),
+			),
+		);
+
+		it.effect("a case-only rename rewrites the spelling and keeps children", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.makeDirectory(`${d}/Dir`);
+					yield* fs.writeFileString(`${d}/Dir/child.txt`, "c");
+					yield* fs.rename(`${d}/Dir`, `${d}/dir`);
+					assert.deepStrictEqual(yield* fs.readDirectory(d), ["dir"]);
+					assert.deepStrictEqual(yield* fs.readDirectory(`${d}/DIR`), ["child.txt"]);
+					assert.strictEqual(yield* fs.readFileString(`${d}/dir/child.txt`), "c");
+				}),
+			),
+		);
+
+		it.effect(
+			"a rename onto a different, folded-equal entry replaces it and keeps the destination's stored spelling",
+			() =>
+				run((fs, d) =>
+					Effect.gen(function* () {
+						yield* fs.writeFileString(`${d}/x.txt`, "src");
+						yield* fs.writeFileString(`${d}/b.txt`, "dst");
+						yield* fs.rename(`${d}/x.txt`, `${d}/B.txt`);
+						const names = yield* fs.readDirectory(d);
+						assert.strictEqual(yield* fs.readFileString(`${d}/b.TXT`), "src");
+						assert.deepStrictEqual(names, ["b.txt"]);
+					}),
+				),
+		);
+
+		it.effect("glob matches a folded pattern and returns the stored spelling", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.writeFileString(`${d}/docs.json`, "{}");
+					assert.deepStrictEqual(yield* fs.glob("*.JSON", { root: d }), ["docs.json"]);
+				}),
+			),
+		);
+
+		// The oracle is Effect's node adapter, which wraps the JS `fs.realpath`:
+		// it resolves links but never canonicalizes case, so components keep the
+		// queried spelling and only a link's target text contributes its own.
+		it.effect("realPath keeps the queried spelling and resolves links to their target text", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					const realD = yield* fs.realPath(d);
+					yield* fs.makeDirectory(`${d}/Pkg`);
+					yield* fs.writeFileString(`${d}/Pkg/Main.ts`, "");
+					yield* fs.symlink(`${d}/Pkg`, `${d}/alias`);
+					assert.strictEqual(yield* fs.realPath(`${d}/pkg/main.TS`), `${realD}/pkg/main.TS`);
+					assert.strictEqual(yield* fs.realPath(`${d}/ALIAS/main.TS`), `${realD}/Pkg/main.TS`);
+				}),
+			),
+		);
+
+		it.effect("a folded path through a symlinked directory resolves", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.makeDirectory(`${d}/pkg`);
+					yield* fs.writeFileString(`${d}/pkg/a.json`, "1");
+					yield* fs.symlink(`${d}/pkg`, `${d}/links`);
+					assert.strictEqual(yield* fs.readFileString(`${d}/Links/A.JSON`), "1");
+				}),
+			),
+		);
+
+		it.effect("remove under a folded name removes the stored entry", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.writeFileString(`${d}/Gone.txt`, "");
+					yield* fs.remove(`${d}/gone.TXT`);
+					assert.deepStrictEqual(yield* fs.readDirectory(d), []);
+				}),
+			),
+		);
+	});
