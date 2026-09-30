@@ -34,6 +34,7 @@ export {
 	type MemoryFileSystemFaultMethod,
 	type MemoryFileSystemFaults,
 	type MemoryFileSystemFaultsFactory,
+	type MemoryFileSystemHandle,
 	type MemoryFileSystemInspectable,
 	type MemoryFileSystemOptions,
 	type MemoryFileSystemPortOptions,

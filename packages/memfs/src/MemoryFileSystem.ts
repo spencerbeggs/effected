@@ -4,9 +4,9 @@
 // of the vendored port.
 
 import type { PlatformError } from "effect";
-import { Context, Effect, FileSystem, Layer } from "effect";
+import { Cause, Context, Effect, Exit, FileSystem, Layer, Path } from "effect";
 import { nodeErrno } from "./internal/errno.js";
-import { makePromisesFileSystem, makeSyncFileSystem, withFaults } from "./internal/ports.js";
+import { makePromisesFileSystem, makeSyncFileSystem, runMutation, withFaults } from "./internal/ports.js";
 import { normalizeAbsolute, seedWith } from "./internal/seed.js";
 import * as internal from "./internal/volume.js";
 
@@ -274,6 +274,45 @@ export type MemoryFileSystemPromisesFaults = {
 		...args: Parameters<MemoryFileSystemPromisesFileSystem[K]>
 	) => ReturnType<MemoryFileSystemPromisesFileSystem[K]> | undefined;
 };
+
+/**
+ * A synchronously built memory volume with every view over it: the `FileSystem`
+ * service, the inspection {@link MemoryFileSystemVolume}, a stable layer, the
+ * two read-only ports, and synchronous mutators — for Promise-style suites
+ * that never touch `Effect`.
+ *
+ * @remarks
+ * All members share ONE volume. `layer` is a fixed value built over that
+ * volume, so every `Effect.provide(handle.layer)` — in one program or many —
+ * sees the same state; it is not rebuilt per provide.
+ *
+ * `sync` and `promises` are read-only views. Mutate through `write`, `mkdir`,
+ * `remove` and `symlink`, which create missing parent directories and throw
+ * node-shaped errors (`code`, `syscall`, `path`) on failure, as the `node:fs`
+ * calls they stand in for do.
+ *
+ * @public
+ */
+export interface MemoryFileSystemHandle {
+	/** The `FileSystem` service over the volume. */
+	readonly fileSystem: FileSystem.FileSystem;
+	/** The synchronous inspection view of the same volume. */
+	readonly volume: MemoryFileSystemVolume;
+	/** Provides `FileSystem` (this volume) and `Path`; stable across provides. */
+	readonly layer: Layer.Layer<FileSystem.FileSystem | Path.Path>;
+	/** The read-only `node:fs` sync port over the volume. */
+	readonly sync: MemoryFileSystemSyncFileSystem;
+	/** The read-only `node:fs/promises` port over the volume. */
+	readonly promises: MemoryFileSystemPromisesFileSystem;
+	/** Writes `content` at `path`, creating parent directories. */
+	readonly write: (path: string, content: string | Uint8Array) => void;
+	/** Creates the directory at `path` (recursively). */
+	readonly mkdir: (path: string) => void;
+	/** Removes `path` (recursively). */
+	readonly remove: (path: string) => void;
+	/** Creates a symbolic link at `path` pointing at `target`, creating parent directories. */
+	readonly symlink: (target: string, path: string) => void;
+}
 
 /**
  * Fault handlers for a {@link MemoryFileSystemSyncFileSystem}: each receives
@@ -1217,6 +1256,58 @@ export class MemoryFileSystem {
 				| Partial<Record<keyof MemoryFileSystemPromisesFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
 				| undefined,
 		);
+
+	/**
+	 * Builds a volume synchronously and returns every view over it as a
+	 * {@link MemoryFileSystemHandle}.
+	 *
+	 * @remarks
+	 * For suites that construct their volume at `describe` scope and never
+	 * touch `Effect`. Throws synchronously when the seed contradicts itself
+	 * (a typed failure elsewhere), with a node-shaped error where an errno
+	 * applies.
+	 *
+	 * @param seed - Seed entries; relative keys when `options.root` is given.
+	 * @param options - See {@link MemoryFileSystemOptions}.
+	 */
+	static readonly makeSync = (
+		seed: MemoryFileSystemSeed = {},
+		options?: MemoryFileSystemOptions,
+	): MemoryFileSystemHandle => {
+		const exit = Effect.runSyncExit(MemoryFileSystem.makeInspectableWith(seed, options));
+		if (Exit.isFailure(exit)) throw Cause.squash(exit.cause);
+		const { fileSystem, volume } = exit.value;
+		const parentOf = (path: string) => path.slice(0, Math.max(1, path.lastIndexOf("/")));
+		// Only creates a parent that is absent: an existing parent that is a file
+		// must reach the write itself, which fails ENOTDIR as `writeFileSync` does
+		// (a recursive mkdir over an existing file would say EEXIST instead).
+		const ensureParent = (path: string) => {
+			const parent = parentOf(path);
+			return volume.lstat(parent) === undefined ? fileSystem.makeDirectory(parent, { recursive: true }) : Effect.void;
+		};
+		return {
+			fileSystem,
+			volume,
+			layer: Layer.merge(Layer.succeed(FileSystem.FileSystem, fileSystem), Path.layer),
+			sync: MemoryFileSystem.syncFileSystem(volume),
+			promises: MemoryFileSystem.promisesFileSystem(volume),
+			write: (path, content) =>
+				runMutation(
+					Effect.andThen(
+						ensureParent(path),
+						typeof content === "string"
+							? fileSystem.writeFileString(path, content)
+							: fileSystem.writeFile(path, content),
+					),
+					"write",
+					path,
+				),
+			mkdir: (path) => runMutation(fileSystem.makeDirectory(path, { recursive: true }), "mkdir", path),
+			remove: (path) => runMutation(fileSystem.remove(path, { recursive: true }), "remove", path),
+			symlink: (target, path) =>
+				runMutation(Effect.andThen(ensureParent(path), fileSystem.symlink(target, path)), "symlink", path),
+		};
+	};
 
 	/**
 	 * Builds a fresh, empty volume exposed twice: as the `FileSystem` service

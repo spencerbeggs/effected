@@ -1,6 +1,9 @@
 // KIT EXTENSION (sync port). The `node:fs` synchronous subset over the literal
 // inspection view. Absence throws a node-shaped error built by `nodeErrno`:
 // the only failure channel a synchronous signature has.
+
+import type { PlatformError } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import type {
 	MemoryFileSystemDirent,
 	MemoryFileSystemPortStats,
@@ -180,4 +183,28 @@ export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFi
 		lstat: (path) => settle(() => sync.lstat(path)),
 		readFile: (path, _encoding) => settle(() => sync.readFile(path)),
 	};
+};
+
+// The syscall node reports for each handle mutator.
+const nodeSyscall = { write: "open", mkdir: "mkdir", remove: "rm", symlink: "symlink" } as const;
+
+/**
+ * Runs a mutation synchronously. A typed `PlatformError` failure is rethrown
+ * as the node-shaped error a `node:fs` call would throw (`code`, `syscall`, the
+ * CALLER's `path`) — never a `FiberFailure` wrapper — and a defect is rethrown
+ * unchanged, never converted into an errno.
+ */
+export const runMutation = (
+	effect: Effect.Effect<void, PlatformError.PlatformError>,
+	op: keyof typeof nodeSyscall,
+	path: string,
+): void => {
+	const exit = Effect.runSyncExit(effect);
+	if (Exit.isSuccess(exit)) return;
+	const error = Cause.findErrorOption(exit.cause);
+	if (Option.isNone(error)) throw Cause.squash(exit.cause);
+	const reason = error.value.reason;
+	const code =
+		reason._tag === "BadArgument" ? "EINVAL" : ((reason.cause as { code?: string } | undefined)?.code ?? "EIO");
+	throw nodeErrno(code, nodeSyscall[op], path);
 };
