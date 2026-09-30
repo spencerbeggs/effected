@@ -34,6 +34,21 @@ describe("detectAgent", () => {
 		assert.deepStrictEqual(detectAgent({ AI_AGENT: "github_copilot_vscode_agent" }), Option.some("copilot"));
 		assert.deepStrictEqual(detectAgent({ AI_AGENT: "github_copilot_cloud_agent" }), Option.some("copilot"));
 	});
+	// AI_AGENT carries a family plus extras (Claude Code sets claude-code_2-1-285_agent): detectAgent reports the family.
+	it("AI_AGENT is normalized to its family name", () => {
+		const family = (value: string) => detectAgent({ AI_AGENT: value });
+		assert.deepStrictEqual(family("claude-code_2-1-285_agent"), Option.some("claude"));
+		assert.deepStrictEqual(family("codex_cli_1"), Option.some("codex"));
+		assert.deepStrictEqual(family("gemini-cli"), Option.some("gemini"));
+		assert.deepStrictEqual(family("Claude"), Option.some("claude"));
+		assert.deepStrictEqual(family("kiro-ide"), Option.some("kiro"));
+		assert.deepStrictEqual(family("github_copilot_vscode_agent"), Option.some("copilot"));
+	});
+	it("an unknown AI_AGENT stays raw, and a family name must be followed by - or _ to count as a prefix", () => {
+		assert.deepStrictEqual(detectAgent({ AI_AGENT: "aider" }), Option.some("aider"));
+		assert.deepStrictEqual(detectAgent({ AI_AGENT: "Claudette" }), Option.some("claudette"));
+		assert.deepStrictEqual(detectAgent({ AI_AGENT: "pilot" }), Option.some("pilot"));
+	});
 	it("nothing set → none", () => assert.deepStrictEqual(detectAgent({}), Option.none()));
 	it("kiro (TERM_PROGRAM, TTY-gated in std-env) is not detected: env has no TTY here — documented", () =>
 		assert.deepStrictEqual(detectAgent({ TERM_PROGRAM: "kiro" }), Option.none()));

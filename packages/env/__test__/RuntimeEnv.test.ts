@@ -71,6 +71,30 @@ describe("RuntimeEnv", () => {
 		assert.deepStrictEqual(Schema.decodeSync(codec)(json), value);
 	});
 
+	// The frozen 0.1.0 wire form, exactly as that version's encoder emits it. A snapshot persisted then must keep
+	// decoding: fields added later have to decode when absent. This literal is the oracle; never regenerate it.
+	const FROZEN_0_1_0 = '{"agent":"claude","ci":null,"terminal":{"name":"iTerm.app","version":"3.5.0"}}';
+
+	it("decodes the frozen 0.1.0 wire literal", () => {
+		const decoded = Schema.decodeSync(Schema.fromJsonString(RuntimeEnv))(FROZEN_0_1_0);
+		assert.deepStrictEqual(decoded.agent, Option.some("claude"));
+		assert.deepStrictEqual(decoded.ci, Option.none());
+		assert.deepStrictEqual(decoded.terminal, Option.some({ name: "iTerm.app", version: Option.some("3.5.0") }));
+		assert.strictEqual(Schema.encodeSync(Schema.fromJsonString(RuntimeEnv))(decoded), FROZEN_0_1_0);
+	});
+
+	it("every field decodes when its key is absent, so an older or sparser snapshot keeps decoding", () => {
+		const codec = Schema.fromJsonString(RuntimeEnv);
+		const empty = Schema.decodeSync(codec)("{}");
+		assert.deepStrictEqual([empty.agent, empty.ci, empty.terminal], [Option.none(), Option.none(), Option.none()]);
+		const partial = Schema.decodeSync(codec)('{"agent":"claude"}');
+		assert.deepStrictEqual(partial.agent, Option.some("claude"));
+		assert.deepStrictEqual(partial.ci, Option.none());
+		assert.deepStrictEqual(partial.terminal, Option.none());
+		const noVersion = Schema.decodeSync(codec)('{"terminal":{"name":"kitty"}}');
+		assert.deepStrictEqual(noVersion.terminal, Option.some({ name: "kitty", version: Option.none() }));
+	});
+
 	it("round-trips the all-none snapshot", () => {
 		const codec = Schema.fromJsonString(RuntimeEnv);
 		const value = new RuntimeEnv({ agent: Option.none(), ci: Option.none(), terminal: Option.none() });

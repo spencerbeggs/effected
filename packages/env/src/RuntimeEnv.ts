@@ -5,24 +5,33 @@ import { allKeys } from "./internal/keys.js";
 import { detectOsc8 } from "./internal/osc8/detect.js";
 
 /**
+ * An `Option` field that encodes `None` as `null` and decodes when its key is absent, so a persisted snapshot keeps
+ * decoding after a field is added.
+ */
+const optionField = <S extends Schema.Constraint>(schema: S) =>
+	Schema.OptionFromNullOr(schema).pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(Option.none())));
+
+/**
  * A snapshot of who is running the program: the agent, the CI, and the terminal.
  *
  * @remarks
  * Each field is an `Option` in memory and `null` when absent on the wire, so the snapshot persists as plain JSON
- * through `Schema.fromJsonString(RuntimeEnv)`. Built from `Config` only (no stream is consulted), so it is safe
+ * through `Schema.fromJsonString(RuntimeEnv)`. **Fields added after 0.1.0 must decode when absent**, as every field
+ * does today, so a persisted snapshot keeps decoding. Built from `Config` only (no stream is consulted), so it is safe
  * inside a stdio MCP server. See `okf/modules/env.md`.
  *
  * @public
  */
 export class RuntimeEnv extends Schema.Class<RuntimeEnv>("@effected/env/RuntimeEnv")({
-	/** The AI agent running the process, lower-cased (for example `claude`), or `None`. */
-	agent: Schema.OptionFromNullOr(Schema.String),
+	/**
+	 * The AI agent running the process, as its family (`claude` for Claude Code, whatever `AI_AGENT` says it is
+	 * beyond that), or `None`.
+	 */
+	agent: optionField(Schema.String),
 	/** The CI the process runs in: `github-actions` or `generic`, or `None`. */
-	ci: Schema.OptionFromNullOr(Schema.String),
+	ci: optionField(Schema.String),
 	/** The identified terminal program and its version when it exposes one, or `None`. */
-	terminal: Schema.OptionFromNullOr(
-		Schema.Struct({ name: Schema.String, version: Schema.OptionFromNullOr(Schema.String) }),
-	),
+	terminal: optionField(Schema.Struct({ name: Schema.String, version: optionField(Schema.String) })),
 }) {}
 
 /**

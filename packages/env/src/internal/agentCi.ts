@@ -29,9 +29,24 @@ const AGENT_RULES: ReadonlyArray<AgentRule> = [
 	["cursor", ["CURSOR_AGENT"]],
 ];
 
+// The family names a free-form AI_AGENT value is folded into: every table row, plus `kiro`, which the table
+// omits (see above) but which an agent can still announce through AI_AGENT.
+const AGENT_FAMILIES: ReadonlyArray<string> = [...AGENT_RULES.map(([name]) => name), "kiro"];
+
+/** The family a lower-cased `AI_AGENT` value belongs to: equal to it, or starting with it then `-` or `_`. */
+const familyOf = (value: string): string =>
+	AGENT_FAMILIES.find(
+		(family) => value === family || value.startsWith(`${family}-`) || value.startsWith(`${family}_`),
+	) ?? value;
+
 /**
- * The name of the AI agent running this process, if any. `AI_AGENT` wins over every table row: it is
- * lower-cased, and the two `github_copilot_*` names collapse to `copilot`.
+ * The name of the AI agent running this process, if any, as its family: `claude`, not the
+ * `claude-code_2-1-285_agent` Claude Code puts in `AI_AGENT`.
+ *
+ * @remarks
+ * `AI_AGENT` wins over every table row. It is lower-cased, the two `github_copilot_*` names collapse to
+ * `copilot`, and a value that is a known family or starts with one followed by `-` or `_` becomes that family.
+ * Any other value is returned as it was lower-cased.
  *
  * @internal
  */
@@ -39,7 +54,7 @@ export const detectAgent = (env: Env): Option.Option<string> => {
 	if (env.AI_AGENT) {
 		const name = env.AI_AGENT.toLowerCase();
 		return Option.some(
-			name === "github_copilot_vscode_agent" || name === "github_copilot_cloud_agent" ? "copilot" : name,
+			name === "github_copilot_vscode_agent" || name === "github_copilot_cloud_agent" ? "copilot" : familyOf(name),
 		);
 	}
 	for (const [name, rule] of AGENT_RULES) {
