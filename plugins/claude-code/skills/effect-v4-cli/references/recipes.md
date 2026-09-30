@@ -65,9 +65,10 @@ package substitution for it.
 ## Version formatter
 
 ~~~ts
+import { MemoryFileSystem } from "@effected/memfs"
 import { CliColor } from "@effected/cli"
 import { CurrentDistribution, distributionSuffix } from "@effected/engine"
-import { Effect, FileSystem, Layer, Option, Path, Stdio, Terminal } from "effect"
+import { Effect, Layer, Option, Path, Stdio, Terminal } from "effect"
 import { Command } from "effect/cli"
 import { ChildProcessSpawner } from "effect/process"
 
@@ -80,7 +81,7 @@ const versionLayer = Layer.unwrap(
 )
 
 const CliTestLayer = Layer.mergeAll(
-  FileSystem.layerNoop({}),
+  MemoryFileSystem.layer,
   Path.layer,
   Stdio.layerTest({}),
   Layer.succeed(

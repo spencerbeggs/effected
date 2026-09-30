@@ -93,7 +93,7 @@ almost none of them for Node:**
 | service | what core actually ships |
 | --- | --- |
 | `Path` | `Path.layer` — a real implementation (posix), `Path.ts:867` |
-| `FileSystem` | `FileSystem.layerNoop(partial)` — a **stub factory**, for tests (`FileSystem.ts:765`) |
+| `FileSystem` | only `FileSystem.layerNoop(partial)` — a deny-by-default **stub factory** (`FileSystem.ts:765`); never use it as a test double: a test's `FileSystem` is `@effected/memfs`'s `MemoryFileSystem.layer` |
 | `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:152`) |
 | `Terminal` | **no layer at all** — `Terminal.ts` declares no `layer` export |
 | `ChildProcessSpawner` | the contract and the `ChildProcess` command values, but **no layer** — see below |

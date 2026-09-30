@@ -13,12 +13,13 @@ call `Effect.provide` there, instead of reaching for `Command.provide`, when
 the layer might fail on a value the handler needs to check first.
 
 ~~~ts
-import { Effect, FileSystem, Layer, Path, Stdio, Terminal } from "effect"
+import { MemoryFileSystem } from "@effected/memfs"
+import { Effect, Layer, Path, Stdio, Terminal } from "effect"
 import { Command, Flag } from "effect/cli"
 import { ChildProcessSpawner } from "effect/process"
 
 const CliTestLayer = Layer.mergeAll(
-  FileSystem.layerNoop({}),
+  MemoryFileSystem.layer,
   Path.layer,
   Stdio.layerTest({}),
   Layer.succeed(
@@ -123,12 +124,13 @@ With one argument given, the **first** declared positional receives it — the
 second stays `Option.none()` regardless of which one the invocation "meant."
 
 ~~~ts
-import { Effect, FileSystem, Layer, Option, Path, Stdio, Terminal } from "effect"
+import { MemoryFileSystem } from "@effected/memfs"
+import { Effect, Layer, Option, Path, Stdio, Terminal } from "effect"
 import { Argument, Command } from "effect/cli"
 import { ChildProcessSpawner } from "effect/process"
 
 const CliTestLayer = Layer.mergeAll(
-  FileSystem.layerNoop({}),
+  MemoryFileSystem.layer,
   Path.layer,
   Stdio.layerTest({}),
   Layer.succeed(
