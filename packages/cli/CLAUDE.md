@@ -101,13 +101,13 @@ a second provide creates a second, unrelated cell: `CliExit.set` calls made
 against that shadow cell never reach the one `main` reads, and a findings run
 silently exits `0`.
 
-**`CliColor` reads `NO_COLOR` through `ConfigProvider`, never `process`.**
-Follows the no-color.org rule: colour is off when stdout is not a terminal,
-or `NO_COLOR` is set to any non-empty value; an empty `NO_COLOR=""` does not
-disable colour. `FORCE_COLOR` is ignored, matching core's own formatter. The
-environment read goes through the ambient `ConfigProvider`, so a test swaps
-it with `Effect.provideService(ConfigProvider.ConfigProvider, ...)` instead
-of mutating `process.env`.
+**`CliColor` delegates to `@effected/env`, which reads the environment through `ConfigProvider`, never `process`.**
+`enabled` is `TerminalEnv.colorLevel("stdout") !== "none"`, so it follows Node's
+`getColorDepth` precedence: `FORCE_COLOR` first (and it beats `NO_COLOR`), then a
+non-empty `NO_COLOR`, `NODE_DISABLE_COLORS` and `TERM=dumb`, then the TTY gate
+([decision](../../okf/decisions/force-color-honoured-node-precedence.md)). A test
+swaps the environment with `Effect.provideService(ConfigProvider.ConfigProvider, ...)`
+instead of mutating `process.env`, or fixes the answer with `TerminalEnv.layerTest`.
 
 **The `./testing` split has a reachability test.** `entrypoints.test.ts`
 walks the import graph from `src/index.ts` and asserts nothing reachable from

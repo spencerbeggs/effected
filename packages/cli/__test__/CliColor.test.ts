@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { TerminalEnv } from "@effected/env";
 import { ConfigProvider, Effect, Stdio } from "effect";
 import { CliError, CliOutput } from "effect/cli";
 import { CliColor } from "../src/index.js";
@@ -18,13 +19,32 @@ const decide = (options: {
 
 describe("CliColor.enabled", () => {
 	const cases: ReadonlyArray<readonly [string, boolean, Record<string, string>, boolean]> = [
-		["TTY, NO_COLOR unset", true, {}, true],
-		["TTY, NO_COLOR empty — fromUnknown's default treats it as unset, same as fromEnv", true, { NO_COLOR: "" }, true],
-		["TTY, NO_COLOR=1", true, { NO_COLOR: "1" }, false],
-		['TTY, NO_COLOR=true (okfit\'s !== "1" rule got this wrong)', true, { NO_COLOR: "true" }, false],
-		["TTY, NO_COLOR=0 — any non-empty value disables", true, { NO_COLOR: "0" }, false],
+		// force-color-honoured-node-precedence.md: a bare TTY now follows Node's terminal table, so no TERM means no colour
+		["TTY, no colour variables at all", true, {}, false],
+		["TTY, NO_COLOR unset", true, { TERM: "xterm-256color" }, true],
+		[
+			"TTY, NO_COLOR empty — fromUnknown's default treats it as unset, same as fromEnv",
+			true,
+			{ TERM: "xterm-256color", NO_COLOR: "" },
+			true,
+		],
+		["TTY, NO_COLOR=1", true, { TERM: "xterm-256color", NO_COLOR: "1" }, false],
+		[
+			'TTY, NO_COLOR=true (okfit\'s !== "1" rule got this wrong)',
+			true,
+			{ TERM: "xterm-256color", NO_COLOR: "true" },
+			false,
+		],
+		["TTY, NO_COLOR=0 — any non-empty value disables", true, { TERM: "xterm-256color", NO_COLOR: "0" }, false],
 		["not a TTY, NO_COLOR unset", false, {}, false],
 		["not a TTY, NO_COLOR empty", false, { NO_COLOR: "" }, false],
+		// force-color-honoured-node-precedence.md: FORCE_COLOR is honoured, so a forced level beats a missing TTY
+		["not a TTY, FORCE_COLOR=1 forces colour on", false, { FORCE_COLOR: "1" }, true],
+		// force-color-honoured-node-precedence.md: FORCE_COLOR=0 is "no colour" even on a TTY
+		["TTY, FORCE_COLOR=0 forces colour off", true, { TERM: "xterm-256color", FORCE_COLOR: "0" }, false],
+		// force-color-honoured-node-precedence.md: FORCE_COLOR beats NO_COLOR, as in Node's getColorDepth
+		["not a TTY, FORCE_COLOR=3 beats NO_COLOR=1", false, { FORCE_COLOR: "3", NO_COLOR: "1" }, true],
+		["TTY, TERM=dumb", true, { TERM: "dumb" }, false],
 	];
 	for (const [label, tty, env, expected] of cases) {
 		it.effect(label, () =>
@@ -38,15 +58,28 @@ describe("CliColor.enabled", () => {
 		"TTY, NO_COLOR empty with a provider that preserves empty strings — no-color.org: only non-empty disables",
 		() =>
 			Effect.gen(function* () {
-				assert.strictEqual(yield* decide({ tty: true, env: { NO_COLOR: "" }, preserveEmptyStrings: true }), true);
+				assert.strictEqual(
+					yield* decide({ tty: true, env: { TERM: "xterm-256color", NO_COLOR: "" }, preserveEmptyStrings: true }),
+					true,
+				);
 			}),
 	);
 
-	it.effect("ignores FORCE_COLOR, matching core", () =>
+	it.effect("an ambient TerminalEnv decides, even over a non-TTY Stdio", () =>
 		Effect.gen(function* () {
-			assert.strictEqual(yield* decide({ tty: false, env: { FORCE_COLOR: "1" } }), false);
-		}),
+			assert.strictEqual(yield* CliColor.enabled, true);
+		}).pipe(
+			Effect.provide(TerminalEnv.layerTest({ stdout: { color: "256" } })),
+			Effect.provide(Stdio.layerTest({ stdoutIsTerminal: Effect.succeed(false) })),
+			Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({})),
+		),
 	);
+
+	it("keeps its exact type", () => {
+		// Type pin: a wider requirement (Terminal, TerminalEnv) or error channel would fail to compile here.
+		const pinned = CliColor.enabled satisfies Effect.Effect<boolean, never, Stdio.Stdio>;
+		assert.isDefined(pinned);
+	});
 });
 
 describe("CliColor.formatterLayer", () => {
@@ -98,7 +131,27 @@ describe("CliColor.formatterLayer", () => {
 		}).pipe(
 			Effect.provide(CliColor.formatterLayer()),
 			Effect.provide(Stdio.layerTest({ stdoutIsTerminal: Effect.succeed(true) })),
-			Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({})),
+			Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ TERM: "xterm-256color" })),
+		),
+	);
+
+	// Review Focus 4: a forced colour level reaches the formatter even with no TTY.
+	it.effect("renders with colours under FORCE_COLOR=1 and no terminal", () =>
+		Effect.gen(function* () {
+			const formatter = yield* CliOutput.Formatter;
+			const rendered = formatter.formatVersion("my-awesome-tool", "1.2.3");
+			assert.strictEqual(
+				rendered,
+				CliOutput.defaultFormatter({ colors: true }).formatVersion("my-awesome-tool", "1.2.3"),
+			);
+			assert.notStrictEqual(
+				rendered,
+				CliOutput.defaultFormatter({ colors: false }).formatVersion("my-awesome-tool", "1.2.3"),
+			);
+		}).pipe(
+			Effect.provide(CliColor.formatterLayer()),
+			Effect.provide(Stdio.layerTest({ stdoutIsTerminal: Effect.succeed(false) })),
+			Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ FORCE_COLOR: "1" })),
 		),
 	);
 });

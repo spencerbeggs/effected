@@ -1,22 +1,23 @@
-import { Config, Effect, Layer, Option, Stdio } from "effect";
+import { TerminalEnv } from "@effected/env";
+import type { Stdio } from "effect";
+import { Effect, Layer } from "effect";
 import { CliOutput } from "effect/cli";
-
-const noColor = Config.option(Config.String("NO_COLOR"));
 
 /**
  * Whether a CLI's output should carry ANSI colour, decided once and shared by
  * everything that renders — help text, error output, and any rendered result.
  *
  * @remarks
- * Follows the no-color.org rule: colour is off when stdout is not a
- * terminal, or when `NO_COLOR` is set to any **non-empty** value — an empty
- * `NO_COLOR=""` does not disable colour. `FORCE_COLOR` is ignored, matching
- * core's own formatter. The environment is read through the ambient
- * `ConfigProvider`, never `process`, so a test swaps it with
- * `Effect.provideService(ConfigProvider.ConfigProvider, ...)`. The kit's
- * default providers (`fromEnv`, `fromUnknown`) already treat an empty
- * `NO_COLOR` as unset, so the explicit `set === ""` check exists for a
- * provider constructed with `{ preserveEmptyStrings: true }`.
+ * The decision is `@effected/env`'s `TerminalEnv.colorLevel("stdout")`, which
+ * follows Node's `getColorDepth` precedence: `FORCE_COLOR` first (`0` or an
+ * unrecognised value forces colour off, `1`/`2`/`3` force it on even without
+ * a terminal), then a non-empty `NO_COLOR` or `NODE_DISABLE_COLORS` and
+ * `TERM=dumb`, then the TTY gate. `FORCE_COLOR` therefore beats `NO_COLOR`.
+ * See `okf/decisions/force-color-honoured-node-precedence.md`. The environment
+ * is read through the ambient `ConfigProvider`, never `process`, so a test
+ * swaps it with `Effect.provideService(ConfigProvider.ConfigProvider, ...)`;
+ * an ambient `TerminalEnv`, such as `TerminalEnv.layerTest`, answers instead
+ * when one is provided.
  *
  * @public
  */
@@ -28,12 +29,9 @@ export class CliColor {
 	 *
 	 * @public
 	 */
-	static readonly enabled: Effect.Effect<boolean, never, Stdio.Stdio> = Effect.gen(function* () {
-		const stdio = yield* Stdio.Stdio;
-		if (!(yield* stdio.stdoutIsTerminal)) return false;
-		const value = yield* noColor.pipe(Effect.orElseSucceed(() => Option.none<string>()));
-		return Option.match(value, { onNone: () => true, onSome: (set) => set === "" });
-	});
+	static readonly enabled: Effect.Effect<boolean, never, Stdio.Stdio> = TerminalEnv.colorLevel("stdout").pipe(
+		Effect.map((level) => level !== "none"),
+	);
 
 	/**
 	 * Core's default `CliOutput.Formatter`, coloured by the same decision as
