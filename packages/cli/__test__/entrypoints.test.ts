@@ -42,4 +42,31 @@ describe("entrypoint boundary", () => {
 		const reachable = reachableFrom(resolve(SRC, "index.ts"));
 		assert.isTrue([...reachable].some((file) => /src\/CliRuntime\.ts$/.test(file)));
 	});
+
+	it("the main entry exports the whole presentation layer, and only testing exports the test doubles", async () => {
+		const main = await import("../src/index.js");
+		const testing = await import("../src/testing.js");
+		assert.deepStrictEqual(Object.keys(main).sort(), [
+			"Cancelled",
+			"CliAudience",
+			"CliColor",
+			"CliEnv",
+			"CliExit",
+			"CliInteractive",
+			"CliLog",
+			"CliLogger",
+			"CliMessage",
+			"CliPrompt",
+			"CliRuntime",
+			"CliTheme",
+			"ConfigIssueRenderer",
+			"Fmt",
+			"Glyphs",
+			"NotInteractive",
+			"SchemaIssueRenderer",
+			"Status",
+			"Token",
+		]);
+		assert.deepStrictEqual(Object.keys(testing).sort(), ["CliTest", "TestTerminal"]);
+	});
 });
