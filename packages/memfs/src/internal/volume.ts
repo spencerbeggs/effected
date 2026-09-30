@@ -57,6 +57,9 @@ import {
 	Stream,
 } from "effect";
 
+import type { ErrnoCode } from "./errno.js";
+import { ErrnoException, errnoError } from "./errno.js";
+
 const { badArgument, systemError } = PlatformErrorNs;
 type PlatformError = PlatformErrorNs.PlatformError;
 type SystemErrorTag = PlatformErrorNs.SystemErrorTag;
@@ -215,94 +218,7 @@ const fileSystemError = (options: {
 const invalidData = (method: string, path: string, description: string): PlatformError =>
 	fileSystemError({ _tag: "InvalidData", method, pathOrDescriptor: path, description });
 
-// KIT EXTENSION (errno fidelity — adaptation ledger entry 10). Every failure the
-// host kernel (or node's own fs layer) would report carries the errno code the
-// real platform adapter reports, and the `_tag` is DERIVED from that code by the
-// exact switch `@effect/platform-node`'s `handleErrnoException` uses. Tag parity
-// with the node adapter therefore holds by construction: a site names the errno
-// node raises, never a tag. The code rides on `cause.code`, where a consumer
-// reading the node adapter's error finds it. Where the platforms disagree the
-// Linux errno is the one modelled (the per-case table lives in the design doc).
-type ErrnoCode =
-	| "EACCES"
-	| "EBADF"
-	| "EBUSY"
-	| "EEXIST"
-	| "EINVAL"
-	| "EISDIR"
-	| "ELOOP"
-	| "ENOENT"
-	| "ENOTDIR"
-	| "ENOTEMPTY"
-	| "EPERM"
-	| "ERR_FS_CP_DIR_TO_NON_DIR"
-	| "ERR_FS_CP_EINVAL"
-	| "ERR_FS_CP_NON_DIR_TO_DIR"
-	| "ERR_FS_EISDIR";
-
-const errnoMessages: { readonly [Code in ErrnoCode]: string } = {
-	EACCES: "permission denied",
-	EBADF: "bad file descriptor",
-	EBUSY: "resource busy or locked",
-	EEXIST: "file already exists",
-	EINVAL: "invalid argument",
-	EISDIR: "illegal operation on a directory",
-	ELOOP: "too many symbolic links encountered",
-	ENOENT: "no such file or directory",
-	ENOTDIR: "not a directory",
-	ENOTEMPTY: "directory not empty",
-	EPERM: "operation not permitted",
-	ERR_FS_CP_DIR_TO_NON_DIR: "cannot overwrite non-directory with directory",
-	ERR_FS_CP_EINVAL: "invalid src or dest",
-	ERR_FS_CP_NON_DIR_TO_DIR: "cannot overwrite directory with non-directory",
-	ERR_FS_EISDIR: "path is a directory",
-};
-
-// Mirrors `handleErrnoException` in @effect/platform-node-shared: only these
-// codes map to a specific tag, everything else is "Unknown".
-const errnoTag = (code: ErrnoCode): SystemErrorTag => {
-	switch (code) {
-		case "ENOENT":
-			return "NotFound";
-		case "EACCES":
-			return "PermissionDenied";
-		case "EEXIST":
-			return "AlreadyExists";
-		case "EISDIR":
-		case "ENOTDIR":
-		case "ELOOP":
-			return "BadResource";
-		case "EBUSY":
-			return "Busy";
-		default:
-			return "Unknown";
-	}
-};
-
-/** The `cause` of an errno-backed failure: an `Error` carrying node's `code` (and `path` for path operations). */
-class ErrnoException extends Error {
-	readonly code: ErrnoCode;
-	readonly path: string | undefined;
-	constructor(code: ErrnoCode, pathOrDescriptor: string | number | undefined) {
-		super(`${code}: ${errnoMessages[code]}${typeof pathOrDescriptor === "string" ? `, '${pathOrDescriptor}'` : ""}`);
-		this.code = code;
-		this.path = typeof pathOrDescriptor === "string" ? pathOrDescriptor : undefined;
-	}
-}
-
-const errnoError = (
-	method: string,
-	pathOrDescriptor: string | number,
-	code: ErrnoCode,
-	description?: string,
-): PlatformError =>
-	fileSystemError({
-		_tag: errnoTag(code),
-		method,
-		pathOrDescriptor,
-		description,
-		cause: new ErrnoException(code, pathOrDescriptor),
-	});
+// Errno fidelity (ledger entry 10): the errno → tag mapping lives in ./errno.js.
 
 const alreadyExists = (method: string, path: string): PlatformError => errnoError(method, path, "EEXIST");
 
