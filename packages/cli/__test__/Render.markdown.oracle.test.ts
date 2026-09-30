@@ -1,0 +1,797 @@
+import { assert, describe, it } from "@effect/vitest";
+import { Markdown } from "@effected/markdown";
+import { Effect } from "effect";
+import type { Block, RenderContext } from "../src/index.js";
+import { Doc, Glyphs, Render, Status } from "../src/index.js";
+import { ESC, composite } from "./helpers/hostileDoc.js";
+import { contextOf } from "./helpers/renderContext.js";
+
+/** The parts of a parsed node these tests read; the parser is the oracle, so nothing here renders. */
+interface N {
+	readonly type: string;
+	readonly value?: string;
+	readonly children?: ReadonlyArray<N>;
+	readonly depth?: number;
+	readonly url?: string;
+	readonly lang?: string | null;
+	readonly align?: ReadonlyArray<string | null>;
+	readonly ordered?: boolean;
+}
+
+const render = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
+	Effect.map(contextOf(overrides), (ctx) => Render.markdown(doc, ctx));
+
+const parse = (markdown: string) => Effect.map(Markdown.parse(markdown), (root) => root as unknown as N);
+
+/** Render then parse: the tree of what a GFM reader sees. */
+const treeOf = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
+	Effect.flatMap(render(doc, overrides), parse);
+
+const kids = (n: N | undefined): ReadonlyArray<N> => n?.children ?? [];
+
+/** The text a reader sees: text and code values, a hard break or a `<br>` as a line feed. */
+const textOf = (n: N): string => {
+	if (n.type === "text" || n.type === "inlineCode") return n.value ?? "";
+	if (n.type === "break" || (n.type === "html" && n.value === "<br>")) return "\n";
+	return kids(n).map(textOf).join("");
+};
+
+const descendantTypes = (n: N): ReadonlyArray<string> => [n.type, ...kids(n).flatMap(descendantTypes)];
+
+const tableOf = (root: N): N => {
+	const table = kids(root).find((c) => c.type === "table");
+	assert.isDefined(table, "the output has a table");
+	return table as N;
+};
+
+const cellTexts = (table: N): ReadonlyArray<ReadonlyArray<string>> =>
+	kids(table).map((row) => kids(row).map((cell) => textOf(cell)));
+
+const ALPHABET = ["|", "`", "<", ">", "\\", "\n", "*", "_", "[", "]", "&", "x", "#", "~", " ", "!", "(", ")"];
+const upTo = (alphabet: ReadonlyArray<string>, length: number): ReadonlyArray<string> => {
+	const out: Array<string> = [];
+	let frontier = [""];
+	for (let n = 1; n <= length; n++) {
+		frontier = frontier.flatMap((prefix) => alphabet.map((ch) => prefix + ch));
+		out.push(...frontier);
+	}
+	return out;
+};
+
+describe("Render.markdown: headings and paragraphs", () => {
+	it.effect("a heading is # repeated by its level, with its text", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.heading(1, "One"),
+				Doc.heading(2, "Two"),
+				Doc.heading(3, "Three"),
+				Doc.heading(4, "Four"),
+			]);
+			assert.deepStrictEqual(
+				kids(root).map((h) => [h.type, h.depth, textOf(h)]),
+				[
+					["heading", 1, "One"],
+					["heading", 2, "Two"],
+					["heading", 3, "Three"],
+					["heading", 4, "Four"],
+				],
+			);
+		}),
+	);
+
+	it.effect("a section's title is a heading one level deeper for each nesting, and its children follow", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.section("Outer", [Doc.paragraph("a"), Doc.section("Inner", [Doc.paragraph("b")])]),
+			]);
+			assert.deepStrictEqual(
+				kids(root).map((n) => [n.type, n.depth, textOf(n)]),
+				[
+					["heading", 2, "Outer"],
+					["paragraph", undefined, "a"],
+					["heading", 3, "Inner"],
+					["paragraph", undefined, "b"],
+				],
+			);
+		}),
+	);
+
+	it.effect("a paragraph parses back to its text, with inline code and links", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.paragraph(
+					"run ",
+					Doc.code("pnpm test"),
+					" or see ",
+					Doc.link({ url: "https://example.test/x" }, "the docs"),
+				),
+			]);
+			const [p] = kids(root);
+			assert.deepStrictEqual(
+				kids(p).map((c) => c.type),
+				["text", "inlineCode", "text", "link"],
+			);
+			assert.strictEqual(kids(p)[1]?.value, "pnpm test");
+			assert.strictEqual(kids(p)[3]?.url, "https://example.test/x");
+			assert.strictEqual(textOf(kids(p)[3] as N), "the docs");
+		}),
+	);
+
+	it.effect("text cannot inject formatting: every metacharacter stays text (Review Focus 4 for paragraphs)", () =>
+		Effect.gen(function* () {
+			const text = "*em* _em_ **strong** ~~gone~~ [l](https://evil.test) ![i](x) <b>html</b> &amp; `code` # h > q";
+			const root = yield* treeOf([Doc.paragraph(text)]);
+			assert.strictEqual(kids(root).length, 1);
+			const [p] = kids(root);
+			assert.deepStrictEqual([...new Set(descendantTypes(p as N))].sort(), ["paragraph", "text"]);
+			assert.strictEqual(textOf(p as N), text);
+		}),
+	);
+
+	it.effect(
+		"text at the start of a line cannot become a block: heading, quote, list, rule, code or setext underline",
+		() =>
+			Effect.gen(function* () {
+				const lines = [
+					"# h",
+					"## h",
+					"> q",
+					"- i",
+					"+ i",
+					"* i",
+					"1. i",
+					"2) i",
+					"---",
+					"***",
+					"___",
+					"===",
+					"```",
+					"~~~",
+					"    indented",
+				];
+				for (const line of lines) {
+					const root = yield* treeOf([Doc.paragraph(line), Doc.paragraph(line)]);
+					assert.deepStrictEqual(
+						kids(root).map((n) => n.type),
+						["paragraph", "paragraph"],
+						JSON.stringify(line),
+					);
+					assert.strictEqual(textOf(kids(root)[0] as N), line.trimStart(), JSON.stringify(line));
+				}
+				const two = yield* treeOf([Doc.paragraph("first\n---\nsecond\n===")]);
+				assert.deepStrictEqual(
+					kids(two).map((n) => n.type),
+					["paragraph"],
+					"an underline after a line cannot make a heading",
+				);
+			}),
+	);
+
+	it.effect(
+		"text that looks like an autolink stays text: URLs and www (an email may become a harmless mailto link)",
+		() =>
+			Effect.gen(function* () {
+				const text =
+					"see https://evil.test/x and http://a.test and HTTPS://B.TEST and www.evil.test and WWW.X.TEST now";
+				const root = yield* treeOf([Doc.paragraph(text)]);
+				const [p] = kids(root);
+				assert.deepStrictEqual([...new Set(descendantTypes(p as N))].sort(), ["paragraph", "text"]);
+				assert.strictEqual(textOf(p as N), text);
+			}),
+	);
+
+	it.effect(
+		"small-alphabet property: any text of up to 3 characters parses back to itself as one paragraph",
+		() =>
+			Effect.gen(function* () {
+				const alphabet = [
+					"x",
+					"*",
+					"_",
+					"`",
+					"[",
+					"]",
+					"(",
+					")",
+					"<",
+					">",
+					"&",
+					"#",
+					"~",
+					"|",
+					"\\",
+					"\n",
+					" ",
+					"-",
+					"+",
+					"=",
+					"1",
+					".",
+					"!",
+					":",
+					"@",
+				];
+				const ctx = yield* contextOf();
+				const failures: Array<string> = [];
+				let cases = 0;
+				for (const text of upTo(alphabet, 3)) {
+					const lines = text
+						.split("\n")
+						.filter((line) => line.trim() !== "")
+						.map((line) => line.trimStart());
+					if (lines.length === 0) continue;
+					const expected = lines.join("\n").trimEnd();
+					const root = yield* parse(Render.markdown([Doc.paragraph(text)], ctx));
+					cases++;
+					const types = new Set(descendantTypes(root));
+					const ok =
+						kids(root).length === 1 &&
+						kids(root)[0]?.type === "paragraph" &&
+						[...types].every((t) => ["root", "paragraph", "text", "break"].includes(t)) &&
+						textOf(root) === expected;
+					if (!ok && failures.length < 5)
+						failures.push(`${JSON.stringify(text)} -> ${JSON.stringify([...types])} ${JSON.stringify(textOf(root))}`);
+				}
+				assert.isAbove(cases, 10_000, "the enumeration ran");
+				assert.deepStrictEqual(failures, []);
+			}),
+		{ timeout: 120_000 },
+	);
+});
+
+describe("Render.markdown: tables (Review Focus 4)", () => {
+	it.effect("is a GFM pipe table: N rows by M cells whose text is the input, with the alignment", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.table(
+					[
+						{ header: "Name" },
+						{ header: "Count", align: "right" },
+						{ header: "Mid", align: "center" },
+						{ header: "L", align: "left" },
+					],
+					[
+						["alpha", "1", "m", "x"],
+						["beta", "22", "n", "y"],
+					],
+				),
+			]);
+			const table = tableOf(root);
+			assert.deepStrictEqual(
+				table.align,
+				[null, "right", "center", "left"].map((a) => a),
+			);
+			assert.deepStrictEqual(cellTexts(table), [
+				["Name", "Count", "Mid", "L"],
+				["alpha", "1", "m", "x"],
+				["beta", "22", "n", "y"],
+			]);
+		}),
+	);
+
+	it.effect("a cell with a pipe, backticks, an angle bracket or a line break parses back to the intended text", () =>
+		Effect.gen(function* () {
+			const cells = [
+				"a | b",
+				"`tick`",
+				"back`tick",
+				"``double``",
+				"<tag> & </tag>",
+				"<br>",
+				"line1\nline2\nline3",
+				"*star* _under_ [link](x)",
+				"trailing backslash\\",
+				"x \\| y",
+				"# not a heading",
+				"| leading and trailing |",
+			];
+			const root = yield* treeOf([
+				Doc.table(
+					[{ header: "h" }],
+					cells.map((c) => [c]),
+				),
+			]);
+			const table = tableOf(root);
+			assert.strictEqual(kids(table).length, cells.length + 1, "one row per cell plus the header");
+			assert.deepStrictEqual(
+				cellTexts(table)
+					.slice(1)
+					.map((row) => row[0]),
+				cells.map((c) => c.trim()),
+			);
+			for (const row of kids(table)) {
+				for (const cell of kids(row)) {
+					const htmls = kids(cell)
+						.filter((c) => c.type === "html")
+						.map((c) => c.value);
+					assert.isTrue(
+						htmls.every((h) => h === "<br>"),
+						"the only HTML is the renderer's own line break",
+					);
+					assert.isFalse(
+						descendantTypes(cell).some((t) => ["link", "emphasis", "strong", "delete", "inlineCode"].includes(t)),
+					);
+				}
+			}
+		}),
+	);
+
+	it.effect("inline code in a cell keeps its pipes and backticks", () =>
+		Effect.gen(function* () {
+			const codes = ["a|b", "a`b", "``", "` x `", " lead", "trail ", "x", "||"];
+			const root = yield* treeOf([
+				Doc.table(
+					[{ header: "c" }],
+					codes.map((c) => [Doc.code(c)]),
+				),
+			]);
+			const values = kids(tableOf(root))
+				.slice(1)
+				.map((row) => kids(kids(row)[0]).map((n) => [n.type, n.value]));
+			assert.deepStrictEqual(
+				values,
+				codes.map((c) => [["inlineCode", c]]),
+			);
+		}),
+	);
+
+	it.effect(
+		"small-alphabet property: any cell of up to 3 characters parses back to its trimmed text, and only that",
+		() =>
+			Effect.gen(function* () {
+				const ctx = yield* contextOf();
+				const cells = upTo(ALPHABET, 3);
+				const failures: Array<string> = [];
+				// One table of many rows per batch keeps the parse count low while every cell is still checked by position.
+				for (let start = 0; start < cells.length; start += 400) {
+					const batch = cells.slice(start, start + 400);
+					const markdown = Render.markdown(
+						[
+							Doc.table(
+								[{ header: "h" }],
+								batch.map((c) => [c]),
+							),
+						],
+						ctx,
+					);
+					const table = tableOf(yield* parse(markdown));
+					const rows = kids(table).slice(1);
+					if (rows.length !== batch.length)
+						failures.push(`batch ${start}: ${rows.length} rows, wanted ${batch.length}`);
+					batch.forEach((cell, index) => {
+						const row = rows[index];
+						const got = row === undefined ? undefined : kids(row).map(textOf);
+						const expected = cell.trim();
+						const types = row === undefined ? [] : descendantTypes(row);
+						const clean = types.every((t) => ["tableRow", "tableCell", "text", "html"].includes(t));
+						if (got?.length !== 1 || got[0] !== expected || !clean) {
+							if (failures.length < 5)
+								failures.push(`${JSON.stringify(cell)} -> ${JSON.stringify(got)} ${JSON.stringify(types)}`);
+						}
+					});
+				}
+				assert.isAbove(cells.length, 5_000);
+				assert.deepStrictEqual(failures, []);
+			}),
+		{ timeout: 120_000 },
+	);
+
+	it.effect("pads a short row and widens for a long one, and has an empty header when none is given", () =>
+		Effect.gen(function* () {
+			const padded = tableOf(yield* treeOf([Doc.table([{ header: "a" }, { header: "b" }], [["1"], ["1", "2", "3"]])]));
+			assert.deepStrictEqual(cellTexts(padded), [
+				["a", "b", ""],
+				["1", "", ""],
+				["1", "2", "3"],
+			]);
+			const headerless = tableOf(yield* treeOf([Doc.table([{ header: [] }, { header: [] }], [["x", "y"]])]));
+			assert.deepStrictEqual(cellTexts(headerless), [
+				["", ""],
+				["x", "y"],
+			]);
+		}),
+	);
+
+	it.effect("a cap shows that many rows, then the overflow as a paragraph after the table", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.table([{ header: "n" }], [["1"], ["2"], ["3"]], {
+					cap: 1,
+					overflow: (hidden) => `… ${hidden} more (see \`tool\`)`,
+				}),
+			]);
+			assert.deepStrictEqual(
+				kids(root).map((n) => n.type),
+				["table", "paragraph"],
+			);
+			assert.strictEqual(kids(tableOf(root)).length, 2);
+			assert.strictEqual(textOf(kids(root)[1] as N), "… 2 more (see `tool`)");
+		}),
+	);
+});
+
+describe("Render.markdown: code, diff, collapsible and callout", () => {
+	const fenceValue = (n: N | undefined): string => (n?.value ?? "").replace(/\n$/, "");
+
+	it.effect("a code block is a fence with its language and exactly its text, however many backticks it holds", () =>
+		Effect.gen(function* () {
+			const texts = [
+				"let a = 1;\n\nlet b = 2;",
+				"```",
+				"````\n```js\nx\n```\n````",
+				"~~~\nx\n~~~",
+				"    indented\n  \ttab",
+				"",
+				"a ` b ``` c",
+			];
+			for (const text of texts) {
+				const root = yield* treeOf([Doc.codeBlock(text, "ts")]);
+				assert.deepStrictEqual(
+					kids(root).map((n) => n.type),
+					["code"],
+					JSON.stringify(text),
+				);
+				assert.strictEqual(kids(root)[0]?.lang, "ts");
+				assert.strictEqual(fenceValue(kids(root)[0]), text.replace(/\t/g, " "), JSON.stringify(text));
+			}
+			const noLang = yield* treeOf([Doc.codeBlock("x")]);
+			assert.isTrue(kids(noLang)[0]?.lang === null || kids(noLang)[0]?.lang === undefined);
+		}),
+	);
+
+	it.effect("a hostile language cannot break the fence", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.codeBlock("body", "ts`\n# injected"), Doc.paragraph("after")]);
+			assert.deepStrictEqual(
+				kids(root).map((n) => n.type),
+				["code", "paragraph"],
+			);
+			assert.strictEqual(fenceValue(kids(root)[0]), "body");
+		}),
+	);
+
+	it.effect("a diff is a fence whose language is diff, with '-' and '+' lines", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.diff("a\n```\nb", "c")]);
+			const [code] = kids(root);
+			assert.strictEqual(code?.type, "code");
+			assert.strictEqual(code?.lang, "diff");
+			assert.strictEqual(fenceValue(code), "- a\n- ```\n- b\n+ c");
+		}),
+	);
+
+	it.effect("a diff cap limits each side and marks what is left", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.diff("1\n2\n3\n4", "x\ny", { cap: 2 })]);
+			assert.strictEqual(fenceValue(kids(root)[0]), "- 1\n- 2\n  … 2 more lines\n+ x\n+ y");
+		}),
+	);
+
+	it.effect(
+		"a collapsible is a details HTML block with the title in summary, then the body as markdown, then the close",
+		() =>
+			Effect.gen(function* () {
+				const root = yield* treeOf([
+					Doc.collapsible("Stack", [Doc.paragraph("frame ", Doc.code("one")), Doc.codeBlock("a\nb")]),
+				]);
+				assert.deepStrictEqual(
+					kids(root).map((n) => n.type),
+					["html", "paragraph", "code", "html"],
+				);
+				assert.strictEqual(kids(root)[0]?.value, "<details><summary>Stack</summary>");
+				assert.strictEqual(kids(root)[3]?.value, "</details>");
+				assert.deepStrictEqual(
+					kids(kids(root)[1]).map((n) => n.type),
+					["text", "inlineCode"],
+				);
+				const open = yield* treeOf([Doc.collapsible("T", [], { open: true })]);
+				assert.strictEqual(kids(open)[0]?.value, "<details open><summary>T</summary>");
+			}),
+	);
+
+	it.effect("a hostile collapsible title is escaped HTML, so it cannot close the summary or add elements", () =>
+		Effect.gen(function* () {
+			const title = `</summary></details><img src=x onerror=alert(1)> "q" & <b>`;
+			const root = yield* treeOf([Doc.collapsible(title, [Doc.paragraph("body")])]);
+			const htmls = kids(root)
+				.filter((n) => n.type === "html")
+				.map((n) => n.value);
+			assert.deepStrictEqual(htmls.length, 2);
+			assert.strictEqual(
+				htmls[0],
+				"<details><summary>&lt;/summary&gt;&lt;/details&gt;&lt;img src=x onerror=alert(1)&gt; &quot;q&quot; &amp; &lt;b&gt;</summary>",
+			);
+			assert.strictEqual(htmls[1], "</details>");
+		}),
+	);
+
+	it.effect("a callout is a blockquote opening with [!KIND], then its body, for every kind", () =>
+		Effect.gen(function* () {
+			for (const kind of ["note", "tip", "important", "warning", "caution"] as const) {
+				const root = yield* treeOf([Doc.callout(kind, [Doc.paragraph("careful ", Doc.code("x")), Doc.codeBlock("y")])]);
+				assert.deepStrictEqual(
+					kids(root).map((n) => n.type),
+					["blockquote"],
+					kind,
+				);
+				const [quote] = kids(root);
+				assert.deepStrictEqual(
+					kids(quote).map((n) => n.type),
+					["paragraph", "code"],
+					kind,
+				);
+				assert.strictEqual(textOf(kids(quote)[0] as N), `[!${kind.toUpperCase()}]\ncareful x`, kind);
+			}
+			const empty = yield* treeOf([Doc.callout("note", []), Doc.paragraph("after")]);
+			assert.deepStrictEqual(
+				kids(empty).map((n) => n.type),
+				["blockquote", "paragraph"],
+			);
+			assert.strictEqual(textOf(kids(kids(empty)[0])[0] as N), "[!NOTE]");
+		}),
+	);
+});
+
+describe("Render.markdown: links", () => {
+	it.effect("a URL link is [label](url), even when the URL has spaces, parentheses or backslashes", () =>
+		Effect.gen(function* () {
+			for (const url of [
+				"https://example.test/x",
+				"https://example.test/a(b)c",
+				"https://example.test/a b",
+				"https://example.test/a\\b",
+				"/relative/path",
+				"#fragment",
+				"mailto:a@b.test",
+			]) {
+				const root = yield* treeOf([Doc.paragraph("x ", Doc.link({ url }, "the [label]"), " y")]);
+				const link = kids(kids(root)[0]).find((n) => n.type === "link");
+				assert.isDefined(link, url);
+				assert.strictEqual(link?.url, url, url);
+				assert.strictEqual(textOf(link as N), "the [label]", url);
+			}
+		}),
+	);
+
+	it.effect("a URL with an unsafe scheme is not a link: the target is shown as code", () =>
+		Effect.gen(function* () {
+			for (const url of [
+				"javascript:alert(1)",
+				"JaVaScRiPt:alert(1)",
+				" javascript:alert(1)",
+				"data:text/html,<script>",
+				"vbscript:x",
+			]) {
+				const root = yield* treeOf([Doc.paragraph(Doc.link({ url }, "click"))]);
+				const types = descendantTypes(kids(root)[0] as N);
+				assert.notInclude(types, "link", url);
+				assert.include(types, "inlineCode", url);
+				assert.strictEqual(
+					textOf(kids(root)[0] as N),
+					`click (${url.replace(/\s+/g, " ")})`.replace(" (", " (").replace("click (", "click ("),
+				);
+			}
+		}),
+	);
+
+	it.effect(
+		"a file link with an absolute path is a file:// link; without a URL form it is the label and path:line:col as code",
+		() =>
+			Effect.gen(function* () {
+				const displayPath = (p: string) => p.replace("/repo/", "");
+				const abs = yield* treeOf([Doc.paragraph(Doc.link({ file: "/repo/my dir/a.ts", line: 3, col: 4 }, "a.ts"))], {
+					displayPath,
+				});
+				const link = kids(kids(abs)[0]).find((n) => n.type === "link");
+				assert.strictEqual(link?.url, "file:///repo/my%20dir/a.ts");
+				assert.strictEqual(textOf(link as N), "a.ts");
+				const rel = yield* treeOf([Doc.paragraph(Doc.link({ file: "src/a.ts", line: 3, col: 4 }, "a.ts"))], {
+					displayPath,
+				});
+				const parts = kids(kids(rel)[0]);
+				assert.notInclude(descendantTypes(kids(rel)[0] as N), "link");
+				assert.deepStrictEqual(
+					parts.map((n) => [n.type, n.value]),
+					[
+						["text", "a.ts ("],
+						["inlineCode", "src/a.ts:3:4"],
+						["text", ")"],
+					],
+				);
+			}),
+	);
+
+	it.effect("a link whose label is its target shows it once", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.paragraph(Doc.link({ file: "src/a.ts", line: 3 }, "src/a.ts:3"))]);
+			assert.strictEqual(textOf(kids(root)[0] as N), "src/a.ts:3");
+		}),
+	);
+});
+
+describe("Render.markdown: lists, trees and counts", () => {
+	it.effect("a list is a bullet list of its items, nested lists included, with the overflow row after it", () =>
+		Effect.gen(function* () {
+			const items = ["a", "b", "c"].map((t) => Doc.paragraph(t));
+			const root = yield* treeOf([
+				Doc.list([Doc.paragraph("one two"), Doc.list([Doc.paragraph("inner")]), Doc.codeBlock("x\ny")]),
+			]);
+			const [list] = kids(root);
+			assert.strictEqual(list?.type, "list");
+			assert.strictEqual(list?.ordered, false);
+			assert.strictEqual(kids(list).length, 3);
+			assert.strictEqual(textOf(kids(kids(list)[0])[0] as N), "one two");
+			assert.strictEqual(kids(kids(list)[1])[0]?.type, "list");
+			assert.strictEqual(kids(kids(list)[2])[0]?.type, "code");
+
+			const capped = yield* treeOf([Doc.list(items, { cap: 2 })]);
+			assert.deepStrictEqual(
+				kids(capped).map((n) => n.type),
+				["list", "paragraph"],
+			);
+			assert.strictEqual(kids(kids(capped)[0]).length, 2);
+			assert.strictEqual(textOf(kids(capped)[1] as N), "… 1 more");
+			const ascii = yield* treeOf([Doc.list(items, { cap: 0 })], { glyphs: Glyphs.ascii });
+			assert.deepStrictEqual(
+				kids(ascii).map((n) => n.type),
+				["paragraph"],
+			);
+			assert.strictEqual(textOf(kids(ascii)[0] as N), "... 3 more");
+		}),
+	);
+
+	it.effect("a tree is its root label, then its children as nested lists", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.tree({
+					label: [Doc.code("root")],
+					children: [{ label: "a", children: [{ label: "a1" }, { label: "a2" }] }, { label: "b" }],
+				}),
+			]);
+			assert.deepStrictEqual(
+				kids(root).map((n) => n.type),
+				["paragraph", "list"],
+			);
+			assert.strictEqual(kids(kids(root)[0])[0]?.type, "inlineCode");
+			const top = kids(kids(root)[1]);
+			assert.deepStrictEqual(
+				top.map((item) => textOf(kids(item)[0] as N)),
+				["a", "b"],
+			);
+			assert.deepStrictEqual(
+				kids(kids(top[0])[1]).map((item) => textOf(kids(item)[0] as N)),
+				["a1", "a2"],
+			);
+			const lone = yield* treeOf([Doc.tree({ label: "only" })]);
+			assert.deepStrictEqual(
+				kids(lone).map((n) => n.type),
+				["paragraph"],
+			);
+		}),
+	);
+
+	const counters = [
+		Doc.counter(Status.core, "success", { key: "ok", label: "passed", n: 3 }),
+		Doc.counter(Status.core, "failure", { key: "bad", label: "failed", n: 1 }),
+		Doc.counter(Status.core, "pending", { key: "todo", label: "todo", n: 0 }),
+	];
+
+	it.effect("Counts inline is one paragraph with the headline share of the total and the duration", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.counts({ label: "Widgets", counters, qualifier: "(1 flaky)", durationMs: 1200, layout: "inline" }),
+			]);
+			assert.deepStrictEqual(
+				kids(root).map((n) => n.type),
+				["paragraph"],
+			);
+			assert.strictEqual(textOf(kids(root)[0] as N), "Widgets: 3/4 passed, 1 failed (1 flaky) (1.2s)");
+		}),
+	);
+
+	it.effect("Counts as a row is a table of one row: a header of the counter labels over their numbers", () =>
+		Effect.gen(function* () {
+			const table = tableOf(
+				yield* treeOf([Doc.counts({ label: "Widgets", counters, durationMs: 61000, layout: "row" })]),
+			);
+			assert.deepStrictEqual(cellTexts(table), [
+				["", "passed", "failed", ""],
+				["Widgets", "3/4", "1", "1m 1s"],
+			]);
+		}),
+	);
+
+	it.effect("Counts as columns is a list of label and number pairs", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.counts({ label: "Summary", counters, layout: "columns" })]);
+			assert.deepStrictEqual(
+				kids(root).map((n) => n.type),
+				["paragraph", "list"],
+			);
+			assert.deepStrictEqual(
+				kids(kids(root)[1]).map((item) => textOf(item)),
+				["passed: 3", "failed: 1"],
+			);
+		}),
+	);
+
+	it.effect("a status glyph from the context's glyph set, including the bracketed ASCII one, stays text", () =>
+		Effect.gen(function* () {
+			const unicode = yield* treeOf([Doc.paragraph(Doc.status(Status.core, "failure"), " bad")]);
+			assert.strictEqual(textOf(kids(unicode)[0] as N), "✗ bad");
+			const ascii = yield* treeOf([Doc.paragraph(Doc.status(Status.core, "failure"), " bad")], {
+				glyphs: Glyphs.ascii,
+			});
+			assert.strictEqual(textOf(kids(ascii)[0] as N), "[FAIL] bad");
+			assert.notInclude(descendantTypes(kids(ascii)[0] as N), "linkReference");
+		}),
+	);
+
+	it.effect("a path joins with the audience's separator", () =>
+		Effect.gen(function* () {
+			const human = yield* treeOf([Doc.paragraph(Doc.path("a", "b"))]);
+			assert.strictEqual(textOf(kids(human)[0] as N), "a › b");
+			const agent = yield* treeOf([Doc.paragraph(Doc.path("a", "b"))], { audience: "agent" });
+			assert.strictEqual(textOf(kids(agent)[0] as N), "a > b");
+		}),
+	);
+});
+
+describe("Render.markdown: no ANSI, and a hostile document stays inside its own structure", () => {
+	it.effect("no escape of any kind, and paint and link are never called", () =>
+		Effect.gen(function* () {
+			const calls: Array<string> = [];
+			const out = yield* render(composite({ codeAndPath: true }), {
+				paint: (_t, text) => {
+					calls.push("paint");
+					return `${ESC}[1m${text}${ESC}[0m`;
+				},
+				link: (_t, label) => {
+					calls.push("link");
+					return `${ESC}]8;;u\u0007${label}${ESC}]8;;\u0007`;
+				},
+			});
+			assert.deepStrictEqual(calls, []);
+			assert.notInclude(out, ESC);
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting their absence is the point
+			assert.notMatch(out, /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/);
+		}),
+	);
+
+	it.effect("the parsed hostile composite holds only the structure the renderer emitted", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf(composite({ codeAndPath: true }));
+			const types = kids(root).map((n) => n.type);
+			assert.deepStrictEqual(
+				types.filter((t) => t === "thematicBreak"),
+				[],
+				"no rule from user text",
+			);
+			const htmls = kids(root)
+				.filter((n) => n.type === "html")
+				.map((n) => n.value);
+			assert.isTrue(
+				htmls.every((h) => /^(<details( open)?><summary>[^<]*<\/summary>|<\/details>)$/.test(h ?? "")),
+				JSON.stringify(htmls),
+			);
+			for (const link of [...descendants(root)].filter((n) => n.type === "link")) {
+				assert.match(
+					link.url ?? "",
+					/^(https:\/\/x\.test\/|file:\/\/\/repo\/)/,
+					"a link is one the document asked for",
+				);
+			}
+			const inlineHtml = [...descendants(root)].filter(
+				(n) => n.type === "html" && n.value !== "<br>" && !htmls.includes(n.value),
+			);
+			assert.deepStrictEqual(inlineHtml, [], "no HTML from user text");
+		}),
+	);
+});
+
+function* descendants(n: N): Generator<N> {
+	for (const child of kids(n)) {
+		yield child;
+		yield* descendants(child);
+	}
+}

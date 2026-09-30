@@ -2,6 +2,7 @@ import type { AudienceKind, ColorLevel } from "@effected/env";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
 import { renderAnsi } from "./internal/renderAnsi.js";
+import { renderMarkdown } from "./internal/renderMarkdown.js";
 import { renderPlain } from "./internal/renderPlain.js";
 import type { Style, TokenName } from "./Token.js";
 
@@ -97,4 +98,36 @@ export class Render {
 	 * @param ctx - where the output is going
 	 */
 	static readonly ansi = (doc: Document, ctx: RenderContext): string => renderAnsi(doc, ctx);
+
+	/**
+	 * Render a document as GitHub-flavoured markdown, for a step summary or a file.
+	 *
+	 * @remarks
+	 * There is no ANSI and no OSC 8 (`paint` and `link` are never called), and the width does not apply: a reader
+	 * wraps. Everything a document carries as text is escaped so that it cannot become markdown: the characters
+	 * that mean something, `|` everywhere so text can never form a table, the marker at the start of a line (a
+	 * heading, bullet, setext underline or ordered item) and the start of an autolink (a URL scheme or `www.`). An
+	 * email address is not escaped: a reader may make a `mailto:` link of it, which is harmless. A leading indent is
+	 * dropped, since markdown would read it as code.
+	 *
+	 * - A heading is `#` repeated by its level. A section's title is a heading of level 2 for a section at the top,
+	 *   one deeper for each section nested inside it, to level 6.
+	 * - A table is a GFM pipe table: `|` is `\|` in a cell and a line break in a cell is `<br>`. A short row is
+	 *   padded and a long one widens the table. With no header, the header row is empty.
+	 * - A collapsible is `<details><summary>title</summary>`, a blank line, the body as markdown, a blank line and
+	 *   `</details>`. The title is HTML, so it is HTML-escaped and plain.
+	 * - A callout is a quoted `[!KIND]` followed by its body. A code block is a fence longer than any backtick run it
+	 *   holds, and a diff a `diff` fence of `-` and `+` lines.
+	 * - A link is `[label](url)` when it has a URL a reader can follow: an `http`, `https`, `mailto`, `file` or
+	 *   `vscode` URL, or a relative one. A file link has one when its path is absolute (`file://`). Otherwise, such as
+	 *   for a `javascript:` URL or a relative file path, it is the label followed by the target in inline code, as
+	 *   `path:line:col` for a file.
+	 * - A list is bullets, a tree a nested bullet list under its root label, and overflow rows paragraphs after what
+	 *   they cap. Counts inline is a paragraph, columns a list of `label: n` and row a one-row table of the counter
+	 *   labels over their numbers.
+	 *
+	 * @param doc - the document
+	 * @param ctx - where the output is going; its glyph set, audience and `displayPath` are used
+	 */
+	static readonly markdown = (doc: Document, ctx: RenderContext): string => renderMarkdown(doc, ctx);
 }

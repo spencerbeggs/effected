@@ -306,6 +306,9 @@ importers:
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
+      '@effected/markdown':
+        specifier: workspace:*
+        version: link:../markdown/dist/dev/pkg
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg

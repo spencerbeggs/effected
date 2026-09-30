@@ -70,7 +70,8 @@ const sliceSpans = (spans: ReadonlyArray<Span>, end: number): ReadonlyArray<Span
 	return out;
 };
 
-const textLines = (text: string): ReadonlyArray<string> => {
+/** The lines of a raw text, sanitized, without the empty line a trailing break would add. */
+export const textLines = (text: string): ReadonlyArray<string> => {
 	const lines = sanitize(text).split(/\r\n|\r|\n/);
 	return lines.length > 1 && lines[lines.length - 1] === "" ? lines.slice(0, -1) : lines;
 };
@@ -96,7 +97,8 @@ const hang = (lines: ReadonlyArray<Line>, first: Line, rest: Line): ReadonlyArra
 		? [trimLine(first)]
 		: lines.map((line, index) => trimLine([...(index === 0 ? first : rest), ...line]));
 
-const capOf = (cap: number | undefined): number | undefined =>
+/** A cap as a whole number of at least zero, or `undefined` for none. */
+export const capOf = (cap: number | undefined): number | undefined =>
 	cap === undefined || Number.isNaN(cap) ? undefined : Math.max(0, Math.floor(cap));
 
 const shrink = (widths: Array<number>, limit: number): void => {
