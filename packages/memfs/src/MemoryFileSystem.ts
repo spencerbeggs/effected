@@ -18,10 +18,10 @@ import * as internal from "./internal/volume.js";
  * without routing every assertion through an `Effect` read.
  *
  * @remarks
- * Resolved from context via the {@link MemoryFileSystem.Volume} key, published
- * only by {@link MemoryFileSystem.layerInspectable} and
- * {@link MemoryFileSystem.layerInspectableWith} (or obtained value-level from
- * {@link MemoryFileSystem.makeInspectable}). Every read walks the volume's
+ * Resolved from context via the {@link MemoryFileSystem.Volume} key, which
+ * every memory layer publishes ({@link MemoryFileSystem.layer},
+ * {@link MemoryFileSystem.layerWith}, a handle's `layer`), or obtained
+ * value-level from {@link MemoryFileSystem.makeHandle}. Every read walks the volume's
  * live state at call time — never a copy taken at build — so a read after a
  * write observes the write.
  *
@@ -307,8 +307,13 @@ export interface MemoryFileSystemHandle {
 	readonly fileSystem: FileSystem.FileSystem;
 	/** The synchronous inspection view of the same volume. */
 	readonly volume: MemoryFileSystemVolume;
-	/** Provides `FileSystem` (this volume) and `Path`; stable across provides. */
-	readonly layer: Layer.Layer<FileSystem.FileSystem | Path.Path>;
+	/**
+	 * Provides `FileSystem` (this volume, faulted when `options.faults` was
+	 * given), {@link MemoryFileSystem.Volume} and `Path`; stable across
+	 * provides. Unlike {@link MemoryFileSystem.layer} it includes `Path`, for
+	 * Promise-style suites that never compose layers.
+	 */
+	readonly layer: Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume | Path.Path>;
 	/** The read-only `node:fs` sync port over the volume. */
 	readonly sync: MemoryFileSystemSyncFileSystem;
 	/** The read-only `node:fs/promises` port over the volume. */
@@ -345,19 +350,6 @@ export type MemoryFileSystemSyncFaults = {
 export interface MemoryFileSystemPortOptions<Faults> {
 	/** Handlers that intercept individual port members. */
 	readonly faults?: Faults | undefined;
-}
-
-/**
- * The `FileSystem` service and the {@link MemoryFileSystemVolume} inspecting
- * the same underlying volume — the value-level pair returned by
- * {@link MemoryFileSystem.makeInspectable} and
- * {@link MemoryFileSystem.makeInspectableWith}.
- *
- * @public
- */
-export interface MemoryFileSystemInspectable {
-	readonly fileSystem: FileSystem.FileSystem;
-	readonly volume: MemoryFileSystemVolume;
 }
 
 /**
@@ -456,6 +448,14 @@ export interface MemoryFileSystemOptions {
 	readonly root?: string | undefined;
 	/** Whether path lookups fold case. Defaults to `true` (case-sensitive). */
 	readonly caseSensitive?: boolean | undefined;
+	/**
+	 * Faults to inject into the built `FileSystem` — the same registration map
+	 * (or factory) {@link MemoryFileSystem.makeFaulty} takes. The seed is
+	 * written beneath the faults, and {@link MemoryFileSystem.Volume} inspects
+	 * the raw volume, so a test can inject a failure and still assert on what
+	 * actually landed.
+	 */
+	readonly faults?: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory | undefined;
 }
 
 const engineOptions = (options: MemoryFileSystemOptions | undefined): internal.EngineOptions => ({
@@ -548,11 +548,61 @@ export type MemoryFileSystemFaults = {
  */
 export type MemoryFileSystemFaultsFactory = (base: FileSystem.FileSystem) => MemoryFileSystemFaults;
 
-const inspectableContext = ({
+const handleContext = ({
 	fileSystem,
 	volume,
-}: MemoryFileSystemInspectable): Context.Context<FileSystem.FileSystem | MemoryFileSystemVolume> =>
+}: MemoryFileSystemHandle): Context.Context<FileSystem.FileSystem | MemoryFileSystemVolume> =>
 	Context.make(FileSystem.FileSystem, fileSystem).pipe(Context.add(MemoryFileSystem.Volume, volume));
+
+// The one build path behind every seeded constructor: engine, seed (written
+// beneath any faults), view, then the optional fault wrapper over the service.
+// The mutators and ports use the RAW filesystem and view — they are setup and
+// inspection, not the code under test.
+const buildHandle = (
+	seed: MemoryFileSystemSeed,
+	options: MemoryFileSystemOptions | undefined,
+): Effect.Effect<MemoryFileSystemHandle, PlatformError.PlatformError> =>
+	Effect.gen(function* () {
+		const engine = yield* internal.makeInspectableWith(engineOptions(options));
+		const raw = engine.fileSystem;
+		yield* seedWith(raw, seed, options);
+		const volume = makeVolumeService(engine);
+		const fileSystem = options?.faults === undefined ? raw : wrapFaulty(raw, options.faults);
+		const parentOf = (path: string) => path.slice(0, Math.max(1, path.lastIndexOf("/")));
+		// Only creates a parent that is absent: an existing parent that is a file
+		// must reach the write itself, which fails ENOTDIR as `writeFileSync` does
+		// (a recursive mkdir over an existing file would say EEXIST instead).
+		const ensureParent = (path: string) => {
+			const parent = parentOf(path);
+			return volume.lstat(parent) === undefined ? raw.makeDirectory(parent, { recursive: true }) : Effect.void;
+		};
+		const handle: MemoryFileSystemHandle = {
+			fileSystem,
+			volume,
+			layer: Layer.merge(
+				Layer.succeedContext(
+					Context.make(FileSystem.FileSystem, fileSystem).pipe(Context.add(MemoryFileSystem.Volume, volume)),
+				),
+				Path.layer,
+			),
+			sync: makeSyncFileSystem(volume),
+			promises: makePromisesFileSystem(volume),
+			write: (path, content) =>
+				runMutation(
+					Effect.andThen(
+						ensureParent(path),
+						typeof content === "string" ? raw.writeFileString(path, content) : raw.writeFile(path, content),
+					),
+					"write",
+					path,
+				),
+			mkdir: (path) => runMutation(raw.makeDirectory(path, { recursive: true }), "mkdir", path),
+			remove: (path) => runMutation(raw.remove(path, { recursive: true }), "remove", path),
+			symlink: (target, path) =>
+				runMutation(Effect.andThen(ensureParent(path), raw.symlink(target, path)), "symlink", path),
+		};
+		return handle;
+	});
 
 /**
  * An in-memory implementation of core Effect's `FileSystem` service: an
@@ -641,8 +691,8 @@ export class MemoryFileSystem {
 	static readonly make: Effect.Effect<FileSystem.FileSystem> = internal.make;
 
 	/**
-	 * Builds a `FileSystem` service backed by a fresh volume pre-populated from
-	 * `seed`.
+	 * Builds a `FileSystem` service backed by a fresh volume, optionally
+	 * pre-populated from `seed` and configured by `options`.
 	 *
 	 * @remarks
 	 * Fails typed when the seed contradicts itself — for example a file seeded
@@ -650,15 +700,19 @@ export class MemoryFileSystem {
 	 * an invalid mode. Everything absent from the seed stays absent: reads of
 	 * unseeded paths fail `NotFound`.
 	 *
+	 * With `options.faults`, the returned filesystem is the faulted one; the
+	 * seed is written beneath the faults, never through them. Each call arms its
+	 * own transient-fault counters.
+	 *
 	 * @param seed - Absolute POSIX paths mapped to seed entries (relative keys
-	 *   when `options.root` is given).
+	 *   when `options.root` is given). Defaults to an empty seed.
 	 * @param options - See {@link MemoryFileSystemOptions}.
 	 */
 	static readonly makeWith = (
-		seed: MemoryFileSystemSeed,
+		seed: MemoryFileSystemSeed = {},
 		options?: MemoryFileSystemOptions,
 	): Effect.Effect<FileSystem.FileSystem, PlatformError.PlatformError> =>
-		Effect.map(MemoryFileSystem.makeInspectableWith(seed, options), (pair) => pair.fileSystem);
+		Effect.map(buildHandle(seed, options), (handle) => handle.fileSystem);
 
 	/**
 	 * Wraps an existing `FileSystem` so that registered faults can intercept
@@ -666,12 +720,12 @@ export class MemoryFileSystem {
 	 * wrapped filesystem.
 	 *
 	 * @remarks
-	 * The pure core of {@link MemoryFileSystem.layerFaulty} — most tests want
-	 * that layer form (or {@link MemoryFileSystem.layerFaultyWith}) and its
-	 * `Layer.provide` composition; see there for the interception semantics.
-	 * Reach for `makeFaulty` directly when composing a filesystem *value* by
-	 * hand (e.g. over {@link MemoryFileSystem.makeWith}). Each call arms its
-	 * own transient-fault counters.
+	 * The pure core of {@link MemoryFileSystem.layerFaulty}; see there for the
+	 * interception semantics. For a MEMORY volume with faults, pass
+	 * `options.faults` to {@link MemoryFileSystem.makeWith} or
+	 * {@link MemoryFileSystem.layerWith} instead. Reach for `makeFaulty` to
+	 * decorate any other filesystem value by hand. Each call arms its own
+	 * transient-fault counters.
 	 *
 	 * @param base - The filesystem to wrap; any implementation works.
 	 * @param faults - The fault registration map, or a
@@ -691,11 +745,11 @@ export class MemoryFileSystem {
 	 * deny-by-default.
 	 *
 	 * @remarks
-	 * Note the naming points the opposite way from the `R` types: `layerFaulty`
-	 * wraps a base and so leaves `FileSystem` in `R`, while
-	 * {@link MemoryFileSystem.layerFaultyWith} is self-contained (`R = never`)
-	 * — for the no-seed case, reach for `layerFaultyWith({}, faults)`, not
-	 * this.
+	 * `layerFaulty` decorates whatever `FileSystem` is provided to it — the
+	 * node adapter, a hand-built double — and so leaves `FileSystem` in `R`.
+	 * For a memory volume with faults, use
+	 * `MemoryFileSystem.layerWith(seed, { faults })`, which is self-contained
+	 * and also publishes {@link MemoryFileSystem.Volume} over the raw volume.
 	 *
 	 * Handlers receive the real call arguments, so a fault can key on the path
 	 * or mode of one specific call. Injected failures should be genuine
@@ -769,29 +823,6 @@ export class MemoryFileSystem {
 		);
 
 	/**
-	 * The seeded convenience form of {@link MemoryFileSystem.layerFaulty}: a
-	 * self-contained layer wrapping a fresh volume seeded from `seed`.
-	 *
-	 * @remarks
-	 * Equivalent to `layerFaulty(faults)` provided with `layerWith(seed)`. All
-	 * of {@link MemoryFileSystem.layerFaulty}'s interception semantics and
-	 * {@link MemoryFileSystem.layerWith}'s seeding and memoization semantics
-	 * apply.
-	 *
-	 * @param seed - Absolute POSIX paths mapped to seed entries.
-	 * @param faults - The fault registration map, or a
-	 *   {@link MemoryFileSystemFaultsFactory} that builds it from the wrapped
-	 *   filesystem.
-	 * @param options - See {@link MemoryFileSystemOptions}.
-	 */
-	static readonly layerFaultyWith = (
-		seed: MemoryFileSystemSeed,
-		faults: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory,
-		options?: MemoryFileSystemOptions,
-	): Layer.Layer<FileSystem.FileSystem> =>
-		Layer.provide(MemoryFileSystem.layerFaulty(faults), MemoryFileSystem.layerWith(seed, options));
-
-	/**
 	 * A transient fault: fails the first `times` intercepted calls with `error`,
 	 * then delegates to the wrapped filesystem forever after — the shape a
 	 * retry-policy test needs.
@@ -799,7 +830,7 @@ export class MemoryFileSystem {
 	 * @remarks
 	 * Usable as any value of the fault registration map. The countdown is
 	 * **armed per volume build**: each `makeFaulty` call — and each build of a
-	 * `layerFaulty`/`layerFaultyWith` layer — starts a fresh counter from
+	 * `layerFaulty` layer or `options.faults` build — starts a fresh counter from
 	 * `times`. Layer memoization is per-build, so consumers within one provided
 	 * layer graph share one counter, while a separate `Effect.provide` of the
 	 * same layer value re-arms it. In particular, a suite-boundary
@@ -822,18 +853,20 @@ export class MemoryFileSystem {
 	 * import { MemoryFileSystem } from "@effected/memfs";
 	 * import { PlatformError } from "effect";
 	 *
-	 * const flaky = MemoryFileSystem.layerFaultyWith(
+	 * const flaky = MemoryFileSystem.layerWith(
 	 *   { "/config.json": "{}" },
 	 *   {
-	 *     readFileString: MemoryFileSystem.failTimes(
-	 *       2,
-	 *       PlatformError.systemError({
-	 *         _tag: "Busy",
-	 *         module: "FileSystem",
-	 *         method: "readFileString",
-	 *         pathOrDescriptor: "/config.json",
-	 *       }),
-	 *     ),
+	 *     faults: {
+	 *       readFileString: MemoryFileSystem.failTimes(
+	 *         2,
+	 *         PlatformError.systemError({
+	 *           _tag: "Busy",
+	 *           module: "FileSystem",
+	 *           method: "readFileString",
+	 *           pathOrDescriptor: "/config.json",
+	 *         }),
+	 *       ),
+	 *     },
 	 *   },
 	 * );
 	 * ```
@@ -872,10 +905,9 @@ export class MemoryFileSystem {
 	 * ```ts
 	 * import { MemoryFileSystem } from "@effected/memfs";
 	 *
-	 * const layer = MemoryFileSystem.layerFaultyWith(
-	 *   {},
-	 *   { makeDirectory: MemoryFileSystem.die(new Error("makeDirectory is not stubbed")) },
-	 * );
+	 * const layer = MemoryFileSystem.layerWith(undefined, {
+	 *   faults: { makeDirectory: MemoryFileSystem.die(new Error("makeDirectory is not stubbed")) },
+	 * });
 	 * ```
 	 *
 	 * @param defect - The defect every intercepted call dies with.
@@ -937,13 +969,18 @@ export class MemoryFileSystem {
 	});
 
 	/**
-	 * Provides `FileSystem.FileSystem` backed by a fresh, empty volume.
+	 * Provides `FileSystem.FileSystem` backed by a fresh, empty volume, and
+	 * {@link MemoryFileSystem.Volume} inspecting it.
 	 *
 	 * @remarks
 	 * Layer memoization is per-build: consumers within one provided layer graph
-	 * share one volume; each separate `Effect.provide` builds a new one.
+	 * share one volume; each separate `Effect.provide` builds a new one. The
+	 * extra `Volume` service is harmless where only `FileSystem` is needed — a
+	 * layer providing more is assignable to `Layer<FileSystem.FileSystem>`.
 	 */
-	static readonly layer: Layer.Layer<FileSystem.FileSystem> = internal.layer;
+	static readonly layer: Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume> = Layer.effectContext(
+		Effect.map(Effect.orDie(buildHandle({}, undefined)), handleContext),
+	);
 
 	/**
 	 * Provides `FileSystem.FileSystem` backed by a fresh volume pre-populated
@@ -995,10 +1032,10 @@ export class MemoryFileSystem {
 	 * @param options - See {@link MemoryFileSystemOptions}.
 	 */
 	static readonly layerWith = (
-		seed: MemoryFileSystemSeed,
+		seed: MemoryFileSystemSeed = {},
 		options?: MemoryFileSystemOptions,
-	): Layer.Layer<FileSystem.FileSystem> =>
-		Layer.effect(FileSystem.FileSystem, Effect.orDie(MemoryFileSystem.makeWith(seed, options)));
+	): Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume> =>
+		Layer.effectContext(Effect.map(Effect.orDie(buildHandle(seed, options)), handleContext));
 
 	/**
 	 * The context key for {@link MemoryFileSystemVolume}, mirroring the shape
@@ -1006,10 +1043,11 @@ export class MemoryFileSystem {
 	 * shape).
 	 *
 	 * @remarks
-	 * Published only by the opt-in {@link MemoryFileSystem.layerInspectable}
-	 * and {@link MemoryFileSystem.layerInspectableWith} — no other constructor
-	 * provides it, and none of them changed shape to carry it. Resolve it in a
-	 * test with `yield* MemoryFileSystem.Volume`.
+	 * Published by every memory layer — {@link MemoryFileSystem.layer},
+	 * {@link MemoryFileSystem.layerWith} and a handle's `layer` — beside the
+	 * `FileSystem` it inspects; under `options.faults` it inspects the raw
+	 * volume beneath the faults. Resolve it in a test with
+	 * `yield* MemoryFileSystem.Volume`.
 	 */
 	static readonly Volume: Context.Service<MemoryFileSystemVolume, MemoryFileSystemVolume> = Context.Service(
 		"@effected/memfs/MemoryFileSystemVolume",
@@ -1024,7 +1062,7 @@ export class MemoryFileSystem {
 	 * @remarks
 	 * A pure adapter over the inspection view: no service, no layer, no
 	 * `Effect`. Get a volume from
-	 * {@link MemoryFileSystem.makeInspectableWith} (or resolve
+	 * {@link MemoryFileSystem.makeHandle} (or resolve
 	 * {@link MemoryFileSystem.Volume}) and pass the result wherever the port is
 	 * expected. The shape is structural, so `@effected/workspaces`'s
 	 * `SyncFileSystem` — and anything else asking for the same four operations —
@@ -1043,7 +1081,7 @@ export class MemoryFileSystem {
 	 *
 	 * @example
 	 * ```ts
-	 * const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith({
+	 * const { fileSystem, volume } = yield* MemoryFileSystem.makeHandle({
 	 * 	"/repo/package.json": `{ "name": "root" }`,
 	 * 	"/repo/packages": MemoryFileSystem.directory(),
 	 * });
@@ -1104,144 +1142,39 @@ export class MemoryFileSystem {
 	static readonly makeSync = (
 		seed: MemoryFileSystemSeed = {},
 		options?: MemoryFileSystemOptions,
-	): MemoryFileSystemHandle => {
-		const { fileSystem, volume } = runNode(MemoryFileSystem.makeInspectableWith(seed, options), (error) => ({
+	): MemoryFileSystemHandle =>
+		runNode(buildHandle(seed, options), (error) => ({
 			syscall: error.reason.method,
 			path: "pathOrDescriptor" in error.reason ? String(error.reason.pathOrDescriptor ?? "") : "",
 		}));
-		const parentOf = (path: string) => path.slice(0, Math.max(1, path.lastIndexOf("/")));
-		// Only creates a parent that is absent: an existing parent that is a file
-		// must reach the write itself, which fails ENOTDIR as `writeFileSync` does
-		// (a recursive mkdir over an existing file would say EEXIST instead).
-		const ensureParent = (path: string) => {
-			const parent = parentOf(path);
-			return volume.lstat(parent) === undefined ? fileSystem.makeDirectory(parent, { recursive: true }) : Effect.void;
-		};
-		return {
-			fileSystem,
-			volume,
-			layer: Layer.merge(Layer.succeed(FileSystem.FileSystem, fileSystem), Path.layer),
-			sync: MemoryFileSystem.syncFileSystem(volume),
-			promises: MemoryFileSystem.promisesFileSystem(volume),
-			write: (path, content) =>
-				runMutation(
-					Effect.andThen(
-						ensureParent(path),
-						typeof content === "string"
-							? fileSystem.writeFileString(path, content)
-							: fileSystem.writeFile(path, content),
-					),
-					"write",
-					path,
-				),
-			mkdir: (path) => runMutation(fileSystem.makeDirectory(path, { recursive: true }), "mkdir", path),
-			remove: (path) => runMutation(fileSystem.remove(path, { recursive: true }), "remove", path),
-			symlink: (target, path) =>
-				runMutation(Effect.andThen(ensureParent(path), fileSystem.symlink(target, path)), "symlink", path),
-		};
-	};
 
 	/**
-	 * Builds a fresh, empty volume exposed twice: as the `FileSystem` service
-	 * and as the {@link MemoryFileSystemVolume} inspecting it.
+	 * Builds a volume and returns every view over it as a
+	 * {@link MemoryFileSystemHandle}: the `FileSystem` service, the inspection
+	 * {@link MemoryFileSystemVolume}, a layer pinned to this one volume, the two
+	 * read-only ports, and synchronous setup mutators.
 	 *
 	 * @remarks
-	 * The two halves of the pair observe the SAME volume — a write through
-	 * `fileSystem` is immediately visible to `volume`. The value-level
-	 * primitive beneath {@link MemoryFileSystem.layerInspectable}, for tests
-	 * composing a filesystem by hand.
+	 * The `Effect` twin of {@link MemoryFileSystem.makeSync}. Reach for it when
+	 * assertions run AFTER the effect under test: the layer forms build (and
+	 * re-seed) a fresh volume per provide, so a post-run assertion would read a
+	 * different volume than the code under test wrote to. Provide
+	 * `handle.layer` — fixed to this volume, stable across provides — and assert
+	 * on `handle.volume`.
 	 *
-	 * Reach for the make forms when assertions run AFTER the effect: the layer
-	 * forms build (and re-seed) a fresh pair per provide, so a post-run
-	 * assertion would read a different volume than the code under test wrote
-	 * to. Build the pair once, wrap the filesystem in
-	 * `Layer.succeed(FileSystem.FileSystem, pair.fileSystem)` (optionally
-	 * decorated by {@link MemoryFileSystem.makeFaulty} first), and let the
-	 * assertion read `pair.volume` — the identity is pinned. The layer forms
-	 * are for tests that resolve `Volume` and assert INSIDE the provided
-	 * effect.
-	 */
-	static readonly makeInspectable: Effect.Effect<MemoryFileSystemInspectable> = Effect.map(
-		internal.makeInspectableWith(engineOptions(undefined)),
-		(engine): MemoryFileSystemInspectable => ({
-			fileSystem: engine.fileSystem,
-			volume: makeVolumeService(engine),
-		}),
-	);
-
-	/**
-	 * Builds a volume pre-populated from `seed`, exposed as the
-	 * {@link MemoryFileSystemInspectable} pair.
+	 * With `options.faults`, `handle.fileSystem` (and `handle.layer`) are
+	 * faulted; `handle.volume`, the ports and the mutators work beneath the
+	 * faults, because they are test setup and inspection, not the code under
+	 * test. Fails typed when the seed contradicts itself.
 	 *
-	 * @remarks
-	 * Seeding runs through the pair's own `fileSystem`, so the volume half
-	 * reads seeded entries back exactly as written. Fails typed when the seed
-	 * contradicts itself, mirroring {@link MemoryFileSystem.makeWith}.
-	 *
-	 * @param seed - Absolute POSIX paths mapped to seed entries (relative keys
-	 *   when `options.root` is given).
+	 * @param seed - Seed entries; relative keys when `options.root` is given.
+	 *   Defaults to an empty seed.
 	 * @param options - See {@link MemoryFileSystemOptions}.
 	 */
-	static readonly makeInspectableWith = (
-		seed: MemoryFileSystemSeed,
+	static readonly makeHandle = (
+		seed: MemoryFileSystemSeed = {},
 		options?: MemoryFileSystemOptions,
-	): Effect.Effect<MemoryFileSystemInspectable, PlatformError.PlatformError> =>
-		Effect.gen(function* () {
-			const engine = yield* internal.makeInspectableWith(engineOptions(options));
-			const pair: MemoryFileSystemInspectable = { fileSystem: engine.fileSystem, volume: makeVolumeService(engine) };
-			yield* seedWith(pair.fileSystem, seed, options);
-			return pair;
-		});
-
-	/**
-	 * Provides `FileSystem.FileSystem` AND {@link MemoryFileSystem.Volume},
-	 * both backed by one fresh, empty volume per build.
-	 *
-	 * @remarks
-	 * The opt-in inspection form of {@link MemoryFileSystem.layer} — the
-	 * existing constructors are unchanged and never carry the extra service.
-	 * Within one build the resolved `Volume` inspects the same volume instance
-	 * backing the `FileSystem`; per-build semantics hold as everywhere else
-	 * (two provides are two volumes, each pair internally consistent).
-	 */
-	static readonly layerInspectable: Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume> = Layer.effectContext(
-		Effect.map(MemoryFileSystem.makeInspectable, inspectableContext),
-	);
-
-	/**
-	 * Provides `FileSystem.FileSystem` AND {@link MemoryFileSystem.Volume},
-	 * both backed by one volume per build, pre-populated from `seed`.
-	 *
-	 * @remarks
-	 * The opt-in inspection form of {@link MemoryFileSystem.layerWith}, with
-	 * the same discipline: a parameterized factory (bind to a `const`),
-	 * per-build memoization (each provide re-seeds), and a contradictory seed
-	 * **dies** as a wiring bug — use
-	 * {@link MemoryFileSystem.makeInspectableWith} for the error channel.
-	 *
-	 * Re-seeding per provide has a consequence for write assertions: resolving
-	 * {@link MemoryFileSystem.Volume} under a SECOND `Effect.provide` of the
-	 * same layer value — even the same bound `const` — observes a fresh volume
-	 * holding only the seed, so every post-run "nothing was written" assertion
-	 * passes vacuously. Resolve `Volume` inside the program the layer is
-	 * provided to, or pin the identity with
-	 * {@link MemoryFileSystem.makeInspectableWith} and
-	 * `Layer.succeed(FileSystem.FileSystem, pair.fileSystem)`. To
-	 * inspect a volume UNDER fault injection, compose with `Layer.provideMerge`
-	 * so the decorated `FileSystem` wins while `Volume` survives:
-	 * `MemoryFileSystem.layerFaulty(faults).pipe(Layer.provideMerge(Inspectable))`.
-	 *
-	 * @param seed - Absolute POSIX paths mapped to seed entries (relative keys
-	 *   when `options.root` is given).
-	 * @param options - See {@link MemoryFileSystemOptions}.
-	 */
-	static readonly layerInspectableWith = (
-		seed: MemoryFileSystemSeed,
-		options?: MemoryFileSystemOptions,
-	): Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume> =>
-		Layer.effectContext(
-			Effect.orDie(Effect.map(MemoryFileSystem.makeInspectableWith(seed, options), inspectableContext)),
-		);
+	): Effect.Effect<MemoryFileSystemHandle, PlatformError.PlatformError> => buildHandle(seed, options);
 
 	/**
 	 * Builds the error a synchronous `node:fs` call throws: an `Error` carrying

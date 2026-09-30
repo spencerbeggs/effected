@@ -19,7 +19,7 @@ const denied = (method: string, path: string) =>
 		pathOrDescriptor: path,
 	});
 
-describe("MemoryFileSystem.layerInspectable", () => {
+describe("MemoryFileSystem.layer — Volume", () => {
 	it.effect("THE INVARIANT: within one build, Volume inspects the same volume backing FileSystem", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
@@ -36,7 +36,7 @@ describe("MemoryFileSystem.layerInspectable", () => {
 			yield* fs.remove("/managed/output.txt");
 			assert.isUndefined(volume.text("/managed/output.txt"));
 			assert.isFalse(volume.has("/managed/output.txt"));
-		}).pipe(Effect.provide(MemoryFileSystem.layerInspectable)),
+		}).pipe(Effect.provide(MemoryFileSystem.layer)),
 	);
 
 	it.effect("per-build semantics hold — two provides are two volumes, each pair internally consistent", () =>
@@ -51,27 +51,14 @@ describe("MemoryFileSystem.layerInspectable", () => {
 				assert.strictEqual(volume.text("/scratch.txt"), "mine");
 			});
 
-			yield* probe.pipe(Effect.provide(MemoryFileSystem.layerInspectable));
-			yield* probe.pipe(Effect.provide(MemoryFileSystem.layerInspectable));
+			yield* probe.pipe(Effect.provide(MemoryFileSystem.layer));
+			yield* probe.pipe(Effect.provide(MemoryFileSystem.layer));
 		}),
-	);
-
-	it.effect("existing constructors are untouched — layerWith provides FileSystem only", () =>
-		Effect.gen(function* () {
-			// Type-level guard: the un-inspectable layers still annotate exactly
-			// as before. Widening any of them would break consumer annotations.
-			const plain: Layer.Layer<FileSystem.FileSystem> = MemoryFileSystem.layerWith({ "/seed.txt": "s" });
-			const empty: Layer.Layer<FileSystem.FileSystem> = MemoryFileSystem.layer;
-			assert.isDefined(plain);
-			assert.isDefined(empty);
-			const fs = yield* FileSystem.FileSystem;
-			assert.strictEqual(yield* fs.readFileString("/seed.txt"), "s");
-		}).pipe(Effect.provide(MemoryFileSystem.layerWith({ "/seed.txt": "s" }))),
 	);
 });
 
-describe("MemoryFileSystem.layerInspectableWith", () => {
-	const Seeded = MemoryFileSystem.layerInspectableWith({
+describe("MemoryFileSystem.layerWith — Volume", () => {
+	const Seeded = MemoryFileSystem.layerWith({
 		"/repo/package.json": `{ "name": "fixture" }`,
 		"/repo/bin/run.sh": MemoryFileSystem.file("#!/bin/sh\n", { mode: 0o755 }),
 		"/repo/empty": MemoryFileSystem.directory(),
@@ -139,7 +126,7 @@ describe("MemoryFileSystem.layerInspectableWith", () => {
 			yield* fs.writeFileString("/empty.txt", "");
 			assert.strictEqual(volume.text("/empty.txt"), "");
 			assert.deepStrictEqual(volume.bytes("/empty.txt"), new Uint8Array());
-		}).pipe(Effect.provide(MemoryFileSystem.layerInspectable)),
+		}).pipe(Effect.provide(MemoryFileSystem.layer)),
 	);
 
 	it.effect("queries normalize lexically — '//', '.', '..' and relative paths resolve, symlinks stay literal", () =>
@@ -161,7 +148,7 @@ describe("MemoryFileSystem.layerInspectableWith", () => {
 			assert.isFalse(volume.has("/link/c.txt"));
 			assert.isUndefined(volume.text("/link/c.txt"));
 			assert.isUndefined(volume.readDirectory("/link"));
-		}).pipe(Effect.provide(MemoryFileSystem.layerInspectable)),
+		}).pipe(Effect.provide(MemoryFileSystem.layer)),
 	);
 
 	it.effect("returned byte arrays are defensive copies — mutating them cannot corrupt the volume", () =>
@@ -175,7 +162,7 @@ describe("MemoryFileSystem.layerInspectableWith", () => {
 			stolen?.fill(0);
 			assert.strictEqual(volume.text("/data.bin"), "abc");
 			assert.strictEqual(yield* fs.readFileString("/data.bin"), "abc");
-		}).pipe(Effect.provide(MemoryFileSystem.layerInspectable)),
+		}).pipe(Effect.provide(MemoryFileSystem.layer)),
 	);
 
 	it.effect("a contradictory seed dies — a wiring bug, mirroring layerWith", () =>
@@ -184,21 +171,21 @@ describe("MemoryFileSystem.layerInspectableWith", () => {
 				Effect.gen(function* () {
 					const volume = yield* MemoryFileSystem.Volume;
 					return volume.paths();
-				}).pipe(Effect.provide(MemoryFileSystem.layerInspectableWith({ "/a": "file", "/a/b": "child" }))),
+				}).pipe(Effect.provide(MemoryFileSystem.layerWith({ "/a": "file", "/a/b": "child" }))),
 			);
 			assert.isTrue(exit._tag === "Failure");
 		}),
 	);
 });
 
-describe("MemoryFileSystem.makeInspectable", () => {
+describe("MemoryFileSystem.makeHandle — the volume half", () => {
 	it.effect("the value-level pair shares one volume, seeded or bare", () =>
 		Effect.gen(function* () {
-			const bare = yield* MemoryFileSystem.makeInspectable;
+			const bare = yield* MemoryFileSystem.makeHandle();
 			yield* bare.fileSystem.writeFileString("/direct.txt", "by value");
 			assert.strictEqual(bare.volume.text("/direct.txt"), "by value");
 
-			const seeded = yield* MemoryFileSystem.makeInspectableWith({ "/seed.txt": "seeded" });
+			const seeded = yield* MemoryFileSystem.makeHandle({ "/seed.txt": "seeded" });
 			assert.strictEqual(seeded.volume.text("/seed.txt"), "seeded");
 			// The two pairs are independent volumes.
 			assert.isFalse(seeded.volume.has("/direct.txt"));
@@ -206,9 +193,9 @@ describe("MemoryFileSystem.makeInspectable", () => {
 		}),
 	);
 
-	it.effect("makeInspectableWith fails typed on a contradictory seed", () =>
+	it.effect("makeHandle fails typed on a contradictory seed", () =>
 		Effect.gen(function* () {
-			const error = yield* Effect.flip(MemoryFileSystem.makeInspectableWith({ "/a": "file", "/a/b": "child" }));
+			const error = yield* Effect.flip(MemoryFileSystem.makeHandle({ "/a": "file", "/a/b": "child" }));
 			assert.strictEqual(error._tag, "PlatformError");
 			assert.strictEqual(error.reason._tag, "AlreadyExists");
 		}),
@@ -236,7 +223,7 @@ describe("inspection composed under fault injection", () => {
 				MemoryFileSystem.layerFaulty({
 					writeFileString: (path) =>
 						path === "/blocked.txt" ? Effect.fail(denied("writeFileString", path)) : undefined,
-				}).pipe(Layer.provideMerge(MemoryFileSystem.layerInspectableWith({ "/seed.txt": "seeded" }))),
+				}).pipe(Layer.provideMerge(MemoryFileSystem.layerWith({ "/seed.txt": "seeded" }))),
 			),
 		),
 	);
@@ -258,7 +245,7 @@ describe("the templates-fixture acceptance sketch", () => {
 			assert.strictEqual(vol.text(path), "# BEGIN managed\njobs: {}\n# END managed\n");
 			assert.isTrue(vol.has("/repo/.github"));
 			assert.deepStrictEqual(vol.paths(), [path]);
-		}).pipe(Effect.provide(MemoryFileSystem.layerInspectable)),
+		}).pipe(Effect.provide(MemoryFileSystem.layer)),
 	);
 });
 
@@ -275,9 +262,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 	} as const;
 
 	const withSync = <A>(use: (sync: ReturnType<typeof MemoryFileSystem.syncFileSystem>) => A) =>
-		Effect.map(MemoryFileSystem.makeInspectableWith(seed), ({ volume }) =>
-			use(MemoryFileSystem.syncFileSystem(volume)),
-		);
+		Effect.map(MemoryFileSystem.makeHandle(seed), ({ volume }) => use(MemoryFileSystem.syncFileSystem(volume)));
 
 	it.effect("reads files and lists directories by name, sorted", () =>
 		Effect.gen(function* () {
@@ -337,7 +322,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 	// resolves all four operations through links.
 	it.effect("FOLLOWS LINKS like stat: a link to a directory is a directory and lists its target", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				"/real/pkg/package.json": `{ "name": "@x/a" }`,
 				"/links/pkg": MemoryFileSystem.symlink("/real/pkg"),
 			});
@@ -355,7 +340,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 
 	it.effect("a dangling link is ABSENT to the port, though the literal view still sees it", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				"/dangling": MemoryFileSystem.symlink("/nowhere"),
 			});
 			const sync = MemoryFileSystem.syncFileSystem(volume);
@@ -371,7 +356,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 
 	it.effect("a relative link target resolves against the link's own directory", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				"/a/b/target.txt": "found",
 				"/a/b/rel": MemoryFileSystem.symlink("target.txt"),
 			});
@@ -382,7 +367,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 
 	it.effect("a link cycle is absent to exists and ELOOP to readFile, as on a real filesystem", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				"/loop/a": MemoryFileSystem.symlink("/loop/b"),
 				"/loop/b": MemoryFileSystem.symlink("/loop/a"),
 			});
@@ -424,7 +409,7 @@ describe("MemoryFileSystem.syncFileSystem", () => {
 describe("MemoryFileSystemVolume.mtime", () => {
 	it.effect("a seeded mtime is readable, and distinct files keep distinct times", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				"/pkg/src/old.ts": MemoryFileSystem.file("old", { mtime: 1_000 }),
 				"/pkg/src/new.ts": MemoryFileSystem.file("new", { mtime: 9_000 }),
 			});
@@ -435,7 +420,7 @@ describe("MemoryFileSystemVolume.mtime", () => {
 
 	it.effect("HONEST ABSENCE: an absent path is undefined, never a 1970 timestamp", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				"/epoch.txt": MemoryFileSystem.file("at the epoch", { mtime: 0 }),
 			});
 			// 0 is a REAL modification time. A signature over mtimes must be able to
@@ -448,7 +433,7 @@ describe("MemoryFileSystemVolume.mtime", () => {
 
 	it.effect("a write restamps the entry from the Effect Clock — which under test starts at the epoch", () =>
 		Effect.gen(function* () {
-			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeHandle({
 				"/tracked.txt": MemoryFileSystem.file("before", { mtime: 1_000 }),
 			});
 			assert.strictEqual(volume.mtime("/tracked.txt"), 1_000);
@@ -470,7 +455,7 @@ describe("MemoryFileSystemVolume.mtime", () => {
 
 	it.effect("utimes through the FileSystem is visible to the view", () =>
 		Effect.gen(function* () {
-			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeHandle({
 				"/a.txt": "contents",
 			});
 			// `utimes` reads a NUMBER as Unix seconds, so 5_000 there means
@@ -486,7 +471,7 @@ describe("MemoryFileSystemVolume.mtime", () => {
 
 	it.effect("mtime agrees with what stat reports through the FileSystem", () =>
 		Effect.gen(function* () {
-			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeHandle({
 				"/a.txt": MemoryFileSystem.file("contents", { mtime: 4_242 }),
 			});
 			const info = yield* fileSystem.stat("/a.txt");
@@ -498,7 +483,7 @@ describe("MemoryFileSystemVolume.mtime", () => {
 
 	it.effect("directories carry an mtime too", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				"/dir": MemoryFileSystem.directory(),
 			});
 			assert.isDefined(volume.mtime("/dir"));

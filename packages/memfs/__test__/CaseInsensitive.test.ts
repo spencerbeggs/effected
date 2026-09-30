@@ -11,10 +11,7 @@ caseInsensitiveSuite("memory", MemoryFileSystem.layerWith({}, { caseSensitive: f
 describe("case-insensitive facade", () => {
 	it.effect("the view and both ports fold", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(
-				{ "/Repo/Docs.json": "{}" },
-				{ caseSensitive: false },
-			);
+			const { volume } = yield* MemoryFileSystem.makeHandle({ "/Repo/Docs.json": "{}" }, { caseSensitive: false });
 			assert.strictEqual(volume.text("/repo/docs.JSON"), "{}");
 			assert.isTrue(volume.has("/REPO"));
 			assert.isTrue(volume.isDirectory("/rEpO"));
@@ -29,10 +26,7 @@ describe("case-insensitive facade", () => {
 
 	it.effect("the promises port folds", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(
-				{ "/Repo/Docs.json": "{}" },
-				{ caseSensitive: false },
-			);
+			const { volume } = yield* MemoryFileSystem.makeHandle({ "/Repo/Docs.json": "{}" }, { caseSensitive: false });
 			const promises = MemoryFileSystem.promisesFileSystem(volume);
 			const text = yield* Effect.promise(() => promises.readFile("/repo/DOCS.json", "utf8"));
 			assert.strictEqual(text, "{}");
@@ -46,7 +40,7 @@ describe("case-insensitive facade", () => {
 
 	it.effect("seed keys differing only by case address one entry", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(
+			const { volume } = yield* MemoryFileSystem.makeHandle(
 				{ "/a/X.txt": "1", "/a/x.txt": "2" },
 				{ caseSensitive: false },
 			);
@@ -57,7 +51,7 @@ describe("case-insensitive facade", () => {
 
 	it.effect("the default stays case-sensitive", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({ "/Docs.json": "{}" });
+			const { volume } = yield* MemoryFileSystem.makeHandle({ "/Docs.json": "{}" });
 			assert.isUndefined(volume.text("/docs.json"));
 			assert.isFalse(volume.has("/DOCS.JSON"));
 		}),

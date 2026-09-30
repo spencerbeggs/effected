@@ -13,8 +13,8 @@
  * `MemoryFileSystem.layerFaulty`, a delegate-by-default wrapper over any
  * `FileSystem` implementation.
  *
- * For write-path assertions, the opt-in `MemoryFileSystem.layerInspectable` /
- * `layerInspectableWith` additionally publish `MemoryFileSystem.Volume` — a
+ * For write-path assertions, every memory layer also publishes
+ * `MemoryFileSystem.Volume` — a
  * synchronous, read-only view (`snapshot`/`text`/`bytes`/`has`/`paths`) of the
  * same volume backing the `FileSystem`, so what a program wrote can be read
  * back without an `Effect`.
@@ -35,7 +35,6 @@ export {
 	type MemoryFileSystemFaults,
 	type MemoryFileSystemFaultsFactory,
 	type MemoryFileSystemHandle,
-	type MemoryFileSystemInspectable,
 	type MemoryFileSystemOptions,
 	type MemoryFileSystemPortOptions,
 	type MemoryFileSystemPortStats,

@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
 
-const seeded = MemoryFileSystem.makeInspectableWith({
+const seeded = MemoryFileSystem.makeHandle({
 	"/d/f.txt": MemoryFileSystem.file("abc", { mtime: 1_000 }),
 	"/d/link": MemoryFileSystem.symlink("/d/f.txt"),
 	"/d/wide": MemoryFileSystem.symlink("/d/é.txt"),
@@ -68,7 +68,7 @@ describe("MemoryFileSystem.errno", () => {
 	});
 });
 
-const tree = MemoryFileSystem.makeInspectableWith({
+const tree = MemoryFileSystem.makeHandle({
 	"/r/file.txt": MemoryFileSystem.file("hello", { mtime: 5_000 }),
 	"/r/dir/inner.txt": "x",
 	"/r/to-dir": MemoryFileSystem.symlink("/r/dir"),
@@ -129,7 +129,7 @@ describe("sync port stat/lstat", () => {
 
 	it.effect("a cycle spread across nested link targets still terminates as ELOOP", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({
+			const { volume } = yield* MemoryFileSystem.makeHandle({
 				"/c/a": MemoryFileSystem.symlink("/c/b/x"),
 				"/c/b": MemoryFileSystem.symlink("/c/a"),
 			});

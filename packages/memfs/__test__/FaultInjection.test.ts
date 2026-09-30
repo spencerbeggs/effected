@@ -46,8 +46,10 @@ describe("MemoryFileSystem.layerFaulty", () => {
 			assert.strictEqual((yield* fs.stat("/repos/blocked")).type, "Directory");
 		}).pipe(
 			Effect.provide(
-				MemoryFileSystem.layerFaultyWith(tree, {
-					chmod: (path, mode) => (mode === 0o555 || mode === 0o444 ? Effect.fail(denied("chmod", path)) : undefined),
+				MemoryFileSystem.layerWith(tree, {
+					faults: {
+						chmod: (path, mode) => (mode === 0o555 || mode === 0o444 ? Effect.fail(denied("chmod", path)) : undefined),
+					},
 				}),
 			),
 		),
@@ -93,9 +95,11 @@ describe("MemoryFileSystem.layerFaulty", () => {
 			assert.strictEqual(yield* fs.readFileString("/repos/blocked/src/b.ts"), "export {}\n");
 		}).pipe(
 			Effect.provide(
-				MemoryFileSystem.layerFaultyWith(tree, {
-					readFileString: (path) =>
-						path === "/repos/blocked/src/a.ts" ? Effect.fail(denied("readFileString", path)) : undefined,
+				MemoryFileSystem.layerWith(tree, {
+					faults: {
+						readFileString: (path) =>
+							path === "/repos/blocked/src/a.ts" ? Effect.fail(denied("readFileString", path)) : undefined,
+					},
 				}),
 			),
 		),
@@ -231,9 +235,9 @@ describe("MemoryFileSystem.failTimes", () => {
 			assert.strictEqual(yield* fs.readFileString("/config.json"), "{}");
 		}).pipe(
 			Effect.provide(
-				MemoryFileSystem.layerFaultyWith(
+				MemoryFileSystem.layerWith(
 					{ "/config.json": "{}" },
-					{ readFileString: MemoryFileSystem.failTimes(2, busy) },
+					{ faults: { readFileString: MemoryFileSystem.failTimes(2, busy) } },
 				),
 			),
 		),
@@ -241,9 +245,9 @@ describe("MemoryFileSystem.failTimes", () => {
 
 	it.effect("re-arms its counter on each layer build — one bound layer const, two provides", () =>
 		Effect.gen(function* () {
-			const Flaky = MemoryFileSystem.layerFaultyWith(
+			const Flaky = MemoryFileSystem.layerWith(
 				{ "/config.json": "{}" },
-				{ readFileString: MemoryFileSystem.failTimes(1, busy) },
+				{ faults: { readFileString: MemoryFileSystem.failTimes(1, busy) } },
 			);
 			const probe = Effect.gen(function* () {
 				const fs = yield* FileSystem.FileSystem;
@@ -271,9 +275,9 @@ describe("MemoryFileSystem.failTimes", () => {
 			assert.strictEqual(value, "{}");
 		}).pipe(
 			Effect.provide(
-				MemoryFileSystem.layerFaultyWith(
+				MemoryFileSystem.layerWith(
 					{ "/config.json": "{}" },
-					{ readFileString: MemoryFileSystem.failTimes(2, busy) },
+					{ faults: { readFileString: MemoryFileSystem.failTimes(2, busy) } },
 				),
 			),
 		),
@@ -330,7 +334,9 @@ describe("MemoryFileSystem.die", () => {
 				assert.isFalse(Cause.hasFails(exit.cause));
 				assert.strictEqual(Cause.squash(exit.cause), unstubbed);
 			}
-		}).pipe(Effect.provide(MemoryFileSystem.layerFaultyWith({}, { makeDirectory: MemoryFileSystem.die(unstubbed) }))),
+		}).pipe(
+			Effect.provide(MemoryFileSystem.layerWith({}, { faults: { makeDirectory: MemoryFileSystem.die(unstubbed) } })),
+		),
 	);
 
 	it.effect("dies with exactly the defect it was given, and leaves other members delegating", () =>
@@ -356,10 +362,15 @@ describe("MemoryFileSystem fault factories", () => {
 			assert.strictEqual(yield* fs.readFileString("/DOCS.JSON"), "{}");
 		}).pipe(
 			Effect.provide(
-				MemoryFileSystem.layerFaultyWith({ "/docs.json": "{}" }, (base) => ({
-					stat: (path) => base.stat(path.toLowerCase()),
-					readFileString: (path, encoding) => base.readFileString(path.toLowerCase(), encoding),
-				})),
+				MemoryFileSystem.layerWith(
+					{ "/docs.json": "{}" },
+					{
+						faults: (base) => ({
+							stat: (path) => base.stat(path.toLowerCase()),
+							readFileString: (path, encoding) => base.readFileString(path.toLowerCase(), encoding),
+						}),
+					},
+				),
 			),
 		),
 	);

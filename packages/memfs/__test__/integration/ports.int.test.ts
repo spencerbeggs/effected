@@ -100,7 +100,7 @@ const seed = {
 describe("sync port parity with node:fs", () => {
 	it.effect("agrees with statSync, lstatSync, readFileSync and readdirSync on every case", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const sync = MemoryFileSystem.syncFileSystem(volume);
 			for (const c of cases) {
 				assert.deepStrictEqual(
@@ -129,7 +129,7 @@ describe("sync port parity with node:fs", () => {
 
 	it.effect("the promises port agrees with readdir, stat and readFile, dirents included", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(seed);
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const fsp = MemoryFileSystem.promisesFileSystem(volume);
 			const settled = (f: () => Promise<unknown>) =>
 				Effect.promise(() =>

@@ -5,7 +5,7 @@ import { MemoryFileSystem } from "../src/index.js";
 describe("seed options: root", () => {
 	it.effect("re-keys relative seed keys under root", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith(
+			const { volume } = yield* MemoryFileSystem.makeHandle(
 				{ "package.json": "{}", "src/a.test.ts": "" },
 				{ root: "/ws-1/repo" },
 			);
@@ -15,7 +15,7 @@ describe("seed options: root", () => {
 
 	it.effect("creates the root even when the seed is empty", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({}, { root: "/pkg" });
+			const { volume } = yield* MemoryFileSystem.makeHandle({}, { root: "/pkg" });
 			assert.isTrue(volume.isDirectory("/pkg"));
 			assert.deepStrictEqual(volume.readDirectory("/pkg"), []);
 		}),
@@ -23,7 +23,7 @@ describe("seed options: root", () => {
 
 	it.effect("the empty key addresses the root itself", () =>
 		Effect.gen(function* () {
-			const { fileSystem, volume } = yield* MemoryFileSystem.makeInspectableWith(
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeHandle(
 				{ "": MemoryFileSystem.directory({ mode: 0o700 }) },
 				{ root: "/pkg" },
 			);
@@ -44,29 +44,29 @@ describe("seed options: root", () => {
 
 	it.effect("a key that dips out and back into the root is allowed", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({ "../ws/x.txt": "1" }, { root: "/ws" });
+			const { volume } = yield* MemoryFileSystem.makeHandle({ "../ws/x.txt": "1" }, { root: "/ws" });
 			assert.deepStrictEqual(volume.paths(), ["/ws/x.txt"]);
 		}),
 	);
 
-	it.effect("layerInspectableWith forwards options", () =>
+	it.effect("layerWith forwards options to the Volume", () =>
 		Effect.gen(function* () {
 			const volume = yield* MemoryFileSystem.Volume;
 			assert.deepStrictEqual(volume.paths(), ["/ws/a.txt"]);
-		}).pipe(Effect.provide(MemoryFileSystem.layerInspectableWith({ "a.txt": "x" }, { root: "/ws" }))),
+		}).pipe(Effect.provide(MemoryFileSystem.layerWith({ "a.txt": "x" }, { root: "/ws" }))),
 	);
 
-	it.effect("layerFaultyWith forwards options", () =>
+	it.effect("layerWith forwards options alongside faults", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
 			assert.strictEqual(yield* fs.readFileString("/ws/a.txt"), "x");
-		}).pipe(Effect.provide(MemoryFileSystem.layerFaultyWith({ "a.txt": "x" }, {}, { root: "/ws" }))),
+		}).pipe(Effect.provide(MemoryFileSystem.layerWith({ "a.txt": "x" }, { root: "/ws", faults: {} }))),
 	);
 
 	it.effect("normalizes a root with a trailing slash or dot-dot", () =>
 		Effect.gen(function* () {
-			const a = yield* MemoryFileSystem.makeInspectableWith({ "x.txt": "1" }, { root: "/ws/" });
-			const b = yield* MemoryFileSystem.makeInspectableWith({ "x.txt": "1" }, { root: "/ws/../ws" });
+			const a = yield* MemoryFileSystem.makeHandle({ "x.txt": "1" }, { root: "/ws/" });
+			const b = yield* MemoryFileSystem.makeHandle({ "x.txt": "1" }, { root: "/ws/../ws" });
 			assert.deepStrictEqual(a.volume.paths(), ["/ws/x.txt"]);
 			assert.deepStrictEqual(b.volume.paths(), ["/ws/x.txt"]);
 		}),
@@ -102,7 +102,7 @@ describe("seed options: root", () => {
 
 	it.effect("without options, behaviour is unchanged", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeInspectableWith({ "/a/b.txt": "x" });
+			const { volume } = yield* MemoryFileSystem.makeHandle({ "/a/b.txt": "x" });
 			assert.deepStrictEqual(volume.paths(), ["/a/b.txt"]);
 		}),
 	);
