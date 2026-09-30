@@ -1,5 +1,24 @@
 # @effected/workspaces
 
+## 0.30.4
+
+### Documentation
+
+- The `Workspaces` documentation now tells tests to provide an `@effected/memfs` volume. [#902][#902]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.19.0 | 0.19.1 |
+| @effected/walker | dependency | updated | 0.14.0 | 0.14.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#902]: https://github.com/spencerbeggs/effected/pull/902
+
 ## 0.30.3
 
 ### Bug Fixes

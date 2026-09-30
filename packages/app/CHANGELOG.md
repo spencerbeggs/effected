@@ -1,5 +1,24 @@
 # @effected/app
 
+## 0.19.1
+
+### Documentation
+
+- App.layerTest remarks now point directory tests at `AppDirs.layer` over `@effected/memfs`. [#902][#902]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.13.1 | 0.13.1 |
+| @effected/xdg | dependency | updated | 0.8.2 | 0.8.2 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#902]: https://github.com/spencerbeggs/effected/pull/902
+
 ## 0.19.0
 
 ### Breaking Changes

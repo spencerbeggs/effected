@@ -1,5 +1,17 @@
 # @effected/walker
 
+## 0.14.1
+
+### Documentation
+
+- The README now shows tests providing core's `Path.layer` plus an in-memory `@effected/memfs` volume instead of `FileSystem.layerNoop`. [#902][#902]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#902]: https://github.com/spencerbeggs/effected/pull/902
+
 ## 0.14.0
 
 ### Features
