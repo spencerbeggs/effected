@@ -34,6 +34,11 @@ export { CliInteractive } from "./CliInteractive.js";
 export { CliLog, type CliLogFile, type CliLogFileOptions, type CliLogOptions } from "./CliLog.js";
 export { CliLogger, type CliLoggerOptions } from "./CliLogger.js";
 export { CliMessage, type CliMessageOptions } from "./CliMessage.js";
+export {
+	CliPrompt,
+	type CliPromptFallbackOptions,
+	type CliPromptTarget,
+} from "./CliPrompt.js";
 export { CliRuntime, type FailureDetails, type MainOptions, type ReportFailuresOptions } from "./CliRuntime.js";
 export { CliTheme, type CliThemeOptions, type CliThemeShape, type CliThemeTestOptions } from "./CliTheme.js";
 export { ConfigIssueRenderer } from "./ConfigIssueRenderer.js";

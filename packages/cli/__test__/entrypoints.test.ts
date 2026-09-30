@@ -28,7 +28,7 @@ const reachableFrom = (entry: string): ReadonlySet<string> => {
 describe("entrypoint boundary", () => {
 	it("nothing reachable from `.` imports CliTest", () => {
 		const reachable = reachableFrom(resolve(SRC, "index.ts"));
-		const offenders = [...reachable].filter((file) => /src\/(CliTest|testing)\.ts$/.test(file));
+		const offenders = [...reachable].filter((file) => /src\/(CliTest|testing|TestTerminal)\.ts$/.test(file));
 		assert.deepStrictEqual(offenders, [], "test utilities belong behind ./testing");
 	});
 

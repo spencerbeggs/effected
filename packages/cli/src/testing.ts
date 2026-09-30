@@ -9,3 +9,4 @@
  * @packageDocumentation
  */
 export { CliTest, type RunOptions, type RunResult, type Sandbox } from "./CliTest.js";
+export { type KeyInput, TestTerminal, type TestTerminalHandle } from "./TestTerminal.js";
