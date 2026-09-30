@@ -121,7 +121,7 @@ const annotatedTarget = SchemaTarget.make({
 // view: `memory` is bound once and merged by reference, so layer
 // memoization gives the reads and the writes the same volume.
 //
-// `layerInspectableWith` RE-SEEDS on every build, so a `MemoryFileSystem.Volume`
+// `layerWith` RE-SEEDS on every build, so a `MemoryFileSystem.Volume`
 // resolved under a SECOND `Effect.provide` of the same layer value is a fresh
 // volume holding the seed — which makes "nothing was written" pass vacuously.
 // Every test below therefore resolves the volume INSIDE the one program it

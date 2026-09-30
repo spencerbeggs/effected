@@ -780,6 +780,12 @@ export class MemoryFileSystem {
 	 * decorate any other filesystem value by hand. Each call arms its own
 	 * transient-fault counters.
 	 *
+	 * Fault keys are checked against the OWN enumerable function members of
+	 * `base` (a `RangeError` names any other key). Every `FileSystem.make`-built
+	 * service — memfs, the node adapter — has them; a class instance whose
+	 * methods live on its prototype is rejected, so wrap such a value in
+	 * `FileSystem.make({ ... })` first.
+	 *
 	 * @param base - The filesystem to wrap; any implementation works.
 	 * @param faults - The fault registration map, or a
 	 *   {@link MemoryFileSystemFaultsFactory} that builds it from the wrapped

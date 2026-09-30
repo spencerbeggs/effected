@@ -73,13 +73,17 @@ Parent directories are created recursively, so `/repo` and `/repo/tools` exist w
 
 ## Misbehaviour is injected, not stubbed
 
-Permission modes are recorded faithfully and readable via `stat`, but **no operation enforces them**: the volume models no process identity, so nothing fails `PermissionDenied` on its own. To exercise a failure path — a denied `chmod`, a busy read, a write that fails twice and then succeeds — wrap the volume with `MemoryFileSystem.layerFaulty`. It is *delegate-by-default*, the deliberate inverse of `layerNoop`: only the methods you register are intercepted, handlers receive the real call arguments so a fault can key on one specific path, and a handler returning `undefined` declines and lets the call through. Faults are type-constrained to each method's own channel, so an injected failure has to be a genuine `PlatformError` — `Effect.fail(new Error(...))` does not compile. See the [advanced guide](/memfs/advanced) for the full pattern, including `failTimes` for retry tests.
+Permission modes are recorded faithfully and readable via `stat`, but **no operation enforces them**: the volume models no process identity, so nothing fails `PermissionDenied` on its own. To exercise a failure path — a denied `chmod`, a busy read, a write that fails twice and then succeeds — pass `faults` to the seeded constructor — `MemoryFileSystem.layerWith(seed, { faults })`. Injection is *delegate-by-default*, the deliberate inverse of `layerNoop`: only the methods you register are intercepted, handlers receive the real call arguments so a fault can key on one specific path, and a handler returning `undefined` declines and lets the call through. Faults are type-constrained to each method's own channel, so an injected failure has to be a genuine `PlatformError` — `Effect.fail(new Error(...))` does not compile. See the [advanced guide](/memfs/advanced) for the full pattern, including `failTimes` for retry tests.
 
 ## Reading back what a program wrote
 
-The opt-in `MemoryFileSystem.layerInspectable` / `layerInspectableWith` constructors additionally publish `MemoryFileSystem.Volume`, a synchronous, read-only, live view over the same volume backing the service: `snapshot`, `text`, `bytes`, `has`, `paths` for contents, and `readDirectory`, `isDirectory`, `mtime`, `readLink` for structure. Absence is reported as `undefined` rather than an empty value, because `[]` is a genuinely empty directory and `0` is a file modified at the epoch — a signature built over mtimes must not read an absent file as one modified in 1970.
+Every memory layer also publishes `MemoryFileSystem.Volume`, a synchronous, read-only, live view over the same volume backing the service: `snapshot`, `text`, `bytes`, `has`, `paths` for contents, and `readDirectory`, `isDirectory`, `mtime`, `readLink`, `lstat` for structure. `MemoryFileSystem.makeHandle` (inside `Effect`) and `makeSync` (at describe scope) return every view over one volume at once, plus a layer pinned to it. Absence is reported as `undefined` rather than an empty value, because `[]` is a genuinely empty directory and `0` is a file modified at the epoch — a signature built over mtimes must not read an absent file as one modified in 1970.
 
-For code that takes an injected synchronous port instead of requiring `FileSystem`, `MemoryFileSystem.syncFileSystem(volume)` adapts that view to the `node:fs` sync subset.
+For code that takes an injected port instead of requiring `FileSystem`, `MemoryFileSystem.syncFileSystem(volume)` and `promisesFileSystem(volume)` adapt that view to the `node:fs` sync and `node:fs/promises` subsets, with node's error shapes.
+
+## Case-insensitive volumes and the real disk
+
+`caseSensitive: false` models a case-insensitive, case-preserving volume such as default APFS, with semantics measured against a real APFS volume. And the `@effected/memfs/node-sync` subpath — the one module that touches the real disk — is a read-only, synchronous `FileSystem` over `node:fs`, for programs that must run under `Effect.runSync`. Both are covered in the [advanced guide](/memfs/advanced).
 
 ## What the volume does not see
 

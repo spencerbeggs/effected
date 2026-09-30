@@ -114,13 +114,13 @@ Resist the urge to "fix" a test that fails this way by broadening the double. Th
 
 ### Assert on what a program wrote, without an Effect
 
-Routing every assertion back through an `Effect` read gets noisy. `MemoryFileSystem.layerInspectableWith(seed)` provides the `FileSystem` service *and* publishes `MemoryFileSystem.Volume`, a synchronous read-only view over the same volume:
+Routing every assertion back through an `Effect` read gets noisy. Every memory layer provides the `FileSystem` service *and* publishes `MemoryFileSystem.Volume`, a synchronous read-only view over the same volume:
 
 ```ts with-api
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, FileSystem } from "effect";
 
-const Volume = MemoryFileSystem.layerInspectableWith({
+const Volume = MemoryFileSystem.layerWith({
   "/repo/package.json": `{ "name": "root" }`,
   "/repo/packages": MemoryFileSystem.directory(),
 });
@@ -145,27 +145,29 @@ The view is *live* — it reads the volume's state at call time, so a read after
 
 ### Simulate a filesystem that misbehaves
 
-Permission modes are recorded but never enforced, so arranging a `0o444` mode will not make a write fail. Inject the failure instead. `MemoryFileSystem.layerFaultyWith(seed, faults)` seeds a volume and wraps it: handlers receive the real call arguments, and returning `undefined` declines the fault so the call reaches the volume normally:
+Permission modes are recorded but never enforced, so arranging a `0o444` mode will not make a write fail. Inject the failure instead. `MemoryFileSystem.layerWith(seed, { faults })` seeds a volume and wraps its service: handlers receive the real call arguments, and returning `undefined` declines the fault so the call reaches the volume normally:
 
 ```ts with-api
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, FileSystem, PlatformError } from "effect";
 
-const Volume = MemoryFileSystem.layerFaultyWith(
+const Volume = MemoryFileSystem.layerWith(
   { "/repo/package.json": `{ "name": "fixture" }`, "/repo/locked.json": "{}" },
   {
-    // Only /repo/locked.json is denied; every other write delegates.
-    writeFileString: (path) =>
-      path === "/repo/locked.json"
-        ? Effect.fail(
-            PlatformError.systemError({
-              _tag: "PermissionDenied",
-              module: "FileSystem",
-              method: "writeFileString",
-              pathOrDescriptor: path,
-            }),
-          )
-        : undefined,
+    faults: {
+      // Only /repo/locked.json is denied; every other write delegates.
+      writeFileString: (path) =>
+        path === "/repo/locked.json"
+          ? Effect.fail(
+              PlatformError.systemError({
+                _tag: "PermissionDenied",
+                module: "FileSystem",
+                method: "writeFileString",
+                pathOrDescriptor: path,
+              }),
+            )
+          : undefined,
+    },
   },
 );
 
@@ -194,7 +196,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem } from "effect";
 
 describe("manifest writer", () => {
-  const Volume = MemoryFileSystem.layerInspectableWith({
+  const Volume = MemoryFileSystem.layerWith({
     "/repo/package.json": `{ "name": "fixture" }`,
   });
 
@@ -220,5 +222,5 @@ One trap to internalize before you write many of these: **layer memoization is p
 
 ## Next steps
 
-- Ready for fault injection in depth, volume inspection, mtime-sensitive fixtures, the synchronous port and the boundaries of what a volume can see? See the [advanced guide](/memfs/advanced).
+- Ready for fault injection in depth, volume inspection and handles, mtime-sensitive fixtures, the sync and promises ports, case-insensitive volumes, the node-sync subpath and the boundaries of what a volume can see? See the [advanced guide](/memfs/advanced).
 - Every export, with full signatures, lives in the [API reference](/memfs/api) — start with [`MemoryFileSystem`](/memfs/api/class/memoryfilesystem), the seed types [`MemoryFileSystemSeed`](/memfs/api/interface/memoryfilesystemseed) and [`MemoryFileSystemSeedEntry`](/memfs/api/type/memoryfilesystemseedentry), and the inspection view [`MemoryFileSystemVolume`](/memfs/api/interface/memoryfilesystemvolume).

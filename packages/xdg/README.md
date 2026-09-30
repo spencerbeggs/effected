@@ -128,6 +128,34 @@ Order matters: put `resolver` before `nativeResolver` so an existing `~/.config/
 
 A namespace that is empty, or contains a path separator, or is exactly `.` or `..`, is a **defect** at layer construction rather than a typed error. It can only come from code, and `namespace: "../.."` would resolve the application's directories outside `$HOME` entirely.
 
+## Testing
+
+`@effected/memfs` virtualizes the filesystem, not the platform. `AppDirs` and `XdgConfig` read the platform through the `CurrentPlatform` reference, which defaults to the host's `process.platform`, so a test that only swaps the filesystem still takes the host's darwin, linux or win32 branch. Pin the platform as well:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { AppDirs, CurrentPlatform, Xdg, XdgPaths } from "@effected/xdg";
+import { Effect, Layer, Path } from "effect";
+
+const TestEnv = Layer.mergeAll(
+  Xdg.layerFrom(XdgPaths.make({ home: "/home/ada", configDirs: ["/etc/xdg"], dataDirs: ["/usr/share"] })),
+  MemoryFileSystem.layer,
+  Path.layer,
+);
+
+const config = Effect.gen(function* () {
+  const appDirs = yield* AppDirs;
+  return appDirs.dirs.config;
+}).pipe(
+  Effect.provide(AppDirs.layer({ namespace: "myapp", native: true }).pipe(Layer.provide(TestEnv))),
+  Effect.provideService(CurrentPlatform, "linux"),
+);
+// "/home/ada/.myapp" on every host; pin "darwin" and the same program answers
+// "/home/ada/Library/Application Support/myapp"
+```
+
+`Layer.succeed(CurrentPlatform, "win32")` is the equivalent layer form, for composing the pin into a test layer graph.
+
 ## Features
 
 - `Xdg` / `XdgPaths` — the resolved XDG environment as a value, including the `$XDG_CONFIG_DIRS` and `$XDG_DATA_DIRS` search paths, split and defaulted per the spec. `Xdg.layerFrom` serves fixed paths for tests.

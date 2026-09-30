@@ -170,7 +170,7 @@ attributes into a file other tooling also manages is a decision.
 is no Effect to run); service suites use `it.effect`.
 
 - Service suites run on the real volume in `__test__/fixtures.ts` (`@effected/memfs`, a devDependency), built fresh per test and provided at the test boundary — it is mutable, so a suite-level `layer(...)` cannot serve it. Every service test runs the code and then reads back what the run left behind, through the volume's inspection surface.
-- **Build it eagerly — `makeInspectableWith` under `Layer.succeed`, never `layerInspectableWith`.** A memfs layer re-seeds on every `Effect.provide`, so assertions running *after* the provide would read a volume nobody wrote to.
+- **Build it eagerly — `makeHandle` under `Layer.succeed`, never `layerWith`.** A memfs layer re-seeds on every `Effect.provide`, so assertions running *after* the provide would read a volume nobody wrote to.
 - **The write counter is a fault handler that declines**, so the write is counted *and* really happens. The mutant it must kill swallows the write while still counting it; five tests fail when it does.
 - **Property tests must construct their `CommentStyle` inline**, not from a
   preset, so they exercise structural rather than reference identity.

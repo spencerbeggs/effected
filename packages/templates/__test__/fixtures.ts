@@ -26,8 +26,8 @@ const systemError = (tag: "NotFound" | "PermissionDenied", method: string, path:
  * surface, plus a write counter and the two permission knobs.
  *
  * @remarks
- * The volume is built EAGERLY, with `makeInspectableWith` under `runSync`, and
- * handed to `Layer.succeed` — deliberately, not as `layerInspectableWith`. A
+ * The volume is built EAGERLY, with `makeHandle` under `runSync`, and
+ * handed to `Layer.succeed` — deliberately, not as `layerWith`. A
  * memfs layer re-seeds a fresh volume on every `Effect.provide`, which is the
  * right default and the wrong thing for this fixture: each test builds its own
  * double, provides it once, and then inspects what the run left behind. Making

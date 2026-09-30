@@ -139,7 +139,10 @@ const make: FileSystem.FileSystem = FileSystem.make({
 				),
 	// The adapter wraps `readdir` in `Effect.tryPromise` whose catch is
 	// `handleErrnoException` alone, so EVERY failure — argument errors too — is
-	// a system error (an `ERR_*` code maps to Unknown). Matched here.
+	// a system error (an `ERR_*` code maps to Unknown). Matched here ON PURPOSE:
+	// a NUL byte or non-string path is `Unknown`/`ERR_INVALID_ARG_*` for
+	// readDirectory but `BadArgument` for every other member, exactly as on the
+	// adapter. Do not "fix" it — node-sync.int pins the parity.
 	readDirectory: (path, options) =>
 		Effect.try({
 			try: () => NFS.readdirSync(path, { encoding: "utf8", recursive: options?.recursive === true }),
@@ -180,7 +183,10 @@ const make: FileSystem.FileSystem = FileSystem.make({
  * Successes and failures match `@effect/platform-node`'s `NodeFileSystem`:
  * the same `File.Info`, the same error tag, method and errno (on `cause`).
  * `realPath` resolves links but keeps the queried case, as the node adapter
- * does. Every other member — writes, `open` and the streams built on it,
+ * does. The adapter's quirks are copied too: an invalid path argument (a NUL
+ * byte, a non-string) is `BadArgument` for every member EXCEPT
+ * `readDirectory`, which reports it as `Unknown` carrying node's
+ * `ERR_INVALID_ARG_*` code, because that is what the adapter does. Every other member — writes, `open` and the streams built on it,
  * `glob`, `watch`, temp files — is a defect (`Effect.die`), not a typed
  * failure: this filesystem never writes, and a caller that tries has a wiring
  * bug `Effect.catch` must not absorb.
