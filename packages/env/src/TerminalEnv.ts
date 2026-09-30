@@ -6,8 +6,6 @@ import { readEnv } from "./internal/envRecord.js";
 import { allKeys } from "./internal/keys.js";
 import { detectOsc8 } from "./internal/osc8/detect.js";
 
-export type { ColorLevel } from "./internal/colorDepth.js";
-
 /**
  * What one output stream can do.
  *

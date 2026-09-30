@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Option, Stdio, Terminal } from "effect";
-import type { ColorLevel } from "../src/TerminalEnv.js";
+import type { ColorLevel } from "../src/internal/colorDepth.js";
 import { TerminalEnv } from "../src/TerminalEnv.js";
 
 const withEnv = (env: Record<string, string>) =>
