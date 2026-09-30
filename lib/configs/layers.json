@@ -14,6 +14,7 @@
 		[
 			"@effected/commands",
 			"@effected/engine",
+			"@effected/env",
 			"@effected/git",
 			"@effected/github-references",
 			"@effected/glob",
