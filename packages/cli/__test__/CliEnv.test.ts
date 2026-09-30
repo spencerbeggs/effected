@@ -337,4 +337,40 @@ describe("CliRuntime.main with the env option", () => {
 			assert.include(text, '"level":"DEBUG"');
 		}),
 	);
+
+	// A warning logged while the env layer is built (an invalid override) used to go through Effect's default
+	// logger to STDOUT, because under env.log the env layer was built as the logger's own dependency, before any
+	// logger existed. Machine output on stdout must stay clean.
+	it.effect("env.log: an env-layer warning goes to stderr through CliLogger and stdout stays clean", () =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			yield* CliRuntime.main(Console.log("ran"), {
+				platform: TTY,
+				env: { audienceEnvVar: "PROBE_AUDIENCE", log: { envVar: "PROBE_LOG" } },
+			}).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, withEnv({ PROBE_AUDIENCE: "bogus" })),
+				Effect.provideService(Console.Console, double),
+			);
+			assert.deepStrictEqual(out, ["ran"]);
+			assert.strictEqual(err.filter((line) => line.includes("PROBE_AUDIENCE=bogus")).length, 1, err.join("\n"));
+			assert.isFalse(
+				err.some((line) => /^\[\d\d:\d\d:\d\d\.\d{3}\] WARN/.test(line)),
+				"plain CliLogger line, not the default format",
+			);
+		}),
+	);
+
+	it.effect("control: without env.log the same warning is on stderr", () =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			yield* CliRuntime.main(Console.log("ran"), { platform: TTY, env: { audienceEnvVar: "PROBE_AUDIENCE" } }).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, withEnv({ PROBE_AUDIENCE: "bogus" })),
+				Effect.provideService(Console.Console, double),
+			);
+			assert.deepStrictEqual(out, ["ran"]);
+			assert.strictEqual(err.filter((line) => line.includes("PROBE_AUDIENCE=bogus")).length, 1);
+		}),
+	);
 });
