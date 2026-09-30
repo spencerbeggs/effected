@@ -35,6 +35,7 @@ export { CliLogger, type CliLoggerOptions } from "./CliLogger.js";
 export { CliRuntime, type FailureDetails, type MainOptions, type ReportFailuresOptions } from "./CliRuntime.js";
 export { CliTheme, type CliThemeOptions, type CliThemeShape, type CliThemeTestOptions } from "./CliTheme.js";
 export { ConfigIssueRenderer } from "./ConfigIssueRenderer.js";
+export { Fmt, type PercentOptions, type TruncateOptions } from "./Fmt.js";
 export { type GlyphSet, Glyphs } from "./Glyphs.js";
 export { NotInteractive } from "./NotInteractive.js";
 export { SchemaIssueRenderer } from "./SchemaIssueRenderer.js";
