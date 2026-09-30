@@ -13,6 +13,10 @@
 * Updated Testing standards
 * Updated github-actions
 * Updated memfs's volume is invisible to anything that does not ask for the FileSystem service
+* Updated @effected/env
+* Updated @effected/env is its own boundary package, a required peer of cli
+* Updated FORCE_COLOR is honoured, with Node's getColorDepth precedence
+* Updated std-osc8's pure core is ported into env, not wrapped
 
 ## 2026-09-29
 

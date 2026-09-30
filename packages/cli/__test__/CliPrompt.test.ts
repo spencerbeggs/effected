@@ -222,14 +222,33 @@ describe("CliPrompt.gateTerminal", () => {
 		}),
 	);
 
+	it.effect("decides per call, so a scope that narrows or widens CliInteractive later still gates it", () =>
+		Effect.gen(function* () {
+			const real = yield* TestTerminal.make();
+			yield* real.input([{ name: "enter" }]);
+			// Built where CliInteractive is true; the decision is made when each call runs, not here.
+			const terminal = yield* gated(true, real);
+			const take = Effect.scoped(Effect.flatMap(terminal.readInput, (queue) => Queue.take(queue)));
+			const quiet = yield* Effect.exit(take.pipe(Effect.provideService(CliInteractive, false)));
+			assert.isTrue(Exit.isFailure(quiet));
+			assert.deepStrictEqual(yield* real.reads, { keys: 0, lines: 0, subscriptions: 0 });
+			const key = yield* take.pipe(Effect.provideService(CliInteractive, true));
+			assert.strictEqual(key.key.name, "enter");
+			assert.deepStrictEqual(yield* real.reads, { keys: 1, lines: 0, subscriptions: 1 });
+		}),
+	);
+
 	it.effect("interactive: the real terminal passes through untouched", () =>
 		Effect.gen(function* () {
 			const real = yield* TestTerminal.make();
 			yield* real.input([{ name: "enter" }]);
 			const terminal = yield* gated(true, real);
-			const key = yield* Effect.scoped(Effect.flatMap(terminal.readInput, (queue) => Queue.take(queue)));
+			const interactive = Effect.provideService(CliInteractive, true);
+			const key = yield* Effect.scoped(Effect.flatMap(terminal.readInput, (queue) => Queue.take(queue))).pipe(
+				interactive,
+			);
 			assert.strictEqual(key.key.name, "enter");
-			yield* terminal.display("shown");
+			yield* terminal.display("shown").pipe(interactive);
 			assert.strictEqual(yield* real.output, "shown");
 			assert.deepStrictEqual(yield* real.reads, { keys: 1, lines: 0, subscriptions: 1 });
 		}),

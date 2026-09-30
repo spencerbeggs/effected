@@ -82,7 +82,8 @@ describe("displayWidth against string-width", () => {
 		assert.isAbove(checked, 290_000);
 		assert.deepStrictEqual(mismatches.slice(0, 10), []);
 		assert.strictEqual(mismatches.length, 0);
-	});
+		// About a second alone; the bound leaves room for a loaded machine running other suites in parallel.
+	}, 30_000);
 
 	it("pins the two documented divergences", () => {
 		// A lone regional indicator: the oracle counts one column, this counts two.

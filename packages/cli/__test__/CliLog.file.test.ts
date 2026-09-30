@@ -215,6 +215,8 @@ describe("CliLog.layer file option", () => {
 				const closing = yield* Effect.forkChild(h.close);
 				yield* TestClock.adjust("10 seconds");
 				yield* Fiber.join(closing);
+				// The interrupt is silent: giving up on a hung filesystem prints no error line.
+				assert.deepStrictEqual(plain(h.err), []);
 			}),
 		);
 

@@ -78,33 +78,39 @@ export class CliPrompt {
 		});
 
 	/**
-	 * Swaps core's `Terminal` for a quiet one when the run is not interactive, so nothing touches the real one.
+	 * Gates core's `Terminal` on `CliInteractive`, so a run that is not interactive never touches the real one.
 	 *
 	 * @remarks
 	 * Core's prompt runner subscribes the terminal's input even for a prompt that is already answered, and the
 	 * real Node terminal then attaches a readline to stdin, which drops piped input and puts a TTY stdin into raw
-	 * mode. Not interactive, this layer provides a terminal whose input is an already-ended queue, whose
-	 * `readLine` fails as quit and whose `display` writes nothing, so any prompt, the wizard included, is quit at
-	 * once and the real terminal is never read. Its `columns` and `rows` still come from the real one, so layout
-	 * keeps working. Interactive, the real terminal passes through.
+	 * mode. Not interactive, this terminal's input is an already-ended queue, its `readLine` fails as quit and its
+	 * `display` writes nothing, so any prompt, the wizard included, is quit at once and the real terminal is never
+	 * read. Its `columns` and `rows` always come from the real one, so layout keeps working. Interactive, every
+	 * call passes through to the real terminal.
 	 *
-	 * It requires the real `Terminal` and reads `CliInteractive` when it is built. `CliEnv.layer` installs it,
-	 * after `TerminalEnv` is built from the real terminal, so consumers do not compose it.
+	 * The decision is made on every call, not when the layer is built, so a scope that narrows `CliInteractive`
+	 * later, such as an audience flag under `CliAudience.runWith`, gates it too.
+	 *
+	 * It requires the real `Terminal`. `CliEnv.layer` installs it, after `TerminalEnv` is built from the real
+	 * terminal, so consumers do not compose it.
 	 */
 	static readonly gateTerminal: Layer.Layer<Terminal.Terminal, never, Terminal.Terminal> = Layer.effect(
 		Terminal.Terminal,
 		Effect.gen(function* () {
 			const real = yield* Terminal.Terminal;
-			if (yield* CliInteractive) return real;
+			const endedInput = Effect.map(Queue.unbounded<Terminal.UserInput, Cause.Done>(), (queue) => {
+				Queue.endUnsafe(queue);
+				return queue;
+			});
 			return Terminal.make({
 				columns: real.columns,
 				rows: real.rows,
-				readInput: Effect.map(Queue.unbounded<Terminal.UserInput, Cause.Done>(), (queue) => {
-					Queue.endUnsafe(queue);
-					return queue;
-				}),
-				readLine: Effect.fail(new Terminal.QuitError({})),
-				display: () => Effect.void,
+				readInput: Effect.flatMap(CliInteractive, (interactive) => (interactive ? real.readInput : endedInput)),
+				readLine: Effect.flatMap(CliInteractive, (interactive) =>
+					interactive ? real.readLine : Effect.fail(new Terminal.QuitError({})),
+				),
+				display: (text) =>
+					Effect.flatMap(CliInteractive, (interactive) => (interactive ? real.display(text) : Effect.void)),
 			});
 		}),
 	);

@@ -1,9 +1,11 @@
 import type { AudienceKind, AudienceShape } from "@effected/env";
 import { Audience } from "@effected/env";
-import { Effect } from "effect";
+import type { Terminal } from "effect";
+import { Effect, Stdio } from "effect";
 import type { Command } from "effect/cli";
 import { CliError, Command as CommandModule, Flag } from "effect/cli";
 import { CliInteractive } from "./CliInteractive.js";
+import { scanAudience, tallyAudience } from "./internal/scanAudience.js";
 
 const KINDS: ReadonlyArray<AudienceKind> = ["human", "agent", "ci"];
 
@@ -38,19 +40,11 @@ export interface CliAudienceFlagsOptions {
 
 const CONFLICT = "Give at most one of --audience, --human, --agent, --ci (once).";
 
-/** Every audience the flags named, one entry per true occurrence. */
-const given = (input: AudienceFlagInput): ReadonlyArray<AudienceKind> => [
-	...input.audience,
-	// Only a true occurrence counts: `--agent=false` and `--no-agent` mean "not given".
-	...input.human.filter(Boolean).map((): AudienceKind => "human"),
-	...input.agent.filter(Boolean).map((): AudienceKind => "agent"),
-	...input.ci.filter(Boolean).map((): AudienceKind => "ci"),
-];
-
 /** Resolve the four flags into the audience to provide, failing when more than one occurrence was given. */
 const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliError.UserError, Audience> => {
-	const named = given(input);
-	if (named.length > 1) {
+	// The counting rule is shared with `scanAudience`, which reads argv before parsing, so the two cannot drift.
+	const { given: named, conflict } = tallyAudience(input);
+	if (conflict) {
 		return Effect.fail(new CliError.UserError({ cause: new Error(CONFLICT), userMessage: CONFLICT }));
 	}
 	const [kind] = named;
@@ -69,9 +63,10 @@ const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliErro
  * conflicting audience together with `--help` exits `0` and prints help, because core handles its action flags
  * before the resolver runs.
  *
- * A non-human flag (`--agent`, `--ci`, `--audience agent|ci`) also turns `CliInteractive` off for the handler. The
- * flag is read after the parse step, so a prompt that runs during parsing, such as a fallback flag, still sees the
- * interactivity the environment decided; use the audience override variable for that.
+ * A non-human flag (`--agent`, `--ci`, `--audience agent|ci`) also turns `CliInteractive` off for the handler.
+ * `provide` alone acts only on the handler: core parses the root flags into a local context and runs the subcommand's
+ * parse, where a fallback prompt fires, before any of it is visible. To cover fallback prompts run the program
+ * through {@link CliAudience.run} or {@link CliAudience.runWith}, which read the flags from argv first.
  *
  * @example
  * ```ts
@@ -137,9 +132,57 @@ export class CliAudience {
 			// ever narrows, like `CliInteractive.unless`; `--human` never turns it on.
 			CommandModule.provideEffect(CliInteractive, (input: Input) =>
 				Effect.map(CliInteractive, (current) => {
-					const [flagged] = given(input);
+					const [flagged] = tallyAudience(input).given;
 					return flagged === undefined ? current : current && flagged === "human";
 				}),
 			),
 		);
+
+	/**
+	 * Run a command the way `Command.runWith` does, with the audience flag resolved BEFORE core parses.
+	 *
+	 * @remarks
+	 * It scans `argv` for the four audience flags first, then runs core around a provided `Audience` (when exactly
+	 * one is given: `{ kind, source: "flag" }`) and a `CliInteractive` narrowed to match (a non-human flag, or a
+	 * conflict, makes it false; it never turns it on). A fallback prompt fires while core parses, earlier than
+	 * anything `CliAudience.provide` can reach, so `--agent init` on a terminal would otherwise still prompt. No
+	 * flag leaves the ambient values untouched. A conflict still gets core's own usage error, exit `64`, from
+	 * `CliAudience.provide`'s resolver.
+	 *
+	 * @param command - the composite root, with the flags shared and `CliAudience.provide` piped on
+	 * @param config - the same `version` and `renderErrors` as core's
+	 */
+	static readonly runWith = <const Name extends string, Input, E, R, ContextInput>(
+		command: Command.Command<Name, Input, ContextInput, E, R>,
+		config: { readonly version: string; readonly renderErrors?: boolean | undefined },
+	): ((
+		input: ReadonlyArray<string>,
+	) => Effect.Effect<void, Exclude<E, Terminal.QuitError> | CliError.CliError, R | Command.Environment>) => {
+		const core = CommandModule.runWith(command, config);
+		return (argv) => {
+			const run = core(argv);
+			const { given, conflict } = scanAudience(argv);
+			const [kind] = given;
+			if (kind === undefined) return run;
+			const withAudience = conflict
+				? run
+				: (Effect.provideService(run, Audience, { kind, source: "flag" }) as typeof run);
+			return Effect.flatMap(CliInteractive, (current) =>
+				Effect.provideService(withAudience, CliInteractive, current && !conflict && kind === "human"),
+			);
+		};
+	};
+
+	/**
+	 * `Command.run` with the audience flag resolved before parsing: reads `Stdio.args` and calls
+	 * {@link CliAudience.runWith}.
+	 *
+	 * @param command - the composite root
+	 * @param config - the same `version` and `renderErrors` as core's
+	 */
+	static readonly run = <const Name extends string, Input, E, R, ContextInput>(
+		command: Command.Command<Name, Input, ContextInput, E, R>,
+		config: { readonly version: string; readonly renderErrors?: boolean | undefined },
+	): Effect.Effect<void, Exclude<E, Terminal.QuitError> | CliError.CliError, R | Command.Environment> =>
+		Stdio.Stdio.use(({ args }) => Effect.flatMap(args, (argv) => CliAudience.runWith(command, config)(argv)));
 }

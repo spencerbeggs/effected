@@ -22,8 +22,8 @@ sources:
     title: CliRuntime, which remaps usage failures to exit 64
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:44:01Z
-  body_sha256: c99af70c6607695e9435ccaabbac5228ba25a42e240d5879d8892a25d1273e47
+  at: 2026-09-30T21:34:00Z
+  body_sha256: 51bc32c5bcd44e0990c958795bdab3afa33566aff4ca195503cc943a447250fb
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience
@@ -139,6 +139,16 @@ precedence, documented rather than worked around.
   exit 64, but a bad `--audience` value exits 1, and the workaround adds four
   services and an ordering constraint for nothing shape (c) needs.
 
+### The parse-order gap, and `run` / `runWith`
+
+`CliAudience.provide` alone cannot gate a fallback prompt. Core parses the root flags into a local context and then
+runs the subcommand's parse, where a fallback fires, before any parsed flag is visible to it; `provideEffect`
+wraps only the subcommand handler.[^core-command-parse][^core-fallback] So `--agent init` on a human-detected
+terminal would still prompt. `CliAudience.runWith` and `run` close it: a pure scan of argv, mirroring the four
+flags' syntax and sharing the counting rule with the resolver, runs before core, and the whole run is wrapped in
+the provided `Audience` (`source: flag`) and a `CliInteractive` narrowed to match. The terminal gate decides per
+call, not at build, so the narrowing reaches it.
+
 ## Consequences
 
 The 64 is `CliRuntime.main`'s, so a program using bare `Command.run` sees
@@ -154,3 +164,7 @@ probed; shared flags are documented as inherited by descendants.
 [^core-cli-error]: `.repos/effect/packages/effect/src/cli/CliError.ts`: `ShowHelp` carries `Runtime.errorExitCode` of 1 when it has errors, near line 656.
 
 [^cli-runtime]: `packages/cli/src/CliRuntime.ts`: a `ShowHelp` with errors and a rendered `UserError` exit with `usageExitCode`, default 64.
+
+[^core-command-parse]: `.repos/effect/packages/effect/src/cli/Command.ts`: the root flags parsed into a local context near lines 922 to 925, and the subcommand `handle` wrapped by `impl.service` near line 941.
+
+[^core-fallback]: `.repos/effect/packages/effect/src/cli/Param.ts`: `withFallbackPrompt` running the prompt inside the parse, near lines 1478 to 1485.
