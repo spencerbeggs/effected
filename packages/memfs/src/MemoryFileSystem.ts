@@ -5,7 +5,7 @@
 
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer } from "effect";
-import { seedWith } from "./internal/seed.js";
+import { normalizeAbsolute, seedWith } from "./internal/seed.js";
 import * as internal from "./internal/volume.js";
 
 /**
@@ -357,30 +357,11 @@ export type MemoryFileSystemFaultsFactory = (base: FileSystem.FileSystem) => Mem
 
 const decoder = new TextDecoder();
 
-// Lexical-only normalization for inspection queries: collapses "//" and ".",
-// applies "..", resolves relative paths from the virtual root — matching the
-// engine's canonical "/a/b" spelling. Deliberately does NOT follow symlinks:
-// the inspection view is literal.
-const normalizeQueryPath = (path: string): string => {
-	const segments: Array<string> = [];
-	for (const segment of path.split("/")) {
-		if (segment === "" || segment === ".") {
-			continue;
-		}
-		if (segment === "..") {
-			segments.pop();
-			continue;
-		}
-		segments.push(segment);
-	}
-	return `/${segments.join("/")}`;
-};
-
 const findEntryAt = (
 	entries: ReadonlyArray<internal.VolumeEntrySnapshot>,
 	path: string,
 ): internal.VolumeEntrySnapshot | undefined => {
-	const normalized = normalizeQueryPath(path);
+	const normalized = normalizeAbsolute(path);
 	return entries.find((entry) => entry.path === normalized);
 };
 
@@ -409,7 +390,7 @@ const makeVolumeService = (engine: internal.InspectableFileSystem): MemoryFileSy
 				.sort(),
 		readDirectory: (path) => {
 			const snapshot = entries();
-			const normalized = normalizeQueryPath(path);
+			const normalized = normalizeAbsolute(path);
 			if (findEntryAt(snapshot, normalized)?.type !== "Directory") {
 				return undefined;
 			}

@@ -57,7 +57,11 @@ export const seedVolume = (fs: FileSystem.FileSystem, seed: MemoryFileSystemSeed
 		}
 	});
 
-const normalizeAbsolute = (path: string): string => {
+// Lexical-only normalization shared by the seed root and the inspection view:
+// collapses "//" and ".", applies "..", resolves relative paths from the
+// virtual root — matching the engine's canonical "/a/b" spelling. Deliberately
+// does NOT follow symlinks.
+export const normalizeAbsolute = (path: string): string => {
 	const segments: Array<string> = [];
 	for (const segment of path.split("/")) {
 		if (segment === "" || segment === ".") continue;
@@ -81,7 +85,10 @@ export const applyRoot = (
 	const rooted: Record<string, MemoryFileSystemSeedEntry> = {};
 	for (const [key, entry] of Object.entries(seed)) {
 		if (key.startsWith("/")) return Result.fail(`seed key "${key}" is absolute but a root "${root}" was given`);
-		rooted[key === "" ? base : normalizeAbsolute(`${base}/${key}`)] = entry;
+		const path = key === "" ? base : normalizeAbsolute(`${base}/${key}`);
+		const inside = path === base || path.startsWith(base === "/" ? "/" : `${base}/`);
+		if (!inside) return Result.fail(`seed key "${key}" escapes the root "${root}"`);
+		rooted[path] = entry;
 	}
 	return Result.succeed({ seed: rooted, root: base });
 };
