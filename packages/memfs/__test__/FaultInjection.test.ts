@@ -7,14 +7,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Fiber, FileSystem, Layer, PlatformError, Sink, Stream } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
-
-const denied = (method: string, path: string) =>
-	PlatformError.systemError({
-		_tag: "PermissionDenied",
-		module: "FileSystem",
-		method,
-		pathOrDescriptor: path,
-	});
+import { denied } from "./helpers.js";
 
 // The downstream lockdown shape: a real tree the walk must recurse into.
 const tree = {

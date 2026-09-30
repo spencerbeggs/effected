@@ -1,16 +1,92 @@
+// MemoryFileSystem.makeHandle (inside Effect) and makeSync (at describe
+// scope): every view over one volume, and the node-shaped mutators.
+
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path, PlatformError } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
 import { runMutation } from "../src/internal/ports.js";
+import { denied, thrown } from "./helpers.js";
 
-const thrown = (f: () => unknown) => {
-	try {
-		f();
-	} catch (e) {
-		return e as { code?: string; syscall?: string; path?: string; name?: string };
-	}
-	throw new Error("expected a throw");
-};
+describe("MemoryFileSystem.makeHandle", () => {
+	it.effect("returns every view over one volume, seeded", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle({ "/a.txt": "a" });
+			yield* handle.fileSystem.writeFileString("/b.txt", "b");
+			assert.deepStrictEqual(handle.volume.paths(), ["/a.txt", "/b.txt"]);
+			assert.strictEqual(handle.sync.readFile("/b.txt"), "b");
+			handle.write("/c/d.txt", "d");
+			assert.strictEqual(yield* handle.fileSystem.readFileString("/c/d.txt"), "d");
+		}),
+	);
+
+	it.effect("makeHandle() builds an empty volume", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle();
+			assert.deepStrictEqual(volume.paths(), []);
+		}),
+	);
+
+	it.effect("handle.layer provides FileSystem, Volume and Path over the SAME volume, stable across provides", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle();
+			yield* Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem;
+				yield* fs.writeFileString("/w.txt", "w");
+			}).pipe(Effect.provide(handle.layer));
+			const seen = yield* Effect.gen(function* () {
+				const volume = yield* MemoryFileSystem.Volume;
+				const path = yield* Path.Path;
+				return [volume.text("/w.txt"), path.join("/a", "b")] as const;
+			}).pipe(Effect.provide(handle.layer));
+			assert.deepStrictEqual(seen, ["w", "/a/b"]);
+			assert.strictEqual(handle.volume.text("/w.txt"), "w");
+		}),
+	);
+
+	it.effect("with faults: fileSystem is faulted, the setup mutators are not", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle(
+				{},
+				{ faults: { writeFile: (path) => Effect.fail(denied("writeFile", path)) } },
+			);
+			handle.write("/setup.txt", "setup");
+			assert.strictEqual(handle.volume.text("/setup.txt"), "setup");
+			const error = yield* Effect.flip(handle.fileSystem.writeFileString("/x.txt", "x"));
+			assert.strictEqual(error.reason._tag, "PermissionDenied");
+		}),
+	);
+
+	it.effect("fails typed on a contradictory seed", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(MemoryFileSystem.makeHandle({ "/a": "file", "/a/b": "child" }));
+			assert.strictEqual(error.reason._tag, "AlreadyExists");
+		}),
+	);
+});
+
+describe("MemoryFileSystem.makeHandle — the volume half", () => {
+	it.effect("the value-level pair shares one volume, seeded or bare", () =>
+		Effect.gen(function* () {
+			const bare = yield* MemoryFileSystem.makeHandle();
+			yield* bare.fileSystem.writeFileString("/direct.txt", "by value");
+			assert.strictEqual(bare.volume.text("/direct.txt"), "by value");
+
+			const seeded = yield* MemoryFileSystem.makeHandle({ "/seed.txt": "seeded" });
+			assert.strictEqual(seeded.volume.text("/seed.txt"), "seeded");
+			// The two pairs are independent volumes.
+			assert.isFalse(seeded.volume.has("/direct.txt"));
+			assert.isFalse(bare.volume.has("/seed.txt"));
+		}),
+	);
+
+	it.effect("makeHandle fails typed on a contradictory seed", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(MemoryFileSystem.makeHandle({ "/a": "file", "/a/b": "child" }));
+			assert.strictEqual(error._tag, "PlatformError");
+			assert.strictEqual(error.reason._tag, "AlreadyExists");
+		}),
+	);
+});
 
 describe("MemoryFileSystem.makeSync", () => {
 	it("builds synchronously at describe scope with root", () => {

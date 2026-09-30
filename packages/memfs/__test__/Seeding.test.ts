@@ -1,32 +1,9 @@
-// The kit's own extensions and contracts, beyond the vendored upstream suites:
-// the makeWith/layerWith seeding API, the honest-absence contract (effected
-// #249 — the reason this package exists), per-provide isolation, and the
-// watch-recursive adaptation (the port honors core's WatchOptions where
-// upstream ignored them).
+// Seeding: makeWith and layerWith seeds, the tagged entries (files with modes
+// and mtimes, directories, symlinks) and the seed options (root).
 
 import { assert, describe, it } from "@effect/vitest";
-import type { PlatformError } from "effect";
-import { Cause, Effect, Exit, Fiber, FileSystem, Stream } from "effect";
+import { Cause, Effect, Exit, FileSystem } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
-
-const collectWatch = Effect.fnUntraced(function* (
-	fs: FileSystem.FileSystem,
-	path: string,
-	options: FileSystem.WatchOptions | undefined,
-	count: number,
-	mutation: Effect.Effect<void, PlatformError.PlatformError>,
-) {
-	const events = yield* fs
-		.watch(path, options)
-		.pipe(Stream.take(count), Stream.runCollect, Effect.forkChild({ startImmediately: true }));
-	// Make subscription registration deterministic before mutating: under v4's
-	// cooperative FIFO scheduler this parks the parent behind the child, which
-	// runs to its first real suspension — past `volume.watchers.add` — so no
-	// event can be published before the watcher exists.
-	yield* Effect.yieldNow;
-	yield* mutation;
-	return Array.from(yield* Fiber.join(events));
-});
 
 describe("MemoryFileSystem.makeWith", () => {
 	it.effect("seeds files and creates their parent directories recursively", () =>
@@ -173,147 +150,108 @@ describe("tagged seed entries — directories, symlinks and modes", () => {
 	);
 });
 
-describe("honest absence — the effected#249 contract", () => {
-	// THE FOUNDING CONTRACT. This package exists because a hand-stubbed
-	// FileSystem.layerNoop that answered an unarranged read with "" caused a
-	// real silent-changeset-drop bug downstream. An unseeded path must fail
-	// typed NotFound, loudly naming the path — never fabricate content.
-	it.effect("reading an unseeded path fails typed NotFound, never ''", () =>
+describe("seed options: root", () => {
+	it.effect("re-keys relative seed keys under root", () =>
 		Effect.gen(function* () {
-			const fs = yield* MemoryFileSystem.makeWith({ "/present.txt": "here" });
-
-			const readError = yield* Effect.flip(fs.readFileString("/absent/changesets/config.json"));
-			assert.strictEqual(readError._tag, "PlatformError");
-			// Assert helpers are not type predicates, so narrow with a real `if`.
-			if (readError.reason._tag === "BadArgument") {
-				assert.fail("expected a SystemError NotFound, got BadArgument");
-				return;
-			}
-			assert.strictEqual(readError.reason._tag, "NotFound");
-			assert.strictEqual(readError.reason.method, "readFile");
-			assert.strictEqual(readError.reason.pathOrDescriptor, "/absent/changesets/config.json");
-
-			const statError = yield* Effect.flip(fs.stat("/absent.txt"));
-			assert.strictEqual(statError.reason._tag, "NotFound");
-
-			const openError = yield* Effect.flip(Effect.scoped(fs.open("/absent.txt", { flag: "r" })));
-			assert.strictEqual(openError.reason._tag, "NotFound");
-
-			// The seeded path still answers — absence is per-path, not global.
-			assert.strictEqual(yield* fs.readFileString("/present.txt"), "here");
+			const { volume } = yield* MemoryFileSystem.makeHandle(
+				{ "package.json": "{}", "src/a.test.ts": "" },
+				{ root: "/ws-1/repo" },
+			);
+			assert.deepStrictEqual(volume.paths(), ["/ws-1/repo/package.json", "/ws-1/repo/src/a.test.ts"]);
 		}),
 	);
 
-	it.effect("an empty volume answers exists with false and reads with NotFound", () =>
+	it.effect("creates the root even when the seed is empty", () =>
 		Effect.gen(function* () {
-			const fs = yield* MemoryFileSystem.make;
-			assert.isFalse(yield* fs.exists("/anything"));
-			const error = yield* Effect.flip(fs.readFile("/anything"));
-			assert.strictEqual(error.reason._tag, "NotFound");
+			const { volume } = yield* MemoryFileSystem.makeHandle({}, { root: "/pkg" });
+			assert.isTrue(volume.isDirectory("/pkg"));
+			assert.deepStrictEqual(volume.readDirectory("/pkg"), []);
 		}),
 	);
-});
 
-describe("MemoryFileSystem.layerWith", () => {
-	const Seeded = MemoryFileSystem.layerWith({ "/seed.txt": "seeded" });
+	it.effect("the empty key addresses the root itself", () =>
+		Effect.gen(function* () {
+			const { fileSystem, volume } = yield* MemoryFileSystem.makeHandle(
+				{ "": MemoryFileSystem.directory({ mode: 0o700 }) },
+				{ root: "/pkg" },
+			);
+			assert.isTrue(volume.isDirectory("/pkg"));
+			const info = yield* fileSystem.stat("/pkg");
+			assert.strictEqual(info.mode & 0o777, 0o700);
+		}),
+	);
 
-	it.effect("provides FileSystem backed by the seeded volume", () =>
+	it.effect("a relative key escaping the root is a typed BadArgument naming key and root", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(MemoryFileSystem.makeWith({ "../etc/x": "" }, { root: "/ws" }));
+			assert.strictEqual(error.reason._tag, "BadArgument");
+			assert.include(error.reason.message, "../etc/x");
+			assert.include(error.reason.message, "/ws");
+		}),
+	);
+
+	it.effect("a key that dips out and back into the root is allowed", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle({ "../ws/x.txt": "1" }, { root: "/ws" });
+			assert.deepStrictEqual(volume.paths(), ["/ws/x.txt"]);
+		}),
+	);
+
+	it.effect("layerWith forwards options to the Volume", () =>
+		Effect.gen(function* () {
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.deepStrictEqual(volume.paths(), ["/ws/a.txt"]);
+		}).pipe(Effect.provide(MemoryFileSystem.layerWith({ "a.txt": "x" }, { root: "/ws" }))),
+	);
+
+	it.effect("layerWith forwards options alongside faults", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
-			assert.strictEqual(yield* fs.readFileString("/seed.txt"), "seeded");
-		}).pipe(Effect.provide(Seeded)),
+			assert.strictEqual(yield* fs.readFileString("/ws/a.txt"), "x");
+		}).pipe(Effect.provide(MemoryFileSystem.layerWith({ "a.txt": "x" }, { root: "/ws", faults: {} }))),
 	);
 
-	it.effect("each provide of the layer builds an isolated volume", () =>
+	it.effect("normalizes a root with a trailing slash or dot-dot", () =>
 		Effect.gen(function* () {
-			// Effect.provide does not memoize: two provides of ONE layer const are
-			// two volumes. (Sharing happens through layer-graph memoization — the
-			// suite-boundary `layer(...)` block — and is documented on the facade.)
-			yield* Effect.gen(function* () {
-				const fs = yield* FileSystem.FileSystem;
-				yield* fs.writeFileString("/scratch.txt", "first volume");
-			}).pipe(Effect.provide(Seeded));
-
-			const seen = yield* Effect.gen(function* () {
-				const fs = yield* FileSystem.FileSystem;
-				return yield* fs.exists("/scratch.txt");
-			}).pipe(Effect.provide(Seeded));
-
-			assert.isFalse(seen);
+			const a = yield* MemoryFileSystem.makeHandle({ "x.txt": "1" }, { root: "/ws/" });
+			const b = yield* MemoryFileSystem.makeHandle({ "x.txt": "1" }, { root: "/ws/../ws" });
+			assert.deepStrictEqual(a.volume.paths(), ["/ws/x.txt"]);
+			assert.deepStrictEqual(b.volume.paths(), ["/ws/x.txt"]);
 		}),
 	);
 
-	it.effect("a contradictory seed dies — a wiring bug, not a live failure", () =>
+	it.effect("an absolute key with a root is a typed BadArgument", () =>
 		Effect.gen(function* () {
-			const Broken = MemoryFileSystem.layerWith({ "/a": "file", "/a/b": "child" });
+			const error = yield* Effect.flip(MemoryFileSystem.makeWith({ "/abs.txt": "" }, { root: "/ws" }));
+			assert.strictEqual(error.reason._tag, "BadArgument");
+		}),
+	);
+
+	it.effect("a relative root is a typed BadArgument", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(MemoryFileSystem.makeWith({ a: "" }, { root: "ws" }));
+			assert.strictEqual(error.reason._tag, "BadArgument");
+		}),
+	);
+
+	it.effect("layerWith dies on a bad root (wiring-bug posture)", () =>
+		Effect.gen(function* () {
 			const exit = yield* Effect.exit(
-				Effect.gen(function* () {
-					const fs = yield* FileSystem.FileSystem;
-					return yield* fs.exists("/a");
-				}).pipe(Effect.provide(Broken)),
+				Effect.provide(
+					Effect.gen(function* () {
+						return yield* FileSystem.FileSystem;
+					}),
+					MemoryFileSystem.layerWith({ "/a": "" }, { root: "/ws" }),
+				),
 			);
-			if (!Exit.isFailure(exit)) {
-				assert.fail("expected the contradictory seed to die");
-				return;
-			}
-			assert.isTrue(Cause.hasDies(exit.cause));
-			assert.isFalse(Cause.hasFails(exit.cause));
-		}),
-	);
-});
-
-describe("watch honors WatchOptions.recursive — the port adaptation", () => {
-	it.effect("a non-recursive directory watch reports direct children only", () =>
-		Effect.gen(function* () {
-			const fs = yield* MemoryFileSystem.makeWith({ "/root/sub/existing.txt": "x" });
-
-			// The nested write happens FIRST: if non-recursive delivered nested
-			// events, it would be the collected one. Collecting the later direct
-			// event proves the nested write was skipped.
-			const events = yield* collectWatch(
-				fs,
-				"/root",
-				undefined,
-				1,
-				Effect.gen(function* () {
-					yield* fs.writeFileString("/root/sub/nested.txt", "nested");
-					yield* fs.writeFileString("/root/direct.txt", "direct");
-				}),
-			);
-
-			assert.deepStrictEqual(events, [{ _tag: "Create", path: "/root/direct.txt" }]);
+			assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause));
 		}),
 	);
 
-	it.effect("recursive: true reports nested descendants", () =>
+	it.effect("without options, behaviour is unchanged", () =>
 		Effect.gen(function* () {
-			const fs = yield* MemoryFileSystem.makeWith({ "/root/sub/existing.txt": "x" });
-
-			const events = yield* collectWatch(
-				fs,
-				"/root",
-				{ recursive: true },
-				2,
-				Effect.gen(function* () {
-					yield* fs.writeFileString("/root/sub/nested.txt", "nested");
-					yield* fs.writeFileString("/root/direct.txt", "direct");
-				}),
-			);
-
-			assert.deepStrictEqual(events, [
-				{ _tag: "Create", path: "/root/sub/nested.txt" },
-				{ _tag: "Create", path: "/root/direct.txt" },
-			]);
-		}),
-	);
-
-	it.effect("a file watch still reports its own updates", () =>
-		Effect.gen(function* () {
-			const fs = yield* MemoryFileSystem.makeWith({ "/file.txt": "original" });
-
-			const events = yield* collectWatch(fs, "/file.txt", undefined, 1, fs.writeFileString("/file.txt", "updated"));
-
-			assert.deepStrictEqual(events, [{ _tag: "Update", path: "/file.txt" }]);
+			const { volume } = yield* MemoryFileSystem.makeHandle({ "/a/b.txt": "x" });
+			assert.deepStrictEqual(volume.paths(), ["/a/b.txt"]);
 		}),
 	);
 });

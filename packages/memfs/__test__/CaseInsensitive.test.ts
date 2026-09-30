@@ -1,8 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { PlatformError } from "effect";
-import { Effect, Fiber, FileSystem, Stream } from "effect";
+import { Effect, FileSystem } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
 import { caseInsensitiveSuite } from "./CaseInsensitiveContract.js";
+import { firstEvent } from "./helpers.js";
 
 // The host-proven contract (integration/case-insensitive.int.test.ts) against
 // the memory engine built with `caseSensitive: false`.
@@ -56,26 +56,6 @@ describe("case-insensitive facade", () => {
 			assert.isFalse(volume.has("/DOCS.JSON"));
 		}),
 	);
-});
-
-// The first event a watcher sees after `probe`. `sentinel` is a mutation the
-// watcher matches in any engine, so a dropped probe event surfaces as the
-// sentinel's event — a clean assertion failure instead of a hang.
-const firstEvent = Effect.fnUntraced(function* (
-	fs: FileSystem.FileSystem,
-	path: string,
-	options: FileSystem.WatchOptions | undefined,
-	probe: Effect.Effect<void, PlatformError.PlatformError>,
-	sentinel: Effect.Effect<void, PlatformError.PlatformError>,
-) {
-	const events = yield* fs
-		.watch(path, options)
-		.pipe(Stream.take(1), Stream.runCollect, Effect.forkChild({ startImmediately: true }));
-	yield* Effect.yieldNow;
-	yield* probe;
-	yield* sentinel;
-	const [event] = Array.from(yield* Fiber.join(events));
-	return event;
 });
 
 describe("case-insensitive watch", () => {

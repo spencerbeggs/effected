@@ -5,11 +5,9 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import type { Layer } from "effect";
-import { Cause, Effect, Exit, FileSystem, Path, PlatformError } from "effect";
+import { Cause, Effect, Exit, FileSystem } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
-
-const denied = (method: string, path: string) =>
-	PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method, pathOrDescriptor: path });
+import { denied } from "./helpers.js";
 
 describe("every memory layer publishes Volume", () => {
 	it.effect("layer: Volume inspects the volume backing FileSystem", () =>
@@ -140,59 +138,50 @@ describe("options.faults", () => {
 	);
 });
 
-describe("MemoryFileSystem.makeHandle", () => {
-	it.effect("returns every view over one volume, seeded", () =>
+describe("MemoryFileSystem.layerWith", () => {
+	const Seeded = MemoryFileSystem.layerWith({ "/seed.txt": "seeded" });
+
+	it.effect("provides FileSystem backed by the seeded volume", () =>
 		Effect.gen(function* () {
-			const handle = yield* MemoryFileSystem.makeHandle({ "/a.txt": "a" });
-			yield* handle.fileSystem.writeFileString("/b.txt", "b");
-			assert.deepStrictEqual(handle.volume.paths(), ["/a.txt", "/b.txt"]);
-			assert.strictEqual(handle.sync.readFile("/b.txt"), "b");
-			handle.write("/c/d.txt", "d");
-			assert.strictEqual(yield* handle.fileSystem.readFileString("/c/d.txt"), "d");
-		}),
+			const fs = yield* FileSystem.FileSystem;
+			assert.strictEqual(yield* fs.readFileString("/seed.txt"), "seeded");
+		}).pipe(Effect.provide(Seeded)),
 	);
 
-	it.effect("makeHandle() builds an empty volume", () =>
+	it.effect("each provide of the layer builds an isolated volume", () =>
 		Effect.gen(function* () {
-			const { volume } = yield* MemoryFileSystem.makeHandle();
-			assert.deepStrictEqual(volume.paths(), []);
-		}),
-	);
-
-	it.effect("handle.layer provides FileSystem, Volume and Path over the SAME volume, stable across provides", () =>
-		Effect.gen(function* () {
-			const handle = yield* MemoryFileSystem.makeHandle();
+			// Effect.provide does not memoize: two provides of ONE layer const are
+			// two volumes. (Sharing happens through layer-graph memoization — the
+			// suite-boundary `layer(...)` block — and is documented on the facade.)
 			yield* Effect.gen(function* () {
 				const fs = yield* FileSystem.FileSystem;
-				yield* fs.writeFileString("/w.txt", "w");
-			}).pipe(Effect.provide(handle.layer));
+				yield* fs.writeFileString("/scratch.txt", "first volume");
+			}).pipe(Effect.provide(Seeded));
+
 			const seen = yield* Effect.gen(function* () {
-				const volume = yield* MemoryFileSystem.Volume;
-				const path = yield* Path.Path;
-				return [volume.text("/w.txt"), path.join("/a", "b")] as const;
-			}).pipe(Effect.provide(handle.layer));
-			assert.deepStrictEqual(seen, ["w", "/a/b"]);
-			assert.strictEqual(handle.volume.text("/w.txt"), "w");
+				const fs = yield* FileSystem.FileSystem;
+				return yield* fs.exists("/scratch.txt");
+			}).pipe(Effect.provide(Seeded));
+
+			assert.isFalse(seen);
 		}),
 	);
 
-	it.effect("with faults: fileSystem is faulted, the setup mutators are not", () =>
+	it.effect("a contradictory seed dies — a wiring bug, not a live failure", () =>
 		Effect.gen(function* () {
-			const handle = yield* MemoryFileSystem.makeHandle(
-				{},
-				{ faults: { writeFile: (path) => Effect.fail(denied("writeFile", path)) } },
+			const Broken = MemoryFileSystem.layerWith({ "/a": "file", "/a/b": "child" });
+			const exit = yield* Effect.exit(
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					return yield* fs.exists("/a");
+				}).pipe(Effect.provide(Broken)),
 			);
-			handle.write("/setup.txt", "setup");
-			assert.strictEqual(handle.volume.text("/setup.txt"), "setup");
-			const error = yield* Effect.flip(handle.fileSystem.writeFileString("/x.txt", "x"));
-			assert.strictEqual(error.reason._tag, "PermissionDenied");
-		}),
-	);
-
-	it.effect("fails typed on a contradictory seed", () =>
-		Effect.gen(function* () {
-			const error = yield* Effect.flip(MemoryFileSystem.makeHandle({ "/a": "file", "/a/b": "child" }));
-			assert.strictEqual(error.reason._tag, "AlreadyExists");
+			if (!Exit.isFailure(exit)) {
+				assert.fail("expected the contradictory seed to die");
+				return;
+			}
+			assert.isTrue(Cause.hasDies(exit.cause));
+			assert.isFalse(Cause.hasFails(exit.cause));
 		}),
 	);
 });

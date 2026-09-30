@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
 import { MemoryFileSystem } from "../src/index.js";
+import { thrown } from "./helpers.js";
 
 const seeded = MemoryFileSystem.makeHandle({
 	"/d/f.txt": MemoryFileSystem.file("abc", { mtime: 1_000 }),
@@ -76,15 +77,6 @@ const tree = MemoryFileSystem.makeHandle({
 	"/r/loop-a": MemoryFileSystem.symlink("/r/loop-b"),
 	"/r/loop-b": MemoryFileSystem.symlink("/r/loop-a"),
 });
-
-const thrown = (f: () => unknown): { code?: string; syscall?: string; path?: string } => {
-	try {
-		f();
-	} catch (e) {
-		return e as { code?: string; syscall?: string; path?: string };
-	}
-	throw new Error("expected a throw");
-};
 
 describe("sync port stat/lstat", () => {
 	it.effect("stat follows links; lstat does not", () =>
@@ -330,6 +322,160 @@ describe("promises port", () => {
 			assert.isTrue((yield* Effect.promise(() => stat("/r/file.txt"))).isFile());
 			assert.isTrue((yield* Effect.promise(() => lstat("/r/to-dir"))).isSymbolicLink());
 			assert.strictEqual(yield* Effect.promise(() => readFile("/r/file.txt", "utf8")), "hello");
+		}),
+	);
+});
+
+// The sync filesystem port (effected#396 item 1b): the volume exposed through
+// the six-operation `node:fs` sync subset, for code that takes an injected
+// port instead of requiring `FileSystem` from the environment. Structural
+// satisfaction only — this package imports nothing from the kit.
+describe("MemoryFileSystem.syncFileSystem", () => {
+	const seed = {
+		"/repo/package.json": `{ "name": "root" }`,
+		"/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+		"/repo/packages": MemoryFileSystem.directory(),
+		"/repo/latest": MemoryFileSystem.symlink("/repo/package.json"),
+	} as const;
+
+	const withSync = <A>(use: (sync: ReturnType<typeof MemoryFileSystem.syncFileSystem>) => A) =>
+		Effect.map(MemoryFileSystem.makeHandle(seed), ({ volume }) => use(MemoryFileSystem.syncFileSystem(volume)));
+
+	it.effect("reads files and lists directories by name, sorted", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				assert.strictEqual(sync.readFile("/repo/package.json"), `{ "name": "root" }`);
+				assert.deepStrictEqual(sync.readDirectory("/repo"), [
+					"latest",
+					"package.json",
+					"packages",
+					"pnpm-workspace.yaml",
+				]);
+				assert.isTrue(sync.exists("/repo/package.json"));
+				assert.isTrue(sync.isDirectory("/repo/packages"));
+				assert.isFalse(sync.isDirectory("/repo/package.json"));
+			});
+		}),
+	);
+
+	it.effect("an empty directory lists [] — never confused with an absent one", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				assert.deepStrictEqual(sync.readDirectory("/repo/packages"), []);
+				assert.throws(() => sync.readDirectory("/repo/absent"), /ENOENT/);
+			});
+		}),
+	);
+
+	it.effect('HONEST ABSENCE: an unseeded path throws rather than answering ""', () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				assert.isFalse(sync.exists("/repo/absent"));
+				assert.throws(() => sync.readFile("/repo/absent"), /ENOENT/);
+				// Reading a directory as a file is EISDIR in readFileSync — verified
+				// against real node:fs — not ENOTDIR, and certainly not "".
+				assert.throws(() => sync.readFile("/repo/packages"), /EISDIR/);
+			});
+		}),
+	);
+
+	it.effect("a symbolic link is listed by its own name and reads through to its target", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				assert.isTrue(sync.exists("/repo/latest"));
+				// The PORT follows links even though the view under it is literal:
+				// this one points at a file, so it is not a directory but IS readable.
+				assert.isFalse(sync.isDirectory("/repo/latest"));
+				assert.strictEqual(sync.readFile("/repo/latest"), `{ "name": "root" }`);
+			});
+		}),
+	);
+
+	// THE REGRESSION THIS PORT SHIPPED WITH (caught in review of #445): the view
+	// underneath is deliberately literal, and answering literally here made a
+	// symlinked package directory invisible to any consumer enumerating a
+	// workspace — the exact failure a naive dirent fast path causes, reached
+	// through the test double instead. Verified against real node:fs, which
+	// resolves all four operations through links.
+	it.effect("FOLLOWS LINKS like stat: a link to a directory is a directory and lists its target", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle({
+				"/real/pkg/package.json": `{ "name": "@x/a" }`,
+				"/links/pkg": MemoryFileSystem.symlink("/real/pkg"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+
+			assert.isTrue(sync.isDirectory("/links/pkg"), "a link to a directory must read as a directory");
+			assert.deepStrictEqual(sync.readDirectory("/links/pkg"), ["package.json"]);
+			assert.strictEqual(sync.readFile("/links/pkg/package.json"), `{ "name": "@x/a" }`);
+
+			// The literal view keeps its own contract underneath, unchanged.
+			assert.isFalse(volume.isDirectory("/links/pkg"));
+			assert.strictEqual(volume.readLink("/links/pkg"), "/real/pkg");
+		}),
+	);
+
+	it.effect("a dangling link is ABSENT to the port, though the literal view still sees it", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle({
+				"/dangling": MemoryFileSystem.symlink("/nowhere"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+
+			// existsSync answers false for a dangling link; the port matches it.
+			assert.isFalse(sync.exists("/dangling"));
+			assert.isFalse(sync.isDirectory("/dangling"));
+			assert.throws(() => sync.readFile("/dangling"), /ENOENT/);
+			// …while the view, being literal, reports the link itself as present.
+			assert.isTrue(volume.has("/dangling"));
+		}),
+	);
+
+	it.effect("a relative link target resolves against the link's own directory", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle({
+				"/a/b/target.txt": "found",
+				"/a/b/rel": MemoryFileSystem.symlink("target.txt"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.strictEqual(sync.readFile("/a/b/rel"), "found");
+		}),
+	);
+
+	it.effect("a link cycle is absent to exists and ELOOP to readFile, as on a real filesystem", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle({
+				"/loop/a": MemoryFileSystem.symlink("/loop/b"),
+				"/loop/b": MemoryFileSystem.symlink("/loop/a"),
+			});
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.isFalse(sync.exists("/loop/a"));
+			assert.throws(() => sync.readFile("/loop/a"), /ELOOP/);
+		}),
+	);
+
+	it.effect("the virtual root lists its top-level entries", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				// "/" must not build the prefix "//", which would match nothing.
+				assert.include(sync.readDirectory("/"), "repo");
+				assert.isTrue(sync.isDirectory("/"));
+			});
+		}),
+	);
+
+	it.effect("thrown absence carries the node:fs errno fields a port consumer may inspect", () =>
+		Effect.gen(function* () {
+			yield* withSync((sync) => {
+				try {
+					sync.readFile("/repo/absent");
+					assert.fail("readFile should have thrown on an unseeded path");
+				} catch (error) {
+					assert.strictEqual((error as { code?: string }).code, "ENOENT");
+					assert.strictEqual((error as { syscall?: string }).syscall, "open");
+					assert.strictEqual((error as { path?: string }).path, "/repo/absent");
+				}
+			});
 		}),
 	);
 });
