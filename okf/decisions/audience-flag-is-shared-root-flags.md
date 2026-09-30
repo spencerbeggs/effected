@@ -22,8 +22,8 @@ sources:
     title: CliRuntime, which remaps usage failures to exit 64
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:33:06Z
-  body_sha256: 4d399552e1c94817dfa4424cb02545c928be16c3d3cda3bcb5ff932b53e9e567
+  at: 2026-09-30T20:44:01Z
+  body_sha256: c99af70c6607695e9435ccaabbac5228ba25a42e240d5879d8892a25d1273e47
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience
@@ -77,7 +77,10 @@ handler runs:
   untouched.
 
 `audience` is declared with `Flag.Literals`, so a bad value is core's own
-parse error and also exits 64.
+parse error and also exits 64. Only a `true` boolean counts as an
+occurrence: `--agent=false` and `--no-agent` mean "not given" and fall
+through to `--audience` or the ambient `Audience`, so they neither select an
+audience nor conflict with another flag.
 
 ## What the probe showed
 

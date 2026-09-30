@@ -41,9 +41,10 @@ const CONFLICT = "Give at most one of --audience, --human, --agent, --ci (once).
 const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliError.UserError, Audience> => {
 	const given: ReadonlyArray<AudienceKind> = [
 		...input.audience,
-		...input.human.map((): AudienceKind => "human"),
-		...input.agent.map((): AudienceKind => "agent"),
-		...input.ci.map((): AudienceKind => "ci"),
+		// Only a true occurrence counts: `--agent=false` and `--no-agent` mean "not given".
+		...input.human.filter(Boolean).map((): AudienceKind => "human"),
+		...input.agent.filter(Boolean).map((): AudienceKind => "agent"),
+		...input.ci.filter(Boolean).map((): AudienceKind => "ci"),
 	];
 	if (given.length > 1) {
 		return Effect.fail(new CliError.UserError({ cause: new Error(CONFLICT), userMessage: CONFLICT }));
@@ -60,7 +61,7 @@ const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliErro
  * @remarks
  * Declare {@link CliAudience.flags} as shared flags on the root command, then pipe the composite root through
  * {@link CliAudience.provide}. Giving more than one occurrence across the four flags is a usage error even when
- * they agree. A bad `--audience` value is core's own parse error. Both exit `64` under `CliRuntime.main`. A
+ * they agree; a boolean set to false (`--no-agent`, `--agent=false`) counts as not given. A bad `--audience` value is core's own parse error. Both exit `64` under `CliRuntime.main`. A
  * conflicting audience together with `--help` exits `0` and prints help, because core handles its action flags
  * before the resolver runs.
  *
@@ -82,10 +83,18 @@ export class CliAudience {
 	 * The four flags, for `Command.withSharedFlags` on the root command.
 	 *
 	 * @remarks
-	 * Each is repeatable, so every occurrence is counted. Core lists shared flags in every command's help; pass
+	 * Each is repeatable, so every occurrence is counted; a boolean given as `false` (`--agent=false`,
+	 * `--no-agent`) is not an occurrence. Core lists shared flags in every command's help; pass
 	 * `hidden` to remove them from all of them.
 	 */
-	static readonly flags = (options?: CliAudienceFlagsOptions) => {
+	static readonly flags = (
+		options?: CliAudienceFlagsOptions,
+	): {
+		readonly audience: Flag.Flag<ReadonlyArray<AudienceKind>>;
+		readonly human: Flag.Flag<ReadonlyArray<boolean>>;
+		readonly agent: Flag.Flag<ReadonlyArray<boolean>>;
+		readonly ci: Flag.Flag<ReadonlyArray<boolean>>;
+	} => {
 		const hide = options?.hidden === true;
 		const maybeHide = <A>(flag: Flag.Flag<A>): Flag.Flag<A> => (hide ? Flag.withHidden(flag) : flag);
 		return {

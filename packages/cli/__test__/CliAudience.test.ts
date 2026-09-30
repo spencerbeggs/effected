@@ -44,6 +44,10 @@ const run = (argv: ReadonlyArray<string>, options?: { readonly hidden?: boolean 
 		return { code, seen, out, err };
 	});
 
+const HUMAN_DETECTED: AudienceShape = { kind: "human", source: "detected" };
+const AGENT_FLAG: AudienceShape = { kind: "agent", source: "flag" };
+const CI_FLAG: AudienceShape = { kind: "ci", source: "flag" };
+
 describe("CliAudience", () => {
 	const cases: ReadonlyArray<readonly [string, ReadonlyArray<string>, AudienceShape]> = [
 		["no flag leaves the ambient audience untouched", ["verify", "x"], { kind: "human", source: "detected" }],
@@ -52,6 +56,15 @@ describe("CliAudience", () => {
 		["--audience ci", ["verify", "x", "--audience", "ci"], { kind: "ci", source: "flag" }],
 		["--human", ["--human", "verify", "x"], { kind: "human", source: "flag" }],
 		["--ci", ["--ci", "verify", "x"], { kind: "ci", source: "flag" }],
+		["--audience=ci, the equals form", ["--audience=ci", "verify", "x"], { kind: "ci", source: "flag" }],
+		// A false boolean is "not given": it falls through to the ambient audience, never to its own kind.
+		["--no-agent falls through to the ambient audience", ["--no-agent", "verify", "x"], HUMAN_DETECTED],
+		["--agent=false falls through to the ambient audience", ["--agent=false", "verify", "x"], HUMAN_DETECTED],
+		["--human=false falls through to the ambient audience", ["--human=false", "verify", "x"], HUMAN_DETECTED],
+		// Only true occurrences count, so a false one beside a true one is not a conflict.
+		["--agent=false --ci counts one true occurrence", ["--agent=false", "--ci", "verify", "x"], CI_FLAG],
+		["--agent --no-agent counts one true occurrence", ["--agent", "--no-agent", "verify", "x"], AGENT_FLAG],
+		["--no-agent --audience ci counts one occurrence", ["--no-agent", "--audience", "ci", "verify", "x"], CI_FLAG],
 	];
 	for (const [label, argv, expected] of cases) {
 		it.effect(label, () =>
@@ -73,8 +86,9 @@ describe("CliAudience", () => {
 		for (const [label, argv] of conflicts) {
 			it.effect(label, () =>
 				Effect.gen(function* () {
-					const { code, seen, err } = yield* run(argv);
+					const { code, seen, out, err } = yield* run(argv);
 					assert.strictEqual(code, 64);
+					assert.deepStrictEqual(out, [], "a usage error writes nothing to stdout");
 					assert.deepStrictEqual(seen, [], "the handler never runs");
 					assert.strictEqual(err.length, 1, err.join("\n"));
 					assert.include(err[0], "Give at most one of --audience, --human, --agent, --ci (once).");
