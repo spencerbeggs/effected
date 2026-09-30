@@ -297,12 +297,18 @@ importers:
       '@effected/config-file':
         specifier: workspace:*
         version: link:../config-file/dist/dev/pkg
+      '@effected/env':
+        specifier: workspace:*
+        version: link:../env/dist/dev/pkg
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc/dist/dev/pkg
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@effected/toml':
         specifier: workspace:*
         version: link:../toml/dist/dev/pkg
@@ -324,6 +330,9 @@ importers:
       effect:
         specifier: catalog:effect
         version: 4.0.0-rc.118
+      string-width:
+        specifier: ^8.3.0
+        version: 8.3.0
       typescript:
         specifier: catalog:build
         version: 7.0.2
