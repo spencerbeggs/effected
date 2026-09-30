@@ -1,5 +1,24 @@
 # @effected/claude-code-plugin
 
+## 0.25.0
+
+### Features
+
+- Added an `effect-v4-testing` memfs reference covering memfs forms, ports and fault injection
+- Reviewer agents flag hand-rolled filesystem doubles
+- One rule across the skills and agents: use memfs, never `layerNoop`, for a filesystem double
+- CLI, actions and package references teach the memfs-based test layers
+
+### Maintenance
+
+- Regenerated the construct index for the new memfs surface [#890][#890]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#890]: https://github.com/spencerbeggs/effected/pull/890
+
 ## 0.24.4
 
 ### Documentation

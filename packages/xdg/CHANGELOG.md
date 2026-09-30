@@ -1,5 +1,24 @@
 # @effected/xdg
 
+## 0.8.2
+
+### Documentation
+
+- Added a Testing section to the README: `@effected/memfs` virtualizes the filesystem but not the platform, so tests pin `CurrentPlatform` as well [#890][#890]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.13.1 | 0.13.1 |
+| @effected/walker | dependency | updated | 0.14.0 | 0.14.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#890]: https://github.com/spencerbeggs/effected/pull/890
+
 ## 0.8.1
 
 ### Dependencies

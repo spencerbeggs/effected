@@ -1,5 +1,20 @@
 # @effected/pnpm-plugin-effect
 
+## 0.12.6
+
+### Maintenance
+
+#### Updates 2 catalog:effected versions
+
+- `@effected/memfs` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/xdg` ^0.8.1 -> ^0.8.2 (peer ^0.8.0) [#890][#890]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#890]: https://github.com/spencerbeggs/effected/pull/890
+
 ## 0.12.5
 
 ### Maintenance
