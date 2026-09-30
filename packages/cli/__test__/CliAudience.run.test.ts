@@ -41,11 +41,8 @@ const init = Command.make("init", { profile }, ({ profile }) =>
 		yield* Console.log(`profile=${profile} audience=${audience.kind}/${audience.source}`);
 	}),
 );
-const root = Command.make("tool").pipe(
-	Command.withSharedFlags(CliAudience.flags()),
-	Command.withSubcommands([init]),
-	CliAudience.provide,
-);
+// The one wiring: share the flags, and hand the root to CliAudience.run / runWith, which apply `provide` themselves.
+const root = Command.make("tool").pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([init]));
 
 /** A human on a terminal (interactive), with keys waiting that "down, enter" would answer the prompt with. */
 const run = (argv: ReadonlyArray<string>, via: "runWith" | "core" = "runWith", gateWizard = false) =>
@@ -56,7 +53,7 @@ const run = (argv: ReadonlyArray<string>, via: "runWith" | "core" = "runWith", g
 		const program =
 			via === "runWith"
 				? CliAudience.runWith(root, { version: "1.0.0" })(argv)
-				: Command.runWith(root, { version: "1.0.0" })(argv);
+				: Command.runWith(CliAudience.provide(root), { version: "1.0.0" })(argv);
 		const exit = yield* CliRuntime.main(program, {
 			platform: Layer.mergeAll(NodeServices.layer, CliPrompt.gateTerminal.pipe(Layer.provide(terminal.layer))),
 		}).pipe(
@@ -155,4 +152,20 @@ describe("CliAudience.runWith resolves the audience flag before parsing", () => 
 			);
 		}),
 	);
+
+	// Without `provide` the conflict check used to be skipped silently: `--agent --ci` ran the handler, exit 0.
+	it.effect("runWith applies provide itself: --agent --ci exits 64 with no explicit provide on the root", () =>
+		Effect.gen(function* () {
+			const { code, out } = yield* run(["--agent", "--ci", "init"]);
+			assert.strictEqual(code, 64);
+			assert.isFalse(out.some((line) => line.startsWith("profile=")));
+		}),
+	);
+
+	it("a root without the shared audience flags is a compile error", () => {
+		const bare = Command.make("tool").pipe(Command.withSubcommands([Command.make("x", {}, () => Effect.void)]));
+		// @ts-expect-error the root must carry the four flags (Command.withSharedFlags(CliAudience.flags()))
+		const program = CliAudience.runWith(bare, { version: "1.0.0" });
+		assert.isDefined(program);
+	});
 });

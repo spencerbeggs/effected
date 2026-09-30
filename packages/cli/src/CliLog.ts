@@ -1,9 +1,10 @@
 import { Audience, TerminalEnv } from "@effected/env";
-import type { Context, FileSystem } from "effect";
+import type { FileSystem } from "effect";
 import {
 	Cause,
 	Config,
 	Console,
+	Context,
 	Effect,
 	Layer,
 	LogLevel,
@@ -189,16 +190,23 @@ export class CliLog {
 				const ambient = yield* References.MinimumLogLevel;
 
 				const format = options.format ?? "auto";
-				const pretty =
-					format === "pretty" || (format === "auto" && audience.kind === "human" && terminal.stderr.isTerminal);
 				const color = terminal.stderr.color;
+				// Decided per record, not once at build: the logger is built outermost, before an audience flag is read,
+				// so the format follows the `Audience` in force in the fiber that logs (`CliAudience.run` provides it
+				// around the whole run; `Fiber.context` is `Fiber.ts:77`), falling back to the one the layer was built with.
+				const isPretty = (record: Logger.Options<unknown>): boolean => {
+					if (format !== "auto") return format === "pretty";
+					const inForce = Context.getOption(record.fiber.context, Audience);
+					const kind = Option.isSome(inForce) ? inForce.value.kind : audience.kind;
+					return kind === "human" && terminal.stderr.isTerminal;
+				};
 
 				// Effect filters on MinimumLogLevel before any logger runs: lower it just far enough for the sink.
 				const lowered = LogLevel.isLessThan(level, ambient) ? level : ambient;
 				const isLowered = lowered !== ambient;
 
 				const render = (record: Logger.Options<unknown>): string => {
-					if (!pretty) return Logger.formatJson.log(record);
+					if (!isPretty(record)) return Logger.formatJson.log(record);
 					const annotations = record.fiber.getRef(References.CurrentLogAnnotations);
 					const component = annotations.component === undefined ? "" : ` [${String(annotations.component)}]`;
 					const message = Array.isArray(record.message) ? record.message.map(String).join(" ") : String(record.message);

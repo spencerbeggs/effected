@@ -38,6 +38,18 @@ export interface CliAudienceFlagsOptions {
 	readonly hidden?: boolean | undefined;
 }
 
+/**
+ * Resolves to nothing for a command that carries the four audience flags, and to an unsatisfiable marker otherwise,
+ * so `CliAudience.run` on a root that forgot `Command.withSharedFlags(CliAudience.flags())` does not compile. (A
+ * plain `Input extends AudienceFlagInput` constraint does not do this: `Command` is contravariant in its input, so
+ * a command with no flags still type-checks against it.)
+ *
+ * @public
+ */
+export type RequiresAudienceFlags<Input> = [Input] extends [AudienceFlagInput]
+	? unknown
+	: { readonly "missing shared flags": "pipe the root through Command.withSharedFlags(CliAudience.flags())" };
+
 const CONFLICT = "Give at most one of --audience, --human, --agent, --ci (once).";
 
 /** Resolve the four flags into the audience to provide, failing when more than one occurrence was given. */
@@ -57,25 +69,30 @@ const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliErro
  * resolved into `@effected/env`'s `Audience`.
  *
  * @remarks
- * Declare {@link CliAudience.flags} as shared flags on the root command, then pipe the composite root through
- * {@link CliAudience.provide}. Giving more than one occurrence across the four flags is a usage error even when
- * they agree; a boolean set to false (`--no-agent`, `--agent=false`) counts as not given. A bad `--audience` value is core's own parse error. Both exit `64` under `CliRuntime.main`. A
- * conflicting audience together with `--help` exits `0` and prints help, because core handles its action flags
- * before the resolver runs.
+ * The one wiring: share the flags on the root command and hand the root to {@link CliAudience.run} (or
+ * {@link CliAudience.runWith}), which resolves the flags from argv before core parses and applies
+ * {@link CliAudience.provide} itself:
  *
- * A non-human flag (`--agent`, `--ci`, `--audience agent|ci`) also turns `CliInteractive` off for the handler.
- * `provide` alone acts only on the handler: core parses the root flags into a local context and runs the subcommand's
- * parse, where a fallback prompt fires, before any of it is visible. To cover fallback prompts run the program
- * through {@link CliAudience.run} or {@link CliAudience.runWith}, which read the flags from argv first.
- *
- * @example
  * ```ts
  * const root = Command.make("tool").pipe(
  *   Command.withSharedFlags(CliAudience.flags()),
  *   Command.withSubcommands([verify]),
- *   CliAudience.provide,
+ * )
+ * NodeRuntime.runMain(
+ *   CliRuntime.main(CliAudience.run(root, { version }), { platform: NodeServices.layer, env: {} }),
  * )
  * ```
+ *
+ * A root that forgot `Command.withSharedFlags(CliAudience.flags())` does not compile. Giving more than one
+ * occurrence across the four flags is a usage error even when they agree; a boolean set to false (`--no-agent`,
+ * `--agent=false`) counts as not given. A bad `--audience` value is core's own parse error. Both exit `64` under
+ * `CliRuntime.main`. A conflicting audience together with `--help` exits `0` and prints help, because core handles
+ * its action flags before the resolver runs.
+ *
+ * A non-human flag (`--agent`, `--ci`, `--audience agent|ci`) also turns `CliInteractive` off, drops `--wizard`,
+ * and switches diagnostics to NDJSON, for the whole run including the parse step where a fallback prompt fires.
+ * {@link CliAudience.provide} on its own, the path for a bare `Command.run`, acts only on the subcommand handler,
+ * because core parses the root flags into a local context before any of it is visible.
  *
  * @public
  */
@@ -118,6 +135,10 @@ export class CliAudience {
 	 * Resolve the flags before every subcommand handler and re-provide `Audience`.
 	 *
 	 * @remarks
+	 * `CliAudience.run` and `runWith` apply this themselves, so a program run through them never needs it. Use it
+	 * directly only with a bare `Command.run`, which leaves a fallback prompt blind to the flags (see the class
+	 * remarks).
+	 *
 	 * Pipe it onto the composite root, after `withSubcommands`, since a parent's handler does not run when a
 	 * subcommand is selected. With exactly one flag the audience is `{ kind, source: "flag" }`; with none the
 	 * ambient `Audience` is read and provided back unchanged, so `Audience` stays in the requirement a handler
@@ -153,12 +174,20 @@ export class CliAudience {
 	 * @param config - the same `version` and `renderErrors` as core's
 	 */
 	static readonly runWith = <const Name extends string, Input, E, R, ContextInput>(
-		command: Command.Command<Name, Input, ContextInput, E, R>,
+		command: Command.Command<Name, Input, ContextInput, E, R> & RequiresAudienceFlags<Input>,
 		config: { readonly version: string; readonly renderErrors?: boolean | undefined },
 	): ((
 		input: ReadonlyArray<string>,
-	) => Effect.Effect<void, Exclude<E, Terminal.QuitError> | CliError.CliError, R | Command.Environment>) => {
-		const core = CommandModule.runWith(command, config);
+	) => Effect.Effect<
+		void,
+		Exclude<E | CliError.UserError, Terminal.QuitError> | CliError.CliError,
+		Exclude<R, Audience> | Audience | Command.Environment
+	>) => {
+		// `provide` is applied here, so there is one wiring and conflict detection cannot be dropped by omission.
+		const core = CommandModule.runWith(
+			CliAudience.provide(command as unknown as Command.Command<Name, AudienceFlagInput & Input, ContextInput, E, R>),
+			config,
+		);
 		return (argv) => {
 			const run = core(argv);
 			const { given, conflict } = scanAudience(argv);
@@ -193,8 +222,11 @@ export class CliAudience {
 	 * @param config - the same `version` and `renderErrors` as core's
 	 */
 	static readonly run = <const Name extends string, Input, E, R, ContextInput>(
-		command: Command.Command<Name, Input, ContextInput, E, R>,
+		command: Command.Command<Name, Input, ContextInput, E, R> & RequiresAudienceFlags<Input>,
 		config: { readonly version: string; readonly renderErrors?: boolean | undefined },
-	): Effect.Effect<void, Exclude<E, Terminal.QuitError> | CliError.CliError, R | Command.Environment> =>
-		Stdio.Stdio.use(({ args }) => Effect.flatMap(args, (argv) => CliAudience.runWith(command, config)(argv)));
+	): Effect.Effect<
+		void,
+		Exclude<E | CliError.UserError, Terminal.QuitError> | CliError.CliError,
+		Exclude<R, Audience> | Audience | Command.Environment
+	> => Stdio.Stdio.use(({ args }) => Effect.flatMap(args, (argv) => CliAudience.runWith(command, config)(argv)));
 }

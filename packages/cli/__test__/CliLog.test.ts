@@ -196,9 +196,10 @@ describe("CliLog.layer threshold", () => {
 	);
 });
 
+const env = { [ENV]: "info" };
+
 describe("CliLog.layer format", () => {
 	const one = Effect.logInfo("hello");
-	const env = { [ENV]: "info" };
 
 	it.effect("auto is NDJSON for an agent and for ci", () =>
 		Effect.gen(function* () {
@@ -412,6 +413,44 @@ describe("CliLog.layer extraLoggers", () => {
 				Effect.provideService(Console.Console, double),
 			);
 			assert.deepStrictEqual(seen, ["hello"]);
+		}),
+	);
+});
+
+describe("CliLog.layer format follows the audience in force for each record", () => {
+	const inside = (kind: AudienceKind) =>
+		Effect.logInfo("hello").pipe(Effect.provideService(Audience, { kind, source: "flag" }));
+
+	it.effect("a human terminal with --agent in force gets NDJSON for records logged inside the flagged scope", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(
+				Effect.gen(function* () {
+					yield* Effect.logInfo("outside");
+					yield* inside("agent");
+				}),
+				{ env, audience: "human", stderrTty: true },
+			);
+			// Outside the flag the build-time audience (human on a TTY) gives pretty; inside it, agent gives NDJSON.
+			assert.match(pretty(err).join("\n"), /INFO outside$/);
+			assert.deepStrictEqual(
+				ndjson(err).map((line) => json(line).message),
+				["hello"],
+			);
+		}),
+	);
+
+	it.effect("and the reverse: an agent build with --human in force gets pretty", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(inside("human"), { env, audience: "agent", stderrTty: true });
+			assert.match(pretty(err).join("\n"), /INFO hello$/);
+			assert.deepStrictEqual(ndjson(err), []);
+		}),
+	);
+
+	it.effect("an explicit format is never overridden by the audience in force", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(inside("agent"), { env, audience: "human", stderrTty: true, format: "pretty" });
+			assert.match(pretty(err).join("\n"), /INFO hello$/);
 		}),
 	);
 });
