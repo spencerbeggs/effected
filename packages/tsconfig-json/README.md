@@ -39,7 +39,7 @@ Requires Node.js >=24.11.0. `effect` v4, `@effected/jsonc` and `@effected/walker
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-All IO goes through `FileSystem` and `Path` from `effect` core, not a platform package, so a consumer provides them once at the edge (`@effect/platform-node` on Node, `@effect/platform-bun` on Bun) and a test provides `Path.layer` and `FileSystem.layerNoop` straight from core with nothing else installed.
+All IO goes through `FileSystem` and `Path` from `effect` core, not a platform package, so a consumer provides them once at the edge (`@effect/platform-node` on Node, `@effect/platform-bun` on Bun) and a test provides core's `Path.layer` plus an in-memory volume from `@effected/memfs` — no platform package installed.
 
 ## Quick start
 

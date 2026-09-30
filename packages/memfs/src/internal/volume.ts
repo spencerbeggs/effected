@@ -920,6 +920,23 @@ const makeDirectory = (volume: Volume) =>
 					const parent = yield* resolveParent(nextState, candidate, method, path);
 					// KIT EXTENSION (case folding — adaptation ledger entry 11)
 					if (findEntry(nextState, parent.entry, parent.name) !== undefined) {
+						// KIT EXTENSION (errno fidelity — adaptation ledger entry 13): the
+						// entry exists but does not resolve, so it is a dangling or looping
+						// symbolic link. A recursive mkdir follows it and reports why it
+						// failed (node's EEXIST → stat fallback): the final component
+						// answers the resolution errno; earlier in the path the node
+						// adapter's callback `fs.mkdir` turns a dangling ENOENT into
+						// ENOTDIR, while any other code (ELOOP) is what the deeper mkdir
+						// syscall raised itself.
+						if (recursive) {
+							const cause = existing.failure.reason.cause;
+							if (!(cause instanceof ErrnoException)) {
+								return yield* withSystemErrorPath(existing.failure, method, path);
+							}
+							const final = index === pieces.length - 1;
+							return yield* errnoError(method, path, !final && cause.code === "ENOENT" ? "ENOTDIR" : cause.code);
+						}
+						// END KIT EXTENSION (errno fidelity)
 						return yield* alreadyExists(method, path);
 					}
 					const [createdState, inode] = yield* createDirectory(nextState);

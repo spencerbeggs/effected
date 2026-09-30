@@ -23,9 +23,10 @@ generator, the annotations sidecar, the bats pin and the
 - `claude-code/` — "effected", the Claude Code plugin: `skills/`, `agents/`,
   `hooks/`, `scripts/`, `__test__/`. Manifest at
   `claude-code/.claude-plugin/plugin.json` (plugin name `effected`).
-- `copilot/` — a **new and experimental** GitHub Copilot plugin, currently a
-  stub: empty `agents/`, `skills/`, `hooks/` plus a root `hooks.json`. Its
-  manifest is `copilot/plugin.json` — at the **directory root**, not under a dot
+- `copilot/` — a **new and experimental** GitHub Copilot plugin, a port of
+  `claude-code/`: every skill under `skills/`, the three specialist agents
+  under `agents/` (`*.agent.md`), and a `session-start` hook under `hooks/`
+  registered by a root `hooks.json`. Its manifest is `copilot/plugin.json` — at the **directory root**, not under a dot
   directory. Claude Code reads `.claude-plugin/plugin.json`; Copilot does not.
   Do not "repair" that asymmetry.
 

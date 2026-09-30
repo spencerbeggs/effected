@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { MemoryFileSystemSeed } from "@effected/memfs";
+import type { MemoryFileSystemFaults, MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
+import { Effect, Layer, Path, Result, Schema } from "effect";
 import type { SchemaVersion } from "../src/index.js";
 import {
 	SchemaContractChangeError,
@@ -31,11 +31,6 @@ const advisoryTarget = SchemaTarget.make({
 	$id: "https://example.com/advisory.schema.json",
 	path: "schemas/advisory.schema.json",
 });
-
-const layers = (
-	fs: Layer.Layer<FileSystem.FileSystem>,
-	validator: Layer.Layer<SchemaValidator> = SchemaValidator.noop,
-) => Layer.mergeAll(SchemaFile.layer.pipe(Layer.provide(Layer.mergeAll(fs, Path.layer))), validator);
 
 // ── Contract-gate fixtures (#556) ─────────────────────────────────────────
 //
@@ -127,41 +122,43 @@ const annotatedTarget = SchemaTarget.make({
 // Every test below therefore resolves the volume INSIDE the one program it
 // provides. (Caught by the corrupted-file repair case, whose read-back is the
 // only assertion here that a fresh volume cannot satisfy.)
-const memLayers = (seed: MemoryFileSystemSeed, validator: Layer.Layer<SchemaValidator> = SchemaValidator.noop) => {
-	const memory = MemoryFileSystem.layerWith(seed);
+const memLayers = (
+	seed: MemoryFileSystemSeed,
+	validator: Layer.Layer<SchemaValidator> = SchemaValidator.noop,
+	faults?: MemoryFileSystemFaults,
+) => {
+	const memory = MemoryFileSystem.layerWith(seed, { faults });
 	const base = Layer.mergeAll(memory, Path.layer);
 	return Layer.mergeAll(SchemaFile.layer.pipe(Layer.provide(base)), base, validator);
 };
 
-const writable = (written: Array<string> = []) =>
-	FileSystem.layerNoop({
-		makeDirectory: () => Effect.void,
-		writeFileString: (path) =>
-			Effect.suspend(() => {
-				written.push(path);
-				return Effect.void;
-			}),
-	});
+// Any write attempt dies — a defect the pipeline's error mapping cannot
+// absorb, so a "never written" proof cannot pass by a recovered failure.
+const noWrites = (reason: string): MemoryFileSystemFaults => ({
+	makeDirectory: MemoryFileSystem.die(new Error(reason)),
+	writeFile: MemoryFileSystem.die(new Error(reason)),
+	writeFileString: MemoryFileSystem.die(new Error(reason)),
+});
 
 describe("SchemaPipeline", () => {
 	describe("run", () => {
 		it.effect("generates, gates and writes each target, answering results as values", () =>
 			Effect.gen(function* () {
-				const written: Array<string> = [];
-				const results = yield* Effect.provide(SchemaPipeline.run([target]), layers(writable(written)));
+				const results = yield* SchemaPipeline.run([target]);
 				assert.strictEqual(results.length, 1);
 				assert.strictEqual(results[0]?.$id, "https://example.com/config.schema.json");
 				assert.strictEqual(results[0]?.outcome, "written");
 				assert.strictEqual(results[0]?.change, "created");
-				assert.deepStrictEqual(written, ["schemas/config.schema.json"]);
-			}),
+				const volume = yield* MemoryFileSystem.Volume;
+				assert.deepStrictEqual(volume.paths(), ["/schemas/config.schema.json"]);
+			}).pipe(Effect.provide(memLayers({}))),
 		);
 
 		// The policy default, and the reason it is a default rather than a
 		// hardcode: an advisory is reported, not enforced.
 		it.effect("advisory findings are returned but do not block", () =>
 			Effect.gen(function* () {
-				const results = yield* Effect.provide(SchemaPipeline.run([advisoryTarget]), layers(writable()));
+				const results = yield* Effect.provide(SchemaPipeline.run([advisoryTarget]), memLayers({}));
 				const advisories = results[0]?.findings.filter((finding) => finding.severity === "advisory") ?? [];
 				assert.isAtLeast(advisories.length, 1, "the description-without-url advisory should be reported");
 				assert.strictEqual(results[0]?.outcome, "written", "an advisory must not stop the write");
@@ -170,16 +167,20 @@ describe("SchemaPipeline", () => {
 
 		it.effect("a blocking finding fails with SchemaGateError and the file is never written", () =>
 			Effect.gen(function* () {
-				const fs = FileSystem.layerNoop({
-					makeDirectory: () => Effect.die(new Error("must not write a document that failed its gate")),
-					writeFileString: () => Effect.die(new Error("must not write a document that failed its gate")),
-				});
 				// A validator that rejects, standing in for a real engine finding.
 				const rejecting = SchemaValidator.layerTest({
 					validate: () =>
 						Effect.succeed([ValidationFinding.make({ path: "/type", message: "rejected", keyword: "type" })]),
 				});
-				const error = yield* Effect.flip(Effect.provide(SchemaPipeline.run([target]), layers(fs, rejecting)));
+				const error = yield* Effect.provide(
+					Effect.gen(function* () {
+						const error = yield* Effect.flip(SchemaPipeline.run([target]));
+						const volume = yield* MemoryFileSystem.Volume;
+						assert.deepStrictEqual(volume.paths(), [], "the gate-failing document never lands");
+						return error;
+					}),
+					memLayers({}, rejecting, noWrites("must not write a document that failed its gate")),
+				);
 				assert.instanceOf(error, SchemaGateError);
 				assert.strictEqual(error.$id, "https://example.com/config.schema.json");
 				assert.strictEqual(error.findings.length, 1);
@@ -193,14 +194,14 @@ describe("SchemaPipeline", () => {
 		it.effect("a custom blocking predicate can block on an advisory, or tolerate a warning", () =>
 			Effect.gen(function* () {
 				const strict = yield* Effect.flip(
-					Effect.provide(SchemaPipeline.run([advisoryTarget], { blocking: () => true }), layers(writable())),
+					Effect.provide(SchemaPipeline.run([advisoryTarget], { blocking: () => true }), memLayers({})),
 				);
 				assert.instanceOf(strict, SchemaGateError);
 
 				const permissive = yield* Effect.provide(
 					SchemaPipeline.run([target], { blocking: () => false }),
-					layers(
-						writable(),
+					memLayers(
+						{},
 						SchemaValidator.layerTest({
 							validate: () => Effect.succeed([ValidationFinding.make({ path: "", message: "ignored" })]),
 						}),
@@ -218,7 +219,6 @@ describe("SchemaPipeline", () => {
 		// which is why the name below states the whole guarantee.
 		it.effect("writes nothing when a target fails its gate, before or after it", () =>
 			Effect.gen(function* () {
-				const written: Array<string> = [];
 				// Rejects only the FIRST target, so the second would pass on
 				// its own — it must still never be reached.
 				const selective = SchemaValidator.layerTest({
@@ -229,18 +229,23 @@ describe("SchemaPipeline", () => {
 								: [],
 						),
 				});
-				const error = yield* Effect.flip(
-					Effect.provide(SchemaPipeline.run([target, advisoryTarget]), layers(writable(written), selective)),
+				const error = yield* Effect.provide(
+					Effect.gen(function* () {
+						const error = yield* Effect.flip(SchemaPipeline.run([target, advisoryTarget]));
+						const volume = yield* MemoryFileSystem.Volume;
+						assert.deepStrictEqual(volume.paths(), [], "nothing is written when the first target fails");
+						return error;
+					}),
+					memLayers({}, selective),
 				);
 				assert.instanceOf(error, SchemaGateError);
 				assert.strictEqual(error.$id, "https://example.com/config.schema.json");
-				assert.deepStrictEqual(written, [], "nothing is written when the first target fails");
 			}),
 		);
 
 		it.effect("runOne answers a single result without indexing", () =>
 			Effect.gen(function* () {
-				const result = yield* Effect.provide(SchemaPipeline.runOne(target), layers(writable()));
+				const result = yield* Effect.provide(SchemaPipeline.runOne(target), memLayers({}));
 				assert.strictEqual(result.outcome, "written");
 				assert.strictEqual(result.$id, "https://example.com/config.schema.json");
 			}),
@@ -332,7 +337,7 @@ describe("SchemaPipeline", () => {
 					$id: "https://example.com/annotated.schema.json",
 					path: "schemas/annotated.schema.json",
 				});
-				const results = yield* Effect.provide(SchemaPipeline.check([annotated]), layers(FileSystem.layerNoop({})));
+				const results = yield* Effect.provide(SchemaPipeline.check([annotated]), memLayers({}));
 				const findings = results[0]?.findings ?? [];
 				assert.isEmpty(
 					findings.filter((f) => f.check === "UnknownKeyword"),
@@ -359,10 +364,7 @@ describe("SchemaPipeline", () => {
 				const unnamed = SchemaValidator.layerTest({
 					validate: () => Effect.succeed([ValidationFinding.make({ path: "", message: "no keyword" })]),
 				});
-				const results = yield* Effect.provide(
-					SchemaPipeline.check([target]),
-					layers(FileSystem.layerNoop({}), unnamed),
-				);
+				const results = yield* Effect.provide(SchemaPipeline.check([target]), memLayers({}, unnamed));
 				const finding = results[0]?.findings.find((f) => f.source === "validator");
 				assert.strictEqual(finding?.label, "validator", "an engine finding with no keyword labels as its gate");
 			}),
@@ -373,10 +375,7 @@ describe("SchemaPipeline", () => {
 				const keyworded = SchemaValidator.layerTest({
 					validate: () => Effect.succeed([ValidationFinding.make({ path: "/type", message: "bad", keyword: "type" })]),
 				});
-				const results = yield* Effect.provide(
-					SchemaPipeline.check([target]),
-					layers(FileSystem.layerNoop({}), keyworded),
-				);
+				const results = yield* Effect.provide(SchemaPipeline.check([target]), memLayers({}, keyworded));
 				const finding = results[0]?.findings.find((f) => f.source === "validator");
 				assert.strictEqual(finding?.label, "type");
 			}),
@@ -705,11 +704,10 @@ describe("SchemaPipeline", () => {
 	describe("check", () => {
 		it.effect("reports drift without writing anything", () =>
 			Effect.gen(function* () {
-				const fs = FileSystem.layerNoop({
-					makeDirectory: () => Effect.die(new Error("check must never write")),
-					writeFileString: () => Effect.die(new Error("check must never write")),
-				});
-				const results = yield* Effect.provide(SchemaPipeline.check([target]), layers(fs));
+				const results = yield* Effect.provide(
+					SchemaPipeline.check([target]),
+					memLayers({}, SchemaValidator.noop, noWrites("check must never write")),
+				);
 				assert.strictEqual(results.length, 1);
 				assert.isTrue(results[0]?.wouldWrite, "a missing file would be written");
 				assert.strictEqual(results[0]?.change, "created");
@@ -724,10 +722,7 @@ describe("SchemaPipeline", () => {
 				const rejecting = SchemaValidator.layerTest({
 					validate: () => Effect.succeed([ValidationFinding.make({ path: "", message: "rejected" })]),
 				});
-				const results = yield* Effect.provide(
-					SchemaPipeline.check([target]),
-					layers(FileSystem.layerNoop({}), rejecting),
-				);
+				const results = yield* Effect.provide(SchemaPipeline.check([target]), memLayers({}, rejecting));
 				assert.strictEqual(results.length, 1);
 				assert.isTrue(results[0]?.blocked, "a blocked target must not read as clean drift");
 			}),
@@ -745,10 +740,7 @@ describe("SchemaPipeline", () => {
 								: [],
 						),
 				});
-				const results = yield* Effect.provide(
-					SchemaPipeline.check([target, advisoryTarget]),
-					layers(FileSystem.layerNoop({}), selective),
-				);
+				const results = yield* Effect.provide(SchemaPipeline.check([target, advisoryTarget]), memLayers({}, selective));
 				assert.strictEqual(results.length, 2, "the walk continues past a blocked target");
 				assert.isTrue(results[0]?.blocked);
 				assert.isFalse(results[1]?.blocked);
@@ -757,7 +749,7 @@ describe("SchemaPipeline", () => {
 
 		it.effect("checkOne answers a single result without indexing", () =>
 			Effect.gen(function* () {
-				const result = yield* Effect.provide(SchemaPipeline.checkOne(target), layers(FileSystem.layerNoop({})));
+				const result = yield* Effect.provide(SchemaPipeline.checkOne(target), memLayers({}));
 				assert.strictEqual(result.$id, "https://example.com/config.schema.json");
 				assert.isTrue(result.wouldWrite);
 				assert.isFalse(result.blocked);

@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T02:04:44Z
-  body_sha256: 0067c62631c6a98f6dfbcab94f8ce6892cf2dfc451c429f8f1aeca41f1944f0c
+  at: 2026-09-30T17:06:19Z
+  body_sha256: bc700ace52cdfc85b3e9aaf8b6c5c241299208b151e15a8cace3621927eada62
 ---
 
 # @effected/memfs
@@ -593,6 +593,43 @@ authoritative list.
     because folding lives only in the engine. `internal/view.ts` answers
     point queries through it. The kit-only `internal.makeInspectable`
     export was removed; the ported `make` and `layer` are unchanged.
+13. **Recursive `makeDirectory` through an unresolvable link** (#891) — a
+    fenced `KIT EXTENSION (errno fidelity — adaptation ledger entry 13)`
+    in `makeDirectory`. When a path component exists but does not resolve
+    (a dangling or looping symbolic link), the engine failed
+    `AlreadyExists` `EEXIST`; node's recursive mkdir answers the `EEXIST`
+    with a `stat` and reports why that failed. Probed on macOS (node 26)
+    and Linux (node 26, Docker), identical on both except the
+    trailing-slash row:
+
+    | `makeDirectory(path, { recursive: true })` where the component is | Before | After (= node adapter) |
+    | --- | --- | --- |
+    | a dangling link, final | `AlreadyExists` `EEXIST` | `NotFound` `ENOENT` |
+    | a dangling link, earlier in the path | `AlreadyExists` `EEXIST` | `BadResource` `ENOTDIR` |
+    | a dangling link named `link/` | `AlreadyExists` `EEXIST` | `NotFound` `ENOENT` (Linux modelled; macOS creates the link's target and succeeds) |
+    | a symlink loop, final or earlier | `AlreadyExists` `EEXIST` | `BadResource` `ELOOP` |
+
+    The earlier-in-path dangling row is the node adapter's, not
+    `mkdirSync`'s: the adapter calls callback `fs.mkdir`, whose async
+    walk reports `ENOTDIR` where `mkdirSync` reports `ENOENT` on both
+    platforms. The ELOOP row needs no rewrite for the earlier case —
+    the deeper mkdir syscall raises it directly. Without `recursive`
+    nothing changed: a link as the final component is `EEXIST`, and a
+    dangling link earlier in the path is `ENOENT`. Links to a file or a
+    directory already agreed (`EEXIST` / `ENOTDIR`, and success through
+    a directory link); all of these are pinned in
+    `ErrnoParityContract.ts`.
+
+    The handle needed two follow-ups in the facade, in the same fence.
+    Its `mkdir` stands in for `mkdirSync`, not the adapter, so a
+    dangling link earlier in the path is rewritten from the engine's
+    `ENOTDIR` to `ENOENT` (the first unresolvable component answering
+    `ENOENT` can only be a dangling link). And `ensureParent`, behind
+    `write`/`symlink`, used to swallow only the `EEXIST` the engine
+    raised over such a link; it now swallows any errno-backed mkdir
+    failure, because the call that follows walks the same component and
+    reports node's own errno and syscall. `integration/ports.int.test.ts`
+    pins the handle's `mkdir` against real `mkdirSync`.
 
 ## Superseded: opt-in `Volume`, no type widening
 

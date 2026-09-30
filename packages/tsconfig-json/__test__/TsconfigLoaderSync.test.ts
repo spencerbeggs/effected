@@ -1,5 +1,6 @@
 import * as nodePath from "node:path";
 import { assert, describe, it, layer } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, PlatformError } from "effect";
 import { TsconfigExtendsError, TsconfigLoader } from "../src/TsconfigLoader.js";
 import type { SyncFileSystem, TsconfigLoaderSyncOptions } from "../src/TsconfigLoaderSync.js";
@@ -10,22 +11,13 @@ import { fixtureLayer } from "./fixtures.js";
 const tree = (...entries: ReadonlyArray<readonly [string, string]>): ReadonlyMap<string, string> => new Map(entries);
 
 /**
- * An in-memory `SyncFileSystem` over a forward-slash-keyed map. Lookups
- * normalize separators, exactly as a real filesystem accepts either separator
- * on Windows — which is what lets the same builder back both the posix and
- * the win32 suites. `readFile` throws on a miss (the consumer contract).
+ * A `SyncFileSystem` over a real memfs volume: the handle's `sync` port is
+ * node-shaped (`exists` follows links and is directory-true, `readFile`
+ * throws node's exact errno on a miss), so it satisfies the consumer contract
+ * structurally with no adapter. Contents are only what the tree seeds.
  */
-const syncFs = (files: ReadonlyMap<string, string>): SyncFileSystem => {
-	const normalize = (p: string): string => p.replace(/\\/g, "/");
-	return {
-		exists: (p) => files.has(normalize(p)),
-		readFile: (p) => {
-			const hit = files.get(normalize(p));
-			if (hit === undefined) throw new Error(`ENOENT: no such file or directory, open '${p}'`);
-			return hit;
-		},
-	};
-};
+const syncFs = (files: ReadonlyMap<string, string>): SyncFileSystem =>
+	MemoryFileSystem.makeSync(Object.fromEntries(files)).sync;
 
 const posixOptions = (files: ReadonlyMap<string, string>): TsconfigLoaderSyncOptions => ({
 	fileSystem: syncFs(files),
@@ -102,6 +94,8 @@ describe("TsconfigLoaderSync.resolve", () => {
 		assert.strictEqual(error.reason._tag, "Unknown");
 		assert.strictEqual(error.reason.module, "FileSystem");
 		assert.strictEqual(error.reason.method, "readFileString");
+		// The original throw rides as the cause: the volume's own ENOENT, not a fabricated one.
+		assert.strictEqual((error.reason.cause as NodeJS.ErrnoException).code, "ENOENT");
 	});
 
 	it("throws the typed TsconfigExtendsError on a cycle", () => {
@@ -151,12 +145,28 @@ layer(fixtureLayer(CHAIN_TREE))("TsconfigLoaderSync parity with TsconfigLoader",
 // against the test process cwd instead of the drive root.
 // ---------------------------------------------------------------------------
 
+/**
+ * memfs is a POSIX volume, so a win32 path reaches it through a two-member
+ * shim: backslashes become forward slashes and a drive root `C:` becomes the
+ * top-level directory `/C:`. Only the spelling is translated — existence and
+ * content still come from the volume. This suite is about the consumer's
+ * `SyncPath` driving resolution, not about Windows filesystem semantics.
+ */
+const win32Fs = (files: ReadonlyMap<string, string>): SyncFileSystem => {
+	const toVolume = (p: string): string => {
+		const slashed = p.replace(/\\/g, "/");
+		return /^[A-Za-z]:\//.test(slashed) ? `/${slashed}` : slashed;
+	};
+	const port = MemoryFileSystem.makeSync(Object.fromEntries([...files].map(([p, c]) => [toVolume(p), c]))).sync;
+	return { exists: (p) => port.exists(toVolume(p)), readFile: (p) => port.readFile(toVolume(p)) };
+};
+
 describe("TsconfigLoaderSync with a win32 SyncPath", () => {
 	const files = tree(
 		["C:/proj/tsconfig.json", `{ "extends": ".\\\\base.json", "compilerOptions": { "strict": true } }`],
 		["C:/proj/base.json", `{ "compilerOptions": { "target": "es2022" } }`],
 	);
-	const options: TsconfigLoaderSyncOptions = { fileSystem: syncFs(files), path: nodePath.win32 };
+	const options: TsconfigLoaderSyncOptions = { fileSystem: win32Fs(files), path: nodePath.win32 };
 
 	it("resolves a backslash extends chain under drive-letter roots", () => {
 		const resolved = TsconfigLoaderSync.resolve("C:\\proj\\tsconfig.json", options);

@@ -96,6 +96,6 @@ pnpm build --filter @effected/xdg   # from the repo root
 - The platform is pinned with `Layer.succeed(CurrentPlatform, "win32")`.
 - **The `AppDirs` suite runs on `@effected/memfs` with a delegate-by-default `makeDirectory` spy.** The handler records the path and returns `undefined`, so the directory is really created rather than merely observed, and the suite still asserts *which* directories were made, in which order.
 - **Never record eagerly.** `AppDirs` builds its `ensure*` effects once, at layer construction, so a recorder that pushes in the stub body counts four directories that were never created and every assertion measures construction instead of execution. A fault handler is consulted when the method is *called*, so the property now comes free where the old `layerNoop` stub needed an explicit `Effect.suspend` — the trap still waits for any recorder written by hand.
-- `XdgConfig`'s suites have **not** migrated and still use core-only doubles.
+- **The `XdgConfig` suite runs on `@effected/memfs` too**, with an `exists` fault handler that records each probe and raises `PermissionDenied` on the `denied` paths. Denied paths are SEEDED, so the fault is load-bearing — disarmed, the probe would find them — and file bodies are seeded explicitly (`files`); an unseeded read fails `NotFound` rather than answering a canned body.
 - `savvy.build.ts` carries the **narrow** `_base` suppression. Never widen it.
 - Never run `node savvy.build.ts --target prod` directly.

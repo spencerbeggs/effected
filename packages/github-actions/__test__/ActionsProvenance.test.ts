@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { SlsaProvenance } from "@effected/sbom";
-import { Effect, FileSystem, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { ActionEnvironment, ActionsProvenance, OidcClaims, OidcTokenError, OidcTokenIssuer } from "../src/index.js";
 
 // Every value distinct, and `workflow_ref` ≠ `job_workflow_ref` (a reusable
@@ -30,8 +31,8 @@ const provided = <A, E>(
 	env: Layer.Layer<ActionEnvironment> = ActionEnvironment.layerTest(),
 ) => program.pipe(Effect.provide(Layer.mergeAll(issuer, env)));
 
-/** An environment with NOTHING seeded — `GITHUB_SERVER_URL` genuinely absent. */
-const emptyEnvironment = ActionEnvironment.layerFrom({}).pipe(Layer.provide(FileSystem.layerNoop({})));
+/** An environment with NOTHING seeded — `GITHUB_SERVER_URL` genuinely absent — over an empty volume. */
+const emptyEnvironment = ActionEnvironment.layerFrom({}).pipe(Layer.provide(MemoryFileSystem.layer));
 
 describe("ActionsProvenance", () => {
 	it.effect("maps every claim the predicate consumes, through a real decodable token double", () =>

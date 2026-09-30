@@ -1,12 +1,12 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option, Path, Schema } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Layer, Option, Path, PlatformError, Schema } from "effect";
 import { ConfigCodecError } from "../src/ConfigCodec.js";
 import type { ConfigLoadError, ConfigReadError } from "../src/ConfigFile.js";
 import { ConfigFile, ConfigFileNotFoundError, ConfigFileReadError, ConfigValidationError } from "../src/ConfigFile.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
 import { JsonCodec } from "../src/JsonCodec.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
-import { memoryFs } from "./helpers.js";
 
 class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
 class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("test/AppConfig") {}
@@ -22,7 +22,7 @@ const layerFor = (
 		resolvers,
 		strategy: MergeStrategy.firstMatch<AppShape>(),
 		...(validate !== undefined && { validate }),
-	}).pipe(Layer.provide(Layer.mergeAll(memoryFs(files), Path.layer)));
+	}).pipe(Layer.provide(Layer.mergeAll(MemoryFileSystem.layerWith(files), Path.layer)));
 
 describe("ConfigFile.load", () => {
 	it.effect("loads, decodes and validates the highest-priority source", () =>
@@ -133,8 +133,10 @@ describe("ConfigFile.load", () => {
 			const cfg = yield* AppConfig;
 			const error = yield* Effect.flip(cfg.loadFrom("/nope/.apprc"));
 			assert.instanceOf(error, ConfigFileReadError);
-			// v3 collapsed this to `reason: String(e)`; the Error instance survives.
-			assert.instanceOf((error as ConfigFileReadError).cause, Error);
+			// v3 collapsed this to `reason: String(e)`; the host's typed PlatformError survives.
+			const cause = (error as ConfigFileReadError).cause;
+			assert.instanceOf(cause, PlatformError.PlatformError);
+			assert.strictEqual((cause as PlatformError.PlatformError).reason._tag, "NotFound");
 		}).pipe(Effect.provide(layerFor({}))),
 	);
 

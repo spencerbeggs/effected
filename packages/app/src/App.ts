@@ -140,9 +140,13 @@ export class App {
 	 *
 	 * The documented limit: code paths that actually exercise `ensure*` **die**
 	 * against `FileSystem.layerNoop` — it is a stub, not a working filesystem.
-	 * `layerTest` is for testing logic that *uses* the control plane; a test of
-	 * real directory behaviour uses {@link App.layer} with a temp-directory
-	 * `HOME`.
+	 * `layerTest` is for testing logic that *uses* the control plane. A test of
+	 * real directory behaviour composes `AppDirs.layer` over `@effected/memfs`,
+	 * whose `ensure*` members then create directories on an in-memory volume.
+	 * The databases are the exception: `Store` and `Cache` open their SQLite
+	 * files through the native binding, which never sees the `FileSystem`
+	 * service, so a test of {@link App.layer} end to end still needs a
+	 * temp-directory `HOME`.
 	 */
 	static readonly layerTest = layerTest;
 }

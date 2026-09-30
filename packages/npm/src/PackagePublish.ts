@@ -168,6 +168,11 @@ export interface PackagePublishShape {
 	 * kit's error messages, not the operating system's process table. Masking
 	 * the token in a CI log is the **caller's** job; this package takes a
 	 * `Redacted` and has no opinion about log output.
+	 *
+	 * An existing npmrc is appended to, never replaced. A missing file
+	 * (`NotFound`) starts empty; any other read failure — an unreadable file, a
+	 * directory at the path — fails `PublishError` with kind `"auth"` and leaves
+	 * the file untouched, rather than overwriting config it could not read.
 	 */
 	readonly setupAuth: (options: {
 		readonly registry: string;
@@ -284,7 +289,20 @@ const make = Effect.fnUntraced(function* () {
 			// The KIND is safe to annotate and worth annotating; the value is not.
 			credential: options.credential.kind,
 		});
-		const existing = yield* fs.readFileString(options.npmrcPath).pipe(Effect.catch(() => Effect.succeed("")));
+		// Only an absent file is an empty npmrc. Any other read failure (permission
+		// denied, a directory in the way) means a file exists that we cannot read;
+		// treating it as empty would overwrite it and drop its prior config lines.
+		const existing = yield* fs
+			.readFileString(options.npmrcPath)
+			.pipe(
+				Effect.catch((cause) =>
+					cause.reason._tag === "NotFound"
+						? Effect.succeed("")
+						: Effect.fail(
+								new PublishError({ kind: "auth", registry: options.registry, subject: options.npmrcPath, cause }),
+							),
+				),
+			);
 		const secret = options.credential.kind === "token" ? options.credential.token : options.credential.encoded;
 		const line = `${authKey(options.registry, options.credential)}=${Red.value(secret)}`;
 		const separator = existing === "" || existing.endsWith("\n") ? "" : "\n";

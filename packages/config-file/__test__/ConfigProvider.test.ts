@@ -1,11 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Config, ConfigProvider, Effect, Layer, Path, Schema } from "effect";
 import { ConfigFile } from "../src/ConfigFile.js";
 import { asConfigProvider, layerConfigProvider } from "../src/ConfigProvider.js";
 import { ConfigResolver } from "../src/ConfigResolver.js";
 import { JsonCodec } from "../src/JsonCodec.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
-import { memoryFs } from "./helpers.js";
 
 class DbShape extends Schema.Class<DbShape>("DbShape")({ host: Schema.String }) {}
 class AppShape extends Schema.Class<AppShape>("AppShape")({
@@ -21,7 +21,7 @@ const layerFor = (files: Record<string, string>) =>
 		codec: JsonCodec,
 		resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
 		strategy: MergeStrategy.firstMatch<AppShape>(),
-	}).pipe(Layer.provide(Layer.mergeAll(memoryFs(files), Path.layer)));
+	}).pipe(Layer.provide(Layer.mergeAll(MemoryFileSystem.layerWith(files), Path.layer)));
 
 const document = `{"port":8080,"host":"from-file","db":{"host":"db-from-file"}}`;
 const found = layerFor({ "/app/.apprc": document });

@@ -168,15 +168,26 @@ by construction, not by a cast.
 
 **The limit:** code paths that actually exercise `ensure*` **die** against
 `FileSystem.layerNoop` — it is a stub, not a working filesystem. `layerTest` is
-for testing logic that *uses* the control plane. Real directory behaviour is
-tested through `App.layer` with a temp-directory `HOME`, which is what the
-integration suite does.
+for testing logic that *uses* the control plane. Real directory behaviour —
+the `ensure*` members — is tested by composing `AppDirs.layer` over
+`@effected/memfs` (as `@effected/xdg`'s own `AppDirs` suite does), never by
+stubbing `FileSystem.layerNoop` better. The databases cannot follow: `Store`
+and `Cache` open SQLite files through the native binding, which never sees the
+`FileSystem` service, so `App.layer` end to end still runs against a
+temp-directory `HOME` — which is what the integration suite does.
+
+The unit suites follow the same rule. `AppConfig.test.ts` seeds a memfs volume
+with real config bodies and asserts saves on a pinned handle's volume;
+`AppStore.test.ts` and `AppCache.test.ts` provide an empty volume whose
+`makeDirectory` is faulted with `MemoryFileSystem.die`, so construction stops at
+`ensure*` before the SQLite binding could open a file on the host disk.
 
 ## Testing and building
 
-28 tests in `__test__/`, integration under `__test__/integration/*.int.test.ts`;
-`@effect/vitest`, `assert.*` — never `expect`. `@effect/platform-node` is a
-devDependency for the real-filesystem integration tests only.
+Unit tests in `__test__/`, integration under `__test__/integration/*.int.test.ts`;
+`@effect/vitest`, `assert.*` — never `expect`. Unit tests' `FileSystem` double
+is `@effected/memfs`. `@effect/platform-node` is a devDependency for the
+real-filesystem integration tests only.
 
 ```bash
 pnpm vitest run packages/app       # from the repo root

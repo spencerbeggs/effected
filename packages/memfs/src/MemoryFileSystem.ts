@@ -7,11 +7,12 @@
 
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
-import { nodeErrno } from "./internal/errno.js";
+import { ErrnoException, errnoError, nodeErrno } from "./internal/errno.js";
 import { wrapFaulty } from "./internal/faults.js";
 import {
 	makePromisesFileSystem,
 	makeSyncFileSystem,
+	resolvePath,
 	runMutation,
 	runNode,
 	syscallForMethod,
@@ -705,20 +706,49 @@ const buildHandle = (
 				return false;
 			}
 		};
-		// A dangling or looping link HIGHER up makes `lstat` of the parent fail
-		// too, and the recursive mkdir then trips over that link with EEXIST
-		// (where the host says ENOENT / ELOOP). EEXIST from a recursive mkdir
-		// only ever means some component exists as a non-directory, so the call
-		// that follows is bound to fail on it: swallow it and let that call
-		// report node's own errno and syscall.
+		// KIT EXTENSION (errno fidelity — adaptation ledger entry 13): a
+		// recursive mkdir fails with an errno only when some component blocks
+		// it — a non-directory, or a dangling or looping link HIGHER up (which
+		// makes `lstat` of the parent fail too). The call that follows walks
+		// the same component, so it is bound to fail on it: swallow the mkdir's
+		// errno and let that call report node's own errno and syscall (ENOENT /
+		// ELOOP / ENOTDIR on `open` or `symlink`, never the mkdir's).
 		const ensureParent = (path: string) => {
 			const parent = parentOf(path);
 			return present(parent)
 				? Effect.void
 				: raw
 						.makeDirectory(parent, { recursive: true })
-						.pipe(Effect.catch((error) => (error.reason._tag === "AlreadyExists" ? Effect.void : Effect.fail(error))));
+						.pipe(
+							Effect.catch((error) =>
+								error.reason.cause instanceof ErrnoException ? Effect.void : Effect.fail(error),
+							),
+						);
 		};
+		// `mkdir` stands in for `mkdirSync(p, { recursive: true })`, whose walk
+		// reports a dangling link EARLIER in the path as ENOENT; the engine
+		// models the node adapter's callback `fs.mkdir`, which says ENOTDIR
+		// there. The first component that does not resolve tells them apart:
+		// ENOENT from it can only be a dangling link (mkdir -p creates anything
+		// merely missing), while a file or a link through one answers ENOTDIR,
+		// as `mkdirSync` does.
+		const mkdirSync = (path: string) =>
+			raw.makeDirectory(path, { recursive: true }).pipe(
+				Effect.mapError((error) => {
+					const cause = error.reason.cause;
+					if (!(cause instanceof ErrnoException) || cause.code !== "ENOTDIR") return error;
+					const pieces = path.split("/");
+					for (let index = 1; index < pieces.length; index++) {
+						const prefix = pieces.slice(0, index + 1).join("/");
+						const resolved = resolvePath(volume, prefix === "" ? "/" : prefix);
+						if ("code" in resolved) {
+							return resolved.code === "ENOENT" ? errnoError("makeDirectory", path, "ENOENT") : error;
+						}
+					}
+					return error;
+				}),
+			);
+		// END KIT EXTENSION (errno fidelity)
 		const handle: MemoryFileSystemHandle = {
 			fileSystem,
 			volume,
@@ -739,7 +769,7 @@ const buildHandle = (
 					"writeFile",
 					path,
 				),
-			mkdir: (path) => runMutation(raw.makeDirectory(at(path), { recursive: true }), "makeDirectory", path),
+			mkdir: (path) => runMutation(mkdirSync(at(path)), "makeDirectory", path),
 			remove: (path) => runMutation(raw.remove(at(path), { recursive: true }), "remove", path),
 			// Only the link's own path resolves against the root; the target text is stored verbatim.
 			symlink: (target, path) =>

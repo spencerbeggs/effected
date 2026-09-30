@@ -28,8 +28,8 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T01:39:09Z
-  body_sha256: ad4833fa746db46d8fd32eb496ab4c5d369e378101f4bd6a0d34132c7de9a336
+  at: 2026-09-30T16:41:19Z
+  body_sha256: 12d972033b55f28b1577cc7bf40b857f909e9c129ea47b516210f721a61f2c60
 ---
 
 # @effected/schemastore
@@ -615,14 +615,15 @@ property tests (`it.prop` over generated one-to-three-component labels):
 every label parses and round-trips verbatim, and `Order` is invariant
 under zero-padding to three components.
 
-Which filesystem double a suite uses follows what it must observe.
-`SchemaFile`'s unit tests stub single members of `FileSystem.layerNoop`
-under `Path.layer`, because each case exercises one call. The
-contract-gate suite is the exception: classifying a real predecessor
-needs **pre-existing content** on disk, so it runs over `@effected/memfs`'s
-`MemoryFileSystem.layerWith` seeded with the predecessor
-text — a deny-by-default `layerNoop` would have to fabricate the very
-read path the suite exists to exercise.[^pipeline-tests] That layer
+Every suite that needs a filesystem runs over `@effected/memfs`'s
+`MemoryFileSystem.layerWith` under `Path.layer`, never a
+`FileSystem.layerNoop` stub: `SchemaFile`'s unit tests seed the file at its
+real path and read the written text back from `MemoryFileSystem.Volume`,
+inject typed read/write failures as `faults` handlers, and prove "never
+written" by faulting the write members with `MemoryFileSystem.die`. The
+contract-gate suite depends on the same thing: classifying a real
+predecessor needs **pre-existing content** on disk, which a
+deny-by-default stub would have to fabricate.[^pipeline-tests] That layer
 re-seeds a fresh volume on every build ([memfs's isolation
 rule](memfs.md)), so the suite resolves `MemoryFileSystem.Volume`
 *inside* the program the layer is provided to, never through a second

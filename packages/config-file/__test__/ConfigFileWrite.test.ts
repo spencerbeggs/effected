@@ -1,5 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Path, Schema } from "effect";
+import type { MemoryFileSystemSeed } from "@effected/memfs";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Layer, Path, PlatformError, Schema } from "effect";
 import type { ConfigCodec as ConfigCodecShape } from "../src/ConfigCodec.js";
 import { ConfigCodecError } from "../src/ConfigCodec.js";
 import type { ConfigSaveError, ConfigUpdateError, ConfigWriteError } from "../src/ConfigFile.js";
@@ -25,13 +27,14 @@ const layerFor = (host: RecordingFs, defaultPath?: string, codec: ConfigCodecSha
 describe("ConfigFile.write", () => {
 	it.effect("encodes and writes to an explicit path without creating directories", () =>
 		Effect.gen(function* () {
-			const host = recordingFs({});
+			// `write` trusts the caller's path, so the target directory must already exist.
+			const host = recordingFs({ "/explicit": MemoryFileSystem.directory() });
 			yield* Effect.gen(function* () {
 				const cfg = yield* AppConfig;
 				yield* cfg.write(new AppShape({ port: 9090 }), "/explicit/.apprc");
 			}).pipe(Effect.provide(layerFor(host)));
 
-			assert.deepStrictEqual(JSON.parse(host.files["/explicit/.apprc"] as string), { port: 9090 });
+			assert.deepStrictEqual(JSON.parse(host.volume.text("/explicit/.apprc") as string), { port: 9090 });
 			// `write` never mkdirs — the documented distinction from `save`.
 			assert.deepStrictEqual(host.mkdirs, []);
 		}),
@@ -47,7 +50,13 @@ describe("ConfigFile.write", () => {
 			assert.instanceOf(error, ConfigFileWriteError);
 			assert.strictEqual((error as ConfigFileWriteError).path, "/ro/.apprc");
 			// The filesystem failure survives structurally; v3 flattened it to String(e).
-			assert.instanceOf((error as ConfigFileWriteError).cause, Error);
+			const cause = (error as ConfigFileWriteError).cause;
+			if (cause instanceof PlatformError.PlatformError && cause.reason._tag !== "BadArgument") {
+				assert.strictEqual(cause.reason._tag, "Unknown");
+				assert.strictEqual(cause.reason.pathOrDescriptor, "/ro/.apprc");
+			} else {
+				assert.fail(`expected the host's typed SystemError as the cause, got ${String(cause)}`);
+			}
 		}),
 	);
 
@@ -69,7 +78,7 @@ describe("ConfigFile.write", () => {
 			assert.instanceOf(error, ConfigCodecError);
 			assert.strictEqual(error._tag, "ConfigCodecError");
 			// A failed stringify must not have written a partial file.
-			assert.deepStrictEqual(Object.keys(host.files), []);
+			assert.deepStrictEqual(host.volume.paths(), []);
 		}),
 	);
 });
@@ -85,7 +94,7 @@ describe("ConfigFile.save", () => {
 
 			assert.strictEqual(written, "/home/u/.config/app/.apprc");
 			assert.deepStrictEqual(host.mkdirs, ["/home/u/.config/app"]);
-			assert.deepStrictEqual(JSON.parse(host.files["/home/u/.config/app/.apprc"] as string), { port: 7070 });
+			assert.deepStrictEqual(JSON.parse(host.volume.text("/home/u/.config/app/.apprc") as string), { port: 7070 });
 		}),
 	);
 
@@ -102,7 +111,7 @@ describe("ConfigFile.save", () => {
 			// It is its own tag, not a ConfigFileWriteError carrying a fabricated `path`.
 			assert.notInstanceOf(error, ConfigFileWriteError);
 			assert.deepStrictEqual(host.mkdirs, []);
-			assert.deepStrictEqual(Object.keys(host.files), []);
+			assert.deepStrictEqual(host.volume.paths(), []);
 		}),
 	);
 
@@ -135,7 +144,7 @@ describe("ConfigFile.update", () => {
 			}).pipe(Effect.provide(layerFor(host, "/app/.apprc")));
 
 			assert.strictEqual(updated.port, 2);
-			assert.deepStrictEqual(JSON.parse(host.files["/app/.apprc"] as string), { port: 2 });
+			assert.deepStrictEqual(JSON.parse(host.volume.text("/app/.apprc") as string), { port: 2 });
 		}),
 	);
 
@@ -148,7 +157,7 @@ describe("ConfigFile.update", () => {
 			}).pipe(Effect.provide(layerFor(host, "/app/.apprc")));
 
 			assert.strictEqual(updated.port, 11);
-			assert.deepStrictEqual(JSON.parse(host.files["/app/.apprc"] as string), { port: 11 });
+			assert.deepStrictEqual(JSON.parse(host.volume.text("/app/.apprc") as string), { port: 11 });
 		}),
 	);
 
@@ -162,7 +171,7 @@ describe("ConfigFile.update", () => {
 
 			assert.strictEqual(error._tag, "ConfigFileNotFoundError");
 			// Nothing was written: update failed before reaching save.
-			assert.deepStrictEqual(Object.keys(host.files), []);
+			assert.deepStrictEqual(host.volume.paths(), []);
 		}),
 	);
 });
@@ -219,40 +228,33 @@ describe("ConfigFile.layer with an empty resolver chain", () => {
 
 			assert.strictEqual(written, "/write-only/.apprc");
 			assert.deepStrictEqual(host.mkdirs, ["/write-only"]);
-			assert.deepStrictEqual(JSON.parse(host.files["/write-only/.apprc"] as string), { port: 42 });
+			assert.deepStrictEqual(JSON.parse(host.volume.text("/write-only/.apprc") as string), { port: 42 });
 		}),
 	);
 });
 
 describe("ConfigFile.update — concurrency", () => {
 	/**
-	 * A recording FileSystem whose read yields to the scheduler, so two fibers
+	 * A pinned memfs volume whose `readFileString` yields to the scheduler, so two fibers
 	 * genuinely interleave between `load` and `save`. Without that boundary the
 	 * effects run to completion one after the other and no race is possible —
 	 * a test over a synchronous FileSystem passes whether or not `update` is
 	 * serialized, which proves nothing.
 	 */
-	const yieldingFs = (files: Record<string, string>) => ({
-		files,
-		layer: Layer.succeed(FileSystem.FileSystem, {
-			exists: (p: string) => Effect.succeed(Object.hasOwn(files, p)),
-			readFileString: (p: string) =>
-				Effect.gen(function* () {
-					// Snapshot before yielding: a real read observes the file as it was when the
-					// read began. Returning `files[p]` after the yield would silently hand the
-					// second fiber the first fiber's write, masking the very race under test.
-					if (!Object.hasOwn(files, p)) return yield* Effect.fail(new Error(`ENOENT: ${p}`));
-					const snapshot = files[p] as string;
-					yield* Effect.yieldNow;
-					return snapshot;
-				}),
-			writeFileString: (p: string, content: string) =>
-				Effect.sync(() => {
-					files[p] = content;
-				}),
-			makeDirectory: () => Effect.void,
-		} as unknown as FileSystem.FileSystem),
-	});
+	const yieldingFs = (seed: MemoryFileSystemSeed) =>
+		MemoryFileSystem.makeSync(seed, {
+			faults: (base) => ({
+				readFileString: (path, encoding) =>
+					Effect.gen(function* () {
+						// Read before yielding: a real read observes the file as it was when the
+						// read began. Reading after the yield would silently hand the second
+						// fiber the first fiber's write, masking the very race under test.
+						const snapshot = yield* base.readFileString(path, encoding);
+						yield* Effect.yieldNow;
+						return snapshot;
+					}),
+			}),
+		});
 
 	it.effect("two concurrent updates both land; neither write is lost", () =>
 		Effect.gen(function* () {
@@ -272,7 +274,7 @@ describe("ConfigFile.update — concurrency", () => {
 				yield* Effect.all([bump, bump], { concurrency: 2 });
 			}).pipe(Effect.provide(layer));
 
-			const final = JSON.parse(host.files["/app/.apprc"] as string) as { port: number };
+			const final = JSON.parse(host.volume.text("/app/.apprc") as string) as { port: number };
 			assert.strictEqual(final.port, 2, "both increments must survive");
 		}),
 	);

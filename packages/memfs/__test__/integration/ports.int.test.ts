@@ -288,3 +288,84 @@ describe("handle mutators under a dangling or looping parent link, as the host r
 		);
 	});
 });
+
+describe("handle mkdir through links, as mkdirSync(p, { recursive: true }) reports (#891)", () => {
+	// `mkdirSync` — not the adapter's callback `fs.mkdir` — is the reference
+	// here: a dangling link earlier in the path is ENOENT for it, ENOTDIR for
+	// the adapter (which the errno-parity contract pins for the engine).
+	const paths = [
+		"dang",
+		"dang/a/b",
+		"loop",
+		"loop/a/b",
+		"file",
+		"file/a/b",
+		"filesym",
+		"filesym/a/b",
+		"dirsym",
+		"dirsym/a/b",
+	] as const;
+	const call = (f: () => void) => {
+		try {
+			f();
+			return "ok";
+		} catch (e) {
+			const { code, syscall } = e as { code: string; syscall: string };
+			return `${code} ${syscall}`;
+		}
+	};
+	it("every path answers the host's code and syscall", () => {
+		const base = mkdtempSync(join(tmpdir(), "memfs-mkdirlink-"));
+		const host = new Map<string, string>();
+		try {
+			for (const path of paths) {
+				const root = mkdtempSync(join(base, "case-"));
+				symlinkSync(join(root, "missing"), join(root, "dang"));
+				symlinkSync(join(root, "loop"), join(root, "loop"));
+				writeFileSync(join(root, "file"), "x");
+				symlinkSync(join(root, "file"), join(root, "filesym"));
+				mkdirSync(join(root, "dir"));
+				symlinkSync(join(root, "dir"), join(root, "dirsym"));
+				host.set(
+					path,
+					call(() => mkdirSync(`${root}/${path}`, { recursive: true })),
+				);
+			}
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
+		for (const path of paths) {
+			const vol = MemoryFileSystem.makeSync(
+				{
+					dang: MemoryFileSystem.symlink("/r/missing"),
+					loop: MemoryFileSystem.symlink("/r/loop"),
+					file: "x",
+					filesym: MemoryFileSystem.symlink("/r/file"),
+					"dir/.keep": "",
+					dirsym: MemoryFileSystem.symlink("/r/dir"),
+				},
+				{ root: "/r" },
+			);
+			assert.strictEqual(
+				call(() => vol.mkdir(path)),
+				host.get(path),
+				path,
+			);
+		}
+		assert.deepStrictEqual(
+			paths.map((path) => host.get(path)),
+			[
+				"ENOENT mkdir",
+				"ENOENT mkdir",
+				"ELOOP mkdir",
+				"ELOOP mkdir",
+				"EEXIST mkdir",
+				"ENOTDIR mkdir",
+				"EEXIST mkdir",
+				"ENOTDIR mkdir",
+				"ok",
+				"ok",
+			],
+		);
+	});
+});

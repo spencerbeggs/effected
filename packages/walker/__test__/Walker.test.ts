@@ -1,5 +1,6 @@
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Cause, Effect, FileSystem, Option, Path, PlatformError, Ref } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Cause, Effect, Option, Path, PlatformError, Ref } from "effect";
 import { Walker } from "../src/Walker.js";
 import { platform } from "./fixtures.js";
 
@@ -278,26 +279,33 @@ describe("Walker.firstMatch", () => {
 	);
 });
 
-/** A FileSystem whose `exists` consults a fixed set. Core-only: no platform package. */
+/**
+ * A real memfs volume holding exactly `present` (as empty files). `findUpward`
+ * probes with `exists`, which the volume answers honestly — no stub decides
+ * what "present" means.
+ */
 const FsWith = (present: ReadonlyArray<string>) =>
-	FileSystem.layerNoop({
-		exists: (path: string) => Effect.succeed(present.includes(path)),
-	});
+	MemoryFileSystem.layerWith(Object.fromEntries(present.map((path) => [path, ""])));
 
-/** A FileSystem whose `exists` denies permission on one path and consults a set for the rest. */
+/**
+ * A volume holding `present` whose `exists` probe on `denied` fails
+ * `PermissionDenied`. Every other probe delegates to the volume.
+ */
 const FsDenying = (denied: string, present: ReadonlyArray<string>) =>
-	FileSystem.layerNoop({
-		exists: (path: string) =>
-			path === denied
-				? Effect.fail(
-						PlatformError.systemError({
-							_tag: "PermissionDenied",
-							module: "FileSystem",
-							method: "exists",
-							pathOrDescriptor: path,
-						}),
-					)
-				: Effect.succeed(present.includes(path)),
+	MemoryFileSystem.layerWith(Object.fromEntries(present.map((path) => [path, ""])), {
+		faults: {
+			exists: (path: string) =>
+				path === denied
+					? Effect.fail(
+							PlatformError.systemError({
+								_tag: "PermissionDenied",
+								module: "FileSystem",
+								method: "exists",
+								pathOrDescriptor: path,
+							}),
+						)
+					: undefined,
+		},
 	});
 
 layer(FsWith(["/a/b/.apprc", "/a/.apprc"]))("findUpward, config in both directories", (it) => {
@@ -353,8 +361,10 @@ layer(FsWith(["/a/b/config/.apprc", "/a/.apprc"]))("findUpward, near subpath vs 
 // Absorption through findUpward's OWN seam. Every other fs fixture succeeds, so a
 // findUpward that lets one failing `exists` abort the whole walk passes all of them.
 // This is the concrete failure config-file's resolvers depend on not happening: an
-// unreadable directory must not hide a config above it.
-layer(FsDenying("/a/b/.apprc", ["/a/.apprc"]))("findUpward, unreadable nearer candidate", (it) => {
+// unreadable directory must not hide a config above it. The denied candidate
+// is genuinely present, so only the fault stands between the walk and
+// `/a/b/.apprc`: disarm it and the answer moves to the nearer file.
+layer(FsDenying("/a/b/.apprc", ["/a/b/.apprc", "/a/.apprc"]))("findUpward, unreadable nearer candidate", (it) => {
 	it.effect("absorbs a denied probe and keeps ascending", () =>
 		Effect.gen(function* () {
 			const found = yield* Walker.findUpward(["/a/b", "/a"], (dir) => [`${dir}/.apprc`]);

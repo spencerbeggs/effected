@@ -312,7 +312,7 @@ export class Workspaces {
 	 * @remarks
 	 * Requires core `FileSystem` and `Path`, which the consumer provides at the
 	 * edge (`@effect/platform-node`, `@effect/platform-bun`, or a test's
-	 * `FileSystem.layerNoop`).
+	 * `@effected/memfs` volume).
 	 *
 	 * **`PublishabilityDetector` is neither provided nor required here.** The
 	 * composite used to bake in npm semantics, which a naively-ordered override

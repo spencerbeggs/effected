@@ -74,7 +74,7 @@ const materializeGlob = (
 
 ## Testing machinery
 
-None exported — none needed: test with core's `Path.layer` (POSIX, built into `effect`) and `FileSystem.layerNoop({ exists, ... })`. No platform package required in tests.
+None exported — none needed: test with core's `Path.layer` (POSIX, built into `effect`) and `@effected/memfs`'s `MemoryFileSystem.layerWith(seed, { faults })` — seed the tree the walk should find, and fault `exists` with a typed `PermissionDenied` to cover a denied probe. Never a `FileSystem.layerNoop` stub. No platform package required in tests.
 
 ## Gotchas
 

@@ -213,47 +213,13 @@ it.effect("the subject dies with the expected message", () =>
 separate times in one package's suite. It is its own anti-pattern, not an
 Exit-specific one.
 
-Its second half — **genuine defects must NOT be swallowed into the typed
-channel** — is what a flip-based test cannot prove (working example:
-`packages/toml/__test__/hostile.test.ts` "defect passthrough"):
-
-```ts
-import { assert, it } from "@effect/vitest";
-import { Cause, Effect, Exit } from "effect";
-
-class MyTypedError extends Error {}
-const program = Effect.die(new Error("unexpected"))
-
-it.effect("a defect stays a defect — never laundered into the typed channel", () =>
-  Effect.gen(function* () {
-    const exit = yield* Effect.exit(program);
-    if (!Exit.isFailure(exit)) {
-      assert.fail("expected a defect, got a success");
-    }
-    assert.isFalse(exit.cause.reasons.some(Cause.isFailReason)); // NOT a typed Fail
-    const die = exit.cause.reasons.find(Cause.isDieReason);
-    assert.instanceOf(die?.defect, Error);          // the ORIGINAL error, unmasked
-    assert.notInstanceOf(die?.defect, MyTypedError); // not laundered into E
-  }),
-);
-```
-
-The no-Fail-reason line is the discriminating assertion — without it, an
-implementation that wraps the defect in a typed error still passes. For the
-coarse verdict, `Cause.hasDies` / `Cause.hasFails` are the one-line spellings
-(`@effected/git`'s `available` test uses them).
-
-**Assert helpers are never type predicates — narrow with a real `if`.**
-`assert.isTrue(guard(x))` leaves `x` at the full union for ANY guard: the
-signature takes a `boolean`, not a type predicate. Verified under tsgo for
-`Exit.isFailure`, and it applies equally to `Result.isSuccess`/`isFailure` on
-the kit's `*Result` APIs (jsonc, yaml, toml, markdown, glob, semver).
-
-**`assert.deepStrictEqual` vs literal-typed encodes.** Comparing an encoded
-value carrying literal types (`type: "root"`) against an untyped plain-object
-fixture fails to COMPILE — chai's `<T>(actual: T, expected: T)` unifies `T` from
-the first argument. The pattern is an explicit type argument:
-`assert.deepStrictEqual<unknown>(encoded, fixture)`.
+**Genuine defects must NOT be swallowed into the typed channel** — the half a
+flip-based test cannot prove. Assert `Effect.exit`, that the cause holds no
+`Fail` reason (the discriminating line), and that the `Die` defect is the
+ORIGINAL error. **Assert helpers are never type predicates** — narrow with a
+real `if`; and `assert.deepStrictEqual` against literal-typed encodes needs an
+explicit `<unknown>` type argument. Worked example and both traps →
+**[references/asserting-errors.md](./references/asserting-errors.md)**.
 
 ## Providing test / mock layers
 
@@ -280,81 +246,35 @@ describe("foo", () => {
 
 ### `layer()` memoizes; plain `Effect.provide` does NOT. That asymmetry is the whole decision
 
-The top-level `layer` builds its layer once per group through a `MemoMap` and an
-`Effect.cached` build (`packages/vitest/src/internal/internal.ts:268,270,272`),
-keeps the scope open for the group, and closes it in `afterAll`. A per-test
-`.pipe(Effect.provide(L))` carries no memo map and rebuilds per test.
+The top-level `layer` builds once per group and keeps the scope open until
+`afterAll`; a per-test `.pipe(Effect.provide(L))` rebuilds per test. Nested
+provides inside one running effect memoize constituent consts by reference, so
+a fault-injected variant can silently fall back to the REAL services already
+built outside.
 
-**But that is per-TEST, not per-provide: NESTED provides memoize constituent
-consts.** Within one running effect, `Effect.provide` memoizes layers by
-reference — an inner `Effect.provide(Layer.mergeAll(SharedConst, Variant))`
-under an outer provide that already built `SharedConst` serves the **outer**
-build of it, even though the `mergeAll` composition is a fresh reference
-(nested builds once and the inner read sees the outer
-instance; two sequential sibling `runPromise` roots build twice). The bite: a
-test helper that provides real layers, wrapping a test that inner-provides a
-fault-injected or scripted variant feeding those same constituent consts,
-silently exercises the REAL services — the swap never takes effect for
-anything already built outside. The tell is a green test with the wrong
-duration (a retry policy actually running, a scripted response never
-consumed). Restructure so the variant is provided at the outermost level, or
-compose the fault into the layer before anything builds it.
-
-**So per-test provide is the SAFE default, and collapsing a suite onto a
-suite-boundary `layer()` is the RISKY move** — not the neutral one. Read
-build-once as "every stateful resource in that layer is cumulative across the
-group": `TestClock.adjust` advances a clock the *next* test inherits, an
-in-memory store keeps its rows and subscribers, a TTL that expired in test 3 is
-still expired in test 4, and `TestConsole.logLines` keeps accumulating.
-
-The pre-flight before collapsing, in order:
-
-1. **In-memory or on-disk state?** On-disk is safe — filesystem `beforeEach`
-   hooks still run. In-memory (a `Ref`, a cache, a counter, a `calls` recorder)
-   is not: three tests asserting a stub call count once read **4, 5 and 6
-   instead of 1**, green throughout.
-2. **Is the layer constant?** Necessary, not sufficient.
-3. **Is the service stateful, with that state's lifetime under test?** A shared
-   instance then dissolves the boundary under test while staying green. Grep
-   candidates: `refresh()`, cache, memoization, "second call returns cached".
-4. **Is the layer genuinely stateless** (`Logger.layer([])`)? Then memoization
-   is unobservable and collapsing is free.
-5. **Does the test drive the clock?** A clock-driving test must NOT live inside
-   a `layer()` block — the group shares one `TestClock`.
-
-Worked failures → [references/migrating-a-repo.md](./references/migrating-a-repo.md).
-Where state must vary per test, keep the per-test provide, or use **distinct
-keys per test** and flush explicitly before asserting counts.
-
-Other `layer(...)` mechanics (surface checked against
-`packages/vitest/src/index.ts:116-131` and `:245-256`):
-
-- The block hands you an `it` scoped to `R` (a `MethodsNonLive<R>`), and
-  **`MethodsNonLive` has no `.live`** — a wall-clock test that also needs the
-  group's layer goes **outside** the block as a top-level `it.live(...)` with
-  `.pipe(Effect.provide(TheLayer))`.
-- Nest extra deps with `it.layer(BarLayer)("nested", (it) => { … })` — the
-  nested form takes **`concurrent` and `timeout` only** (no `memoMap`, no
-  `excludeTestServices`), forks the parent's memo map and inherits the parent's
-  `excludeTestServices` setting (`internal.ts:303-304`).
-- `layer(L, { excludeTestServices: true })` runs the group **without** the
-  `TestClock`/`TestConsole` overrides — the block-wide alternative when every
-  test in the group needs the real clock, rather than pulling one wall-clock
-  test outside as its own top-level `it.live`; see
-  [references/false-greens.md](./references/false-greens.md) for a worked,
-  runnable pair.
-- A mock service is a `Context.Service` with a test `Layer`, swapped
-  `Live` → `Test` at this boundary, never inside test bodies.
+**Per-test provide is the SAFE default; collapsing a suite onto a
+suite-boundary `layer()` is the RISKY move.** Build-once means every stateful
+resource is cumulative across the group — `TestClock.adjust`, in-memory
+stores, TTL expiry, `TestConsole.logLines` — so a clock-driving test must NOT
+live inside a `layer()` block. Pre-flight before collapsing, the nested-layer
+and `excludeTestServices` forms, and why `MethodsNonLive` has no `.live` →
+**[references/providing-layers.md](./references/providing-layers.md)**; worked
+failures in [references/migrating-a-repo.md](./references/migrating-a-repo.md).
+A mock service is a `Context.Service` with a test `Layer`, swapped `Live` →
+`Test` at this boundary, never inside test bodies.
 
 **Testing a boundary-tier package that does real IO needs no platform package.**
-`Path.layer` and `FileSystem.layerNoop(partial)` both come from `effect` core
-(`Path.ts:867`; `FileSystem.ts:765` — there is **no** `FileSystem.layer` in core,
-only `layerNoop`), so `@effected/walker` tests filesystem behavior with zero
-`@effect/platform-node` devDependency:
+`Path.layer` comes from `effect` core (`Path.ts:867`) and the filesystem double
+is `@effected/memfs`, a pure package with no `node:*` import — core ships
+**no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:765`),
+which is not a double
+([references/providing-layers.md](./references/providing-layers.md)). So `@effected/walker` tests filesystem behavior
+with zero `@effect/platform-node` devDependency:
 
 ```ts
+import { MemoryFileSystem } from "@effected/memfs";
 import { assert, layer } from "@effect/vitest";
-import { Effect, FileSystem, Path } from "effect";
+import { Effect, FileSystem, Layer, Path } from "effect";
 
 layer(Path.layer)("path ops", (it) => {
   it.effect("Path is in R, no Effect.provide in the body", () =>
@@ -364,481 +284,141 @@ layer(Path.layer)("path ops", (it) => {
     }));
 });
 
-layer(FileSystem.layerNoop({ exists: (p) => Effect.succeed(p === "/a/.rc") }))(
-  "stubbed filesystem", (it) => {
-    it.effect("fs.exists consults the stub", () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        assert.isTrue(yield* fs.exists("/a/.rc"));
-        assert.isFalse(yield* fs.exists("/a/other"));
-      }));
-  });
+const Volume = Layer.merge(Path.layer, MemoryFileSystem.layerWith({ "/a/.rc": "" }));
+
+layer(Volume)("seeded filesystem", (it) => {
+  it.effect("fs.exists consults the volume", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      assert.isTrue(yield* fs.exists("/a/.rc"));
+      assert.isFalse(yield* fs.exists("/a/other"));
+    }));
+});
 ```
 
-**`layerNoop`'s unstubbed members answer in THREE different ways, and each way
-is a different bug.** Two half-truths circulate about this and both are wrong:
-"every unstubbed member fails typed `NotFound`" and "every unstubbed member
-dies". `makeNoop` (`FileSystem.ts:636`) splits them:
-
-| members | unstubbed behavior | the trap |
-| --- | --- | --- |
-| `readFile`, `readFileString`, `readDirectory`, `stat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `NotFound` failure (`FileSystem.ts:575`) | a package reading `NotFound` as domain-level "absent" treats it as a legitimate answer, so the stub silently supplies **empty fixtures** |
-| `exists` → `false`, `remove` → `Effect.void` | **silent success** (`:657`, `:696`) | not a failure at all — a delete that never happened reports done |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` | `Effect.die("not implemented")` (`:663`–`:676`) | a **defect**: `Effect.catch` and every typed handler are blind to it |
-
-The consequence the third row buys you: production code that defensively
-absorbs a filesystem failure —
-`fs.makeDirectory(d).pipe(Effect.catch(() => Effect.void))` — **cannot** absorb
-it, so the first pipeline step that creates a directory kills every unrelated
-test in the suite at once, and 20 simultaneous failures read as "I broke the
-layer wiring", not "one new step calls `makeDirectory`". Reading the *first*
-row's members and generalising is how that gets mis-diagnosed: `readDirectory`
-is absorbable, `makeDirectory` is not.
-
-**None of this is a reason to stub `layerNoop` better — it is the argument for
-`@effected/memfs`.** This repo's standing rule (root `CLAUDE.md`): a test
-needing `FileSystem` provides `@effected/memfs`, never a hand-rolled
-`layerNoop` double, because `layerNoop` is deny-by-default and a stub encodes
-only what its author remembered. `MemoryFileSystem` implements all three rows
-honestly — a directory really is created, a removal really removes — so
-misbehaviour is injected as a **fault handler**, not as a stub body. The rule
-has no carve-out: a `FileSystem` double is `@effected/memfs`, never
-`FileSystem.layerNoop`. Same tier:
-**`readFileString` strips a leading BOM** (`FileSystem.ts:508` decodes
-`impl.readFile` through `TextDecoder` at `:511`, default `ignoreBOM: false`)
-→ [references/false-greens.md](./references/false-greens.md).
-
-**A `FileSystem` double is `@effected/memfs` — never a `layerNoop` stub, and
-never a hand-rolled `node:fs` port stub.**
-`MemoryFileSystem.layerWith(seed)` — seed: absolute POSIX path → `string` |
-`Uint8Array` | tagged `file`/`directory`/`symlink`, parents auto-created —
-provides a real in-memory `FileSystem` whose unseeded reads fail typed
-`NotFound`, where a hand stub answering unarranged reads with `""` produces
-exactly the silent false green above (a phantom file parsing as empty; that
-stub shipped a real dropped-changeset bug, which is why the package exists).
-Bind each layer to a `const`.
-
-**Every `Effect.provide` of a memfs layer re-seeds a fresh volume** — even the
-same bound `const` — so a `MemoryFileSystem.Volume` read under a second provide
-inspects a volume nobody wrote to, and "nothing was written" passes vacuously.
-Assert inside the one provide, or build a handle (`MemoryFileSystem.makeHandle`
-/ `makeSync`) and provide its pinned `handle.layer`. Pick the form by where the
-assertion runs, seed with a `root`, fault the service or an injected port,
-build a case-insensitive volume, and the rest of the traps (literal view vs
-link-following ports, `..` after links, mtime units) →
+**`layerNoop`'s unstubbed members answer in THREE different ways**
+(`makeNoop` (`FileSystem.ts:636`) splits them) — typed `NotFound`, silent success (`exists` → `false`, `remove` → `Effect.void`), and
+`Effect.die` (`makeDirectory`, `makeTemp*`), which `Effect.catch` cannot
+absorb. **None of this is a reason to stub `layerNoop` better — it is the
+argument for `@effected/memfs`.** This repo's rule: a `FileSystem` double is
+`@effected/memfs`, never a `layerNoop` stub and never a hand-rolled `node:fs`
+port stub. **Every `Effect.provide` of a memfs layer re-seeds a fresh
+volume**, so assert inside the one provide or provide a pinned
+`handle.layer`. The table, the BOM trap, the seed forms and the
+one-`layer(...)`-block-per-fixture shape →
+**[references/providing-layers.md](./references/providing-layers.md)**;
+picking the memfs form, seeds, faults, case-insensitive volumes and traps →
 **[references/memfs.md](./references/memfs.md)**.
 
-A suite-boundary layer cannot vary per test, so several filesystem fixtures need
-**one `layer(...)` block per fixture** — the house shape in
-`packages/walker/__test__/`.
-
 **Every stub effect goes through `Effect.suspend`.** A recorder that pushes
-eagerly logs calls that never executed — `layerNoop({ readFileString: (p) => {
-calls.push(p); … } })` records a read that was only *described*. Worked probe →
+eagerly logs calls that never executed. Worked probe →
 [references/false-greens.md](./references/false-greens.md).
 
 ### Faulting ONE method of a real layer
 
 For "behaves like the real service except this one method fails on demand",
-`layerNoop` is the wrong tool (it stubs everything) and there is still no
-`FileSystem.layerWith` / `Layer.mapService` in the vendored source (no `export const mapService` in `Layer.ts`). The house recipe is
-`Layer.effect` + spread the base + `Layer.provide(base)` — with
-`Layer.updateService` (`Layer.ts:2065`) as the shorter form when the subject is
-itself a layer, and `Layer.mock` (`Layer.ts:2306`) for partial stubs that die
-loudly. Full scaffold and the three ways to get the spread wrong →
+`layerNoop` is the wrong tool. The house recipe is `Layer.effect` + spread the
+base + `Layer.provide(base)`, with `Layer.updateService` as the shorter form
+and `Layer.mock` for partial stubs that die loudly. Full scaffold, the source
+anchors and the three ways to get the spread wrong →
 **[references/fault-injection.md](./references/fault-injection.md)**.
 
 ### The env seam: swap `ConfigProvider`, never `process.env`
 
-Code that reads its environment through `Config.*` — `GITHUB_STEP_SUMMARY`,
-a token, a feature switch — has a test seam already, and it is **not** in `R`.
-`ConfigProvider.ConfigProvider` is a `Context.Reference` whose default is
-`fromEnv()` (`ConfigProvider.ts:342`), so a `Config` read requires nothing and
-resolves the provider off the fiber. The consequence cuts both ways: nothing
-forces a test to provide one (so a suite silently reads the *real* process
-env), and any test can replace it as ordinary layer provision:
-
-```ts
-import { assert, it } from "@effect/vitest";
-import { Config, ConfigProvider, Effect, Option } from "effect";
-
-const program = Effect.gen(function* () {
-  const summaryFile = yield* Config.option(Config.String("GITHUB_STEP_SUMMARY"));
-  return summaryFile;
-});
-
-const env = (record: Record<string, string>) =>
-  ConfigProvider.layer(ConfigProvider.fromEnv({ env: record }));
-
-it.effect("writes the step summary when the env names a file", () =>
-  program.pipe(
-    Effect.provide(env({ GITHUB_STEP_SUMMARY: "/tmp/summary.md" })),
-    Effect.map((summaryFile) => assert.deepStrictEqual(summaryFile, Option.some("/tmp/summary.md"))),
-  ));
-
-it.effect("is silent when the variable is unset", () =>
-  program.pipe(
-    Effect.provide(env({})),
-    Effect.map((summaryFile) => assert.deepStrictEqual(summaryFile, Option.none())),
-  ));
-```
-
-`ConfigProvider.fromEnv({ env })` takes an explicit record and never touches
-`process.env` when one is given (`ConfigProvider.ts:926`); `ConfigProvider.layer`
-wraps a provider in `Layer.succeed(ConfigProvider)` (`ConfigProvider.ts:667`).
-An empty record is the "variable unset" case — spell it, because the default
-provider would otherwise answer from whatever the developer's shell exports.
-The trap this replaces: mutating `process.env` in `beforeEach`, which leaks
-across tests and cannot be scoped to one `Effect.provide`. `effect-v4-idioms`
-covers the same reference from the production side.
+Code reading its environment through `Config.*` already has a test seam, and
+it is not in `R`: `ConfigProvider.ConfigProvider` is a `Context.Reference`, so
+a test replaces it with `Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: record })))`.
+An empty record is the "variable unset" case; the default provider would
+answer from whatever the developer's shell exports. Never mutate
+`process.env` in `beforeEach`. Worked example →
+**[references/env-seam.md](./references/env-seam.md)**.
 
 ## Property testing with `it.effect.prop` and `it.prop`
 
-Feed a Schema (or class — the class *is* the schema) directly as an arbitrary.
-The engine is core's native **`Arbitrary`**, not
-fast-check — there is no `FastCheck` module: both `it.prop` and `it.effect.prop`
-compile every input through
-`Arbitrary.isArbitrary(input) ? input : Arbitrary.schema(input)`
-(`packages/vitest/src/internal/internal.ts:89-96`) and run
-`Arbitrary.checkEffect` (`:120`), so inputs may be Schemas, `Arbitrary`
-values, or a mix, in the array or the named-record form:
+Feed a Schema (or class) directly as an arbitrary. The engine is core's native
+**`Arbitrary`**, not fast-check — there is no `FastCheck` module, and **no
+`fastCheck: { numRuns }` option**: the bag is `arbitrary: { runs, size, … }`.
+The traps a probe settled, each with its fix in
+**[references/property-testing.md](./references/property-testing.md)**:
 
-```ts
-import { assert, it } from "@effect/vitest";
-import { Yaml } from "@effected/yaml";
-import { Arbitrary, Effect, Schema } from "effect";
-
-const Sample = Schema.Struct({
-  name: Schema.String,
-  count: Schema.Int.check(Schema.makeFilter((n) => !Object.is(n, -0))), // Yaml.stringify drops -0's sign
-});
-
-it.effect.prop("parse recovers what stringify produced", [Sample], ([value]) =>
-  Effect.gen(function* () {
-    const text = yield* Yaml.stringify(value);
-    assert.deepStrictEqual(yield* Yaml.parse(text), value);
-  }),
-  { arbitrary: { runs: 200, size: 64 } },
-);
-
-const Name = Arbitrary.schema(Schema.Literals(["Ada", "Grace"]));
-it.prop("mixed inputs", { name: Name, n: Schema.Int }, ({ name, n }) => typeof name === "string" && Number.isInteger(n));
-```
-
-The options bag is **`arbitrary?: Arbitrary.CheckOptions`** on the
-`timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:108,161`):
-`{ runs, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:195`).
-There is **no `fastCheck: { numRuns }` option** — `numRuns` is `runs`, `path` is the
-opaque `replay` token, `maxSkipsPerRun` is one absolute `maxDiscards`. A raw
-fast-check arbitrary in the inputs is a type error and a runtime failure;
-compose an `Arbitrary` instead. The module's surface, the fast-check → native
-translation table (`constantFrom` → `Schema.Literals`, `array` →
-`Schema.Array(...).check(isBetweenLength)`, `stringMatching` → `isPattern`,
-`oneof` over Arbitraries → `flatMap` over a Schema-generated index — there is
-**no** `oneof`/`constantFrom`/`array`/`weighted` in the module) and the
-declaration-level `toCodecArbitrary` contract live in
-`effect-v4-schema/references/11-generation-and-tooling.md`. What follows is
-what a probe settled about **this repo's** thirteen migrated property suites:
-
-- **The `size` clamp silently shrinks a domain.** Every unconstrained string
-  and array length is generated up to `min(maxLength, max(minLength, size))`
-  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1080-1085`,
-  `:1298-1299`; `runner.ts:472,615`), ramping from 0 across the runs. A
-  `Schema.String.check(Schema.isMaxLength(40_000))` input never exceeded 10
-  characters at the default and reached 40 000 with `arbitrary: { size: 40_000 }`.
-  A byte-budget or long-input property that does not pass `size: <cap>`
-  tests tiny inputs and greens for the wrong reason (`packages/github/__test__/resources2.test.ts`
-  is the worked case). Unbounded `Schema.Int` has magnitude `size²` (±100) —
-  bound it with `isBetween` when the property is about a 32-bit domain.
-- **A brand whose check is a bare `makeFilter` EXHAUSTS instead of hanging.**
-  The engine budgets rejections and fails typed — `SampleError { generated: 0, discards: 101 }`
-  in under a millisecond, or `Exhausted` from `it.prop` — and an `optionalKey`
-  field of that type is simply never populated, so the property never
-  exercises it. Fix the domain, not `maxDiscards`: a `Schema.Literals` of real
-  values, or an `arbitraryConstraint` on the filter
-  (`packages/lockfiles/__test__/roundtrip.property.test.ts` header is the
-  worked case).
-- **The generator emits `-0`.** Always for `Schema.Number`/`Finite`, and for
-  `Schema.Int` whenever the effective lower bound is `-1` — which an
-  **unbounded** `Schema.Int` has during the early small-size runs
-  (`internal/arbitrary/model.ts:629`, where a lower bound of `-1` yields the
-  range `{ minimum: -0 }`, and `:570`, which returns that bound as-is;
-  `checkEffect(Arbitrary.schema(Schema.Int), (n) => !Object.is(n, -0))` is
-  Falsified within the first ten runs, and `formatCheckFailure` prints the
-  shrunk input as `0`, hiding the sign). Both parsers read `-0` back (`JSON.parse("-0")` and
-  `Yaml.parse("-0")` are both `-0`), but both stringifiers drop the sign
-  (`JSON.stringify(-0) === "0"`, and `Yaml.stringify(-0)` is `"0\n"`), so a round-trip property
-  over serialized numbers excludes it —
-  `Schema.Int.check(Schema.makeFilter((n) => !Object.is(n, -0)))` — rather
-  than letting `deepStrictEqual` fail on `+0`/`-0`
-  (`packages/jsonc/__test__/Jsonc.test.ts`, `packages/yaml/__test__/Yaml.test.ts`).
-- **A partial dictionary is a Struct of `optionalKey`.** `Schema.Record(Schema.Literals([...]), V)`
-  always emits **every** key (200 samples, key count always 3), and
-  `Schema.Array(Schema.Tuple([K, V])).check(Schema.isUniqueKey())` over a
-  tiny key domain samples lengths 0-3 but never the *some-keys-present*
-  dictionary a lockfile carries. `Schema.Struct({ a: optionalKey(V), b: optionalKey(V) })`
-  samples key counts 0, 1, 2 and 3.
-- **`isPattern` regexes must be lookaround-free, free of the `i`/`m`/`v`
-  flags, and always carry `u`.** The native regexp compiler returns
-  `undefined` for lookahead/lookbehind, backreferences and the `i`/`m`/`v`
-  flags (`internal/arbitrary/regexp.ts:344,350,832`), and the string node
-  then **silently drops the pattern** (`schema.ts:1051-1052`) and filters
-  random strings — which exhausts for any selective pattern
-  (`/^(?=.*[0-9])[a-f0-9]{8}$/u` and `/^[a-f]{8}$/iu` both died with
-  `discards: 201`). `u` is the flag the compiler supports
-  (`regexp.ts:835` generates full code points under it, so a negated class
-  or `\S` can yield astral characters), and JSON Schema export needs it:
-  `isPattern` exports `pattern` only when the flags match `/^[dg]*uy?$/`
-  (`Schema.ts:6636`), so a flag-free regex exports a bare
-  `{"type":"string"}` while decoding still enforces it. Rewrite
-  `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
-  (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
-  as **code points** (`Schema.Array(Schema.Int.check(isBetween({ minimum: 0, maximum: 0x10ffff })))`
-  mapped through `String.fromCodePoint`), because the native string
-  generator stays in printable ASCII and the module has no
-  `fc.string({ unit: "binary" })` equivalent.
-- **Derivation composes through `Schema.Union` of `Schema.Class` members, and
-  the generated values are REAL class instances** — `instanceof` holds for
-  each member and every element is one of them, verified directly against the
-  native engine. Code under test that branches on
-  `x instanceof StyleVote` takes the real branch. In-repo reference:
-  `packages/yaml/__test__/inference.test.ts`.
-- **`it.prop` accepts a Schema directly.** Both runners share `makeArbitrary`
-  (`internal.ts:92`). Hand-built inputs are `Arbitrary` values, not
-  `FastCheck.*` ones.
-
-**Reading a property failure.** `@effect/vitest` dies with
-`Arbitrary.formatCheckFailure` (`Arbitrary.ts:367`): runs, shrinks, the
-**shrunk input**, the failure and the **replay token**. The vitest-agent
-reporter that owns this repo's CLI output compacts that to its first line —
-`Property falsified after 33 run(s) and 1 shrink(s)` — and drops the input
-and the token (a deliberately falsified control shows it).
-The terminal stays the agent reporter's, but
-`pnpm exec vitest run --project <p> --coverage.enabled=false --reporter=json --outputFile=<path>`
-still writes the full message to the file (`Shrunk input: [5]` /
-`Replay: [0,"1",32,3,[1],"ReturnedFalse"]`). Re-run with `arbitrary: { replay }` to reproduce
-the shrink path — and pin the counterexample as an ordinary regression test,
-because replay tokens are not promised across releases of the unstable module.
+- The `size` clamp (default **10**) silently shrinks a domain — pass
+  `size: <cap>` for long-input properties.
+- A brand whose check is a bare `makeFilter` EXHAUSTS instead of hanging.
+- The generator emits `-0`; round-trip properties over serialized numbers
+  exclude it.
+- A partial dictionary is a Struct of `optionalKey`, not a `Record`.
+- `isPattern` regexes must be lookaround-free, free of `i`/`m`/`v`, and carry
+  `u`; otherwise the pattern is silently dropped.
+- Reading a failure: the agent reporter compacts it to one line; the full
+  shrunk input and replay token are in the `--reporter=json` output file. Pin
+  the counterexample as an ordinary regression test.
 
 ## Time-dependent logic: `TestClock`
 
 **`it.effect` ALWAYS installs a virtual `TestClock`. This is not opt-in.**
 
-### The hang: a small REAL delay anywhere under the test, usually in `src`
+- **A small REAL delay anywhere under the test — usually in `src` — hangs to
+  the vitest timeout** with no message pointing at the clock. Any
+  `Effect.sleep`, retry schedule, timeout or polling interval needs a driven
+  clock or `it.live`; grep the implementation, not only the test. A test that
+  hangs for exactly five seconds: suspect wall-clock time first.
+- **It starts at the EPOCH**, so clock *reads* return 1970 — set the clock
+  with `TestClock.setTime(...)` whenever the code under test reads time.
+- **Real async I/O interleaved with sleeps desyncs the drain loop** — use
+  `it.live` for exactly those tests, outside the `layer()` block.
+- **Do not manually provide `TestClock.layer()` under `it.effect`**, and never
+  call `TestClock.adjust` under `it.live`.
+- **Stage an interleaving with latches, not sleeps**, and a *leak* test needs
+  **two** latches.
 
-The expensive failure is not in the test file. It is a test with **no
-`TestClock` reference at all**, quietly relying on a 1–10ms real delay, which
-stops advancing under `it.effect` and hangs to the vitest timeout with no
-message pointing at the clock. In one conversion every hang came from a file
-that never mentions `TestClock` — and **in three of four cases the sleep lived
-in `src`, not the test**.
-
-**Any `Effect.sleep`, retry schedule, timeout or polling interval anywhere under
-the test — however small — needs either a driven clock or `it.live`.** Grep the
-implementation, not only the test:
-
-```text
-Effect\.sleep|Effect\.timeout|Schedule\.|Effect\.retry|Effect\.repeat|baseDelay|intervalMs|setTimeout\(
-```
-
-If a test hangs for exactly five seconds, suspect wall-clock time first.
-
-**A hang can also come from the test double.** A fake `fetch` that records
-`String(init.body)` mangles a byte body into `123,34,…`, which throws in
-`JSON.parse`, surfaces as a *transport fault*, gets retried, and hangs the
-virtual clock — once as **ten unrelated timeouts**. Decode with
-`new Response(init.body).text()`.
-
-### Real async I/O in the effect under test desyncs the drain loop — use `it.live`
-
-Driving the clock only works when everything the effect awaits is *scheduled on
-that clock*. An effect that interleaves **real filesystem I/O** with sleeps —
-`fs.open` → real await → retry `Effect.sleep` — races `TestClock.adjust`: the
-sleep created *after* resuming from the real await is not yet registered when
-`adjust`'s drain loop re-checks, so the test hangs or flakes depending on how
-the real I/O lands (hit live in a two-latch concurrency test over real file
-locks). This is not fixable by adjusting harder:
-virtual time cannot know when un-clocked real work will complete. The escape
-hatch is **`it.live` for exactly those tests** — real clock, real I/O, one
-timeline — placed **outside** the `layer()` block per the `MethodsNonLive`
-shape above. Keep the rest of the suite on `it.effect`; the hatch is per-test,
-not per-file.
-
-### …and it starts at the EPOCH, so clock *reads* return 1970
-
-The quiet half: `it.effect` starts the `TestClock` at time zero, so anything
-that *reads* the clock computes against **1970-01-01T00:00:00.000Z**. The start
-time is source-visible — `TestClock`'s constructor opens with
-`let currentTimestamp: number = new Date(0).getTime()` (`TestClock.ts:257`), and
-the migration guide describes `TestClock.layer()` as creating an "epoch-based
-test clock" — and the downstream consequence is directly observable
-(`DateTime.now` inside a bare `it.effect` is exactly the epoch). A CLI
-resolved **zero** Node versions because against a 1970 "now" every release was
-still unreleased; any TTL or "newer than N days" check inverts. Set the clock
-with `TestClock.setTime(...)` whenever the code under test reads time.
-
-### Driving it
-
-```ts
-import { it } from "@effect/vitest";
-import { Effect, Fiber } from "effect";
-import { TestClock } from "effect/testing";
-
-it.effect("a sleeping fiber wakes when the clock advances", () =>
-  Effect.gen(function* () {
-    const fiber = yield* Effect.forkChild(Effect.sleep("1 second"));
-    yield* TestClock.adjust("1 second");
-    yield* Fiber.join(fiber);
-  }),
-);
-```
-
-- `TestClock.adjust(duration)` moves virtual time forward and runs everything
-  scheduled up to the new time; `TestClock.setTime(timestamp)` jumps to an
-  absolute time. Both return `Effect<void>`. All the time helpers live under the
-  **`effect/testing`** subpath — `TestClock`, `TestConsole`, `TestSchema`
-  (property generation is `Arbitrary`), not `@effect/vitest`.
-- **Do not manually provide `TestClock.layer()` under `it.effect`.** They
-  compose — `Clock` is a `Context.Reference` (`Clock.ts:189`), `TestClock.layer()`
-  merely sets it via `Layer.effect(Clock.Clock)` (`TestClock.ts:436`), and
-  `adjust` (`:507`) resolves its clock through `testClockWith`, which reads
-  whatever is ambient: `fiber.getRef(Clock.Clock) as TestClock`
-  (`TestClock.ts:471`). Nothing breaks, but drop the provide: a nested TestClock
-  captures its `liveClock` at build time (`TestClock.ts:254`), so its "live"
-  clock **is** the outer TestClock — `withLive` (`:278`) returns virtual time
-  and the too-long-without-advancing warning fiber can never fire.
-- **Never call `TestClock.adjust` under `it.live`** — that `as TestClock` cast is
-  unchecked, so it is undefined behavior, not a type error. And **a
-  clock-driving test must not share a `layer()` group**: `adjust` is cumulative
-  across the group's shared clock.
-
-Or **restructure the test to need no time at all**. For an interrupt, prefer a
-failing sibling over a timeout — `Effect.exit(Effect.all([subject,
-Effect.fail("x")], { concurrency: 2 }))` interrupts the subject clock-free
-(`Effect.never` is not clock-backed). Note what that reports: the **sibling's
-`Fail`** on the aggregate cause, not the interrupt (`hasFails` true,
-`hasInterrupts` false), so asserting `Cause.hasInterrupts` would pass for the
-wrong reason. Assert on the *observable consequence* — that the interrupted
-resource still works afterward.
-
-**Stage an interleaving with latches, not sleeps** — a sleep under the virtual
-clock hangs instead of interleaving — and a *leak* test needs **two** of them. A
-single-latch test passes against a save/restore-a-shared-global implementation,
-because save/restore is LIFO-correct whenever the overrides nest; the
-discriminating shape forces one fiber to READ while the other's override is
-applied and unrestored → [references/false-greens.md](./references/false-greens.md).
+The grep pattern, the driving example, the clock-free interrupt restructure
+and the source-visible reasoning →
+**[references/testclock.md](./references/testclock.md)**; the two-latch probe →
+[references/false-greens.md](./references/false-greens.md).
 
 ## `it.effect` also intercepts CONSOLE output — including `Effect.log*`
 
-`TestEnv` installs `TestConsole` alongside the clock, so a test spying on the
-real `console.log` to capture Effect's output silently captures **nothing** —
-and **auditing for `Console.*` call sites is insufficient**, because Effect's
-default logger writes through the same ref. The identity is source-visible, not
-folklore: `Console.Console` **is** `effect.ConsoleRef` (`Console.ts:83`),
-`TestConsole.layer` is `Layer.effect(Console.Console)(make)`
-(`testing/TestConsole.ts:294`), and `Logger.ts:269`, `:309`, `:363` all read
-`options.fiber.getRef(effect.ConsoleRef)`. One repo's audit cleared a
-package by grepping `Console.*` and missed three live `Effect.logWarning`
-sites. Only direct `console.*`, direct `process.stdout.write` / `stderr.write`,
-and a **replaced** logger set (`Logger.layer([...])` without
-`mergeWithExisting`) writing to one of those are immune.
-
-It fails silently, and it produced two vacuous passes — "no output in quiet
-mode" tests that pass unconditionally because the drained sink is always empty.
+`TestEnv` installs `TestConsole` alongside the clock, so a spy on the real
+`console.log` captures **nothing** — and auditing for `Console.*` call sites
+is insufficient, because Effect's default logger writes through the same ref.
 **A test whose only assertions are negative is the vacuous-pass shape**; a
-positive sibling is the cheap proof the sink is live. `TestConsole.logLines` is
-cumulative and never drained by reading it, so a test invoking a CLI twice
-asserts against a growing buffer →
+positive sibling is the cheap proof the sink is live. Source identity and the
+immune cases → **[references/test-console.md](./references/test-console.md)**;
+`TestConsole.logLines` accumulation →
 [references/false-greens.md](./references/false-greens.md).
 
 ## A test that cannot fail is worse than no test — mutate the edges
 
-A green suite proves nothing about the properties no test can observe. In one
-package (`@effected/walker`), **eight** distinct mutants each survived a fully
-green suite; a later session turned up three more tests that were green,
-plausible, and **structurally incapable of failing**.
-
-The discipline: **capture a baseline** (`git status --porcelain > /tmp/baseline`),
+A green suite proves nothing about the properties no test can observe. The
+discipline: **capture a baseline** (`git status --porcelain > /tmp/baseline`),
 break the implementation in the way the property forbids (with the editor —
 never `git checkout`/`git stash`, other work lives in the tree), watch that
-exact test go red, revert, and confirm the status matches the **baseline**, not
-that it is empty.
+exact test go red, revert, and confirm the status matches the **baseline**.
 
-- **The assertion must DISCRIMINATE** — confirm the test fails *for the right
-  reason*, not merely that it fails.
-- **The failure to look for is a rule with no input that could falsify it** —
-  not a missing test. Ask of every rule: *what input would make this rule fire
-  alone, and does it exist?* That input is one that is **wrong in exactly one
-  way**; if you cannot name it, the rule is decoration however green the suite.
-  A rule can be unfalsifiable because a sibling clause always catches the
-  fixture first, because every near-miss also misses a second requirement,
-  because only one of the rule's **two code paths** ever exercises it, or
-  because a depth is never reached. So mutate **per clause and per path**:
-  **two code paths implementing one rule are two things to pin, not one**, and
-  a test covering *a* path through a rule does not pin the rule.
-- **`as const satisfies ReadonlyArray<Union>` is the type-level member of this
-  family: it enforces NOTHING about exhaustiveness.** It reads like a
-  compile-time coverage check, and the comment above it usually claims one —
-  "a new union member is noticed here". `satisfies` only asserts the listed
-  literals are *assignable to* the union; it never asserts the list *covers*
-  it. Type-checked at TypeScript 7 in this repo: with
-  `type WriteChange = "none" | "annotations" | "created" | "deleted"`, the line
-  `["none", "annotations", "created"] as const satisfies ReadonlyArray<WriteChange>`
-  compiles **clean**, while the control `["none", "bogus"] as const satisfies …`
-  errors — so the construct is live, it just answers a different question than
-  the comment claims. Add `deleted` to the union and nothing goes red. The two
-  spellings that do fire (both errored on the same file, same run):
-
-  ```text
-  // 1. residue must be empty
-  type Exhaustive = Exclude<WriteChange, (typeof covered)[number]> extends never ? true : never;
-  const _check: Exhaustive = true;      // TS2322: 'true' is not assignable to 'never'
-
-  // 2. a total record over the union
-  const table = { none: 0, annotations: 0, created: 0 } satisfies Record<WriteChange, number>;
-  //    TS2741: Property 'deleted' is missing …
-  ```
-
-  (Deliberately non-compiling: each comment names the compile error that is
-  the point of the example — a `WriteChange` union missing `"deleted"` from
-  the `covered`/`table` list.)
-
-  Same test as any other rule in this list: *what input would make this fire
-  alone?* For the `satisfies` array, no input exists — a compile-time guard
-  that cannot fail is decoration exactly as a test that cannot fail is.
-- **One assertion, one rule.** A single assertion covering two rules goes red
-  for either and proves neither — split it.
-- **A passing test is evidence about the path it takes, not about the rule it
-  appears to test.**
-- **Before acting on "nothing found", run a control that FIRES.** An absence
-  result and a broken query are indistinguishable at the call site — a
-  surviving mutant, a zero-match grep and a projection that dropped the field
-  all look like a true negative. Prove the query matches something you know is
-  there first, and **make the control's expected answer non-zero**: a control
-  returning zero when zero is correct looks exactly like success on a broken
-  query. And **run the control against a KNOWN-GOOD input, never the suspect
-  one** — a control that varies more than the thing under test confirms whatever
-  you already believe (a `grep -c ""` run against the one pathological file
-  "proved" `grep` itself was broken; it was not).
-- **Read the failure TEXT; never infer a catch from a missing pass line.** A
-  mutant is verified only once you have seen the assertion message and it names
-  the property you expected to break. Empty output is a **failed experiment**,
-  not a dead mutant and not a broken toolchain: re-run unfiltered, and scope the
-  suspicion to the input — the filter, the invocation, the fixture — before the
-  tool.
-- **Never verify a change by grepping for the text you just wrote.** Grep finds
-  the declaration; only a mutation finds the emit site.
+- **The assertion must DISCRIMINATE** — fail for the right reason.
+- **The failure to look for is a rule with no input that could falsify it.**
+  Ask of every rule: *what input would make this fire alone, and does it
+  exist?* Mutate **per clause and per path**; **two code paths implementing
+  one rule are two things to pin, not one**.
+- **`as const satisfies ReadonlyArray<Union>` enforces NOTHING about
+  exhaustiveness** — use a residue-must-be-empty type or a total
+  `Record<Union, …>`.
+- **One assertion, one rule.** A passing test is evidence about the path it
+  takes, not about the rule it appears to test.
+- **Before acting on "nothing found", run a control that FIRES**, with a
+  non-zero expected answer, against a KNOWN-GOOD input.
+- **Read the failure TEXT; never infer a catch from a missing pass line.**
+  Empty output is a failed experiment.
+- **Never verify a change by grepping for the text you just wrote.** Only a
+  mutation finds the emit site.
 - **A semantics-preserving perf fix cannot be pinned** — report it as
-  fixed-but-unpinned rather than inventing a test that proves nothing.
-- **A surviving mutant is a question about the CODE**, not only about the test.
-  Ask whether the mutated behavior was ever required before writing an assertion
-  that pins an accident; deleting the code is a legitimate answer.
-- **Sweeping many mutants, assert the on-disk state every run** — one stale
-  restore turns every later result into nonsense that looks like data. When two
-  reads of one file disagree, settle it against the committed blob
-  (`git show HEAD:<path>`), never by taking the read that suits the conclusion.
+  fixed-but-unpinned.
+- **A surviving mutant is a question about the CODE**; deleting the code is a
+  legitimate answer. When sweeping, assert the on-disk state every run, and
+  settle disagreeing reads against `git show HEAD:<path>`.
 
-Full discipline, the checklist and the worked failures →
+Full discipline, the checklist, the `satisfies` spellings that do fire and the
+worked failures →
 **[references/mutation-testing.md](./references/mutation-testing.md)**.
 
 ### Structural checks over source text
@@ -871,68 +451,25 @@ fiber is joined. Each with its probe →
 
 **Zero collected tests is never a pass — read BOTH the Tests line and the exit
 code.** A filter that matches no test file prints `Tests: 0/0 passed` and exits
-**1**: the Tests line is the liar and the exit code is honest. A test file that
-throws at load time is reported as `✗ test suite failed to load`, naming the
-file and the throw, and exits 1. A passing subset run under `--coverage` exits
-0, because the `@vitest-agent/plugin` reporter skips thresholds on partial runs
-(`Coverage thresholds skipped: partial run`). Treat any disagreement between
-the two signals as the alarm. Read `unhandledErrors` alongside both: a
-`ChildProcess` with no `error` listener re-throws asynchronously *after* the
-failure was correctly reported, and 15 green tests carried a live defect that
-only that field showed.
-
-**Run vitest from the repo root.** From inside `packages/<pkg>`, vitest does
-not load the root config: it runs with the package directory as its root, so
-the repo's projects, setup files and reporter are all absent. A bare
-`vitest run` there still runs that package's files under default settings,
-while `vitest run --project @effected/<pkg>` fails at startup with
-`No projects matched the filter` (exit 1). From the root, `--project <name>`
-selects one project. A positional arg is not a path: it is a **substring
-matched against each test file's path**. `ckfiles` selects `@effected/lockfiles`'
-tests from the root, which path resolution would not predict. Never
-`--passWithNoTests` — it is the one flag that turns a zero-match run green
-(exit 0).
-
-An `ERR_LOAD_URL` naming a `vitest.setup.ts` inside a package directory means
-the config declares `globalSetup` as a cwd-relative path. Resolve it against
-the config file (`fileURLToPath(new URL("vitest.setup.ts", import.meta.url))`).
-The setup file it names is not one you were meant to create; creating it forks
-the setup permanently.
-
-**The stale-upstream-dist red herring** (a red that lies rather than a green):
-in a kit monorepo, a downstream package's tests resolve workspace siblings
-through their BUILT dist (the lockfile links `version: link:../npm/dist/dev/pkg`),
-so adding an export to an upstream package makes every downstream suite fail
-to LOAD with `Cannot read properties of undefined (reading 'ast')` — the new
-export exists in source, is `undefined` in the stale artifact, and the schema
-built from it dies at module load pointing nowhere near the cause. When you
-add an export to an upstream kit package, `pnpm build --filter <upstream>`
-before running any downstream suite; that error message at suite load IS the
-stale-dist signature.
+**1**: the Tests line is the liar and the exit code is honest. Treat any
+disagreement between the two signals as the alarm, and read `unhandledErrors`
+alongside both. **Run vitest from the repo root** — from inside a package it
+does not load the root config — and never `--passWithNoTests`. In a kit
+monorepo, adding an export to an upstream package requires
+`pnpm build --filter <upstream>` before any downstream suite runs; a load-time
+`Cannot read properties of undefined (reading 'ast')` IS the stale-dist
+signature. The `ERR_LOAD_URL` setup-file case and the rest →
+**[references/running-the-suite.md](./references/running-the-suite.md)**.
 
 ## House conventions
 
 - Tests live in each package's `__test__/` directory (`*.test.ts`), never
   co-located in `src/`.
-- **A probe writes no file.** A temporary probe left under `__test__/` is
-  collected by the ordinary suite and inflates the `Tests:` count, and that
-  inflation is indistinguishable from added coverage — which is exactly what a
-  count-delta review ("+5 new, −1 removed, no assertion changed") depends on.
-  **Do not fix this with an exclude pattern**: an exclude catches only names
-  someone predicted and fails silently when it misses. Instead run the probe as
-  a script that never touches disk, **from inside the package**:
-
-  ```bash
-  cd packages/<name> && node --input-type=module -e '<script>'
-  ```
-
-  `-e` writes nothing. Running from inside the package is what makes bare
-  specifiers (`effect`, a workspace sibling) resolve: under pnpm's store layout
-  the **importer's** location decides resolution, so the same script run from
-  the repo root fails with `ERR_MODULE_NOT_FOUND`. If a probe genuinely needs a
-  file, put it in the repo's sanctioned scratch venue (in this monorepo,
-  `scratchpad/`), never in `__test__/`. The zero-collection warning from
-  `@vitest-agent/plugin` is a backstop, not the mechanism.
+- **A probe writes no file.** A probe left under `__test__/` is collected by
+  the ordinary suite and inflates the `Tests:` count. Run it as a script that
+  never touches disk, from inside the package:
+  `cd packages/<name> && node --input-type=module -e '<script>'` →
+  [references/running-the-suite.md](./references/running-the-suite.md).
 - Construct domain values via the schema's `X.make`, never `new`.
 - **In this monorepo, assert with `assert.*` from `@effect/vitest`, never
   `expect`** — the root `CLAUDE.md` mandates it and every test file here obeys.

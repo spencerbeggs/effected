@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import {
 	Cause,
 	Context,
@@ -7,7 +8,6 @@ import {
 	Effect,
 	Exit,
 	Fiber,
-	FileSystem,
 	Layer,
 	Option,
 	PlatformError,
@@ -59,6 +59,10 @@ class BoxJournal extends Journal.Service<BoxJournal>()("test/BoxJournal", { even
 /** Build a fresh memfs + a SINGLE bound layer, the way a consumer must. */
 const harness = (seed?: string) => {
 	const memfs = makeMemFs();
+	// The parent directory exists even when the journal does not: `create`
+	// opens the path `O_APPEND`, which fails ENOENT under a missing parent on a
+	// real filesystem, and memfs is honest about that.
+	memfs.mkdir("/journal");
 	if (seed !== undefined) memfs.write(PATH, seed);
 	// Bound ONCE to a const — calling `.layer()` twice would mint two journals.
 	const layer = MailJournal.layer({ path: PATH }).pipe(Layer.provide(memfs.layer));
@@ -107,18 +111,24 @@ describe("Journal — layer and lifecycle", () => {
 			// A missing file is a legal state; a file that exists and cannot be read
 			// is a real failure. Typing the layer's error channel `never` would make
 			// this arrive as a defect no caller could catch.
-			const denied = FileSystem.layerNoop({
-				exists: () => Effect.succeed(true),
-				open: (() =>
-					Effect.fail(
-						PlatformError.systemError({
-							_tag: "PermissionDenied",
-							module: "FileSystem",
-							method: "open",
-							pathOrDescriptor: PATH,
-						}),
-					)) as never,
-			});
+			// The journal really exists (seeded), so `exists` answers true from the
+			// volume; only `open` is faulted, as a permissions error would.
+			const denied = MemoryFileSystem.layerWith(
+				{ [PATH]: "" },
+				{
+					faults: {
+						open: () =>
+							Effect.fail(
+								PlatformError.systemError({
+									_tag: "PermissionDenied",
+									module: "FileSystem",
+									method: "open",
+									pathOrDescriptor: PATH,
+								}),
+							),
+					},
+				},
+			);
 			const layer = MailJournal.layer({ path: PATH }).pipe(Layer.provide(denied));
 			const scope = yield* Scope.make();
 			const exit = yield* Effect.exit(Layer.build(layer).pipe(Effect.provideService(Scope.Scope, scope)));

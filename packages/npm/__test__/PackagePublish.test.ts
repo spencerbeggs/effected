@@ -1,14 +1,17 @@
 import { assert, describe, it } from "@effect/vitest";
 import { LocalExec } from "@effected/commands";
-import { Effect, Exit, Layer, Redacted } from "effect";
+import type { MemoryFileSystemFaults, MemoryFileSystemHandle, MemoryFileSystemSeed } from "@effected/memfs";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Exit, Layer, PlatformError, Redacted } from "effect";
 import { NpmExecutor } from "../src/NpmExecutor.js";
 import { PackagePublish, PackedTarball } from "../src/PackagePublish.js";
 import { PublishError } from "../src/PublishError.js";
 import { basicCredentialFromPair } from "../src/RegistryCredential.js";
 import type { ScriptResult } from "./publish-fixtures.js";
-import { fakeCrypto, recordingFs, scripted } from "./publish-fixtures.js";
+import { fakeCrypto, scripted } from "./publish-fixtures.js";
 
-const NPMRC = "/home/runner/.npmrc";
+const HOME = "/home/runner";
+const NPMRC = `${HOME}/.npmrc`;
 const TOKEN = Redacted.make("s3cr3t-token");
 const TOKEN_CREDENTIAL = { kind: "token", token: TOKEN } as const;
 
@@ -37,20 +40,33 @@ const packJsonNpm12 = JSON.stringify({ [packEntry.name]: packEntry });
 interface Harness {
 	readonly run: <A, E>(program: Effect.Effect<A, E, PackagePublish>) => Effect.Effect<A, E>;
 	readonly spawner: ReturnType<typeof scripted>;
-	readonly fs: ReturnType<typeof recordingFs>;
+	readonly fs: MemoryFileSystemHandle;
 }
 
 const harness = (options?: {
 	readonly script?: (command: string, args: ReadonlyArray<string>) => ScriptResult;
 	readonly local?: Layer.Layer<LocalExec>;
-	readonly files?: Record<string, string>;
+	readonly files?: MemoryFileSystemSeed;
+	readonly faults?: MemoryFileSystemFaults;
 }): Harness => {
 	const spawner = scripted(options?.script ?? (() => ({ stdout: packJson, exit: 0 })));
-	const fs = recordingFs(options?.files ?? {});
+	// The runner's home directory exists, as it does on a real runner: a write
+	// into a missing directory fails honestly on memfs, as it would on disk.
+	const fs = MemoryFileSystem.makeSync(
+		{ [HOME]: MemoryFileSystem.directory(), ...options?.files },
+		options?.faults === undefined ? undefined : { faults: options.faults },
+	);
 	const layer = PackagePublish.layer.pipe(
 		Layer.provide(Layer.mergeAll(spawner.layer, fs.layer, fakeCrypto, options?.local ?? LocalExec.layerNone)),
 	);
 	return { run: (program) => Effect.provide(program, layer), spawner, fs };
+};
+
+/** The written npmrc — asserting it exists rather than reading absence as `""`. */
+const npmrcOf = (h: Harness): string => {
+	const text = h.fs.volume.text(NPMRC);
+	assert.isDefined(text, "setupAuth wrote no npmrc");
+	return text;
 };
 
 const publisher = Effect.gen(function* () {
@@ -145,7 +161,7 @@ describe("PackagePublish.setupAuth", () => {
 					p.setupAuth({ registry: "https://registry.npmjs.org", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
 				),
 			);
-			const written = h.fs.files.get(NPMRC) ?? "";
+			const written = npmrcOf(h);
 			assert.include(written, "s3cr3t-token");
 			assert.lengthOf(h.spawner.spawns, 0, "setupAuth must not spawn anything — the token stays off the process table");
 		}),
@@ -162,7 +178,7 @@ describe("PackagePublish.setupAuth", () => {
 					p.setupAuth({ registry: "https://npm.pkg.github.com", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
 				),
 			);
-			assert.include(h.fs.files.get(NPMRC) ?? "", "//npm.pkg.github.com/:_authToken=");
+			assert.include(npmrcOf(h), "//npm.pkg.github.com/:_authToken=");
 		}),
 	);
 
@@ -178,7 +194,7 @@ describe("PackagePublish.setupAuth", () => {
 					}),
 				),
 			);
-			assert.include(h.fs.files.get(NPMRC) ?? "", "//example.com/artifactory/api/npm/repo/:_authToken=");
+			assert.include(npmrcOf(h), "//example.com/artifactory/api/npm/repo/:_authToken=");
 		}),
 	);
 
@@ -190,9 +206,76 @@ describe("PackagePublish.setupAuth", () => {
 					p.setupAuth({ registry: "https://registry.npmjs.org", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
 				),
 			);
-			const written = h.fs.files.get(NPMRC) ?? "";
+			const written = npmrcOf(h);
 			assert.include(written, "registry=https://registry.npmjs.org");
 			assert.include(written, "_authToken=");
+		}),
+	);
+
+	it.effect("writes a fresh npmrc when none exists (NotFound is the only read failure treated as empty)", () =>
+		Effect.gen(function* () {
+			const h = harness();
+			assert.isUndefined(h.fs.volume.text(NPMRC));
+			yield* h.run(
+				Effect.flatMap(publisher, (p) =>
+					p.setupAuth({ registry: "https://registry.npmjs.org", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
+				),
+			);
+			assert.include(npmrcOf(h), "_authToken=");
+		}),
+	);
+
+	it.effect("fails kind auth and leaves an unreadable npmrc untouched (PermissionDenied)", () =>
+		Effect.gen(function* () {
+			const prior = "registry=https://registry.npmjs.org\n//other.example/:_authToken=keep-me\n";
+			const h = harness({
+				files: { [NPMRC]: prior },
+				faults: {
+					readFile: (path) =>
+						Effect.fail(
+							PlatformError.systemError({
+								_tag: "PermissionDenied",
+								module: "FileSystem",
+								method: "readFile",
+								pathOrDescriptor: path,
+							}),
+						),
+				},
+			});
+			const exit = yield* Effect.exit(
+				h.run(
+					Effect.flatMap(publisher, (p) =>
+						p.setupAuth({ registry: "https://registry.npmjs.org", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
+					),
+				),
+			);
+			assert.isTrue(Exit.isFailure(exit));
+			const error = Exit.isFailure(exit) ? Exit.findErrorOption(exit) : undefined;
+			assert.isTrue(error !== undefined && error._tag === "Some");
+			if (error !== undefined && error._tag === "Some") {
+				assert.instanceOf(error.value, PublishError);
+				assert.strictEqual((error.value as PublishError).kind, "auth");
+			}
+			assert.strictEqual(h.fs.volume.text(NPMRC), prior);
+		}),
+	);
+
+	it.effect("fails kind auth when the npmrc path is a directory (BadResource)", () =>
+		Effect.gen(function* () {
+			const h = harness({ files: { [NPMRC]: MemoryFileSystem.directory() } });
+			const exit = yield* Effect.exit(
+				h.run(
+					Effect.flatMap(publisher, (p) =>
+						p.setupAuth({ registry: "https://registry.npmjs.org", credential: TOKEN_CREDENTIAL, npmrcPath: NPMRC }),
+					),
+				),
+			);
+			assert.isTrue(Exit.isFailure(exit));
+			const error = Exit.isFailure(exit) ? Exit.findErrorOption(exit) : undefined;
+			assert.isTrue(error !== undefined && error._tag === "Some");
+			if (error !== undefined && error._tag === "Some") {
+				assert.strictEqual((error.value as PublishError).kind, "auth");
+			}
 		}),
 	);
 });
@@ -521,7 +604,7 @@ describe("PackagePublish.setupAuth with basic auth", () => {
 					}),
 				),
 			);
-			const written = h.fs.files.get(NPMRC) ?? "";
+			const written = npmrcOf(h);
 			assert.include(written, "//registry.example.test/:_auth=dXNlcjpwYXNz");
 			assert.notInclude(written, "_authToken");
 			assert.lengthOf(h.spawner.spawns, 0, "the credential stays off the process table");
@@ -540,7 +623,7 @@ describe("PackagePublish.setupAuth with basic auth", () => {
 					}),
 				),
 			);
-			assert.include(h.fs.files.get(NPMRC) ?? "", "//example.com/artifactory/api/npm/repo/:_auth=YWJj");
+			assert.include(npmrcOf(h), "//example.com/artifactory/api/npm/repo/:_auth=YWJj");
 		}),
 	);
 });

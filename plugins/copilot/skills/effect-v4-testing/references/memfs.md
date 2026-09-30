@@ -263,6 +263,11 @@ per UTF-16 unit with no Unicode normalization.
 - **`failTimes` under `layer(...)`.** A suite-boundary `layer(...)` builds once,
   so a transient fault declared there is consumed by the first test and every
   later test sees it exhausted. Declare it per test.
+- **A faulted path must exist in the seed.** A fault that denies `exists` or
+  `stat` on a path the seed never created proves nothing: disarm it and the
+  answer is the same honest `NotFound`/`false`, so the test cannot tell whether
+  the fault fired. Seed the denied path as a real file, so disarming the fault
+  visibly changes the answer, then mutation-check by disarming it.
 
 ## What the volume cannot see
 

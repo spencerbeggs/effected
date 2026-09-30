@@ -268,3 +268,36 @@ mutant**: it changes no observable behaviour, and a timing assertion that "prove
 it would just be flaky. Report it honestly as **fixed but unpinned** rather than
 inventing a test that proves nothing. A test written only to have a test is a
 future maintainer's false confidence.
+
+## `as const satisfies ReadonlyArray<Union>` enforces nothing about exhaustiveness
+
+**`as const satisfies ReadonlyArray<Union>` is the type-level member of this
+family: it enforces NOTHING about exhaustiveness.** It reads like a
+compile-time coverage check, and the comment above it usually claims one —
+"a new union member is noticed here". `satisfies` only asserts the listed
+literals are *assignable to* the union; it never asserts the list *covers*
+it. Type-checked at TypeScript 7 in this repo: with
+`type WriteChange = "none" | "annotations" | "created" | "deleted"`, the line
+`["none", "annotations", "created"] as const satisfies ReadonlyArray<WriteChange>`
+compiles **clean**, while the control `["none", "bogus"] as const satisfies …`
+errors — so the construct is live, it just answers a different question than
+the comment claims. Add `deleted` to the union and nothing goes red. The two
+spellings that do fire (both errored on the same file, same run):
+
+```text
+// 1. residue must be empty
+type Exhaustive = Exclude<WriteChange, (typeof covered)[number]> extends never ? true : never;
+const _check: Exhaustive = true;      // TS2322: 'true' is not assignable to 'never'
+
+// 2. a total record over the union
+const table = { none: 0, annotations: 0, created: 0 } satisfies Record<WriteChange, number>;
+//    TS2741: Property 'deleted' is missing …
+```
+
+(Deliberately non-compiling: each comment names the compile error that is
+the point of the example — a `WriteChange` union missing `"deleted"` from
+the `covered`/`table` list.)
+
+Same test as any other rule on this page: *what input would make this fire
+alone?* For the `satisfies` array, no input exists — a compile-time guard
+that cannot fail is decoration exactly as a test that cannot fail is.

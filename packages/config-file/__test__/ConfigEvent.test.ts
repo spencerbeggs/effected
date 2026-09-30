@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Layer, Option, Path, PubSub, Schema } from "effect";
 import type { ConfigEvent } from "../src/ConfigEvent.js";
 import { ConfigEventPayload, ConfigEvents } from "../src/ConfigEvent.js";
@@ -7,7 +8,7 @@ import { ConfigResolver } from "../src/ConfigResolver.js";
 import { JsonCodec } from "../src/JsonCodec.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 import type { RecordingFs } from "./helpers.js";
-import { memoryFs, recordingFs } from "./helpers.js";
+import { recordingFs } from "./helpers.js";
 
 class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
 class AppConfig extends ConfigFile.Service<AppConfig, AppShape>()("test/EventConfig") {}
@@ -36,7 +37,7 @@ const readLayer = (files: Record<string, string>, resolvers = [ConfigResolver.ex
 			resolvers,
 			strategy: MergeStrategy.layeredMerge<AppShape>(),
 			events: ConfigEvents,
-		}).pipe(Layer.provide(Layer.mergeAll(memoryFs(files), Path.layer))),
+		}).pipe(Layer.provide(Layer.mergeAll(MemoryFileSystem.layerWith(files), Path.layer))),
 	);
 
 /** A writable config service wired to `ConfigEvents`. */
@@ -151,7 +152,11 @@ describe("ConfigEvent per-operation granularity", () => {
 			yield* cfg.write(new AppShape({ port: 3 }), "/explicit/.apprc");
 
 			assert.include(tagsOf(yield* drain(sub)), "Written");
-		}).pipe(Effect.scoped, Effect.provide(writeLayer(recordingFs({}), "/app/.apprc"))),
+		}).pipe(
+			Effect.scoped,
+			// `write` never mkdirs, so the explicit target's directory must pre-exist.
+			Effect.provide(writeLayer(recordingFs({ "/explicit": MemoryFileSystem.directory() }), "/app/.apprc")),
+		),
 	);
 
 	it.effect("save emits Saved", () =>
@@ -254,7 +259,7 @@ describe("ConfigEvents opt-in", () => {
 		codec: JsonCodec,
 		resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
 		strategy: MergeStrategy.firstMatch<AppShape>(),
-	}).pipe(Layer.provide(Layer.mergeAll(memoryFs({ "/app/.apprc": `{"port":8080}` }), Path.layer)));
+	}).pipe(Layer.provide(Layer.mergeAll(MemoryFileSystem.layerWith({ "/app/.apprc": `{"port":8080}` }), Path.layer)));
 
 	it.effect("a layer built without `events` loads with no ConfigEvents in context", () =>
 		Effect.gen(function* () {
@@ -307,7 +312,9 @@ describe("ConfigEvents opt-in", () => {
 						resolvers: [ConfigResolver.explicitPath("/app/.apprc")],
 						strategy: MergeStrategy.firstMatch<AppShape>(),
 						events: ConfigEvents,
-					}).pipe(Layer.provide(Layer.mergeAll(memoryFs({ "/app/.apprc": `{"port":8080}` }), Path.layer))),
+					}).pipe(
+						Layer.provide(Layer.mergeAll(MemoryFileSystem.layerWith({ "/app/.apprc": `{"port":8080}` }), Path.layer)),
+					),
 				),
 			),
 		),

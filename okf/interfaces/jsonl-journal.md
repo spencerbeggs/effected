@@ -9,8 +9,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 856809c198b8e41e09770866bbaf2b3e57ecc2926a950579c7ce4ddd561ff19e
+  at: 2026-09-30T16:41:19Z
+  body_sha256: 8ef0cd60ff92a72dc498d2cfe0c80f4ca75fe77b772c2552a880f23320081f03
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:37.064Z
@@ -260,7 +260,8 @@ report a child file's content appends.
 
 The package does not use core's `WatchBackend`: it calls `watch` through
 the `FileSystem` service, so the deterministic test seam is the
-`FileSystem` test double's `watch` and its before-watch hook — this is what
+`watch` member of the test filesystem (an `@effected/memfs` volume with
+`watch` faulted to a manually driven stream) and its before-watch hook — this is what
 covers offset bookkeeping, the re-arm path and the resync path without
 racing a real filesystem or sleeping. `WatchBackend` remains this design's
 named upgrade for synchronous registration, considered and deferred rather

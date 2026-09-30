@@ -1,4 +1,4 @@
-import { Crypto, Effect, FileSystem, Layer, PlatformError, Sink, Stream } from "effect";
+import { Crypto, Effect, Layer, PlatformError, Sink, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 /** One scripted outcome for a spawned command. */
@@ -63,46 +63,6 @@ export const scripted = (script: (command: string, args: ReadonlyArray<string>) 
 		}),
 	);
 	return { layer, spawns };
-};
-
-/** An in-memory filesystem recording writes, over core's noop layer. */
-export interface RecordingFs {
-	readonly layer: Layer.Layer<FileSystem.FileSystem>;
-	readonly files: Map<string, string>;
-}
-
-export const recordingFs = (seed: Record<string, string> = {}): RecordingFs => {
-	const files = new Map<string, string>(Object.entries(seed));
-	const layer = Layer.succeed(
-		FileSystem.FileSystem,
-		FileSystem.makeNoop({
-			// Every recorder is suspended so it fires when the effect RUNS, never
-			// when it is merely constructed.
-			writeFileString: (path, content) =>
-				Effect.suspend(() => {
-					files.set(path, content);
-					return Effect.void;
-				}),
-			readFileString: (path) =>
-				Effect.suspend(() => {
-					const found = files.get(path);
-					return found === undefined
-						? Effect.fail(
-								PlatformError.systemError({ _tag: "NotFound", module: "FileSystem", method: "readFileString" }),
-							)
-						: Effect.succeed(found);
-				}),
-			readFile: (path) =>
-				Effect.suspend(() => {
-					const found = files.get(path);
-					return found === undefined
-						? Effect.fail(PlatformError.systemError({ _tag: "NotFound", module: "FileSystem", method: "readFile" }))
-						: Effect.succeed(new TextEncoder().encode(found));
-				}),
-			exists: (path) => Effect.sync(() => files.has(path)),
-		}),
-	);
-	return { layer, files };
 };
 
 /**

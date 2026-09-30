@@ -1,5 +1,6 @@
 import { assert, layer } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Option, Path, PlatformError } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Layer, Option, Path, PlatformError } from "effect";
 import { TsconfigDiscovery } from "../src/TsconfigDiscovery.js";
 import { fixtureLayer } from "./fixtures.js";
 
@@ -71,30 +72,39 @@ layer(fixtureLayer(tree(["/a/b/tsconfig.json", EMPTY], ["/a/tsconfig.json", EMPT
 	},
 );
 
-/** A FileSystem whose `exists` denies permission on one path and consults the fixture tree for the rest. */
+/**
+ * The fixture volume, with an `exists` fault that denies permission on one
+ * path. Every other probe delegates to the seeded volume.
+ */
 const FsDenying = (denied: string, tree: ReadonlyMap<string, string>) =>
-	FileSystem.layerNoop({
-		exists: (path: string) =>
-			path === denied
-				? Effect.fail(
-						PlatformError.systemError({
-							_tag: "PermissionDenied",
-							module: "FileSystem",
-							method: "exists",
-							pathOrDescriptor: path,
-						}),
-					)
-				: Effect.succeed(tree.has(path)),
+	MemoryFileSystem.layerWith(Object.fromEntries(tree), {
+		faults: {
+			exists: (path: string) =>
+				path === denied
+					? Effect.fail(
+							PlatformError.systemError({
+								_tag: "PermissionDenied",
+								module: "FileSystem",
+								method: "exists",
+								pathOrDescriptor: path,
+							}),
+						)
+					: undefined,
+		},
 	});
 
-layer(Layer.mergeAll(FsDenying("/a/b/tsconfig.json", tree(["/a/tsconfig.json", EMPTY])), Path.layer))(
-	"TsconfigDiscovery.findNearest, permission denied on a nearer candidate",
-	(it) => {
-		it.effect("absorbs the denied probe and keeps ascending to the further config", () =>
-			Effect.gen(function* () {
-				const found = yield* TsconfigDiscovery.findNearest("/a/b/c");
-				assert.deepStrictEqual(found, Option.some("/a/tsconfig.json"));
-			}),
-		);
-	},
-);
+// The denied candidate is genuinely present, so only the fault stands between
+// the walk and `/a/b/tsconfig.json`: disarm it and the answer moves nearer.
+layer(
+	Layer.mergeAll(
+		FsDenying("/a/b/tsconfig.json", tree(["/a/b/tsconfig.json", EMPTY], ["/a/tsconfig.json", EMPTY])),
+		Path.layer,
+	),
+)("TsconfigDiscovery.findNearest, permission denied on a nearer candidate", (it) => {
+	it.effect("absorbs the denied probe and keeps ascending to the further config", () =>
+		Effect.gen(function* () {
+			const found = yield* TsconfigDiscovery.findNearest("/a/b/c");
+			assert.deepStrictEqual(found, Option.some("/a/tsconfig.json"));
+		}),
+	);
+});

@@ -1,16 +1,31 @@
-import type { Layer } from "effect";
-import { Effect, FileSystem, Option, PlatformError, Queue, Stream } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import type { Layer, Option, PlatformError } from "effect";
+import { Effect, FileSystem, Queue, Stream } from "effect";
 
 /**
- * A tiny in-memory `FileSystem`, implementing exactly the surface the journal
- * service touches: `exists`, `stat`, `remove`, and `open` returning a handle
- * with `seek` / `readAlloc` / `writeAll`.
+ * The journal's test filesystem: a real `@effected/memfs` volume, with the
+ * deterministic seams these suites need layered on as FAULTS rather than
+ * reimplemented.
  *
- * Deterministic and platform-free, which is what lets the tail-read, BOM,
- * widening, terminal-machine and shutdown tests be unit tests rather than
- * integration tests. Real-filesystem behavior (concurrent appends, O_APPEND
- * atomicity) belongs in `__test__/integration/` and is not simulated here —
- * a double that pretended to model it would prove nothing.
+ * Storage, `stat` (size, `dev`/`ino` identity), `exists`, `remove`, and `open`
+ * with its positional reads and `O_APPEND` `writeAll` are memfs's own, so an
+ * unseeded path fails typed `NotFound` exactly as a real filesystem does — a
+ * missing parent directory included. Three members are decorated through the
+ * faults factory, delegate-by-default:
+ *
+ * - `open` wraps the returned handle so a write gate and a read gate can hold a
+ *   `writeAll` / `readAlloc` open;
+ * - `exists` counts calls, then delegates;
+ * - `watch` is REPLACED by a manually driven stream. memfs's real watch emits
+ *   its own events on every write, which would race the explicit
+ *   {@link MemFs.poke} / {@link MemFs.pokeParent} design these tests are built
+ *   on — offset bookkeeping, resync and activation stay timer-free only while
+ *   the test alone decides when an event arrives. The replacement still
+ *   `stat`s the target first through the real volume, so a missing path fails
+ *   the watch typed, as the node backend does.
+ *
+ * Real-filesystem behavior (concurrent appends across processes, the node
+ * watcher's event shapes) belongs in `__test__/integration/`.
  */
 export interface MemFs {
 	readonly layer: Layer.Layer<FileSystem.FileSystem>;
@@ -32,7 +47,11 @@ export interface MemFs {
 	readonly gateWasEntered: () => boolean;
 	/** Read the raw bytes currently stored at a path. */
 	readonly bytes: (path: string) => Uint8Array | undefined;
-	/** Seed a path with raw bytes, bypassing the journal. */
+	/**
+	 * Write a path's whole contents, bypassing the journal. An existing file is
+	 * overwritten IN PLACE and keeps its identity, as `writeFileSync` does; a
+	 * missing parent directory is created.
+	 */
 	readonly write: (path: string, bytes: Uint8Array | string) => void;
 	/**
 	 * Delete a path behind the journal's back, synchronously.
@@ -42,9 +61,9 @@ export interface MemFs {
 	 * synchronous and cannot run the layer's own `remove`.
 	 */
 	readonly unlink: (path: string) => void;
-	/** Whether a path exists. */
+	/** Whether a regular file exists at a path. */
 	readonly has: (path: string) => boolean;
-	/** Every path currently present. */
+	/** Every regular file currently present. */
 	readonly paths: () => ReadonlyArray<string>;
 	/**
 	 * Deliver a **content** watch event for `path` to the watchers of that path.
@@ -73,10 +92,16 @@ export interface MemFs {
 	 * read.
 	 *
 	 * The only deterministic way to place a write in the window a read straddles.
-	 * `sampleFirst` (the default) models `read(2)`: the bytes are taken before
-	 * the suspension, so the reader receives the file as of the moment it
-	 * sampled. Pass `false` to suspend before sampling, so the read observes the
-	 * write.
+	 * `sampleFirst` (the default) takes the bytes before the suspension; pass
+	 * `false` to suspend first, so the read samples after the write.
+	 *
+	 * For the journal's reads the two orders are INVISIBLE through the Journal:
+	 * every `readAlloc` in `src` is sized by a `stat` taken before the file is
+	 * opened, so a write landing inside the gate is past the requested size
+	 * either way. `false` is the order that catches an UNBOUNDED read — one that
+	 * ignores that size would pick the write up — so a test pinning the stat
+	 * bound must pass it; sampling first would hide the defect. The order itself
+	 * is pinned in `MemFsHelper.test.ts`.
 	 *
 	 * @returns `entered`, which resolves once the gated read is suspended, and
 	 *   `release`, which lets it finish.
@@ -94,18 +119,20 @@ export interface MemFs {
 	 */
 	readonly watcherCount: (target: string) => number;
 	readonly existsCalls: () => number;
-	/** Give the path a NEW identity, as a rename-over or recreate would. */
+	/**
+	 * Give the path a NEW identity, as a rename-over or recreate would: the old
+	 * file is unlinked and a fresh one written, so memfs mints a new inode.
+	 */
 	readonly replace: (path: string, bytes: Uint8Array | string) => void;
 	/**
-	 * Create a directory.
+	 * Create a directory (and any missing parents).
 	 *
 	 * A real parent directory exists before the journal inside it does — which is
-	 * the entire premise of watching it to detect creation. Without modelling
-	 * empty directories the double cannot represent the activation case at all.
+	 * the entire premise of watching it to detect creation.
 	 */
 	readonly mkdir: (path: string) => void;
 	/**
-	 * Run `hook` when `watch(target)` is called, BEFORE it registers.
+	 * Run `hook` when `watch(target)` is run, BEFORE it registers.
 	 *
 	 * The only way to land a write inside the arming window deterministically:
 	 * after the engine has seeded `consumed`, but before the watch is live. A
@@ -118,114 +145,25 @@ export interface MemFs {
 /**
  * Index of the last separator, on either convention.
  *
- * A real filesystem knows its own separator; this double is asked to model both
- * so a Windows-shaped path can be exercised without a Windows runner.
+ * memfs is POSIX: a backslash is an ordinary filename byte there, so
+ * `C:\journal\watch.jsonl` is one opaque name at the volume root — and every
+ * operation the journal performs on it (and on its derived parent
+ * `C:\journal`) resolves to the same entry, which is all the backslash test
+ * needs. Only the synthetic directory event below has to split the path the
+ * way the code under test does.
  */
 const lastSeparator = (path: string): number => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
 
 export const makeMemFs = (): MemFs => {
-	const files = new Map<string, Uint8Array>();
-	const encoder = new TextEncoder();
 	let gate: Promise<void> | undefined;
 	let releaseGate: (() => void) | undefined;
 	let gateEntered = false;
 	let existsCallCount = 0;
-	/** Inode identity, so replacement is detectable exactly as on a real filesystem. */
-	const directories = new Set<string>();
 	let beforeWatchHook: ((target: string) => void) | undefined;
-	const inodes = new Map<string, number>();
-	let nextInode = 1;
-	const inodeOf = (path: string): number => {
-		const existing = inodes.get(path);
-		if (existing !== undefined) return existing;
-		const assigned = nextInode++;
-		inodes.set(path, assigned);
-		return assigned;
-	};
-	/** Replace the file's identity, as a rename-over or recreate would. */
-	const reinode = (path: string): void => {
-		inodes.set(path, nextInode++);
-	};
-
 	/** The read gate: set by {@link MemFs.gateNextRead}, consumed by one `readAlloc`. */
 	let readGate:
 		| { readonly promise: Promise<void>; readonly enter: () => void; readonly sampleFirst: boolean }
 		| undefined;
-
-	const write = (path: string, bytes: Uint8Array | string): void => {
-		files.set(path, typeof bytes === "string" ? encoder.encode(bytes) : bytes);
-		const parent = path.slice(0, Math.max(0, lastSeparator(path)));
-		if (parent !== "") directories.add(parent);
-		inodeOf(path);
-	};
-
-	const openFile = (path: string, flag: string) =>
-		Effect.sync(() => {
-			if (flag.startsWith("a") && !files.has(path)) {
-				files.set(path, new Uint8Array(0));
-			}
-			let position = 0;
-			return {
-				[FileSystem.FileTypeId]: FileSystem.FileTypeId,
-				fd: 0 as never,
-				stat: Effect.sync(() => ({ size: BigInt(files.get(path)?.length ?? 0) })) as never,
-				seek: (offset: bigint) =>
-					Effect.sync(() => {
-						position = Number(offset);
-					}),
-				sync: Effect.void,
-				read: () => Effect.succeed(0 as never),
-				readAlloc: (size: number) =>
-					Effect.gen(function* () {
-						const gate = readGate;
-						if (gate?.sampleFirst === false) {
-							readGate = undefined;
-							gate.enter();
-							yield* Effect.promise(() => gate.promise);
-						}
-						const current = files.get(path) ?? new Uint8Array(0);
-						// A real handle advances its own position; a double that does not
-						// makes every chunked read re-read the same bytes, so the
-						// multi-chunk path in `readRangeText` would never be exercised.
-						const slice = new Uint8Array(current.subarray(position, position + size));
-						position += slice.length;
-						if (gate?.sampleFirst === true) {
-							readGate = undefined;
-							gate.enter();
-							// Suspend AFTER sampling, exactly as a `read(2)` that raced a
-							// concurrent append behaves: the bytes are the file as of the
-							// moment the read took them.
-							yield* Effect.promise(() => gate.promise);
-						}
-						return slice.length === 0 ? Option.none<Uint8Array>() : Option.some(slice);
-					}),
-				truncate: () => Effect.void,
-				write: (buffer: Uint8Array) =>
-					Effect.sync(() => {
-						const current = files.get(path) ?? new Uint8Array(0);
-						const next = new Uint8Array(current.length + buffer.length);
-						next.set(current);
-						next.set(buffer, current.length);
-						files.set(path, next);
-						return buffer.length as never;
-					}),
-				// Appends at the END regardless of `position`, which is what O_APPEND
-				// means. Modeling it as a positional write would make the service's
-				// offset bookkeeping look correct while the real thing tore.
-				writeAll: (buffer: Uint8Array) =>
-					Effect.gen(function* () {
-						if (gate !== undefined) {
-							gateEntered = true;
-							yield* Effect.promise(() => gate ?? Promise.resolve());
-						}
-						const current = files.get(path) ?? new Uint8Array(0);
-						const next = new Uint8Array(current.length + buffer.length);
-						next.set(current);
-						next.set(buffer, current.length);
-						files.set(path, next);
-					}),
-			} as unknown as FileSystem.File;
-		});
 
 	const watchers = new Map<string, Set<(event: FileSystem.WatchEvent) => void>>();
 	const notify = (target: string, event: FileSystem.WatchEvent): void => {
@@ -234,82 +172,100 @@ export const makeMemFs = (): MemFs => {
 		}
 	};
 
-	const layer = FileSystem.layerNoop({
-		// Shaped like the real backend, and the shape is load-bearing: it `stat`s
-		// the path OUTSIDE the callback and unwraps the result, so a missing path
-		// fails the STREAM typed. Failing inside `Stream.callback` would not do —
-		// that effect is forked, so its failure never reaches the stream and the
-		// watch would hang instead of ending. And a raw `throw` here would be a
-		// defect, which `Effect.ignore` does not absorb, so the double would kill
-		// the supervisor fibre where the real backend merely ends a watch.
-		watch: ((target: string) =>
-			Stream.unwrap(
-				Effect.gen(function* () {
-					beforeWatchHook?.(target);
-					const isDirectory =
-						directories.has(target) || [...files.keys()].some((file) => file.startsWith(`${target}/`));
-					if (!files.has(target) && !isDirectory) {
-						return yield* Effect.fail(
-							PlatformError.systemError({
-								_tag: "NotFound",
-								module: "FileSystem",
-								method: "watch",
-								pathOrDescriptor: target,
-								description: "no such file or directory",
-							}),
-						);
-					}
-					return Stream.callback<FileSystem.WatchEvent>((queue) =>
-						Effect.acquireRelease(
-							Effect.sync(() => {
-								const listener = (event: FileSystem.WatchEvent): void => {
-									Queue.offerUnsafe(queue, event);
-								};
-								const set = watchers.get(target) ?? new Set();
-								set.add(listener);
-								watchers.set(target, set);
-								return listener;
-							}),
-							(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
-						).pipe(
-							// The callback effect COMPLETING ends the stream, so it must stay
-							// alive for as long as the watch should. Without this the stream
-							// ended the instant it registered.
-							Effect.andThen(Effect.never),
-						),
-					);
-				}),
-			)) as never,
-		exists: (path: string) =>
-			Effect.sync(() => {
-				existsCallCount += 1;
-				return files.has(path);
+	/**
+	 * Decorate a real memfs handle with the two gates. memfs's `File` is a class
+	 * instance with prototype members, so every member is forwarded explicitly —
+	 * a spread would drop them.
+	 */
+	const gated = (file: FileSystem.File): FileSystem.File => ({
+		[FileSystem.FileTypeId]: FileSystem.FileTypeId,
+		get stat() {
+			return file.stat;
+		},
+		get sync() {
+			return file.sync;
+		},
+		seek: (offset, from) => file.seek(offset, from),
+		read: (buffer) => file.read(buffer),
+		truncate: (length) => file.truncate(length),
+		write: (buffer) => file.write(buffer),
+		readAlloc: (size): Effect.Effect<Option.Option<Uint8Array>, PlatformError.PlatformError> =>
+			Effect.suspend(() => {
+				const held = readGate;
+				if (held === undefined) return file.readAlloc(size);
+				readGate = undefined;
+				const suspend = Effect.promise(() => {
+					held.enter();
+					return held.promise;
+				});
+				// `sampleFirst` suspends AFTER the real read; otherwise the read is
+				// taken after the suspension and sees whatever landed inside it, up to
+				// the size requested.
+				return held.sampleFirst
+					? Effect.tap(file.readAlloc(size), () => suspend)
+					: Effect.andThen(suspend, file.readAlloc(size));
 			}),
-		// Carries `dev`/`ino` as a real backend does. Returning only `size` made
-		// `Option.map(info.ino, …)` throw on a bare `undefined`, which killed the
-		// watcher supervisor as a silent defect — a double that is too thin fails
-		// the code under test rather than the test.
-		stat: (path: string) =>
-			Effect.sync(() => ({
-				size: BigInt(files.get(path)?.length ?? 0),
-				dev: 1,
-				ino: Option.some(inodeOf(path)),
-			})) as never,
-		remove: (path: string) =>
-			Effect.sync(() => {
-				files.delete(path);
-				// The inode goes with the file. Keeping it would hand a
-				// remove-then-recreate cycle the OLD identity, so `identityOf` would see
-				// one continuous file and the `"replaced"` resync branch would be
-				// unreachable through this double.
-				inodes.delete(path);
+		// memfs's own `writeAll` on a `{ flag: "a" }` handle appends at the end
+		// regardless of position — real O_APPEND. The gate only delays it.
+		writeAll: (buffer) =>
+			Effect.suspend(() => {
+				const held = gate;
+				if (held === undefined) return file.writeAll(buffer);
+				gateEntered = true;
+				return Effect.andThen(
+					Effect.promise(() => held),
+					file.writeAll(buffer),
+				);
 			}),
-		open: ((path: string, options?: { readonly flag?: string }) =>
-			Effect.acquireRelease(openFile(path, options?.flag ?? "r"), () => Effect.void)) as never,
 	});
 
+	const handle = MemoryFileSystem.makeSync(
+		{},
+		{
+			faults: (base) => ({
+				open: (path, options) => Effect.map(base.open(path, options), gated),
+				exists: () => {
+					existsCallCount += 1;
+					return undefined;
+				},
+				// Stat through the REAL volume OUTSIDE the callback, as the node
+				// backend does: a missing path fails the STREAM typed. Failing inside
+				// `Stream.callback` would not do — that effect is forked, so its
+				// failure never reaches the stream and the watch would hang instead of
+				// ending.
+				watch: (target) =>
+					Stream.unwrap(
+						Effect.gen(function* () {
+							beforeWatchHook?.(target);
+							yield* base.stat(target);
+							return Stream.callback<FileSystem.WatchEvent, PlatformError.PlatformError>((queue) =>
+								Effect.acquireRelease(
+									Effect.sync(() => {
+										const listener = (event: FileSystem.WatchEvent): void => {
+											Queue.offerUnsafe(queue, event);
+										};
+										const set = watchers.get(target) ?? new Set();
+										set.add(listener);
+										watchers.set(target, set);
+										return listener;
+									}),
+									(listener) => Effect.sync(() => watchers.get(target)?.delete(listener)),
+								).pipe(
+									// The callback effect COMPLETING ends the stream, so it must stay
+									// alive for as long as the watch should.
+									Effect.andThen(Effect.never),
+								),
+							);
+						}),
+					),
+			}),
+		},
+	);
+
+	const isFile = (path: string): boolean => handle.volume.bytes(path) !== undefined;
+
 	return {
-		layer,
+		layer: handle.layer,
 		closeGate: () => {
 			gateEntered = false;
 			gate = new Promise<void>((resolve) => {
@@ -323,11 +279,8 @@ export const makeMemFs = (): MemFs => {
 			releaseGate = undefined;
 		},
 		poke: (path) => {
-			// CONTENT events go to the file's own watchers and nowhere else. A
-			// non-recursive directory watch does not reliably report a child's
-			// appends, so routing them there too would make a journal that never
-			// handed off from the activation watch to the file watch look healthy.
-			notify(path, { _tag: "Update", path } as unknown as FileSystem.WatchEvent);
+			// CONTENT events go to the file's own watchers and nowhere else.
+			notify(path, { _tag: "Update", path });
 		},
 		pokeParent: (path) => {
 			const directory = path.slice(0, Math.max(0, lastSeparator(path))) || ".";
@@ -335,10 +288,7 @@ export const makeMemFs = (): MemFs => {
 			// does — which is why the activation path must never use event.path to
 			// open anything. The tag is `Remove` for a creation, which is what the
 			// probe measured the node backend reporting.
-			notify(directory, {
-				_tag: "Remove",
-				path: path.slice(lastSeparator(path) + 1),
-			} as unknown as FileSystem.WatchEvent);
+			notify(directory, { _tag: "Remove", path: path.slice(lastSeparator(path) + 1) });
 		},
 		gateNextRead: (options) => {
 			let enter: () => void = () => {};
@@ -354,24 +304,19 @@ export const makeMemFs = (): MemFs => {
 		},
 		watcherCount: (target) => watchers.get(target)?.size ?? 0,
 		existsCalls: () => existsCallCount,
-		mkdir: (path) => {
-			directories.add(path);
-		},
+		mkdir: (path) => handle.mkdir(path),
 		beforeWatch: (hook) => {
 			beforeWatchHook = hook;
 		},
 		replace: (path, bytes) => {
-			write(path, bytes);
-			reinode(path);
+			if (isFile(path)) handle.remove(path);
+			handle.write(path, bytes);
 		},
-		bytes: (path) => files.get(path),
-		write,
-		unlink: (path) => {
-			files.delete(path);
-			inodes.delete(path);
-		},
-		has: (path) => files.has(path),
-		paths: () => [...files.keys()],
+		bytes: (path) => handle.volume.bytes(path),
+		write: (path, bytes) => handle.write(path, bytes),
+		unlink: (path) => handle.remove(path),
+		has: isFile,
+		paths: () => handle.volume.paths(),
 	};
 };
 

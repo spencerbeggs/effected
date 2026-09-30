@@ -10,8 +10,8 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: 095d9972ae55ad0e2b5bc13a4a1716b2e5e54e6a131f84593d62345775e28f67
+  at: 2026-09-30T16:41:19Z
+  body_sha256: 1cf2130c954da4654c63883ae0d254924c157a9ee56790dbcbbf57f57a35159a
 ---
 
 # `@effected/jsonl`
@@ -239,9 +239,11 @@ services is a compile error at registration, and a slice's event list
 narrows the element type — a runtime-only test would pass while either was
 broken. Integration tests run the watcher against real temporary
 directories and are the only tests that provide a platform layer (`@effect/platform-node`);
-watcher behaviour that does not need a real filesystem is driven through the
-`FileSystem` double's `watch` instead, so those assertions are deterministic
-and timer-free. Three concurrency and ordering tests are structurally
+watcher behaviour that does not need a real filesystem runs over an
+`@effected/memfs` volume whose `watch` is replaced, through a faults factory,
+by a manually driven stream (with `open` wrapped for write and read gates),
+so those assertions are deterministic and timer-free while storage, `stat`
+identity and `O_APPEND` stay memfs's own. Three concurrency and ordering tests are structurally
 incapable of testing what they appear to test unless arranged carefully;
 see [what the concurrency tests must
 arrange](../interfaces/jsonl-journal.md#what-the-concurrency-tests-must-actually-arrange).

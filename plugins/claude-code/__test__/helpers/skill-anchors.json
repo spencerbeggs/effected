@@ -51,7 +51,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "packages/vitest/src/internal/internal.ts:268,270,272",
 			"source": "vitest:internal/internal.ts",
 			"symbols": {
@@ -61,7 +61,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "packages/vitest/src/index.ts:116-131",
 			"source": "vitest:index.ts",
 			"symbols": {
@@ -69,7 +69,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "`:245-256`",
 			"source": "vitest:index.ts",
 			"symbols": {
@@ -78,7 +78,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "internal.ts:303-304",
 			"source": "vitest:internal/internal.ts",
 			"symbols": {
@@ -87,7 +87,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "packages/vitest/src/internal/internal.ts:89-96",
 			"source": "vitest:internal/internal.ts",
 			"symbols": {
@@ -96,7 +96,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "`:120`",
 			"source": "vitest:internal/internal.ts",
 			"symbols": {
@@ -104,7 +104,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "internal.ts:92",
 			"source": "vitest:internal/internal.ts",
 			"symbols": {
@@ -112,7 +112,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "packages/vitest/src/index.ts:108,161",
 			"source": "vitest:index.ts",
 			"symbols": {
@@ -177,6 +177,14 @@
 			}
 		},
 		{
+			"file": "effect-v4-testing/references/providing-layers.md",
+			"anchor": "FileSystem.ts:636",
+			"source": "effect:FileSystem.ts",
+			"symbols": {
+				"636": "export const makeNoop"
+			}
+		},
+		{
 			"file": "effect-v4-testing/references/false-greens.md",
 			"anchor": "`:636`",
 			"source": "effect:FileSystem.ts",
@@ -185,7 +193,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "FileSystem.ts:575",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -193,7 +201,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "`:657`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -201,7 +209,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "`:696`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -209,7 +217,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "`:663`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -217,7 +225,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "`:676`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -225,7 +233,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "`:511`",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -273,7 +281,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "FileSystem.ts:508",
 			"source": "effect:FileSystem.ts",
 			"symbols": {
@@ -290,7 +298,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "Layer.ts:2065",
 			"source": "effect:Layer.ts",
 			"symbols": {
@@ -298,7 +306,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/providing-layers.md",
 			"anchor": "Layer.ts:2306",
 			"source": "effect:Layer.ts",
 			"symbols": {
@@ -330,7 +338,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/env-seam.md",
 			"anchor": "ConfigProvider.ts:342",
 			"source": "effect:ConfigProvider.ts",
 			"symbols": {
@@ -338,7 +346,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/env-seam.md",
 			"anchor": "ConfigProvider.ts:926",
 			"source": "effect:ConfigProvider.ts",
 			"symbols": {
@@ -346,7 +354,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/env-seam.md",
 			"anchor": "ConfigProvider.ts:667",
 			"source": "effect:ConfigProvider.ts",
 			"symbols": {
@@ -354,7 +362,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "Arbitrary.ts:195",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
@@ -362,7 +370,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "Arbitrary.ts:367",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
@@ -370,7 +378,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "internal/arbitrary/schema.ts:1080-1085",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
@@ -379,7 +387,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "`:1298-1299`",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
@@ -388,7 +396,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "runner.ts:472,615",
 			"source": "effect:internal/arbitrary/runner.ts",
 			"symbols": {
@@ -397,7 +405,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "internal/arbitrary/model.ts:629",
 			"source": "effect:internal/arbitrary/model.ts",
 			"symbols": {
@@ -405,7 +413,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "`:570`",
 			"source": "effect:internal/arbitrary/model.ts",
 			"symbols": {
@@ -413,7 +421,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "internal/arbitrary/regexp.ts:344,350,832",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
@@ -423,7 +431,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "regexp.ts:835",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
@@ -431,7 +439,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "Schema.ts:6636",
 			"source": "effect:Schema.ts",
 			"symbols": {
@@ -439,7 +447,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/property-testing.md",
 			"anchor": "schema.ts:1051-1052",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
@@ -448,7 +456,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/testclock.md",
 			"anchor": "TestClock.ts:257",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
@@ -456,7 +464,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/testclock.md",
 			"anchor": "Clock.ts:189",
 			"source": "effect:Clock.ts",
 			"symbols": {
@@ -464,7 +472,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/testclock.md",
 			"anchor": "TestClock.ts:436",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
@@ -472,7 +480,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/testclock.md",
 			"anchor": "`:507`",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
@@ -480,7 +488,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/testclock.md",
 			"anchor": "TestClock.ts:471",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
@@ -488,7 +496,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/testclock.md",
 			"anchor": "TestClock.ts:254",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
@@ -496,7 +504,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/testclock.md",
 			"anchor": "`:278`",
 			"source": "effect:testing/TestClock.ts",
 			"symbols": {
@@ -504,7 +512,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/test-console.md",
 			"anchor": "Console.ts:83",
 			"source": "effect:Console.ts",
 			"symbols": {
@@ -512,7 +520,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/test-console.md",
 			"anchor": "testing/TestConsole.ts:294",
 			"source": "effect:testing/TestConsole.ts",
 			"symbols": {
@@ -520,7 +528,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/test-console.md",
 			"anchor": "Logger.ts:269",
 			"source": "effect:Logger.ts",
 			"symbols": {
@@ -528,7 +536,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/test-console.md",
 			"anchor": "`:309`",
 			"source": "effect:Logger.ts",
 			"symbols": {
@@ -536,7 +544,7 @@
 			}
 		},
 		{
-			"file": "effect-v4-testing/SKILL.md",
+			"file": "effect-v4-testing/references/test-console.md",
 			"anchor": "`:363`",
 			"source": "effect:Logger.ts",
 			"symbols": {

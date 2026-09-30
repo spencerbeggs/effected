@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigFile, JsonCodec, MergeStrategy } from "@effected/config-file";
-import { Effect, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Layer, Option, Path, PlatformError, Schema } from "effect";
 import type { XdgPlatform } from "../src/index.js";
 import { AppDirs, CurrentPlatform, Xdg, XdgConfig, XdgPaths } from "../src/index.js";
 
@@ -12,34 +13,42 @@ const paths = XdgPaths.make({
 });
 
 /**
- * A filesystem where `present` exists, `denied` raises, and everything else is
- * simply absent. `probed` records every path the resolver actually looked at, so
- * short-circuiting is observable.
+ * A real in-memory volume where every `present` path holds `files[path]` (or an
+ * empty file), every `denied` path is seeded too but its probe raises
+ * PermissionDenied, and everything else is honestly absent. Seeding the denied
+ * paths makes the fault load-bearing: with it disarmed the probe would FIND
+ * them. `probed` records every path the resolver actually looked at, when the
+ * probe executes, so short-circuiting is observable.
  */
 const fsFixture = (options: {
 	readonly present?: ReadonlyArray<string>;
+	readonly files?: Readonly<Record<string, string>>;
 	readonly denied?: ReadonlyArray<string>;
 	readonly probed?: Array<string>;
 }) =>
-	FileSystem.layerNoop({
-		exists: (target) => {
-			options.probed?.push(target);
-			if (options.denied?.includes(target)) {
-				return Effect.fail(
-					PlatformError.systemError({
-						_tag: "PermissionDenied",
-						module: "FileSystem",
-						method: "exists",
-						pathOrDescriptor: target,
-					}),
-				);
-			}
-			return Effect.succeed(options.present?.includes(target) ?? false);
+	MemoryFileSystem.layerWith(
+		Object.fromEntries(
+			[...(options.present ?? []), ...(options.denied ?? [])].map((target) => [target, options.files?.[target] ?? ""]),
+		),
+		{
+			faults: {
+				exists: (target) => {
+					options.probed?.push(target);
+					if (options.denied?.includes(target)) {
+						return Effect.fail(
+							PlatformError.systemError({
+								_tag: "PermissionDenied",
+								module: "FileSystem",
+								method: "exists",
+								pathOrDescriptor: target,
+							}),
+						);
+					}
+					return undefined; // delegate: the volume answers
+				},
+			},
 		},
-		makeDirectory: () => Effect.void,
-		writeFileString: () => Effect.void,
-		readFileString: () => Effect.succeed(`{"port":4242}`),
-	});
+	);
 
 /** Platform, environment, filesystem and a resolved `AppDirs` — all in the R channel. */
 const context = (options: Parameters<typeof fsFixture>[0], platform: XdgPlatform = "linux") => {
@@ -186,9 +195,21 @@ describe("XdgConfig.savePath", () => {
 				const config = yield* AppConfig;
 				const loaded = yield* config.load;
 				assert.deepStrictEqual(loaded, { port: 4242 });
-				return yield* config.save({ port: 8080 });
+				const target = yield* config.save({ port: 8080 });
+				// Same provide, same volume: the save really landed.
+				const volume = yield* MemoryFileSystem.Volume;
+				assert.deepStrictEqual(JSON.parse(volume.text(target) ?? "null"), { port: 8080 });
+				return target;
 			}).pipe(
-				Effect.provide(Layer.provideMerge(configLayer, context({ present: ["/home/ada/.config/myapp/rc.json"] }))),
+				Effect.provide(
+					Layer.provideMerge(
+						configLayer,
+						context({
+							present: ["/home/ada/.config/myapp/rc.json"],
+							files: { "/home/ada/.config/myapp/rc.json": `{"port":4242}` },
+						}),
+					),
+				),
 			);
 
 			assert.strictEqual(saved, "/home/ada/.config/myapp/rc.json");

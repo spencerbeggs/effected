@@ -10,18 +10,18 @@
 // stringly mega-error.
 
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
 import type { FileSystem } from "effect";
 import { Effect, Layer, Option, Path, Schema } from "effect";
 import { ConfigCodecError } from "../src/ConfigCodec.js";
 import { ConfigFile, ConfigFileReadError, ConfigValidationError } from "../src/ConfigFile.js";
 import { JsonCodec } from "../src/JsonCodec.js";
 import { JsoncCodec } from "../src/JsoncCodec.js";
-import { memoryFs } from "./helpers.js";
 
 class AppShape extends Schema.Class<AppShape>("AppShape")({ port: Schema.Number }) {}
 
 const platform = (files: Record<string, string>): Layer.Layer<FileSystem.FileSystem | Path.Path> =>
-	Layer.mergeAll(memoryFs(files), Path.layer);
+	Layer.mergeAll(MemoryFileSystem.layerWith(files), Path.layer);
 
 describe("ConfigFile.read", () => {
 	it.effect("reads, decodes and validates one explicit path", () =>

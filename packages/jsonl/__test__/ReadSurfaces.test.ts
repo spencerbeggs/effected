@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Context, DateTime, Duration, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream } from "effect";
 import { Journal, JsonlEvent } from "../src/index.js";
 import type { MemFs } from "./helpers/memfs.js";
-import { makeMemFs } from "./helpers/memfs.js";
+import { makeMemFs, textOf } from "./helpers/memfs.js";
 
 const PATH = "/journal/read.jsonl";
 
@@ -145,6 +145,36 @@ describe("query", () => {
 				assert.strictEqual(none.length, 0, "restricting to an empty set means an empty set");
 			}),
 		),
+	);
+
+	it.effect("is bounded by the size it stat'd: an append landing inside the read is not returned", () =>
+		Effect.gen(function* () {
+			// The read's ONLY sampling moment is its `stat`, not the `readAlloc`:
+			// the region is sized before the file is opened, so a write that lands
+			// between them must stay out of the result. `sampleFirst: false` makes
+			// the gated read take its bytes AFTER the append — the only order in
+			// which an unbounded read would pick it up. Sampling first would hide
+			// that defect, which is why no test gated the default way can see it.
+			const { memfs, scope, journal } = yield* openJournal(line("mine", { round: 1 }) + line("mine", { round: 2 }));
+			const gate = memfs.gateNextRead({ sampleFirst: false });
+			const running = yield* Effect.forkChild(Stream.runCollect(journal.query({ cursor: 0 })));
+
+			yield* Effect.promise(() => gate.entered);
+			externalAppend(memfs, line("mine", { round: 3 }));
+			assert.include(textOf(memfs, PATH), '"round":3', "the append reached the file before the read sampled it");
+			gate.release();
+
+			const got = yield* Fiber.join(running);
+			assert.deepStrictEqual(
+				got.map((envelope) => envelope.data),
+				[{ round: 1 }, { round: 2 }],
+				"the read returns the file as of its stat, not as of its readAlloc",
+			);
+			// And the bound is the stat, not a stale view: a fresh read sees it.
+			const after = yield* Stream.runCollect(journal.query({ cursor: 0 }));
+			assert.strictEqual(after.length, 3, "a read that starts after the append includes it");
+			yield* Scope.close(scope, Exit.void);
+		}).pipe(Effect.timeout(Duration.seconds(10))),
 	);
 });
 
@@ -320,7 +350,7 @@ describe("changes", () => {
 	it.effect("an append landing DURING the replay is delivered, not lost at the join", () =>
 		Effect.gen(function* () {
 			// The join test that CAN see the gap. The append has to land strictly
-			// after the replay has sampled the file and strictly before a
+			// after the replay has sized its read and strictly before a
 			// subscribe-after-replay implementation would have attached — anywhere
 			// else and the test passes whatever the ordering is, which is exactly how
 			// the previous version of this test passed against the defect.
@@ -335,7 +365,10 @@ describe("changes", () => {
 				),
 			);
 
-			// The replay's read has taken its bytes and is suspended inside the handle.
+			// The replay is suspended inside its read. What keeps the append out of
+			// it is the `stat` taken before the read, which sized the region to the
+			// two seeded lines — not the gate's sampling order, which is invisible
+			// here. So round 3 can only arrive through the live subscription.
 			yield* Effect.promise(() => gate.entered);
 			yield* journal.append("mine", { round: 3 });
 			gate.release();

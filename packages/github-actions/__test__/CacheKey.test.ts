@@ -1,10 +1,8 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
+import type { MemoryFileSystemOptions, MemoryFileSystemSeedEntry } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import type { FileSystem } from "effect";
+import { Effect, Layer, Option, Path, Schema } from "effect";
 import { systemError } from "effect/PlatformError";
 import { CacheKey, CacheKeyBadPatternError, CacheKeyReadError } from "../src/index.js";
 
@@ -26,17 +24,8 @@ const FILES: Record<string, string> = {
 	"/w/beta.txt": "beta\n",
 };
 
-const files = FileSystem.layerNoop({
-	readFile: (path) =>
-		Effect.suspend(() => {
-			const content = FILES[String(path)];
-			return content === undefined
-				? Effect.fail(
-						systemError({ _tag: "NotFound", module: "FileSystem", method: "readFile", pathOrDescriptor: String(path) }),
-					)
-				: Effect.succeed(new TextEncoder().encode(content));
-		}),
-});
+/** A real volume holding exactly `FILES`; any other path reads an honest `NotFound`. */
+const files = MemoryFileSystem.layerWith(FILES);
 
 const hashing = <A, E>(program: Effect.Effect<A, E, FileSystem.FileSystem>) => program.pipe(Effect.provide(files));
 
@@ -319,21 +308,26 @@ describe("CacheKey", () => {
 				// terminating and leaves the sequential one with `overlapped === false`.
 				let active = 0;
 				let overlapped = false;
-				const observed = FileSystem.layerNoop({
-					readFile: (path) =>
-						Effect.gen(function* () {
-							active += 1;
-							if (active > 1) {
-								overlapped = true;
-							}
-							// A suspension point, so a sibling fiber gets to run before this
-							// read completes. Without one, a concurrent `Effect.all` could still
-							// finish each read in a single uninterrupted step and never overlap.
-							yield* Effect.yieldNow;
-							yield* Effect.yieldNow;
-							active -= 1;
-							return new TextEncoder().encode(FILES[String(path)] ?? "");
-						}),
+				// Wrap-and-delegate over the real volume: the content comes from the
+				// seed, the fault only counts reads in flight.
+				const observed = MemoryFileSystem.layerWith(FILES, {
+					faults: (base) => ({
+						readFile: (path) =>
+							Effect.gen(function* () {
+								active += 1;
+								if (active > 1) {
+									overlapped = true;
+								}
+								// A suspension point, so a sibling fiber gets to run before this
+								// read completes. Without one, a concurrent `Effect.all` could still
+								// finish each read in a single uninterrupted step and never overlap.
+								yield* Effect.yieldNow;
+								yield* Effect.yieldNow;
+								const bytes = yield* base.readFile(path);
+								active -= 1;
+								return bytes;
+							}),
+					}),
 				});
 				const digest = yield* CacheKey.hashFiles(["/w/alpha.txt", "/w/beta.txt"]).pipe(Effect.provide(observed));
 				assert.isTrue(overlapped, "the two reads never overlapped — Effect.all ran sequentially");
@@ -355,27 +349,27 @@ describe("CacheKey", () => {
 	});
 
 	describe("hashing what a pattern set matches", () => {
-		// Real filesystem, real walk: the claims here are about what is on disk and
-		// what a recursive read reports, and a stubbed directory listing would only
-		// assert the stub.
-		const workspace = () => {
-			const root = mkdtempSync(join(tmpdir(), "effected-cachekey-"));
-			mkdirSync(join(root, "packages", "a"), { recursive: true });
-			mkdirSync(join(root, "node_modules", "dep"), { recursive: true });
-			writeFileSync(join(root, "pnpm-lock.yaml"), "lock\n");
-			writeFileSync(join(root, "packages", "a", "pnpm-lock.yaml"), "inner\n");
-			writeFileSync(join(root, "node_modules", "dep", "pnpm-lock.yaml"), "vendored\n");
-			writeFileSync(join(root, "readme.md"), "docs\n");
-			return root;
+		// A real volume, a real walk: the claims here are about what is in the tree
+		// and what a recursive read reports, and memfs implements the whole
+		// `FileSystem` — parent directories, stat types, listings — so nothing
+		// here is a stubbed directory listing asserting only the stub.
+		const WORKSPACE = "/ws";
+		const SEALED = "/ws/sealed/pnpm-lock.yaml";
+		const TREE: Record<string, MemoryFileSystemSeedEntry> = {
+			"/ws/pnpm-lock.yaml": "lock\n",
+			"/ws/packages/a/pnpm-lock.yaml": "inner\n",
+			"/ws/node_modules/dep/pnpm-lock.yaml": "vendored\n",
+			"/ws/readme.md": "docs\n",
 		};
 
-		const walking = <A, E>(use: (root: string) => Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>) => {
-			const root = workspace();
-			return use(root).pipe(
-				Effect.provide(NodeServices.layer),
-				Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
+		const walking = <A, E>(
+			use: (root: string) => Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>,
+			extra: Record<string, MemoryFileSystemSeedEntry> = {},
+			options: MemoryFileSystemOptions = {},
+		) =>
+			use(WORKSPACE).pipe(
+				Effect.provide(Layer.mergeAll(MemoryFileSystem.layerWith({ ...TREE, ...extra }, options), Path.layer)),
 			);
-		};
 
 		it.effect("matches relative to the workspace, and honours an exclusion", () =>
 			walking((root) =>
@@ -396,20 +390,20 @@ describe("CacheKey", () => {
 		);
 
 		it.effect("excludes a directory whose name matches the pattern", () =>
-			walking((root) =>
-				Effect.gen(function* () {
-					// A directory called `notes.txt` matches `**\/*.txt` and is not a file.
-					// Without the check it reaches `hashFiles`, which fails on the read —
-					// so this is the difference between a working cache key and a failing
-					// action.
-					mkdirSync(join(root, "notes.txt"));
-					writeFileSync(join(root, "notes.txt", "inner.txt"), "inner\n");
-					const matched = yield* CacheKey.matchingFiles({ workspace: root, patterns: ["*.txt", "**/*.txt"] });
-					assert.deepStrictEqual(
-						matched.map((file) => file.slice(root.length + 1)),
-						["notes.txt/inner.txt"],
-					);
-				}),
+			walking(
+				(root) =>
+					Effect.gen(function* () {
+						// A directory called `notes.txt` matches `**\/*.txt` and is not a file.
+						// Without the check it reaches `hashFiles`, which fails on the read —
+						// so this is the difference between a working cache key and a failing
+						// action.
+						const matched = yield* CacheKey.matchingFiles({ workspace: root, patterns: ["*.txt", "**/*.txt"] });
+						assert.deepStrictEqual(
+							matched.map((file) => file.slice(root.length + 1)),
+							["notes.txt/inner.txt"],
+						);
+					}),
+				{ "/ws/notes.txt/inner.txt": "inner\n" },
 			),
 		);
 
@@ -445,59 +439,66 @@ describe("CacheKey", () => {
 		);
 
 		it.effect("drops a literal that climbs above the workspace, even when the file exists", () =>
-			walking((root) =>
-				Effect.gen(function* () {
-					// The old whole-workspace walk could never surface a file above the
-					// workspace; a per-literal stat could, so the containment is explicit.
-					// The sibling lives BESIDE the workspace, under the same temp parent.
-					const outside = join(root, "..", `${basename(root)}-outside.lock`);
-					writeFileSync(outside, "outside\n");
-					try {
+			walking(
+				(root) =>
+					Effect.gen(function* () {
+						// The old whole-workspace walk could never surface a file above the
+						// workspace; a per-literal stat could, so the containment is explicit.
+						// The sibling lives BESIDE the workspace, under the same parent.
 						const matched = yield* CacheKey.matchingFiles({
 							workspace: root,
-							patterns: [`../${basename(outside)}`, "pnpm-lock.yaml"],
+							patterns: ["../ws-outside.lock", "pnpm-lock.yaml"],
 						});
 						assert.deepStrictEqual(
 							matched.map((file) => file.slice(root.length + 1)),
 							["pnpm-lock.yaml"],
 						);
-					} finally {
-						rmSync(outside, { force: true });
-					}
-				}),
+					}),
+				{ "/ws-outside.lock": "outside\n" },
 			),
 		);
 
 		it.effect("reads an absent literal as a miss but an unreadable one as a typed failure", () =>
-			walking((root) =>
-				Effect.gen(function* () {
-					// Absent: parity with the walk, which never reported it.
-					const absent = yield* CacheKey.matchingFiles({ workspace: root, patterns: ["not-here.lock"] });
-					assert.deepStrictEqual(absent, []);
-					// Unreadable: the file the caller asked for exists and cannot be
-					// stat'ed — a key computed without it would restore the wrong cache,
-					// so this MUST fail rather than quietly narrow the set.
-					const sealed = join(root, "sealed");
-					mkdirSync(sealed);
-					writeFileSync(join(sealed, "pnpm-lock.yaml"), "hidden\n");
-					chmodSync(sealed, 0o000);
-					try {
+			walking(
+				(root) =>
+					Effect.gen(function* () {
+						// Absent: parity with the walk, which never reported it.
+						const absent = yield* CacheKey.matchingFiles({ workspace: root, patterns: ["not-here.lock"] });
+						assert.deepStrictEqual(absent, []);
+						// Unreadable: the file the caller asked for exists and cannot be
+						// stat'ed — a key computed without it would restore the wrong cache,
+						// so this MUST fail rather than quietly narrow the set.
 						const error = yield* Effect.flip(
 							CacheKey.matchingFiles({ workspace: root, patterns: ["sealed/pnpm-lock.yaml"] }),
 						);
 						assert.instanceOf(error, CacheKeyReadError);
-						assert.strictEqual(error.path, join(sealed, "pnpm-lock.yaml"));
-					} finally {
-						chmodSync(sealed, 0o755);
-					}
-				}),
+						assert.strictEqual(error.path, SEALED);
+					}),
+				// The file is genuinely present; only its `stat` is denied — the
+				// EACCES a `chmod 0o000` parent directory produces on a real disk.
+				{ [SEALED]: "hidden\n" },
+				{
+					faults: {
+						stat: (path) =>
+							path === SEALED
+								? Effect.fail(
+										systemError({
+											_tag: "PermissionDenied",
+											module: "FileSystem",
+											method: "stat",
+											pathOrDescriptor: path,
+										}),
+									)
+								: undefined,
+					},
+				},
 			),
 		);
 
 		it.effect("fails typed, naming the workspace, when it cannot be walked", () =>
 			walking((root) =>
 				Effect.gen(function* () {
-					const absent = join(root, "not-here");
+					const absent = `${root}/not-here`;
 					const error = yield* Effect.flip(CacheKey.matchingFiles({ workspace: absent, patterns: ["**"] }));
 					assert.instanceOf(error, CacheKeyReadError);
 					assert.strictEqual(error.path, absent);
@@ -511,7 +512,7 @@ describe("CacheKey", () => {
 		// the fixture is byte-identical across platforms. (A Windows tmpdir
 		// path mixed into memfs seeds produced spellings the volume's symlink
 		// resolver never matched, so the links silently read as dangling.)
-		const seed: Record<string, import("@effected/memfs").MemoryFileSystemSeedEntry> = {
+		const seed: Record<string, MemoryFileSystemSeedEntry> = {
 			"/repo/src/a.ts": "alpha\n",
 			"/repo/shared/inner.ts": "inner\n",
 			"/repo/src/one": MemoryFileSystem.symlink("/repo/shared"),

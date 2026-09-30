@@ -239,7 +239,7 @@ For `PackedInstall`, see the package README's "Packed install" example and `desi
 
 ## Testing machinery
 
-No service doubles are exported under `./testing` — that subpath holds the repo-shape checks above, not test doubles. Unit-test consumers with core's `Path.layer` + `FileSystem.layerNoop`; stub git-backed services with `@effected/git`'s own shipped `Git.layerTest({ … })` (unstubbed members die named — never hand-enumerate `GitShape`, which breaks on every growth of that service) and publishability with `Layer.succeed(PublishabilityDetector, ...)` — no real repo or platform package needed.
+No service doubles are exported under `./testing` — that subpath holds the repo-shape checks above, not test doubles. Unit-test consumers with core's `Path.layer` + an `@effected/memfs` volume (`MemoryFileSystem.layerWith(seed)`; `MemoryFileSystem.syncFileSystem(volume)` for the `node-sync` `SyncFileSystem` port) — never a `FileSystem.layerNoop` stub; stub git-backed services with `@effected/git`'s own shipped `Git.layerTest({ … })` (unstubbed members die named — never hand-enumerate `GitShape`, which breaks on every growth of that service) and publishability with `Layer.succeed(PublishabilityDetector, ...)` — no real repo or platform package needed.
 
 ## Gotchas
 

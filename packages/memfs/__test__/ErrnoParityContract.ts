@@ -162,6 +162,78 @@ const cases: ReadonlyArray<Case> = [
 		expect: "success",
 	},
 
+	// makeDirectory through symbolic links (#891). The recursive walk follows a
+	// link component: a dangling one is ENOENT as the final component and — the
+	// node adapter's callback `fs.mkdir`, not `mkdirSync`, which says ENOENT —
+	// ENOTDIR earlier in the path; a loop is ELOOP either way. Without
+	// `recursive`, a link as the final component is simply an existing entry.
+	{
+		name: "makeDirectory recursively onto a dangling symlink",
+		run: (fs, p) => fs.makeDirectory(p("dangling"), { recursive: true }),
+		expect: fail("NotFound", "makeDirectory", "ENOENT"),
+	},
+	{
+		name: "makeDirectory recursively beneath a dangling symlink",
+		run: (fs, p) => fs.makeDirectory(p("dangling", "a", "b"), { recursive: true }),
+		expect: fail("BadResource", "makeDirectory", "ENOTDIR"),
+	},
+	{
+		name: "makeDirectory recursively onto a dangling symlink named with a trailing slash",
+		run: (fs, p) => fs.makeDirectory(`${p("dangling")}/`, { recursive: true }),
+		expect: { linux: fail("NotFound", "makeDirectory", "ENOENT"), darwin: "success" },
+	},
+	{
+		name: "makeDirectory onto a dangling symlink",
+		run: (fs, p) => fs.makeDirectory(p("dangling")),
+		expect: fail("AlreadyExists", "makeDirectory", "EEXIST"),
+	},
+	{
+		name: "makeDirectory beneath a dangling symlink",
+		run: (fs, p) => fs.makeDirectory(p("dangling", "a")),
+		expect: fail("NotFound", "makeDirectory", "ENOENT"),
+	},
+	{
+		name: "makeDirectory recursively onto a symlink loop",
+		run: (fs, p) => fs.makeDirectory(p("loop1"), { recursive: true }),
+		expect: fail("BadResource", "makeDirectory", "ELOOP"),
+	},
+	{
+		name: "makeDirectory recursively beneath a symlink loop",
+		run: (fs, p) => fs.makeDirectory(p("loop1", "a", "b"), { recursive: true }),
+		expect: fail("BadResource", "makeDirectory", "ELOOP"),
+	},
+	{
+		name: "makeDirectory onto a symlink loop",
+		run: (fs, p) => fs.makeDirectory(p("loop1")),
+		expect: fail("AlreadyExists", "makeDirectory", "EEXIST"),
+	},
+	{
+		name: "makeDirectory recursively onto a file",
+		run: (fs, p) => fs.makeDirectory(p("file"), { recursive: true }),
+		expect: fail("AlreadyExists", "makeDirectory", "EEXIST"),
+	},
+	{
+		name: "makeDirectory recursively onto a symlink to a file",
+		run: (fs, p) => fs.makeDirectory(p("filesym"), { recursive: true }),
+		expect: fail("AlreadyExists", "makeDirectory", "EEXIST"),
+	},
+	{
+		name: "makeDirectory recursively beneath a symlink to a file",
+		run: (fs, p) => fs.makeDirectory(p("filesym", "a", "b"), { recursive: true }),
+		expect: fail("BadResource", "makeDirectory", "ENOTDIR"),
+	},
+	{
+		name: "makeDirectory recursively onto a symlink to a directory",
+		run: (fs, p) => fs.makeDirectory(p("dirsym"), { recursive: true }),
+		expect: "success",
+	},
+	{
+		name: "makeDirectory recursively beneath a symlink to a directory",
+		run: (fs, p) => fs.makeDirectory(p("dirsym", "a", "b"), { recursive: true }),
+		expect: "success",
+		check: (_, fs, p) => Effect.map(fs.exists(p("dir", "a", "b")), (exists) => assert.isTrue(exists)),
+	},
+
 	// rename
 	{
 		name: "rename a directory into itself",
@@ -488,6 +560,9 @@ const seedTree = Effect.fnUntraced(function* (
 	yield* fs.writeFileString(p("full2", "b"), "b");
 	yield* fs.symlink(p("loop2"), p("loop1"));
 	yield* fs.symlink(p("loop1"), p("loop2"));
+	yield* fs.symlink(p("nowhere"), p("dangling"));
+	yield* fs.symlink(p("file"), p("filesym"));
+	yield* fs.symlink(p("dir"), p("dirsym"));
 });
 
 const assertOutcome = (exit: Exit.Exit<unknown, PlatformError.PlatformError>, expected: Outcome): void => {

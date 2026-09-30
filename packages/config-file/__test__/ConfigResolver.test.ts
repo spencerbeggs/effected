@@ -1,12 +1,34 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Option, Path } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Layer, Option, Path, PlatformError } from "effect";
 import { ConfigResolver } from "../src/ConfigResolver.js";
 
-/** A FileSystem whose every call fails with EACCES. */
-const HostileFs = Layer.succeed(FileSystem.FileSystem, {
-	exists: () => Effect.fail(new Error("EACCES: permission denied")),
-	readFileString: () => Effect.fail(new Error("EACCES: permission denied")),
-} as unknown as FileSystem.FileSystem);
+/** The typed failure a node adapter raises for EACCES. */
+const denied = (method: string, path: string) =>
+	Effect.fail(
+		PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method, pathOrDescriptor: path }),
+	);
+
+/**
+ * A volume holding a config at every candidate the resolvers below could probe,
+ * whose every probe and read is DENIED. Without the faults each resolver would
+ * find a file, so a `none()` can only come from the absorbed failure.
+ */
+const HostileFs = MemoryFileSystem.layerWith(
+	{
+		"/a/.apprc": "{}",
+		"/a/b/.apprc": "{}",
+		"/a/b/.git": MemoryFileSystem.directory(),
+		"/a/b/pnpm-workspace.yaml": "",
+		"/etc/acme/.apprc": "{}",
+	},
+	{
+		faults: {
+			access: (path) => denied("access", path),
+			readFile: (path) => denied("readFile", path),
+		},
+	},
+);
 
 const TestPath = Path.layer;
 const HostilePlatform = Layer.mergeAll(HostileFs, TestPath);
@@ -72,14 +94,22 @@ describe("ConfigResolver error absorption", () => {
 
 describe("ConfigResolver — an unreadable ancestor must not abort root discovery", () => {
 	/** `/a/b` is unreadable; the real root lives above it at `/a`. */
-	const flakyFs = Layer.succeed(FileSystem.FileSystem, {
-		exists: (p: string) => {
-			if (p.startsWith("/a/b/")) return Effect.fail(new Error("EACCES: permission denied"));
-			if (p === "/a/.git" || p === "/a/.apprc") return Effect.succeed(true);
-			return Effect.succeed(false);
+	const flakyFs = MemoryFileSystem.layerWith(
+		{
+			"/a/.git": MemoryFileSystem.directory(),
+			"/a/.apprc": "{}",
+			// Present but unreadable: were the fault gone, discovery would stop here.
+			"/a/b/.git": MemoryFileSystem.directory(),
+			"/a/b/.apprc": "{}",
+			"/a/b/c": MemoryFileSystem.directory(),
 		},
-		readFileString: () => Effect.fail(new Error("EACCES: permission denied")),
-	} as unknown as FileSystem.FileSystem);
+		{
+			faults: {
+				access: (path) => (path.startsWith("/a/b/") ? denied("access", path) : undefined),
+				readFile: (path) => denied("readFile", path),
+			},
+		},
+	);
 
 	it.effect("gitRoot finds the root above an unreadable ancestor", () =>
 		Effect.gen(function* () {
