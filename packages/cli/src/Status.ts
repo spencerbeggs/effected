@@ -1,3 +1,4 @@
+import { Array as Arr, Option } from "effect";
 import type { Style, TokenName } from "./Token.js";
 
 /**
@@ -78,15 +79,27 @@ export class Status<Names extends string> {
 	 * The status with the highest rank; a tie goes to the one that comes first in `names`.
 	 *
 	 * @remarks
-	 * Takes at least one name: there is no worst of nothing, and the type says so rather than the call failing.
+	 * Takes at least one name, so the answer is always a name. For an array that may be empty, use
+	 * {@link Status.worstOption}. They are two methods because a literal and an array variable are the same
+	 * array at runtime, so one method could not return a name for one and an `Option` for the other.
 	 *
 	 * @param names - the statuses to compare
 	 */
-	worst(names: readonly [Names, ...Array<Names>]): Names {
+	worst(names: Arr.NonEmptyReadonlyArray<Names>): Names {
 		let worst = names[0];
 		for (const name of names) {
 			if (this.defs[name].rank > this.defs[worst].rank) worst = name;
 		}
 		return worst;
+	}
+
+	/**
+	 * The status with the highest rank of an array that may be empty: `None` when it is, otherwise `Some` of
+	 * the worst, a tie going to the one that comes first in `names`.
+	 *
+	 * @param names - the statuses to compare
+	 */
+	worstOption(names: ReadonlyArray<Names>): Option.Option<Names> {
+		return Arr.isReadonlyArrayNonEmpty(names) ? Option.some(this.worst(names)) : Option.none();
 	}
 }

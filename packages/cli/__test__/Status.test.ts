@@ -1,4 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
+import { Option } from "effect";
+import type { CoreStatusName } from "../src/index.js";
 import { Status, Token } from "../src/index.js";
 
 describe("Status.core", () => {
@@ -14,6 +16,28 @@ describe("Status.core", () => {
 	it("worst is the highest rank", () => {
 		assert.strictEqual(Status.core.worst(["success", "skip", "failure"]), "failure");
 		assert.strictEqual(Status.core.worst(["success"]), "success");
+	});
+
+	it("worstOption of a runtime array is an Option: Some of the worst, None when empty", () => {
+		const results: Array<"success" | "skip" | "failure"> = ["success", "failure", "skip"];
+		const worst: Option.Option<CoreStatusName> = Status.core.worstOption(results);
+		assert.deepStrictEqual(worst, Option.some("failure"));
+		const none: Option.Option<CoreStatusName> = Status.core.worstOption([] as Array<"success">);
+		assert.deepStrictEqual(none, Option.none());
+	});
+
+	it("worst of a non-empty literal is the name itself, not an Option", () => {
+		const worst: CoreStatusName = Status.core.worst(["skip", "failure"]);
+		assert.strictEqual(worst, "failure");
+	});
+
+	it("worstOption breaks a rank tie in favour of the first name", () => {
+		const v = Status.extend({
+			a: { glyph: "a", ascii: "a", token: "info", rank: 50 },
+			b: { glyph: "b", ascii: "b", token: "info", rank: 50 },
+		});
+		const names: Array<"a" | "b"> = ["b", "a"];
+		assert.deepStrictEqual(v.worstOption(names), Option.some("b"));
 	});
 
 	it("worst breaks a rank tie in favour of the first name", () => {

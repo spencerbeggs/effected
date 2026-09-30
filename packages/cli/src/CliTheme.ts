@@ -154,7 +154,9 @@ export class CliTheme extends Context.Service<CliTheme, CliThemeShape>()("@effec
 	 *
 	 * @remarks
 	 * The colour fields are raw SGR openers and are empty strings when colour is `none`. Under ASCII glyphs the
-	 * prompt symbols fall back to ASCII too.
+	 * prompt symbols fall back to ASCII too. A colourless theme is not byte-clean: core's `Ansi.annotate`
+	 * appends a `\x1b[0m` reset, and prompts write cursor and underline codes, whatever the theme says (see
+	 * `okf/decisions/one-cancelled-for-two-prompt-engines.md`).
 	 */
 	static readonly promptTheme: Layer.Layer<never, never, CliTheme> = Layer.effect(
 		Prompt.Theme,
