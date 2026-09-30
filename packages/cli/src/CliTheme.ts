@@ -29,14 +29,31 @@ const DEFAULT_TOKENS: Readonly<Record<TokenName, Style>> = {
  *
  * @public
  */
-export interface CliThemeShape {
+export interface CliThemeShape extends StreamTheme {
+	/**
+	 * The theme of one output stream, painting with THAT stream's colour level.
+	 *
+	 * @remarks
+	 * The members above are the `stdout` ones. Anything written to stderr must be painted through
+	 * `forStream("stderr")`: redirecting one stream (`tool 2>err.log`, `tool | jq`) changes that stream's colour
+	 * and not the other's.
+	 */
+	readonly forStream: (stream: "stdout" | "stderr") => StreamTheme;
+}
+
+/**
+ * A theme bound to one stream's colour level.
+ *
+ * @public
+ */
+export interface StreamTheme {
 	/** Render `text` in a token or an explicit style; the identity when colour is `none`. */
 	readonly paint: (token: TokenName | Style, text: string) => string;
 	/** The raw opening SGR sequence of a token or style; `""` when colour is `none`. */
 	readonly sgr: (token: TokenName | Style) => string;
 	/** The glyph set in use. */
 	readonly glyphs: GlyphSet;
-	/** The colour level in use. */
+	/** The colour level of the stream. */
 	readonly color: ColorLevel;
 	/** Render a status from a vocabulary: its glyph, painted with its token, then `text` when given. */
 	readonly status: <N extends string>(vocab: Status<N>, name: N, text?: string) => string;
@@ -60,31 +77,38 @@ export interface CliThemeOptions {
  * @public
  */
 export interface CliThemeTestOptions {
-	/** The colour level; `none` by default. */
+	/** The stdout colour level; `none` by default. */
 	readonly color?: ColorLevel | undefined;
+	/** The stderr colour level; the same as `color` by default. */
+	readonly stderrColor?: ColorLevel | undefined;
 	/** The glyph set; Unicode by default. */
 	readonly glyphs?: "unicode" | "ascii" | undefined;
 }
 
 const make = (
-	color: ColorLevel,
+	colors: { readonly stdout: ColorLevel; readonly stderr: ColorLevel },
 	glyphs: GlyphSet,
 	overrides: Partial<Record<TokenName, Style>> | undefined,
 ): CliThemeShape => {
 	const tokens = { ...DEFAULT_TOKENS, ...overrides };
 	const resolve = (token: TokenName | Style): Style => (typeof token === "string" ? tokens[token] : token);
-	const paint = (token: TokenName | Style, text: string): string => paintStyle(resolve(token), color, text);
-	return {
-		paint,
-		sgr: (token) => openSequence(resolve(token), color),
-		glyphs,
-		color,
-		status: (vocab, name, text) => {
-			const def = vocab.def(name);
-			const glyph = paint(def.token, glyphs.kind === "ascii" ? def.ascii : def.glyph);
-			return text === undefined || text === "" ? glyph : `${glyph} ${text}`;
-		},
+	const forColor = (color: ColorLevel): StreamTheme => {
+		const paint = (token: TokenName | Style, text: string): string => paintStyle(resolve(token), color, text);
+		return {
+			paint,
+			sgr: (token) => openSequence(resolve(token), color),
+			glyphs,
+			color,
+			status: (vocab, name, text) => {
+				const def = vocab.def(name);
+				const glyph = paint(def.token, glyphs.kind === "ascii" ? def.ascii : def.glyph);
+				return text === undefined || text === "" ? glyph : `${glyph} ${text}`;
+			},
+		};
 	};
+	const stdout = forColor(colors.stdout);
+	const stderr = forColor(colors.stderr);
+	return { ...stdout, forStream: (stream) => (stream === "stdout" ? stdout : stderr) };
 };
 
 /** The prompt glyphs that differ under ASCII; `Prompt.makeTheme` already holds the Unicode ones. */
@@ -134,7 +158,7 @@ export class CliTheme extends Context.Service<CliTheme, CliThemeShape>()("@effec
 							)
 						: false;
 				const glyphs = choice === "ascii" || dumb ? Glyphs.ascii : Glyphs.unicode;
-				return make(terminal.stdout.color, glyphs, options?.tokens);
+				return make({ stdout: terminal.stdout.color, stderr: terminal.stderr.color }, glyphs, options?.tokens);
 			}),
 		);
 
@@ -146,7 +170,11 @@ export class CliTheme extends Context.Service<CliTheme, CliThemeShape>()("@effec
 	static readonly layerTest = (options?: CliThemeTestOptions): Layer.Layer<CliTheme> =>
 		Layer.succeed(
 			CliTheme,
-			make(options?.color ?? "none", options?.glyphs === "ascii" ? Glyphs.ascii : Glyphs.unicode, undefined),
+			make(
+				{ stdout: options?.color ?? "none", stderr: options?.stderrColor ?? options?.color ?? "none" },
+				options?.glyphs === "ascii" ? Glyphs.ascii : Glyphs.unicode,
+				undefined,
+			),
 		);
 
 	/**

@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T21:34:00Z
-  body_sha256: a86c6fd8395b77815fef13d678b6efbd893a48d85b1d3ef22b8d9daef05bb828
+  at: 2026-09-30T21:53:16Z
+  body_sha256: cfdc89569c8ffb5ba0ff6c65c8ac1d1082bb3860a3fc2c7cb28a852d3f82c026
 ---
 
 # @effected/cli
@@ -117,7 +117,7 @@ for why the package owns them.
 | `Token`, `Style`, `TokenName` | A token is a style; applying it is identity when colour is `none`. `TokenName` is `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` or `emphasis`. `Token.hex`, `Token.named` and `Token.style` build custom styles. |
 | `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `worst(names)` takes a non-empty list and returns the highest rank, ties to the first; `worstOption(names)` takes any array and returns an `Option`, `None` when empty. Names are typed, so a misspelt one is a compile error. |
 | `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis and spinner frames. ASCII is chosen under `TERM=dumb` or by option. |
-| `CliTheme` | A `Context.Service` with `paint`, `glyphs`, `color` and `status`. `layer({ tokens?, glyphs? })` needs `TerminalEnv`; `layerTest` fixes the colour level; `promptTheme` sets core's `Prompt.Theme` from the tokens, with empty colour strings when colour is `none`. |
+| `CliTheme` | A `Context.Service` with `paint`, `sgr`, `glyphs`, `color` and `status` (the stdout ones) and `forStream("stdout" \| "stderr")`, a `StreamTheme` painting with THAT stream's colour from `TerminalEnv.stderr.color` or `.stdout.color`; anything written to stderr is painted through `forStream("stderr")`, as `CliMessage` does. `layer({ tokens?, glyphs? })` needs `TerminalEnv`; `layerTest` fixes the colour level; `promptTheme` sets core's `Prompt.Theme` from the tokens, with empty colour strings when colour is `none`. |
 | `Fmt` | `width`, `truncate` (grapheme-safe, ANSI-safe, result never wider than asked), `duration`, `percent` and `plural`. Width comes from [the package's own implementation](../decisions/own-display-width.md). |
 | `CliMessage` | `success`, `info`, `warning`, `failure` and `status(vocab, name, text)`: one themed line each through `Console`, never the logger, so no log level silences them. `warning` and `failure` go to stderr; the others to stdout, and `status` defaults to stderr for a rank at or above `warning`'s. Only the glyph is painted and the text stays plain; an `agent` audience gets the glyph and text, never colour, even when the theme has colour. A `ci` audience is themed like a human, with colour still gated by `TerminalEnv`. Empty text prints the glyph alone. |
 | `CliLog` | Diagnostics, kept apart from `CliMessage`. `Level` is a reference defaulting to `None`, filtered on its own threshold rather than `MinimumLogLevel`. `layer({ envVar?, format?, logger?, extraLoggers? })` **owns the whole logger set** (`extraLoggers`, for example a telemetry logger, are kept and floored like the `CliLogger`): it builds the `CliLogger` (floored at the minimum level it had) and the stderr sink, NDJSON or pretty, and replaces whatever was installed without reading it, so there is no order to get wrong; use it instead of `CliLogger.layer`, never on top of it. Stderr is not pure NDJSON while diagnostics are on, so a parser reads the lines that start with `{`. `component(name)` annotates a line. The `file: { envVar } \| { path }` option adds an async NDJSON file sink (a queue drained by a scoped fiber, the same NDJSON line as the stderr sink in json format) that reports its first write error once (a defect counts too) and then drops further lines, and closing the scope waits at most two seconds for the drain so a hung filesystem cannot hang exit; only a layer given `file` requires `FileSystem` and `Path`. |

@@ -148,3 +148,36 @@ describe("CliTheme.promptTheme", () => {
 		}),
 	);
 });
+
+describe("CliTheme.forStream", () => {
+	it.effect("each stream paints with its own colour level; the top-level members are the stdout ones", () =>
+		Effect.gen(function* () {
+			const theme = yield* CliTheme;
+			assert.strictEqual(theme.forStream("stdout").color, "truecolor");
+			assert.strictEqual(theme.forStream("stderr").color, "none");
+			assert.strictEqual(theme.forStream("stdout").paint("failure", "x"), "\x1b[31mx\x1b[39m");
+			assert.strictEqual(theme.forStream("stderr").paint("failure", "x"), "x");
+			assert.strictEqual(theme.forStream("stderr").sgr("failure"), "");
+			assert.strictEqual(theme.forStream("stderr").status(Status.core, "failure", "boom"), "✗ boom");
+			assert.strictEqual(theme.color, "truecolor");
+			assert.strictEqual(theme.paint("failure", "x"), theme.forStream("stdout").paint("failure", "x"));
+		}).pipe(Effect.provide(CliTheme.layerTest({ color: "truecolor", stderrColor: "none" }))),
+	);
+
+	it.effect("layer reads stdout and stderr colour from TerminalEnv separately", () =>
+		Effect.gen(function* () {
+			const theme = yield* CliTheme;
+			assert.strictEqual(theme.forStream("stdout").color, "256");
+			assert.strictEqual(theme.forStream("stderr").color, "none");
+		}).pipe(
+			Effect.provide(CliTheme.layer({ glyphs: "unicode" })),
+			Effect.provide(TerminalEnv.layerTest({ stdout: { color: "256" }, stderr: { color: "none" } })),
+		),
+	);
+
+	it.effect("layerTest gives stderr the stdout colour unless told otherwise", () =>
+		Effect.gen(function* () {
+			assert.strictEqual((yield* CliTheme).forStream("stderr").color, "basic");
+		}).pipe(Effect.provide(CliTheme.layerTest({ color: "basic" }))),
+	);
+});

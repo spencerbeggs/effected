@@ -20,13 +20,20 @@ const run = (
 	options: {
 		readonly audience?: AudienceKind;
 		readonly color?: "none" | "basic" | "truecolor";
+		readonly stderrColor?: "none" | "basic" | "truecolor";
 		readonly glyphs?: "unicode" | "ascii";
 	} = {},
 ) =>
 	Effect.gen(function* () {
 		const { console: double, out, err } = capturing();
 		yield* program.pipe(
-			Effect.provide(CliTheme.layerTest({ color: options.color ?? "none", glyphs: options.glyphs ?? "unicode" })),
+			Effect.provide(
+				CliTheme.layerTest({
+					color: options.color ?? "none",
+					...(options.stderrColor === undefined ? {} : { stderrColor: options.stderrColor }),
+					glyphs: options.glyphs ?? "unicode",
+				}),
+			),
 			Effect.provide(Audience.layerTest(options.audience ?? "human")),
 			Effect.provideService(Console.Console, double),
 		);
@@ -187,6 +194,39 @@ describe("CliMessage edge cases", () => {
 			// success (10) is now at or above warning's rank (5), so it goes to stderr with it.
 			assert.deepStrictEqual(err, ["! low", "✓ above the new threshold"]);
 			assert.deepStrictEqual(out, []);
+		}),
+	);
+});
+
+describe("CliMessage paints each line with the colour of the stream it goes to", () => {
+	const both = Effect.gen(function* () {
+		yield* CliMessage.success("ok");
+		yield* CliMessage.failure("bad");
+	});
+
+	it.effect("stdout coloured and stderr not (tool 2>err.log): the failure line has no escape, success does", () =>
+		Effect.gen(function* () {
+			const { out, err } = yield* run(both, { color: "truecolor", stderrColor: "none" });
+			assert.deepStrictEqual(out, ["\x1b[32m✓\x1b[39m ok"]);
+			assert.deepStrictEqual(err, ["✗ bad"]);
+		}),
+	);
+
+	it.effect("stderr coloured and stdout not (tool | jq): the reverse", () =>
+		Effect.gen(function* () {
+			const { out, err } = yield* run(both, { color: "none", stderrColor: "basic" });
+			assert.deepStrictEqual(out, ["✓ ok"]);
+			assert.deepStrictEqual(err, ["\x1b[31m✗\x1b[39m bad"]);
+		}),
+	);
+
+	it.effect("an explicit stream override paints with that stream's colour", () =>
+		Effect.gen(function* () {
+			const { out } = yield* run(CliMessage.status(Status.core, "failure", "to stdout", { stream: "stdout" }), {
+				color: "none",
+				stderrColor: "basic",
+			});
+			assert.deepStrictEqual(out, ["✗ to stdout"]);
 		}),
 	);
 });

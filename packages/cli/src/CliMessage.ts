@@ -53,17 +53,21 @@ export class CliMessage {
 			const audience = yield* Audience;
 			const def = vocab.def(name);
 
-			let line: string;
-			if (audience.kind === "agent") {
-				const glyph = theme.glyphs.kind === "ascii" ? def.ascii : def.glyph;
-				line = text === "" ? glyph : `${glyph} ${text}`;
-			} else {
-				line = theme.status(vocab, name, text);
-			}
-
+			// The stream first, then the line painted with THAT stream's colour: a redirected stderr is not coloured
+			// because stdout is.
 			// Every vocabulary is built from Status.core, so "warning" is always there; the cast only widens the name.
 			const warning = (vocab as unknown as Status<"warning">).def("warning").rank;
 			const stream = options?.stream ?? (def.rank >= warning ? "stderr" : "stdout");
+			const streamTheme = theme.forStream(stream);
+
+			let line: string;
+			if (audience.kind === "agent") {
+				const glyph = streamTheme.glyphs.kind === "ascii" ? def.ascii : def.glyph;
+				line = text === "" ? glyph : `${glyph} ${text}`;
+			} else {
+				line = streamTheme.status(vocab, name, text);
+			}
+
 			yield* stream === "stderr" ? Console.error(line) : Console.log(line);
 		});
 
