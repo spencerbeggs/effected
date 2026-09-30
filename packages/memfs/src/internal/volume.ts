@@ -153,6 +153,8 @@ interface State {
 	readonly descriptors: HashMap.HashMap<FileDescriptor, OpenFileDescriptor>;
 	readonly nextDescriptor: number;
 	readonly nextTemporary: number;
+	// KIT EXTENSION (case folding — ledger entry 11): fixed at build, never changed afterwards.
+	readonly caseSensitive: boolean;
 }
 
 interface Volume {
@@ -2621,57 +2623,68 @@ const glob = (volume: Volume) =>
 // volume
 // =============================================================================
 
-const makeVolume = Effect.gen(function* () {
-	const now = yield* DateTime.now;
-	// NOTE: One permit covers a transition, its state assignment, and event publication;
-	// acquiring that permit remains interruptible.
-	const lock = yield* Semaphore.make(1);
-	const watchers = new Set<WatchSubscription>();
+// KIT EXTENSION (case folding — ledger entry 11): the engine's build-time options.
+/** @internal */
+export interface EngineOptions {
+	readonly caseSensitive: boolean;
+}
+const defaultEngineOptions: EngineOptions = { caseSensitive: true };
 
-	let state: State = {
-		inodes: HashMap.make([
-			RootInode,
-			{
-				_tag: "Directory",
-				ino: RootInode,
-				mode: DIR_MODE,
-				uid: DEFAULT_UID,
-				gid: DEFAULT_GID,
-				nlink: DIR_LINK_COUNT,
-				openCount: 0,
-				atime: now,
-				mtime: now,
-				ctime: now,
-				birthtime: now,
-				entries: HashMap.empty(),
-			} satisfies DirectoryInode,
-		]),
-		nextInode: FIRST_INODE,
-		descriptors: HashMap.empty(),
-		nextDescriptor: FIRST_DESCRIPTOR,
-		nextTemporary: FIRST_TEMP,
-	};
+const makeVolume = (options: EngineOptions) =>
+	Effect.gen(function* () {
+		const now = yield* DateTime.now;
+		// NOTE: One permit covers a transition, its state assignment, and event publication;
+		// acquiring that permit remains interruptible.
+		const lock = yield* Semaphore.make(1);
+		const watchers = new Set<WatchSubscription>();
 
-	const commitResult = <A>(result: TransitionResult<A>): Effect.Effect<A> =>
-		Effect.sync(() => {
-			state = result.state;
-		}).pipe(Effect.andThen(publishWatchEvents(watchers, result.events)), Effect.as(result.value));
+		let state: State = {
+			inodes: HashMap.make([
+				RootInode,
+				{
+					_tag: "Directory",
+					ino: RootInode,
+					mode: DIR_MODE,
+					uid: DEFAULT_UID,
+					gid: DEFAULT_GID,
+					nlink: DIR_LINK_COUNT,
+					openCount: 0,
+					atime: now,
+					mtime: now,
+					ctime: now,
+					birthtime: now,
+					entries: HashMap.empty(),
+				} satisfies DirectoryInode,
+			]),
+			nextInode: FIRST_INODE,
+			descriptors: HashMap.empty(),
+			nextDescriptor: FIRST_DESCRIPTOR,
+			nextTemporary: FIRST_TEMP,
+			caseSensitive: options.caseSensitive,
+		};
 
-	const commit = <A, E, R>(use: (state: State) => Effect.Effect<TransitionResult<A>, E, R>): Effect.Effect<A, E, R> =>
-		Effect.flatMap(
-			Effect.suspend(() => use(state)),
-			commitResult,
-		);
+		const commitResult = <A>(result: TransitionResult<A>): Effect.Effect<A> =>
+			Effect.sync(() => {
+				state = result.state;
+			}).pipe(Effect.andThen(publishWatchEvents(watchers, result.events)), Effect.as(result.value));
 
-	const withState: Volume["withState"] = (use) => lock.withPermit(Effect.suspend(() => use(state)));
-	const mutate: Volume["mutate"] = (use) => lock.withPermit(Effect.uninterruptible(commit(use)));
-	const mutateInterruptibly: Volume["mutateInterruptibly"] = (use) =>
-		lock.withPermit(
-			Effect.uninterruptibleMask((restore) => Effect.flatMap(restore(Effect.suspend(() => use(state))), commitResult)),
-		);
+		const commit = <A, E, R>(use: (state: State) => Effect.Effect<TransitionResult<A>, E, R>): Effect.Effect<A, E, R> =>
+			Effect.flatMap(
+				Effect.suspend(() => use(state)),
+				commitResult,
+			);
 
-	return { currentState: () => state, mutate, mutateInterruptibly, watchers, withState } satisfies Volume;
-});
+		const withState: Volume["withState"] = (use) => lock.withPermit(Effect.suspend(() => use(state)));
+		const mutate: Volume["mutate"] = (use) => lock.withPermit(Effect.uninterruptible(commit(use)));
+		const mutateInterruptibly: Volume["mutateInterruptibly"] = (use) =>
+			lock.withPermit(
+				Effect.uninterruptibleMask((restore) =>
+					Effect.flatMap(restore(Effect.suspend(() => use(state))), commitResult),
+				),
+			);
+
+		return { currentState: () => state, mutate, mutateInterruptibly, watchers, withState } satisfies Volume;
+	});
 
 // =============================================================================
 // watching
@@ -2750,14 +2763,18 @@ const toFileSystem = (volume: Volume): FileSystem.FileSystem =>
 		writeFile: writeFile(volume),
 	});
 
-const makeReadyVolume: Effect.Effect<Volume> = Effect.gen(function* () {
-	const volume = yield* makeVolume;
-	yield* Effect.orDie(makeDirectory(volume)(TEMP_DIR, { recursive: true }));
-	return volume;
-});
+const makeReadyVolume = (options: EngineOptions): Effect.Effect<Volume> =>
+	Effect.gen(function* () {
+		const volume = yield* makeVolume(options);
+		yield* Effect.orDie(makeDirectory(volume)(TEMP_DIR, { recursive: true }));
+		return volume;
+	});
 
 /** @internal */
-export const make: Effect.Effect<FileSystem.FileSystem> = Effect.map(makeReadyVolume, toFileSystem);
+export const make: Effect.Effect<FileSystem.FileSystem> = Effect.map(
+	makeReadyVolume(defaultEngineOptions),
+	toFileSystem,
+);
 
 // Kit extension (volume inspection): a literal, synchronous walk of the tree
 // for test assertions. Symbolic links are reported as themselves (never
@@ -2774,7 +2791,11 @@ export interface VolumeEntrySnapshot {
 	readonly mtime: number;
 	/** The stored target of a `SymbolicLink` entry (never resolved), `undefined` otherwise. */
 	readonly target: string | undefined;
+	// KIT EXTENSION (entry size): file byte length, symlink target UTF-8 length, 0 for a directory.
+	readonly size: number;
 }
+
+const encoder = new TextEncoder();
 
 const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 	const output: Array<VolumeEntrySnapshot> = [];
@@ -2793,6 +2814,7 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 		data: undefined,
 		mtime: DateTime.toEpochMillis(root.mtime),
 		target: undefined,
+		size: 0,
 	});
 	interface Frame {
 		readonly names: Array<string>;
@@ -2823,6 +2845,12 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 			data: entry._tag === "File" ? entry.data : undefined,
 			mtime: DateTime.toEpochMillis(entry.mtime),
 			target: entry._tag === "SymbolicLink" ? entry.target : undefined,
+			size:
+				entry._tag === "File"
+					? entry.data.length
+					: entry._tag === "SymbolicLink"
+						? encoder.encode(entry.target).length
+						: 0,
 		});
 		if (entry._tag === "Directory") {
 			frames.push({ names: [...HashMap.keys(entry.entries)].sort(), directory: entry, prefix: path, index: 0 });
@@ -2836,13 +2864,20 @@ export interface InspectableFileSystem {
 	readonly fileSystem: FileSystem.FileSystem;
 	/** Walks the volume's live state at call time — never a copy taken at build. */
 	readonly entries: () => Array<VolumeEntrySnapshot>;
+	// KIT EXTENSION (case folding — ledger entry 11): the folding mode the volume was built with.
+	readonly caseSensitive: boolean;
 }
 
 /** @internal */
-export const makeInspectable: Effect.Effect<InspectableFileSystem> = Effect.map(makeReadyVolume, (volume) => ({
-	fileSystem: toFileSystem(volume),
-	entries: () => collectEntrySnapshots(volume.currentState()),
-}));
+export const makeInspectableWith = (options: EngineOptions): Effect.Effect<InspectableFileSystem> =>
+	Effect.map(makeReadyVolume(options), (volume) => ({
+		fileSystem: toFileSystem(volume),
+		entries: () => collectEntrySnapshots(volume.currentState()),
+		caseSensitive: options.caseSensitive,
+	}));
+
+/** @internal */
+export const makeInspectable: Effect.Effect<InspectableFileSystem> = makeInspectableWith(defaultEngineOptions);
 
 /** @internal */
 export const layer = Layer.effect(FileSystem.FileSystem, make);

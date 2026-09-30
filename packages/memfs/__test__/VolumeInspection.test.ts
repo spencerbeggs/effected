@@ -7,6 +7,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Layer, Option, PlatformError } from "effect";
 import { TestClock } from "effect/testing";
 import { MemoryFileSystem } from "../src/index.js";
+import * as internal from "../src/internal/volume.js";
 
 const encoder = new TextEncoder();
 
@@ -493,6 +494,21 @@ describe("MemoryFileSystemVolume.mtime", () => {
 				"/dir": MemoryFileSystem.directory(),
 			});
 			assert.isDefined(volume.mtime("/dir"));
+		}),
+	);
+});
+
+describe("engine snapshot size", () => {
+	it.effect("reports file bytes, symlink target length and 0 for directories", () =>
+		Effect.gen(function* () {
+			const { fileSystem, entries } = yield* internal.makeInspectableWith({ caseSensitive: true });
+			yield* fileSystem.makeDirectory("/d");
+			yield* fileSystem.writeFileString("/d/f.txt", "héllo");
+			yield* fileSystem.symlink("/d/f.txt", "/d/l");
+			const byPath = new Map(entries().map((e) => [e.path, e]));
+			assert.strictEqual(byPath.get("/d/f.txt")?.size, 6);
+			assert.strictEqual(byPath.get("/d/l")?.size, 8);
+			assert.strictEqual(byPath.get("/d")?.size, 0);
 		}),
 	);
 });
