@@ -1,5 +1,17 @@
 # @effected/pnpm-plugin-effect
 
+## 0.12.7
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/workspaces` ^0.30.2 -> ^0.30.3 (peer ^0.30.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.12.6
 
 ### Maintenance
