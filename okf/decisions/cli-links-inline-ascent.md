@@ -6,11 +6,13 @@ status: draft
 tags: [architecture, bundle, deps]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T22:58:53Z
-  body_sha256: 2c1badba888f377422d38c10c8e4b17e6a6f7e7ba5e6787baa8067301562b00c
+  at: 2026-09-30T23:56:58Z
+  body_sha256: 44c56e989071df0baf9e9b3b05634a691e1755f235fd6bb82b6db1bc289bb981
 ---
 
 # CliLinks finds the editor directory with its own bounded ascent
+
+Superseded by [CliLinks finds the project root with @effected/walker](cli-takes-the-walker-edge.md): the user reversed this ruling, and `CliLinks` takes the walker edge. This draft is left for a human to verify and deprecate.
 
 ## Context
 

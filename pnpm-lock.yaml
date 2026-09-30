@@ -978,6 +978,12 @@ importers:
       '@effected/env':
         specifier: workspace:^
         version: link:../env/dist/dev/pkg
+      '@effected/glob':
+        specifier: workspace:^
+        version: link:../glob/dist/dev/pkg
+      '@effected/walker':
+        specifier: workspace:^
+        version: link:../walker/dist/dev/pkg
       ajv:
         specifier: ^8.20.0
         version: 8.20.0

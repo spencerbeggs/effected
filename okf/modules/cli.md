@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T23:53:25Z
-  body_sha256: 1280f2ae90e3fedb9100a3a12ceaa611a3b294d081bb153e7296083e73f969d8
+  at: 2026-09-30T23:56:58Z
+  body_sha256: 909fb2967fa31dcde8de84688c97d45e8d1e7309408f3e2eda5c755a2a1c8f3e
 ---
 
 # @effected/cli
@@ -129,7 +129,7 @@ for why the package owns them.
 | `Doc` | Landing in P3: the document IR, plain frozen nodes discriminated by `_tag` and built by constructors (`Doc.text`, `code`, `link`, `status`, `path`, `heading`, `paragraph`, `list`, `table`, `tree`, `collapsible`, `callout`, `codeBlock`, `diff`, `section`, `counts`). A status node stores a `Status.resolve` definition. See [the IR decision](../decisions/doc-ir-is-plain-data.md). |
 | `Render` | Landing in P3: pure `plain`, `ansi`, `markdown` and `githubLog` renderers over a `RenderContext`, and `Render.context(stream)` to build one. `Render.ansi` (for people) is built on the same walk as `Render.plain`: the same layout painted with the context's tokens and linked through `ctx.link`, and identical to plain at colour none apart from code markers and the path separator. `Render.githubLog` is plain text with a top-level collapsible as a `::group::`, nested collapsibles flattened, and any line a runner would read as a command neutralized. `Render.markdown` (GFM, for step summaries and files) is built and verified against `@effected/markdown` as a test-only oracle: text is escaped so it cannot become markdown, and links are only emitted for a safe scheme. `Render.plain` (for agents) is built: no escape of any kind, a path joined with `>`, a link as its label plus the target in parentheses, a long URL kept whole. No JSON renderer ([decision](../decisions/no-json-renderer.md)). |
 | `GithubAnnotation` | `format(annotation, message)` for a GitHub workflow-command annotation: the message escapes `%`, CR and LF, a property also `:` and `,`, written in the order `WorkflowCommand` uses, which the test-only oracle `@effected/github-actions` confirms. |
-| `CliLinks` | Where a file link opens: `vscode://file/<path>:<line>:<col>`, `file://<path>` or none. `auto` is `vscode` on the `vscode` terminal signal or a `.vscode/` directory at the project root (the nearest ancestor with `.git` or `pnpm-workspace.yaml`, found by a bounded ascent of at most 64 directories, not `@effected/walker`: [decision](../decisions/cli-links-inline-ascent.md)); an environment variable the consumer names beats the option. `CliLinks.linker({ links, hyperlinks, audience })` is the `RenderContext.link` policy: OSC 8 only when hyperlinks are on and the audience is not an agent. `CliEnv.layer` provides it and takes `FileSystem` and `Path` from the environment when it has them, without requiring them. |
+| `CliLinks` | Where a file link opens: `vscode://file/<path>:<line>:<col>`, `file://<path>` or none. `auto` is `vscode` on the `vscode` terminal signal or a `.vscode/` directory at the project root (the nearest ancestor with `.git` or `pnpm-workspace.yaml`, found with `Walker.ascend`, at most 64 directories up, and `Walker.findRoot`: [decision](../decisions/cli-takes-the-walker-edge.md)); an environment variable the consumer names beats the option. `CliLinks.linker({ links, hyperlinks, audience })` is the `RenderContext.link` policy: OSC 8 only when hyperlinks are on and the audience is not an agent. `CliEnv.layer` provides it and takes `FileSystem` and `Path` from the environment when it has them, without requiring them. |
 | `CliFailure` | Planned, landing in P3: failure rendering on the IR (`CliFailure.toDoc`), with the two schema-issue renderers moving onto its `Tree`. |
 | `./ui`, `./ui/testing` | Planned (P4): interactive Ink screens, widgets and a live view, behind optional peers the root never reaches. |
 

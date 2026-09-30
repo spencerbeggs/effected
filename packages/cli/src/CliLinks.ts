@@ -1,5 +1,6 @@
 import type { AudienceKind } from "@effected/env";
 import { CurrentRuntimeEnv } from "@effected/env";
+import { Walker } from "@effected/walker";
 import type { Layer as LayerType } from "effect";
 import { Config, Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 import type { LinkTarget } from "./Doc.js";
@@ -63,7 +64,7 @@ export interface CliLinksLinkerOptions {
 	readonly audience: AudienceKind;
 }
 
-/** The most directories the ascent climbs above the working directory. */
+/** The most directories the ascent climbs above the working directory, so it looks at most at 65. */
 const MAX_ASCENT = 64;
 
 const MODES: ReadonlyArray<EditorLinks> = ["auto", "vscode", "file", "off"];
@@ -115,25 +116,24 @@ const exists = (fs: FileSystem.FileSystem, path: string): Effect.Effect<boolean>
 /**
  * The nearest directory, from `cwd` up, that holds `.git` or `pnpm-workspace.yaml`.
  *
- * It looks at `cwd` and then climbs at most {@link MAX_ASCENT} directories, stopping early where `dirname` reaches a
- * fixpoint (the filesystem root). `None` when there is none.
+ * It looks at `cwd` and then climbs at most {@link MAX_ASCENT} directories, through `Walker.ascend`, which also stops
+ * where `dirname` reaches a fixpoint (the filesystem root). `Walker.findRoot` absorbs a failed probe as "not a root",
+ * so one unreadable directory never hides a root above it. `None` when there is none.
  */
 const findRoot = (fs: FileSystem.FileSystem, path: Path.Path, cwd: string): Effect.Effect<Option.Option<string>> =>
-	Effect.gen(function* () {
-		let directory = cwd;
-		for (let step = 0; step <= MAX_ASCENT; step++) {
-			if (
-				(yield* exists(fs, path.join(directory, ".git"))) ||
-				(yield* exists(fs, path.join(directory, "pnpm-workspace.yaml")))
-			) {
-				return Option.some(directory);
-			}
-			const parent = path.dirname(directory);
-			if (parent === directory) return Option.none();
-			directory = parent;
-		}
-		return Option.none();
-	});
+	Walker.ascend(cwd, { maxDepth: MAX_ASCENT + 1 }).pipe(
+		Effect.provideService(Path.Path, path),
+		Effect.flatMap((directories) =>
+			Walker.findRoot(directories, (directory) =>
+				Effect.gen(function* () {
+					return (
+						(yield* exists(fs, path.join(directory, ".git"))) ||
+						(yield* exists(fs, path.join(directory, "pnpm-workspace.yaml")))
+					);
+				}),
+			),
+		),
+	);
 
 const readOption = (name: string): Effect.Effect<Option.Option<string>> =>
 	Config.option(Config.String(name)).pipe(Effect.orElseSucceed(() => Option.none<string>()));

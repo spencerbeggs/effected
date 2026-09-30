@@ -55,6 +55,7 @@
 	"peerDependencies": {
 		"@effected/config-file": "workspace:^",
 		"@effected/env": "workspace:^",
+		"@effected/walker": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
 	"peerDependenciesMeta": {
