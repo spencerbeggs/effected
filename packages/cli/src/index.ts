@@ -31,6 +31,7 @@ export { type AudienceFlagInput, CliAudience, type CliAudienceFlagsOptions } fro
 export { CliColor } from "./CliColor.js";
 export { CliExit, type CliExitShape } from "./CliExit.js";
 export { CliInteractive } from "./CliInteractive.js";
+export { CliLog, type CliLogOptions } from "./CliLog.js";
 export { CliLogger, type CliLoggerOptions } from "./CliLogger.js";
 export { CliMessage, type CliMessageOptions } from "./CliMessage.js";
 export { CliRuntime, type FailureDetails, type MainOptions, type ReportFailuresOptions } from "./CliRuntime.js";

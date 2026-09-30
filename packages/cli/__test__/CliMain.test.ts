@@ -190,3 +190,50 @@ describe("CliRuntime.main and a UserError raised through Command.runWith", () =>
 		}),
 	);
 });
+
+describe("CliRuntime.main and --log-level", () => {
+	// Review Focus 1: core's --log-level flag sets MinimumLogLevel for the command program. Effect filters a log
+	// record against MinimumLogLevel BEFORE any logger runs, so a flag value of `none` silences every Effect.log*
+	// call made inside the handler. The failure report is written by reportFailures AFTER the handler's scope
+	// has closed, so it must still reach stderr, and the exit code must still be right.
+	const boom = Command.make("boom", {}, () => Effect.fail(new Error("boom")));
+	const app = Command.make("tool").pipe(Command.withSubcommands([boom]));
+
+	for (const level of ["none", "all", "debug"]) {
+		it.effect(
+			`--log-level ${level}: a failing command still reports its failure on stderr with the right exit code`,
+			() =>
+				Effect.gen(function* () {
+					const { double, out, err } = capturing();
+					const exit = yield* CliRuntime.main(
+						Command.runWith(app, { version: "1.0.0" })(["--log-level", level, "boom"]),
+						{
+							platform: NodeServices.layer,
+						},
+					).pipe(Effect.exit, Effect.provideService(Console.Console, double));
+					assert.deepStrictEqual(err, ["Error: boom"]);
+					assert.deepStrictEqual(out, []);
+					assert.strictEqual(codeOf(exit), 1);
+				}),
+		);
+	}
+
+	// The positive control for the tests above: the flag really does silence logging INSIDE the handler, so the
+	// failure report surviving is the runtime's doing and not a flag that never took effect.
+	it.effect("control: --log-level none silences Effect.logError inside the handler, --log-level error does not", () =>
+		Effect.gen(function* () {
+			const noisy = Command.make("noisy", {}, () => Effect.logError("inside"));
+			const root = Command.make("tool").pipe(Command.withSubcommands([noisy]));
+			const run = (level: string) =>
+				Effect.gen(function* () {
+					const { double, err } = capturing();
+					yield* CliRuntime.main(Command.runWith(root, { version: "1.0.0" })(["--log-level", level, "noisy"]), {
+						platform: NodeServices.layer,
+					}).pipe(Effect.exit, Effect.provideService(Console.Console, double));
+					return err;
+				});
+			assert.deepStrictEqual(yield* run("none"), []);
+			assert.deepStrictEqual(yield* run("error"), ["inside"]);
+		}),
+	);
+});

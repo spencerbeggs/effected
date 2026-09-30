@@ -1,0 +1,322 @@
+import { NodeServices } from "@effect/platform-node";
+import { assert, describe, it } from "@effect/vitest";
+import type { AudienceKind } from "@effected/env";
+import { Audience, TerminalEnv } from "@effected/env";
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Logger, Runtime } from "effect";
+import { Command } from "effect/cli";
+import { CliLog, CliLogger, CliRuntime } from "../src/index.js";
+
+const ENV = "VITEST_REPORTER_LOG_LEVEL";
+
+const capturing = () => {
+	const out: string[] = [];
+	const err: string[] = [];
+	const double: Console.Console = Object.assign(Object.create(console) as Console.Console, {
+		log: (...args: ReadonlyArray<unknown>) => out.push(args.map(String).join(" ")),
+		error: (...args: ReadonlyArray<unknown>) => err.push(args.map(String).join(" ")),
+	});
+	return { double, out, err };
+};
+
+interface Setup {
+	readonly env?: Record<string, string>;
+	readonly audience?: AudienceKind;
+	readonly stderrTty?: boolean;
+	readonly color?: "none" | "basic";
+	readonly format?: "auto" | "json" | "pretty";
+	/** Loggers already installed when CliLog.layer builds; the default is none, so only the sink writes. */
+	readonly base?: Layer.Layer<never>;
+}
+
+/** The diagnostics layer over a base logger set, with the audience and terminal it reads provided. */
+const diagnostics = (setup: Setup = {}) =>
+	CliLog.layer({ envVar: ENV, ...(setup.format === undefined ? {} : { format: setup.format }) }).pipe(
+		Layer.provide(setup.base ?? Logger.layer([])),
+		Layer.provide(
+			Layer.mergeAll(
+				Audience.layerTest(setup.audience ?? "agent"),
+				TerminalEnv.layerTest({ stderr: { isTerminal: setup.stderrTty ?? false, color: setup.color ?? "none" } }),
+			),
+		),
+	);
+
+const capture = (program: Effect.Effect<void>, setup: Setup = {}) =>
+	Effect.gen(function* () {
+		const { double, out, err } = capturing();
+		yield* program.pipe(
+			Effect.provide(diagnostics(setup)),
+			Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(setup.env ?? {})),
+			Effect.provideService(Console.Console, double),
+		);
+		return { out, err };
+	});
+
+const both = Effect.gen(function* () {
+	yield* Effect.logDebug("dbg");
+	yield* Effect.logError("boom");
+});
+
+const json = (line: string): { level: string; message: unknown; annotations: Record<string, unknown> } =>
+	JSON.parse(line);
+
+describe("CliLog.Level", () => {
+	it.effect("defaults to None", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* CliLog.Level, "None");
+		}),
+	);
+});
+
+describe("CliLog.layer threshold", () => {
+	it.effect("with no env var the sink stays silent, even for an error", () =>
+		Effect.gen(function* () {
+			const { out, err } = yield* capture(both);
+			assert.deepStrictEqual([out, err], [[], []]);
+		}),
+	);
+
+	it.effect(`${ENV}=debug writes both as NDJSON to stderr only under an agent audience`, () =>
+		Effect.gen(function* () {
+			const { out, err } = yield* capture(both, { env: { [ENV]: "debug" }, audience: "agent" });
+			assert.deepStrictEqual(out, []);
+			assert.strictEqual(err.length, 2);
+			assert.deepStrictEqual(
+				err.map((l) => json(l).level),
+				["DEBUG", "ERROR"],
+			);
+			assert.deepStrictEqual(
+				err.map((l) => json(l).message),
+				["dbg", "boom"],
+			);
+		}),
+	);
+
+	it.effect(`${ENV}=debug writes pretty lines under a human with a stderr TTY`, () =>
+		Effect.gen(function* () {
+			const { out, err } = yield* capture(both, {
+				env: { [ENV]: "debug" },
+				audience: "human",
+				stderrTty: true,
+			});
+			assert.deepStrictEqual(out, []);
+			assert.strictEqual(err.length, 2);
+			assert.match(err[0] ?? "", /^\d\d:\d\d:\d\d\.\d{3} DEBUG dbg$/);
+			assert.match(err[1] ?? "", /^\d\d:\d\d:\d\d\.\d{3} ERROR boom$/);
+		}),
+	);
+
+	it.effect("only records at or above the level are written", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(
+				Effect.gen(function* () {
+					yield* Effect.logDebug("d");
+					yield* Effect.logInfo("i");
+					yield* Effect.logWarning("w");
+					yield* Effect.logError("e");
+				}),
+				{ env: { [ENV]: "warn" } },
+			);
+			assert.deepStrictEqual(
+				err.map((l) => json(l).level),
+				["WARN", "ERROR"],
+			);
+		}),
+	);
+
+	it.effect("scoping CliLog.Level narrows the threshold further", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(both.pipe(Effect.provideService(CliLog.Level, "Error")), {
+				env: { [ENV]: "debug" },
+			});
+			assert.deepStrictEqual(
+				err.map((l) => json(l).message),
+				["boom"],
+			);
+		}),
+	);
+
+	describe("level aliases are case-insensitive", () => {
+		const cases: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
+			["WARN", ["WARN", "ERROR", "FATAL"]],
+			["Warning", ["WARN", "ERROR", "FATAL"]],
+			["error", ["ERROR", "FATAL"]],
+			["INFO", ["INFO", "WARN", "ERROR", "FATAL"]],
+			["fatal", ["FATAL"]],
+			["none", []],
+			["all", ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]],
+			["trace", ["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]],
+		];
+		for (const [value, expected] of cases) {
+			it.effect(`${value} => ${expected.join(",") || "nothing"}`, () =>
+				Effect.gen(function* () {
+					const { err } = yield* capture(
+						Effect.gen(function* () {
+							yield* Effect.logTrace("t");
+							yield* Effect.logDebug("d");
+							yield* Effect.logInfo("i");
+							yield* Effect.logWarning("w");
+							yield* Effect.logError("e");
+							yield* Effect.logFatal("f");
+						}),
+						{ env: { [ENV]: value } },
+					);
+					assert.deepStrictEqual(
+						err.map((l) => json(l).level),
+						expected,
+					);
+				}),
+			);
+		}
+	});
+
+	it.effect("an invalid value warns exactly once through the existing logger, not the sink, and stays silent", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(Effect.logError("boom"), {
+				env: { [ENV]: "bogus" },
+				base: CliLogger.layer(),
+			});
+			// The one line is the plain CliLogger warning and "boom" (an Info-or-above record) printed by CliLogger;
+			// nothing is written as NDJSON by the sink.
+			assert.strictEqual(err.filter((l) => l.includes("bogus")).length, 1, err.join("\n"));
+			assert.isFalse(err.some((l) => l.startsWith("{")));
+			assert.deepStrictEqual(
+				err.filter((l) => !l.includes("bogus")),
+				["boom"],
+			);
+		}),
+	);
+});
+
+describe("CliLog.layer format", () => {
+	const one = Effect.logInfo("hello");
+	const env = { [ENV]: "info" };
+
+	it.effect("auto is NDJSON for an agent and for ci", () =>
+		Effect.gen(function* () {
+			for (const audience of ["agent", "ci"] as const) {
+				const { err } = yield* capture(one, { env, audience, stderrTty: true });
+				assert.strictEqual(json(err[0] ?? "").message, "hello", audience);
+			}
+		}),
+	);
+
+	it.effect("auto is NDJSON for a human whose stderr is not a terminal", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(one, { env, audience: "human", stderrTty: false });
+			assert.strictEqual(json(err[0] ?? "").message, "hello");
+		}),
+	);
+
+	it.effect("an explicit format overrides auto", () =>
+		Effect.gen(function* () {
+			const pretty = yield* capture(one, { env, audience: "agent", format: "pretty" });
+			assert.match(pretty.err[0] ?? "", /INFO hello$/);
+			const asJson = yield* capture(one, { env, audience: "human", stderrTty: true, format: "json" });
+			assert.strictEqual(json(asJson.err[0] ?? "").message, "hello");
+		}),
+	);
+
+	it.effect("pretty colour comes from TerminalEnv.stderr.color, not from a TTY check", () =>
+		Effect.gen(function* () {
+			const plain = yield* capture(one, { env, audience: "human", stderrTty: true, color: "none" });
+			assert.notInclude(plain.err[0] ?? "", "\x1b");
+			const coloured = yield* capture(one, { env, audience: "human", stderrTty: true, color: "basic" });
+			assert.include(coloured.err[0] ?? "", "\x1b[");
+			assert.include(coloured.err[0] ?? "", "hello");
+		}),
+	);
+});
+
+describe("CliLog.component", () => {
+	const work = CliLog.component("plugin")(Effect.logInfo("starting"));
+
+	it.effect("shows as [plugin] in pretty output", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(work, { env: { [ENV]: "info" }, audience: "human", stderrTty: true });
+			assert.match(err[0] ?? "", /INFO \[plugin\] starting$/);
+		}),
+	);
+
+	it.effect("is a field in NDJSON", () =>
+		Effect.gen(function* () {
+			const { err } = yield* capture(work, { env: { [ENV]: "info" }, audience: "agent" });
+			assert.strictEqual(json(err[0] ?? "").annotations.component, "plugin");
+		}),
+	);
+});
+
+describe("CliLog composed with CliLogger", () => {
+	const boom = Command.make("boom", {}, () => Effect.fail(new Error("boom")));
+	const inside = Command.make("inside", {}, () => Effect.logDebug("inside"));
+	const app = Command.make("tool").pipe(Command.withSubcommands([boom, inside]));
+
+	const runMain = (argv: ReadonlyArray<string>, env: Record<string, string> = {}) =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			const logger = CliLog.layer({ envVar: ENV }).pipe(
+				Layer.provide(CliLogger.layer()),
+				Layer.provide(Layer.mergeAll(Audience.layerTest("agent"), TerminalEnv.layerTest())),
+			);
+			const exit = yield* CliRuntime.main(Command.runWith(app, { version: "1.0.0" })(argv), {
+				platform: NodeServices.layer,
+				logger,
+			}).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
+				Effect.provideService(Console.Console, double),
+			);
+			const code = Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
+			return { out, err, code };
+		});
+
+	// Review Focus 1: neither the diagnostics default nor `--log-level none` may silence the failure report.
+	for (const argv of [["boom"], ["--log-level", "none", "boom"]]) {
+		it.effect(`a failure is still reported, once and plain, with the diagnostics level None: ${argv.join(" ")}`, () =>
+			Effect.gen(function* () {
+				const { out, err, code } = yield* runMain(argv);
+				assert.deepStrictEqual(err, ["Error: boom"]);
+				assert.deepStrictEqual(out, []);
+				assert.strictEqual(code, 1);
+			}),
+		);
+	}
+
+	it.effect("the diagnostics level does not make CliLogger print debug records: only the sink does", () =>
+		Effect.gen(function* () {
+			const { err } = yield* runMain(["inside"], { [ENV]: "debug" });
+			// One NDJSON line from the sink. CliLogger keeps the threshold it had and prints nothing for a debug record.
+			assert.strictEqual(err.length, 1, err.join("\n"));
+			assert.strictEqual(json(err[0] ?? "").level, "DEBUG");
+		}),
+	);
+
+	it.effect("with the level at debug a failure is reported plain by CliLogger and also recorded by the sink", () =>
+		Effect.gen(function* () {
+			const { err, code } = yield* runMain(["boom"], { [ENV]: "debug" });
+			assert.strictEqual(code, 1);
+			assert.include(err, "Error: boom");
+			assert.isTrue(err.some((line) => line.startsWith("{") && json(line).level === "ERROR"));
+		}),
+	);
+
+	it.effect("--log-level debug: the sink follows the flag, with the diagnostics level still None", () =>
+		Effect.gen(function* () {
+			const { err } = yield* runMain(["--log-level", "debug", "inside"]);
+			assert.isTrue(err.some((line) => line.startsWith("{") && json(line).message === "inside"));
+		}),
+	);
+
+	it.effect("without the flag or the env var a debug record writes nothing", () =>
+		Effect.gen(function* () {
+			const { err } = yield* runMain(["inside"]);
+			assert.deepStrictEqual(err, []);
+		}),
+	);
+
+	it.effect("--log-level none silences the sink even with the diagnostics level at debug", () =>
+		Effect.gen(function* () {
+			const { err } = yield* runMain(["--log-level", "none", "inside"], { [ENV]: "debug" });
+			assert.deepStrictEqual(err, []);
+		}),
+	);
+});
