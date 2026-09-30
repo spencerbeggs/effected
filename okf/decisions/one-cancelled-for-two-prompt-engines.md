@@ -5,13 +5,13 @@ description: Core Prompt and the kit's ./ui screens both surface a single Cancel
 status: draft
 tags: [architecture, dx]
 sources:
-  - id: interactive-cli-kit-design
-    resource: ../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md
-    title: Interactive CLI kit design, sections 5.12 and 10
+  - id: core-prompt
+    resource: ../../.repos/effect/packages/effect/src/cli/Prompt.ts
+    title: Core Prompt, which fails with Terminal.QuitError
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:28:29Z
-  body_sha256: ddd9c7bc60527de14367252b1f23e990cd7e52f4f34f178a6759db7f7e56ebfb
+  at: 2026-09-30T20:33:06Z
+  body_sha256: 1b4e92a2fd1eb2260f3f2ed58be8df745e6deef9e30c8f6cb74be83c69482898
 ---
 
 # Two prompt engines raise one Cancelled error
@@ -19,10 +19,11 @@ generated:
 ## Context
 
 The kit supports two prompt engines. Core `Prompt` has no React and is what a
-fallback prompt (`CliPrompt.fallback`) runs, but it cancels only on Ctrl-C or
-Ctrl-D and emits ANSI unconditionally. The kit's `./ui` screens are built on
+fallback prompt (`CliPrompt.fallback`) runs, but it fails only with
+`Terminal.QuitError`, when the prompt is quit or terminal input ends, and
+emits ANSI unconditionally.[^core-prompt] The kit's `./ui` screens are built on
 Ink and can cancel on Escape as well. The human ruled that both engines are
-supported.[^interactive-cli-kit-design] Left alone, each engine would
+supported. Left alone, each engine would
 surface cancellation its own way, and a consumer would map two failures to
 the exit code a cancelled command should have.
 
@@ -55,4 +56,4 @@ Every cancellation path in the kit is one class, so one test pins exit 130
 for all of them. The `./ui` engine is planned (P4); until it lands only the
 core-`Prompt` path raises `Cancelled`.
 
-[^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
+[^core-prompt]: `../../.repos/effect/packages/effect/src/cli/Prompt.ts`

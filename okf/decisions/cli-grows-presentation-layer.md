@@ -6,16 +6,13 @@ status: draft
 supersedes: ../limitations/cli-is-not-a-framework.md
 tags: [architecture, dx]
 sources:
-  - id: interactive-cli-kit-design
-    resource: ../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md
-    title: Interactive CLI kit design, sections 2, 5 and 10
   - id: cli-presentation-audit
     resource: https://github.com/spencerbeggs/effected/issues/838
     title: "Issue 838: the audit of presentation code consumers re-derive"
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:28:29Z
-  body_sha256: d5bb3b8fa9a9995bb21eb9de6c99ac7e0a79dcbe3e26d55e581976c0f64da4df
+  at: 2026-09-30T20:33:06Z
+  body_sha256: 8292533ae4f0be2ff46c0e69f5a82e99446bbba7015354cbbd2af2ebced7ff8d
 ---
 
 # @effected/cli grows a presentation layer and interactive UI
@@ -30,7 +27,7 @@ found each of them re-deriving the same audience detection, colour decision,
 status glyphs, truncation, duration and percent formatting, and log
 composition, and getting it differently each time.[^cli-presentation-audit]
 The interactive CLI kit is the answer, and it needs `@effected/cli` to own
-that layer.[^interactive-cli-kit-design]
+that layer.
 
 ## Decision
 
@@ -75,7 +72,5 @@ question, colour-aware output, is settled by
 [honouring FORCE_COLOR](force-color-honoured-node-precedence.md) through
 `@effected/env`. The [`cli` Module](../modules/cli.md) documents the new
 surface, and the package's `CLAUDE.md` points here instead of banning prompts.
-
-[^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
 
 [^cli-presentation-audit]: <https://github.com/spencerbeggs/effected/issues/838>

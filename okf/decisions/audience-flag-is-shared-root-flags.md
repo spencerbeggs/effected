@@ -5,16 +5,25 @@ description: CliAudience declares --audience, --human, --agent and --ci as share
 status: draft
 tags: [architecture, dx]
 sources:
-  - id: interactive-cli-kit-design
-    resource: ../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md
-    title: Interactive CLI kit design, sections 5.2 and 11
-  - id: p2-probe-audience-flag
-    resource: probe P1 of the P2 plan, run on effect 4.0.0-rc.118 in the scratchpad
-    title: "Probe P1: the audience flag shape"
+  - id: core-param
+    resource: ../../.repos/effect/packages/effect/src/cli/Param.ts
+    title: Core Param, the flag combinators and parseFlag
+  - id: core-command
+    resource: ../../.repos/effect/packages/effect/src/cli/Command.ts
+    title: Core Command, withSharedFlags, provideEffect and runWith
+  - id: core-help
+    resource: ../../.repos/effect/packages/effect/src/cli/internal/help.ts
+    title: Core help builder, which lists shared and global flags
+  - id: core-cli-error
+    resource: ../../.repos/effect/packages/effect/src/cli/CliError.ts
+    title: Core CliError, ShowHelp and its exit code
+  - id: cli-runtime
+    resource: ../../packages/cli/src/CliRuntime.ts
+    title: CliRuntime, which remaps usage failures to exit 64
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:28:29Z
-  body_sha256: 366659960a6c7f2988cf7b8d2c9db9126f07df0d7c16539793ee6034088bfaa0
+  at: 2026-09-30T20:33:06Z
+  body_sha256: 4d399552e1c94817dfa4424cb02545c928be16c3d3cda3bcb5ff932b53e9e567
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience
@@ -23,31 +32,46 @@ generated:
 
 A user overrides audience detection on one invocation with `--audience
 <human|agent|ci>` or a boolean shorthand, and giving two of them is a usage
-error even when they agree.[^interactive-cli-kit-design] The design left open
-whether one `GlobalFlag.Setting` over a combined flag could do it or whether
-several settings had to be merged, and probe P1 settled it against core's
-source and real exit codes on rc.118.[^p2-probe-audience-flag]
+error even when they agree. It was open whether one `GlobalFlag.Setting` over
+a combined flag could do that or whether several settings had to be merged. A
+probe of three shapes against core's source, with real exit codes read from
+running each program under `CliRuntime.main`, settled it.
 
-Three facts from core shape the answer. There is no combinator that merges
-several flags into one, so `Flag.orElse` is the only way to combine them, and
-it tries the next alternative on *any* failure. A parent command's handler
-does not run when a subcommand is selected, so a check in the root handler
-never fires. And a bare `Command.run` exits 1 for a usage failure; the 64
-comes from `CliRuntime.main`.
+### Source facts the design rests on
+
+- **No merge-N-flags combinator.** The flag combinators are single-flag:
+  `map`, `optional`, `withDefault`, `atLeast`, `orElse`, `withHidden` and the
+  rest. `Flag.orElse` tries the next alternative on any failure, so it cannot
+  see that two flags were given.[^core-param]
+- **`parseFlag` reads only the first value** of a flag, so `--agent --agent`
+  is silently fine unless the flag is variadic; `Flag.atLeast(0)` returns
+  every occurrence.[^core-param]
+- **A parent's handler does not run when a subcommand is selected.** Only the
+  child's handler does, so a check in the root handler never fires.
+  `Command.provideEffect` applied to the composite root, after
+  `withSubcommands`, wraps the dispatching handler and so runs before every
+  subcommand handler.[^core-command]
+- **Shared flags are accepted before or after the subcommand**
+  (`Command.withSharedFlags`) and arrive as plain input fields, with no
+  global-flag machinery.[^core-command]
+- **No per-path help filtering.** Shared and global flags are listed in every
+  command's help; the only lever is `Flag.withHidden`.[^core-help]
+- **Core exits 1 for a usage failure.** `ShowHelp` carrying errors has exit
+  code 1 and a handler-raised `CliError.UserError` is rendered and re-failed;
+  the 64 comes from `CliRuntime.main`, which remaps both to `usageExitCode`
+  ([D7](usage-exit-code-defaults-to-64.md)).[^core-cli-error][^cli-runtime]
 
 ## Decision
 
 `CliAudience` declares four flags, `--audience <v>`, `--human`, `--agent` and
-`--ci`, as **shared flags on the root command** (`Command.withSharedFlags`),
-accepted before or after the subcommand. Each is declared with
-`Flag.atLeast(0)`, so every occurrence is visible to the resolver.
-`CliAudience.provide` is piped onto the composite root (after
-`withSubcommands`) and uses `Command.provideEffect` to resolve the four
-flags before every subcommand handler runs:
+`--ci`, as **shared flags on the root command** (`Command.withSharedFlags`).
+Each is declared with `Flag.atLeast(0)`, so every occurrence is visible to the
+resolver. `CliAudience.provide` is piped onto the composite root and uses
+`Command.provideEffect` to resolve the four flags before every subcommand
+handler runs:
 
 - more than one occurrence across the four flags, even two that agree, fails
-  with a `CliError.UserError`, which exits 64 under `CliRuntime.main`
-  ([D7](usage-exit-code-defaults-to-64.md));
+  with a `CliError.UserError`, which exits 64 under `CliRuntime.main`;
 - exactly one re-provides env's `Audience` as `{ kind, source: "flag" }`;
 - none leaves the ambient `Audience`, the override variable or detection,
   untouched.
@@ -55,13 +79,49 @@ flags before every subcommand handler runs:
 `audience` is declared with `Flag.Literals`, so a bad value is core's own
 parse error and also exits 64.
 
+## What the probe showed
+
+Shape (c), the chosen one, run through `CliRuntime.main` with a two-subcommand
+program (`verify`, `other`) and the ambient audience unset:
+
+| Arguments | Result |
+| --- | --- |
+| `verify x` | exit 0, no audience |
+| `--agent verify x` | exit 0, agent |
+| `verify x --agent` | exit 0, agent |
+| `verify x --audience ci` | exit 0, ci |
+| `--agent verify x --ci` | exit 64, one `ERROR` line from the `UserError` |
+| `verify x --agent --ci` | exit 64 |
+| `--agent --agent verify x` | exit 64 |
+| `--agent --audience agent verify x` | exit 64 |
+| `--audience ci --audience ci verify x` | exit 64 |
+| `verify x --audience bogus` | exit 64, core's own `ShowHelp` with the invalid-value error plus help |
+
+Every repeat counts, even when the values agree, and placement before or after
+the subcommand makes no difference.
+
+The two rejected shapes, each run the same way:
+
+| Shape | Arguments | Result |
+| --- | --- | --- |
+| One `Setting` over an `orElse` chain | `--agent --ci verify x` | exit 0, agent: no conflict detection |
+| One `Setting` over an `orElse` chain | `--agent --audience agent`, `--agent --agent` | exit 0 |
+| One `Setting` over an `orElse` chain | `--audience bogus verify x` | exit 0, no audience: `orElse` swallows the invalid value |
+| Four `Setting`s plus a resolver | `--agent --ci`, `--agent --agent`, `verify x --agent --ci` | exit 64 |
+| Four `Setting`s plus a resolver | `--audience bogus verify x`, `audience` as `Flag.Literals` | exit 1: a global setting's flag is parsed in a step that fails with a bare `CliError.InvalidValue`, not wrapped in `ShowHelp`, so it never reaches the 64 remap |
+
+The four-`Setting` shape reaches 64 for a bad value only if `audience` is
+declared as a plain string and validated by hand in the resolver, and it needs
+`provideEffectDiscard` ordered before `withGlobalFlags` or the four ids stay in
+`R`.[^core-command]
+
 ### The help limitation
 
-Core cannot show a shared flag only in the root's help: the four flags appear
-in the root's help and again in every subcommand's. `CliAudience.flags` takes
-a `hidden` option that applies `Flag.withHidden` to all four, for a consumer
-who prefers to describe them in the root description; they still parse and a
-conflict still exits 64.
+The four flags appear in the root's help and again in every subcommand's,
+because core lists shared flags per command.[^core-help] `CliAudience.flags`
+takes a `hidden` option that applies `Flag.withHidden` to all four, for a
+consumer who prefers to describe them in the root description; hidden, they
+vanish from every help, still parse, and a conflict still exits 64.
 
 A conflicting audience together with `--help` exits 0 and prints help,
 because core's action flags win before the resolver runs. That is core's
@@ -70,15 +130,11 @@ precedence, documented rather than worked around.
 ## Alternatives rejected
 
 - **One `GlobalFlag.Setting` over an `orElse` chain.** Rejected. It compiles
-  and reads as an `Option`, but it cannot see that two flags were given, so
-  `--agent --ci` exits 0, and `orElse` swallows a bad value, so `--audience
-  bogus` exits 0 as if no audience were given.
-- **Four `GlobalFlag.Setting`s merged by a resolver.** Rejected. The conflict
-  check works and exits 64, but a global setting parses its flag in a step
-  that fails with a bare `CliError.InvalidValue`, so a bad `--audience` value
-  exits 1, not 64. Avoiding that means declaring `audience` as a plain string
-  and validating it by hand, on top of four services and a required ordering
-  of `provideEffectDiscard` before `withGlobalFlags`.
+  and reads as an `Option`, but it has no conflict detection and swallows a
+  bad value, per the table above.
+- **Four `GlobalFlag.Setting`s merged by a resolver.** Rejected. Conflicts
+  exit 64, but a bad `--audience` value exits 1, and the workaround adds four
+  services and an ordering constraint for nothing shape (c) needs.
 
 ## Consequences
 
@@ -86,6 +142,12 @@ The 64 is `CliRuntime.main`'s, so a program using bare `Command.run` sees
 exit 1 for the same failures. Nested subcommands of subcommands were not
 probed; shared flags are documented as inherited by descendants.
 
-[^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
+[^core-param]: `.repos/effect/packages/effect/src/cli/Param.ts`: `orElse` near line 1895, `parseFlag` near line 1996 reading only `providedValues[0]`.
 
-[^p2-probe-audience-flag]: probe P1 of the P2 plan, run on effect 4.0.0-rc.118 in the scratchpad
+[^core-command]: `.repos/effect/packages/effect/src/cli/Command.ts`: `withSharedFlags` near line 979, `provideEffect` near line 1560, the subcommand `handle` near lines 925 to 942, and the setting-parse step of `runWith` near lines 1975 to 1990.
+
+[^core-help]: `.repos/effect/packages/effect/src/cli/internal/help.ts`: shared and global flags collected for every command path near lines 160 to 182, skipping only `hidden` ones.
+
+[^core-cli-error]: `.repos/effect/packages/effect/src/cli/CliError.ts`: `ShowHelp` carries `Runtime.errorExitCode` of 1 when it has errors, near line 656.
+
+[^cli-runtime]: `packages/cli/src/CliRuntime.ts`: a `ShowHelp` with errors and a rendered `UserError` exit with `usageExitCode`, default 64.
