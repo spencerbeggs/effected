@@ -283,3 +283,42 @@ describe("Doc.counts", () => {
 		assert.strictEqual(Doc.total(node), 1);
 	});
 });
+
+describe("Doc.counter", () => {
+	it("resolves the status definition and carries the key, label and count", () => {
+		const c = Doc.counter(Status.core, "failure", { key: "failed", label: "failed", n: 2 });
+		assert.deepStrictEqual(c, {
+			key: "failed",
+			label: "failed",
+			n: 2,
+			status: { name: "failure", def: { glyph: "✗", ascii: "[FAIL]", token: "failure", rank: 90 } },
+		});
+		assert.notProperty(c, "showZero");
+		assert.isTrue(deepFrozen(c));
+	});
+
+	it("carries showZero when given, and resolves an extended vocabulary's names", () => {
+		const vocab = Status.extend({ blocked: { glyph: "⛔", ascii: "[BLOCKED]", token: "error", rank: 80 } });
+		const c = Doc.counter(vocab, "blocked", { key: "b", label: "blocked", n: 0, showZero: true });
+		assert.strictEqual(c.showZero, true);
+		assert.strictEqual(c.status.def.glyph, "⛔");
+	});
+
+	it("feeds Doc.counts directly", () => {
+		const node = Doc.counts({
+			counters: [
+				Doc.counter(Status.core, "success", { key: "p", label: "passed", n: 3 }),
+				Doc.counter(Status.core, "failure", { key: "f", label: "failed", n: 1 }),
+			],
+			layout: "inline",
+		});
+		assert.strictEqual(Doc.total(node), 4);
+	});
+
+	it("rejects a misspelt status name at compile time", () => {
+		const bad = () =>
+			// @ts-expect-error "timeot" is not a status name in the core vocabulary
+			Doc.counter(Status.core, "timeot", { key: "k", label: "l", n: 1 });
+		assert.isFunction(bad);
+	});
+});

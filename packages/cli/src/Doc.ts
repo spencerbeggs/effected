@@ -456,6 +456,30 @@ export class Doc {
 	}
 
 	/**
+	 * One counter of a `Counts` block, with its status definition resolved.
+	 *
+	 * @remarks
+	 * A name the vocabulary does not have is a compile error.
+	 *
+	 * @param vocab - the vocabulary the status belongs to
+	 * @param name - a status name in it
+	 * @param options - the counter's `key`, `label` and count `n`, and `showZero` to keep it when `n` is zero
+	 */
+	static counter<N extends string>(
+		vocab: Status<N>,
+		name: NoInfer<N>,
+		options: { readonly key: string; readonly label: string; readonly n: number; readonly showZero?: boolean },
+	): Counter {
+		return counterOf({
+			key: options.key,
+			label: options.label,
+			n: options.n,
+			status: { name, def: vocab.resolve(name) },
+			...(options.showZero === undefined ? {} : { showZero: options.showZero }),
+		});
+	}
+
+	/**
 	 * Counters in one of three layouts.
 	 *
 	 * @param options - the counters, the layout and the optional label, total rule, qualifier and duration
