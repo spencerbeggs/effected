@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";
 import { MemoryFileSystem } from "@effected/memfs";
-import { ConfigProvider, Console, Effect, Exit, Layer, Logger, PlatformError, Scope } from "effect";
+import { ConfigProvider, Console, Effect, Exit, Layer, PlatformError, Scope } from "effect";
 import { CliLog } from "../src/index.js";
 
 const LEVEL_ENV = "TOOL_LOG_LEVEL";
@@ -43,7 +43,6 @@ const harness = (options: {
 		const layer = CliLog.file(options.file).pipe(
 			Layer.provideMerge(
 				CliLog.layer({ envVar: LEVEL_ENV }).pipe(
-					Layer.provide(Logger.layer([])),
 					Layer.provide(Layer.mergeAll(Audience.layerTest("agent"), TerminalEnv.layerTest())),
 				),
 			),
@@ -67,7 +66,8 @@ const harness = (options: {
 	});
 
 const ndjson = (lines: ReadonlyArray<string>) => lines.filter((line) => line.startsWith("{"));
-const plain = (lines: ReadonlyArray<string>) => lines.filter((line) => !line.startsWith("{"));
+/** The sink's one error line. CliLogger's plain lines share stderr, so it is picked out by its prefix. */
+const plain = (lines: ReadonlyArray<string>) => lines.filter((line) => line.startsWith("diagnostics log file"));
 const settle = Effect.forEach(Array.from({ length: 50 }), () => Effect.yieldNow);
 
 const program = Effect.gen(function* () {
@@ -99,7 +99,8 @@ describe("CliLog.file", () => {
 			yield* h.log(program);
 			yield* h.close;
 			assert.isUndefined(h.file());
-			assert.deepStrictEqual(h.err, []);
+			// CliLogger still prints the error plainly; nothing is written as NDJSON.
+			assert.deepStrictEqual(ndjson(h.err), []);
 		}),
 	);
 

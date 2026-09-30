@@ -12,6 +12,8 @@ import {
 	Path as PathModule,
 	References,
 } from "effect";
+import type { CliLoggerOptions } from "./CliLogger.js";
+import { CliLogger } from "./CliLogger.js";
 import { paintStyle } from "./internal/ansi.js";
 import { Level, passes } from "./internal/diagnostics.js";
 import { makeFileSink } from "./internal/fileSink.js";
@@ -33,6 +35,8 @@ export interface CliLogOptions {
 	 * terminal on stderr and NDJSON otherwise.
 	 */
 	readonly format?: "auto" | "json" | "pretty" | undefined;
+	/** Options for the `CliLogger` this layer builds for ordinary log lines; see {@link CliLoggerOptions}. */
+	readonly logger?: CliLoggerOptions | undefined;
 }
 
 /** The accepted spellings of a level, lower-cased, to the level they mean. */
@@ -57,18 +61,20 @@ const LEVEL_STYLES: Readonly<Record<string, Style>> = {
 	TRACE: { dim: true },
 };
 
-/** Read the diagnostics level from the env var; an invalid value warns once through the existing loggers. */
-const readLevel = (envVar: string | undefined): Effect.Effect<LogLevel.LogLevel> =>
+/** The diagnostics level from the env var, and the raw text when it is not a level. */
+const readLevel = (
+	envVar: string | undefined,
+): Effect.Effect<{ readonly level: LogLevel.LogLevel; readonly invalid: string | undefined }> =>
 	Effect.gen(function* () {
-		if (envVar === undefined) return "None";
+		if (envVar === undefined) return { level: "None", invalid: undefined };
 		const raw = yield* Config.option(Config.String(envVar)).pipe(Effect.orElseSucceed(() => Option.none<string>()));
-		if (Option.isNone(raw) || raw.value === "") return "None";
+		if (Option.isNone(raw) || raw.value === "") return { level: "None", invalid: undefined };
 		const level = LEVELS[raw.value.toLowerCase()];
-		if (level !== undefined) return level;
-		yield* Effect.logWarning(
-			`${envVar}=${raw.value} is not a log level (${Object.keys(LEVELS).join("|")}); ignoring it`,
-		);
-		return "None";
+		if (level !== undefined) return { level, invalid: undefined };
+		return {
+			level: "None",
+			invalid: `${envVar}=${raw.value} is not a log level (${Object.keys(LEVELS).join("|")}); ignoring it`,
+		};
 	});
 
 /**
@@ -80,17 +86,22 @@ const readLevel = (envVar: string | undefined): Effect.Effect<LogLevel.LogLevel>
  * never makes the diagnostics level a global switch. The diagnostics logger filters on its **own** threshold,
  * {@link CliLog.Level}, and writes to stderr only.
  *
+ * {@link CliLog.layer} **owns the whole logger set**. It builds a `CliLogger` for ordinary log lines and the
+ * diagnostics sink itself and replaces whatever was installed, without reading it, so there is no order to get
+ * wrong. Use it instead of `CliLogger.layer`, not with it: `CliLogger.layer` alone is the no-diagnostics path,
+ * and a `CliLogger.layer` layered on top would replace this layer's set.
+ *
  * Effect drops a record below `MinimumLogLevel` before any logger runs, so to let a debug record reach the
  * diagnostics logger `MinimumLogLevel` has to be lowered. {@link CliLog.layer} does that only when the
- * diagnostics level is below the ambient minimum, and in the same step wraps every logger already installed so
- * each keeps filtering at the minimum it had. A failure report is written outside the scope core's
- * `--log-level` flag sets, so `--log-level none` does not silence it either.
+ * diagnostics level is below the ambient minimum, and in the same step floors the `CliLogger` it built at the
+ * minimum it had, so it never prints a record the diagnostics level alone let through. A failure report is
+ * written outside the scope core's `--log-level` flag sets, so `--log-level none` does not silence it either.
  *
  * Core's `--log-level` flag sets `MinimumLogLevel` inside the command. While it is set to something other than
  * the value this layer installed, the diagnostics logger follows the flag instead of its own level: it writes
- * every record that reaches it. An existing logger that prints plain text, such as `CliLogger`, prints the same
- * record too, so a record at or above the ambient minimum is written twice, once plain and once to the
- * diagnostics sink.
+ * every record that reaches it. The `CliLogger` prints the same record too, so a record at or above the ambient
+ * minimum is written twice, once plain and once to the diagnostics sink. Stderr is therefore not pure NDJSON while
+ * diagnostics are on: a parser reads the lines that start with `{`.
  *
  * @public
  */
@@ -107,25 +118,24 @@ export class CliLog {
 	static readonly Level: Context.Reference<LogLevel.LogLevel> = Level;
 
 	/**
-	 * A diagnostics logger composed onto the loggers already installed.
+	 * The whole logger set of a program: a `CliLogger` for ordinary lines plus the diagnostics sink.
 	 *
 	 * @remarks
-	 * Build it over the logger layer it should merge with, for example
-	 * `CliLog.layer({ envVar }).pipe(Layer.provide(CliLogger.layer()))`; it reads the installed set when it is
-	 * built, so order matters. Bind it to a constant.
+	 * Replaces the installed loggers without reading them. Provide it as `CliRuntime.main`'s `logger` option, or
+	 * at the edge of the program, and bind it to a constant.
 	 *
 	 * Level parsing is case-insensitive and accepts `warn`, `warning`, `error`, `info`, `debug`, `trace`,
-	 * `fatal`, `all` and `none`. An invalid value warns once, through the loggers already installed, and leaves
-	 * diagnostics off.
+	 * `fatal`, `all` and `none`. An invalid value warns once, through the `CliLogger`, and leaves diagnostics
+	 * off.
 	 *
-	 * @param options - the env var and the format
+	 * @param options - the env var, the format and the `CliLogger` options
 	 */
 	static readonly layer = (options: CliLogOptions = {}): Layer.Layer<never, never, Audience | TerminalEnv> =>
 		Layer.unwrap(
 			Effect.gen(function* () {
 				const audience = yield* Audience;
 				const terminal = yield* TerminalEnv;
-				const level = yield* readLevel(options.envVar);
+				const { level, invalid } = yield* readLevel(options.envVar);
 				const ambient = yield* References.MinimumLogLevel;
 
 				const format = options.format ?? "auto";
@@ -154,27 +164,27 @@ export class CliLog {
 					record.fiber.getRef(Console.Console).error(render(record));
 				});
 
-				const loggers = Layer.effect(
-					Logger.CurrentLoggers,
-					Effect.gen(function* () {
-						const existing = yield* Logger.CurrentLoggers;
-						const kept = isLowered
-							? Array.from(existing, (inner) =>
-									Logger.make<unknown, void>((record) => {
-										const current = record.fiber.getRef(References.MinimumLogLevel);
-										const threshold = current === lowered ? ambient : current;
-										if (LogLevel.isGreaterThanOrEqualTo(record.logLevel, threshold)) inner.log(record);
-									}),
-								)
-							: Array.from(existing);
-						return new Set<Logger.Logger<unknown, unknown>>([...kept, sink]);
-					}),
-				);
+				// The CliLogger keeps filtering at the minimum it had, however far MinimumLogLevel was lowered.
+				const inner = CliLogger.make(options.logger);
+				const cliLogger = isLowered
+					? Logger.make<unknown, void>((record) => {
+							const current = record.fiber.getRef(References.MinimumLogLevel);
+							const threshold = current === lowered ? ambient : current;
+							if (LogLevel.isGreaterThanOrEqualTo(record.logLevel, threshold)) inner.log(record);
+						})
+					: inner;
+
+				// An invalid level warns through the CliLogger only, never through the sink.
+				if (invalid !== undefined) {
+					yield* Effect.logWarning(invalid).pipe(
+						Effect.provideService(Logger.CurrentLoggers, new Set<Logger.Logger<unknown, unknown>>([cliLogger])),
+					);
+				}
 
 				return Layer.mergeAll(
 					Layer.succeed(CliLog.Level, level),
 					isLowered ? Layer.succeed(References.MinimumLogLevel, lowered) : Layer.empty,
-					loggers,
+					Layer.succeed(Logger.CurrentLoggers, new Set<Logger.Logger<unknown, unknown>>([cliLogger, sink])),
 				);
 			}),
 		);

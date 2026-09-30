@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:50:35Z
-  body_sha256: 32a576dfdb6d86cc52d99f782ffda624aa22c6c3bbbee896e060f59fbe5d1a12
+  at: 2026-09-30T21:03:55Z
+  body_sha256: c6de65c3d046fab905e9a9ba43320b1b9c926febc7a5f42b736c038dfa2a04a1
 ---
 
 # @effected/cli
@@ -119,7 +119,7 @@ for why the package owns them.
 | `CliTheme` | A `Context.Service` with `paint`, `glyphs`, `color` and `status`. `layer({ tokens?, glyphs? })` needs `TerminalEnv`; `layerTest` fixes the colour level; `promptTheme` sets core's `Prompt.Theme` from the tokens, with empty colour strings when colour is `none`. |
 | `Fmt` | `width`, `truncate` (grapheme-safe, ANSI-safe, result never wider than asked), `duration`, `percent` and `plural`. Width comes from [the package's own implementation](../decisions/own-display-width.md). |
 | `CliMessage` | `success`, `info`, `warning`, `failure` and `status(vocab, name, text)`: one themed line each through `Console`, never the logger, so no log level silences them. `warning` and `failure` go to stderr; the others to stdout, and `status` defaults to stderr for a rank at or above `warning`'s. Only the glyph is painted and the text stays plain; an `agent` audience gets the glyph and text, never colour, even when the theme has colour. |
-| `CliLog` | Diagnostics, kept apart from `CliMessage`. `Level` is a reference defaulting to `None`, filtered on its own threshold rather than `MinimumLogLevel`; `layer({ envVar?, format? })` writes NDJSON or pretty output to stderr only and composes with `mergeWithExisting`; `component(name)` annotates a line; `file({ envVar } \| { path })` is an async NDJSON sink that reports its first write error once. |
+| `CliLog` | Diagnostics, kept apart from `CliMessage`. `Level` is a reference defaulting to `None`, filtered on its own threshold rather than `MinimumLogLevel`. `layer({ envVar?, format?, logger? })` **owns the whole logger set**: it builds the `CliLogger` (floored at the minimum level it had) and the stderr sink, NDJSON or pretty, and replaces whatever was installed without reading it, so there is no order to get wrong; use it instead of `CliLogger.layer`, never on top of it. Stderr is not pure NDJSON while diagnostics are on, so a parser reads the lines that start with `{`. `component(name)` annotates a line; `file({ envVar } \| { path })` is an async NDJSON sink that reports its first write error once. |
 | `Cancelled` | A tagged error, `reason: "escape" \| "interrupt"`, carrying exit code 130 through the runtime-marker mechanism. See [one Cancelled for two engines](../decisions/one-cancelled-for-two-prompt-engines.md). |
 | `NotInteractive` | A tagged error for a prompt reached in a non-interactive run; exits 64. |
 | `CliPrompt.fallback` | `(prompt, { otherwise? }) => Param.FallbackPrompt` — prompts only when `CliInteractive` is true, else returns `otherwise`, else re-raises the missing-flag error. A core `QuitError` maps to `Cancelled`. |
