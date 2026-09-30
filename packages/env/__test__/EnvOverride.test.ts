@@ -52,6 +52,24 @@ describe("EnvOverride.read", () => {
 		});
 	});
 
+	it.effect("an empty value is None with no warning, even when the provider preserves empty strings", () => {
+		const lines: Array<string> = [];
+		return EnvOverride.read({ envVar: "VITEST_AGENT_CONSOLE", accepts }).pipe(
+			Effect.provide(Audience.layerTest("human")),
+			Effect.provide(capture(lines)),
+			Effect.provideService(
+				ConfigProvider.ConfigProvider,
+				ConfigProvider.fromUnknown({ VITEST_AGENT_CONSOLE: "" }, { preserveEmptyStrings: true }),
+			),
+			Effect.tap((value) =>
+				Effect.sync(() => {
+					assert.deepStrictEqual(value, Option.none());
+					assert.lengthOf(lines, 0);
+				}),
+			),
+		);
+	});
+
 	it.effect("matching is case-insensitive and returns the accepted literal", () =>
 		Effect.map(read({ VITEST_AGENT_CONSOLE: "CI-Annotations" }, "ci"), (value) =>
 			assert.deepStrictEqual(value, Option.some("ci-annotations")),

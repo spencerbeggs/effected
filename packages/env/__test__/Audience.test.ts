@@ -99,6 +99,26 @@ describe("Audience.layer", () => {
 		);
 	});
 
+	it.effect("an empty override is unset even when the provider preserves empty strings", () => {
+		const lines: Array<{ readonly level: string; readonly text: string }> = [];
+		return Effect.gen(function* () {
+			return yield* Audience;
+		}).pipe(
+			Effect.provide(Layer.provide(Audience.layer({ envVar: "OKFIT_AUDIENCE" }), CurrentRuntimeEnv.layer)),
+			Effect.provide(capture(lines)),
+			Effect.provideService(
+				ConfigProvider.ConfigProvider,
+				ConfigProvider.fromUnknown({ OKFIT_AUDIENCE: "", GITHUB_ACTIONS: "true" }, { preserveEmptyStrings: true }),
+			),
+			Effect.tap((audience) =>
+				Effect.sync(() => {
+					assert.deepStrictEqual({ ...audience }, { kind: "ci", source: "detected" });
+					assert.lengthOf(lines, 0);
+				}),
+			),
+		);
+	});
+
 	it.effect("the override is case-insensitive", () =>
 		Effect.map(audienceFrom({ OKFIT_AUDIENCE: "HUMAN", CLAUDECODE: "1" }), (audience) =>
 			assert.deepStrictEqual({ ...audience }, { kind: "human", source: "override" }),
@@ -122,5 +142,23 @@ describe("Audience.layerTest", () => {
 			const audience = yield* Audience;
 			assert.deepStrictEqual({ ...audience }, { kind: "ci", source: "override" });
 		}).pipe(Effect.provide(Audience.layerTest("ci"))),
+	);
+
+	it.effect("takes the source as a second argument, so a test can say the variable did not decide", () =>
+		Effect.gen(function* () {
+			const audiences = [
+				yield* Audience.pipe(Effect.provide(Audience.layerTest("human", "detected"))),
+				yield* Audience.pipe(Effect.provide(Audience.layerTest("human", "override"))),
+				yield* Audience.pipe(Effect.provide(Audience.layerTest("agent"))),
+			];
+			assert.deepStrictEqual(
+				audiences.map((audience) => ({ ...audience })),
+				[
+					{ kind: "human", source: "detected" },
+					{ kind: "human", source: "override" },
+					{ kind: "agent", source: "override" },
+				],
+			);
+		}),
 	);
 });

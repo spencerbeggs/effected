@@ -73,13 +73,19 @@ export class Audience extends Context.Service<Audience, AudienceShape>()("@effec
 	}
 
 	/**
-	 * A fixed audience that touches neither `CurrentRuntimeEnv` nor `Config`; its `source` is `override`, since a
-	 * test that fixes the kind has decided it.
+	 * A fixed audience that touches neither `CurrentRuntimeEnv` nor `Config`.
+	 *
+	 * @remarks
+	 * `source` defaults to `override`, since a test that fixes the kind has decided it. Pass `detected` to test a
+	 * layer stacked on top, such as a CLI flag that only applies when the environment variable did not decide.
 	 *
 	 * @param kind - the audience to fix
+	 * @param source - whether the override variable or detection decided it; defaults to `override`
 	 */
-	static readonly layerTest = (kind: AudienceKind): Layer.Layer<Audience> =>
-		Layer.succeed(Audience, { kind, source: "override" });
+	static readonly layerTest = (
+		kind: AudienceKind,
+		source: AudienceShape["source"] = "override",
+	): Layer.Layer<Audience> => Layer.succeed(Audience, { kind, source });
 
 	/**
 	 * The audience a {@link RuntimeEnv} implies, ignoring any override: an agent, else CI, else a human.
