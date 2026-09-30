@@ -92,4 +92,16 @@ describe("Status.resolve", () => {
 		assert.isTrue(Object.isFrozen(resolved));
 		assert.notStrictEqual(resolved, Status.core.def("info"));
 	});
+
+	it("dies on a name the vocabulary does not have, naming it and the names that exist", () => {
+		const unknown = "timeot" as CoreStatusName;
+		assert.throws(() => Status.core.resolve(unknown), Error, /"timeot"/);
+		assert.throws(() => Status.core.resolve(unknown), Error, /success, skip, pending, info, warning, failure/);
+	});
+
+	it("an inherited property name is not a status", () => {
+		for (const name of ["toString", "constructor", "__proto__", "hasOwnProperty"]) {
+			assert.throws(() => Status.core.resolve(name as CoreStatusName), Error, name);
+		}
+	});
 });

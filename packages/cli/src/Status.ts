@@ -93,9 +93,17 @@ export class Status<Names extends string> {
 	 * the definition stays plain data and editing it cannot change the vocabulary. The copy is shallow: a
 	 * `token` given as a `Style` keeps its own identity.
 	 *
+	 * @remarks
+	 * A name the vocabulary does not have is a defect: it throws an `Error` naming it and the names that exist. The
+	 * types already reject one, so it is reachable only through a cast, and storing an empty definition in a
+	 * document instead would fail far from the cause.
+	 *
 	 * @param name - a name in this vocabulary
 	 */
 	resolve(name: Names): StatusDef {
+		if (!Object.hasOwn(this.defs, name)) {
+			throw new Error(`Unknown status "${name}"; this vocabulary has: ${Object.keys(this.defs).join(", ")}`);
+		}
 		return Object.freeze({ ...this.defs[name] });
 	}
 

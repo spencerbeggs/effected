@@ -32,4 +32,12 @@ describe("Glyphs", () => {
 			assert.isBelow(ch.codePointAt(0) ?? 0, 128);
 		}
 	});
+
+	it("the shared sets cannot be edited through their nested values", () => {
+		for (const set of [Glyphs.unicode, Glyphs.ascii]) {
+			assert.isTrue(Object.isFrozen(set));
+			assert.isTrue(Object.isFrozen(set.pathSeparator));
+			assert.isTrue(Object.isFrozen(set.spinner));
+		}
+	});
 });

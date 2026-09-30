@@ -23,30 +23,33 @@ export interface GlyphSet {
 /**
  * The two glyph sets: Unicode, and a plain-ASCII fallback for terminals that cannot draw it.
  *
+ * @remarks
+ * The sets are shared, so they and their nested values are frozen.
+ *
  * @public
  */
 export class Glyphs {
 	private constructor() {}
 
 	/** Unicode symbols. */
-	static readonly unicode: GlyphSet = {
+	static readonly unicode: GlyphSet = Object.freeze({
 		kind: "unicode",
 		ellipsis: "…",
-		spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+		spinner: Object.freeze(["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
 		bullet: "•",
 		arrow: "→",
-		pathSeparator: { human: "›", agent: " > " },
+		pathSeparator: Object.freeze({ human: "›", agent: " > " }),
 		spinnerIntervalMs: 80,
-	};
+	});
 
 	/** ASCII-only symbols. */
-	static readonly ascii: GlyphSet = {
+	static readonly ascii: GlyphSet = Object.freeze({
 		kind: "ascii",
 		ellipsis: "...",
-		spinner: ["-", "\\", "|", "/"],
+		spinner: Object.freeze(["-", "\\", "|", "/"]),
 		bullet: "*",
 		arrow: "->",
-		pathSeparator: { human: ">", agent: " > " },
+		pathSeparator: Object.freeze({ human: ">", agent: " > " }),
 		spinnerIntervalMs: 80,
-	};
+	});
 }
