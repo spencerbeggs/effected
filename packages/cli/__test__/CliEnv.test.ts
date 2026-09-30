@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Queue, Runtime, Stdio, Terminal } from "effect";
-import { Command } from "effect/cli";
+import { CliConfig, Command, GlobalFlag } from "effect/cli";
 import { CliEnv, CliInteractive, CliRuntime, CliTheme } from "../src/index.js";
 import { TestTerminal } from "../src/testing.js";
 
@@ -371,6 +371,49 @@ describe("CliRuntime.main with the env option", () => {
 			);
 			assert.deepStrictEqual(out, ["ran"]);
 			assert.strictEqual(err.filter((line) => line.includes("PROBE_AUDIENCE=bogus")).length, 1);
+		}),
+	);
+
+	it.effect(
+		"a consumer's CliConfig passed through the platform survives env (gateWizard filters it, never rebuilds it)",
+		() =>
+			Effect.gen(function* () {
+				const { double } = capturing();
+				let builtIns = -1;
+				yield* CliRuntime.main(
+					Effect.gen(function* () {
+						builtIns = (yield* CliConfig.CliConfig).builtIns.length;
+					}),
+					{ platform: Layer.mergeAll(TTY, CliConfig.layer({ builtIns: [] })), env: {} },
+				).pipe(
+					Effect.exit,
+					Effect.provideService(ConfigProvider.ConfigProvider, withEnv({})),
+					Effect.provideService(Console.Console, double),
+				);
+				assert.strictEqual(builtIns, 0);
+			}),
+	);
+
+	it.effect("under env the gate removes only the wizard from the ambient built-ins when not interactive", () =>
+		Effect.gen(function* () {
+			const { double } = capturing();
+			const seen: Array<ReadonlyArray<unknown>> = [];
+			const all = yield* Effect.map(CliConfig.CliConfig, (config) => config.builtIns);
+			for (const io of [TTY, PIPED]) {
+				yield* CliRuntime.main(
+					Effect.gen(function* () {
+						seen.push((yield* CliConfig.CliConfig).builtIns);
+					}),
+					{ platform: io, env: {} },
+				).pipe(
+					Effect.exit,
+					Effect.provideService(ConfigProvider.ConfigProvider, withEnv({})),
+					Effect.provideService(Console.Console, double),
+				);
+			}
+			assert.deepStrictEqual(seen[0], all);
+			assert.strictEqual(seen[1]?.length, all.length - 1);
+			assert.isFalse(seen[1]?.includes(GlobalFlag.Wizard));
 		}),
 	);
 });

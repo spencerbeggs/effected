@@ -48,7 +48,7 @@ const root = Command.make("tool").pipe(
 );
 
 /** A human on a terminal (interactive), with keys waiting that "down, enter" would answer the prompt with. */
-const run = (argv: ReadonlyArray<string>, via: "runWith" | "core" = "runWith") =>
+const run = (argv: ReadonlyArray<string>, via: "runWith" | "core" = "runWith", gateWizard = false) =>
 	Effect.gen(function* () {
 		const terminal = yield* TestTerminal.make();
 		yield* terminal.input([{ name: "down" }, { name: "enter" }]);
@@ -62,6 +62,7 @@ const run = (argv: ReadonlyArray<string>, via: "runWith" | "core" = "runWith") =
 		}).pipe(
 			Effect.exit,
 			Effect.provideService(Console.Console, double),
+			gateWizard ? Effect.provide(CliPrompt.gateWizard) : (self) => self,
 			Effect.provide(CliInteractive.layerTest(true)),
 			Effect.provide(Audience.layerTest("human", "detected")),
 		);
@@ -135,6 +136,23 @@ describe("CliAudience.runWith resolves the audience flag before parsing", () => 
 			// The fallback ran before the flag was visible, so the terminal was read.
 			assert.deepStrictEqual(out, ["profile=library audience=agent/flag"]);
 			assert.deepStrictEqual(reads.keys, 2);
+		}),
+	);
+
+	// `gateWizard` decides from the audience DETECTED at build time, before the flag is read, so on a human terminal
+	// `--agent --wizard` used to run core's wizard (ANSI on stdout, exit 0) for a run that did nothing.
+	it.effect("--agent --wizard on a human terminal is an unrecognised flag (64), never the wizard", () =>
+		Effect.gen(function* () {
+			const { out, err, code } = yield* run(["--agent", "--wizard", "init"], "runWith", true);
+			assert.strictEqual(code, 64);
+			assert.isTrue(
+				err.some((line) => line.includes("wizard")),
+				err.join("\n"),
+			);
+			assert.isFalse(
+				out.some((line) => /wizard/i.test(line) && !line.includes("--wizard")),
+				"no wizard output",
+			);
 		}),
 	);
 });

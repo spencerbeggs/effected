@@ -3,7 +3,7 @@ import { Audience } from "@effected/env";
 import type { Terminal } from "effect";
 import { Effect, Stdio } from "effect";
 import type { Command } from "effect/cli";
-import { CliError, Command as CommandModule, Flag } from "effect/cli";
+import { CliConfig, CliError, Command as CommandModule, Flag, GlobalFlag } from "effect/cli";
 import { CliInteractive } from "./CliInteractive.js";
 import { scanAudience, tallyAudience } from "./internal/scanAudience.js";
 
@@ -167,9 +167,21 @@ export class CliAudience {
 			const withAudience = conflict
 				? run
 				: (Effect.provideService(run, Audience, { kind, source: "flag" }) as typeof run);
-			return Effect.flatMap(CliInteractive, (current) =>
-				Effect.provideService(withAudience, CliInteractive, current && !conflict && kind === "human"),
-			);
+			return Effect.gen(function* () {
+				const current = yield* CliInteractive;
+				const ambient = yield* CliConfig.CliConfig;
+				const interactive = current && !conflict && kind === "human";
+				const narrowed = Effect.provideService(withAudience, CliInteractive, interactive);
+				// The wizard prompts, so a non-human flag drops it too: the environment decided its gate from the
+				// detected audience, before the flag was read.
+				return yield* interactive
+					? narrowed
+					: Effect.provideService(
+							narrowed,
+							CliConfig.CliConfig,
+							CliConfig.make({ builtIns: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard) }),
+						);
+			}) as typeof run;
 		};
 	};
 

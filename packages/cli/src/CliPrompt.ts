@@ -121,16 +121,18 @@ export class CliPrompt {
 	 * @remarks
 	 * The wizard prompts, so offering it without a terminal only leads to a dead end. With the flag gone, core
 	 * treats `--wizard` as an unknown flag, a usage error that exits `64`, and lists it nowhere in `--help`.
-	 * The layer reads `CliInteractive` when it is built, so provide that first, for example
-	 * `CliPrompt.gateWizard.pipe(Layer.provide(CliInteractive.layer))`.
+	 * The layer reads `CliInteractive` and the ambient `CliConfig` when it is built, so provide those first, for
+	 * example `CliPrompt.gateWizard.pipe(Layer.provide(CliInteractive.layer))`. It filters the ambient `CliConfig`,
+	 * so a consumer's own `builtIns` survive, and returns it untouched when interactive. An audience flag read
+	 * later is covered by `CliAudience.runWith`, which drops the wizard too.
 	 */
 	static readonly gateWizard: Layer.Layer<never> = Layer.effect(
 		CliConfig.CliConfig,
 		Effect.gen(function* () {
-			const interactive = yield* CliInteractive;
-			return CliConfig.make({
-				builtIns: interactive ? GlobalFlag.BuiltIns : GlobalFlag.BuiltIns.filter((flag) => flag !== GlobalFlag.Wizard),
-			});
+			// The ambient config, never core's full list: a consumer's own `builtIns` (from `CliConfig.layer`) survive.
+			const ambient = yield* CliConfig.CliConfig;
+			if (yield* CliInteractive) return ambient;
+			return CliConfig.make({ builtIns: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard) });
 		}),
 	);
 }
