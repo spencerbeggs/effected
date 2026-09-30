@@ -60,6 +60,7 @@ describe("entrypoint boundary", () => {
 			"CliRuntime",
 			"CliTheme",
 			"ConfigIssueRenderer",
+			"Doc",
 			"Fmt",
 			"Glyphs",
 			"NotInteractive",

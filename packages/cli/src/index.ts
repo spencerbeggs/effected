@@ -60,6 +60,23 @@ export {
 	type StreamTheme,
 } from "./CliTheme.js";
 export { ConfigIssueRenderer } from "./ConfigIssueRenderer.js";
+export {
+	type Block,
+	type BlockOf,
+	type Column,
+	type Counter,
+	type CountsOptions,
+	Doc,
+	type Document,
+	type Inline,
+	type InlineInput,
+	type InlineOf,
+	type LinkTarget,
+	type OverflowOptions,
+	type StatusRef,
+	type TreeInput,
+	type TreeNode,
+} from "./Doc.js";
 export { Fmt, type PercentOptions, type TruncateOptions } from "./Fmt.js";
 export { type GlyphSet, Glyphs } from "./Glyphs.js";
 export { NotInteractive } from "./NotInteractive.js";
