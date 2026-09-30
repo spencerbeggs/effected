@@ -201,8 +201,12 @@ const make: FileSystem.FileSystem = FileSystem.make({
  * @public
  */
 export class NodeSyncFileSystem {
-	/** The filesystem itself, for code that takes a `FileSystem` argument. */
-	static readonly make: FileSystem.FileSystem = make;
+	/**
+	 * The filesystem itself, for code that takes a `FileSystem` argument. A
+	 * plain value (not an `Effect`, unlike `MemoryFileSystem.make`): there is no
+	 * volume to build.
+	 */
+	static readonly fileSystem: FileSystem.FileSystem = make;
 
 	/** The filesystem as a layer providing `FileSystem.FileSystem`. */
 	static readonly layer: Layer.Layer<FileSystem.FileSystem> = Layer.succeed(FileSystem.FileSystem, make);

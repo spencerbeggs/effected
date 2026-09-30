@@ -1,7 +1,9 @@
-// The facade over the vendored engine (see internal/volume.ts for the port
-// header and the adaptation ledger pointer). Everything in this file — the
-// seeding API and the fault-injection wrapper — is a kit extension, not part
-// of the vendored port.
+// The public surface over the vendored engine (see internal/volume.ts for the
+// port header and the adaptation ledger pointer): the public types and the
+// MemoryFileSystem class. The machinery lives in internal/ — seeding (seed.ts),
+// the inspection view (view.ts), the node-shaped ports (ports.ts), fault
+// injection (faults.ts) and errno (errno.ts) — all kit extensions, not part of
+// the vendored port.
 
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Path } from "effect";
@@ -170,8 +172,9 @@ export type MemoryFileSystemErrnoError = Error & {
 };
 
 /**
- * The four synchronous file operations a consumer-supplied filesystem port
- * needs, as {@link MemoryFileSystem.syncFileSystem} exposes them over a
+ * The six synchronous file operations a consumer-supplied filesystem port
+ * needs — `exists`, `readFile`, `readDirectory`, `isDirectory`, `stat`,
+ * `lstat` — as {@link MemoryFileSystem.syncFileSystem} exposes them over a
  * volume.
  *
  * @remarks
@@ -478,7 +481,24 @@ export interface MemoryFileSystemOptions {
 	 * a typed `BadArgument`.
 	 */
 	readonly root?: string | undefined;
-	/** Whether path lookups fold case. Defaults to `true` (case-sensitive). */
+	/**
+	 * Whether path lookups are case-sensitive. Defaults to `true`; `false`
+	 * models a case-insensitive, case-PRESERVING volume such as default APFS.
+	 *
+	 * @remarks
+	 * Semantics are taken from a real APFS volume (the adaptation ledger has
+	 * the table): a lookup in any spelling finds the stored entry, and
+	 * listings, `paths()` and `snapshot()` keep the stored spelling. `realPath`
+	 * keeps the QUERIED spelling (only a link's target text supplies its own),
+	 * as the node adapter's `realPath` does. Renaming or `copyFile`-ing onto a
+	 * differently-cased existing entry keeps the destination's stored spelling,
+	 * while `copy` (unlink-then-create) takes the requested one; a case-only
+	 * rename rekeys the entry. Folding is `toLowerCase` per UTF-16 unit, so a
+	 * character whose case mapping changes length or is locale-specific (`İ`,
+	 * `ß`) does not fold as a regex `i` flag would, and names are not
+	 * Unicode-normalized (APFS treats NFC and NFD spellings as one name; this
+	 * volume does not).
+	 */
 	readonly caseSensitive?: boolean | undefined;
 	/**
 	 * Faults to inject into the built `FileSystem` — the same registration map
@@ -667,8 +687,9 @@ const buildHandle = (
  *   removal ever fails `PermissionDenied` on its own. Likewise `access`
  *   checks existence only, deliberately ignoring its
  *   `readable`/`writable`/`ok` options. To exercise a permission-failure code
- *   path, inject the failure with {@link MemoryFileSystem.layerFaulty}
- *   instead.
+ *   path, inject the failure with `options.faults` on
+ *   {@link MemoryFileSystem.layerWith} instead (or
+ *   {@link MemoryFileSystem.layerFaulty} over any other filesystem).
  * - Relative paths resolve from the virtual root `/`: the `FileSystem`
  *   contract has no working-directory operation.
  * - Malformed input fails through the typed `PlatformError` channel, never as
@@ -1087,7 +1108,8 @@ export class MemoryFileSystem {
 
 	/**
 	 * Adapts a {@link MemoryFileSystemVolume} to the synchronous `node:fs`
-	 * subset — `exists`, `readFile`, `readDirectory`, `isDirectory` — for code
+	 * subset — `exists`, `readFile`, `readDirectory`, `isDirectory`, `stat`,
+	 * `lstat` — for code
 	 * that takes a consumer-supplied sync filesystem port rather than requiring
 	 * `FileSystem` from the environment.
 	 *
@@ -1097,7 +1119,7 @@ export class MemoryFileSystem {
 	 * {@link MemoryFileSystem.makeHandle} (or resolve
 	 * {@link MemoryFileSystem.Volume}) and pass the result wherever the port is
 	 * expected. The shape is structural, so `@effected/workspaces`'s
-	 * `SyncFileSystem` — and anything else asking for the same four operations —
+	 * `SyncFileSystem` — and anything else asking for a subset of these operations —
 	 * is satisfied without either package importing the other.
 	 *
 	 * This is deliberately NOT a general escape hatch from the `FileSystem`

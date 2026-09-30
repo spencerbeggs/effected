@@ -145,6 +145,11 @@ describe("NodeSyncFileSystem agrees with NodeFileSystem", () => {
 		}),
 	);
 
+	it("the fileSystem value reads directly, without a layer", () => {
+		const viaValue = Effect.runSync(NodeSyncFileSystem.fileSystem.readFileString(join(d, "f.txt")));
+		assert.strictEqual(viaValue, "hello");
+	});
+
 	it("runs under Effect.runSync", () => {
 		const program = Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
