@@ -6,7 +6,7 @@
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer } from "effect";
 import { nodeErrno } from "./internal/errno.js";
-import { makeSyncFileSystem, withFaults } from "./internal/ports.js";
+import { makePromisesFileSystem, makeSyncFileSystem, withFaults } from "./internal/ports.js";
 import { normalizeAbsolute, seedWith } from "./internal/seed.js";
 import * as internal from "./internal/volume.js";
 
@@ -219,6 +219,61 @@ export interface MemoryFileSystemPortStats {
 	/** File byte length, symlink target UTF-8 byte length, or `0` for a directory. */
 	readonly size: number;
 }
+
+/**
+ * A directory entry as `readdir(path, { withFileTypes: true })` answers it.
+ * Literal: a symbolic link is a symbolic link, never its target's kind.
+ *
+ * @public
+ */
+export interface MemoryFileSystemDirent {
+	/** The entry name (not the path). */
+	readonly name: string;
+	/** Whether the entry is a regular file. */
+	isFile(): boolean;
+	/** Whether the entry is a directory. */
+	isDirectory(): boolean;
+	/** Whether the entry is a symbolic link. */
+	isSymbolicLink(): boolean;
+}
+
+/**
+ * The read-only `node:fs/promises` subset an injected async walker needs, as
+ * {@link MemoryFileSystem.promisesFileSystem} exposes it over a volume.
+ *
+ * @remarks
+ * Same semantics and node-shaped rejections as
+ * {@link MemoryFileSystemSyncFileSystem}: `stat` and `readFile` follow links,
+ * `lstat` and dirents do not. Members are standalone functions, not methods:
+ * pass them as callbacks without binding.
+ *
+ * @public
+ */
+export interface MemoryFileSystemPromisesFileSystem {
+	/** The entry names inside the directory at `path`. */
+	readdir(path: string): Promise<ReadonlyArray<string>>;
+	/** The entries inside the directory at `path`, with their (literal) kinds. */
+	readdir(path: string, options: { readonly withFileTypes: true }): Promise<ReadonlyArray<MemoryFileSystemDirent>>;
+	/** `stat`: follows links. */
+	stat(path: string): Promise<MemoryFileSystemPortStats>;
+	/** `lstat`: does not follow a final link. */
+	lstat(path: string): Promise<MemoryFileSystemPortStats>;
+	/** The UTF-8 contents of the file at `path`, following links. */
+	readFile(path: string, encoding?: "utf8" | "utf-8"): Promise<string>;
+}
+
+/**
+ * Fault handlers for a {@link MemoryFileSystemPromisesFileSystem}: each may
+ * return a replacement promise (e.g. a rejection built with
+ * {@link MemoryFileSystem.errno}) or `undefined` to delegate.
+ *
+ * @public
+ */
+export type MemoryFileSystemPromisesFaults = {
+	readonly [K in keyof MemoryFileSystemPromisesFileSystem]?: (
+		...args: Parameters<MemoryFileSystemPromisesFileSystem[K]>
+	) => ReturnType<MemoryFileSystemPromisesFileSystem[K]> | undefined;
+};
 
 /**
  * Fault handlers for a {@link MemoryFileSystemSyncFileSystem}: each receives
@@ -1136,6 +1191,30 @@ export class MemoryFileSystem {
 			makeSyncFileSystem(volume),
 			options?.faults as
 				| Partial<Record<keyof MemoryFileSystemSyncFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
+				| undefined,
+		);
+
+	/**
+	 * Adapts a {@link MemoryFileSystemVolume} to the read-only
+	 * `node:fs/promises` subset — `readdir` (with `withFileTypes`), `stat`,
+	 * `lstat`, `readFile` — for code that takes an injected async filesystem.
+	 *
+	 * @remarks
+	 * The async twin of {@link MemoryFileSystem.syncFileSystem}: identical
+	 * resolution, link-following and node-shaped errors, surfaced as rejected
+	 * promises.
+	 *
+	 * @param volume - The volume to adapt.
+	 * @param options - Optional fault handlers.
+	 */
+	static readonly promisesFileSystem = (
+		volume: MemoryFileSystemVolume,
+		options?: MemoryFileSystemPortOptions<MemoryFileSystemPromisesFaults>,
+	): MemoryFileSystemPromisesFileSystem =>
+		withFaults(
+			makePromisesFileSystem(volume),
+			options?.faults as
+				| Partial<Record<keyof MemoryFileSystemPromisesFileSystem, (...args: ReadonlyArray<unknown>) => unknown>>
 				| undefined,
 		);
 

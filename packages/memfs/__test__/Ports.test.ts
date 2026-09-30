@@ -194,3 +194,74 @@ describe("sync port members are unbound-safe", () => {
 		}),
 	);
 });
+
+describe("promises port", () => {
+	it.effect("readdir withFileTypes gives literal dirents", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume);
+			const dirents = yield* Effect.promise(() => fsp.readdir("/r", { withFileTypes: true }));
+			const link = dirents.find((d) => d.name === "to-dir");
+			assert.isDefined(link);
+			assert.isTrue(link?.isSymbolicLink());
+			assert.isFalse(link?.isDirectory());
+			assert.isFalse(link?.isFile());
+			assert.isTrue(dirents.find((d) => d.name === "file.txt")?.isFile());
+			assert.deepStrictEqual(yield* Effect.promise(() => fsp.readdir("/r/dir")), ["inner.txt"]);
+		}),
+	);
+
+	it.effect("rejects with node-shaped errors", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume);
+			const error = yield* Effect.flip(
+				Effect.tryPromise({ try: () => fsp.stat("/r/nope"), catch: (e) => e as { code: string; syscall: string } }),
+			);
+			assert.strictEqual(error.code, "ENOENT");
+			assert.strictEqual(error.syscall, "stat");
+			const notDir = yield* Effect.flip(
+				Effect.tryPromise({ try: () => fsp.readdir("/r/file.txt"), catch: (e) => e as { code: string } }),
+			);
+			assert.strictEqual(notDir.code, "ENOTDIR");
+		}),
+	);
+
+	it.effect("stat follows, lstat does not, readFile reads through links", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume);
+			assert.isTrue((yield* Effect.promise(() => fsp.stat("/r/to-dir"))).isDirectory());
+			assert.isTrue((yield* Effect.promise(() => fsp.lstat("/r/to-dir"))).isSymbolicLink());
+			assert.strictEqual(yield* Effect.promise(() => fsp.readFile("/r/to-dir/inner.txt", "utf8")), "x");
+		}),
+	);
+
+	it.effect("faults reject through the promise, other paths delegate", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume, {
+				faults: {
+					stat: (path) =>
+						path === "/r/dir" ? Promise.reject(MemoryFileSystem.errno("EACCES", "stat", path)) : undefined,
+				},
+			});
+			const error = yield* Effect.flip(
+				Effect.tryPromise({ try: () => fsp.stat("/r/dir"), catch: (e) => e as { code: string } }),
+			);
+			assert.strictEqual(error.code, "EACCES");
+			assert.isTrue((yield* Effect.promise(() => fsp.stat("/r/file.txt"))).isFile());
+		}),
+	);
+
+	it.effect("members are unbound-safe", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const { readdir, stat, lstat, readFile } = MemoryFileSystem.promisesFileSystem(volume);
+			assert.deepStrictEqual(yield* Effect.promise(() => readdir("/r/dir")), ["inner.txt"]);
+			assert.isTrue((yield* Effect.promise(() => stat("/r/file.txt"))).isFile());
+			assert.isTrue((yield* Effect.promise(() => lstat("/r/to-dir"))).isSymbolicLink());
+			assert.strictEqual(yield* Effect.promise(() => readFile("/r/file.txt")), "hello");
+		}),
+	);
+});

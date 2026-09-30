@@ -2,7 +2,9 @@
 // inspection view. Absence throws a node-shaped error built by `nodeErrno`:
 // the only failure channel a synchronous signature has.
 import type {
+	MemoryFileSystemDirent,
 	MemoryFileSystemPortStats,
+	MemoryFileSystemPromisesFileSystem,
 	MemoryFileSystemSyncFileSystem,
 	MemoryFileSystemVolume,
 	MemoryFileSystemVolumeStat,
@@ -31,6 +33,9 @@ const walk = (volume: MemoryFileSystemVolume, path: string, followFinal: boolean
 	for (let i = 0; i < parts.length; i++) {
 		const part = parts[i];
 		if (part === "..") {
+			// `..` under a non-directory is ENOTDIR, as the kernel reports it.
+			const here = volume.lstat(current === "" ? "/" : current);
+			if (here !== undefined && here.kind !== "directory") return { code: "ENOTDIR" };
 			// Applied to the RESOLVED location, so ".." after a link ascends from
 			// the target rather than from the link's own parent.
 			current = current.slice(0, Math.max(0, current.lastIndexOf("/")));
@@ -132,3 +137,47 @@ export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSy
 	stat: (path) => statOf(volume, path, "stat", true),
 	lstat: (path) => statOf(volume, path, "lstat", false),
 });
+
+const settle = <A>(f: () => A): Promise<A> => {
+	try {
+		return Promise.resolve(f());
+	} catch (e) {
+		return Promise.reject(e);
+	}
+};
+
+export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemPromisesFileSystem => {
+	const sync = makeSyncFileSystem(volume);
+	function readdir(path: string): Promise<ReadonlyArray<string>>;
+	function readdir(
+		path: string,
+		options: { readonly withFileTypes: true },
+	): Promise<ReadonlyArray<MemoryFileSystemDirent>>;
+	function readdir(
+		path: string,
+		options?: { readonly withFileTypes?: boolean },
+	): Promise<ReadonlyArray<string> | ReadonlyArray<MemoryFileSystemDirent>> {
+		return settle(() => {
+			const names = sync.readDirectory(path);
+			if (options?.withFileTypes !== true) return names;
+			const r = resolvePath(volume, path);
+			const base = "code" in r ? path : r.path;
+			return names.map((name): MemoryFileSystemDirent => {
+				// Literal: a link is reported as a link, as `readdir` dirents do.
+				const kind = volume.lstat(`${base === "/" ? "" : base}/${name}`)?.kind;
+				return {
+					name,
+					isFile: () => kind === "file",
+					isDirectory: () => kind === "directory",
+					isSymbolicLink: () => kind === "symlink",
+				};
+			});
+		});
+	}
+	return {
+		readdir,
+		stat: (path) => settle(() => sync.stat(path)),
+		lstat: (path) => settle(() => sync.lstat(path)),
+		readFile: (path, _encoding) => settle(() => sync.readFile(path)),
+	};
+};

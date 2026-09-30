@@ -28,6 +28,7 @@
 
 export {
 	MemoryFileSystem,
+	type MemoryFileSystemDirent,
 	type MemoryFileSystemErrnoError,
 	type MemoryFileSystemFaultHandler,
 	type MemoryFileSystemFaultMethod,
@@ -37,6 +38,8 @@ export {
 	type MemoryFileSystemOptions,
 	type MemoryFileSystemPortOptions,
 	type MemoryFileSystemPortStats,
+	type MemoryFileSystemPromisesFaults,
+	type MemoryFileSystemPromisesFileSystem,
 	type MemoryFileSystemSeed,
 	type MemoryFileSystemSeedDirectory,
 	type MemoryFileSystemSeedEntry,
