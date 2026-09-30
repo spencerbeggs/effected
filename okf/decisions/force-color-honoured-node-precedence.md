@@ -11,8 +11,8 @@ sources:
     title: Interactive CLI kit design, sections 4.2 and 10
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T19:52:41Z
-  body_sha256: 498062331c8aa236cdfea5ea6999faf975c8c5dcbc95bb5d9dfa9510c9381088
+  at: 2026-09-30T20:09:31Z
+  body_sha256: 96e2065aa56f9ea8e1f6459b6fdffb962f5daed781963f2f866c6426ff6dd0e7
 ---
 
 # FORCE_COLOR is honoured, with Node's getColorDepth precedence
@@ -67,9 +67,12 @@ mistake the gap for a bug in `env`:
 
 ### Two documented divergences from Node
 
-- `FORCE_COLOR=""` reads as unset here, because `readEnv` normalizes an empty
+- An empty variable reads as unset here, because `readEnv` normalizes an empty
   string to absent under every `ConfigProvider`, including one built with
-  `preserveEmptyStrings`; Node treats it as 16 colours.
+  `preserveEmptyStrings`. That covers every variable, not only `FORCE_COLOR`:
+  Node treats `FORCE_COLOR=""` as 16 colours, and `{ CI: "", TERM:
+  "xterm-256color" }` as none (an empty `CI` still enters its CI branch), where
+  `env` reads 256 because the empty `CI` is dropped.
 - There is no win32 branch, because `env` reads no `process.platform`.
 
 [^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
