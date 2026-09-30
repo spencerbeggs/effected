@@ -181,12 +181,13 @@ describe("seed options: root", () => {
 		}),
 	);
 
-	it.effect("a relative key escaping the root is a typed BadArgument naming key and root", () =>
+	it.effect("the root is a join base, not a jail: a relative key may normalize outside it", () =>
 		Effect.gen(function* () {
-			const error = yield* Effect.flip(MemoryFileSystem.makeWith({ "../etc/x": "" }, { root: "/ws" }));
-			assert.strictEqual(error.reason._tag, "BadArgument");
-			assert.include(error.reason.message, "../etc/x");
-			assert.include(error.reason.message, "/ws");
+			const { volume } = yield* MemoryFileSystem.makeHandle(
+				{ "package.json": "{}", "../extra-dir/a.ts": "x" },
+				{ root: "/ws/repo" },
+			);
+			assert.deepStrictEqual(volume.paths(), ["/ws/extra-dir/a.ts", "/ws/repo/package.json"]);
 		}),
 	);
 
@@ -220,10 +221,11 @@ describe("seed options: root", () => {
 		}),
 	);
 
-	it.effect("an absolute key with a root is a typed BadArgument", () =>
+	it.effect("an absolute key with a root is a typed BadArgument naming the key", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(MemoryFileSystem.makeWith({ "/abs.txt": "" }, { root: "/ws" }));
 			assert.strictEqual(error.reason._tag, "BadArgument");
+			assert.include(error.reason.message, "/abs.txt");
 		}),
 	);
 

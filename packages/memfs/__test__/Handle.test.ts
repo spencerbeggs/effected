@@ -145,11 +145,92 @@ describe("MemoryFileSystem.makeSync", () => {
 		assert.strictEqual(e.syscall, "chmod");
 	});
 
-	it("a bad root is EINVAL, node-shaped", () => {
+	it("a bad root is EINVAL, node-shaped, naming the root", () => {
 		const e = thrown(() => MemoryFileSystem.makeSync({ a: "" }, { root: "ws" })) as Record<string, unknown>;
 		assert.strictEqual(e.code, "EINVAL");
 		assert.strictEqual(e.syscall, "seed");
+		assert.strictEqual(e.path, "ws");
+		assert.include(String(e.message), "'ws'");
 		assert.isUndefined(e._tag);
+	});
+
+	it("a bad seed key is EINVAL naming the key in the path slot and the message", () => {
+		const e = thrown(() => MemoryFileSystem.makeSync({ "/abs.txt": "" }, { root: "/ws" })) as Record<string, unknown>;
+		assert.strictEqual(e.code, "EINVAL");
+		assert.strictEqual(e.path, "/abs.txt");
+		assert.include(String(e.message), "'/abs.txt'");
+	});
+
+	it("mutators resolve relative paths against root; absolute paths are unchanged", () => {
+		const vol = MemoryFileSystem.makeSync({ "a.ts": "x" }, { root: "/r/" });
+		assert.strictEqual(vol.root, "/r");
+		vol.write("rel.ts", "y");
+		assert.strictEqual(vol.volume.text("/r/rel.ts"), "y");
+		assert.isUndefined(vol.volume.text("/rel.ts"));
+		vol.write("/abs.ts", "z");
+		assert.strictEqual(vol.volume.text("/abs.ts"), "z");
+		vol.mkdir("sub/deep");
+		assert.isTrue(vol.volume.isDirectory("/r/sub/deep"));
+		vol.symlink("../target/text", "sub/link");
+		// Only the link path resolves; the target text is stored verbatim.
+		assert.strictEqual(vol.volume.readLink("/r/sub/link"), "../target/text");
+		vol.remove("rel.ts");
+		assert.isFalse(vol.volume.has("/r/rel.ts"));
+	});
+
+	it("without a root, a relative mutator path resolves from / and creates nothing else", () => {
+		const vol = MemoryFileSystem.makeSync();
+		assert.isUndefined(vol.root);
+		vol.write("rel.ts", "y");
+		assert.strictEqual(vol.volume.text("/rel.ts"), "y");
+		assert.isFalse(vol.volume.has("/r"));
+		vol.write("dir/child.ts", "c");
+		assert.strictEqual(vol.volume.text("/dir/child.ts"), "c");
+	});
+
+	it("a relative mutator failure reports the caller's path", () => {
+		const vol = MemoryFileSystem.makeSync({ f: "x" }, { root: "/r" });
+		const e = thrown(() => vol.write("f/child.txt", ""));
+		assert.strictEqual(e.code, "ENOTDIR");
+		assert.strictEqual(e.path, "f/child.txt");
+	});
+
+	it("withFaults returns faulted ports over the same volume; the handle's own ports stay unfaulted", async () => {
+		const vol = MemoryFileSystem.makeSync({ "/a.txt": "a" });
+		const { sync, promises } = vol.withFaults({
+			sync: {
+				readFile: (path) => {
+					throw MemoryFileSystem.errno("EACCES", "open", path);
+				},
+			},
+			promises: {
+				stat: (path) => {
+					throw MemoryFileSystem.errno("EACCES", "stat", path);
+				},
+			},
+		});
+		assert.strictEqual(thrown(() => sync.readFile("/a.txt")).code, "EACCES");
+		assert.strictEqual(vol.sync.readFile("/a.txt"), "a");
+		// same volume: a later write is visible through the faulted pair
+		vol.write("/b.txt", "b");
+		assert.isTrue(sync.exists("/b.txt"));
+		let pending: Promise<unknown> | undefined;
+		try {
+			pending = promises.stat("/a.txt");
+		} catch {
+			assert.fail("a sync-throwing promises fault must reject, not throw");
+		}
+		const rejected = await (pending as Promise<unknown>).then(
+			() => undefined,
+			(e: { code?: string }) => e.code,
+		);
+		assert.strictEqual(rejected, "EACCES");
+		assert.isTrue((await vol.promises.stat("/a.txt")).isFile());
+		assert.throws(
+			() => vol.withFaults({ sync: { readFileSting: () => undefined } as never }),
+			RangeError,
+			/readFileSting/,
+		);
 	});
 
 	it("write accepts bytes", () => {

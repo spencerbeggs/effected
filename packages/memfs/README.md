@@ -62,7 +62,7 @@ Every seeded constructor — `makeWith`, `layerWith`, `makeHandle`, `makeSync` �
 
 | Option | Meaning |
 | --- | --- |
-| `root` | An absolute directory the seed is rooted at: seed keys become relative to it, `""` addresses the root itself, and the root is created even for an empty seed. Normalized lexically (`/ws/`, `/ws/../ws` and `/ws` are one root). A relative root, an absolute key alongside a root, or a key escaping the root is a typed `BadArgument`. |
+| `root` | An absolute directory the seed is rooted at: seed keys become relative to it, `""` addresses the root itself, and the root is created even for an empty seed. Normalized lexically (`/ws/`, `/ws/../ws` and `/ws` are one root). It is a **join base, not a jail**: a key joins it as `path.posix.join` would, so `"../extra-dir/a.ts"` under `root: "/ws/repo"` lands at `/ws/extra-dir/a.ts`. A handle's mutators join relative paths to it too. A relative root, or an absolute key alongside a root, is a typed `BadArgument` naming the offending value (`makeSync` throws `EINVAL` with it in the path slot). |
 | `caseSensitive` | `true` by default. `false` models a case-insensitive, case-preserving volume — see [Case-insensitive volumes](#case-insensitive-volumes). |
 | `faults` | Faults injected into the built `FileSystem` — see [Fault injection](#fault-injection). The seed is written beneath the faults, never through them. |
 
@@ -120,7 +120,17 @@ yield* handle.fileSystem.readFileString("/c/d.txt");
 // "d"
 ```
 
-`handle.layer` provides `FileSystem`, `MemoryFileSystem.Volume` and `Path` over that one volume and is stable across provides — two programs provided with it see one volume. `handle.sync` and `handle.promises` are the two read-only ports below, and `write`, `mkdir`, `remove` and `symlink` are synchronous setup mutators that throw node-shaped errors (`code`, `syscall`, `path`). With `options.faults`, `handle.fileSystem` and `handle.layer` are faulted while the view, the ports and the mutators work beneath the faults: they are setup and inspection, not the code under test.
+`handle.layer` provides `FileSystem`, `MemoryFileSystem.Volume` and `Path` over that one volume and is stable across provides — two programs provided with it see one volume. `handle.sync` and `handle.promises` are the two read-only ports below, and `write`, `mkdir`, `remove` and `symlink` are synchronous setup mutators that throw node-shaped errors (`code`, `syscall`, and the path *you* passed). A relative mutator path joins `handle.root` — the normalized `options.root`, or `undefined` — or `/` without one; for `symlink` only the link's own path joins, and the target text is stored verbatim:
+
+```ts
+const vol = MemoryFileSystem.makeSync({ "a.ts": "x" }, { root: "/r/" });
+vol.root;
+// "/r"
+vol.write("rel.ts", "y"); // lands at /r/rel.ts
+vol.symlink("../target/text", "sub/link"); // link at /r/sub/link, target verbatim
+```
+
+With `options.faults`, `handle.fileSystem` and `handle.layer` are faulted while the view, the ports and the mutators work beneath the faults: they are setup and inspection, not the code under test. `options.faults` is `FileSystem`-scoped and never reaches `handle.sync` or `handle.promises`; to fault the ports, `handle.withFaults({ sync?, promises? })` returns a fresh `{ sync, promises }` pair over the same volume with those faults (same machinery as the port constructors, unknown-key `RangeError` and async rejection included), leaving the handle's own ports untouched.
 
 `MemoryFileSystem.makeSync(seed, options)` builds the same handle **synchronously**, for Promise-style suites that construct their volume at `describe` scope and never touch `Effect`:
 

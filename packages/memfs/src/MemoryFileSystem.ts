@@ -17,7 +17,7 @@ import {
 	syscallForMethod,
 	withFaults,
 } from "./internal/ports.js";
-import { seedWith } from "./internal/seed.js";
+import { applyRoot, normalizeAbsolute, seedWith } from "./internal/seed.js";
 import { makeVolumeService } from "./internal/view.js";
 import * as internal from "./internal/volume.js";
 
@@ -353,13 +353,39 @@ export interface MemoryFileSystemHandle {
 	readonly sync: MemoryFileSystemSyncFileSystem;
 	/** The read-only `node:fs/promises` port over the volume. */
 	readonly promises: MemoryFileSystemPromisesFileSystem;
-	/** Writes `content` at `path`, creating parent directories. */
+	/**
+	 * The normalized `options.root` the handle was built with, or `undefined`.
+	 * The mutators join a relative path to it.
+	 */
+	readonly root: string | undefined;
+	/**
+	 * Read-only ports over the same volume with faults injected — the same
+	 * machinery (and unknown-key `RangeError`) as
+	 * {@link MemoryFileSystem.syncFileSystem} and
+	 * {@link MemoryFileSystem.promisesFileSystem}. The handle's own `sync` and
+	 * `promises` stay unfaulted, and `options.faults` never reaches them: it
+	 * faults the `FileSystem` service only.
+	 */
+	readonly withFaults: (faults: {
+		readonly sync?: MemoryFileSystemSyncFaults | undefined;
+		readonly promises?: MemoryFileSystemPromisesFaults | undefined;
+	}) => {
+		readonly sync: MemoryFileSystemSyncFileSystem;
+		readonly promises: MemoryFileSystemPromisesFileSystem;
+	};
+	/**
+	 * Writes `content` at `path`, creating a missing parent. A relative `path`
+	 * joins {@link MemoryFileSystemHandle.root} (or `/` without one).
+	 */
 	readonly write: (path: string, content: string | Uint8Array) => void;
-	/** Creates the directory at `path` (recursively). */
+	/** Creates the directory at `path` (recursively); a relative `path` joins the root. */
 	readonly mkdir: (path: string) => void;
-	/** Removes `path` (recursively). */
+	/** Removes `path` (recursively); a relative `path` joins the root. */
 	readonly remove: (path: string) => void;
-	/** Creates a symbolic link at `path` pointing at `target`, creating parent directories. */
+	/**
+	 * Creates a symbolic link at `path` pointing at `target`, creating a missing
+	 * parent. A relative `path` joins the root; `target` is stored verbatim.
+	 */
 	readonly symlink: (target: string, path: string) => void;
 }
 
@@ -477,8 +503,15 @@ export interface MemoryFileSystemOptions {
 	 * An absolute directory the seed is rooted at. Seed keys are then relative
 	 * to it, and the empty key `""` addresses the root itself. The root is
 	 * normalized lexically (`//`, `.`, `..`) and is always created, even for an
-	 * empty seed. A relative root, or an absolute seed key alongside a root, is
-	 * a typed `BadArgument`.
+	 * empty seed.
+	 *
+	 * @remarks
+	 * The root is a join base, not a jail: a key is joined to it lexically, as
+	 * `path.posix.join` does, so `"../extra/a.ts"` under `root: "/ws/repo"`
+	 * lands at `/ws/extra/a.ts`. A handle's mutators join relative paths to it
+	 * the same way. A relative root, or an absolute seed key alongside a root,
+	 * is a typed `BadArgument` naming the offending value (`makeSync` throws
+	 * `EINVAL` with it in the path slot).
 	 */
 	readonly root?: string | undefined;
 	/**
@@ -506,6 +539,10 @@ export interface MemoryFileSystemOptions {
 	 * written beneath the faults, and {@link MemoryFileSystem.Volume} inspects
 	 * the raw volume, so a test can inject a failure and still assert on what
 	 * actually landed.
+	 *
+	 * @remarks
+	 * `FileSystem`-scoped: it does not reach a handle's `sync` or `promises`
+	 * ports. Fault those with {@link MemoryFileSystemHandle.withFaults}.
 	 */
 	readonly faults?: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory | undefined;
 }
@@ -620,6 +657,12 @@ const buildHandle = (
 		yield* seedWith(raw, seed, options);
 		const volume = makeVolumeService(engine);
 		const fileSystem = options?.faults === undefined ? raw : wrapFaulty(raw, options.faults);
+		// `seedWith` has already rejected a relative root, so this is the normalized join base.
+		const root = options?.root === undefined ? undefined : normalizeAbsolute(options.root);
+		// A mutator path: absolute as given; relative joined to the root (or to
+		// "/" without one, as the engine resolves it). Errors still report the
+		// caller's own path.
+		const at = (path: string) => (path.startsWith("/") ? path : normalizeAbsolute(`${root ?? ""}/${path}`));
 		const parentOf = (path: string) => path.slice(0, Math.max(1, path.lastIndexOf("/")));
 		// Only creates a parent that is absent: an existing parent that is a file
 		// must reach the write itself, which fails ENOTDIR as `writeFileSync` does
@@ -639,19 +682,25 @@ const buildHandle = (
 			),
 			sync: makeSyncFileSystem(volume),
 			promises: makePromisesFileSystem(volume),
+			root,
+			withFaults: (faults) => ({
+				sync: MemoryFileSystem.syncFileSystem(volume, { faults: faults.sync }),
+				promises: MemoryFileSystem.promisesFileSystem(volume, { faults: faults.promises }),
+			}),
 			write: (path, content) =>
 				runMutation(
 					Effect.andThen(
-						ensureParent(path),
-						typeof content === "string" ? raw.writeFileString(path, content) : raw.writeFile(path, content),
+						ensureParent(at(path)),
+						typeof content === "string" ? raw.writeFileString(at(path), content) : raw.writeFile(at(path), content),
 					),
 					"write",
 					path,
 				),
-			mkdir: (path) => runMutation(raw.makeDirectory(path, { recursive: true }), "mkdir", path),
-			remove: (path) => runMutation(raw.remove(path, { recursive: true }), "remove", path),
+			mkdir: (path) => runMutation(raw.makeDirectory(at(path), { recursive: true }), "mkdir", path),
+			remove: (path) => runMutation(raw.remove(at(path), { recursive: true }), "remove", path),
+			// Only the link's own path resolves against the root; the target text is stored verbatim.
 			symlink: (target, path) =>
-				runMutation(Effect.andThen(ensureParent(path), raw.symlink(target, path)), "symlink", path),
+				runMutation(Effect.andThen(ensureParent(at(path)), raw.symlink(target, at(path))), "symlink", path),
 		};
 		return handle;
 	});
@@ -1205,11 +1254,16 @@ export class MemoryFileSystem {
 	static readonly makeSync = (
 		seed: MemoryFileSystemSeed = {},
 		options?: MemoryFileSystemOptions,
-	): MemoryFileSystemHandle =>
-		runNode(buildHandle(seed, options), (error) => ({
+	): MemoryFileSystemHandle => {
+		// A bad root or seed key throws node's EINVAL naming the offending value
+		// in the path slot (and so in the message), before anything is built.
+		const applied = applyRoot(seed, options?.root);
+		if (applied._tag === "Failure") throw nodeErrno("EINVAL", "seed", applied.failure.subject);
+		return runNode(buildHandle(seed, options), (error) => ({
 			syscall: syscallForMethod(error.reason.method),
 			path: "pathOrDescriptor" in error.reason ? String(error.reason.pathOrDescriptor ?? "") : "",
 		}));
+	};
 
 	/**
 	 * Builds a volume and returns every view over it as a

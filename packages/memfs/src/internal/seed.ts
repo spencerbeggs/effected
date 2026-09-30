@@ -74,21 +74,35 @@ export const normalizeAbsolute = (path: string): string => {
 	return `/${segments.join("/")}`;
 };
 
-/** Re-keys a seed under `root`; the error is a description of what was wrong. */
+/** What was wrong with a seed's `root` or one of its keys: a description, and the offending root or key. */
+export interface SeedRootError {
+	readonly description: string;
+	readonly subject: string;
+}
+
+/**
+ * Re-keys a seed under `root`. The root is a JOIN BASE, not a jail: a
+ * relative key is joined to it lexically (as `path.posix.join` does), so a key
+ * with `..` may land outside it — `root: "/ws/repo"` with `"../extra/a.ts"` is
+ * `/ws/extra/a.ts`. A relative root, or an absolute key alongside a root, is an
+ * error naming the offending value.
+ */
 export const applyRoot = (
 	seed: MemoryFileSystemSeed,
 	root: string | undefined,
-): Result.Result<{ readonly seed: MemoryFileSystemSeed; readonly root: string | undefined }, string> => {
+): Result.Result<{ readonly seed: MemoryFileSystemSeed; readonly root: string | undefined }, SeedRootError> => {
 	if (root === undefined) return Result.succeed({ seed, root: undefined });
-	if (!root.startsWith("/")) return Result.fail(`root must be absolute, got "${root}"`);
+	if (!root.startsWith("/")) return Result.fail({ description: `root must be absolute, got "${root}"`, subject: root });
 	const base = normalizeAbsolute(root);
 	const rooted: Record<string, MemoryFileSystemSeedEntry> = {};
 	for (const [key, entry] of Object.entries(seed)) {
-		if (key.startsWith("/")) return Result.fail(`seed key "${key}" is absolute but a root "${root}" was given`);
-		const path = key === "" ? base : normalizeAbsolute(`${base}/${key}`);
-		const inside = path === base || path.startsWith(base === "/" ? "/" : `${base}/`);
-		if (!inside) return Result.fail(`seed key "${key}" escapes the root "${root}"`);
-		rooted[path] = entry;
+		if (key.startsWith("/")) {
+			return Result.fail({
+				description: `seed key "${key}" is absolute but a root "${root}" was given`,
+				subject: key,
+			});
+		}
+		rooted[key === "" ? base : normalizeAbsolute(`${base}/${key}`)] = entry;
 	}
 	return Result.succeed({ seed: rooted, root: base });
 };
@@ -102,7 +116,9 @@ export const seedWith = (
 	Effect.gen(function* () {
 		const applied = applyRoot(seed, options?.root);
 		if (Result.isFailure(applied)) {
-			return yield* Effect.fail(badArgument({ module: "FileSystem", method: "seed", description: applied.failure }));
+			return yield* Effect.fail(
+				badArgument({ module: "FileSystem", method: "seed", description: applied.failure.description }),
+			);
 		}
 		if (applied.success.root !== undefined) {
 			yield* fs.makeDirectory(applied.success.root, { recursive: true });
