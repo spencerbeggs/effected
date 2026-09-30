@@ -416,6 +416,31 @@ importers:
         version: 7.0.2
     publishDirectory: dist/dev/pkg
 
+  packages/env:
+    devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effect
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(redis@6.2.1)
+      '@effect/vitest':
+        specifier: catalog:effect
+        version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.2)
+      '@effected/workspaces':
+        specifier: workspace:*
+        version: link:../workspaces/dist/dev/pkg
+      '@savvy-web/bundler':
+        specifier: ^2.4.18
+        version: 2.4.18(@types/node@26.6.3)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(redis@6.2.1)(tsx@4.23.15)(typescript@7.0.2)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.6.3
+      effect:
+        specifier: catalog:effect
+        version: 4.0.0-rc.118
+      typescript:
+        specifier: catalog:build
+        version: 7.0.2
+    publishDirectory: dist/dev/pkg
+
   packages/git:
     devDependencies:
       '@effect/platform-node':
