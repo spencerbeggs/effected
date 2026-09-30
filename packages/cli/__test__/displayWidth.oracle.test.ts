@@ -6,37 +6,37 @@ import { displayWidth } from "../src/internal/displayWidth.js";
 
 const OSC8 = "\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007";
 
-/** 29 curated strings: ASCII, accents, CJK, emoji of every kind, ANSI, OSC-8, text and emoji presentation. */
-const CURATED: ReadonlyArray<string> = [
-	"hello world",
-	"héllo",
-	"héllo",
-	"日本語",
-	"ＡＢＣ",
-	"👍",
-	"👨‍👩‍👧",
-	"🇯🇵",
-	"👍🏽",
-	"1️⃣",
-	"\u001b[31mred\u001b[0m",
-	"a\tb",
-	"한국어",
-	OSC8,
-	"ｱｲｳ",
-	"⚠️",
-	"❤️",
-	"✅",
-	"⚠",
-	"สวัสดี",
-	"",
-	"🏳️‍🌈",
-	"─┼─│",
-	"日本語 mixed abc",
-	"a‍b",
-	"🌡",
-	"🌡️",
-	"\u{20000}",
-	"한ㅤ글",
+/** 29 curated strings, labelled: ASCII, accents, CJK, emoji of every kind, ANSI, OSC-8, text and emoji presentation. */
+const CURATED: ReadonlyArray<readonly [label: string, text: string]> = [
+	["ASCII", "hello world"],
+	["precomposed accent (U+00E9)", "h\u00e9llo"],
+	["decomposed accent (e + U+0301)", "he\u0301llo"],
+	["CJK", "日本語"],
+	["fullwidth Latin", "ＡＢＣ"],
+	["thumbs up", "👍"],
+	["ZWJ family", "👨‍👩‍👧"],
+	["flag", "🇯🇵"],
+	["skin tone", "👍🏽"],
+	["keycap", "1️⃣"],
+	["SGR colour", "\u001b[31mred\u001b[0m"],
+	["tab", "a\tb"],
+	["Hangul", "한국어"],
+	["OSC-8 link", OSC8],
+	["halfwidth kana", "ｱｲｳ"],
+	["warning sign, VS16", "⚠️"],
+	["red heart, VS16", "❤️"],
+	["check mark button", "✅"],
+	["warning sign, text presentation", "⚠"],
+	["Thai", "สวัสดี"],
+	["empty", ""],
+	["rainbow flag", "🏳️‍🌈"],
+	["box drawing", "─┼─│"],
+	["CJK mixed with ASCII", "日本語 mixed abc"],
+	["lone ZWJ", "a\u200db"],
+	["thermometer, text presentation", "🌡"],
+	["thermometer, VS16", "🌡️"],
+	["CJK extension B", "\u{20000}"],
+	["Hangul filler", "한\u3164글"],
 ];
 
 describe("displayWidth against string-width", () => {
@@ -55,41 +55,31 @@ describe("displayWidth against string-width", () => {
 		assert.strictEqual(CURATED.length, 29);
 	});
 
-	for (const text of CURATED) {
-		it(`curated ${JSON.stringify(text)}`, () => {
+	for (const [label, text] of CURATED) {
+		it(`curated: ${label}`, () => {
 			assert.strictEqual(displayWidth(text), stringWidth(text));
 		});
 	}
 
-	it("a code-point sweep agrees, except the lone regional indicators", () => {
-		// Every assigned code point of the BMP, the astral ranges the width table covers, and the emoji plane,
-		// with a stride over the vast CJK extension planes. Surrogates and ESC (which starts an escape) are skipped.
-		const ranges: ReadonlyArray<readonly [number, number, number]> = [
-			[0x0000, 0xffff, 1],
-			[0x16fe0, 0x16ff6, 1],
-			[0x17000, 0x191ff, 1],
-			[0x1aff0, 0x1b2ff, 1],
-			[0x1d300, 0x1d376, 1],
-			[0x1f000, 0x1ffff, 1],
-			[0x20000, 0x3fffd, 97],
-		];
+	it("a code-point sweep of every assigned code point agrees, except the lone regional indicators", () => {
+		// U+0000 to U+10FFFF at stride 1, so no block edge or astral zero-width range (tag characters, the variation
+		// selectors supplement) escapes it. Surrogates and ESC (which starts an escape sequence) are skipped.
 		const assigned = /^\p{Assigned}$/u;
 		const mismatches: string[] = [];
 		let checked = 0;
-		for (const [from, to, step] of ranges) {
-			for (let cp = from; cp <= to; cp += step) {
-				if ((cp >= 0xd800 && cp <= 0xdfff) || cp === 0x1b) continue;
-				const ch = String.fromCodePoint(cp);
-				if (!assigned.test(ch)) continue;
-				// Documented divergence: a lone regional indicator is 1 for the oracle and 2 here.
-				if (cp >= 0x1f1e6 && cp <= 0x1f1ff) continue;
-				checked++;
-				if (displayWidth(ch) !== stringWidth(ch)) {
-					mismatches.push(`U+${cp.toString(16).toUpperCase()} ours=${displayWidth(ch)} oracle=${stringWidth(ch)}`);
-				}
+		for (let cp = 0; cp <= 0x10ffff; cp++) {
+			if ((cp >= 0xd800 && cp <= 0xdfff) || cp === 0x1b) continue;
+			// Documented divergence: a lone regional indicator is 1 for the oracle and 2 here.
+			if (cp >= 0x1f1e6 && cp <= 0x1f1ff) continue;
+			const ch = String.fromCodePoint(cp);
+			if (!assigned.test(ch)) continue;
+			checked++;
+			if (displayWidth(ch) !== stringWidth(ch)) {
+				mismatches.push(`U+${cp.toString(16).toUpperCase()} ours=${displayWidth(ch)} oracle=${stringWidth(ch)}`);
 			}
 		}
-		assert.isAbove(checked, 50_000);
+		// Well over the ~297,000 assigned code points outside the skipped ones: a sweep that quietly shrank would fail.
+		assert.isAbove(checked, 290_000);
 		assert.deepStrictEqual(mismatches.slice(0, 10), []);
 		assert.strictEqual(mismatches.length, 0);
 	});
@@ -105,8 +95,9 @@ describe("displayWidth against string-width", () => {
 	});
 
 	it("a seeded fuzz of 5,000 compositions agrees", () => {
-		// Atoms are the curated strings without a free-standing combining mark, the one documented divergence.
-		const atoms = CURATED.filter((text) => text !== "" && !text.includes("ㅤ"));
+		// Every curated string is an atom but the empty one. A free-standing combining mark glued after an emoji or
+		// flag is the documented divergence, and none of these atoms is one.
+		const atoms = CURATED.map(([, text]) => text).filter((text) => text !== "");
 		// mulberry32, fixed seed: the run never varies.
 		let state = 0x5eed1234;
 		const next = (): number => {
