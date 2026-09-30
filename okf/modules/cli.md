@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:28:29Z
-  body_sha256: 3c4f3ed5a48a0c68b85b5b3b550b092f31e85c184f226a16b82bd42a2082deb0
+  at: 2026-09-30T20:50:35Z
+  body_sha256: 32a576dfdb6d86cc52d99f782ffda624aa22c6c3bbbee896e060f59fbe5d1a12
 ---
 
 # @effected/cli
@@ -114,11 +114,11 @@ for why the package owns them.
 | `CliAudience.provide` | Piped onto the composite root (after `withSubcommands`): resolves the flags with `Command.provideEffect` and re-provides env's `Audience` with `source: "flag"`. More than one occurrence is a `CliError.UserError`, exit 64. See [the audience flag decision](../decisions/audience-flag-is-shared-root-flags.md). |
 | `CliInteractive` | A boolean service: `Audience` is `human`, stdin is a terminal and stdout is a terminal. Static `layer`, `layerTest(value)`, `get`, and `unless(condition)`, a scoped override that can only turn it off. |
 | `Token`, `Style`, `TokenName` | A token is a style; applying it is identity when colour is `none`. `TokenName` is `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` or `emphasis`. `Token.hex`, `Token.named` and `Token.style` build custom styles. |
-| `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `worst(names)` returns the highest rank, ties to the first; names are typed, so a misspelt one is a compile error. |
+| `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `worst(names)` takes a non-empty list and returns the highest rank, ties to the first; `worstOption(names)` takes any array and returns an `Option`, `None` when empty. Names are typed, so a misspelt one is a compile error. |
 | `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis and spinner frames. ASCII is chosen under `TERM=dumb` or by option. |
 | `CliTheme` | A `Context.Service` with `paint`, `glyphs`, `color` and `status`. `layer({ tokens?, glyphs? })` needs `TerminalEnv`; `layerTest` fixes the colour level; `promptTheme` sets core's `Prompt.Theme` from the tokens, with empty colour strings when colour is `none`. |
 | `Fmt` | `width`, `truncate` (grapheme-safe, ANSI-safe, result never wider than asked), `duration`, `percent` and `plural`. Width comes from [the package's own implementation](../decisions/own-display-width.md). |
-| `CliMessage` | `success`, `info`, `warning`, `failure` and `status(vocab, name, text)`: one themed line each through `Console`, never the logger, so no log level silences them. `warning` and `failure` go to stderr; the others to stdout. An `agent` audience gets the glyph and text, never colour. |
+| `CliMessage` | `success`, `info`, `warning`, `failure` and `status(vocab, name, text)`: one themed line each through `Console`, never the logger, so no log level silences them. `warning` and `failure` go to stderr; the others to stdout, and `status` defaults to stderr for a rank at or above `warning`'s. Only the glyph is painted and the text stays plain; an `agent` audience gets the glyph and text, never colour, even when the theme has colour. |
 | `CliLog` | Diagnostics, kept apart from `CliMessage`. `Level` is a reference defaulting to `None`, filtered on its own threshold rather than `MinimumLogLevel`; `layer({ envVar?, format? })` writes NDJSON or pretty output to stderr only and composes with `mergeWithExisting`; `component(name)` annotates a line; `file({ envVar } \| { path })` is an async NDJSON sink that reports its first write error once. |
 | `Cancelled` | A tagged error, `reason: "escape" \| "interrupt"`, carrying exit code 130 through the runtime-marker mechanism. See [one Cancelled for two engines](../decisions/one-cancelled-for-two-prompt-engines.md). |
 | `NotInteractive` | A tagged error for a prompt reached in a non-interactive run; exits 64. |

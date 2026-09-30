@@ -32,6 +32,7 @@ export { CliColor } from "./CliColor.js";
 export { CliExit, type CliExitShape } from "./CliExit.js";
 export { CliInteractive } from "./CliInteractive.js";
 export { CliLogger, type CliLoggerOptions } from "./CliLogger.js";
+export { CliMessage, type CliMessageOptions } from "./CliMessage.js";
 export { CliRuntime, type FailureDetails, type MainOptions, type ReportFailuresOptions } from "./CliRuntime.js";
 export { CliTheme, type CliThemeOptions, type CliThemeShape, type CliThemeTestOptions } from "./CliTheme.js";
 export { ConfigIssueRenderer } from "./ConfigIssueRenderer.js";
