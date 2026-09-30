@@ -28,6 +28,7 @@
 
 export {
 	MemoryFileSystem,
+	type MemoryFileSystemErrnoError,
 	type MemoryFileSystemFaultHandler,
 	type MemoryFileSystemFaultMethod,
 	type MemoryFileSystemFaults,
@@ -42,4 +43,5 @@ export {
 	type MemoryFileSystemSyncFileSystem,
 	type MemoryFileSystemTransientFault,
 	type MemoryFileSystemVolume,
+	type MemoryFileSystemVolumeStat,
 } from "./MemoryFileSystem.js";

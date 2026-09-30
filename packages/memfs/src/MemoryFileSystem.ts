@@ -5,6 +5,8 @@
 
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer } from "effect";
+import { nodeErrno } from "./internal/errno.js";
+import { makeSyncFileSystem } from "./internal/ports.js";
 import { normalizeAbsolute, seedWith } from "./internal/seed.js";
 import * as internal from "./internal/volume.js";
 
@@ -112,7 +114,44 @@ export interface MemoryFileSystemVolume {
 	 * follows links, because the port it implements is defined in `stat` terms.
 	 */
 	readonly readLink: (path: string) => string | undefined;
+	/**
+	 * A literal `lstat` of `path`, or `undefined` when nothing lives there.
+	 *
+	 * @remarks
+	 * Literal like the rest of this view: a symbolic link reports as
+	 * `"symlink"`, never as its target, and its `size` is the UTF-8 byte length
+	 * of the stored target. A file's `size` is its byte length; a directory's
+	 * is `0`. `mtimeMs` is the same clock {@link MemoryFileSystemVolume.mtime}
+	 * reads.
+	 */
+	readonly lstat: (path: string) => MemoryFileSystemVolumeStat | undefined;
 }
+
+/**
+ * The answer of {@link MemoryFileSystemVolume.lstat}.
+ *
+ * @public
+ */
+export interface MemoryFileSystemVolumeStat {
+	/** What lives at the path — a link is `"symlink"`, never its target's kind. */
+	readonly kind: "file" | "directory" | "symlink";
+	/** The entry's modification time as epoch milliseconds. */
+	readonly mtimeMs: number;
+	/** File byte length, symlink target UTF-8 byte length, or `0` for a directory. */
+	readonly size: number;
+}
+
+/**
+ * The error a synchronous `node:fs` call throws: an `Error` carrying `code`,
+ * `syscall` and `path` — built by {@link MemoryFileSystem.errno}.
+ *
+ * @public
+ */
+export type MemoryFileSystemErrnoError = Error & {
+	readonly code: string;
+	readonly syscall: string;
+	readonly path: string;
+};
 
 /**
  * The four synchronous file operations a consumer-supplied filesystem port
@@ -412,84 +451,11 @@ const makeVolumeService = (engine: internal.InspectableFileSystem): MemoryFileSy
 			const entry = findEntryAt(entries(), path);
 			return entry?.type === "SymbolicLink" ? entry.target : undefined;
 		},
-	};
-};
-
-// Absence in a synchronous, non-`Effect` signature can only be reported by
-// throwing — the honest-absence contract's sync form. `code` mirrors the
-// `node:fs` errno a consumer written against the Node binding may inspect.
-const syncAbsence = (code: "ENOENT" | "ENOTDIR" | "EISDIR", syscall: string, path: string): Error =>
-	Object.assign(new Error(`${code}: ${syscall} '${path}'`), { code, syscall, path });
-
-// The port is defined in `stat` terms, so it FOLLOWS symbolic links — unlike
-// the literal inspection view it is built on. `MAX_LINK_HOPS` mirrors the
-// ELOOP guard a real filesystem applies; a cycle resolves to absence rather
-// than spinning.
-const MAX_LINK_HOPS = 40;
-
-const resolveLinks = (volume: MemoryFileSystemVolume, path: string): string | undefined => {
-	// Resolution is per COMPONENT, not just the final one: `/links/pkg/a.json`
-	// has to follow the link at `/links/pkg` before it can see `a.json`, exactly
-	// as a real filesystem walks a path. Resolving only the last component makes
-	// every path *underneath* a symlinked directory read as absent.
-	let current = "";
-	let hops = 0;
-	for (const part of path.split("/")) {
-		if (part === "" || part === ".") continue;
-		if (part === "..") {
-			// Applied to the RESOLVED location, so ".." after a link ascends from
-			// the target rather than from the link's own parent.
-			current = current.slice(0, Math.max(0, current.lastIndexOf("/")));
-			continue;
-		}
-		let candidate = `${current}/${part}`;
-		for (;;) {
-			const target = volume.readLink(candidate);
-			if (target === undefined) break;
-			hops += 1;
-			if (hops > MAX_LINK_HOPS) return undefined;
-			candidate = target.startsWith("/") ? target : `${current}/${target}`;
-		}
-		if (!volume.has(candidate)) return undefined;
-		current = candidate;
-	}
-	const final = current === "" ? "/" : current;
-	return volume.has(final) ? final : undefined;
-};
-
-const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => {
-	// A dangling link is ABSENT to this port, matching `existsSync`, even though
-	// the literal view reports the link itself as present.
-	const resolved = (path: string) => resolveLinks(volume, path);
-	return {
-		exists: (path) => resolved(path) !== undefined,
-		readFile: (path) => {
-			const target = resolved(path);
-			if (target === undefined) {
-				throw syncAbsence("ENOENT", "readFile", path);
-			}
-			const text = volume.text(target);
-			if (text === undefined) {
-				// Reading a directory as a file is EISDIR in `readFileSync`;
-				// anything else that is not a regular file is ENOTDIR.
-				throw syncAbsence(volume.isDirectory(target) ? "EISDIR" : "ENOTDIR", "readFile", path);
-			}
-			return text;
-		},
-		readDirectory: (path) => {
-			const target = resolved(path);
-			if (target === undefined) {
-				throw syncAbsence("ENOENT", "readDirectory", path);
-			}
-			const names = volume.readDirectory(target);
-			if (names === undefined) {
-				throw syncAbsence("ENOTDIR", "readDirectory", path);
-			}
-			return names;
-		},
-		isDirectory: (path) => {
-			const target = resolved(path);
-			return target !== undefined && volume.isDirectory(target);
+		lstat: (path) => {
+			const entry = findEntryAt(entries(), path);
+			if (entry === undefined) return undefined;
+			const kind = entry.type === "File" ? "file" : entry.type === "Directory" ? "directory" : "symlink";
+			return { kind, mtimeMs: entry.mtime, size: entry.size };
 		},
 	};
 };
@@ -1215,6 +1181,18 @@ export class MemoryFileSystem {
 		Layer.effectContext(
 			Effect.orDie(Effect.map(MemoryFileSystem.makeInspectableWith(seed, options), inspectableContext)),
 		);
+
+	/**
+	 * Builds the error a synchronous `node:fs` call throws: an `Error` carrying
+	 * `code`, `syscall` and `path`, for a sync port that has to fail the way the
+	 * Node binding does.
+	 *
+	 * @param code - The errno code, e.g. `"ENOENT"`.
+	 * @param syscall - The failing call, e.g. `"open"`.
+	 * @param path - The path the call was given.
+	 */
+	static readonly errno = (code: string, syscall: string, path: string): MemoryFileSystemErrnoError =>
+		nodeErrno(code, syscall, path);
 
 	private constructor() {}
 }
