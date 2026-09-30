@@ -457,7 +457,18 @@
 		"YamlFrontmatter": "yaml frontmatter codec, decode and encode yaml frontmatter over @effected/yaml"
 	},
 	"memfs": {
-		"MemoryFileSystem": "in-memory filesystem test double for FileSystem, seed files, inject faults, inspect writes"
+		"MemoryFileSystem": "in-memory FileSystem test double, seed files, inject faults, inspect writes, sync and promises ports, case-insensitive volume",
+		"MemoryFileSystemErrnoError": "node-shaped thrown error, fail a port fault like node:fs",
+		"MemoryFileSystemHandle": "one volume every view, assert after the run, sync setup mutators, fault the ports",
+		"MemoryFileSystemOptions": "seed root, case-insensitive volume, inject faults at build",
+		"MemoryFileSystemPortStats": "stat result for an injected port, file directory symlink checks",
+		"MemoryFileSystemPromisesFaults": "fault an injected fs/promises port, reject one path",
+		"MemoryFileSystemPromisesFileSystem": "test double for injected fs/promises walker, readdir withFileTypes",
+		"MemoryFileSystemSyncFaults": "fault an injected sync filesystem port, throw errno for one path",
+		"MemoryFileSystemVolumeStat": "literal lstat of a volume entry, kind size mtime",
+		"MemoryFileSystemDirent": "readdir withFileTypes entry from the promises port",
+		"MemoryFileSystemPortOptions": "configure faults on a sync or promises port",
+		"NodeSyncFileSystem": "read real disk under Effect.runSync, synchronous read-only node filesystem"
 	},
 	"mcp": {
 		"McpGuard": "crash guards before the server graph loads, exit only before connect, startup failure exits 1",

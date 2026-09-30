@@ -90,6 +90,11 @@ beats nothing at all — write the control first and watch it fail.
   zero-warning report. See `effect-api-extractor-bases`.
 + **Front ends**: `effect-v4-cli` for command-line programs, `effect-v4-mcp`
   for MCP servers, `design-patterns` for a tool that ships more than one bin.
++ **Filesystem doubles**: a filesystem double is `@effected/memfs`, never
+  `FileSystem.layerNoop` or a hand-rolled port stub; pick the form from the
+  effect-v4-testing memfs reference (`layerWith` + `Volume` to assert inside
+  the program, `makeHandle`/`makeSync` and its pinned `layer` to assert after
+  it, `options.faults` or `handle.withFaults` for failures).
 
 ## Boundaries
 

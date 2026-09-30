@@ -773,3 +773,54 @@ non-vacuous — prove the differential can fail (inject a divergence, watch it
 flag) before trusting a green. A suite that cannot exercise your change cannot
 fail in response to it, which is the same defect as a mutant that cannot be
 pinned, one level up.
+
+## A memfs layer re-seeds on every `Effect.provide`
+
+Layer memoization is per-build, not per-value. A test that runs the code under
+one provide and reads `MemoryFileSystem.Volume` under a second provide of the
+SAME bound layer inspects a fresh volume holding only the seed:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+import { assert, it } from "@effect/vitest";
+import { Effect, FileSystem } from "effect";
+
+const Volume = MemoryFileSystem.layerWith({ "/seed.txt": "s" });
+
+it.effect("proves nothing", () =>
+  Effect.gen(function* () {
+    yield* Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      yield* fs.writeFileString("/written.txt", "w");
+    }).pipe(Effect.provide(Volume));
+    const fresh = yield* Effect.provide(MemoryFileSystem.Volume, Volume);
+    assert.isFalse(fresh.has("/written.txt")); // GREEN whatever the code did
+  }),
+);
+```
+
+Every "nothing was written" assertion shaped like this passes vacuously. Resolve
+`Volume` inside the one provide the code runs under, or build a handle
+(`MemoryFileSystem.makeHandle` / `makeSync`), provide its pinned `handle.layer`,
+and assert on `handle.volume` → [memfs.md](./memfs.md).
+
+## `volume.isDirectory` is literal — a link to a directory is not one
+
+The inspection view never follows a symlink, not even mid-path:
+`volume.isDirectory("/link")` is `false` for a link to a directory, and
+`volume.has("/link/child")` is `false` even when the target holds `child`.
+The ports (`handle.sync`, `handle.promises`) follow links, as `statSync` does.
+A test that asserts the code "skipped" a linked package by reading the literal
+view is green for the wrong reason — the view never saw the package the code
+walked through. Assert with the surface the code under test actually uses.
+
+## A case-sensitive default hides a case-folding bug
+
+memfs volumes are case-sensitive by default. Code that must survive default
+APFS or NTFS — probing `README.md` against a user's `readme.md`, deduplicating
+paths, comparing a config key to a filename — passes every memfs test and
+ships the bug, because the double answers the way Linux does. When the code's
+correctness depends on how a path may be SPELLED, build the fixture with
+`MemoryFileSystem.makeHandle(seed, { caseSensitive: false })` (semantics measured
+on a real APFS volume) and add the case-sensitive default as the control: the
+same test green on both is the evidence.

@@ -124,6 +124,23 @@ There is no `it.scoped` — scoped effects run under `it.effect`. Test
 utilities (`TestClock`, `TestConsole`) import from `effect/testing`. Construct via
 `X.make`, tests in `__test__/`.
 
+Filesystem doubles are `@effected/memfs` (effect-v4-testing's memfs
+reference). Flag, as findings:
+
+- a hand-written `readdir`/`stat`/`readFile` adapter over a memfs volume or a
+  `Map` — `handle.sync` / `handle.promises` (or `syncFileSystem` /
+  `promisesFileSystem`) already are the node-shaped ports;
+- `Effect.runPromise`/`runSync` of a memfs constructor followed by
+  `Layer.succeed(FileSystem.FileSystem, …)` wiring — `makeSync(seed, options)`
+  and its pinned `handle.layer` replace it;
+- a thrown `Object.assign(new Error(...), { code })` standing in for a failing
+  port — a port fault (`handle.withFaults`) throwing `MemoryFileSystem.errno`
+  belongs there;
+- a `MemoryFileSystem.Volume` read under a SECOND `Effect.provide` of the same
+  layer — it inspects a re-seeded, fresh volume, so the assertion is vacuous;
+- a `FileSystem.layerNoop` stub standing in for more than one trivially-stubbed
+  member.
+
 ## Output format
 
 A ranked list of findings, most-severe first: for each, the file:line, the

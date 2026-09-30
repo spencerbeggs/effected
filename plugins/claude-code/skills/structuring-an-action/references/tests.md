@@ -144,7 +144,7 @@ For a cross-phase-state double specifically, encode through the caller's own sch
 
 ## The filesystem double is a real volume
 
-A test that needs `FileSystem` provides `@effected/memfs`, never a hand-rolled `FileSystem.layerNoop({ … })` over a `Map`. `layerNoop` is deny-by-default, so a stub over it encodes only the members its author remembered, and a production path that reaches an unremembered member fails in the test for a reason the test never meant to assert. Inject misbehaviour as a fault on the real in-memory volume — a write that fails, a read that returns the wrong bytes — not as a stub body.
+A test that needs `FileSystem` provides `@effected/memfs`, never a hand-rolled `FileSystem.layerNoop({ … })` over a `Map`. `layerNoop` is deny-by-default, so a stub over it encodes only the members its author remembered, and a production path that reaches an unremembered member fails in the test for a reason the test never meant to assert. Inject misbehaviour as a fault on the real in-memory volume — a write that fails, a read that returns the wrong bytes — not as a stub body: `MemoryFileSystem.layerWith(seed, { faults })`, or `makeSync(seed, { faults })` when the assertion runs after the action and needs the handle's pinned `layer`. Choosing the form → `effect-v4-testing`'s `references/memfs.md`.
 
 ## The layers proof is compile-time, from both sides
 

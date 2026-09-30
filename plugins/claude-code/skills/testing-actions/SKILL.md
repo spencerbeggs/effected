@@ -138,7 +138,11 @@ Absence means unwired; a recorded error means *this route fails, and here is why
 - A hand-rolled `FileSystem.layerNoop({ … })` over a `Map` is a stub that
   encodes only what its author remembered; the filesystem double for
   action code is `@effected/memfs`, with faults injected on the real
-  volume.
+  volume (`options.faults`). Runner-file assertions run AFTER the action,
+  so build the volume with `makeSync`/`makeHandle` and provide its pinned
+  `handle.layer` — a fresh `layerWith` re-seeds per provide and the read-back
+  sees a volume nobody wrote to. Forms and traps → `effect-v4-testing`'s
+  `references/memfs.md`.
 - A layers test that asserts a runtime condition can regress silently;
   the discriminating form is a **compile-time** assertion that both the
   app layer's and the *program's* requirements minus the runtime's

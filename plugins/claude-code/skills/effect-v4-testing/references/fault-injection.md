@@ -12,12 +12,17 @@ is the house recipe until a kit helper exists
 ([#145](https://github.com/spencerbeggs/effected/issues/145)).
 
 For `FileSystem` specifically, `@effected/memfs` is that helper:
-`MemoryFileSystem.layerFaulty(faults)` decorates whatever volume is provided
-beneath it, delegate-by-default, with the suspend and argument forwarding
-already correct. Its factory form, `layerFaulty((base) => faults)`, hands each
-handler the undecorated volume, so rewriting an argument and delegating is one
-line: `stat: (path) => base.stat(path.toLowerCase())`. Use the scaffold below
-for every other service.
+`MemoryFileSystem.layerWith(seed, { faults })` builds a volume whose service is
+decorated delegate-by-default, with the suspend and argument forwarding already
+correct — and publishes `MemoryFileSystem.Volume` over the raw volume beneath
+the faults, so the test can still assert on what landed.
+`MemoryFileSystem.layerFaulty(faults)` decorates any OTHER `FileSystem`
+provided beneath it (the node adapter, a hand-built double). The factory form,
+`faults: (base) => ({ ... })`, hands each handler the undecorated filesystem,
+so rewriting an argument and delegating is one line. A fault key that names no
+member throws `RangeError` at construction, so a typo cannot silently disable
+the fault. Choosing the memfs form → [memfs.md](./memfs.md). Use the scaffold
+below for every other service.
 
 ## The scaffold: `Layer.effect` + spread the base + `Layer.provide(base)`
 
@@ -131,7 +136,7 @@ A test that needs a **stable, predictable** temp path — to assert on a
 message that echoes it, say, or to reuse the same path across two calls in
 one test — cannot get one from the real `makeTempDirectoryScoped`, which
 always mints a fresh random name. `@effected/memfs`'s
-`MemoryFileSystem.layerFaultyWith(seed, faults)` faults exactly one method
+`MemoryFileSystem.layerWith(seed, { faults })` faults exactly one method
 against a seeded volume, delegating every other member to the real memfs
 implementation:
 
@@ -141,11 +146,9 @@ import { Effect, FileSystem } from "effect";
 
 const FIXED = "/tmp/effected-test-fixed";
 
-const DeterministicTemp = MemoryFileSystem.layerFaultyWith(
+const DeterministicTemp = MemoryFileSystem.layerWith(
   { [FIXED]: MemoryFileSystem.directory() }, // pre-create the directory the fault will "mint"
-  {
-    makeTempDirectoryScoped: () => Effect.succeed(FIXED),
-  },
+  { faults: { makeTempDirectoryScoped: () => Effect.succeed(FIXED) } },
 );
 
 const program = Effect.gen(function* () {
@@ -171,6 +174,40 @@ seed already contains it — `MemoryFileSystem.directory()` is the plain
 tagged-entry constructor for exactly that. Every other method — `writeFileString`,
 `exists`, and anything else the test under it calls — delegates to the real,
 honest memfs implementation untouched.
+
+## Faulting an injected port: `handle.withFaults` and `MemoryFileSystem.errno`
+
+Code that takes an injected `node:fs` port rather than `FileSystem` is faulted
+on the port, not the service — `options.faults` never reaches a handle's
+`sync`/`promises`. `handle.withFaults({ sync, promises })` returns faulted
+ports over the same volume. A sync handler throws the node-shaped error
+`MemoryFileSystem.errno(code, syscall, path)` builds (never a hand-rolled
+`Object.assign(new Error(...), { code })`); a promises handler may throw too,
+and the call rejects exactly as a real `fs/promises` call would:
+
+```ts
+import { MemoryFileSystem } from "@effected/memfs";
+
+const handle = MemoryFileSystem.makeSync({ "/repo/package.json": "{}", "/repo/secret.json": "{}" });
+const { sync, promises } = handle.withFaults({
+  sync: {
+    readFile: (path) => {
+      if (path.endsWith("secret.json")) throw MemoryFileSystem.errno("EACCES", "open", path);
+      return undefined; // every other path delegates to the volume
+    },
+  },
+  promises: {
+    stat: (path) => {
+      throw MemoryFileSystem.errno("EACCES", "stat", path);
+    },
+  },
+});
+sync.readFile("/repo/package.json"); // "{}"
+void promises.stat("/repo").catch(() => undefined); // rejects EACCES — never throws at the call site
+```
+
+The handle's own `sync` and `promises` stay unfaulted, so one fixture can serve
+both a healthy and a failing call site.
 
 ## Two instances of one layer in a single composition
 

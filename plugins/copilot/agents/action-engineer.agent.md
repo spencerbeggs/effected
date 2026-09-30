@@ -122,6 +122,12 @@ source wins and the concept is a finding to report.
   loudly.** The recorded exceptions each have a stated reason; the test for a
   new one is "would a real implementation legitimately answer this?", not "is
   it convenient".
+- **A filesystem double is `@effected/memfs`, never `FileSystem.layerNoop` or a
+  hand-rolled port stub**; pick the form from the effect-v4-testing memfs
+  reference. Runner files (`ActionOutputs`/`ActionState` append with
+  `flag: "a"`) need a real volume: build it with `makeSync`/`makeHandle`,
+  provide its pinned `handle.layer`, and assert on `handle.volume` after the
+  run — a fresh `layerWith` re-seeds per provide.
 - **Audit every error channel for whether it can actually fire.** Three were
   deleted in `@effected/sbom` because they existed only to guard a library
   that might throw. Demonstrate the failure path with a test, or delete it

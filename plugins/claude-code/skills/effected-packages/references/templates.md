@@ -66,7 +66,7 @@ const outcome = parsed.success.check(declared); // "Absent" | "UpToDate" | "Drif
 
 ## Testing machinery
 
-`ManagedSection.makeTest(overrides?)` / `layerTest(overrides?)` — unstubbed members **die when called**, rather than returning a plausible answer that makes a wrong test pass. For real IO, provide `@effected/memfs`: build the volume eagerly with `makeInspectableWith` under `Layer.succeed`, **never `layerInspectableWith`**, because a memfs layer re-seeds on every `Effect.provide` and assertions running after the provide would read a volume nobody wrote to. Pure suites need plain `it` (there is no Effect to run); service suites use `it.effect`.
+`ManagedSection.makeTest(overrides?)` / `layerTest(overrides?)` — unstubbed members **die when called**, rather than returning a plausible answer that makes a wrong test pass. For real IO, provide `@effected/memfs`: build the volume eagerly with `makeHandle` (or `makeSync`) and provide its pinned `handle.layer`, **never a fresh `layerWith`**, because a memfs layer re-seeds on every `Effect.provide` and assertions running after the provide would read a volume nobody wrote to. Pure suites need plain `it` (there is no Effect to run); service suites use `it.effect`.
 
 ## Gotchas
 
