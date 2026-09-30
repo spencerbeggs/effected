@@ -1,8 +1,12 @@
-import type { Layer } from "effect";
-import { Cause, Effect, MutableRef, Runtime } from "effect";
+import type { Stdio, Terminal } from "effect";
+import { Cause, Effect, Layer, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/cli";
 import { Cancelled } from "./Cancelled.js";
+import { CliColor } from "./CliColor.js";
+import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
+import { CliEnv } from "./CliEnv.js";
 import { CliExit } from "./CliExit.js";
+import { CliLog } from "./CliLog.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
@@ -80,7 +84,7 @@ export interface ReportFailuresOptions {
 }
 
 /**
- * Options for {@link CliRuntime.main}.
+ * Options for `CliRuntime.main`.
  *
  * @public
  */
@@ -90,8 +94,22 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * on it. Passed in so this package never imports a platform.
 	 */
 	readonly platform: Layer.Layer<RP, EP>;
-	/** The logger, provided outermost. Defaults to `CliLogger.layer()`. */
+	/**
+	 * The logger, provided outermost. Defaults to `CliLogger.layer()`, or to `CliLog.layer(env.log)` when
+	 * `env.log` is given. An explicit `logger` wins over both.
+	 */
 	readonly logger?: Layer.Layer<never> | undefined;
+	/**
+	 * Provide the environment services, built by {@link CliEnv.layer}, inside failure reporting, where the platform
+	 * sits, together with `CliColor.formatterLayer` so help text follows the same colour decision.
+	 *
+	 * @remarks
+	 * The program may then require `CurrentRuntimeEnv`, `TerminalEnv`, `Audience` and `CliTheme` and read
+	 * `CliInteractive`. Without it `CliInteractive` keeps its non-interactive default, so forgetting this wiring
+	 * gives a CLI that never prompts. With `env.log`, `main` uses `CliLog.layer` as the logger set. A failure
+	 * building the env layer renders as one line and exits through `exitCode`.
+	 */
+	readonly env?: CliEnvOptions | undefined;
 	/**
 	 * Where the help document goes when it is printed with a usage error:
 	 * `"stdout"` (the default, core's behaviour) or `"stderr"`, beside the
@@ -279,6 +297,9 @@ export class CliRuntime {
 	 *   fallback code rather than escaping to the runtime's stack trace.
 	 * - The logger is provided **outermost**, so it is present whichever branch
 	 *   fails.
+	 * - With the `env` option, `CliEnv.layer` and `CliColor.formatterLayer` are
+	 *   provided beside the platform, inside failure reporting, so the program can
+	 *   read the audience, terminal, theme and `CliInteractive`.
 	 *
 	 * You still call your platform's runner:
 	 *
@@ -289,11 +310,40 @@ export class CliRuntime {
 	 * )
 	 * ```
 	 */
-	static readonly main = <A, E, R, RP, EP>(
+	static main<A, E, R, RP, EP>(
+		program: Effect.Effect<A, E, R>,
+		options: MainOptions<RP, EP> & { readonly env?: undefined },
+	): Effect.Effect<void, Error, Exclude<Exclude<R, CliExit>, RP>>;
+	static main<A, E, R, RP, EP>(
+		program: Effect.Effect<A, E, R>,
+		options: MainOptions<RP, EP> & { readonly env: CliEnvOptions },
+	): Effect.Effect<
+		void,
+		Error,
+		Exclude<Exclude<R, CliExit | CliEnvServices>, RP> | Exclude<Stdio.Stdio | Terminal.Terminal, RP>
+	>;
+	static main<A, E, R, RP, EP>(
 		program: Effect.Effect<A, E, R>,
 		options: MainOptions<RP, EP>,
-	): Effect.Effect<void, Error, Exclude<Exclude<R, CliExit>, RP>> =>
-		Effect.gen(function* () {
+	): Effect.Effect<void, Error, unknown> {
+		// Bound once, so the logger and the program below share one build of it (layers memoize by reference).
+		const env = options.env === undefined ? undefined : CliEnv.layer(options.env);
+		const envLog = options.env?.log;
+		const logger =
+			options.logger ??
+			(env === undefined || envLog === undefined
+				? CliLogger.layer()
+				: // The logger needs Audience and TerminalEnv, so it is built over the env layer; the same layer is provided
+					// again inside failure reporting, where a failure to build it is reported. If it cannot be built here, fall
+					// back to the plain CliLogger so that report has a logger.
+					CliLog.layer(envLog).pipe(
+						Layer.provide(env),
+						Layer.provide(options.platform),
+						Layer.catchCause(() => CliLogger.layer(envLog.logger)),
+					));
+		const inside = env === undefined ? Layer.empty : CliColor.formatterLayer().pipe(Layer.provideMerge(env));
+
+		return Effect.gen(function* () {
 			// Inside the platform provide, so the rerouting sees the platform's own Formatter.
 			yield* options.helpOnUsageError === "stderr" ? routeHelpOnUsageError(program) : program;
 			const exit = yield* CliExit;
@@ -309,10 +359,12 @@ export class CliRuntime {
 			if (code !== 0) return yield* Effect.fail(new ExitRequested(code));
 		}).pipe(
 			Effect.provide(CliExit.layer),
+			Effect.provide(inside),
 			Effect.provide(options.platform),
 			CliRuntime.reportFailures(options),
-			Effect.provide(options.logger ?? CliLogger.layer()),
-		);
+			Effect.provide(logger),
+		) as Effect.Effect<void, Error, unknown>;
+	}
 
 	/**
 	 * Mark an error as already reported, carrying an exit code.
@@ -322,7 +374,7 @@ export class CliRuntime {
 	 * command that prints its own diagnostics, say — needs the same two marks
 	 * and should not have to rediscover the inverted polarity.
 	 *
-	 * Under {@link CliRuntime.main} or {@link CliRuntime.reportFailures}, do NOT
+	 * Under `CliRuntime.main` or {@link CliRuntime.reportFailures}, do NOT
 	 * print the failure yourself before failing with it: `reportFailures`
 	 * renders every error except a `ShowHelp` and a `CliError.UserError` whose
 	 * reported mark is `false`, so it would print twice. Fail with the marked

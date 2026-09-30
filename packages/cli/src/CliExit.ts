@@ -20,7 +20,7 @@ export interface CliExitShape {
  * handler must return normally — yet the process must exit non-zero. Writing
  * `process.exitCode` works only because Node's `runMain` skips
  * `process.exit(0)` on success; `process.exit(n)` in a handler skips every
- * finalizer. {@link CliRuntime.main} reads this cell after the program
+ * finalizer. `CliRuntime.main` reads this cell after the program
  * succeeds and turns a non-zero code into a marked failure the runtime's
  * teardown honours, on any runtime, with finalizers intact.
  *

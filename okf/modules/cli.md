@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T21:05:06Z
-  body_sha256: 0310660bbcef4dcf8895974a9f213cecef6dd445fca0ae531ece4d2604d2ca31
+  at: 2026-09-30T21:14:15Z
+  body_sha256: 0d27f4dbc73bee3656f8f377a9c0e3a36e1e5d3202649c0cb4903eb9fd9bdcde
 ---
 
 # @effected/cli
@@ -108,11 +108,11 @@ for why the package owns them.
 
 | Export | Contract |
 | --- | --- |
-| `CliEnv.layer` | `(options?: CliEnvOptions) => Layer<CurrentRuntimeEnv \| TerminalEnv \| Audience \| CliInteractive \| CliTheme, never, Stdio \| Terminal>` — builds the environment services once, in the right order. `CliEnvOptions` is `{ audienceEnvVar?, stderrIsTerminal?, theme?, log? }`. |
-| `MainOptions.env` | `CliEnvOptions`. When present, `CliRuntime.main` provides `CliEnv.layer(env)` inside failure reporting, so a `Config` error renders and exits through the `exitCode` option rather than reaching the runtime's stack trace. |
+| `CliEnv.layer` | `(options?: CliEnvOptions) => Layer<CurrentRuntimeEnv \| TerminalEnv \| Audience \| CliTheme, never, Stdio \| Terminal>` — builds the environment services once, in the right order, and **sets** the `CliInteractive` reference from the audience and terminal. A reference's key type is `never`, so `CliInteractive` is not in the output type. Every read degrades to unset when `Config` fails, so only `Stdio` or `Terminal` failing fails the layer. `CliEnvOptions` is `{ audienceEnvVar?, stderrIsTerminal?, theme?, log? }`; `log` is read only by `CliRuntime.main`. |
+| `MainOptions.env` | `CliEnvOptions`. When present, `CliRuntime.main` builds `CliEnv.layer(env)` inside failure reporting, where the platform sits, together with `CliColor.formatterLayer` so help text follows the same colour decision, so a failure building it renders one line and exits through the `exitCode` option rather than reaching the runtime's stack trace. With `env.log`, `main` uses `CliLog.layer(env.log)` as the logger set instead of the default `CliLogger.layer()` (an explicit `logger` option still wins); the logger is built over the same env layer and falls back to `CliLogger` if that build fails. Without `env`, nothing is provided and `CliInteractive` keeps its non-interactive default, so forgetting it yields a CLI that never prompts. |
 | `CliAudience.flags` | `(options?: { hidden? }) =>` the four shared flags `audience`, `human`, `agent`, `ci`, each `Flag.atLeast(0)`; spread into `Command.withSharedFlags` on the root. `hidden` applies `Flag.withHidden`. |
 | `CliAudience.provide` | Piped onto the composite root (after `withSubcommands`): resolves the flags with `Command.provideEffect` and re-provides env's `Audience` with `source: "flag"`. More than one occurrence is a `CliError.UserError`, exit 64. See [the audience flag decision](../decisions/audience-flag-is-shared-root-flags.md). |
-| `CliInteractive` | A boolean service: `Audience` is `human`, stdin is a terminal and stdout is a terminal. Static `layer`, `layerTest(value)`, `get`, and `unless(condition)`, a scoped override that can only turn it off. |
+| `CliInteractive` | A `Context.Reference<boolean>` defaulting to `false`, read with `yield* CliInteractive` and never in `R`: `Audience` is `human`, stdin is a terminal and stdout is a terminal. Static `layer` (from `Audience` and `TerminalEnv`), `layerTest(value)` and `unless(condition)`, a scoped override that can only turn it off. Both layers are typed `Layer<never>` because they set the reference. |
 | `Token`, `Style`, `TokenName` | A token is a style; applying it is identity when colour is `none`. `TokenName` is `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` or `emphasis`. `Token.hex`, `Token.named` and `Token.style` build custom styles. |
 | `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `worst(names)` takes a non-empty list and returns the highest rank, ties to the first; `worstOption(names)` takes any array and returns an `Option`, `None` when empty. Names are typed, so a misspelt one is a compile error. |
 | `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis and spinner frames. ASCII is chosen under `TERM=dumb` or by option. |
@@ -122,7 +122,7 @@ for why the package owns them.
 | `CliLog` | Diagnostics, kept apart from `CliMessage`. `Level` is a reference defaulting to `None`, filtered on its own threshold rather than `MinimumLogLevel`. `layer({ envVar?, format?, logger? })` **owns the whole logger set**: it builds the `CliLogger` (floored at the minimum level it had) and the stderr sink, NDJSON or pretty, and replaces whatever was installed without reading it, so there is no order to get wrong; use it instead of `CliLogger.layer`, never on top of it. Stderr is not pure NDJSON while diagnostics are on, so a parser reads the lines that start with `{`. `component(name)` annotates a line. The `file: { envVar } \| { path }` option adds an async NDJSON file sink (a queue drained by a scoped fiber, the same lines as stderr) that reports its first write error once and then drops further lines; only a layer given `file` requires `FileSystem` and `Path`. |
 | `Cancelled` | A tagged error, `reason: "escape" \| "interrupt"`, carrying exit code 130 through the runtime-marker mechanism. See [one Cancelled for two engines](../decisions/one-cancelled-for-two-prompt-engines.md). |
 | `NotInteractive` | A tagged error for a prompt reached in a non-interactive run; exits 64. |
-| `CliPrompt.fallback` | `(prompt, { otherwise? }) => Param.FallbackPrompt` — prompts only when `CliInteractive` is true, else returns `otherwise`, else re-raises the missing-flag error. A core `QuitError` maps to `Cancelled`. |
+| `CliPrompt.fallback` | `(prompt, { flag \| argument, otherwise? }) => Param.FallbackPrompt` — prompts only when `CliInteractive` is true, else returns `otherwise`, else fails as a missing flag or argument (built from the given name, exit 64). The prompt runs inside the fallback so a quit becomes `Cancelled` (exit 130) instead of core's missing-flag error. |
 | `CliPrompt.gateWizard` | A layer that drops core's `--wizard` built-in from the run when it is not interactive. |
 | `Doc`, `Render`, `GithubAnnotation` | Planned (P3): the document IR, its plain, ANSI, markdown and GitHub-log renderers, and workflow-command annotations. |
 | `CliLinks`, `CliFailure` | Planned (P3): editor links, and failure rendering on the IR, with the two schema-issue renderers moving onto its `Tree`. |

@@ -14,7 +14,7 @@ describe("cli boundary", () => {
 		);
 
 		it.effect(
-			"no source file reads process, writes to stdout, or imports node:, a platform package, mcp or engine",
+			"no source file reads process, writes to stdout, or imports node:, a platform package, mcp, engine, ink or react",
 			() =>
 				Effect.gen(function* () {
 					const scan = yield* SourceBoundary.scan({
@@ -23,7 +23,17 @@ describe("cli boundary", () => {
 							"process",
 							"node:process",
 							"stdout-write",
-							{ forbidImports: ["node:*", "@effect/platform*", "@effected/mcp", "@effected/engine"] },
+							{
+								forbidImports: [
+									"node:*",
+									"@effect/platform*",
+									"@effected/mcp",
+									"@effected/engine",
+									"ink",
+									"react",
+									"react/*",
+								],
+							},
 						],
 					});
 					assert.include(scan.files, "CliRuntime.ts", "the scan read the real tree");

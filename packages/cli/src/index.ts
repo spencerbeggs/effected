@@ -29,6 +29,7 @@
 export { Cancelled } from "./Cancelled.js";
 export { type AudienceFlagInput, CliAudience, type CliAudienceFlagsOptions } from "./CliAudience.js";
 export { CliColor } from "./CliColor.js";
+export { CliEnv, type CliEnvOptions, type CliEnvServices } from "./CliEnv.js";
 export { CliExit, type CliExitShape } from "./CliExit.js";
 export { CliInteractive } from "./CliInteractive.js";
 export { CliLog, type CliLogFile, type CliLogFileOptions, type CliLogOptions } from "./CliLog.js";
