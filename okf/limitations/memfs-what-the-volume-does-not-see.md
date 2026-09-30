@@ -1,7 +1,7 @@
 ---
 type: Limitation
 title: memfs's volume is invisible to anything that does not ask for the FileSystem service
-description: memfs installs no hooks and patches no module registry, so direct node:fs calls, spawned processes, native-binding IO, and process.cwd() all silently bypass the volume.
+description: memfs installs no hooks and patches no module registry, so direct node:fs calls, spawned processes, native-binding IO, process.cwd() and process.platform all silently bypass the volume.
 status: stable
 bounds: ../modules/memfs.md
 tags:
@@ -11,10 +11,12 @@ sources:
     resource: ../../packages/memfs/CLAUDE.md
   - id: memfs-readme
     resource: ../../packages/memfs/README.md
+  - id: xdg-readme
+    resource: ../../packages/xdg/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 3e257e5116d4fb40a5a4220e946832261e661daaadc5573d6dd561f333355072
+  at: 2026-09-30T01:37:32Z
+  body_sha256: 66e8ff40a507f780443729ecda82fe3093680c3d305cc92cde61eb4b1ec2c016
 ---
 
 # memfs's volume is invisible to anything that does not ask for the FileSystem service
@@ -29,7 +31,7 @@ the same process.
 
 ## Symptom
 
-Four call shapes silently bypass the volume rather than erroring or
+Five call shapes silently bypass the volume rather than erroring or
 warning:
 
 1. **A direct `node:fs` call** reads and writes the real host filesystem
@@ -44,24 +46,41 @@ warning:
 4. **`process.cwd()`** is not modeled by the volume. Code that consults
    it internally silently leaves the volume's model behind, and nothing
    fails loudly to flag the mismatch.
+5. **`process.platform`** is not virtualized either: memfs virtualizes
+   the filesystem, not the platform. Code that branches on it — such as
+   `@effected/xdg`'s `AppDirs`/`XdgConfig`, through the `CurrentPlatform`
+   `Context.Reference`, which defaults to `process.platform` — still takes
+   the host's branch over a memfs volume. Pin it with
+   `Effect.provideService(CurrentPlatform, "linux")` or
+   `Layer.succeed(CurrentPlatform, ...)`, as the Testing section of
+   [`@effected/xdg`'s README](../../packages/xdg/README.md) shows.
 
 ## Why this is acceptable
 
-Closing any of the four would mean either patching global module
+Closing any of the five would mean either patching global module
 resolution (turning memfs into the kind of ambient-hook test double the
 package was built specifically to avoid, since ambient patching is
 exactly the deny-by-default surprise class `layerNoop` already produces
 in a different form) or building an adapter that lets code bypass the
 service injection discipline entirely — which the package's own
-[sync filesystem port](../modules/memfs.md#the-sync-filesystem-port)
+[`fs.promises` facade](../modules/memfs.md#provenance-and-refusals)
 already declined once, for a related reason: a bypass-shaped facade
 legitimizes call sites that never inject `FileSystem` at all, growing a
 second, weaker sanctioned path alongside the real one. No adapter is
-offered to close any of the four, for the same reason.
+offered to close any of the five, for the same reason.
+
+## Case folding has limits
+
+`caseSensitive: false` is not a full model of a case-insensitive host.
+Folding is `toLowerCase` only, per UTF-16 unit, so `İ` (U+0130) and
+`ß`/`ẞ` do not fold as a regex `i` flag would; there is no NFC/NFD
+normalization, so two names APFS treats as one stay distinct in memfs;
+and glob folding is per UTF-16 unit too. A green case-insensitive test
+over such names is not evidence about the host.
 
 ## The check
 
-Confirm any test exercising one of the four call shapes does not use
+Confirm any test exercising one of the call shapes above does not use
 memfs as its double — a `ChildProcessSpawner` fault-injection double for
 subprocess IO, an in-memory database driver for native-binding IO, and a
 real tmpdir (or an explicit `process.cwd()`-aware fixture) for anything
@@ -70,8 +89,8 @@ state after a code path that spawns, calls `node:fs` directly, or reads
 `process.cwd()` is not evidence the code path is correct — it is
 evidence the assertion never reached the real IO.
 
-`packages/memfs/README.md` states all four for consumers
+`packages/memfs/README.md` states the invisibility cases for consumers
 directly.[^memfs-readme]
 
-[^memfs-readme]: `packages/memfs/README.md:138-141` — the four
+[^memfs-readme]: `packages/memfs/README.md:138-141` — the
     invisibility cases stated for consumers.

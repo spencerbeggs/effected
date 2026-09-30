@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-29T07:46:45Z
-  body_sha256: 82e21fa88c7178c15288d7900624e72540093b6e9cb59ee5f6040e852a26c48b
+  at: 2026-09-30T01:37:32Z
+  body_sha256: 9881400db953b04ebcd12c7e3e482c2402269cc5b048f1e74d4f5692c10c557a
 ---
 
 # @effected/memfs
@@ -41,7 +41,7 @@ The founding contract is **honest absence**: a read of a path nothing
 seeded fails typed (`SystemError` reason `NotFound`), never fabricates
 content. It recurs three times in this design — in the service, in the
 [volume inspection view](#volume-inspection), and in
-[the sync port](#the-sync-filesystem-port) — and each recurrence is
+[the ports](#the-ports) — and each recurrence is
 deliberate.
 
 ## The vendored port
@@ -63,7 +63,9 @@ with neither queued, and the kit needed the capability immediately.
 **Sunset clause**: the release in which core's `effect` ships a
 `MemoryFileSystem` module, this package is deprecated in favor of it —
 the module name `MemoryFileSystem` deliberately mirrors upstream so the
-migration is an import-path change.
+migration is an import-path change. **`node-sync` needs re-homing, not
+deletion**: it is not a memory filesystem, and its read-only sync
+contract is independent of the engine.
 
 The pins are the anti-drift record: re-evaluating against a newer
 upstream head is a deliberate re-vendor with this document updated,
@@ -71,9 +73,11 @@ never an in-place edit. Every deliberate delta is listed in
 [the adaptation ledger](#adaptation-ledger); anything else diverging
 from `c0528bd5` is drift, not design.
 
-## Tier and dependencies: pure, with a zero-@effected-edges law
+## Tier and dependencies: a pure main entry plus one boundary subpath, with a zero-@effected-edges law
 
-The package performs no host IO — the volume is immutable in-memory
+**Pure main entry, one boundary subpath.** The package stays pure tier: `effect` is its only peer, zero runtime dependencies, zero `@effected/*` edges. The `./node-sync` subpath (`src/NodeSyncFileSystem.ts`) is the single module allowed to import `node:*`, following the `@effected/workspaces/node-sync` precedent, and nothing reachable from `src/index.ts` imports it. Verify with an import-specifier grep or a module-graph walk — a bare `node:` grep is vacuous, since it matches prose and the substring in `Inode:`.
+
+The main entry performs no host IO — the volume is immutable in-memory
 state (a `HashMap`-backed inode table) behind a one-permit semaphore —
 and it *provides* `FileSystem` rather than requiring anything: the
 layer's `R` is `never`. `effect` is the only peer; zero runtime
@@ -94,234 +98,224 @@ the full reasoning, including why no other candidate host package
 worked.
 
 `@effect/platform-node` is a devDependency only, confined to the
-differential-oracle integration test.
+differential-oracle integration tests.
 
 ## Public surface
 
-One module. It provides core's `FileSystem` service; the one service it
-declares of its own — `MemoryFileSystem.Volume` — is opt-in and
-published only by the inspectable constructors.
+Two entry points. The main entry, `MemoryFileSystem`, provides core's
+`FileSystem` service and is pure — it imports nothing from `node:*`. The
+`./node-sync` subpath, `NodeSyncFileSystem`, is the one boundary module
+(see [node-sync](#node-sync-the-boundary-subpath)).
 
-- `MemoryFileSystem.make` / `MemoryFileSystem.layer` — a fresh empty
-  volume, as an `Effect` and as a `Layer` (fresh per build).
-- `MemoryFileSystem.makeWith(seed)` / `layerWith(seed)` — a fresh volume
-  pre-populated from a `path → MemoryFileSystemSeedEntry` record; parent
-  directories are created recursively, then each entry applied in the
-  record's own key order. The seeding record is the ergonomic
-  replacement for hand-stubbed `layerNoop` tree fixtures.
+Eight constructors, all in the main entry:
 
-The layer forms are parameterized factories: each call mints a fresh
-reference, so bind the result to a `const` rather than calling it at
-each composition site. A contradictory seed dies in `layerWith`
-(wiring-bug posture); `makeWith` is the form that keeps seeding failures
-in the error channel.
+- `make` / `layer` — a fresh empty volume, as an `Effect` and a `Layer`
+  (fresh per build). The upstream mirror; the ported engine's own `make`.
+- `makeWith(seed?, options?)` / `layerWith(seed?, options?)` — a fresh
+  volume pre-populated from a `path → MemoryFileSystemSeedEntry` record;
+  parents are created recursively, then each entry applied in the
+  record's key order. The seed is optional.
+- `makeHandle(seed?, options?)` — an `Effect<MemoryFileSystemHandle,
+  PlatformError>`; `makeSync(seed?, options?)` — the same handle built
+  synchronously, throwing node-shaped errors.
+- `makeFaulty(base, faults)` / `layerFaulty(faults)` — decorators over
+  **any** `FileSystem`, not only this package's. `layerFaulty` is
+  `Layer<FileSystem, never, FileSystem>`.
+
+`options` is `{ root?, caseSensitive?, faults? }`. One internal
+`buildHandle(seed, options)` serves `makeWith`, `layer`, `layerWith`,
+`makeHandle` and `makeSync`; the seed is written through the **raw**
+filesystem, beneath any faults, so a fault can never break seeding. The
+layer forms are parameterized factories: bind the result to a `const`. A
+contradictory seed dies in the layer forms (wiring-bug posture); the
+`make` forms keep seeding failures typed.
+
+**`Volume` is always published.** Every memory layer (`layer`,
+`layerWith`, `handle.layer`) provides `FileSystem | MemoryFileSystemVolume`.
+Under `faults`, `Volume` inspects the raw volume, not the faulted
+service. Consumers that compose two memory layers with `Layer.merge` get
+two `Volume`s and the last wins — as `FileSystem` already behaves.
+
+Helpers: `file`, `directory`, `symlink` (seed entries), `failTimes`,
+`die`, `errno(code, syscall, path?)` and the `Volume` key.
 
 ### Seed entries
 
 A seed value is a `MemoryFileSystemSeedEntry`: plain `string |
 Uint8Array` contents, or one of three tagged entries built by statics —
 `file(content, { mode?, mtime? })`, `directory({ mode? })`,
-`symlink(target)`. One seed literal therefore describes a whole tree:
-files with initial modes (`0o644` default), empty directories (the only
-way a seed can express one) with modes (`0o755` default), and symbolic
-links whose target is stored verbatim and may dangle. A directory's mode
-is applied by a post-`makeDirectory` `chmod` so it lands even when that
-directory already exists — created implicitly as an earlier entry's
-parent.
+`symlink(target)`. One literal describes a whole tree: files (mode
+`0o644` default), empty directories (`0o755` default; `directory()` is
+the only way a seed expresses one) and symbolic links whose target is
+stored verbatim and may dangle. A directory's mode is applied by a
+post-`makeDirectory` `chmod`, so it lands even when the directory was
+created implicitly as a parent.
 
-`file`'s `mtime` pins a modification time in epoch milliseconds. Without
-it every seeded entry takes the volume's clock at seed time, so a seed
-alone cannot express "this file is older than that one" — exactly what a
-consumer fingerprinting a tree by mtime needs to test. Only `file` takes
-the option. Two unit traps sit around this, recorded in
-[ledger entry 9](#adaptation-ledger).
+`file`'s `mtime` pins a modification time in epoch milliseconds; without
+it every entry takes the volume's clock at seed time. Two unit traps sit
+around this, recorded in [ledger entry 9](#adaptation-ledger). `root`
+seeds beneath a directory other than `/`.
+
+### The handle
+
+`makeHandle` / `makeSync` return a `MemoryFileSystemHandle`: `fileSystem`,
+`volume`, `layer` (FileSystem + Volume + `Path`, pinned to one volume and
+stable across provides), `sync`, `promises`, and the mutators `write`,
+`mkdir`, `remove`, `symlink`. The mutators throw node-shaped errors and
+create a parent only when it is absent. **Assertion timing chooses the
+family:** the layer forms serve tests that resolve `Volume` and assert
+*inside* the provided effect; when assertions run *after* it, build the
+handle once, wrap `handle.fileSystem` in `Layer.succeed`, and assert on
+`handle.volume` — a layer form builds and re-seeds a fresh volume per
+provide, and a post-run assertion would read a volume nobody wrote to.
 
 ### Fault injection
 
-A delegate-by-default wrapper over any `FileSystem`:
+A delegate-by-default wrapper. Faults arrive as `options.faults` on any
+seeded constructor, or through `makeFaulty` / `layerFaulty` over an
+arbitrary base:
 
-- `MemoryFileSystem.makeFaulty(base, faults)` — the pure core: a wrapped
-  `FileSystem` value, no Effect, no layer.
-- `MemoryFileSystem.layerFaulty(faults)` — `Layer<FileSystem, never,
-  FileSystem>`: it requires the filesystem it wraps, so the composition
-  is `layerFaulty({...}).pipe(Layer.provide(volume))` and the wrapped
-  implementation need not be this package's.
-- `MemoryFileSystem.layerFaultyWith(seed, faults)` — the self-contained
-  convenience form.
-- `MemoryFileSystem.failTimes(times, error)` — a transient fault: the
-  first `times` intercepted calls fail with `error`, then delegation
-  resumes forever.
-- `MemoryFileSystem.die(defect)` — a handler that fails its member as a
-  **defect**, the arm `FileSystem.layerNoop` uses for its five `make*`
-  members. A caller's defensive `Effect.catch` absorbs a typed fault and
-  cannot absorb a defect, so a suite injecting a typed failure where the
-  real double dies passes while the real code path dies. Effect-returning
-  members only; the lazy members take a handler returning their own
-  type — `Stream.die` for `stream`/`watch`, `Sink.die` for `sink`.
-- `MemoryFileSystemFaultsFactory` — `(base) => MemoryFileSystemFaults`,
-  accepted by all three wrapping constructors anywhere a fault map is.
-  `base` is the **unfaulted** wrapped filesystem, so a handler can
-  rewrite its arguments and delegate (`stat: (p) => base.stat(fold(p))`)
-  without re-entering its own fault.
+- `failTimes(times, error)` — the first `times` intercepted calls fail,
+  then delegation resumes. Armed per build; throws `RangeError` on a
+  negative or non-integer count.
+- `die(defect)` — fails the member as a **defect**, the arm
+  `FileSystem.layerNoop` uses for its `make*` members. A caller's
+  defensive `Effect.catch` absorbs a typed fault and cannot absorb a
+  defect. Lazy members take their own type (`Stream.die`, `Sink.die`).
+- `MemoryFileSystemFaultsFactory` — `(base) => faults`, where `base` is
+  the **unfaulted** filesystem, so a handler can rewrite arguments and
+  delegate without re-entering its own fault.
 
 Design decisions worth keeping:
 
-- **`undefined` delegates.** A handler that returns nothing declines,
-  and unregistered methods are never intercepted at all — the deliberate
-  inverse of `FileSystem.layerNoop`'s deny-by-default, which forces a
-  consumer wanting one failing `chmod` to hand-build every other method
-  the code path touches.
-- **Handlers receive the real call arguments**, so a fault keys on the
-  path or mode of one specific call — distinguishing an unlock pass from
-  a relock pass inside a single walk, say.
-- **Faults are type-constrained to each method's own channel.**
-  `MemoryFileSystemFaultHandler` returns the method's own return type,
-  so an injected failure must be a genuine `PlatformError`;
-  `Effect.fail(new Error(...))` does not compile. A test named for the
-  `PlatformError` channel that fails with a bare `Error` never exercises
-  it — exactly the silent fiction this package exists to kill. `die` is
-  the one deliberate exit from the channel, because a defect is not a
-  failure of it.
-- **Every function-valued member is interceptable** (derived, not
-  enumerated by hand). The wrapper rebuilds the service through
-  `FileSystem.make` over the primitive members, so a fault on a core
-  method propagates coherently into the members `make` derives (`access`
-  → `exists`, `readFile` → `readFileString`, `writeFile` →
-  `writeFileString`, `open` → `stream`/`sink`). Those derived members are
-  then re-intercepted on top of the rebuilt service, so each also stays
-  directly interceptable — without that second pass, a fault registered
-  on `readFileString` would be silently discarded by the re-derivation
-  from an unfaulted `readFile`, a green test proving nothing.
+- **`undefined` delegates**, and unregistered methods are never
+  intercepted — the inverse of `layerNoop`'s deny-by-default.
+- **Handlers receive the real call arguments**, so a fault keys on one
+  specific call.
+- **Faults are type-constrained to each method's channel**: an injected
+  failure must be a genuine `PlatformError`; `die` is the one deliberate
+  exit.
+- **Unknown fault keys throw `RangeError`** naming the key, at
+  construction (`makeFaulty`, the ports) or layer build (`options.faults`
+  dies). Keys must be *own enumerable function members* of the target, so
+  a class instance with prototype methods must be wrapped in
+  `FileSystem.make` first. A typo used to be silently ignored — a green
+  test proving nothing.
+- **Every function-valued member is interceptable**: the wrapper rebuilds
+  through `FileSystem.make` (a fault on a core method propagates into the
+  derived ones) and re-intercepts the derived members on top, so a fault
+  on `readFileString` is not discarded by re-derivation.
 - **Effect-returning methods dispatch per execution** through
-  `Effect.suspend`, so a retried effect re-consults its handler — what
-  lets `Effect.retry` attempts consume `failTimes` counts rather than
-  one invocation consuming one. `watch`, `stream` and `sink` return
-  `Stream`/`Sink` values and are handler-form only, consulted at
-  invocation.
-- **`failTimes` counters are armed per build**, not per fault value:
-  each `makeFaulty` call and each layer build starts a fresh countdown,
-  and `Layer.fresh` re-arms. A factory runs once per build too, so a
-  `failTimes` created inside it is armed per build. `failTimes` throws
-  `RangeError` on a
-  negative or non-integer `times` — misuse is a wiring bug, the same
-  posture as `layerWith`'s die on a contradictory seed.
+  `Effect.suspend`, so `Effect.retry` re-consults the handler; `watch`,
+  `stream` and `sink` are handler-form and consulted at invocation.
+- **`failTimes` counters arm per build**; `Layer.fresh` re-arms. Under
+  `@effect/vitest`'s `layer(...)` one build serves the suite, so a
+  `failTimes` there is consumed by whichever test runs first.
 
 ### Volume inspection
 
-The write-path counterpart to seeding: a synchronous, read-only view of
-the same volume the `FileSystem` writes to, so a test asserts on what a
-program *wrote* without routing every assertion through an `Effect`
-read.
+A synchronous, read-only view of the volume the `FileSystem` writes to,
+so a test asserts on what a program *wrote* without an `Effect` read.
 
 - `MemoryFileSystem.Volume` — the context key,
-  `Context.Service("@effected/memfs/MemoryFileSystemVolume")` in
-  function form, the interface serving as both identifier and shape.
-  This deliberately copies `FileSystem.FileSystem`'s own key pattern
-  rather than the kit's class-form convention: the module mirrors
-  upstream so the sunset clause is an import-path change, and a service
-  shaped unlike its upstream neighbor would be the first thing to
-  rewrite on acceptance.
-- `MemoryFileSystemVolume` — the view: `snapshot()`, `text`, `bytes`,
-  `has`, `paths`, `readDirectory`, `isDirectory` and `mtime`. Pure sync
-  functions over the volume's live state at call time — never a copy
-  taken at build — so a read after a write observes the write, and a
-  removal disappears. Returned byte arrays are defensive copies;
-  mutating one cannot corrupt the volume.
-- `MemoryFileSystem.makeInspectable` / `makeInspectableWith(seed)` — the
-  value-level pair `{ fileSystem, volume }` over one volume. The seeded
-  form fails typed, keeping seeding failures in the error channel.
-- `MemoryFileSystem.layerInspectable` / `layerInspectableWith(seed)` —
-  `Layer<FileSystem.FileSystem | MemoryFileSystemVolume>`, both services
-  from one volume per build. The seeded form dies on a contradictory
-  seed, the wiring-bug posture `layerWith` already sets.
+  `Context.Service("@effected/memfs/MemoryFileSystemVolume")` in function
+  form, deliberately copying `FileSystem.FileSystem`'s own key pattern so
+  the sunset clause stays an import-path change.
+- `MemoryFileSystemVolume` — `snapshot()`, `text`, `bytes`, `has`,
+  `paths`, `readDirectory`, `isDirectory`, `mtime`, `readLink` and
+  `lstat`. Pure sync functions over the live state at call time, never a
+  copy taken at build. Returned byte arrays are defensive copies.
+- **Point queries are O(depth)**, answered by the engine's
+  [`lookupLiteral`](#adaptation-ledger); only `snapshot`/`paths` walk the
+  tree. Port path resolution and `readdir({ withFileTypes })` used to
+  snapshot the whole tree per component.
 
-Design decisions worth keeping:
+Semantics, documented rather than incidental:
 
-- **Opt-in, so no existing type widened.** `layer`, `layerWith` and
-  `layerFaulty*` still provide `FileSystem` and nothing else; consumers
-  annotating `Layer.Layer<FileSystem.FileSystem>` keep compiling. A test
-  pins this by annotating `layer` and `layerWith(...)` at exactly that
-  type.
-- **One internal `make` per build, both services derived from it**, so
-  the pairing invariant is structural rather than a convention two
-  constructors have to keep separately: `internal.makeInspectable`
-  returns `{ fileSystem, entries }` from a single `makeReadyVolume`, and
-  the layer forms publish both services with `Layer.effectContext` over
-  that one effect — the memoization-safe way to publish N services
-  sharing an instance; two separate `Layer.effect`s over the same effect
-  would build it twice and hand out two volumes wearing one name.
-- **Assertion timing is the choice between the two families.** The layer
-  forms are for tests that resolve `Volume` and assert *inside* the
-  provided effect. When assertions run *after* it, use the make forms:
-  build the pair once, wrap it in `Layer.succeed(FileSystem.FileSystem,
-  pair.fileSystem)` (optionally decorated by `makeFaulty` first), and
-  assert on `pair.volume` — the identity is pinned, where a layer form
-  would build and re-seed a fresh pair per provide and the post-run
-  assertion would read a volume nobody wrote to.
-
-The view's semantics are documented, not incidental:
-
-- **Regular files only** in `snapshot`/`paths`; directories and
-  symbolic links never appear. `paths()` is exactly `snapshot()`'s key
-  set, sorted lexicographically.
-- **Symlinks are never followed anywhere in the view.** `has` sees the
-  link itself (its target unconsulted, dangling allowed); `text`/`bytes`
-  answer `undefined` for it, because reading *through* a link is the
-  `FileSystem` API's job. `isDirectory` is literal for the same reason:
-  a symbolic link pointing at a directory answers `false`, a deliberate
-  divergence from `statSync(p).isDirectory()`.
-- **Hard links fan out**: one entry per directory entry, each path
-  carrying the same content.
-- **Query paths normalize lexically only** (`//`, `.`, `..` and
-  relative paths resolving from `/` as the engine does) — normalization
-  never touches the filesystem, so it cannot follow a link either.
-- **Absence is always `undefined`, never a plausible empty value.**
-  `text`/`bytes` answer `undefined` for a path holding no regular file,
-  so `""` only ever means a genuinely empty file; `readDirectory`
-  answers `undefined` rather than `[]`, and `mtime` `undefined` rather
-  than `0`, because a genuinely empty directory and a file modified at
-  the epoch are real values a caller must be able to tell apart from
-  absence.
+- **Regular files only** in `snapshot`/`paths`; `paths()` is exactly
+  `snapshot()`'s key set, sorted lexicographically.
+- **Symlinks are never followed anywhere in the view — not even
+  mid-path.** `has` sees the link itself; `text`/`bytes` answer
+  `undefined` for it; `isDirectory` is literal (a link to a directory is
+  `false`), a deliberate divergence from `statSync(p).isDirectory()`.
+  `readLink` and `lstat` are the literal probes.
+- **Hard links fan out**: one entry per directory entry.
+- **Query paths normalize lexically only** (`//`, `.`, `..`, relative
+  paths from `/`); normalization never touches the volume.
+- **Absence is always `undefined`, never a plausible empty value** —
+  `""` only ever means a genuinely empty file; `readDirectory` answers
+  `undefined` rather than `[]`, `mtime` `undefined` rather than `0`.
 - **`has("/tmp")` is `true` on an unseeded volume**: the engine
-  pre-creates the temp directory at build. `snapshot`/`paths` are
-  unaffected, since it is a directory.
+  pre-creates it.
 
-### The sync filesystem port
+### The ports
 
-`MemoryFileSystem.syncFileSystem(volume)` adapts the inspection view to
-the four synchronous operations — `exists`, `readFile`, `readDirectory`,
-`isDirectory` — that a consumer-supplied sync filesystem port asks for.
-A pure function over a volume: no service, no layer, no `Effect`.
+Two adapters over the view, for consumer code that accepts an
+**injected** port rather than `FileSystem`. Neither is a service, layer
+or `Effect`; both take `(volume, { faults? })`.
 
-- **It satisfies `@effected/workspaces`'s `SyncFileSystem` structurally,
-  importing nothing** — this package declares its own
-  `MemoryFileSystemSyncFileSystem` and the two shapes simply agree. The
-  zero-`@effected/*`-edges law forced the structural route, and the
-  route is better than the edge would have been: anything asking for
-  those four operations is served, not one named port.
-- **Absence throws**, because a synchronous non-`Effect` signature has
-  no other failure channel — honest absence in its third home. The
-  error carries `code`/`syscall`/`path` so a consumer written against
-  the `node:fs` binding reads it unchanged. Answering `""` or `[]`
-  instead would be the effected#249 fabrication in a new costume.
-- **It follows symbolic links, and the view underneath does not.** The
-  two contracts differ on purpose: an inspection view is literal because
-  it describes the tree as stored, while the port stands in for
-  `stat`-defined operations, so a link to a directory IS a directory, a
-  link reads through to its target, and a dangling link is absent as
-  `existsSync` reports it. A literal port makes a symlinked package
-  directory invisible to workspace enumeration — precisely the failure
-  the dirent fast path in `@effected/workspaces` re-resolves links to
-  avoid, reached through the test double instead of through the
-  optimization. Resolution is per path component with an
-  `ELOOP`-style hop cap; a cycle resolves to absence.
-- **It is not an escape hatch from the service.** Code calling `node:fs`
-  directly still does not see the volume; only code accepting an
-  injected port does. An `fs.promises`-shaped facade was declined in
-  this form — see [provenance and refusals](#provenance-and-refusals) —
-  because a filesystem-shaped facade legitimizes the bypass and grows a
-  second, weaker sanctioned path, where a port adapter only serves call
-  sites that already inject.
+- `syncFileSystem(volume)` — `exists`, `readFile`, `readDirectory`,
+  `isDirectory`, `stat`, `lstat`.
+- `promisesFileSystem(volume)` — `readdir` (with `withFileTypes`), `stat`,
+  `lstat` and `readFile` with node's overloads: a `Uint8Array` without an
+  encoding, a `string` with `"utf8"`, `"utf-8"` or `{ encoding }`.
+  A handler that throws synchronously **rejects**.
+
+Shared contract:
+
+- **Structural, importing nothing.** `syncFileSystem` satisfies
+  `@effected/workspaces`'s `SyncFileSystem` because the shapes agree; the
+  zero-edges law forced the route and it serves anything asking for those
+  operations.
+- **Absence throws or rejects node's exact error**, message included
+  (`"<CODE>: <description>, <syscall> '<path>'"`); a descriptor syscall
+  (`read` of a directory) carries no path, as node's does. Answering `""`
+  or `[]` would be the effected#249 fabrication in a new costume. Honest
+  absence's third home.
+- **They follow symbolic links, and the view underneath does not.** A
+  port stands in for `stat`-defined operations, so a link to a directory
+  IS a directory and a dangling link is absent. A literal port would make
+  symlinked package directories invisible to workspace enumeration.
+  Resolution is per component with an `ELOOP`-style hop cap.
+- **Standalone members are unbound-safe.**
+- **Not an escape hatch from the service.** Code calling `node:fs`
+  directly still does not see the volume. See
+  [provenance and refusals](#provenance-and-refusals).
+
+### Case-insensitive volumes
+
+`caseSensitive: false` folds every name lookup the way APFS does. Ledger
+entry 11 holds the engine rules; the limits are stated here so a test
+does not over-trust it. Folding is `toLowerCase` **per UTF-16 unit**, so
+characters whose case mapping changes length or is locale-specific (`İ`
+U+0130, `ß`/`ẞ`) do not fold as a regex `i` flag would, and there is
+**no NFC/NFD normalization** — APFS treats them as one name, memfs does
+not. Listings, `paths()` and `snapshot()` keep stored spellings.
+
+### node-sync: the boundary subpath
+
+`@effected/memfs/node-sync` exports `NodeSyncFileSystem.fileSystem` (a
+`FileSystem` **value**, not an Effect; renamed from `make` before any
+release) and `NodeSyncFileSystem.layer`.
+
+- The read members — `access`/`exists`, `stat`, `readFile`/`readFileString`,
+  `readDirectory` (including `recursive`), `readLink`, `realPath` — run on
+  synchronous `node:fs`, so they work under `Effect.runSync`. They agree
+  with `@effect/platform-node`'s `NodeFileSystem` value for value and
+  failure for failure.
+- Adapter quirks are copied on purpose: JS `realpathSync`, never
+  `.native`; `readDirectory` argument errors are `Unknown` /
+  `ERR_INVALID_ARG_*` while every other member says `BadArgument`; a
+  non-string `readFile` path fails `Unknown` / `ERR_INVALID_ARG_TYPE`
+  without calling `readFileSync`, which would read the number as a file
+  descriptor. Do not "fix" them.
+- Every other member is a **defect** — `FileSystem.makeNoop` fails typed
+  instead of dying, so it is not spread.
+- **Proof is a differential, not `ErrnoParityContract`**:
+  `integration/node-sync.int.test.ts` runs 67 cases (NUL and non-string
+  arguments included) against `@effect/platform-node`. It does not run
+  `errnoSuite`, which includes write cases that would die against a
+  read-only adapter; the design spec's claim that it does is wrong.
 
 ## What the volume does not see
 
@@ -404,7 +398,7 @@ authoritative list.
    defect. Guarded at `MAX_NESTING_DEPTH = 256`,[^volume-internal]
    failing typed, guard-consistent with the format packages' own
    [input-hardening standards](../conventions/input-hardening-standards.md).
-3. **The seeding API** (`makeWith`/`layerWith` and the
+3. **The seeding API** (`makeWith`/`layerWith`/`makeHandle`/`makeSync` and the
    `MemoryFileSystemSeedEntry` union) is a kit extension; upstream has
    none.
 4. **`access` ignores its `readable`/`writable`/`ok` options** —
@@ -422,7 +416,7 @@ authoritative list.
    is adjusted to match (the node adapter never enters that branch —
    node's `fs.cp` with `force: false` silently preserves the
    destination).
-7. **The fault-injection API** (`makeFaulty`/`layerFaulty`/`layerFaultyWith`/`failTimes`/`die`)
+7. **The fault-injection API** (`makeFaulty`/`layerFaulty`/`options.faults`/`failTimes`/`die`)
    is a kit extension; upstream has none. It lives in the facade, never
    in the ported engine — it wraps *any* `FileSystem`, so re-vendoring
    the engine cannot disturb it, and it is the piece that would need
@@ -472,7 +466,7 @@ authoritative list.
    also why every write under `it.effect` reads as `0` unless the clock
    is advanced, so a seeded time appears to be in the future.
 
-10. **Errno fidelity** — `volume.ts` errors are built by `errnoError`
+10. **Errno fidelity** — engine errors are built by `errnoError`
     from a node errno code, with the tag derived by node's own mapping
     and the code carried on an `Error` cause (`code`, `path`). The
     upstream engine hand-picked tags, and code tested against it
@@ -519,6 +513,81 @@ authoritative list.
     test pinning `truncate(-1)` as `BadArgument` was amended, since
     node clamps it.
 
+    **The errno move.** `errnoError`, `ErrnoException`, `errnoTag` (the
+    node adapter's `handleErrnoException` switch, case for case),
+    `errnoMessages` and `nodeErrno` left `volume.ts` for
+    `src/internal/errno.ts`; the engine, both ports, the handle and
+    `NodeSyncFileSystem` all import them. `errnoCodeForTag` became
+    `fallbackErrnoForTag` — it is **not** the inverse of `errnoTag`, which
+    is many-to-one. `nodeErrno` produces node's exact message, and
+    `MemoryFileSystemErrnoError.path` is optional because a descriptor
+    syscall carries none. `integration/ports.int.test.ts` pins message and
+    path equality against real `node:fs`.
+
+11. **Case folding** — a fenced `KIT EXTENSION (case folding — adaptation
+    ledger entry 11)` in `volume.ts`, plus one port-notes header line; the
+    attribution text is untouched. `State.caseSensitive` is fixed at build.
+    `lookupEntry(state, dir, name)` returns `[storedKey, inode]`, trying an
+    exact match then (when not case-sensitive) a `toLowerCase` scan;
+    `findEntry` derives from it, and every former exact-name check uses the
+    folded one. Every mutation of an *existing* entry keys on the **stored**
+    name. Rules, each measured on a case-insensitive APFS host:
+    - **`realPath` keeps the queried spelling**, because the real adapter
+      wraps JS `fs.realpath`, which walks lexically and never canonicalizes
+      case (unlike `realpathSync.native`). Only a link's target text
+      supplies its own spelling.
+    - **`rename`**: the no-op guard compares the queried source leaf (a
+      byte-identical rename keeps the stored spelling); a case-only rename
+      rekeys the same inode under the requested name with children attached;
+      a replace-rename onto a folded-equal entry keeps the destination's
+      **stored** spelling.
+    - **Spelling asymmetry**: `copyFile` onto a folded-equal entry keeps the
+      stored spelling; `copy` with `overwrite` onto a folded-equal file takes
+      the **requested** spelling (async `fs.cp` unlinks then creates); `copy`
+      merging into a folded-equal directory keeps the directory's stored
+      name while a replaced child takes the source spelling. Probe with async
+      `fs/promises`; `cpSync` differs.
+    - **`glob`** folds per token (a character class accepts either case) and
+      returns stored names; the v4 option is `root`.
+    - **Watch** compares folded paths when not case-sensitive; the delivered
+      event keeps its own spelling. No host oracle exists, because
+      `fs.watch` on macOS is nondeterministic — memfs tests pin it.
+    - **Limits**: `toLowerCase` only, per UTF-16 unit (`İ`, `ß`/`ẞ` do not
+      fold as a regex `i` flag would), and no NFC/NFD normalization.
+    - **Proof**: `CaseInsensitiveContract.ts` (21 cases) runs against the
+      host via `integration/case-insensitive.int.test.ts` (skipped on a
+      case-sensitive tmpdir, so Linux CI runs only the memfs side) and
+      against memfs via `CaseInsensitive.test.ts`.
+
+12. **Inspection lookup** — a fenced `KIT EXTENSION (inspection lookup)`
+    in `volume.ts`: `lookupLiteral(state, components)` walks components
+    through `lookupEntry` (so it folds for free), never follows a symlink
+    even mid-path, and is O(depth). `InspectableFileSystem` gains
+    `lookup(path)` and `list(path)`; its `caseSensitive` field is gone
+    because folding lives only in the engine. `internal/view.ts` answers
+    point queries through it. The kit-only `internal.makeInspectable`
+    export was removed; the ported `make` and `layer` are unchanged.
+
+## Superseded: opt-in `Volume`, no type widening
+
+An earlier design published `Volume` only from a doubled family of
+`…Inspectable` constructors, so that `layer`, `layerWith` and
+`layerFaulty*` stayed typed `Layer<FileSystem>`, pinned by a test. That
+is **superseded** (breaking change, approved under "breaking changes
+allowed where they improve DX"). Every memory layer now publishes `Volume`
+and is typed `Layer<FileSystem | MemoryFileSystemVolume>`. The opt-in axis
+doubled every constructor for a benefit — annotation stability — that
+variance already gives: `Layer`'s `ROut` is contravariant, so a wider
+layer is still assignable to `Layer<FileSystem>` and existing annotations
+compile. `Constructors.test.ts` pins that assignability; the no-widening
+test was deleted as superseded.
+
+Migration from the removed names: `layerFaultyWith(seed, faults, o)` →
+`layerWith(seed, { ...o, faults })`; `layerInspectable[With]` → `layer` /
+`layerWith`; `makeInspectable[With]` → `makeHandle`; the
+`MemoryFileSystemInspectable` type → `MemoryFileSystemHandle`.
+`promises.readFile(path)` now resolves a `Uint8Array`, as node's does.
+
 ## Provenance and refusals
 
 The kit extensions above are not speculative API design — every one was
@@ -527,10 +596,18 @@ internal one. The refusals matter as much as the extensions, because
 each is a standing decision rather than an unexplored corner:
 
 - **An `fs.promises`-shaped facade was declined** and reshaped into
-  [the sync filesystem port](#the-sync-filesystem-port). Reading the
-  downstream call sites found that the shape actually wanted was the
-  sync port `@effected/workspaces` already defines; neither side saw
-  that from where it was standing.
+  [the ports](#the-ports). Reading the downstream call sites found that
+  the shape actually wanted was the sync port `@effected/workspaces`
+  already defines; neither side saw that from where it was standing. The
+  refusal targeted a facade that legitimizes bypassing injection — code
+  importing `node:fs/promises` still does not see the volume, and no
+  adapter changes that. A **read-only adapter for an injected async port**
+  (`promisesFileSystem`) is the class of call site the refusal itself said
+  a port serves, so it shipped: an adapter for injected ports is in scope;
+  a replacement for direct `node:fs` imports is not.
+- **A trailing-slash seed key meaning an empty directory was declined**
+  (#887 §8). `directory()` already expresses an empty directory, and
+  key-syntax magic is what plain-data fixture tables trip over.
 - **`seedFromDirectory` was withdrawn by the consumer** that asked for
   it, once its own survey found the only on-disk fixtures were
   subprocess-e2e trees a volume can never serve, and that every other
@@ -594,7 +671,7 @@ Not yet migrated: `schemastore`, `app`, `xdg`'s `XdgConfig` suite, and
 
 ## Test strategy: the differential oracle
 
-Six layers of proof, largest first:
+Eight layers of proof, largest first:
 
 1. **The vendored contract suite** (PR #6555's `FileSystemTest.ts`,
    adapted to house style) run against `MemoryFileSystem.layer`. It
@@ -629,17 +706,21 @@ Six layers of proof, largest first:
    expectations (memfs asserts Linux; the node run asserts its host),
    and kept divergences carry `{ memory, node }` so a change on either
    side fails. Every fix was mutation-checked against it.
-6. **Volume-inspection tests**: the pairing invariant (a write through
+6. **Case-folding contract** (`CaseInsensitiveContract.ts`, 21 cases) run
+   against the host and memfs, as ledger entry 11 records.
+7. **node-sync differential**: 67 cases against `@effect/platform-node`
+   (`integration/node-sync.int.test.ts`); it is **not** proved by
+   `ErrnoParityContract`, whose write cases would die against a read-only
+   adapter.
+8. **Volume-inspection tests**: the pairing invariant (a write through
    `FileSystem` is immediately visible to `Volume`, a removal
-   likewise); per-build isolation across two provides; the no-widening
-   type guard; seed parity across every entry kind; honest absence plus
+   likewise); per-build isolation across two provides; `Volume` published from every layer with `Layer<FileSystem>` assignability; seed parity across every entry kind; honest absence plus
    the `""` round-trip that distinguishes an empty file from an absent
    one; lexical query normalization; the defensive-copy mutation
    attempt; composition under fault injection via `Layer.provideMerge`;
    `/` answered as a real directory rather than a hole in the walk;
-   `undefined` distinguished from `[]` and from `0`; and the sync port
-   throwing with `code`/`syscall`/`path` where the view answers
-   `undefined`.
+   `undefined` distinguished from `[]` and from `0`; and the ports throwing or rejecting node's exact error where the view
+   answers `undefined`.
 
 The contract suite roots every path it touches under
 `makeTempDirectoryScoped({ prefix: "effect-filesystem-test-" })` with no
@@ -671,10 +752,10 @@ MIT license.
   requests carry the same question, owned by their own packages rather
   than this one, and both should be answered the same way — the shape
   of the answer is a kit convention, not a per-package taste.
-- **A whole-volume case-insensitive mode** (effected issue 874). The
-  fault factory covers a case-insensitive lookup member by member, with
-  each listed member folding its own paths; a volume that folds every
-  path itself is unbuilt and the issue stays open.
+- **A whole-volume case-insensitive mode** (effected issue 874) is
+  closed: it is built as `caseSensitive: false`
+  ([ledger entry 11](#adaptation-ledger)). The fault-factory
+  member-by-member workaround is no longer the answer.
 
 ## Testing and build
 
