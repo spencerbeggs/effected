@@ -5,6 +5,7 @@
 
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer } from "effect";
+import { seedWith } from "./internal/seed.js";
 import * as internal from "./internal/volume.js";
 
 /**
@@ -247,6 +248,28 @@ export interface MemoryFileSystemSeed {
 }
 
 /**
+ * Options shared by every seeded constructor.
+ *
+ * @public
+ */
+export interface MemoryFileSystemOptions {
+	/**
+	 * An absolute directory the seed is rooted at. Seed keys are then relative
+	 * to it, and the empty key `""` addresses the root itself. The root is
+	 * normalized lexically (`//`, `.`, `..`) and is always created, even for an
+	 * empty seed. A relative root, or an absolute seed key alongside a root, is
+	 * a typed `BadArgument`.
+	 */
+	readonly root?: string | undefined;
+	/** Whether path lookups fold case. Defaults to `true` (case-sensitive). */
+	readonly caseSensitive?: boolean | undefined;
+}
+
+const engineOptions = (options: MemoryFileSystemOptions | undefined): internal.EngineOptions => ({
+	caseSensitive: options?.caseSensitive ?? true,
+});
+
+/**
  * The members of `FileSystem.FileSystem` that a fault handler can intercept:
  * every function-valued method, the `Stream`/`Sink`-returning trio (`stream`,
  * `sink`, `watch`) included. Only {@link MemoryFileSystem.failTimes} is
@@ -332,60 +355,6 @@ export type MemoryFileSystemFaults = {
  */
 export type MemoryFileSystemFaultsFactory = (base: FileSystem.FileSystem) => MemoryFileSystemFaults;
 
-const encoder = new TextEncoder();
-
-const seedVolume = (
-	fs: FileSystem.FileSystem,
-	seed: MemoryFileSystemSeed,
-): Effect.Effect<void, PlatformError.PlatformError> =>
-	Effect.gen(function* () {
-		for (const [path, entry] of Object.entries(seed)) {
-			const separator = path.lastIndexOf("/");
-			const parent = separator <= 0 ? "/" : path.slice(0, separator);
-			if (parent !== "/") {
-				yield* fs.makeDirectory(parent, { recursive: true });
-			}
-			if (typeof entry === "string" || entry instanceof Uint8Array) {
-				yield* fs.writeFile(path, typeof entry === "string" ? encoder.encode(entry) : entry);
-				continue;
-			}
-			switch (entry._tag) {
-				case "MemoryFileSystemSeedFile": {
-					const data = typeof entry.content === "string" ? encoder.encode(entry.content) : entry.content;
-					yield* fs.writeFile(path, data, entry.mode !== undefined ? { mode: entry.mode } : undefined);
-					// Applied after the write, which stamps the volume's clock. Both
-					// times are set together because `utimes` takes the pair; a seed
-					// that pins mtime without pinning atime would leave the two
-					// disagreeing for no stated reason.
-					//
-					// A `Date`, NOT the bare number: `utimes` reads a numeric
-					// argument as Unix SECONDS (as `fs.utimesSync` does), while this
-					// option is epoch milliseconds — passing it through unconverted
-					// silently multiplies every seeded time by 1000.
-					if (entry.mtime !== undefined) {
-						const stamp = new Date(entry.mtime);
-						yield* fs.utimes(path, stamp, stamp);
-					}
-					break;
-				}
-				case "MemoryFileSystemSeedDirectory": {
-					yield* fs.makeDirectory(path, { recursive: true });
-					// Applied via chmod rather than makeDirectory's mode option so the
-					// mode also lands when the directory already exists — e.g. created
-					// implicitly as an earlier entry's parent.
-					if (entry.mode !== undefined) {
-						yield* fs.chmod(path, entry.mode);
-					}
-					break;
-				}
-				case "MemoryFileSystemSeedSymlink": {
-					yield* fs.symlink(entry.target, path);
-					break;
-				}
-			}
-		}
-	});
-
 const decoder = new TextDecoder();
 
 // Lexical-only normalization for inspection queries: collapses "//" and ".",
@@ -415,50 +384,55 @@ const findEntryAt = (
 	return entries.find((entry) => entry.path === normalized);
 };
 
-const makeVolumeService = (entries: () => Array<internal.VolumeEntrySnapshot>): MemoryFileSystemVolume => ({
-	snapshot: () => {
-		const record: Record<string, Uint8Array> = {};
-		for (const entry of entries()) {
-			if (entry.data !== undefined) {
-				record[entry.path] = entry.data.slice();
+const makeVolumeService = (engine: internal.InspectableFileSystem): MemoryFileSystemVolume => {
+	const entries = engine.entries;
+	return {
+		snapshot: () => {
+			const record: Record<string, Uint8Array> = {};
+			for (const entry of entries()) {
+				if (entry.data !== undefined) {
+					record[entry.path] = entry.data.slice();
+				}
 			}
-		}
-		return record;
-	},
-	text: (path) => {
-		const data = findEntryAt(entries(), path)?.data;
-		return data === undefined ? undefined : decoder.decode(data);
-	},
-	bytes: (path) => findEntryAt(entries(), path)?.data?.slice(),
-	has: (path) => findEntryAt(entries(), path) !== undefined,
-	paths: () =>
-		entries()
-			.filter((entry) => entry.data !== undefined)
-			.map((entry) => entry.path)
-			.sort(),
-	readDirectory: (path) => {
-		const snapshot = entries();
-		const normalized = normalizeQueryPath(path);
-		if (findEntryAt(snapshot, normalized)?.type !== "Directory") {
-			return undefined;
-		}
-		// "/" would otherwise build the prefix "//" and match nothing.
-		const prefix = normalized === "/" ? "/" : `${normalized}/`;
-		return snapshot
-			.filter(
-				(entry) =>
-					entry.path !== normalized && entry.path.startsWith(prefix) && !entry.path.slice(prefix.length).includes("/"),
-			)
-			.map((entry) => entry.path.slice(prefix.length))
-			.sort();
-	},
-	isDirectory: (path) => findEntryAt(entries(), path)?.type === "Directory",
-	mtime: (path) => findEntryAt(entries(), path)?.mtime,
-	readLink: (path) => {
-		const entry = findEntryAt(entries(), path);
-		return entry?.type === "SymbolicLink" ? entry.target : undefined;
-	},
-});
+			return record;
+		},
+		text: (path) => {
+			const data = findEntryAt(entries(), path)?.data;
+			return data === undefined ? undefined : decoder.decode(data);
+		},
+		bytes: (path) => findEntryAt(entries(), path)?.data?.slice(),
+		has: (path) => findEntryAt(entries(), path) !== undefined,
+		paths: () =>
+			entries()
+				.filter((entry) => entry.data !== undefined)
+				.map((entry) => entry.path)
+				.sort(),
+		readDirectory: (path) => {
+			const snapshot = entries();
+			const normalized = normalizeQueryPath(path);
+			if (findEntryAt(snapshot, normalized)?.type !== "Directory") {
+				return undefined;
+			}
+			// "/" would otherwise build the prefix "//" and match nothing.
+			const prefix = normalized === "/" ? "/" : `${normalized}/`;
+			return snapshot
+				.filter(
+					(entry) =>
+						entry.path !== normalized &&
+						entry.path.startsWith(prefix) &&
+						!entry.path.slice(prefix.length).includes("/"),
+				)
+				.map((entry) => entry.path.slice(prefix.length))
+				.sort();
+		},
+		isDirectory: (path) => findEntryAt(entries(), path)?.type === "Directory",
+		mtime: (path) => findEntryAt(entries(), path)?.mtime,
+		readLink: (path) => {
+			const entry = findEntryAt(entries(), path);
+			return entry?.type === "SymbolicLink" ? entry.target : undefined;
+		},
+	};
+};
 
 // Absence in a synchronous, non-`Effect` signature can only be reported by
 // throwing — the honest-absence contract's sync form. `code` mirrors the
@@ -755,16 +729,15 @@ export class MemoryFileSystem {
 	 * an invalid mode. Everything absent from the seed stays absent: reads of
 	 * unseeded paths fail `NotFound`.
 	 *
-	 * @param seed - Absolute POSIX paths mapped to seed entries.
+	 * @param seed - Absolute POSIX paths mapped to seed entries (relative keys
+	 *   when `options.root` is given).
+	 * @param options - See {@link MemoryFileSystemOptions}.
 	 */
 	static readonly makeWith = (
 		seed: MemoryFileSystemSeed,
+		options?: MemoryFileSystemOptions,
 	): Effect.Effect<FileSystem.FileSystem, PlatformError.PlatformError> =>
-		Effect.gen(function* () {
-			const fs = yield* internal.make;
-			yield* seedVolume(fs, seed);
-			return fs;
-		});
+		Effect.map(MemoryFileSystem.makeInspectableWith(seed, options), (pair) => pair.fileSystem);
 
 	/**
 	 * Wraps an existing `FileSystem` so that registered faults can intercept
@@ -888,12 +861,14 @@ export class MemoryFileSystem {
 	 * @param faults - The fault registration map, or a
 	 *   {@link MemoryFileSystemFaultsFactory} that builds it from the wrapped
 	 *   filesystem.
+	 * @param options - See {@link MemoryFileSystemOptions}.
 	 */
 	static readonly layerFaultyWith = (
 		seed: MemoryFileSystemSeed,
 		faults: MemoryFileSystemFaults | MemoryFileSystemFaultsFactory,
+		options?: MemoryFileSystemOptions,
 	): Layer.Layer<FileSystem.FileSystem> =>
-		Layer.provide(MemoryFileSystem.layerFaulty(faults), MemoryFileSystem.layerWith(seed));
+		Layer.provide(MemoryFileSystem.layerFaulty(faults), MemoryFileSystem.layerWith(seed, options));
 
 	/**
 	 * A transient fault: fails the first `times` intercepted calls with `error`,
@@ -1094,10 +1069,15 @@ export class MemoryFileSystem {
 	 * const reseeded = Effect.andThen(Effect.provide(write, Volume), Effect.provide(read, Volume));
 	 * ```
 	 *
-	 * @param seed - Absolute POSIX paths mapped to seed entries.
+	 * @param seed - Absolute POSIX paths mapped to seed entries (relative keys
+	 *   when `options.root` is given).
+	 * @param options - See {@link MemoryFileSystemOptions}.
 	 */
-	static readonly layerWith = (seed: MemoryFileSystemSeed): Layer.Layer<FileSystem.FileSystem> =>
-		Layer.effect(FileSystem.FileSystem, Effect.orDie(MemoryFileSystem.makeWith(seed)));
+	static readonly layerWith = (
+		seed: MemoryFileSystemSeed,
+		options?: MemoryFileSystemOptions,
+	): Layer.Layer<FileSystem.FileSystem> =>
+		Layer.effect(FileSystem.FileSystem, Effect.orDie(MemoryFileSystem.makeWith(seed, options)));
 
 	/**
 	 * The context key for {@link MemoryFileSystemVolume}, mirroring the shape
@@ -1175,9 +1155,9 @@ export class MemoryFileSystem {
 	 */
 	static readonly makeInspectable: Effect.Effect<MemoryFileSystemInspectable> = Effect.map(
 		internal.makeInspectable,
-		({ entries, fileSystem }): MemoryFileSystemInspectable => ({
-			fileSystem,
-			volume: makeVolumeService(entries),
+		(engine): MemoryFileSystemInspectable => ({
+			fileSystem: engine.fileSystem,
+			volume: makeVolumeService(engine),
 		}),
 	);
 
@@ -1190,14 +1170,18 @@ export class MemoryFileSystem {
 	 * reads seeded entries back exactly as written. Fails typed when the seed
 	 * contradicts itself, mirroring {@link MemoryFileSystem.makeWith}.
 	 *
-	 * @param seed - Absolute POSIX paths mapped to seed entries.
+	 * @param seed - Absolute POSIX paths mapped to seed entries (relative keys
+	 *   when `options.root` is given).
+	 * @param options - See {@link MemoryFileSystemOptions}.
 	 */
 	static readonly makeInspectableWith = (
 		seed: MemoryFileSystemSeed,
+		options?: MemoryFileSystemOptions,
 	): Effect.Effect<MemoryFileSystemInspectable, PlatformError.PlatformError> =>
 		Effect.gen(function* () {
-			const pair = yield* MemoryFileSystem.makeInspectable;
-			yield* seedVolume(pair.fileSystem, seed);
+			const engine = yield* internal.makeInspectableWith(engineOptions(options));
+			const pair: MemoryFileSystemInspectable = { fileSystem: engine.fileSystem, volume: makeVolumeService(engine) };
+			yield* seedWith(pair.fileSystem, seed, options);
 			return pair;
 		});
 
@@ -1239,12 +1223,17 @@ export class MemoryFileSystem {
 	 * so the decorated `FileSystem` wins while `Volume` survives:
 	 * `MemoryFileSystem.layerFaulty(faults).pipe(Layer.provideMerge(Inspectable))`.
 	 *
-	 * @param seed - Absolute POSIX paths mapped to seed entries.
+	 * @param seed - Absolute POSIX paths mapped to seed entries (relative keys
+	 *   when `options.root` is given).
+	 * @param options - See {@link MemoryFileSystemOptions}.
 	 */
 	static readonly layerInspectableWith = (
 		seed: MemoryFileSystemSeed,
+		options?: MemoryFileSystemOptions,
 	): Layer.Layer<FileSystem.FileSystem | MemoryFileSystemVolume> =>
-		Layer.effectContext(Effect.orDie(Effect.map(MemoryFileSystem.makeInspectableWith(seed), inspectableContext)));
+		Layer.effectContext(
+			Effect.orDie(Effect.map(MemoryFileSystem.makeInspectableWith(seed, options), inspectableContext)),
+		);
 
 	private constructor() {}
 }

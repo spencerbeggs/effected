@@ -33,6 +33,7 @@ export {
 	type MemoryFileSystemFaults,
 	type MemoryFileSystemFaultsFactory,
 	type MemoryFileSystemInspectable,
+	type MemoryFileSystemOptions,
 	type MemoryFileSystemSeed,
 	type MemoryFileSystemSeedDirectory,
 	type MemoryFileSystemSeedEntry,
