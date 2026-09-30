@@ -119,6 +119,10 @@ export class Render {
 	 * email address is not escaped: a reader may make a `mailto:` link of it, which is harmless. A leading indent is
 	 * dropped, since markdown would read it as code.
 	 *
+	 * GitHub also turns `@user`, `@org/team`, `#123` and commit SHAs in rendered markdown into mentions and references.
+	 * Nothing here escapes them: in a step summary they do not notify, but markdown posted as a comment could ping
+	 * whoever the text names.
+	 *
 	 * - A heading is `#` repeated by its level. A section's title is a heading of level 2 for a section at the top,
 	 *   one deeper for each section nested inside it, to level 6.
 	 * - A table is a GFM pipe table: `|` is `\|` in a cell and a line break in a cell is `<br>`. A short row is

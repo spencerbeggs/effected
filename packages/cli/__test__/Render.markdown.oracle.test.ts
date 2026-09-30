@@ -167,12 +167,97 @@ describe("Render.markdown: headings and paragraphs", () => {
 			}),
 	);
 
+	it.effect("a line of dashes, pluses, equals and spaces is text, not a thematic break or setext underline", () =>
+		Effect.gen(function* () {
+			const lines = [
+				"-- --",
+				"--- -",
+				"- - -",
+				"-  -  -",
+				"= =",
+				"== ==",
+				"+ + +",
+				"+-",
+				"-=",
+				"---",
+				"===",
+				"- -- ---",
+				"-",
+			];
+			for (const line of lines) {
+				const alone = yield* treeOf([Doc.paragraph(line)]);
+				assert.deepStrictEqual(
+					kids(alone).map((n) => n.type),
+					["paragraph"],
+					JSON.stringify(line),
+				);
+				assert.strictEqual(textOf(kids(alone)[0] as N), line.trim(), JSON.stringify(line));
+				const after = yield* treeOf([Doc.paragraph(`a\n${line}`)]);
+				assert.deepStrictEqual(
+					kids(after).map((n) => n.type),
+					["paragraph"],
+					`after: ${JSON.stringify(line)}`,
+				);
+				assert.strictEqual(textOf(kids(after)[0] as N), `a\n${line.trim()}`, `after: ${JSON.stringify(line)}`);
+			}
+		}),
+	);
+
+	it.effect(
+		"property: every line of up to 6 characters over - + = space and a, and seeded multi-line texts, parse as one paragraph of the same text",
+		() =>
+			Effect.gen(function* () {
+				const alphabet = ["-", "+", "=", " ", "a"];
+				const ctx = yield* contextOf();
+				const expectedOf = (text: string): string | undefined => {
+					const lines = text
+						.split("\n")
+						.filter((line) => line.trim() !== "")
+						.map((line) => line.trimStart());
+					return lines.length === 0 ? undefined : lines.join("\n").trimEnd();
+				};
+				const failures: Array<string> = [];
+				let cases = 0;
+				const check = (text: string): void => {
+					const expected = expectedOf(text);
+					if (expected === undefined) return;
+					cases++;
+					const parsed = Markdown.parseResult(Render.markdown([Doc.paragraph(text)], ctx));
+					if (parsed._tag !== "Success") {
+						failures.push(`${JSON.stringify(text)}: parse failed`);
+						return;
+					}
+					const node = parsed.success as unknown as N;
+					const ok = kids(node).length === 1 && kids(node)[0]?.type === "paragraph" && textOf(node) === expected;
+					if (!ok && failures.length < 5)
+						failures.push(`${JSON.stringify(text)} -> ${JSON.stringify(kids(node).map((n) => n.type))}`);
+				};
+				for (const text of upTo(alphabet, 6)) check(text);
+				// A fixed-seed generator: the same multi-line texts every run.
+				let seed = 0x2f6e2b1;
+				const next = (n: number): number => {
+					seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+					return seed % n;
+				};
+				for (let i = 0; i < 4000; i++) {
+					const lineCount = 1 + next(3);
+					const lines = Array.from({ length: lineCount }, () =>
+						Array.from({ length: 1 + next(8) }, () => alphabet[next(alphabet.length)]).join(""),
+					);
+					check(lines.join("\n"));
+				}
+				assert.isAbove(cases, 15_000);
+				assert.deepStrictEqual(failures, []);
+			}),
+		{ timeout: 120_000 },
+	);
+
 	it.effect(
 		"text that looks like an autolink stays text: URLs and www (an email may become a harmless mailto link)",
 		() =>
 			Effect.gen(function* () {
 				const text =
-					"see https://evil.test/x and http://a.test and HTTPS://B.TEST and www.evil.test and WWW.X.TEST now";
+					"see https://evil.test/x and http://a.test and HTTPS://B.TEST and ftp://files.test/x and FTP://Y.TEST and git+ssh://h/r and www.evil.test and WWW.X.TEST now";
 				const root = yield* treeOf([Doc.paragraph(text)]);
 				const [p] = kids(root);
 				assert.deepStrictEqual([...new Set(descendantTypes(p as N))].sort(), ["paragraph", "text"]);
@@ -439,6 +524,16 @@ describe("Render.markdown: code, diff, collapsible and callout", () => {
 		}),
 	);
 
+	it.effect("a language with control characters gets none of them: no ESC reaches the info string", () =>
+		Effect.gen(function* () {
+			const out = yield* render([Doc.codeBlock("x", "ts\u001B[31m")]);
+			assert.notInclude(out, ESC);
+			// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting their absence is the point
+			assert.notMatch(out, /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/);
+			assert.strictEqual(kids(yield* parse(out))[0]?.type, "code");
+		}),
+	);
+
 	it.effect("a hostile language cannot break the fence", () =>
 		Effect.gen(function* () {
 			const root = yield* treeOf([Doc.codeBlock("body", "ts`\n# injected"), Doc.paragraph("after")]);
@@ -570,6 +665,60 @@ describe("Render.markdown: links", () => {
 					textOf(kids(root)[0] as N),
 					`click (${url.replace(/\s+/g, " ")})`.replace(" (", " (").replace("click (", "click ("),
 				);
+			}
+		}),
+	);
+
+	it.effect(
+		"an unsafe scheme cannot hide behind an HTML entity, whitespace or a line break: what is parsed is what was checked",
+		() =>
+			Effect.gen(function* () {
+				const hidden = [
+					"java&#x73;cript:alert(1)",
+					"javascript&colon;alert(1)",
+					"javascript&#58;alert(1)",
+					"jav&Tab;ascript:alert(1)",
+					"java\nscript:alert(1)",
+					"java\tscript:alert(1)",
+					"java script:alert(1)",
+					"  \u0001javascript:alert(1)",
+					"JAVA&#x53;CRIPT:alert(1)",
+					"data&colon;text/html,x",
+				];
+				for (const url of hidden) {
+					const root = yield* treeOf([Doc.paragraph("x ", Doc.link({ url }, "click"))]);
+					const links = [...descendants(root)].filter((n) => n.type === "link");
+					for (const link of links) {
+						// A link that is emitted decodes to exactly the URL text that was given, so the check saw what a reader sees.
+						assert.strictEqual(link.url, url.replace(/[\r\n]/g, "").trim(), JSON.stringify(url));
+						assert.notMatch(link.url ?? "", /^\s*j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i, JSON.stringify(url));
+					}
+				}
+				// The ones that spell a dangerous scheme once whitespace, a control character or a line break is gone are not links.
+				for (const url of [
+					"java\nscript:alert(1)",
+					"java\tscript:alert(1)",
+					"java script:alert(1)",
+					"  \u0001javascript:alert(1)",
+				]) {
+					const root = yield* treeOf([Doc.paragraph(Doc.link({ url }, "click"))]);
+					assert.notInclude(descendantTypes(kids(root)[0] as N), "link", JSON.stringify(url));
+					assert.include(descendantTypes(kids(root)[0] as N), "inlineCode", JSON.stringify(url));
+				}
+			}),
+	);
+
+	it.effect("an ampersand in a URL survives: a query string and entity-looking text parse back as written", () =>
+		Effect.gen(function* () {
+			for (const url of [
+				"https://example.test/?a=1&b=2",
+				"https://example.test/?q=&amp;x",
+				"https://example.test/a&lt;b",
+				"/p?x=&#35;",
+			]) {
+				const root = yield* treeOf([Doc.paragraph(Doc.link({ url }, "l"))]);
+				const link = [...descendants(root)].find((n) => n.type === "link");
+				assert.strictEqual(link?.url, url, url);
 			}
 		}),
 	);

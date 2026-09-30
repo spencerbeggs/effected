@@ -18,21 +18,23 @@ const SAFE_SCHEMES = new Set(["http", "https", "mailto", "file", "vscode", "vsco
 
 /**
  * Escape what markdown would read as syntax: backslash, backtick, `*`, `_`, brackets, angle brackets, `&`, `~` and
- * `|` (so text can never form a table), and the start of an autolink literal (a URL scheme or `www.`), which a GFM
+ * `|` (so text can never form a table), and the start of an autolink literal (any scheme before `://`, or `www.`), which a GFM
  * reader would otherwise turn into a link. An email address is left alone: the `mailto:` link a reader makes of it
  * is harmless, and escaping its `@` does not stop every reader.
  */
 const escapeText = (text: string): string =>
 	text
 		.replace(/[\\`*_[\]<>&~|]/g, "\\$&")
-		.replace(/(?<=\bhttps?):(?=\/\/)/gi, "\\:")
+		.replace(/(?<=[a-z0-9+.-]):(?=\/\/)/gi, "\\:")
 		.replace(/\b(www)\./gi, "$1\\.");
 
-/** Escape a block marker at the start of a line: a heading, bullet, setext or thematic run, or an ordered item. */
+/**
+ * Escape a block marker at the start of a line: a heading or an ordered item, and always a leading `-`, `+` or `=`,
+ * which would make a bullet, a setext underline or (with spaces between dashes) a thematic break.
+ */
 const escapeLineStart = (line: string): string => {
+	if (/^[-+=]/.test(line)) return `\\${line}`;
 	if (/^#{1,6}(?:\s|$)/.test(line)) return `\\${line}`;
-	if (/^[-+](?:\s|$)/.test(line)) return `\\${line}`;
-	if (/^(?:-+|=+)\s*$/.test(line)) return `\\${line}`;
 	const ordered = /^(\d{1,9})([.)])(?:\s|$)/.exec(line);
 	if (ordered !== null) return `${ordered[1]}\\${line.slice((ordered[1] as string).length)}`;
 	return line;
@@ -58,25 +60,34 @@ const textPiece = (text: string, mode: Mode): string =>
 		.map(escapeText)
 		.join(mode === "cell" ? "<br>" : mode === "line" ? " " : BREAK);
 
-/** A link's URL when it has a form a reader can follow: an allowed scheme, a relative URL, or an absolute file path. */
+/**
+ * A link's URL when it has a form a reader can follow: an allowed scheme, a relative URL, or an absolute file path.
+ *
+ * The scheme is read from a normalised copy, with whitespace and control characters removed and the case folded,
+ * because a browser ignores them inside a scheme (`java<tab>script:`). An entity cannot hide one either: the
+ * destination escapes `&`, so what a reader decodes is the text that was checked here.
+ */
 const linkUrl = (target: LinkTarget): string | undefined => {
 	if ("url" in target) {
 		const url = target.url.trim();
-		const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(url);
-		return scheme === null || SAFE_SCHEMES.has((scheme[1] as string).toLowerCase()) ? url : undefined;
+		const scheme = /^([a-z][a-z0-9+.-]*):/.exec(sanitize(url).replace(/\s/g, "").toLowerCase());
+		return scheme === null || SAFE_SCHEMES.has(scheme[1] as string) ? url : undefined;
 	}
 	if (!target.file.startsWith("/")) return undefined;
 	return `file://${encodeURI(target.file).replace(/#/g, "%23").replace(/\?/g, "%3F")}`;
 };
 
-const destination = (url: string): string =>
-	/^[^\s()<>\\]*$/.test(url)
+/** A link destination. `&` is escaped so a reader does not decode an entity into something other than what was written. */
+const destination = (raw: string): string => {
+	const url = raw.replace(/&/g, "&amp;");
+	return /^[^\s()<>\\]*$/.test(url)
 		? url
 		: `<${url
 				.replace(/[\r\n]/g, "")
 				.replace(/\\/g, "\\\\")
 				.replace(/</g, "%3C")
 				.replace(/>/g, "%3E")}>`;
+};
 
 /** Inline nodes as markdown: text escaped, code fenced, a link as `[label](url)` or, with no URL form, label and path. */
 const inlineMd = (inlines: ReadonlyArray<Inline>, ctx: RenderContext, mode: Mode): string => {
@@ -272,7 +283,11 @@ const blockMd = (walk: Walk, block: Block, depth: number): Lines => {
 			return quoted.map((line) => (line === "" ? ">" : `> ${line}`));
 		}
 		case "CodeBlock": {
-			const info = (block.lang ?? "").trim().split(/\s+/)[0]?.replace(/`/g, "") ?? "";
+			const info =
+				sanitize(block.lang ?? "")
+					.trim()
+					.split(/\s+/)[0]
+					?.replace(/`/g, "") ?? "";
 			return fenced(block.text === "" ? [] : textLines(block.text), info);
 		}
 		case "Diff": {
