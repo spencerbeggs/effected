@@ -44,8 +44,8 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-25T22:33:35Z
-  body_sha256: 275d056e1e6041299f8c223fac707f61e98fbfed11c4a3a74ac6319beb53189e
+  at: 2026-09-30T08:21:25Z
+  body_sha256: 84d2eda702a221dabc42e010080a3efd348bdd12e2d2e2af2cffcdfa11d85374
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -378,6 +378,8 @@ hand-rolling this check; the pure half lives in
 | A repo's `packageManager` pin makes corepack refuse any other manager inside it | each manager is probed with `--version` from the scratch directory | vitest-agent (lines 119-128) |
 | pnpm 12 only **warns** on a mismatched `packageManager` pin; it neither refuses nor switches | `PackedInstall` does not check this. To prove no switch happened, assert in your own test that `<pm> --version` run inside the consumer equals `consumer.managerVersion` | this package's e2e, which makes that assertion[^packed-install-e2e] |
 | npm fails `EOVERRIDE` when a direct dependency's spec differs from its override | a `consumerDependencies` entry naming a packed package is written as the same `file:` spec the override uses | this package's final review (npm 11.19.1), pinned by the e2e's S1 case under every manager |
+| Yarn Berry's `npmMinimalAgeGate` quarantines any version under a day old, so a consumer of a just-released package fails `YN0016`; the caller cannot lower it, since `scrubEnv` drops `YARN_*` | Berry 4.10+ consumers get `npmMinimalAgeGate: 0`. Berry 2.x-4.9 do not, because an unknown `.yarnrc.yml` key fails every command and 4.9.4 does not know it | systems, the yarn-age-gate dogfood loop (Yarn 4.18.1) |
+| pnpm 11 and 12 gate fresh versions by default but non-strictly: the install passes, appends `minimumReleaseAgeExclude:` to the consumer's `pnpm-workspace.yaml`, and may resolve a range to an older, mature match | pnpm consumers' `pnpm-workspace.yaml` starts with `minimumReleaseAge: 0` | same loop, probed on pnpm 11.28.2 and 12.6.0 |
 
 User-level configuration is inherited by design. `HOME` stays, so each
 manager still reads the user's registry, auth and proxy settings, as a real
