@@ -1,11 +1,13 @@
 import type { Layer } from "effect";
 import { Cause, Effect, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/cli";
+import { Cancelled } from "./Cancelled.js";
 import { CliExit } from "./CliExit.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
+import { NotInteractive } from "./NotInteractive.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";
 
@@ -36,7 +38,8 @@ export interface FailureDetails {
  */
 export interface ReportFailuresOptions {
 	/**
-	 * Render the failure. Defaults to `String(error)`, one line.
+	 * Render the failure. Defaults to `String(error)`, one line, except that a
+	 * {@link Cancelled} and a {@link NotInteractive} render their own fixed line.
 	 *
 	 * @remarks
 	 * Return several lines to print several: a config error's own message
@@ -109,6 +112,13 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 */
 	readonly helpOnUsageError?: "stdout" | "stderr" | undefined;
 }
+
+/** The default one-line rendering: the two prompt failures have a fixed line, everything else is `String(error)`. */
+const defaultRender = (error: unknown): string => {
+	if (error instanceof Cancelled) return "cancelled; nothing written";
+	if (error instanceof NotInteractive) return "not interactive: run in a terminal or pass the flag";
+	return String(error);
+};
 
 const toLines = (rendered: string | ReadonlyArray<string>): ReadonlyArray<string> =>
 	typeof rendered === "string" ? [rendered] : rendered;
@@ -244,7 +254,7 @@ export class CliRuntime {
 						return Effect.fail(CliRuntime.reported(error, chooseExitCode(error, options.usageExitCode ?? 64)));
 					}
 
-					const render = options.render ?? ((value: unknown) => String(value));
+					const render = options.render ?? defaultRender;
 					// Cause.squash prefers a Fail over a Die, so `error` is a defect exactly when there is no Fail.
 					const details: FailureDetails = { cause, isDefect: !Cause.hasFails(cause) };
 
