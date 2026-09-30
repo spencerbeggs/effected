@@ -18,25 +18,35 @@ import { errnoTag } from "./internal/errno.js";
 
 type PlatformErrorType = PlatformErrorNs.PlatformError;
 
-// Mirrors @effect/platform-node-shared's `handleErrnoException` (via the
-// shared `errnoTag` mapping) and `handleBadArgument`: an errno becomes a
-// system error carrying the node error as `cause`; anything else thrown by
-// node's argument validation is a BadArgument.
+// Mirrors @effect/platform-node-shared's `handleErrnoException`: the tag comes
+// from the code through the shared `errnoTag` mapping (anything unmapped,
+// including node's `ERR_*` argument codes, is Unknown) and the node error rides
+// as `cause`.
+const errnoException = (method: string, path: string, err: unknown): PlatformErrorType => {
+	const error = err as NodeJS.ErrnoException | undefined;
+	return PlatformError.systemError({
+		_tag: errnoTag(error?.code),
+		module: "FileSystem",
+		method,
+		pathOrDescriptor: path,
+		syscall: error?.syscall,
+		cause: error,
+	});
+};
+
+// Mirrors the adapter's `effectify(…, handleErrnoException, handleBadArgument)`
+// split: a failure from the syscall itself (it carries a numeric `errno` or a
+// `syscall`) is a system error; anything node throws BEFORE the syscall — its
+// argument validation, whose errors also carry string codes such as
+// ERR_INVALID_ARG_VALUE (a NUL byte) or ERR_INVALID_ARG_TYPE — is BadArgument.
 const fail = (method: string, path: string, err: unknown): PlatformErrorType => {
 	const error = err as NodeJS.ErrnoException | undefined;
-	return typeof error?.code === "string"
-		? PlatformError.systemError({
-				_tag: errnoTag(error.code),
-				module: "FileSystem",
-				method,
-				pathOrDescriptor: path,
-				syscall: error.syscall,
-				cause: error,
-			})
+	return typeof error?.errno === "number" || error?.syscall !== undefined
+		? errnoException(method, path, err)
 		: PlatformError.badArgument({
 				module: "FileSystem",
 				method,
-				description: (err as Error | undefined)?.message ?? String(err),
+				description: error?.message ?? String(err),
 			});
 };
 
@@ -111,11 +121,30 @@ const make: FileSystem.FileSystem = FileSystem.make({
 						PlatformError.badArgument({ module: "FileSystem", method: "stat", description: (err as Error).message }),
 				}),
 		),
-	readFile: (path) => attempt("readFile", path, () => new Uint8Array(NFS.readFileSync(path))),
+	// The adapter's own value: node's Buffer (a Uint8Array), not a copy. A
+	// non-string path never reaches `readFileSync`, which would read it as a
+	// file DESCRIPTOR; the adapter's async `readFile` rejects it in its callback,
+	// so it surfaces there as a system error (Unknown, ERR_INVALID_ARG_TYPE).
+	readFile: (path) =>
+		typeof path === "string"
+			? attempt("readFile", path, () => NFS.readFileSync(path))
+			: Effect.fail(
+					errnoException(
+						"readFile",
+						path,
+						Object.assign(new TypeError(`The "path" argument must be of type string. Received ${typeof path}`), {
+							code: "ERR_INVALID_ARG_TYPE",
+						}),
+					),
+				),
+	// The adapter wraps `readdir` in `Effect.tryPromise` whose catch is
+	// `handleErrnoException` alone, so EVERY failure — argument errors too — is
+	// a system error (an `ERR_*` code maps to Unknown). Matched here.
 	readDirectory: (path, options) =>
-		attempt("readDirectory", path, () =>
-			NFS.readdirSync(path, { encoding: "utf8", recursive: options?.recursive === true }),
-		),
+		Effect.try({
+			try: () => NFS.readdirSync(path, { encoding: "utf8", recursive: options?.recursive === true }),
+			catch: (err) => errnoException("readDirectory", path, err),
+		}),
 	readLink: (path) => attempt("readLink", path, () => NFS.readlinkSync(path)),
 	// The JS `realpathSync`, NOT `.native`: the node adapter wraps the JS
 	// `fs.realpath`, which resolves links but never canonicalizes case.

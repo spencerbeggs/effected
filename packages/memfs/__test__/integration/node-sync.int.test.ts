@@ -4,7 +4,7 @@
 // errno. The node adapter is the reference; a mismatch is a NodeSyncFileSystem
 // bug. Everything lives under one os.tmpdir() fixture.
 
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeFileSystem } from "@effect/platform-node";
@@ -37,10 +37,11 @@ const failureShape = (exit: Exit.Exit<unknown, unknown>) => {
 	if (Exit.isSuccess(exit)) return "success";
 	const failure = exit.cause.reasons.find(Cause.isFailReason);
 	const error = failure?.error as
-		| { reason: { _tag: string; method: string; cause?: { code?: string; syscall?: string } } }
+		| { _tag: string; reason: { _tag: string; method: string; cause?: { code?: string; syscall?: string } } }
 		| undefined;
 	return {
-		tag: error?.reason._tag,
+		kind: error?._tag,
+		reasonTag: error?.reason._tag,
 		method: error?.reason.method,
 		code: error?.reason.cause?.code,
 		syscall: error?.reason.cause?.syscall,
@@ -48,37 +49,59 @@ const failureShape = (exit: Exit.Exit<unknown, unknown>) => {
 };
 
 describe("NodeSyncFileSystem agrees with NodeFileSystem", () => {
-	for (const p of ["f.txt", "dir", "to-dir", "dangling", "nope", "f.txt/child"]) {
+	// Paths under test: fixture entries, plus two argument errors node rejects
+	// before any syscall (a NUL byte, a non-string) — BadArgument, not errno.
+	const paths: ReadonlyArray<readonly [label: string, path: () => string]> = [
+		...["f.txt", "dir", "to-dir", "dangling", "nope", "f.txt/child"].map((p) => [p, () => join(d, p)] as const),
+		["NUL byte", () => join(d, "a\0b")],
+		["non-string", () => 42 as unknown as string],
+	];
+	for (const [p, path] of paths) {
 		it.effect(`stat ${p}: File.Info or failure identical`, () =>
 			Effect.gen(function* () {
-				const [a, b] = yield* both((fs) => fs.stat(join(d, p)));
+				const [a, b] = yield* both((fs) => fs.stat(path()));
 				if (Exit.isSuccess(a)) assert.deepStrictEqual(Exit.isSuccess(b) ? b.value : b, a.value);
 				else assert.deepStrictEqual(failureShape(b), failureShape(a));
 			}),
 		);
 		it.effect(`exists ${p}`, () =>
 			Effect.gen(function* () {
-				const [a, b] = yield* both((fs) => fs.exists(join(d, p)));
-				assert.deepStrictEqual(b, a);
+				const [a, b] = yield* both((fs) => fs.exists(path()));
+				if (Exit.isSuccess(a)) assert.deepStrictEqual(b, a);
+				else assert.deepStrictEqual(failureShape(b), failureShape(a));
+			}),
+		);
+		it.effect(`readFile ${p}`, () =>
+			Effect.gen(function* () {
+				const [a, b] = yield* both((fs) => fs.readFile(path()));
+				if (Exit.isSuccess(a)) assert.deepStrictEqual(b, a);
+				else assert.deepStrictEqual(failureShape(b), failureShape(a));
+			}),
+		);
+		it.effect(`readDirectory ${p}`, () =>
+			Effect.gen(function* () {
+				const [a, b] = yield* both((fs) => fs.readDirectory(path()));
+				if (Exit.isSuccess(a) && Exit.isSuccess(b)) assert.deepStrictEqual([...b.value].sort(), [...a.value].sort());
+				else assert.deepStrictEqual(failureShape(b), failureShape(a));
 			}),
 		);
 		it.effect(`readFileString ${p}`, () =>
 			Effect.gen(function* () {
-				const [a, b] = yield* both((fs) => fs.readFileString(join(d, p)));
+				const [a, b] = yield* both((fs) => fs.readFileString(path()));
 				if (Exit.isSuccess(a)) assert.deepStrictEqual(b, a);
 				else assert.deepStrictEqual(failureShape(b), failureShape(a));
 			}),
 		);
 		it.effect(`readLink ${p}`, () =>
 			Effect.gen(function* () {
-				const [a, b] = yield* both((fs) => fs.readLink(join(d, p)));
+				const [a, b] = yield* both((fs) => fs.readLink(path()));
 				if (Exit.isSuccess(a)) assert.deepStrictEqual(b, a);
 				else assert.deepStrictEqual(failureShape(b), failureShape(a));
 			}),
 		);
 		it.effect(`realPath ${p}`, () =>
 			Effect.gen(function* () {
-				const [a, b] = yield* both((fs) => fs.realPath(join(d, p)));
+				const [a, b] = yield* both((fs) => fs.realPath(path()));
 				if (Exit.isSuccess(a)) assert.deepStrictEqual(b, a);
 				else assert.deepStrictEqual(failureShape(b), failureShape(a));
 			}),
@@ -142,9 +165,12 @@ describe("NodeSyncFileSystem agrees with NodeFileSystem", () => {
 			const program = Effect.gen(function* () {
 				return yield* run(yield* FileSystem.FileSystem);
 			});
+			const before = readdirSync(d).sort();
 			const exit = Effect.runSyncExit(program.pipe(Effect.provide(NodeSyncFileSystem.layer)));
 			assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause));
 			assert.isFalse(Exit.isFailure(exit) && Cause.hasFails(exit.cause));
+			assert.deepStrictEqual(readdirSync(d).sort(), before);
+			assert.strictEqual(readFileSync(join(d, "f.txt"), "utf8"), "hello");
 		});
 	}
 });
