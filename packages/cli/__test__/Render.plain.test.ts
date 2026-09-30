@@ -19,7 +19,7 @@ describe("Render.plain: no escapes of any kind (Review Focus 2)", () => {
 	const SGR = `${ESC}[31mred${ESC}[0m`;
 	const OSC = `${ESC}]8;;https://evil.test\u0007click${ESC}]8;;\u0007`;
 	const LONE = `lone${ESC}escape`;
-	const BELL = "bell\u0007";
+	const BELL = "bell\u0007\tafter";
 
 	const composite = (): ReadonlyArray<Block> => {
 		const vocab = Status.core;
@@ -73,9 +73,9 @@ describe("Render.plain: no escapes of any kind (Review Focus 2)", () => {
 				const out = yield* plain(composite(), overrides);
 				assert.notInclude(out, ESC);
 				assert.notInclude(out, "\u0007");
-				// Everything but line feeds and tabs: no control characters remain.
+				// Everything but line feeds: no control character remains, a tab included.
 				// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting their absence is the point
-				assert.notMatch(out, /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/);
+				assert.notMatch(out, /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/);
 				assert.match(out, /red/, "the text around the escapes is kept");
 				assert.match(out, /loneescape/);
 			}),
@@ -151,6 +151,25 @@ describe("Render.plain: inline content", () => {
 				"a.ts (src/a.ts)",
 				"src/a.ts:3",
 			]);
+		}),
+	);
+});
+
+describe("Render.plain: a status glyph from a vocabulary", () => {
+	it.effect("is sanitized like any other text, so a vocabulary cannot smuggle an escape", () =>
+		Effect.gen(function* () {
+			const vocab = Status.extend({
+				odd: {
+					glyph: `${ESC}[31m!${ESC}[0m`,
+					ascii: `[${ESC}]8;;u\u0007x${ESC}]8;;\u0007]`,
+					token: "failure",
+					rank: 50,
+				},
+			});
+			const unicode = yield* linesOf([Doc.paragraph(Doc.status(vocab, "odd"), " text")]);
+			assert.deepStrictEqual(unicode, ["! text"]);
+			const ascii = yield* linesOf([Doc.paragraph(Doc.status(vocab, "odd"), " text")], { glyphs: Glyphs.ascii });
+			assert.deepStrictEqual(ascii, ["[x] text"]);
 		}),
 	);
 });
@@ -369,6 +388,54 @@ describe("Render.plain: tables", () => {
 			assert.match(out[2] ?? "", /^a rathe…/);
 			assert.notInclude(out.join("\n"), "second");
 		}),
+	);
+
+	it.effect("a tie between the widest columns shrinks the left one first", () =>
+		Effect.gen(function* () {
+			const doc = Doc.table([{ header: "x" }, { header: "y" }], [["aaaaaaaaaa", "bbbbbbbbbb"]]);
+			const out = yield* linesOf([doc], { width: 21 });
+			assert.strictEqual(out[2], "aaaaaaaa…  bbbbbbbbbb");
+			for (const line of out) assert.isAtMost(displayWidth(line), 21);
+		}),
+	);
+
+	it.effect("a header wider than its cells sets the column width", () =>
+		Effect.gen(function* () {
+			const out = yield* linesOf([Doc.table([{ header: "description" }, { header: "n" }], [["a", "1"]])]);
+			assert.deepStrictEqual(out, ["description  n", "-----------  -", `a${" ".repeat(12)}1`]);
+		}),
+	);
+
+	it.effect("a wide (CJK) cell is cut on a whole character, by display width", () =>
+		Effect.gen(function* () {
+			const out = yield* linesOf([Doc.table([{ header: "k" }, { header: "v" }], [["日本語日本語", "1"]])], {
+				width: 10,
+			});
+			assert.strictEqual(out[2], "日本語…  1");
+			for (const line of out) assert.isAtMost(displayWidth(line), 10);
+		}),
+	);
+
+	it.effect(
+		"a table nested in a list, collapsible or callout stays within the context width, not just the indent-free one",
+		() =>
+			Effect.gen(function* () {
+				const wide = Doc.table(
+					[{ header: "id" }, { header: "message" }, { header: "where" }],
+					[["1", "a very long message that goes on and on and on", "src/some/long/path.ts"]],
+				);
+				const placements: ReadonlyArray<readonly [string, Block]> = [
+					["top level", wide],
+					["list", Doc.list([wide])],
+					["collapsible", Doc.collapsible("details", [wide])],
+					["callout", Doc.callout("warning", [wide])],
+					["list in a collapsible in a callout", Doc.callout("note", [Doc.collapsible("d", [Doc.list([wide])])])],
+				];
+				for (const [name, block] of placements) {
+					const out = yield* linesOf([block], { width: 30 });
+					for (const line of out) assert.isAtMost(displayWidth(line), 30, `${name}: "${line}"`);
+				}
+			}),
 	);
 
 	it.effect("never cuts below one column per cell, even when nothing fits", () =>

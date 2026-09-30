@@ -57,7 +57,9 @@ const spansOf = (inline: Inline, ctx: RenderContext): ReadonlyArray<Span> => {
 			// Links do not nest: the outer target wins over one inside the label.
 			return inline.label.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, link: inline.target }));
 		case "StatusMark":
-			return [{ text: ctx.glyphs.kind === "ascii" ? inline.def.ascii : inline.def.glyph, token: inline.def.token }];
+			return [
+				{ text: sanitize(ctx.glyphs.kind === "ascii" ? inline.def.ascii : inline.def.glyph), token: inline.def.token },
+			];
 		case "Path":
 			return [{ text: inline.segments.map(sanitize).join(pathSeparator(ctx)) }];
 	}

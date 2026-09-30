@@ -95,7 +95,11 @@ const shrink = (widths: Array<number>, limit: number): void => {
 	}
 };
 
-const tableLines = (block: Extract<Block, { readonly _tag: "Table" }>, ctx: RenderContext): ReadonlyArray<string> => {
+const tableLines = (
+	block: Extract<Block, { readonly _tag: "Table" }>,
+	ctx: RenderContext,
+	width: number,
+): ReadonlyArray<string> => {
 	const columns = Math.max(block.columns.length, ...block.rows.map((row) => row.length));
 	if (columns === 0) return [];
 	const cap = capOf(block.cap);
@@ -120,14 +124,15 @@ const tableLines = (block: Extract<Block, { readonly _tag: "Table" }>, ctx: Rend
 	const widths = Array.from({ length: columns }, (_, index) =>
 		Math.max(...[...(showHeader ? [header] : []), ...body].map((row) => displayWidth(row[index] ?? ""))),
 	);
-	shrink(widths, ctx.width);
+	shrink(widths, width);
 
 	const render = (row: ReadonlyArray<string>): string =>
 		row
 			.map((text, index) => {
-				const width = widths[index] as number;
-				const cut = displayWidth(text) > width ? Fmt.truncate(text, width, { ellipsis: ctx.glyphs.ellipsis }) : text;
-				return pad(cut, width, block.columns[index]?.align ?? "left");
+				const columnWidth = widths[index] as number;
+				const cut =
+					displayWidth(text) > columnWidth ? Fmt.truncate(text, columnWidth, { ellipsis: ctx.glyphs.ellipsis }) : text;
+				return pad(cut, columnWidth, block.columns[index]?.align ?? "left");
 			})
 			.join("  ")
 			.trimEnd();
@@ -209,7 +214,7 @@ const blockLines = (block: Block, ctx: RenderContext, width: number): ReadonlyAr
 			return hidden > 0 ? [...lines, overflowLine(block.overflow, hidden, ctx)] : lines;
 		}
 		case "Table":
-			return tableLines(block, ctx);
+			return tableLines(block, ctx, width);
 		case "Tree":
 			return treeLines(block, ctx);
 		case "Collapsible":
