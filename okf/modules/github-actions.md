@@ -10,8 +10,8 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-29T01:39:10Z
-  body_sha256: 50155032385fd5ce603e99e8f41a71d348642ab982c4d16115841555e3d3ecb0
+  at: 2026-09-30T01:39:09Z
+  body_sha256: 076919e406bf254a45f35958e873f895366c33894cc5c0687f0a63cdf427584b
 ---
 
 # github-actions
@@ -202,7 +202,7 @@ The doubles worth knowing before writing a test:
   `ActionState` both append (`flag: "a"`), and the `Map` stubs they
   replaced were re-implementing append by concatenation — filesystem
   behaviour hand-modelled inside the test of something else. Build the
-  pair eagerly (`makeInspectableWith` + `Layer.succeed`, never the
+  pair eagerly (`makeHandle` + `Layer.succeed`, never the
   re-seeding `layer*` form, per memfs's isolation contract) so the
   assertions read the volume the run wrote to, and seed the runner-file
   directory, since a write needs its parent.

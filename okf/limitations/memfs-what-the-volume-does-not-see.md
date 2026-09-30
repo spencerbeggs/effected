@@ -15,8 +15,8 @@ sources:
     resource: ../../packages/xdg/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T01:37:32Z
-  body_sha256: 66e8ff40a507f780443729ecda82fe3093680c3d305cc92cde61eb4b1ec2c016
+  at: 2026-09-30T01:39:09Z
+  body_sha256: df9deeaa159f483d07e90ac192c16ec5af98481229275f573ff8d583e426884b
 ---
 
 # memfs's volume is invisible to anything that does not ask for the FileSystem service
@@ -92,5 +92,5 @@ evidence the assertion never reached the real IO.
 `packages/memfs/README.md` states the invisibility cases for consumers
 directly.[^memfs-readme]
 
-[^memfs-readme]: `packages/memfs/README.md:138-141` — the
+[^memfs-readme]: `packages/memfs/README.md:293-301` — the
     invisibility cases stated for consumers.

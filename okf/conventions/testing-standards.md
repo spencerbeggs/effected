@@ -17,8 +17,8 @@ sources:
     resource: ../../CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
-  body_sha256: 019163cf912635f73d8a7f8409d96a460df42c7a8916ffba49f7fd6020004cdb
+  at: 2026-09-30T01:39:09Z
+  body_sha256: 0c8fb2856835b9ef2052d58921835a5aa9db3f4fa5b497d093afb478eb482498
 ---
 
 # Testing standards
@@ -64,7 +64,7 @@ years — the value of a faithful double is the tests it stops passing.
 Three rules generalize from that migration:
 
 - **Inject a misbehavior as a fault, not as a stub body.**
-  `layerFaultyWith(seed, handlers)` delegates every method a handler
+  `layerWith(seed, { faults })` delegates every method a handler
   declines, so the fixture survives the code under test growing a new
   call — where a `layerNoop` stub starts failing on any unimplemented
   member instead.[^memfs-faultinjection-test] Then prove the fault is
@@ -110,7 +110,7 @@ property that was never in doubt.
     — `it.effect` as the default mode and `it.effect.prop` with a
     `Comparator` schema arbitrary.
 [^memfs-faultinjection-test]: `packages/memfs/__test__/FaultInjection.test.ts`
-    — fault-injection tests over `layerFaultyWith`.
+    — fault-injection tests over `layerWith` `faults`.
 [^memfs-fs]: `packages/memfs/src/MemoryFileSystem.ts:274` — contrasts the
     delegate-by-default fault layers with `FileSystem.layerNoop`'s
     deny-by-default behavior.

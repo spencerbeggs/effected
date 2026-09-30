@@ -20,8 +20,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T01:37:32Z
-  body_sha256: 9881400db953b04ebcd12c7e3e482c2402269cc5b048f1e74d4f5692c10c557a
+  at: 2026-09-30T01:39:09Z
+  body_sha256: 422f1fd21ad2b953e69bbe0dbc352a3527345127ec407447d95f29bd2592ef25
 ---
 
 # @effected/memfs
@@ -422,7 +422,7 @@ authoritative list.
    the engine cannot disturb it, and it is the piece that would need
    re-homing (not deleting) if the sunset clause fires.
 8. **Volume-inspection hooks** — the one kit extension that does reach
-   into the ported engine, in three clearly fenced blocks (the
+   into the ported engine, in clearly fenced blocks — three here, with entries 11 and 12 adding more (the
    attribution header itself is untouched):
    - `Volume.currentState()` — a synchronous read of the committed
      state. Safe because the engine's `State` is immutable and each
@@ -430,16 +430,16 @@ authoritative list.
      a sync read observes one consistent state and can never see a
      half-applied transition.
    - `make` re-expressed as `makeReadyVolume` (build + pre-create
-     `/tmp`) composed with `toFileSystem(volume)`, so the inspectable
-     constructor derives both halves from one volume. The exported name
+     `/tmp`) composed with `toFileSystem(volume)`, so the handle
+     derives both halves from one volume. The exported name
      and type are identical — a re-vendor re-applies the split, it does
      not fight it.
    - `VolumeEntrySnapshot` + `collectEntrySnapshots` (an iterative
      sorted DFS over the inode tree, matching the port's iterative-walker
      posture and its depth discipline) and the internal
-     `InspectableFileSystem`/`makeInspectable` pair. The public view in
-     the facade is built on top; the engine exposes no interpretation of
-     its own.
+     `InspectableFileSystem` (its `makeInspectable` constructor was later
+     removed; see entry 12). The public view is built on top; the engine
+     exposes no interpretation of its own.
 9. **Entry modification time on the inspection snapshot** —
    `VolumeEntrySnapshot` carries an `mtime` field (epoch milliseconds),
    populated in `collectEntrySnapshots` from the inode's `mtime:

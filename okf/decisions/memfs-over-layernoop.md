@@ -14,8 +14,8 @@ sources:
     resource: ../../CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 52d929918b25121aa4614b3fea28bce74c9738c943c46720c3cf5edd9420955c
+  at: 2026-09-30T01:39:09Z
+  body_sha256: d4632c9697e6dfed46c26fdc4172a049fab79b78fd40135ed322394cf4e38d30
 ---
 
 # A test needing FileSystem uses memfs, never a hand-rolled layerNoop stub
@@ -39,7 +39,7 @@ member a test's code path touches — not just the ones a fixture's author
 anticipated — behaves like a real filesystem would, including the
 interactions between operations (a `readFile` after a `rename`, a
 `readdir` after a nested `mkdir`).[^memfs-fs] Misbehavior is injected as a
-fault over the real volume (`layerFaultyWith(seed, handlers)`), never as
+fault over the real volume (`layerWith(seed, { faults })`), never as
 a stub body that silently does nothing, so the fixture survives the code
 under test growing a new call instead of failing on an
 unimplemented member the moment it does.[^memfs-faultinjection-test]
@@ -85,5 +85,5 @@ on it die is the check that the fault was not decoration.
     the real-volume, delegate-by-default fault layers with
     `FileSystem.layerNoop`'s deny-by-default semantics.
 [^memfs-faultinjection-test]: `packages/memfs/__test__/FaultInjection.test.ts`
-    — fault-injection tests proving `layerFaultyWith` handlers are
+    — fault-injection tests proving `layerWith` fault handlers are
     load-bearing.

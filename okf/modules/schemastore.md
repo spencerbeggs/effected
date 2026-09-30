@@ -28,8 +28,8 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T23:39:57Z
-  body_sha256: 6551ebd4e6b98549488eb68e2509ce532dc6dcd8d105ae26f119793266adc295
+  at: 2026-09-30T01:39:09Z
+  body_sha256: ad4833fa746db46d8fd32eb496ab4c5d369e378101f4bd6a0d34132c7de9a336
 ---
 
 # @effected/schemastore
@@ -620,7 +620,7 @@ Which filesystem double a suite uses follows what it must observe.
 under `Path.layer`, because each case exercises one call. The
 contract-gate suite is the exception: classifying a real predecessor
 needs **pre-existing content** on disk, so it runs over `@effected/memfs`'s
-`MemoryFileSystem.layerInspectableWith` seeded with the predecessor
+`MemoryFileSystem.layerWith` seeded with the predecessor
 text — a deny-by-default `layerNoop` would have to fabricate the very
 read path the suite exists to exercise.[^pipeline-tests] That layer
 re-seeds a fresh volume on every build ([memfs's isolation
@@ -660,7 +660,7 @@ the statics-only justification recorded in
     — asserts on raw `JsonSchema.toDocumentDraft07` output per attachment
     site, with no package code in the assertion path.
 [^pipeline-tests]: `packages/schemastore/__test__/schema-pipeline.test.ts`
-    — the contract-gate suite over `MemoryFileSystem.layerInspectableWith`,
+    — the contract-gate suite over `MemoryFileSystem.layerWith`,
     and the header comment on resolving `Volume` inside the provided program.
 [^limits]: `packages/schemastore/src/internal/limits.ts:11` —
     `MAX_NESTING_DEPTH = 256`.

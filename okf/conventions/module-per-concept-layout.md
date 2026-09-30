@@ -14,8 +14,8 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 50e79fcc6e005e86fcd85ce4f764d25263e7da5a8b9b6225b4ce717315fb3d48
+  at: 2026-09-30T01:39:09Z
+  body_sha256: e55e59088f8ea0b3ce51bb00b09ee49e2e70546b124d1a6361e044b5fb16486a
 ---
 
 # Module layout is module-per-concept, not kind-based folders
@@ -55,7 +55,7 @@ no one-class `InvalidVersionError.ts` file, no `utils/` folder of floating
 functions that should have been statics or instance methods on a schema
 class instead. `@effected/memfs`'s `MemoryFileSystem.ts` shows the same
 discipline for a service: the class, its errors, and its several layer
-constructors (`layer`, `layerFaultyWith`, and others) all live in the one
+constructors (`layer`, `layerWith`, `makeHandle`, and others) all live in the one
 file the concept is named for.[^memfs-fs]
 
 ## Never author a new kind-based folder
@@ -70,4 +70,4 @@ errors and layer.
     `ConfigEvent.ts`, `ConfigFile.ts`, `ConfigResolver.ts`, the four
     codec modules.
 [^memfs-fs]: `packages/memfs/src/MemoryFileSystem.ts` — the class, its
-    errors, and its `layer`/`layerFaultyWith` family in one module.
+    errors, and its `layer`/`layerWith` family in one module.

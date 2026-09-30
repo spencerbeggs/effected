@@ -8,8 +8,8 @@ resource: ../../packages/templates
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
-  body_sha256: 2b85029fd86be89314090aa487f5eeec9d62817161c026d688cb0d91d19b8832
+  at: 2026-09-30T01:39:09Z
+  body_sha256: 21d1f961a162f47cf951dd40791047f8d96011cf5b6fc222607739fc9e6611c6
 ---
 
 # @effected/templates
@@ -355,8 +355,8 @@ the test boundary, because the volume is mutable and a suite-level layer
 cannot vary per test. Three things about that fixture generalize:
 
 - **Assertion timing dictates the constructor family.** The pair is built
-  eagerly with `makeInspectableWith` and wrapped in `Layer.succeed`, not
-  `layerInspectableWith` — a memfs layer re-seeds a fresh volume on every
+  eagerly with `makeHandle` and wrapped in `Layer.succeed`, not
+  `layerWith` — a memfs layer re-seeds a fresh volume on every
   `Effect.provide`, which would leave assertions running after the
   provide reading a volume nobody wrote to.
 - **The write counter is a fault handler that declines**, so the write is
