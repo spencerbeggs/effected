@@ -291,6 +291,33 @@ describe("promises port", () => {
 		}),
 	);
 
+	it.effect("readFile picks the string form only for a string encoding or { encoding: string }", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume);
+			const loose = fsp.readFile as (path: string, options?: unknown) => Promise<unknown>;
+			assert.instanceOf(yield* Effect.promise(() => loose("/r/file.txt", { flag: "r" })), Uint8Array);
+			assert.instanceOf(yield* Effect.promise(() => loose("/r/file.txt", null)), Uint8Array);
+			assert.strictEqual(yield* Effect.promise(() => loose("/r/file.txt", { encoding: "utf8" })), "hello");
+		}),
+	);
+
+	it.effect("a trailing slash on a file is ENOTDIR and exists is false; on a directory it lists", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			assert.isFalse(sync.exists("/r/file.txt/"));
+			assert.deepInclude(
+				thrown(() => sync.stat("/r/file.txt/")),
+				{ code: "ENOTDIR", syscall: "stat" },
+			);
+			// The slash makes even lstat follow the final link, as on node.
+			assert.isTrue(sync.lstat("/r/to-dir/").isDirectory());
+			assert.isTrue(sync.lstat("/r/to-dir").isSymbolicLink());
+			assert.deepStrictEqual([...sync.readDirectory("/r/dir/")], ["inner.txt"]);
+		}),
+	);
+
 	it.effect("a fault handler that throws synchronously rejects, never throws", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* tree;

@@ -1,7 +1,8 @@
 import { assert } from "@effect/vitest";
 import type { MemoryFileSystemSeed, MemoryFileSystemVolume } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, PlatformError, Result } from "effect";
+import type { FileSystem, Layer } from "effect";
+import { Effect, PlatformError, Result } from "effect";
 import type { SectionParseError } from "../src/index.js";
 import { CommentStyle, SectionDialect, SectionDocument, SectionId } from "../src/index.js";
 
@@ -26,13 +27,15 @@ const systemError = (tag: "NotFound" | "PermissionDenied", method: string, path:
  * surface, plus a write counter and the two permission knobs.
  *
  * @remarks
- * The volume is built EAGERLY, with `makeHandle` under `runSync`, and
- * handed to `Layer.succeed` — deliberately, not as `layerWith`. A
- * memfs layer re-seeds a fresh volume on every `Effect.provide`, which is the
- * right default and the wrong thing for this fixture: each test builds its own
- * double, provides it once, and then inspects what the run left behind. Making
- * the instance first and wrapping it in a layer pins the volume the assertions
- * read to the volume the code under test wrote to.
+ * The volume is built EAGERLY with `makeSync`, and its pinned `handle.layer`
+ * is what the test provides — deliberately, not a `layerWith`. A memfs layer
+ * re-seeds a fresh volume on every `Effect.provide`, which is the right
+ * default and the wrong thing for this fixture: each test builds its own
+ * double, provides it once, and then inspects what the run left behind. The
+ * handle's layer is fixed to one volume, so the volume the assertions read is
+ * the volume the code under test wrote to. The permission knobs and the write
+ * counter are `options.faults`, which fault the handle's `FileSystem` while
+ * `handle.volume` inspects the raw volume beneath them.
  *
  * The permission knobs and the write counter are fault handlers rather than
  * stub bodies. The counter returns `undefined` to decline, so the write is
@@ -43,28 +46,28 @@ export const memoryFs = (
 	initial: MemoryFileSystemSeed = {},
 	options: { readonly unreadable?: string; readonly unwritable?: string } = {},
 ): MemoryFs => {
-	const { fileSystem, volume } = Effect.runSync(MemoryFileSystem.makeHandle(initial));
 	let writeCount = 0;
-
-	const faulty = MemoryFileSystem.makeFaulty(fileSystem, {
-		readFile: (path) =>
-			options.unreadable === String(path)
-				? Effect.fail(systemError("PermissionDenied", "readFile", String(path)))
-				: undefined,
-		writeFileString: (path) => {
-			if (options.unwritable === String(path)) {
-				return Effect.fail(systemError("PermissionDenied", "writeFileString", String(path)));
-			}
-			writeCount += 1;
-			return undefined; // decline: the volume performs the real write
+	const handle = MemoryFileSystem.makeSync(initial, {
+		faults: {
+			readFile: (path) =>
+				options.unreadable === String(path)
+					? Effect.fail(systemError("PermissionDenied", "readFile", String(path)))
+					: undefined,
+			writeFileString: (path) => {
+				if (options.unwritable === String(path)) {
+					return Effect.fail(systemError("PermissionDenied", "writeFileString", String(path)));
+				}
+				writeCount += 1;
+				return undefined; // decline: the volume performs the real write
+			},
 		},
 	});
 
 	return {
-		volume,
-		text: volume.text,
+		volume: handle.volume,
+		text: handle.volume.text,
 		writes: () => writeCount,
-		layer: Layer.succeed(FileSystem.FileSystem, faulty),
+		layer: handle.layer,
 	};
 };
 

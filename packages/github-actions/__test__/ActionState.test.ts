@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { TestConsole } from "effect/testing";
 import { ActionEnvironment, ActionOutputs, ActionState } from "../src/index.js";
 
@@ -13,8 +13,8 @@ const Token = Schema.Struct({ value: Schema.String, expires: Schema.Number });
  * append by concatenation. `/rf` is seeded because a write needs its parent.
  */
 const runnerFiles = () => {
-	const { fileSystem, volume } = Effect.runSync(MemoryFileSystem.makeHandle({ "/rf": MemoryFileSystem.directory() }));
-	return { written: volume, layer: Layer.succeed(FileSystem.FileSystem, fileSystem) };
+	const handle = MemoryFileSystem.makeSync({ "/rf": MemoryFileSystem.directory() });
+	return { written: handle.volume, layer: handle.layer };
 };
 
 const live = <A, E>(

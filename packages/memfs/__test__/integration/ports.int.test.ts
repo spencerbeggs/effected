@@ -84,6 +84,11 @@ const cases = [
 	"dir/..",
 	"file.txt/..",
 	"nc-a",
+	// A trailing slash asserts "directory": node follows the final link and
+	// fails ENOTDIR for a non-directory (even lstat), and lists a directory.
+	"file.txt/",
+	"dir/",
+	"to-dir/",
 ];
 
 const seed = {

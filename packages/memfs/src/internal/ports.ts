@@ -74,8 +74,16 @@ const walk = (volume: MemoryFileSystemVolume, path: string, followFinal: boolean
  * reporting WHY it is absent: `ENOENT`, `ENOTDIR` (a component under a
  * non-directory) or `ELOOP` (too many links).
  */
-export const resolvePath = (volume: MemoryFileSystemVolume, path: string, followFinal = true): Resolved =>
-	walk(volume, path, followFinal, { hops: 0 });
+export const resolvePath = (volume: MemoryFileSystemVolume, path: string, followFinal = true): Resolved => {
+	// A trailing slash asserts "this is a directory", as on node: the final
+	// link is followed even for `lstat`, and a resolved non-directory is
+	// ENOTDIR — never the file itself (which `walk`, dropping the empty
+	// segment, would otherwise answer).
+	const trailingSlash = path.length > 1 && path.endsWith("/");
+	const r = walk(volume, path, followFinal || trailingSlash, { hops: 0 });
+	if (trailingSlash && !("code" in r) && volume.lstat(r.path)?.kind !== "directory") return { code: "ENOTDIR" };
+	return r;
+};
 
 const portStats = (s: MemoryFileSystemVolumeStat): MemoryFileSystemPortStats => ({
 	isFile: () => s.kind === "file",
@@ -92,6 +100,12 @@ const statOf = (volume: MemoryFileSystemVolume, path: string, syscall: "stat" | 
 	if (s === undefined) throw nodeErrno("ENOENT", syscall, path);
 	return portStats(s);
 };
+
+const isEncoded = (options: unknown): boolean =>
+	typeof options === "string" ||
+	(typeof options === "object" &&
+		options !== null &&
+		typeof (options as { readonly encoding?: unknown }).encoding === "string");
 
 const settle = <A>(f: () => A): Promise<Awaited<A>> => {
 	try {
@@ -199,7 +213,9 @@ export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFi
 	function readFile(path: string): Promise<Uint8Array>;
 	function readFile(path: string, encoding: MemoryFileSystemReadFileEncoding): Promise<string>;
 	function readFile(path: string, encoding?: MemoryFileSystemReadFileEncoding): Promise<Uint8Array | string> {
-		return settle(() => (encoding === undefined ? readBytes(volume, path) : sync.readFile(path)));
+		// Only a string encoding, or `{ encoding: string }`, selects the string
+		// form — as node does; `{ flag: "r" }`, `null` or `undefined` read bytes.
+		return settle(() => (isEncoded(encoding) ? sync.readFile(path) : readBytes(volume, path)));
 	}
 	return {
 		readdir,
@@ -209,18 +225,16 @@ export const makePromisesFileSystem = (volume: MemoryFileSystemVolume): MemoryFi
 	};
 };
 
-// The syscall node reports for each handle mutator.
-const nodeSyscall = { write: "open", mkdir: "mkdir", remove: "rm", symlink: "symlink" } as const;
-
-// The syscall node reports for the `FileSystem` method a seed step runs —
-// `makeSync` throws with it, never with the Effect method name.
+// The syscall node reports for the `FileSystem` method a handle mutator or a
+// seed step runs — the thrown error carries it, never the Effect method name.
+// `rmSync` fails in the `lstat` it opens with (host-probed), not in "rm".
 const methodSyscall: { readonly [method: string]: string | undefined } = {
 	writeFile: "open",
 	makeDirectory: "mkdir",
 	symlink: "symlink",
 	chmod: "chmod",
 	utimes: "utime",
-	remove: "rm",
+	remove: "lstat",
 };
 
 /** node's syscall for a `FileSystem` method; a method with no node twin (the seed's own `root` check) keeps its name. */
@@ -251,9 +265,9 @@ export const runNode = <A>(
 	throw nodeErrno(code, syscall, path);
 };
 
-/** {@link runNode} for a handle mutator: node's syscall for the op and the CALLER's path. */
+/** {@link runNode} for a handle mutator: node's syscall for the `FileSystem` method and the CALLER's path. */
 export const runMutation = (
 	effect: Effect.Effect<void, PlatformError.PlatformError>,
-	op: keyof typeof nodeSyscall,
+	method: "writeFile" | "makeDirectory" | "remove" | "symlink",
 	path: string,
-): void => runNode(effect, () => ({ syscall: nodeSyscall[op], path }));
+): void => runNode(effect, () => ({ syscall: syscallForMethod(method), path }));

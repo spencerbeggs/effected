@@ -114,7 +114,8 @@ describe("MemoryFileSystem.makeSync", () => {
 		const missing = thrown(() => vol.remove("/nope"));
 		assert.strictEqual(missing.code, "ENOENT");
 		assert.strictEqual(missing.path, "/nope");
-		assert.strictEqual(missing.syscall, "rm");
+		// node's rmSync reports the lstat it fails in, not "rm".
+		assert.strictEqual(missing.syscall, "lstat");
 		assert.notStrictEqual(missing.name, "FiberFailure");
 		const underFile = thrown(() => vol.write("/f/child.txt", ""));
 		assert.strictEqual(underFile.code, "ENOTDIR");
@@ -308,7 +309,7 @@ describe("MemoryFileSystem.makeSync", () => {
 describe("runMutation", () => {
 	it("rethrows a defect unchanged rather than converting it to an errno", () => {
 		const defect = new Error("boom");
-		const e = thrown(() => runMutation(Effect.die(defect) as never, "write", "/x"));
+		const e = thrown(() => runMutation(Effect.die(defect) as never, "writeFile", "/x"));
 		assert.strictEqual(e, defect);
 	});
 
@@ -317,7 +318,7 @@ describe("runMutation", () => {
 			thrown(() =>
 				runMutation(
 					Effect.fail(PlatformError.systemError({ _tag: tag, module: "FileSystem", method: "m" })),
-					"mkdir",
+					"makeDirectory",
 					"/x",
 				),
 			).code;
@@ -329,6 +330,6 @@ describe("runMutation", () => {
 
 	it("a BadArgument is EINVAL", () => {
 		const bad = PlatformError.badArgument({ module: "FileSystem", method: "m", description: "d" });
-		assert.strictEqual(thrown(() => runMutation(Effect.fail(bad), "mkdir", "/x")).code, "EINVAL");
+		assert.strictEqual(thrown(() => runMutation(Effect.fail(bad), "makeDirectory", "/x")).code, "EINVAL");
 	});
 });

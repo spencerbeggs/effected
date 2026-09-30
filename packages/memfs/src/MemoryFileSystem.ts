@@ -649,8 +649,9 @@ export type MemoryFileSystemFaultsFactory = (base: FileSystem.FileSystem) => Mem
 const handleContext = ({
 	fileSystem,
 	volume,
-}: MemoryFileSystemHandle): Context.Context<FileSystem.FileSystem | MemoryFileSystemVolume> =>
-	Context.make(FileSystem.FileSystem, fileSystem).pipe(Context.add(MemoryFileSystem.Volume, volume));
+}: Pick<MemoryFileSystemHandle, "fileSystem" | "volume">): Context.Context<
+	FileSystem.FileSystem | MemoryFileSystemVolume
+> => Context.make(FileSystem.FileSystem, fileSystem).pipe(Context.add(MemoryFileSystem.Volume, volume));
 
 // The one build path behind every seeded constructor: engine, seed (written
 // beneath any faults), view, then the optional fault wrapper over the service.
@@ -701,12 +702,7 @@ const buildHandle = (
 		const handle: MemoryFileSystemHandle = {
 			fileSystem,
 			volume,
-			layer: Layer.merge(
-				Layer.succeedContext(
-					Context.make(FileSystem.FileSystem, fileSystem).pipe(Context.add(MemoryFileSystem.Volume, volume)),
-				),
-				Path.layer,
-			),
+			layer: Layer.merge(Layer.succeedContext(handleContext({ fileSystem, volume })), Path.layer),
 			sync,
 			promises: makePromisesFileSystem(volume),
 			root,
@@ -720,10 +716,10 @@ const buildHandle = (
 						ensureParent(at(path)),
 						typeof content === "string" ? raw.writeFileString(at(path), content) : raw.writeFile(at(path), content),
 					),
-					"write",
+					"writeFile",
 					path,
 				),
-			mkdir: (path) => runMutation(raw.makeDirectory(at(path), { recursive: true }), "mkdir", path),
+			mkdir: (path) => runMutation(raw.makeDirectory(at(path), { recursive: true }), "makeDirectory", path),
 			remove: (path) => runMutation(raw.remove(at(path), { recursive: true }), "remove", path),
 			// Only the link's own path resolves against the root; the target text is stored verbatim.
 			symlink: (target, path) =>

@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Cause, Effect, FileSystem, Layer, Redacted, Schema } from "effect";
+import { Cause, Effect, Layer, Redacted, Schema } from "effect";
 import { TestConsole } from "effect/testing";
 import {
 	ActionEnvironment,
@@ -29,8 +29,8 @@ const FILES = {
  * the real append, and `/rf` is seeded because a write needs its parent.
  */
 const runnerFiles = () => {
-	const { fileSystem, volume } = Effect.runSync(MemoryFileSystem.makeHandle({ "/rf": MemoryFileSystem.directory() }));
-	return { written: volume, layer: Layer.succeed(FileSystem.FileSystem, fileSystem) };
+	const handle = MemoryFileSystem.makeSync({ "/rf": MemoryFileSystem.directory() });
+	return { written: handle.volume, layer: handle.layer };
 };
 
 const live = <A, E>(program: Effect.Effect<A, E, ActionOutputs>, files: ReturnType<typeof runnerFiles>) =>
