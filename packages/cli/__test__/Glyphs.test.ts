@@ -17,4 +17,19 @@ describe("Glyphs", () => {
 		assert.isAbove(Glyphs.unicode.spinner.length, 0);
 		assert.isAbove(Glyphs.ascii.spinner.length, 0);
 	});
+
+	it("carries a path separator per audience and a spinner interval", () => {
+		assert.strictEqual(Glyphs.unicode.pathSeparator.human, "›");
+		assert.strictEqual(Glyphs.unicode.pathSeparator.agent, " > ");
+		assert.strictEqual(Glyphs.ascii.pathSeparator.human, ">");
+		assert.strictEqual(Glyphs.ascii.pathSeparator.agent, " > ");
+		assert.strictEqual(Glyphs.unicode.spinnerIntervalMs, 80);
+		assert.strictEqual(Glyphs.ascii.spinnerIntervalMs, 80);
+	});
+
+	it("the ascii separators are ascii only", () => {
+		for (const ch of Glyphs.ascii.pathSeparator.human + Glyphs.ascii.pathSeparator.agent) {
+			assert.isBelow(ch.codePointAt(0) ?? 0, 128);
+		}
+	});
 });

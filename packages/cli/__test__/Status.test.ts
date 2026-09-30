@@ -70,3 +70,26 @@ describe("Status.extend", () => {
 		assert.throws(() => assert.isUndefined(vocab.def("timeot").rank));
 	});
 });
+
+describe("Status.resolve", () => {
+	it("returns the full definition of a core name", () => {
+		assert.deepStrictEqual(Status.core.resolve("failure"), { glyph: "✗", ascii: "[FAIL]", token: "failure", rank: 90 });
+	});
+
+	it("resolves an extended vocabulary's own names and still the core ones", () => {
+		const v = Status.extend({ blocked: { glyph: "⛔", ascii: "[BLOCKED]", token: "error", rank: 80 } });
+		assert.deepStrictEqual(v.resolve("blocked"), { glyph: "⛔", ascii: "[BLOCKED]", token: "error", rank: 80 });
+		assert.deepStrictEqual(v.resolve("success"), Status.core.resolve("success"));
+	});
+
+	it("an entry that replaces a core name resolves to the replacement", () => {
+		const v = Status.extend({ warning: { glyph: "!", ascii: "[!]", token: "warning", rank: 5 } });
+		assert.strictEqual(v.resolve("warning").rank, 5);
+	});
+
+	it("is an immutable snapshot, so a stored definition cannot be edited", () => {
+		const resolved = Status.core.resolve("info");
+		assert.isTrue(Object.isFrozen(resolved));
+		assert.notStrictEqual(resolved, Status.core.def("info"));
+	});
+});

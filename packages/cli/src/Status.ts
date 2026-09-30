@@ -86,6 +86,20 @@ export class Status<Names extends string> {
 	}
 
 	/**
+	 * The full definition of a status as an immutable snapshot, for a caller that stores it.
+	 *
+	 * @remarks
+	 * `def` answers the vocabulary's own entry. `resolve` answers a frozen copy, so a document node that holds
+	 * the definition stays plain data and editing it cannot change the vocabulary. The copy is shallow: a
+	 * `token` given as a `Style` keeps its own identity.
+	 *
+	 * @param name - a name in this vocabulary
+	 */
+	resolve(name: Names): StatusDef {
+		return Object.freeze({ ...this.defs[name] });
+	}
+
+	/**
 	 * The status with the highest rank; a tie goes to the one that comes first in `names`.
 	 *
 	 * @remarks

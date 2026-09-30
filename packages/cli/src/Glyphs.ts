@@ -14,6 +14,10 @@ export interface GlyphSet {
 	readonly bullet: string;
 	/** A directional arrow. */
 	readonly arrow: string;
+	/** The separator between the segments of a breadcrumb or path: one for people, one for agents. */
+	readonly pathSeparator: { readonly human: string; readonly agent: string };
+	/** How long a spinner frame is shown, in milliseconds. */
+	readonly spinnerIntervalMs: number;
 }
 
 /**
@@ -31,6 +35,8 @@ export class Glyphs {
 		spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
 		bullet: "•",
 		arrow: "→",
+		pathSeparator: { human: "›", agent: " > " },
+		spinnerIntervalMs: 80,
 	};
 
 	/** ASCII-only symbols. */
@@ -40,5 +46,7 @@ export class Glyphs {
 		spinner: ["-", "\\", "|", "/"],
 		bullet: "*",
 		arrow: "->",
+		pathSeparator: { human: ">", agent: " > " },
+		spinnerIntervalMs: 80,
 	};
 }
