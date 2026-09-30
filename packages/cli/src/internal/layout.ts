@@ -19,7 +19,10 @@ export interface Span {
 	readonly token?: TokenName | Style;
 	/** The link it belongs to. */
 	readonly link?: LinkTarget;
-	/** It came from a `Code` inline; a renderer adds its own code markers. */
+	/**
+	 * It came from a `Code` inline. A renderer adds its own code markers, and `truncateSpans` reads the flag too:
+	 * an ellipsis after a code span is plain text beside it, not inside it.
+	 */
 	readonly code?: true;
 }
 
@@ -27,12 +30,19 @@ export interface Span {
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
 
 /**
- * Text made safe to lay out and print: ANSI and OSC sequences removed, then every remaining control character
- * (a stray ESC, BEL, DEL, the C1 range) except tab, line feed and carriage return.
+ * Text made safe to lay out and print: complete ANSI and OSC sequences removed, every remaining control character
+ * removed (a stray ESC, BEL, BS, DEL, the C1 range) except line feed and carriage return, and a tab turned into a
+ * space.
+ *
+ * @remarks
+ * Stripping complete sequences is not enough on its own: a lone ESC survives it, and so does whatever would
+ * complete a sequence once two adjacent pieces of text are joined (`ESC` in one node, `[31m` in the next). With
+ * every ESC and C0 or C1 control gone after the strip, nothing can reassemble, so the width of the text equals what
+ * a terminal shows. A tab counts as no columns but draws up to eight, hence the space.
  *
  * @internal
  */
-export const sanitize = (input: string): string => stripAnsi(input).replace(CONTROL, "");
+export const sanitize = (input: string): string => stripAnsi(input).replace(/\t/g, " ").replace(CONTROL, "");
 
 const pathSeparator = (ctx: RenderContext): string =>
 	ctx.audience === "agent" ? ctx.glyphs.pathSeparator.agent : ` ${ctx.glyphs.pathSeparator.human} `;
@@ -68,6 +78,11 @@ export const flatten = (inlines: ReadonlyArray<Inline>, ctx: RenderContext): Rea
 
 /**
  * The display width of spans in terminal columns.
+ *
+ * @remarks
+ * Graphemes are measured within a span, deliberately: a cluster split across two spans (the two halves of a flag,
+ * a joiner and the next emoji) counts as two characters, as it is laid out. Content does not split a cluster unless
+ * the caller does.
  *
  * @internal
  */

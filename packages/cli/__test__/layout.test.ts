@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
-import type { Inline } from "../src/index.js";
+import type { Inline, RenderContext } from "../src/index.js";
 import { Doc, Glyphs, Status } from "../src/index.js";
 import { displayWidth, graphemes, stripAnsi } from "../src/internal/displayWidth.js";
 import type { Span } from "../src/internal/layout.js";
@@ -89,12 +89,16 @@ describe("flatten", () => {
 });
 
 describe("sanitize", () => {
-	it("removes escape sequences and every stray control character, and keeps tab and line breaks", () => {
+	it("removes escape sequences and every stray control character, turns a tab into a space, and keeps line breaks", () => {
 		assert.strictEqual(sanitize("a\u001B[31mb\u001B[0mc"), "abc");
 		assert.strictEqual(sanitize("a\u001B]8;;u\u0007b\u001B]8;;\u0007"), "ab");
 		assert.strictEqual(sanitize("lone\u001Bescape"), "loneescape");
 		assert.strictEqual(sanitize("bell\u0007 nul\u0000 del\u007F c1\u009B"), "bell nul del c1");
-		assert.strictEqual(sanitize("tab\tnew\nline\r\nend"), "tab\tnew\nline\r\nend");
+		assert.strictEqual(
+			sanitize("tab\tnew\nline\r\nend"),
+			"tab new\nline\r\nend",
+			"a tab counts 0 columns but draws up to 8",
+		);
 		assert.strictEqual(
 			sanitize("日本 👨‍👩‍👧‍👦 e\u0301"),
 			"日本 👨‍👩‍👧‍👦 e\u0301",
@@ -111,7 +115,101 @@ describe("sanitize", () => {
 	);
 });
 
+describe("flatten under hostile input: nothing can reassemble into a live sequence", () => {
+	// Every character an escape sequence, a C0 or a C1 control is made of, plus one plain letter.
+	const ALPHABET = ["\u001B", "[", "]", "(", "P", "\\", ";", "8", "3", "1", "m", "\u0007", "\b", "\u009B", "x"];
+	const upTo = (length: number): ReadonlyArray<string> => {
+		const out: Array<string> = [];
+		let frontier = [""];
+		for (let n = 1; n <= length; n++) {
+			frontier = frontier.flatMap((prefix) => ALPHABET.map((ch) => prefix + ch));
+			out.push(...frontier);
+		}
+		return out;
+	};
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting their absence is the point
+	const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/;
+
+	const problems = (ctx: RenderContext, inlines: ReadonlyArray<Inline>): ReadonlyArray<string> => {
+		const spans = flatten(inlines, ctx);
+		const out = paintSpans(spans, ctx);
+		const found: Array<string> = [];
+		if (CONTROL.test(out)) found.push("a control character survived");
+		if (widthOf(spans) !== displayWidth(out))
+			found.push(`widthOf ${widthOf(spans)} is not displayWidth ${displayWidth(out)}`);
+		return found;
+	};
+
+	it.effect(
+		"the named probes from the review: split SGR, nested SGR, split OSC 8, split CSI, DCS, charset, C1, BS, BEL",
+		() =>
+			Effect.gen(function* () {
+				const ctx = yield* contextOf({ paint: (_token, text) => text, link: (_target, label) => label });
+				const probes: ReadonlyArray<readonly [string, ReadonlyArray<Inline>]> = [
+					["split SGR", [Doc.text("\u001B"), Doc.text("[31mred")]],
+					["nested SGR", [Doc.text("\u001B\u001B[31m[31mred")]],
+					["split OSC 8", [Doc.text("\u001B]8;;http://evil"), Doc.text("\u0007x")]],
+					["split CSI across Text and Code", [Doc.text("a\u001B"), Doc.code("[2Jb")]],
+					["DCS", [Doc.text("\u001BPq...\u001B\\x")]],
+					["charset selection", [Doc.text("\u001B(Bx")]],
+					["C1 CSI", [Doc.text("\u009B31mred")]],
+					["backspace and bell", [Doc.text("ab\b\bXY\u0007")]],
+					["a Path segment", [Doc.path("\u001B", "[31m")]],
+				];
+				for (const [name, inlines] of probes) assert.deepStrictEqual(problems(ctx, inlines), [], name);
+			}),
+	);
+
+	it.effect(
+		"exhaustively: 1 to 3 adjacent Text and Code nodes over the alphabet leave no control character, and widthOf equals displayWidth",
+		() =>
+			Effect.gen(function* () {
+				const ctx = yield* contextOf({ paint: (_token, text) => text, link: (_target, label) => label });
+				const failures: Array<string> = [];
+				let cases = 0;
+				const check = (inlines: ReadonlyArray<Inline>, label: string): void => {
+					cases++;
+					const found = problems(ctx, inlines);
+					if (found.length > 0 && failures.length < 5) failures.push(`${label} ${JSON.stringify(found)}`);
+				};
+				for (const one of upTo(3)) {
+					check([Doc.text(one)], JSON.stringify([one]));
+					check([Doc.code(one)], JSON.stringify(["code", one]));
+				}
+				const short = upTo(2);
+				for (const first of short) {
+					for (const second of short) check([Doc.text(first), Doc.code(second)], JSON.stringify([first, second]));
+				}
+				for (const a of ALPHABET) {
+					for (const b of ALPHABET) {
+						for (const c of ALPHABET) check([Doc.text(a), Doc.code(b), Doc.text(c)], JSON.stringify([a, b, c]));
+					}
+				}
+				assert.isAbove(cases, 60_000, "the enumeration ran");
+				assert.deepStrictEqual(failures, []);
+			}),
+		{ timeout: 60_000 },
+	);
+});
+
 describe("widthOf", () => {
+	it("measures graphemes within a span, so a cluster split across two spans counts as two", () => {
+		const flag = "\u{1F1EF}\u{1F1F5}";
+		const split = widthOf([{ text: "\u{1F1EF}" }, { text: "\u{1F1F5}" }]);
+		assert.strictEqual(split, displayWidth("\u{1F1EF}") + displayWidth("\u{1F1F5}"));
+		assert.notStrictEqual(
+			split,
+			displayWidth(flag),
+			"the same cluster in one span is one grapheme and measures differently",
+		);
+		assert.strictEqual(widthOf([{ text: flag }]), displayWidth(flag));
+		const joiner = "\u{1F468}\u200D";
+		assert.strictEqual(
+			widthOf([{ text: joiner }, { text: "\u{1F469}" }]),
+			displayWidth(joiner) + displayWidth("\u{1F469}"),
+		);
+	});
+
 	it("sums the display width of every span", () => {
 		assert.strictEqual(widthOf([]), 0);
 		assert.strictEqual(widthOf([{ text: "ab" }, { text: "日本", token: "info" }, { text: "👨‍👩‍👧‍👦" }]), 2 + 4 + 2);
@@ -162,6 +260,19 @@ describe("truncateSpans: a coloured, linked label wider than the width (Review F
 							if (prefix === kept) matched = true;
 						}
 						assert.isTrue(matched, `${where}: "${kept}" is a prefix of whole graphemes of "${label}"`);
+
+						// Maximal: when it was cut, the next whole grapheme would not have fitted beside the marker.
+						if (width < total) {
+							const k = kept === "" ? -1 : original.findIndex((_, i) => original.slice(0, i + 1).join("") === kept);
+							assert.isTrue(kept === "" || k >= 0, `${where}: the kept text ends on a grapheme boundary`);
+							const next = original[k + 1];
+							assert.isDefined(next, `${where}: something was left out`);
+							assert.isAbove(
+								displayWidth(kept) + displayWidth(next ?? "") + displayWidth("…"),
+								width,
+								`${where}: "${next}" would have fitted, so too little was kept`,
+							);
+						}
 					}
 				}),
 		);
