@@ -13,8 +13,8 @@ sources:
     title: Interactive CLI kit design, section 4
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T19:32:46Z
-  body_sha256: a0699de2bb90e9c37cb8063a213005607e115f065801e9eca055b1d30bb21581
+  at: 2026-09-30T19:43:46Z
+  body_sha256: 438ba01e29ad1d657d4ca022c903062805a91f7c7d92834940796a3fc09b5e50
 ---
 
 # @effected/env
@@ -36,9 +36,9 @@ servers, engines and a Vitest plugin can detect without a CLI dependency; see
 
 | Export | Contract |
 | --- | --- |
-| `RuntimeEnv` (the snapshot Schema class) and its service | `{ agent: Option<string>, ci: Option<string>, terminal: Option<{ name, version }> }`. Built from `Config` only, so it is safe inside a stdio MCP server. A `Schema.Class`, so a consumer can persist it. The service tag's name is decided with the implementation. |
-| `TerminalEnv` | `stdinIsTerminal`; per-stream `stdout` and `stderr`, each `{ isTerminal, color, hyperlinks, columns }`; `width(fallback)`, which reads stdout columns, then `COLUMNS`, then the fallback; and a standalone `colorLevel(stream)`. A snapshot, not live. |
-| `Audience` | `human`, `agent` or `ci`. Precedence: a valid override environment variable, then agent, then CI, then human, so an agent inside a CI job gets agent output. |
+| `RuntimeEnv` and `CurrentRuntimeEnv` | `RuntimeEnv` is the snapshot `Schema.Class`: `{ agent: Option<string>, ci: Option<string>, terminal: Option<{ name, version: Option<string> }> }`. Every `Option` field is `Schema.OptionFromNullOr`, so the snapshot persists as plain JSON through `Schema.fromJsonString(RuntimeEnv)`, with `null` for absent (`Schema.Option` does not: its JSON form is a tagged object that decodes back to an error). It is a data class, not a service tag: no kit service is a `Schema.Class`, and this service's whole shape is one immutable value, so `CurrentRuntimeEnv` is the `Context.Service` carrying it. `CurrentRuntimeEnv.layer` needs nothing and reads the ambient `ConfigProvider` once when built, so it is safe inside a stdio MCP server; `layerTest(overrides?)` takes `{ agent?, ci?, terminal? }` as `Option`s, defaults every field to `None`, and never touches `Config`. |
+| `TerminalEnv` | `stdinIsTerminal`; per-stream `stdout` and `stderr`, each `{ isTerminal, color, hyperlinks, columns }`; `width(fallback)`, which reads stdout columns, then `COLUMNS`, then the fallback; and a standalone `colorLevel(stream)`. A snapshot, not live. `layer(options?)` takes `{ stderrIsTerminal?: Effect<boolean> }` and requires `Stdio` and `Terminal`; `layerTest(partial?)` takes `{ stdinIsTerminal?, stdout?, stderr? }`. `colorLevel(stream)` needs `Stdio` and `Config` only. |
+| `Audience` | `human`, `agent` or `ci`. Precedence: a valid override environment variable, then agent, then CI, then human, so an agent inside a CI job gets agent output. `layer(options?)` takes `{ envVar?: string }` and requires `CurrentRuntimeEnv`; `layerTest(kind)` fixes the kind. |
 | `EnvOverride` | Reads a variable that picks a mode *within* an audience. An invalid value logs one warning and yields `None`; it never fails the run. The kit never learns a consumer's literals. |
 
 Colour follows Node's `getColorDepth` precedence
