@@ -15,6 +15,7 @@
 		"@effected/commands": "workspace:*",
 		"@effected/config-file": "workspace:*",
 		"@effected/engine": "workspace:*",
+		"@effected/env": "workspace:*",
 		"@effected/git": "workspace:*",
 		"@effected/github": "workspace:*",
 		"@effected/github-actions": "workspace:*",

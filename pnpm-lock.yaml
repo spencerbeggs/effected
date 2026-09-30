@@ -1317,6 +1317,9 @@ importers:
       '@effected/engine':
         specifier: workspace:*
         version: link:../packages/engine/dist/dev/pkg
+      '@effected/env':
+        specifier: workspace:*
+        version: link:../packages/env/dist/dev/pkg
       '@effected/git':
         specifier: workspace:*
         version: link:../packages/git/dist/dev/pkg
