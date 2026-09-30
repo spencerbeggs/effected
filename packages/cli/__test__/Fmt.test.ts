@@ -16,7 +16,13 @@ describe("Fmt.duration", () => {
 		[60_000, "1m"],
 		[63_000, "1m 3s"],
 		[120_000, "2m"],
-		[3_600_000, "60m"], // no hours unit: minutes keep counting
+		[3_599_999, "1h"], // rounds up to a whole hour rather than printing "60m"
+		[3_600_000, "1h"],
+		[3_660_000, "1h 1m"],
+		[5_400_000, "1h 30m"],
+		[7_200_000, "2h"],
+		[7_260_000, "2h 1m"],
+		[86_400_000, "24h"], // no days unit: hours keep counting
 	];
 	for (const [ms, expected] of cases) {
 		it(`${ms}ms => ${expected}`, () => {

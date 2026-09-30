@@ -257,4 +257,32 @@ describe("CliLog.layer file option", () => {
 			}),
 		);
 	});
+
+	it.effect("creates the parent directory once, on the first batch, not on every batch", () =>
+		Effect.gen(function* () {
+			let made = 0;
+			const h = yield* harness({
+				file: { path: "/deep/er/log.ndjson" },
+				env: { [LEVEL_ENV]: "debug" },
+				faults: {
+					makeDirectory: () => {
+						made++;
+						return undefined;
+					},
+				},
+			});
+			yield* h.log(Effect.logError("first"));
+			let spins = 0;
+			while (!h.handle.volume.has("/deep/er/log.ndjson") && spins++ < 1000) yield* Effect.yieldNow;
+			yield* h.log(Effect.logError("second"));
+			yield* settle;
+			yield* h.log(Effect.logError("third"));
+			yield* h.close;
+			assert.strictEqual(made, 1);
+			assert.strictEqual(
+				(h.handle.volume.text("/deep/er/log.ndjson") ?? "").split("\n").filter((l) => l !== "").length,
+				3,
+			);
+		}),
+	);
 });

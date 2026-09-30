@@ -3,7 +3,8 @@ import { assert, describe, it } from "@effect/vitest";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Queue, Runtime, Stdio, Terminal } from "effect";
-import { CliConfig, Command, GlobalFlag } from "effect/cli";
+import { CliConfig, Command, GlobalFlag, Prompt } from "effect/cli";
+import type { CliEnvOptions } from "../src/index.js";
 import { CliEnv, CliInteractive, CliRuntime, CliTheme } from "../src/index.js";
 import { TestTerminal } from "../src/testing.js";
 
@@ -416,4 +417,39 @@ describe("CliRuntime.main with the env option", () => {
 			assert.isFalse(seen[1]?.includes(GlobalFlag.Wizard));
 		}),
 	);
+
+	it.effect("installs the theme bridge: core prompts follow the terminal's colour under env", () =>
+		Effect.gen(function* () {
+			const themeUnder = (env: Record<string, string>, io: Layer.Layer<Stdio.Stdio | Terminal.Terminal>) =>
+				Effect.gen(function* () {
+					const { double } = capturing();
+					let primary: string | undefined;
+					yield* CliRuntime.main(
+						Effect.gen(function* () {
+							primary = (yield* Prompt.Theme).primaryColor;
+						}),
+						{ platform: io, env: {} },
+					).pipe(
+						Effect.exit,
+						Effect.provideService(ConfigProvider.ConfigProvider, withEnv(env)),
+						Effect.provideService(Console.Console, double),
+					);
+					return primary;
+				});
+			assert.strictEqual(yield* themeUnder({}, PIPED), "", "no colour: the prompt colour fields are empty");
+			assert.notStrictEqual(yield* themeUnder({ FORCE_COLOR: "1" }, PIPED), "", "forced colour reaches core prompts");
+		}),
+	);
+
+	it("a CliEnvOptions-typed env, which may carry a file sink, requires FileSystem and Path from the platform", () => {
+		const env: CliEnvOptions = { log: { envVar: "TOOL_LOG", file: { path: "/x" } } };
+		const program = CliRuntime.main(Effect.void, { platform: TTY, env });
+		// @ts-expect-error the widened env may carry log.file, so FileSystem | Path stay required (a silent drop before)
+		const narrowed: Effect.Effect<void, Error, Stdio.Stdio | Terminal.Terminal> = program;
+		assert.isDefined(narrowed);
+		// A literal env with no file stays free of them.
+		const plain = CliRuntime.main(Effect.void, { platform: TTY, env: { log: { envVar: "TOOL_LOG" } } });
+		const ok: Effect.Effect<void, Error, never> = plain;
+		assert.isDefined(ok);
+	});
 });

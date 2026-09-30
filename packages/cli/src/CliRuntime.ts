@@ -112,8 +112,9 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * may carry the `file` option when the platform provides `FileSystem` and `Path`. A failure building the env
 	 * layer renders as one line and exits through `exitCode`.
 	 *
-	 * Not interactive, the `Terminal` the program sees is gated: its `readLine` fails as a quit and its input is
-	 * already ended. A program that reads piped data must read `Stdio.stdin`, never `Terminal`.
+	 * Not interactive, the `Terminal` the program sees is gated: its `readLine` fails as a quit, its input is
+	 * already ended and its `display` writes nothing. A program that reads piped data must read `Stdio.stdin`, and
+	 * one that writes output must use `Console` or `Stdio`, never `Terminal`.
 	 */
 	readonly env?: CliEnvOptions | undefined;
 	/**
@@ -331,11 +332,24 @@ export class CliRuntime {
 	>;
 	static main<A, E, R, RP, EP>(
 		program: Effect.Effect<A, E, R>,
-		options: MainOptions<RP, EP> & { readonly env: CliEnvOptions },
+		options: MainOptions<RP, EP> & {
+			readonly env: CliEnvOptions & { readonly log?: CliLogOptions & { readonly file?: undefined } };
+		},
 	): Effect.Effect<
 		void,
 		Error,
 		Exclude<Exclude<R, CliExit | CliEnvServices>, RP> | Exclude<Stdio.Stdio | Terminal.Terminal, RP>
+	>;
+	// A `CliEnvOptions`-typed env may carry `log.file` even when this call site cannot see it, so it keeps
+	// `FileSystem | Path` required: dropping them here would let a file sink silently disappear at runtime.
+	static main<A, E, R, RP, EP>(
+		program: Effect.Effect<A, E, R>,
+		options: MainOptions<RP, EP> & { readonly env: CliEnvOptions },
+	): Effect.Effect<
+		void,
+		Error,
+		| Exclude<Exclude<R, CliExit | CliEnvServices>, RP>
+		| Exclude<Stdio.Stdio | Terminal.Terminal | FileSystem.FileSystem | Path.Path, RP>
 	>;
 	static main<A, E, R, RP, EP>(
 		program: Effect.Effect<A, E, R>,

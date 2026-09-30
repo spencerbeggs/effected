@@ -35,7 +35,7 @@ export interface CliEnvOptions {
  *
  * @public
  */
-export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliTheme;
+export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliTheme | Terminal.Terminal;
 
 /**
  * The environment services a CLI reads, built once and in the right order.
@@ -51,8 +51,10 @@ export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliThe
  * degrades to "unset" when it fails, so building the layer does not fail on a bad provider; it fails only when
  * `Stdio` or `Terminal` do.
  *
- * Not interactive, the gated `Terminal`'s `readLine` fails as a quit and its input is already ended. A program that
- * reads piped data must read `Stdio.stdin`, never `Terminal`.
+ * Not interactive, the gated `Terminal`'s `readLine` fails as a quit, its input is already ended and its `display`
+ * writes nothing. A program that reads piped data must read `Stdio.stdin`, and one that writes output must use
+ * `Console` or `Stdio`, never `Terminal`. It also installs `CliTheme.promptTheme`, so core's prompts follow the
+ * theme.
  *
  * @public
  */
@@ -69,7 +71,7 @@ export class CliEnv {
 	 */
 	static readonly layer = (
 		options: CliEnvOptions = {},
-	): Layer.Layer<CliEnvServices | Terminal.Terminal, never, Stdio.Stdio | Terminal.Terminal> => {
+	): Layer.Layer<CliEnvServices, never, Stdio.Stdio | Terminal.Terminal> => {
 		const base = LayerModule.mergeAll(
 			CurrentRuntimeEnv.layer,
 			TerminalEnv.layer(
@@ -84,7 +86,8 @@ export class CliEnv {
 		const withInteractive = CliInteractive.layer.pipe(LayerModule.provideMerge(withTheme));
 		// The gates read CliInteractive when built, and the terminal gate wraps the REAL Terminal, which the
 		// environment layers above have already read.
-		return LayerModule.mergeAll(CliPrompt.gateTerminal, CliPrompt.gateWizard).pipe(
+		// `promptTheme` bridges the theme to core's prompts, so they follow the terminal's colour too.
+		return LayerModule.mergeAll(CliPrompt.gateTerminal, CliPrompt.gateWizard, CliTheme.promptTheme).pipe(
 			LayerModule.provideMerge(withInteractive),
 		);
 	};

@@ -28,10 +28,16 @@ export const makeFileSink = (
 		const queue = yield* Queue.unbounded<string, Cause.Done>();
 		let disabled = false;
 
+		// The parent directory is made once, before the first append; a failure there disables the sink like any other.
+		let directoryMade = false;
 		const append = (lines: ReadonlyArray<string>) =>
-			fs
-				.makeDirectory(location.dirname(path), { recursive: true })
-				.pipe(Effect.andThen(fs.writeFileString(path, lines.map((line) => `${line}\n`).join(""), { flag: "a" })));
+			Effect.gen(function* () {
+				if (!directoryMade) {
+					yield* fs.makeDirectory(location.dirname(path), { recursive: true });
+					directoryMade = true;
+				}
+				yield* fs.writeFileString(path, lines.map((line) => `${line}\n`).join(""), { flag: "a" });
+			});
 
 		const drain = Effect.gen(function* () {
 			while (true) {

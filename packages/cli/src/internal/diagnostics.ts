@@ -13,8 +13,9 @@ export const Level: Context.Reference<LogLevel.LogLevel> = Context.Reference<Log
 
 /**
  * Whether a diagnostics sink writes `record`. `installed` is the `MinimumLogLevel` the diagnostics layer put in
- * place: while the fiber still sees that value the sink filters on its own {@link Level}; any other value means
- * core's `--log-level` flag is in force, and the sink follows it.
+ * place: while the fiber still sees that value the sink filters on its own {@link Level}; a different value is taken
+ * to be core's `--log-level` flag and the sink follows it. A flag whose value EQUALS `installed` cannot be told from
+ * no flag, so the sink keeps filtering on its own level; the plain `CliLogger` prints those records anyway.
  *
  * @internal
  */

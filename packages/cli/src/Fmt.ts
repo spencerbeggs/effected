@@ -73,13 +73,14 @@ export class Fmt {
 	};
 
 	/**
-	 * A duration in milliseconds as short human text: `250ms`, `1.2s`, `2s`, `1m 3s`, `2m`.
+	 * A duration in milliseconds as short human text: `250ms`, `1.2s`, `2s`, `1m 3s`, `2m`, `1h 2m`, `2h`.
 	 *
 	 * @remarks
 	 * Under a second it is whole milliseconds; under a minute, seconds to one decimal with a trailing `.0`
-	 * dropped; otherwise minutes and whole seconds, with the seconds dropped when zero. A value that rounds up
-	 * to the next unit (`999.6` to a second, `59999` to a minute) is written in that unit, so `1000ms` and `60s`
-	 * never appear. There is no hours unit. A negative or non-finite input is `0ms`.
+	 * dropped; under an hour, minutes and whole seconds, with the seconds dropped when zero; from an hour, hours and
+	 * whole minutes, the seconds dropped. A value that rounds up to the next unit (`999.6` to a second, `59999` to a
+	 * minute, `3599999` to an hour) is written in that unit, so `1000ms`, `60s` and `60m` never appear. There is no
+	 * days unit. A negative or non-finite input is `0ms`.
 	 *
 	 * @param ms - the duration in milliseconds
 	 */
@@ -90,6 +91,11 @@ export class Fmt {
 		const tenths = Math.round(value / 100);
 		if (tenths < 600) return `${Number((tenths / 10).toFixed(1))}s`;
 		const seconds = Math.round(value / 1000);
+		if (seconds >= 3600) {
+			const hours = Math.floor(seconds / 3600);
+			const remaining = Math.floor((seconds % 3600) / 60);
+			return remaining === 0 ? `${hours}h` : `${hours}h ${remaining}m`;
+		}
 		const minutes = Math.floor(seconds / 60);
 		const rest = seconds % 60;
 		return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;

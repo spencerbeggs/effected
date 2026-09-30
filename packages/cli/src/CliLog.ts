@@ -141,6 +141,10 @@ const readLevel = (
  * minimum is written twice, once plain and once to the diagnostics sink. Stderr is therefore not pure NDJSON while
  * diagnostics are on: a parser reads the lines that start with `{`.
  *
+ * One edge: a `--log-level` value that EQUALS the level this layer installed cannot be told from no flag, so the
+ * sink keeps filtering on its own level rather than following the flag. The plain `CliLogger` prints those records
+ * regardless.
+ *
  * @public
  */
 export class CliLog {
