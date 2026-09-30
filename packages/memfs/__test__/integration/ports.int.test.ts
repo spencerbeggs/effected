@@ -2,6 +2,7 @@
 // memfs, compared call for call. node is the reference; if they disagree the
 // port is wrong, never the expectation.
 import {
+	existsSync,
 	lstatSync,
 	mkdirSync,
 	mkdtempSync,
@@ -159,4 +160,27 @@ describe("sync port parity with node:fs", () => {
 			}
 		}),
 	);
+});
+
+describe("handle mutators resolve '..' after links, as the host does", () => {
+	it("a write through link/.. lands where the link leads, on the host and in memfs", () => {
+		const base = mkdtempSync(join(tmpdir(), "memfs-dotdot-"));
+		try {
+			mkdirSync(join(base, "elsewhere", "dir"), { recursive: true });
+			mkdirSync(join(base, "r"));
+			symlinkSync(join(base, "elsewhere", "dir"), join(base, "r", "link"));
+			writeFileSync(`${base}/r/link/../abs.txt`, "h");
+			assert.isTrue(existsSync(join(base, "elsewhere", "abs.txt")), "host: lands under elsewhere");
+			assert.isFalse(existsSync(join(base, "r", "abs.txt")), "host: not under r");
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
+		const vol = MemoryFileSystem.makeSync({ link: MemoryFileSystem.symlink("/elsewhere/dir") }, { root: "/r" });
+		vol.mkdir("/elsewhere/dir");
+		vol.write("/r/link/../abs.txt", "m");
+		vol.write("link/../rel.txt", "m");
+		assert.isTrue(vol.volume.has("/elsewhere/abs.txt"));
+		assert.isTrue(vol.volume.has("/elsewhere/rel.txt"));
+		assert.isFalse(vol.volume.has("/r/rel.txt"));
+	});
 });

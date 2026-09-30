@@ -130,6 +130,8 @@ vol.write("rel.ts", "y"); // lands at /r/rel.ts
 vol.symlink("../target/text", "sub/link"); // link at /r/sub/link, target verbatim
 ```
 
+Seed keys and mutator paths join the root differently, on purpose. A seed key is plain data and joins **lexically**: `"../x"` under `/ws/repo` is `/ws/x`, whatever links exist. A mutator path is a filesystem call and resolves `..` **after following links**, POSIX-style: with `/r/link` pointing at `/elsewhere/dir`, `write("link/../x")` lands at `/elsewhere/x`, exactly as `write("/r/link/../x")` and the host's `writeFileSync` do.
+
 With `options.faults`, `handle.fileSystem` and `handle.layer` are faulted while the view, the ports and the mutators work beneath the faults: they are setup and inspection, not the code under test. `options.faults` is `FileSystem`-scoped and never reaches `handle.sync` or `handle.promises`; to fault the ports, `handle.withFaults({ sync?, promises? })` returns a fresh `{ sync, promises }` pair over the same volume with those faults (same machinery as the port constructors, unknown-key `RangeError` and async rejection included), leaving the handle's own ports untouched.
 
 `MemoryFileSystem.makeSync(seed, options)` builds the same handle **synchronously**, for Promise-style suites that construct their volume at `describe` scope and never touch `Effect`:

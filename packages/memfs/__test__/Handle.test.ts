@@ -178,6 +178,24 @@ describe("MemoryFileSystem.makeSync", () => {
 		assert.isFalse(vol.volume.has("/r/rel.ts"));
 	});
 
+	it("mutator paths resolve '..' AFTER following links, POSIX-style — relative and absolute alike", () => {
+		const vol = MemoryFileSystem.makeSync({ link: MemoryFileSystem.symlink("/elsewhere/dir") }, { root: "/r" });
+		vol.mkdir("/elsewhere/dir");
+		vol.write("link/../x.txt", "x");
+		vol.write("/r/link/../y.txt", "y");
+		assert.strictEqual(vol.volume.text("/elsewhere/x.txt"), "x");
+		assert.strictEqual(vol.volume.text("/elsewhere/y.txt"), "y");
+		assert.isFalse(vol.volume.has("/r/x.txt"));
+		// A missing parent reached through the link is created where the link leads.
+		vol.write("link/../made/z.txt", "z");
+		assert.strictEqual(vol.volume.text("/elsewhere/made/z.txt"), "z");
+		assert.isFalse(vol.volume.has("/r/made"));
+		// A parent that exists lexically but not after resolution is still created.
+		vol.mkdir("/r/only-here");
+		vol.write("link/../only-here/w.txt", "w");
+		assert.strictEqual(vol.volume.text("/elsewhere/only-here/w.txt"), "w");
+	});
+
 	it("without a root, a relative mutator path resolves from / and creates nothing else", () => {
 		const vol = MemoryFileSystem.makeSync();
 		assert.isUndefined(vol.root);

@@ -356,6 +356,15 @@ export interface MemoryFileSystemHandle {
 	/**
 	 * The normalized `options.root` the handle was built with, or `undefined`.
 	 * The mutators join a relative path to it.
+	 *
+	 * @remarks
+	 * Seed keys and mutator paths join the root differently, on purpose. A
+	 * seed key is plain data and joins LEXICALLY (`"../x"` under `/ws/repo` is
+	 * `/ws/x`, whatever links exist). A mutator path is a filesystem call and
+	 * is handed to the engine unnormalized, so `.` and `..` resolve AFTER
+	 * following links, POSIX-style: with `/r/link` pointing at `/elsewhere/dir`,
+	 * `write("link/../x")` lands at `/elsewhere/x`, exactly as
+	 * `write("/r/link/../x")` and the host's `writeFileSync` do.
 	 */
 	readonly root: string | undefined;
 	/**
@@ -660,16 +669,22 @@ const buildHandle = (
 		// `seedWith` has already rejected a relative root, so this is the normalized join base.
 		const root = options?.root === undefined ? undefined : normalizeAbsolute(options.root);
 		// A mutator path: absolute as given; relative joined to the root (or to
-		// "/" without one, as the engine resolves it). Errors still report the
-		// caller's own path.
-		const at = (path: string) => (path.startsWith("/") ? path : normalizeAbsolute(`${root ?? ""}/${path}`));
+		// "/" without one). The join is deliberately NOT normalized: the engine
+		// resolves "." and ".." AFTER following links, POSIX-style, so
+		// "link/../x" lands where the link leads — as the host and the absolute
+		// spelling do. (Seed keys, by contrast, join lexically.) Errors still
+		// report the caller's own path.
+		const at = (path: string) => (path.startsWith("/") ? path : `${root ?? ""}/${path}`);
 		const parentOf = (path: string) => path.slice(0, Math.max(1, path.lastIndexOf("/")));
+		const sync = makeSyncFileSystem(volume);
 		// Only creates a parent that is absent: an existing parent that is a file
 		// must reach the write itself, which fails ENOTDIR as `writeFileSync` does
 		// (a recursive mkdir over an existing file would say EEXIST instead).
+		// Existence is checked through the link-following port, so it agrees with
+		// the engine's resolution of an unnormalized path — never the literal view.
 		const ensureParent = (path: string) => {
 			const parent = parentOf(path);
-			return volume.lstat(parent) === undefined ? raw.makeDirectory(parent, { recursive: true }) : Effect.void;
+			return sync.exists(parent) ? Effect.void : raw.makeDirectory(parent, { recursive: true });
 		};
 		const handle: MemoryFileSystemHandle = {
 			fileSystem,
@@ -680,7 +695,7 @@ const buildHandle = (
 				),
 				Path.layer,
 			),
-			sync: makeSyncFileSystem(volume),
+			sync,
 			promises: makePromisesFileSystem(volume),
 			root,
 			withFaults: (faults) => ({
@@ -1257,6 +1272,10 @@ export class MemoryFileSystem {
 	): MemoryFileSystemHandle => {
 		// A bad root or seed key throws node's EINVAL naming the offending value
 		// in the path slot (and so in the message), before anything is built.
+		// This DUPLICATES the check `seedWith` makes inside `buildHandle` — on
+		// purpose: there the failure is a typed BadArgument, which carries no
+		// path, so `runNode` could only report `seed ''`. Validating here first is
+		// the only way the thrown error can name the key. Do not dedup it away.
 		const applied = applyRoot(seed, options?.root);
 		if (applied._tag === "Failure") throw nodeErrno("EINVAL", "seed", applied.failure.subject);
 		return runNode(buildHandle(seed, options), (error) => ({
