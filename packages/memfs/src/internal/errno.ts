@@ -1,8 +1,22 @@
-// KIT EXTENSION (errno fidelity — adaptation ledger entry 10). Moved out of the
-// ported engine so the engine, the synchronous/promises ports and the
-// NodeSyncFileSystem subpath share one errno → tag mapping.
+// KIT EXTENSION (errno fidelity — adaptation ledger entry 10). One module owns
+// errno for the whole package: the engine, the sync/promises ports and the
+// NodeSyncFileSystem subpath all build and classify failures here.
+//
+// - Where the errno lives: an Effect failure carries it on `reason.cause.code`
+//   (the `cause` is an `ErrnoException`) — `reason` itself has no `code`
+//   field, exactly as with @effect/platform-node, whose adapter puts node's
+//   own error on `cause`.
+// - Which errno: where Linux and macOS report different codes for the same
+//   call, the Linux one is modelled (the engine's POSIX profile is Linux's).
+// - Which tag: `errnoTag` mirrors the node adapter's `handleErrnoException`
+//   code → tag switch case for case, so matching on `_tag` behaves the same
+//   against either implementation.
+// - Thrown errors (the ports, `makeSync`): `nodeErrno` builds what a sync
+//   `node:fs` call throws — `code`, `syscall`, and `path` when the syscall is
+//   path-based — with node's message format.
 import type { PlatformError, SystemErrorTag } from "effect/PlatformError";
 import { systemError } from "effect/PlatformError";
+import type { MemoryFileSystemErrnoError } from "../MemoryFileSystem.js";
 
 export type ErrnoCode =
 	| "EACCES"
@@ -60,9 +74,11 @@ export const errnoTag = (code: string | undefined): SystemErrorTag => {
 	}
 };
 
-// The inverse of `errnoTag` for a failure that carries no errno of its own:
-// the code whose tag it is. Anything without a specific mapping is `EIO`.
-export const errnoCodeForTag = (tag: string): string => {
+// The code to REPORT for a failure that carries no errno of its own (an
+// injected fault, a model limit). NOT the inverse of `errnoTag`, which is
+// many-to-one (EISDIR/ENOTDIR/ELOOP all map to BadResource): only the three
+// tags with one obvious code get it, and everything else is `EIO`.
+export const fallbackErrnoForTag = (tag: string): string => {
 	switch (tag) {
 		case "NotFound":
 			return "ENOENT";
@@ -101,10 +117,14 @@ export const errnoError = (
 		cause: new ErrnoException(code, pathOrDescriptor),
 	});
 
-/** The error a synchronous `node:fs` call throws: an `Error` carrying `code`, `syscall` and `path`. */
-export type NodeErrnoError = Error & { readonly code: string; readonly syscall: string; readonly path: string };
-
-export const nodeErrno = (code: string, syscall: string, path: string): NodeErrnoError => {
-	const message = (errnoMessages as Record<string, string | undefined>)[code];
-	return Object.assign(new Error(`${code}: ${message ?? "error"}, ${syscall} '${path}'`), { code, syscall, path });
+/**
+ * What a synchronous `node:fs` call throws: node's message format
+ * (`"<CODE>: <description>, <syscall> '<path>'"`), and `code`/`syscall`/`path`
+ * properties. A descriptor-based syscall (`read`) has no path, and neither does
+ * its error — pass `undefined`. An unmapped code's description is `"error"`.
+ */
+export const nodeErrno = (code: string, syscall: string, path: string | undefined): MemoryFileSystemErrnoError => {
+	const description = (errnoMessages as Record<string, string | undefined>)[code] ?? "error";
+	const message = `${code}: ${description}, ${syscall}${path === undefined ? "" : ` '${path}'`}`;
+	return Object.assign(new Error(message), { code, syscall }, path === undefined ? {} : { path });
 };

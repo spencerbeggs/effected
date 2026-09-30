@@ -52,7 +52,19 @@ describe("MemoryFileSystem.errno", () => {
 		assert.strictEqual(e.code, "EACCES");
 		assert.strictEqual(e.syscall, "open");
 		assert.strictEqual(e.path, "/secret.ts");
-		assert.match(e.message, /EACCES/);
+		assert.strictEqual(e.message, "EACCES: permission denied, open '/secret.ts'");
+	});
+
+	it("an unmapped code keeps node's format with the description 'error'", () => {
+		const e = MemoryFileSystem.errno("EXDEV", "rename", "/a");
+		assert.strictEqual(e.message, "EXDEV: error, rename '/a'");
+		assert.strictEqual(e.code, "EXDEV");
+	});
+
+	it("a descriptor-based syscall carries no path, like node's read EISDIR", () => {
+		const e = MemoryFileSystem.errno("EISDIR", "read");
+		assert.strictEqual(e.message, "EISDIR: illegal operation on a directory, read");
+		assert.isFalse("path" in e);
 	});
 });
 

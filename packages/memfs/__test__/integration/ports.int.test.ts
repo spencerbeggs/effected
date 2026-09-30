@@ -54,8 +54,15 @@ const outcome = (f: () => unknown) => {
 		}
 		return { value };
 	} catch (e) {
-		const error = e as { code: string; syscall: string };
-		return { code: error.code, syscall: error.syscall };
+		// The message is compared too, with the host prefix mapped onto the
+		// memory tree's "/r": node's text is "<CODE>: <description>, <syscall> '<path>'".
+		const error = e as { code: string; syscall: string; message: string; path?: string };
+		return {
+			code: error.code,
+			syscall: error.syscall,
+			message: error.message.split(host).join("/r"),
+			path: error.path?.split(host).join("/r"),
+		};
 	}
 };
 

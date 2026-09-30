@@ -14,7 +14,7 @@ import type {
 	MemoryFileSystemVolume,
 	MemoryFileSystemVolumeStat,
 } from "../MemoryFileSystem.js";
-import { errnoCodeForTag, nodeErrno } from "./errno.js";
+import { fallbackErrnoForTag, nodeErrno } from "./errno.js";
 
 // The port is defined in `stat` terms, so it FOLLOWS symbolic links — unlike
 // the literal inspection view it is built on. `MAX_LINK_HOPS` mirrors the
@@ -124,7 +124,8 @@ export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSy
 		if (text === undefined) {
 			// Reading a directory as a file is EISDIR in `readFileSync`;
 			// anything else that is not a regular file is ENOTDIR.
-			throw volume.isDirectory(r.path) ? nodeErrno("EISDIR", "read", path) : nodeErrno("ENOTDIR", "open", path);
+			// `read` works on a descriptor, so node's EISDIR carries no path.
+			throw volume.isDirectory(r.path) ? nodeErrno("EISDIR", "read", undefined) : nodeErrno("ENOTDIR", "open", path);
 		}
 		return text;
 	},
@@ -210,7 +211,7 @@ export const runNode = <A>(
 	const code =
 		reason._tag === "BadArgument"
 			? "EINVAL"
-			: ((reason.cause as { code?: string } | undefined)?.code ?? errnoCodeForTag(reason._tag));
+			: ((reason.cause as { code?: string } | undefined)?.code ?? fallbackErrnoForTag(reason._tag));
 	const { syscall, path } = describe(error.value);
 	throw nodeErrno(code, syscall, path);
 };

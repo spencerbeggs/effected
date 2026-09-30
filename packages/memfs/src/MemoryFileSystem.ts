@@ -143,14 +143,21 @@ export interface MemoryFileSystemVolumeStat {
 
 /**
  * The error a synchronous `node:fs` call throws: an `Error` carrying `code`,
- * `syscall` and `path` — built by {@link MemoryFileSystem.errno}.
+ * `syscall` and — for a path-based syscall — `path`, with node's message
+ * format (`"ENOENT: no such file or directory, open '/x'"`). Built by
+ * {@link MemoryFileSystem.errno}.
+ *
+ * @remarks
+ * `path` is absent for a descriptor-based syscall such as `read`, exactly as
+ * on node's own error (reading a directory as a file is
+ * `"EISDIR: illegal operation on a directory, read"`, no path).
  *
  * @public
  */
 export type MemoryFileSystemErrnoError = Error & {
 	readonly code: string;
 	readonly syscall: string;
-	readonly path: string;
+	readonly path?: string;
 };
 
 /**
@@ -1427,9 +1434,10 @@ export class MemoryFileSystem {
 	 *
 	 * @param code - The errno code, e.g. `"ENOENT"`.
 	 * @param syscall - The failing call, e.g. `"open"`.
-	 * @param path - The path the call was given.
+	 * @param path - The path the call was given; omit it for a
+	 *   descriptor-based syscall (`read`), whose node error carries none.
 	 */
-	static readonly errno = (code: string, syscall: string, path: string): MemoryFileSystemErrnoError =>
+	static readonly errno = (code: string, syscall: string, path?: string): MemoryFileSystemErrnoError =>
 		nodeErrno(code, syscall, path);
 
 	private constructor() {}
