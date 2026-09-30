@@ -196,6 +196,47 @@ export const caseInsensitiveSuite = (
 			),
 		);
 
+		it.effect("copyFile onto a folded-equal entry overwrites it in place under the stored spelling", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.writeFileString(`${d}/a.txt`, "A");
+					yield* fs.writeFileString(`${d}/b.txt`, "B");
+					yield* fs.copyFile(`${d}/a.txt`, `${d}/B.TXT`);
+					assert.deepStrictEqual([...(yield* fs.readDirectory(d))].sort(), ["a.txt", "b.txt"]);
+					assert.strictEqual(yield* fs.readFileString(`${d}/b.txt`), "A");
+				}),
+			),
+		);
+
+		// node's `fs.cp` unlinks a replaced destination and recreates it, so the
+		// requested (or source-child) spelling wins — unlike rename and copyFile.
+		it.effect("copy with overwrite onto a folded-equal file takes the requested spelling", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.writeFileString(`${d}/a.txt`, "A");
+					yield* fs.writeFileString(`${d}/b.txt`, "B");
+					yield* fs.copy(`${d}/a.txt`, `${d}/B.TXT`, { overwrite: true });
+					assert.deepStrictEqual([...(yield* fs.readDirectory(d))].sort(), ["B.TXT", "a.txt"]);
+					assert.strictEqual(yield* fs.readFileString(`${d}/b.txt`), "A");
+				}),
+			),
+		);
+
+		it.effect("copy with overwrite merges into a folded directory and takes source child spellings", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.makeDirectory(`${d}/src`);
+					yield* fs.writeFileString(`${d}/src/X.txt`, "new");
+					yield* fs.makeDirectory(`${d}/dst`);
+					yield* fs.writeFileString(`${d}/dst/x.txt`, "old");
+					yield* fs.copy(`${d}/src`, `${d}/DST`, { overwrite: true });
+					assert.deepStrictEqual([...(yield* fs.readDirectory(d))].sort(), ["dst", "src"]);
+					assert.deepStrictEqual(yield* fs.readDirectory(`${d}/dst`), ["X.txt"]);
+					assert.strictEqual(yield* fs.readFileString(`${d}/dst/x.txt`), "new");
+				}),
+			),
+		);
+
 		it.effect("remove under a folded name removes the stored entry", () =>
 			run((fs, d) =>
 				Effect.gen(function* () {

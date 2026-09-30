@@ -541,16 +541,21 @@ export type MemoryFileSystemFaultsFactory = (base: FileSystem.FileSystem) => Mem
 
 const decoder = new TextDecoder();
 
-const findEntryAt = (
-	entries: ReadonlyArray<internal.VolumeEntrySnapshot>,
-	path: string,
-): internal.VolumeEntrySnapshot | undefined => {
-	const normalized = normalizeAbsolute(path);
-	return entries.find((entry) => entry.path === normalized);
-};
+const identity = (path: string): string => path;
+const lowerCase = (path: string): string => path.toLowerCase();
 
 const makeVolumeService = (engine: internal.InspectableFileSystem): MemoryFileSystemVolume => {
 	const entries = engine.entries;
+	// A case-insensitive volume answers a query in any spelling; the snapshot
+	// keeps stored spellings, so `paths()`, `snapshot()` and listings do too.
+	const fold = engine.caseSensitive ? identity : lowerCase;
+	const findEntryAt = (
+		snapshot: ReadonlyArray<internal.VolumeEntrySnapshot>,
+		path: string,
+	): internal.VolumeEntrySnapshot | undefined => {
+		const normalized = fold(normalizeAbsolute(path));
+		return snapshot.find((entry) => fold(entry.path) === normalized);
+	};
 	return {
 		snapshot: () => {
 			const record: Record<string, Uint8Array> = {};
@@ -574,18 +579,19 @@ const makeVolumeService = (engine: internal.InspectableFileSystem): MemoryFileSy
 				.sort(),
 		readDirectory: (path) => {
 			const snapshot = entries();
-			const normalized = normalizeAbsolute(path);
-			if (findEntryAt(snapshot, normalized)?.type !== "Directory") {
+			const directory = findEntryAt(snapshot, path);
+			if (directory?.type !== "Directory") {
 				return undefined;
 			}
-			// "/" would otherwise build the prefix "//" and match nothing.
-			const prefix = normalized === "/" ? "/" : `${normalized}/`;
+			// Children are listed under the MATCHED entry's stored path, so a folded
+			// query still lists stored spellings. "/" would otherwise build the
+			// prefix "//" and match nothing.
+			const stored = directory.path;
+			const prefix = stored === "/" ? "/" : `${stored}/`;
 			return snapshot
 				.filter(
 					(entry) =>
-						entry.path !== normalized &&
-						entry.path.startsWith(prefix) &&
-						!entry.path.slice(prefix.length).includes("/"),
+						entry.path !== stored && entry.path.startsWith(prefix) && !entry.path.slice(prefix.length).includes("/"),
 				)
 				.map((entry) => entry.path.slice(prefix.length))
 				.sort();
