@@ -23,22 +23,33 @@ export interface Span {
 	readonly code?: true;
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
+
+/**
+ * Text made safe to lay out and print: ANSI and OSC sequences removed, then every remaining control character
+ * (a stray ESC, BEL, DEL, the C1 range) except tab, line feed and carriage return.
+ *
+ * @internal
+ */
+export const sanitize = (input: string): string => stripAnsi(input).replace(CONTROL, "");
+
 const pathSeparator = (ctx: RenderContext): string =>
 	ctx.audience === "agent" ? ctx.glyphs.pathSeparator.agent : ` ${ctx.glyphs.pathSeparator.human} `;
 
 const spansOf = (inline: Inline, ctx: RenderContext): ReadonlyArray<Span> => {
 	switch (inline._tag) {
 		case "Text":
-			return [{ text: stripAnsi(inline.value), ...(inline.token === undefined ? {} : { token: inline.token }) }];
+			return [{ text: sanitize(inline.value), ...(inline.token === undefined ? {} : { token: inline.token }) }];
 		case "Code":
-			return [{ text: stripAnsi(inline.value), code: true }];
+			return [{ text: sanitize(inline.value), code: true }];
 		case "Link":
 			// Links do not nest: the outer target wins over one inside the label.
 			return inline.label.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, link: inline.target }));
 		case "StatusMark":
 			return [{ text: ctx.glyphs.kind === "ascii" ? inline.def.ascii : inline.def.glyph, token: inline.def.token }];
 		case "Path":
-			return [{ text: inline.segments.map(stripAnsi).join(pathSeparator(ctx)) }];
+			return [{ text: inline.segments.map(sanitize).join(pathSeparator(ctx)) }];
 	}
 };
 
@@ -173,6 +184,16 @@ const isLineBreak = (grapheme: string): boolean => grapheme === "\n" || grapheme
 const cellsWidth = (cells: ReadonlyArray<Cell>): number => cells.reduce((sum, cell) => sum + cell.width, 0);
 
 /**
+ * Options for {@link wrapSpans}.
+ *
+ * @internal
+ */
+export interface WrapOptions {
+	/** Break a word longer than the width at the edge; `true` by default. When `false` it stays whole on its own line. */
+	readonly hardBreak?: boolean;
+}
+
+/**
  * Word-wrap spans to `width` columns.
  *
  * @remarks
@@ -180,12 +201,17 @@ const cellsWidth = (cells: ReadonlyArray<Cell>): number => cells.reduce((sum, ce
  * and the indentation of the first line or one after a newline, are kept. A newline is a forced break. A word
  * longer than the width starts on a line of its own and is broken at the edge, never inside a grapheme, so a wide
  * character never straddles it. A grapheme wider than the width (a width of 1 and a wide character) takes a line
- * to itself, the only way to make progress. A `width` under 1 is treated as 1. Each character keeps its span's
+ * to itself, the only way to make progress. With `hardBreak: false` a long word is not broken at all: it keeps a line
+ * of its own and runs past the width, which is right for a URL or a path. A `width` under 1 is treated as 1. Each character keeps its span's
  * token and link.
  *
  * @internal
  */
-export const wrapSpans = (spans: ReadonlyArray<Span>, width: number): ReadonlyArray<ReadonlyArray<Span>> => {
+export const wrapSpans = (
+	spans: ReadonlyArray<Span>,
+	width: number,
+	options?: WrapOptions,
+): ReadonlyArray<ReadonlyArray<Span>> => {
 	const limit = Number.isNaN(width) ? 1 : Math.max(1, Math.floor(width));
 	const cells = cellsOf(spans);
 	const lines: Array<ReadonlyArray<Cell>> = [];
@@ -228,7 +254,7 @@ export const wrapSpans = (spans: ReadonlyArray<Span>, width: number): ReadonlyAr
 			flush();
 			keepLeading = false;
 		}
-		if (wordWidth <= limit) {
+		if (wordWidth <= limit || options?.hardBreak === false) {
 			line.push(...word);
 			used = wordWidth;
 			continue;

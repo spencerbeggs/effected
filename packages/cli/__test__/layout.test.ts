@@ -1,79 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
-import type { Inline, RenderContext } from "../src/index.js";
-import { CliTheme, Doc, Glyphs, Status } from "../src/index.js";
+import type { Inline } from "../src/index.js";
+import { Doc, Glyphs, Status } from "../src/index.js";
 import { displayWidth, graphemes, stripAnsi } from "../src/internal/displayWidth.js";
 import type { Span } from "../src/internal/layout.js";
-import { flatten, paintSpans, truncateSpans, widthOf, wrapSpans } from "../src/internal/layout.js";
-
-// biome-ignore lint/suspicious/noControlCharactersInRegex: an OSC 8 hyperlink starts with ESC and ends with BEL or ST
-const OSC8 = /\u001B\]8;[^;\u0007\u001B]*;([^\u0007\u001B]*)(?:\u0007|\u001B\\)/g;
-// biome-ignore lint/suspicious/noControlCharactersInRegex: an SGR sequence starts with ESC
-const SGR = /\u001B\[([0-9;]*)m/g;
-
-/** A link stub: a fixed OSC 8 wrapper. The real policy arrives with CliLinks. */
-const link = (target: { readonly url: string } | { readonly file: string }, label: string): string =>
-	`\u001B]8;;${"url" in target ? target.url : `file://${target.file}`}\u0007${label}\u001B]8;;\u0007`;
-
-const contextOf = (overrides: Partial<RenderContext> = {}): Effect.Effect<RenderContext> =>
-	Effect.gen(function* () {
-		const theme = yield* CliTheme;
-		const ctx: RenderContext = {
-			width: 80,
-			audience: "human",
-			color: theme.color,
-			paint: theme.paint,
-			glyphs: theme.glyphs,
-			link,
-			displayPath: (absolute: string) => absolute,
-			...overrides,
-		};
-		return ctx;
-	}).pipe(Effect.provide(CliTheme.layerTest({ color: "truecolor" })));
-
-/** Replays SGR by its meaning: every closer must close something open, and nothing may stay open. */
-const sgrProblems = (text: string): ReadonlyArray<string> => {
-	const problems: Array<string> = [];
-	const active = new Set<string>();
-	const closes: Record<string, string> = { "39": "fg", "22": "weight", "23": "italic", "24": "underline", "49": "bg" };
-	for (const match of text.matchAll(SGR)) {
-		const param = match[1] ?? "";
-		if (param === "" || param === "0") {
-			active.clear();
-		} else if (param in closes) {
-			const kind = closes[param] as string;
-			if (!active.delete(kind)) problems.push(`stray closer ${param}`);
-		} else if (param === "1" || param === "2") active.add("weight");
-		else if (param === "3") active.add("italic");
-		else if (param === "4") active.add("underline");
-		else active.add("fg");
-	}
-	if (active.size > 0) problems.push(`left open: ${[...active].join(",")}`);
-	return problems;
-};
-
-/** The hyperlinks of a string, in order: a non-empty target opens one, an empty target closes it. */
-const linksOf = (text: string): { readonly pairs: number; readonly wrapped: string; readonly balanced: boolean } => {
-	let open = false;
-	let pairs = 0;
-	let balanced = true;
-	let wrapped = "";
-	let last = 0;
-	for (const match of text.matchAll(OSC8)) {
-		const before = text.slice(last, match.index);
-		if (open) wrapped += before;
-		last = (match.index ?? 0) + match[0].length;
-		if ((match[1] ?? "") !== "") {
-			if (open) balanced = false;
-			open = true;
-			pairs++;
-		} else {
-			if (!open) balanced = false;
-			open = false;
-		}
-	}
-	return { pairs, wrapped: stripAnsi(wrapped), balanced: balanced && !open };
-};
+import { flatten, paintSpans, sanitize, truncateSpans, widthOf, wrapSpans } from "../src/internal/layout.js";
+import { contextOf, linksOf, sgrProblems } from "./helpers/renderContext.js";
 
 const CASES: ReadonlyArray<readonly [string, string]> = [
 	["ascii", "a long coloured linked label"],
@@ -152,6 +84,29 @@ describe("flatten", () => {
 				ctx,
 			);
 			assert.deepStrictEqual(spans, [{ text: "red" }, { text: "c", code: true }]);
+		}),
+	);
+});
+
+describe("sanitize", () => {
+	it("removes escape sequences and every stray control character, and keeps tab and line breaks", () => {
+		assert.strictEqual(sanitize("a\u001B[31mb\u001B[0mc"), "abc");
+		assert.strictEqual(sanitize("a\u001B]8;;u\u0007b\u001B]8;;\u0007"), "ab");
+		assert.strictEqual(sanitize("lone\u001Bescape"), "loneescape");
+		assert.strictEqual(sanitize("bell\u0007 nul\u0000 del\u007F c1\u009B"), "bell nul del c1");
+		assert.strictEqual(sanitize("tab\tnew\nline\r\nend"), "tab\tnew\nline\r\nend");
+		assert.strictEqual(
+			sanitize("日本 👨‍👩‍👧‍👦 e\u0301"),
+			"日本 👨‍👩‍👧‍👦 e\u0301",
+			"zero-width joiners and marks are content",
+		);
+	});
+
+	it.effect("flatten uses it, so a lone ESC in content cannot reach the output", () =>
+		Effect.gen(function* () {
+			const ctx = yield* contextOf();
+			const spans = flatten([Doc.text("a\u001Bb"), Doc.code("c\u0007d"), Doc.path("e\u001B", "f")], ctx);
+			assert.deepStrictEqual(spans, [{ text: "ab" }, { text: "cd", code: true }, { text: "e › f" }]);
 		}),
 	);
 });
@@ -370,6 +325,25 @@ describe("wrapSpans", () => {
 	it("a width under one is treated as one, and always makes progress", () => {
 		assert.deepStrictEqual(lines([{ text: "abc" }], 0), ["a", "b", "c"]);
 		assert.deepStrictEqual(lines([{ text: "日本" }], 1), ["日", "本"]);
+	});
+
+	it("with hardBreak off, a word longer than the width stays whole on a line of its own", () => {
+		const url = "https://example.test/a/very/long/path";
+		assert.deepStrictEqual(
+			wrapSpans([{ text: `see ${url} now` }], 10, { hardBreak: false }).map((line) => line.map((s) => s.text).join("")),
+			["see", url, "now"],
+		);
+		// Everything else is unchanged: spaces still break and wide characters are never split.
+		assert.deepStrictEqual(
+			wrapSpans([{ text: "the quick brown fox" }], 9, { hardBreak: false }).map((line) =>
+				line.map((s) => s.text).join(""),
+			),
+			["the quick", "brown fox"],
+		);
+		assert.deepStrictEqual(
+			wrapSpans([{ text: "abcdefghij" }], 4, { hardBreak: true }).map((line) => line.map((s) => s.text).join("")),
+			["abcd", "efgh", "ij"],
+		);
 	});
 
 	it("an unbounded width is one line", () => {

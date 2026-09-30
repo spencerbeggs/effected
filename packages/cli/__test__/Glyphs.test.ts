@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Glyphs } from "../src/index.js";
+import { displayWidth } from "../src/internal/displayWidth.js";
 
 describe("Glyphs", () => {
 	it("unicode and ascii are distinct, tagged sets", () => {
@@ -39,5 +40,16 @@ describe("Glyphs", () => {
 			assert.isTrue(Object.isFrozen(set.pathSeparator));
 			assert.isTrue(Object.isFrozen(set.spinner));
 		}
+	});
+
+	it("carries tree glyphs of one width per set: branch, last, pipe and blank", () => {
+		assert.deepStrictEqual(Glyphs.unicode.tree, { branch: "├─ ", last: "└─ ", pipe: "│  ", blank: "   " });
+		assert.deepStrictEqual(Glyphs.ascii.tree, { branch: "|-- ", last: "\\-- ", pipe: "|   ", blank: "    " });
+		for (const set of [Glyphs.unicode, Glyphs.ascii]) {
+			const widths = Object.values(set.tree).map((g) => displayWidth(g));
+			assert.strictEqual(new Set(widths).size, 1, `${set.kind} segments share a width so branches align`);
+			assert.isTrue(Object.isFrozen(set.tree));
+		}
+		for (const ch of Object.values(Glyphs.ascii.tree).join("")) assert.isBelow(ch.codePointAt(0) ?? 0, 128);
 	});
 });

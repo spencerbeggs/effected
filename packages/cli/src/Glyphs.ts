@@ -18,6 +18,16 @@ export interface GlyphSet {
 	readonly pathSeparator: { readonly human: string; readonly agent: string };
 	/** How long a spinner frame is shown, in milliseconds. */
 	readonly spinnerIntervalMs: number;
+	/**
+	 * The segments a tree is drawn with: `branch` before a child that has later siblings, `last` before the final
+	 * child, and `pipe` and `blank` as the indent under each. All four are one width so branches align.
+	 */
+	readonly tree: {
+		readonly branch: string;
+		readonly last: string;
+		readonly pipe: string;
+		readonly blank: string;
+	};
 }
 
 /**
@@ -40,6 +50,7 @@ export class Glyphs {
 		arrow: "→",
 		pathSeparator: Object.freeze({ human: "›", agent: " > " }),
 		spinnerIntervalMs: 80,
+		tree: Object.freeze({ branch: "├─ ", last: "└─ ", pipe: "│  ", blank: "   " }),
 	});
 
 	/** ASCII-only symbols. */
@@ -51,5 +62,6 @@ export class Glyphs {
 		arrow: "->",
 		pathSeparator: Object.freeze({ human: ">", agent: " > " }),
 		spinnerIntervalMs: 80,
+		tree: Object.freeze({ branch: "|-- ", last: "\\-- ", pipe: "|   ", blank: "    " }),
 	});
 }

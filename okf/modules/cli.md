@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T23:10:05Z
-  body_sha256: d5b0cb84072e73ea9b7a54d177ee3df9ec50be4eac6adff7caec5a8e91182a1e
+  at: 2026-09-30T23:14:09Z
+  body_sha256: a62d67406224d38befc4448d794f04db6051700a3d56b2f4a712e8f82317619b
 ---
 
 # @effected/cli
@@ -116,7 +116,7 @@ for why the package owns them.
 | `CliInteractive` | A `Context.Reference<boolean>` defaulting to `false`, read with `yield* CliInteractive` and never in `R`: `Audience` is `human`, stdin is a terminal and stdout is a terminal. Static `layer` (from `Audience` and `TerminalEnv`), `layerTest(value)` and `unless(condition)`, a scoped override that can only turn it off. Both layers are typed `Layer<never>` because they set the reference. |
 | `Token`, `Style`, `TokenName` | A token is a style; applying it is identity when colour is `none`. `TokenName` is `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` or `emphasis`. `Token.hex`, `Token.named` and `Token.style` build custom styles. |
 | `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `resolve(name)` returns the full definition as a frozen copy, which the document IR stores, and, like `def`, throws on a name the vocabulary lacks (reachable only through a cast). `worst(names)` takes a non-empty list and returns the highest rank, ties to the first; `worstOption(names)` takes any array and returns an `Option`, `None` when empty. Names are typed, so a misspelt one is a compile error. |
-| `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis, spinner frames, `spinnerIntervalMs` (80) and `pathSeparator` (`human`, `agent`: `›` and ` > `, or `>` and ` > ` in ASCII). ASCII is chosen under `TERM=dumb` or by option. |
+| `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis, spinner frames, `spinnerIntervalMs` (80), `tree` segments (`branch`, `last`, `pipe`, `blank`: box-drawing in Unicode, `-`, `\` and pipe characters in ASCII) and `pathSeparator` (`human`, `agent`: `›` and ` > `, or `>` and ` > ` in ASCII). ASCII is chosen under `TERM=dumb` or by option. |
 | `CliTheme` | A `Context.Service` with `paint`, `sgr`, `glyphs`, `color` and `status` (the stdout ones) and `forStream("stdout" \| "stderr")`, a `StreamTheme` painting with THAT stream's colour from `TerminalEnv.stderr.color` or `.stdout.color`; anything written to stderr is painted through `forStream("stderr")`, as `CliMessage` does. `layer({ tokens?, glyphs? })` needs `TerminalEnv`; `layerTest` fixes the colour level; `promptTheme` sets core's `Prompt.Theme` from the tokens, with empty colour strings when colour is `none`. |
 | `Fmt` | `width`, `truncate` (grapheme-safe, ANSI-safe, result never wider than asked), `duration` (`250ms`, `1.2s`, `1m 3s`, `1h 2m`), `percent` and `plural`. Width comes from [the package's own implementation](../decisions/own-display-width.md). |
 | `CliMessage` | `success`, `info`, `warning`, `failure` and `status(vocab, name, text)`: one themed line each through `Console`, never the logger, so no log level silences them. `warning` and `failure` go to stderr; the others to stdout, and `status` defaults to stderr for a rank at or above `warning`'s. Only the glyph is painted and the text stays plain; an `agent` audience gets the glyph and text, never colour, even when the theme has colour. A `ci` audience is themed like a human, with colour still gated by `TerminalEnv`. Empty text prints the glyph alone. |
