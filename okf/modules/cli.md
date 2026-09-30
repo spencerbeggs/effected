@@ -1,25 +1,28 @@
 ---
 type: Module
 title: "@effected/cli"
-description: The boundary layer of an effect/cli program — a plain-text logger, a failure-reporting combinator, and two schema-issue renderers.
+description: The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive screens planned behind ./ui.
 status: stable
 kind: package
 resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
-  body_sha256: e449652e9829ff1b3089639ba67b57ff05d511eaae94d35f33061b0443f472b2
+  at: 2026-09-30T20:28:29Z
+  body_sha256: 3c4f3ed5a48a0c68b85b5b3b550b092f31e85c184f226a16b82bd42a2082deb0
 ---
 
 # @effected/cli
 
-`@effected/cli` is the boundary layer of a command-line program built on
-`effect/cli`: how output reaches a human, how a failure is
+`@effected/cli` is the presentation boundary of a command-line program built
+on `effect/cli`: who the output is for, how it reaches them, how a failure is
 reported, and how a schema issue is rendered into a sentence a user can act
-on. It is emphatically not a CLI framework — `effect/cli` owns
-argument parsing, flags, the command tree and the help system, and this
-package must never grow a second one.
+on. The [presentation layer](../decisions/cli-grows-presentation-layer.md)
+— audience, interactivity, theme, a status vocabulary, messages and logging
+composition — lives in a React-free root; interactive screens are planned
+behind a `./ui` subpath the root never reaches. It is still not a CLI
+framework: `effect/cli` owns argument parsing, flags, the command tree and the
+help system, and this package must never grow a second one.
 
 The distinguishing property of everything in scope: a consumer only
 discovers the need by shipping bad output to a person. None of it fails a
@@ -54,7 +57,12 @@ Each of these is found by running a binary, never by reading the code.
 
 **Tier: boundary.** It performs IO — writing to a terminal is IO — but
 discharges it through core contracts required in `R`, takes no external
-runtime dependency, and must not import a platform package. This is the
+runtime dependency (`string-width` is a test-only `devDependency`; see
+[the display-width decision](../decisions/own-display-width.md)), and must not
+import a platform package. `@effected/env` is a required peer, so the audience
+and terminal decisions are made once and read as services
+([its own package](../decisions/env-is-its-own-package.md)); `ink` and `react`
+are never imported from the root. This is the
 same posture as `@effected/config-file`, and deliberately not
 `@effected/github-actions`', which is the one package carrying
 `@effect/platform-node` as a required peer.
@@ -83,7 +91,7 @@ Exports are static classes with a private constructor — never an
 | `CliRuntime.main` | The full-program combinator: provides the platform layer inside failure reporting, a fresh `CliExit`, the `ShowHelp` remap, and the logger outermost. See "Findings are success" below. |
 | `MainOptions<RP, EP>` | `ReportFailuresOptions & { platform: Layer<RP, EP>; logger?: Layer<never> }` — `platform` is passed in rather than owned so this package never imports one; `logger` defaults to `CliLogger.layer()`. |
 | `CliExit` | A `Context.Service` holding a `MutableRef<number>`; `CliExit.set(code)` and `CliExit.layer` for in-process tests. **`CliExit.layer` is `Layer.fresh`** — every provide mints a new cell, so a program run under `CliRuntime.main` must not provide `CliExit.layer` itself, or `CliExit.set` writes to a second, unread cell and the run silently exits `0`. See "Findings are success" below. |
-| `CliColor.enabled` | `Effect<boolean, never, Stdio>` — `Stdio.stdoutIsTerminal` and a non-empty `NO_COLOR` read through `Config.option`, never `process` (D8). |
+| `CliColor.enabled` | `Effect<boolean, never, Stdio>` — `TerminalEnv.colorLevel("stdout") !== "none"`, so it honours `FORCE_COLOR` with Node's precedence ([D-C](../decisions/force-color-honoured-node-precedence.md)). Reads go through `Config`, never `process`. |
 | `CliColor.formatterLayer` | `(overrides?: Partial<CliOutput.Formatter>) => Layer<never, never, Stdio>` — builds `CliOutput.defaultFormatter({ colors })` from the same `CliColor.enabled` decision, so help text, parse errors and rendered output always agree. |
 | `MainOptions.helpOnUsageError` | `"stdout" \| "stderr"`, default `"stdout"` (core's behaviour). Under `"stderr"`, `main` wraps `program` (inside the platform provide, so it sees the platform's Formatter) with `internal/HelpRouting.ts`: a recording `CliOutput.Formatter` notes the strings `formatHelpDoc`/`formatErrors` return, and a routing `Console` holds a `log` of a recorded help string until the next console call. If that call is `error` of a recorded errors string, the help goes to stderr ahead of it; anything else, or the program ending (`ensuring`), releases it to stdout. Needed because core prints help with the same `Console.log` for `--help`, a bare group invocation (a `ShowHelp` with no errors) and a usage error, and only the usage error prints `Console.error(formatErrors)` next (`cli/Command.ts` `showHelp`). Caveats: a Formatter or Console provided inside `program` bypasses it, and `renderErrors: false` prints no errors, so help stays on stdout. |
 | `ReportFailuresOptions.render` | `(error: unknown, details: FailureDetails) => string \| ReadonlyArray<string>`. `error` is `Cause.squash(cause)`; `FailureDetails` is `{ cause, isDefect }`, with `isDefect = !Cause.hasFails(cause)` — exact because `squash` prefers a `Fail` over a `Die`. Added so a consumer stops guessing "typed" from an `Error` carrying a string `_tag`, which a defect can also be. A one-parameter renderer still fits. |
@@ -91,11 +99,41 @@ Exports are static classes with a private constructor — never an
 | `SchemaIssueRenderer` | `SchemaIssue` tree → actionable lines, over core's formatter |
 | `ConfigIssueRenderer` | The same for `@effected/config-file`'s `ConfigValidationError` |
 
+### The presentation layer
+
+Exports the interactive CLI kit adds to the root. Rows marked planned are
+later phases and not yet exported. See
+[the presentation-layer decision](../decisions/cli-grows-presentation-layer.md)
+for why the package owns them.
+
+| Export | Contract |
+| --- | --- |
+| `CliEnv.layer` | `(options?: CliEnvOptions) => Layer<CurrentRuntimeEnv \| TerminalEnv \| Audience \| CliInteractive \| CliTheme, never, Stdio \| Terminal>` — builds the environment services once, in the right order. `CliEnvOptions` is `{ audienceEnvVar?, stderrIsTerminal?, theme?, log? }`. |
+| `MainOptions.env` | `CliEnvOptions`. When present, `CliRuntime.main` provides `CliEnv.layer(env)` inside failure reporting, so a `Config` error renders and exits through the `exitCode` option rather than reaching the runtime's stack trace. |
+| `CliAudience.flags` | `(options?: { hidden? }) =>` the four shared flags `audience`, `human`, `agent`, `ci`, each `Flag.atLeast(0)`; spread into `Command.withSharedFlags` on the root. `hidden` applies `Flag.withHidden`. |
+| `CliAudience.provide` | Piped onto the composite root (after `withSubcommands`): resolves the flags with `Command.provideEffect` and re-provides env's `Audience` with `source: "flag"`. More than one occurrence is a `CliError.UserError`, exit 64. See [the audience flag decision](../decisions/audience-flag-is-shared-root-flags.md). |
+| `CliInteractive` | A boolean service: `Audience` is `human`, stdin is a terminal and stdout is a terminal. Static `layer`, `layerTest(value)`, `get`, and `unless(condition)`, a scoped override that can only turn it off. |
+| `Token`, `Style`, `TokenName` | A token is a style; applying it is identity when colour is `none`. `TokenName` is `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` or `emphasis`. `Token.hex`, `Token.named` and `Token.style` build custom styles. |
+| `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `worst(names)` returns the highest rank, ties to the first; names are typed, so a misspelt one is a compile error. |
+| `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis and spinner frames. ASCII is chosen under `TERM=dumb` or by option. |
+| `CliTheme` | A `Context.Service` with `paint`, `glyphs`, `color` and `status`. `layer({ tokens?, glyphs? })` needs `TerminalEnv`; `layerTest` fixes the colour level; `promptTheme` sets core's `Prompt.Theme` from the tokens, with empty colour strings when colour is `none`. |
+| `Fmt` | `width`, `truncate` (grapheme-safe, ANSI-safe, result never wider than asked), `duration`, `percent` and `plural`. Width comes from [the package's own implementation](../decisions/own-display-width.md). |
+| `CliMessage` | `success`, `info`, `warning`, `failure` and `status(vocab, name, text)`: one themed line each through `Console`, never the logger, so no log level silences them. `warning` and `failure` go to stderr; the others to stdout. An `agent` audience gets the glyph and text, never colour. |
+| `CliLog` | Diagnostics, kept apart from `CliMessage`. `Level` is a reference defaulting to `None`, filtered on its own threshold rather than `MinimumLogLevel`; `layer({ envVar?, format? })` writes NDJSON or pretty output to stderr only and composes with `mergeWithExisting`; `component(name)` annotates a line; `file({ envVar } \| { path })` is an async NDJSON sink that reports its first write error once. |
+| `Cancelled` | A tagged error, `reason: "escape" \| "interrupt"`, carrying exit code 130 through the runtime-marker mechanism. See [one Cancelled for two engines](../decisions/one-cancelled-for-two-prompt-engines.md). |
+| `NotInteractive` | A tagged error for a prompt reached in a non-interactive run; exits 64. |
+| `CliPrompt.fallback` | `(prompt, { otherwise? }) => Param.FallbackPrompt` — prompts only when `CliInteractive` is true, else returns `otherwise`, else re-raises the missing-flag error. A core `QuitError` maps to `Cancelled`. |
+| `CliPrompt.gateWizard` | A layer that drops core's `--wizard` built-in from the run when it is not interactive. |
+| `Doc`, `Render`, `GithubAnnotation` | Planned (P3): the document IR, its plain, ANSI, markdown and GitHub-log renderers, and workflow-command annotations. |
+| `CliLinks`, `CliFailure` | Planned (P3): editor links, and failure rendering on the IR, with the two schema-issue renderers moving onto its `Tree`. |
+| `./ui`, `./ui/testing` | Planned (P4): interactive Ink screens, widgets and a live view, behind optional peers the root never reaches. |
+
 ### `@effected/cli/testing` (new subpath)
 
 | Export | Contract |
 | --- | --- |
 | `CliTest.sandbox` | `Effect<Sandbox, PlatformError, FileSystem \| Path \| Scope>`. A temporary directory with a fresh `HOME` and `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, and `NO_COLOR=1`. `PATH` is taken from an injected value and never inherited through `extendEnv`. |
+| `TestTerminal.make` | `(options?: { columns? }) =>` an `Effect` of a `Terminal` layer with `input(keys)`, `type(text)`, `end` and captured `output`. Core's own mock terminal is test-only and unexported; this one drives core `Prompt` and `CliPrompt.fallback` in tests. |
 | `CliTest.run` | `(bin, args, { sandbox, execPath, cwd?, env?, stdin? }) => Effect<{ exitCode; stdout; stderr }, PlatformError, ChildProcessSpawner>`. Two deliberate differences from spec §6: there is **no `path?` option** (`PATH` is fixed once by `CliTest.sandbox({ path })`, and a per-run override goes through `env`, which merges over the sandbox environment), and it **scopes itself** (`Effect.scoped` around the spawn), so `Scope` is not in `R` and a caller need not wrap each run. A non-zero exit is data, not a failure. Spawns `execPath` with `[bin, ...args]` over core `ChildProcess` (D9), no peer on `@effected/commands`. **When `stdin` is omitted OR passed as `""`, the spawned child receives an already-ended empty input, never an open pipe** — a test that does not pass `stdin` never hangs waiting for one. |
 
 See [D9: `CliTest` uses core `ChildProcess`](../decisions/cli-testing-uses-core-child-process.md)
@@ -233,12 +271,22 @@ See the linked Decisions for full reasoning:
 - [`CliLogger` honours `LogToStderr` in one direction only](../decisions/cli-logger-force-all-stderr-only.md)
 - [the `Command` handler-accessor gap is filed upstream, not shimmed](../decisions/cli-handler-accessor-gap-filed-upstream.md)
 
+The presentation layer adds its own:
+
+- [`@effected/cli` grows a presentation layer](../decisions/cli-grows-presentation-layer.md)
+- [two prompt engines raise one `Cancelled`](../decisions/one-cancelled-for-two-prompt-engines.md)
+- [the audience flag is four shared root flags](../decisions/audience-flag-is-shared-root-flags.md)
+- [the package owns its display width](../decisions/own-display-width.md)
+- [`FORCE_COLOR` is honoured](../decisions/force-color-honoured-node-precedence.md)
+  and [`@effected/env` is its own package](../decisions/env-is-its-own-package.md),
+  both recorded against the [`env` Module](env.md)
+
 ## Errors
 
-**No new error classes.** Everything here is presentation: it renders
-errors other packages raise and must not wrap them. A renderer that fails
-has a defect, not a domain error — a `SchemaIssue` tree that cannot be
-rendered is a bug in the renderer.
+**Two error classes, both about prompts:** `Cancelled` and `NotInteractive`.
+Everything else here is presentation: it renders errors other packages raise
+and must not wrap them. A renderer that fails has a defect, not a domain error
+— a `SchemaIssue` tree that cannot be rendered is a bug in the renderer.
 
 ## Observability
 
@@ -266,10 +314,11 @@ assumed.
 
 ## Non-goals
 
-See [the boundary limitation this package holds itself to](../limitations/cli-is-not-a-framework.md)
-for the four things deliberately out of scope: argument parsing, a
-platform package, interactive terminal UI, and a dependency edge from
-anything but an application.
+Out of scope, and staying out: argument parsing, flags, the command tree and
+help (`effect/cli` owns them), a platform package, and a dependency edge from
+anything but an application. Prompts and interactive UI used to be on this
+list; [the presentation-layer decision](../decisions/cli-grows-presentation-layer.md)
+moved them in, and the old boundary limitation is deprecated.
 
 ## Build
 

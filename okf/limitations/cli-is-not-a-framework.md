@@ -2,7 +2,7 @@
 type: Limitation
 title: "@effected/cli is not a CLI framework"
 description: The package deliberately carries no argument parsing, no platform package, and no interactive terminal UI.
-status: stable
+status: deprecated
 bounds: ../modules/cli.md
 tags: [dx]
 generated:

@@ -18,7 +18,9 @@ new request against what the first consumer actually reported.
 
 **Not a CLI framework.** `effect/cli` owns parsing, flags, the command
 tree and help. If a change here starts to look like parsing, it belongs upstream
-or nowhere. No prompts, no spinners — `Prompt` already exists in core.
+or nowhere. Presentation and interactive UI are in scope —
+`@./okf/decisions/cli-grows-presentation-layer.md` — Load when: deciding
+whether a capability belongs in this package.
 
 Tier: **boundary**. No platform package, required or optional. The moment
 `@effect/platform-node` appears here the package stops being usable from Bun and
