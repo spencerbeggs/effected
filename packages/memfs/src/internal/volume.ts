@@ -2890,6 +2890,16 @@ export interface VolumeEntrySnapshot {
 
 const encoder = new TextEncoder();
 
+const snapshotOf = (path: string, entry: InodeEntry): VolumeEntrySnapshot => ({
+	path,
+	type: entry._tag,
+	data: entry._tag === "File" ? entry.data : undefined,
+	mtime: DateTime.toEpochMillis(entry.mtime),
+	target: entry._tag === "SymbolicLink" ? entry.target : undefined,
+	size:
+		entry._tag === "File" ? entry.data.length : entry._tag === "SymbolicLink" ? encoder.encode(entry.target).length : 0,
+});
+
 const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 	const output: Array<VolumeEntrySnapshot> = [];
 	const root = findInode(state, RootInode);
@@ -2901,14 +2911,7 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 	// `has`/`isDirectory`/`mtime` for "/" from real state rather than a
 	// synthesized stand-in. `snapshot`/`paths` filter on `data`, so a directory
 	// entry does not disturb them.
-	output.push({
-		path: "/",
-		type: "Directory",
-		data: undefined,
-		mtime: DateTime.toEpochMillis(root.mtime),
-		target: undefined,
-		size: 0,
-	});
+	output.push(snapshotOf("/", root));
 	interface Frame {
 		readonly names: Array<string>;
 		readonly directory: DirectoryInode;
@@ -2933,19 +2936,7 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 			continue;
 		}
 		const path = `${frame.prefix}/${name}`;
-		output.push({
-			path,
-			type: entry._tag,
-			data: entry._tag === "File" ? entry.data : undefined,
-			mtime: DateTime.toEpochMillis(entry.mtime),
-			target: entry._tag === "SymbolicLink" ? entry.target : undefined,
-			size:
-				entry._tag === "File"
-					? entry.data.length
-					: entry._tag === "SymbolicLink"
-						? encoder.encode(entry.target).length
-						: 0,
-		});
+		output.push(snapshotOf(path, entry));
 		if (entry._tag === "Directory") {
 			frames.push({ names: [...HashMap.keys(entry.entries)].sort(), directory: entry, prefix: path, index: 0 });
 		}
@@ -2953,13 +2944,40 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 	return output;
 };
 
+// KIT EXTENSION (inspection lookup): a literal, O(depth) lookup for the
+// inspection view, so a point query never walks the whole tree. Components
+// resolve through `lookupEntry` (so a case-insensitive volume folds for free,
+// ledger entry 11) and a symbolic link is NEVER followed — not even an
+// intermediate one: a component under a link is absent, which is the view's
+// literal contract. `components` is the already-normalized path split on "/",
+// "" segments removed.
+const lookupLiteral = (state: State, components: ReadonlyArray<string>): InodeEntry | undefined => {
+	let entry = findInode(state, RootInode);
+	for (const component of components) {
+		if (entry === undefined || entry._tag !== "Directory") return undefined;
+		const found = lookupEntry(state, entry, component);
+		if (found === undefined) return undefined;
+		entry = findInode(state, found[1]);
+	}
+	return entry;
+};
+
+const splitComponents = (path: string): ReadonlyArray<string> => path.split("/").filter((part) => part.length > 0);
+// END KIT EXTENSION (inspection lookup)
+
 /** @internal */
 export interface InspectableFileSystem {
 	readonly fileSystem: FileSystem.FileSystem;
 	/** Walks the volume's live state at call time — never a copy taken at build. */
 	readonly entries: () => Array<VolumeEntrySnapshot>;
-	// KIT EXTENSION (case folding — ledger entry 11): the folding mode the volume was built with.
-	readonly caseSensitive: boolean;
+	/**
+	 * The literal entry at a lexically normalized absolute path, or `undefined`.
+	 * O(depth). The snapshot's `path` is the query as given, not the stored
+	 * spelling — point queries never expose it.
+	 */
+	readonly lookup: (path: string) => VolumeEntrySnapshot | undefined;
+	/** The stored names inside the directory at `path`, sorted; `undefined` when it is not one. */
+	readonly list: (path: string) => ReadonlyArray<string> | undefined;
 }
 
 /** @internal */
@@ -2967,11 +2985,15 @@ export const makeInspectableWith = (options: EngineOptions): Effect.Effect<Inspe
 	Effect.map(makeReadyVolume(options), (volume) => ({
 		fileSystem: toFileSystem(volume),
 		entries: () => collectEntrySnapshots(volume.currentState()),
-		caseSensitive: options.caseSensitive,
+		lookup: (path) => {
+			const entry = lookupLiteral(volume.currentState(), splitComponents(path));
+			return entry === undefined ? undefined : snapshotOf(path, entry);
+		},
+		list: (path) => {
+			const entry = lookupLiteral(volume.currentState(), splitComponents(path));
+			return entry?._tag === "Directory" ? [...HashMap.keys(entry.entries)].sort() : undefined;
+		},
 	}));
-
-/** @internal */
-export const makeInspectable: Effect.Effect<InspectableFileSystem> = makeInspectableWith(defaultEngineOptions);
 
 /** @internal */
 export const layer = Layer.effect(FileSystem.FileSystem, make);

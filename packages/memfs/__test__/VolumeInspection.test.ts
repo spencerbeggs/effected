@@ -153,6 +153,14 @@ describe("MemoryFileSystem.layerInspectableWith", () => {
 			assert.strictEqual(volume.text("/a/x/../b/c.txt"), "found");
 			// Relative paths resolve from the virtual root, matching the engine.
 			assert.strictEqual(volume.text("a/b/c.txt"), "found");
+			// Symlinks stay literal — never followed, not even mid-path: the link
+			// itself is present, but nothing lives "under" it in this view.
+			yield* fs.symlink("/a/b", "/link");
+			assert.isTrue(volume.has("/link"));
+			assert.isFalse(volume.isDirectory("/link"));
+			assert.isFalse(volume.has("/link/c.txt"));
+			assert.isUndefined(volume.text("/link/c.txt"));
+			assert.isUndefined(volume.readDirectory("/link"));
 		}).pipe(Effect.provide(MemoryFileSystem.layerInspectable)),
 	);
 
