@@ -265,8 +265,8 @@ await build({
 							source: "workspace",
 						},
 						"@effected/memfs": {
-							range: "^0.12.0",
-							peer: "^0.12.0",
+							range: "^0.13.0",
+							peer: "^0.13.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -361,7 +361,7 @@ await build({
 							source: "workspace",
 						},
 						"@effected/xdg": {
-							range: "^0.8.1",
+							range: "^0.8.2",
 							peer: "^0.8.0",
 							strategy: "lock-minor",
 							source: "workspace",
