@@ -3,6 +3,7 @@
 * [@effected/cli](cli.md) - The boundary layer of an effect/cli program — a plain-text logger, a failure-reporting combinator, and two schema-issue renderers.
 * [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running and CLI tool discovery.
 * [@effected/engine](engine.md) - The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, and launch-context resolution.
+* [@effected/env](env.md) - The boundary package that detects who is running a program and in what terminal — agent, CI, colour level, hyperlink support and width — through Config, with no node imports and no import-time reads.
 * [@effected/github](github.md) - The kit's typed GitHub REST and GraphQL API layer, owning the octokit runtime.
 * [@effected/github-references](github-references.md) - GitHub's issue-reference grammar as pure functions, extracted from @effected/github.
 * [@effected/jsonl](jsonl.md) - Append-only, schema-validated JSONL journals exposed as a definable Effect service — the file as a live object, not a text format.

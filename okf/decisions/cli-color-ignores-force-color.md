@@ -2,7 +2,7 @@
 type: Decision
 title: "D8: CliColor ignores FORCE_COLOR, matching core"
 description: CliColor.enabled reads only Stdio.stdoutIsTerminal and a non-empty NO_COLOR, deliberately leaving FORCE_COLOR unhandled everywhere, consistent with core's own colour decision.
-status: stable
+status: deprecated
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
