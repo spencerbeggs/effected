@@ -20,7 +20,7 @@ import { makeFileSink } from "./internal/fileSink.js";
 import type { Style } from "./Token.js";
 
 /**
- * Options for {@link CliLog.layer}.
+ * Options for `CliLog.layer`.
  *
  * @public
  */
@@ -37,6 +37,34 @@ export interface CliLogOptions {
 	readonly format?: "auto" | "json" | "pretty" | undefined;
 	/** Options for the `CliLogger` this layer builds for ordinary log lines; see {@link CliLoggerOptions}. */
 	readonly logger?: CliLoggerOptions | undefined;
+}
+
+/**
+ * Where the file sink writes: a literal path, or the environment variable that holds it.
+ *
+ * @public
+ */
+export type CliLogFile = { readonly envVar: string } | { readonly path: string };
+
+/**
+ * {@link CliLogOptions} with a file sink, which is what makes the layer require `FileSystem` and `Path`.
+ *
+ * @public
+ */
+export interface CliLogFileOptions extends CliLogOptions {
+	/**
+	 * Also write every record the sink accepts to a file as NDJSON, asynchronously.
+	 *
+	 * @remarks
+	 * The line is identical to the stderr NDJSON line for the same log call and is filtered by the same
+	 * {@link CliLog.Level}. Lines are queued and appended by a fiber scoped to the layer, so logging never waits
+	 * on the disk, and the parent directory is created. The first write error prints exactly one stderr line,
+	 * `diagnostics log file <path> failed: <message>; further file logging disabled`, and the program keeps
+	 * running with its normal exit code: from then on lines, including any still queued, are discarded silently.
+	 * Closing the layer's scope flushes the lines queued before it, unless the sink had already disabled itself.
+	 * `{ envVar }` names the variable that holds the path; unset or empty, no file is written.
+	 */
+	readonly file: CliLogFile;
 }
 
 /** The accepted spellings of a level, lower-cased, to the level they mean. */
@@ -86,13 +114,13 @@ const readLevel = (
  * never makes the diagnostics level a global switch. The diagnostics logger filters on its **own** threshold,
  * {@link CliLog.Level}, and writes to stderr only.
  *
- * {@link CliLog.layer} **owns the whole logger set**. It builds a `CliLogger` for ordinary log lines and the
+ * `CliLog.layer` **owns the whole logger set**. It builds a `CliLogger` for ordinary log lines and the
  * diagnostics sink itself and replaces whatever was installed, without reading it, so there is no order to get
  * wrong. Use it instead of `CliLogger.layer`, not with it: `CliLogger.layer` alone is the no-diagnostics path,
  * and a `CliLogger.layer` layered on top would replace this layer's set.
  *
  * Effect drops a record below `MinimumLogLevel` before any logger runs, so to let a debug record reach the
- * diagnostics logger `MinimumLogLevel` has to be lowered. {@link CliLog.layer} does that only when the
+ * diagnostics logger `MinimumLogLevel` has to be lowered. `CliLog.layer` does that only when the
  * diagnostics level is below the ambient minimum, and in the same step floors the `CliLogger` it built at the
  * minimum it had, so it never prints a record the diagnostics level alone let through. A failure report is
  * written outside the scope core's `--log-level` flag sets, so `--log-level none` does not silence it either.
@@ -112,7 +140,7 @@ export class CliLog {
 	 * The diagnostics threshold. Defaults to `None`, silent.
 	 *
 	 * @remarks
-	 * {@link CliLog.layer} sets it from the environment variable. A scope may raise it to narrow the output; it
+	 * `CliLog.layer` sets it from the environment variable. A scope may raise it to narrow the output; it
 	 * cannot lower it below the level the layer installed, because Effect has already dropped those records.
 	 */
 	static readonly Level: Context.Reference<LogLevel.LogLevel> = Level;
@@ -128,10 +156,22 @@ export class CliLog {
 	 * `fatal`, `all` and `none`. An invalid value warns once, through the `CliLogger`, and leaves diagnostics
 	 * off.
 	 *
-	 * @param options - the env var, the format and the `CliLogger` options
+	 * With a `file` option ({@link CliLogFileOptions}) the layer also writes an async NDJSON file, and only then
+	 * does it require `FileSystem` and `Path`: the two overloads keep a file-less program free of them.
+	 *
+	 * @param options - the env var, the format, the `CliLogger` options and the optional file sink
 	 */
-	static readonly layer = (options: CliLogOptions = {}): Layer.Layer<never, never, Audience | TerminalEnv> =>
-		Layer.unwrap(
+	static layer(
+		options?: CliLogOptions & { readonly file?: undefined },
+	): Layer.Layer<never, never, Audience | TerminalEnv>;
+	static layer(
+		options: CliLogFileOptions,
+	): Layer.Layer<never, never, Audience | TerminalEnv | FileSystem.FileSystem | PathModule.Path>;
+	static layer(
+		options: CliLogOptions | CliLogFileOptions = {},
+	): Layer.Layer<never, never, Audience | TerminalEnv | FileSystem.FileSystem | PathModule.Path> {
+		const file = "file" in options ? options.file : undefined;
+		return Layer.unwrap(
 			Effect.gen(function* () {
 				const audience = yield* Audience;
 				const terminal = yield* TerminalEnv;
@@ -184,49 +224,29 @@ export class CliLog {
 				return Layer.mergeAll(
 					Layer.succeed(CliLog.Level, level),
 					isLowered ? Layer.succeed(References.MinimumLogLevel, lowered) : Layer.empty,
-					Layer.succeed(Logger.CurrentLoggers, new Set<Logger.Logger<unknown, unknown>>([cliLogger, sink])),
+					Layer.effect(
+						Logger.CurrentLoggers,
+						Effect.gen(function* () {
+							const loggers: Array<Logger.Logger<unknown, unknown>> = [cliLogger, sink];
+							if (file !== undefined) {
+								const target =
+									"path" in file
+										? Option.some(file.path)
+										: yield* Config.option(Config.String(file.envVar)).pipe(
+												Effect.orElseSucceed(() => Option.none<string>()),
+											);
+								if (Option.isSome(target) && target.value !== "") {
+									const location = yield* PathModule.Path;
+									loggers.push(yield* makeFileSink(location.resolve(target.value), lowered));
+								}
+							}
+							return new Set(loggers);
+						}),
+					),
 				);
 			}),
 		);
-
-	/**
-	 * An asynchronous NDJSON file sink, composed onto the loggers already installed.
-	 *
-	 * @remarks
-	 * Each record is written as the same NDJSON line the stderr sink writes, filtered by the same
-	 * {@link CliLog.Level}. Lines are queued and appended by a fiber scoped to the layer, so logging never waits
-	 * on the disk. The first write error prints exactly one stderr line,
-	 * `diagnostics log file <path> failed: <message>; further file logging disabled`, and the program keeps
-	 * running with its normal exit code: from then on lines, including any still queued, are discarded silently.
-	 * Closing the layer's scope flushes the lines queued before it, unless the sink had disabled itself.
-	 *
-	 * `{ envVar }` names the variable that holds the file path; unset or empty, no file is written. The parent
-	 * directory is created. Build it over {@link CliLog.layer}, which sets the threshold and the minimum log
-	 * level the sink relies on, and keep that layer's outputs with `Layer.provideMerge`:
-	 * `CliLog.file(o).pipe(Layer.provideMerge(CliLog.layer(p)))`.
-	 *
-	 * @param options - the path, or the env var that holds it
-	 */
-	static readonly file = (
-		options: { readonly envVar: string } | { readonly path: string },
-	): Layer.Layer<never, never, FileSystem.FileSystem | PathModule.Path> =>
-		Layer.effect(
-			Logger.CurrentLoggers,
-			Effect.gen(function* () {
-				const existing = yield* Logger.CurrentLoggers;
-				const target =
-					"path" in options
-						? Option.some(options.path)
-						: yield* Config.option(Config.String(options.envVar)).pipe(
-								Effect.orElseSucceed(() => Option.none<string>()),
-							);
-				if (Option.isNone(target) || target.value === "") return existing;
-				const location = yield* PathModule.Path;
-				const installed = yield* References.MinimumLogLevel;
-				const sink = yield* makeFileSink(location.resolve(target.value), installed);
-				return new Set<Logger.Logger<unknown, unknown>>([...existing, sink]);
-			}),
-		);
+	}
 
 	/**
 	 * Mark the log records an effect emits as coming from `name`.

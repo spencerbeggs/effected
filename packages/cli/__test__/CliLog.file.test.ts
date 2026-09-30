@@ -28,7 +28,7 @@ const deny = PlatformError.systemError({
 
 /** Run `body` with the file sink built over a memfs volume, in a scope the test closes itself. */
 const harness = (options: {
-	readonly file: Parameters<typeof CliLog.file>[0];
+	readonly file: { readonly envVar: string } | { readonly path: string };
 	readonly env?: Record<string, string>;
 	readonly failFirstAppend?: boolean;
 }) =>
@@ -40,12 +40,8 @@ const harness = (options: {
 				: undefined,
 		);
 		const { double, out, err } = capturing();
-		const layer = CliLog.file(options.file).pipe(
-			Layer.provideMerge(
-				CliLog.layer({ envVar: LEVEL_ENV }).pipe(
-					Layer.provide(Layer.mergeAll(Audience.layerTest("agent"), TerminalEnv.layerTest())),
-				),
-			),
+		const layer = CliLog.layer({ envVar: LEVEL_ENV, file: options.file }).pipe(
+			Layer.provide(Layer.mergeAll(Audience.layerTest("agent"), TerminalEnv.layerTest())),
 			Layer.provide(handle.layer),
 		);
 		const scope = yield* Scope.make();
@@ -75,7 +71,15 @@ const program = Effect.gen(function* () {
 	yield* Effect.logError("boom");
 });
 
-describe("CliLog.file", () => {
+describe("CliLog.layer file option", () => {
+	it("requires FileSystem and Path only when a file is given", () => {
+		const without: Layer.Layer<never, never, Audience | TerminalEnv> = CliLog.layer({ envVar: LEVEL_ENV });
+		assert.isDefined(without);
+		// @ts-expect-error a layer with a file option needs FileSystem and Path, which the narrower type does not allow
+		const narrowed: Layer.Layer<never, never, Audience | TerminalEnv> = CliLog.layer({ file: { path: PATH } });
+		assert.isDefined(narrowed);
+	});
+
 	it.effect("writes the same NDJSON lines as the stderr sink, one per record, and flushes when the scope closes", () =>
 		Effect.gen(function* () {
 			const h = yield* harness({ file: { path: PATH }, env: { [LEVEL_ENV]: "debug" } });
