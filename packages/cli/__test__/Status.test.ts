@@ -105,3 +105,17 @@ describe("Status.resolve", () => {
 		}
 	});
 });
+
+describe("Status.def", () => {
+	it("dies on a name the vocabulary does not have, as resolve does", () => {
+		const unknown = "timeot" as CoreStatusName;
+		assert.throws(() => Status.core.def(unknown), Error, /"timeot"/);
+		assert.throws(() => Status.core.def(unknown), Error, /success, skip, pending, info, warning, failure/);
+	});
+
+	it("an inherited property name is not a status", () => {
+		for (const name of ["toString", "constructor", "__proto__", "hasOwnProperty"]) {
+			assert.throws(() => Status.core.def(name as CoreStatusName), Error, name);
+		}
+	});
+});

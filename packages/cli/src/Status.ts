@@ -79,9 +79,16 @@ export class Status<Names extends string> {
 	/**
 	 * The definition of a status.
 	 *
+	 * @remarks
+	 * A name the vocabulary does not have is a defect: it throws an `Error` naming it and the names that exist. The
+	 * types already reject one, so it is reachable only through a cast.
+	 *
 	 * @param name - a name in this vocabulary
 	 */
 	def(name: Names): StatusDef {
+		if (!Object.hasOwn(this.defs, name)) {
+			throw new Error(`Unknown status "${name}"; this vocabulary has: ${Object.keys(this.defs).join(", ")}`);
+		}
 		return this.defs[name];
 	}
 
@@ -94,17 +101,13 @@ export class Status<Names extends string> {
 	 * `token` given as a `Style` keeps its own identity.
 	 *
 	 * @remarks
-	 * A name the vocabulary does not have is a defect: it throws an `Error` naming it and the names that exist. The
-	 * types already reject one, so it is reachable only through a cast, and storing an empty definition in a
-	 * document instead would fail far from the cause.
+	 * Throws on an unknown name, as {@link Status.def} does; storing an empty definition in a document instead
+	 * would fail far from the cause.
 	 *
 	 * @param name - a name in this vocabulary
 	 */
 	resolve(name: Names): StatusDef {
-		if (!Object.hasOwn(this.defs, name)) {
-			throw new Error(`Unknown status "${name}"; this vocabulary has: ${Object.keys(this.defs).join(", ")}`);
-		}
-		return Object.freeze({ ...this.defs[name] });
+		return Object.freeze({ ...this.def(name) });
 	}
 
 	/**
@@ -120,7 +123,7 @@ export class Status<Names extends string> {
 	worst(names: Arr.NonEmptyReadonlyArray<Names>): Names {
 		let worst = names[0];
 		for (const name of names) {
-			if (this.defs[name].rank > this.defs[worst].rank) worst = name;
+			if (this.def(name).rank > this.def(worst).rank) worst = name;
 		}
 		return worst;
 	}
