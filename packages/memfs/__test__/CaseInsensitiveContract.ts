@@ -86,6 +86,20 @@ export const caseInsensitiveSuite = (
 			),
 		);
 
+		it.effect("rename onto its own spelling keeps the stored case", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.makeDirectory(`${d}/Dir`);
+					yield* fs.writeFileString(`${d}/Dir/c.txt`, "c");
+					yield* fs.rename(`${d}/dir`, `${d}/dir`);
+					assert.deepStrictEqual(yield* fs.readDirectory(d), ["Dir"]);
+					yield* fs.rename(`${d}/DIR`, `${d}/dir`);
+					assert.deepStrictEqual(yield* fs.readDirectory(d), ["dir"]);
+					assert.strictEqual(yield* fs.readFileString(`${d}/DIR/c.txt`), "c");
+				}),
+			),
+		);
+
 		it.effect(
 			"a rename onto a different, folded-equal entry replaces it and keeps the destination's stored spelling",
 			() =>
@@ -233,6 +247,22 @@ export const caseInsensitiveSuite = (
 					assert.deepStrictEqual([...(yield* fs.readDirectory(d))].sort(), ["dst", "src"]);
 					assert.deepStrictEqual(yield* fs.readDirectory(`${d}/dst`), ["X.txt"]);
 					assert.strictEqual(yield* fs.readFileString(`${d}/dst/x.txt`), "new");
+				}),
+			),
+		);
+
+		it.effect("copy merges a folded nested directory under its stored spelling", () =>
+			run((fs, d) =>
+				Effect.gen(function* () {
+					yield* fs.makeDirectory(`${d}/src/SUB`, { recursive: true });
+					yield* fs.writeFileString(`${d}/src/SUB/A.txt`, "new");
+					yield* fs.makeDirectory(`${d}/dst/sub`, { recursive: true });
+					yield* fs.writeFileString(`${d}/dst/sub/a.txt`, "old");
+					yield* fs.writeFileString(`${d}/dst/sub/keep.txt`, "k");
+					yield* fs.copy(`${d}/src`, `${d}/dst`, { overwrite: true });
+					assert.deepStrictEqual(yield* fs.readDirectory(`${d}/dst`), ["sub"]);
+					assert.deepStrictEqual([...(yield* fs.readDirectory(`${d}/dst/sub`))].sort(), ["A.txt", "keep.txt"]);
+					assert.strictEqual(yield* fs.readFileString(`${d}/dst/sub/a.txt`), "new");
 				}),
 			),
 		);

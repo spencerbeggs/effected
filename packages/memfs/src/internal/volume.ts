@@ -270,10 +270,6 @@ const lookupEntry = (state: State, directory: DirectoryInode, name: string): rea
 
 const findEntry = (state: State, directory: DirectoryInode, name: string): Inode | undefined =>
 	lookupEntry(state, directory, name)?.[1];
-
-// The stored spelling of an existing entry, or `name` itself when none exists.
-const storedName = (state: State, directory: DirectoryInode, name: string): string =>
-	lookupEntry(state, directory, name)?.[0] ?? name;
 // END KIT EXTENSION (case folding)
 
 const setInode = (state: State, entry: InodeEntry): State => ({
@@ -336,11 +332,19 @@ const includesWatchPath = (watchedPath: string, directory: boolean, recursive: b
 	(directory && !recursive && eventPath !== "/" && parentOfPath(eventPath) === watchedPath) ||
 	(eventPath !== "/" && watchedPath.startsWith(`${eventPath}/`));
 
-const publishWatchEvents = (watchers: Set<WatchSubscription>, events: ReadonlyArray<FileSystem.WatchEvent>) =>
+// KIT EXTENSION (case folding — adaptation ledger entry 11): on a
+// case-insensitive volume a subscription and an event name one entry in any
+// spelling, so matching compares FOLDED paths; the delivered event keeps its own.
+const publishWatchEvents = (
+	watchers: Set<WatchSubscription>,
+	events: ReadonlyArray<FileSystem.WatchEvent>,
+	caseSensitive: boolean,
+) =>
 	Effect.sync(() => {
+		const fold = caseSensitive ? (path: string) => path : (path: string) => path.toLowerCase();
 		for (const watcher of watchers) {
 			for (const event of events) {
-				if (includesWatchPath(watcher.path, watcher.directory, watcher.recursive, event.path)) {
+				if (includesWatchPath(fold(watcher.path), watcher.directory, watcher.recursive, fold(event.path))) {
 					if (watcher.queue === undefined) {
 						watcher.pending.push(event);
 					} else {
@@ -783,7 +787,8 @@ const resolveEntry = Effect.fnUntraced(function* (state: State, path: string, me
 	const parent = yield* resolveParent(state, path, method);
 	// KIT EXTENSION (case folding — adaptation ledger entry 11): the entry is
 	// addressed by its STORED key, so `detachEntry` and `rename` mutate the real
-	// map entry rather than a folded spelling of it.
+	// map entry rather than a folded spelling of it; `requestedName` keeps the
+	// queried leaf for rename's byte-identical no-op guard.
 	const found = lookupEntry(state, parent.entry, parent.name);
 	if (found === undefined) {
 		return yield* notFound(method, path);
@@ -794,7 +799,8 @@ const resolveEntry = Effect.fnUntraced(function* (state: State, path: string, me
 		name,
 		entry: yield* getInode(state, inode, method, path),
 		path: childPath(parent.path, name),
-	} satisfies ResolvedEntry;
+		requestedName: parent.name,
+	} satisfies ResolvedEntry & { readonly requestedName: string };
 });
 
 const validateMode = (method: string, mode: number | undefined) =>
@@ -1062,47 +1068,33 @@ const rename = (volume: Volume) =>
 					source.entry._tag === "Directory" && /[^/]\/+$/.test(newPath)
 						? yield* resolveParent(state, newPath.replace(/\/+$/, ""), method, newPath)
 						: yield* resolveParent(state, newPath, method, newPath, "ENOTDIR");
-				if (source.parent.ino === destinationParent.inode && source.name === destinationParent.name) {
+				// KIT EXTENSION (case folding — adaptation ledger entry 11): the no-op
+				// guard compares the QUERIED source leaf — XNU skips a byte-identical
+				// rename, so `rename("dir", "dir")` over a stored `Dir` keeps `Dir`.
+				if (source.parent.ino === destinationParent.inode && source.requestedName === destinationParent.name) {
 					return transitionResult(state, undefined);
 				}
-				// KIT EXTENSION (case folding — adaptation ledger entry 11): a case-only
-				// rename in one directory rekeys the SAME entry to the new spelling. The
-				// folded lookup below would otherwise find the source itself and no-op.
-				if (
-					!state.caseSensitive &&
-					source.parent.ino === destinationParent.inode &&
-					source.name.toLowerCase() === destinationParent.name.toLowerCase()
-				) {
-					const now = yield* DateTime.now;
-					const parent = yield* getDirectory(state, source.parent.ino, method, oldPath);
-					const nextState = setInode(
-						setInode(state, {
-							...parent,
-							entries: HashMap.set(
-								HashMap.remove(parent.entries, source.name),
-								destinationParent.name,
-								source.entry.ino,
-							),
-							mtime: now,
-							ctime: now,
-						}),
-						{ ...source.entry, ctime: now },
-					);
-					return transitionResult(nextState, undefined, [
-						{ _tag: "Remove", path: source.path },
-						{ _tag: "Create", path: childPath(destinationParent.path, destinationParent.name) },
-					]);
-				}
-				// END KIT EXTENSION (case folding)
 				if (source.entry._tag === "Directory" && containsDirectory(state, source.entry.ino, destinationParent.inode)) {
 					return yield* errnoError(method, newPath, "EINVAL", "Cannot move a directory into itself");
 				}
-				// KIT EXTENSION (case folding — adaptation ledger entry 11): replacing a
-				// folded-equal entry keeps the destination's STORED spelling (host-proven
-				// on APFS); `destinationName` is the requested name when nothing exists.
-				const destinationName = storedName(state, destinationParent.entry, destinationParent.name);
-				const destinationInode = findEntry(state, destinationParent.entry, destinationName);
-				if (destinationInode === source.entry.ino) return transitionResult(state, undefined);
+				// KIT EXTENSION (case folding — adaptation ledger entry 11): one folded
+				// lookup gives the destination's stored key and inode. A hit on the source
+				// entry ITSELF (same directory, same stored key) is a case-only rename: it
+				// rekeys the entry under the requested spelling, children attached, and
+				// detaches nothing. Any other hit is replaced under its STORED spelling
+				// (host-proven on APFS); a miss takes the requested spelling.
+				const found = lookupEntry(state, destinationParent.entry, destinationParent.name);
+				const caseOnly =
+					found !== undefined &&
+					found[1] === source.entry.ino &&
+					found[0] === source.name &&
+					source.parent.ino === destinationParent.inode;
+				if (found !== undefined && found[1] === source.entry.ino && !caseOnly) {
+					return transitionResult(state, undefined);
+				}
+				const destinationName = found === undefined || caseOnly ? destinationParent.name : found[0];
+				const destinationInode = caseOnly ? undefined : found?.[1];
+				// END KIT EXTENSION (case folding)
 				let destination: ResolvedEntry | undefined;
 				if (destinationInode !== undefined) {
 					destination = {
@@ -1246,6 +1238,7 @@ const validateCopyDirectoryContents: (
 	}
 	for (const [name, sourceInode] of source.entries) {
 		const sourceEntry = yield* getInode(state, sourceInode, method, path);
+		// KIT EXTENSION (case folding — adaptation ledger entry 11): folded lookup.
 		const destinationInode = findEntry(state, destination, name);
 		if (destinationInode === undefined) continue;
 		const destinationEntry = yield* getInode(state, destinationInode, method, path);
@@ -1308,8 +1301,9 @@ const copyDirectoryContents: (
 		// destination child is detached by its STORED key and the copy linked under
 		// the SOURCE spelling — node's async `fs.cp` unlinks then recreates
 		// (host-proven: `x.txt` replaced from `X.txt` lists as `X.txt`).
-		const destinationName = storedName(nextState, currentDestination, name);
-		const destinationInode = findEntry(nextState, currentDestination, destinationName);
+		const found = lookupEntry(nextState, currentDestination, name);
+		const destinationName = found?.[0] ?? name;
+		const destinationInode = found?.[1];
 		if (sourceEntry._tag === "Directory" && destinationInode !== undefined) {
 			const destinationEntry = yield* getInode(nextState, destinationInode, method, path);
 			if (destinationEntry._tag === "Directory") {
@@ -1392,6 +1386,7 @@ const copyFileUnlocked = Effect.fnUntraced(function* (state: State, fromPath: st
 	}
 	const sourceFile = source.entry;
 	const destination = yield* resolveCopyFileDestination(state, toPath, method);
+	// KIT EXTENSION (case folding — adaptation ledger entry 11): folded lookup.
 	const existingInode = findEntry(state, destination.entry, destination.name);
 	if (existingInode === source.inode) return [state, false] as const;
 
@@ -1447,8 +1442,9 @@ const copyEntryUnlocked = Effect.fnUntraced(function* (
 	// folded-equal destination is detached by its STORED key and the copy linked
 	// under the REQUESTED spelling — node's async `fs.cp` unlinks then recreates
 	// (host-proven: `a.txt` copied onto `B.TXT` over `b.txt` lists as `B.TXT`).
-	const destinationName = storedName(state, destination.entry, destination.name);
-	const existingInode = findEntry(state, destination.entry, destinationName);
+	const found = lookupEntry(state, destination.entry, destination.name);
+	const destinationName = found?.[0] ?? destination.name;
+	const existingInode = found?.[1];
 	let existing: InodeEntry | undefined;
 	if (existingInode !== undefined) {
 		existing = yield* getInode(state, existingInode, method, toPath);
@@ -2003,6 +1999,7 @@ const collectDirectoryEntries = (
 		const relativePath = frame.prefix.length === 0 ? name : `${frame.prefix}/${name}`;
 		output.push(relativePath);
 		if (!recursive) continue;
+		// KIT EXTENSION (case folding — adaptation ledger entry 11): `name` is a stored key; exact hit.
 		const inode = findEntry(state, frame.directory, name);
 		const child = inode === undefined ? undefined : findInode(state, inode);
 		if (child?._tag === "Directory") {
@@ -2603,6 +2600,7 @@ const matchesGlobToken = (token: GlobToken, value: string, fold = false): boolea
 		},
 	});
 
+// KIT EXTENSION (case folding — adaptation ledger entry 11): `fold`, see matchesGlobToken.
 const matchesGlobSegment = (pattern: GlobSegment, value: string, fold = false): boolean => {
 	if (value.startsWith(".") && !pattern.startsWithDot) return false;
 	let patternIndex = 0;
@@ -2632,6 +2630,7 @@ const matchesGlobSegment = (pattern: GlobSegment, value: string, fold = false): 
 	return patternIndex === pattern.tokens.length;
 };
 
+// KIT EXTENSION (case folding — adaptation ledger entry 11): `fold`, see matchesGlobToken.
 const matchesGlob = (
 	pattern: CompiledGlobPattern,
 	path: ReadonlyArray<string>,
@@ -2693,6 +2692,7 @@ const glob = (volume: Volume) =>
 					const [directory, parent] = next;
 					for (const name of [...HashMap.keys(directory.entries)].sort()) {
 						const path = [...parent, name];
+						// KIT EXTENSION (case folding — adaptation ledger entry 11): folded lookup.
 						const inode = findEntry(state, directory, name);
 						const entry = inode === undefined ? undefined : findInode(state, inode);
 						const isDirectory = entry?._tag === "Directory";
@@ -2756,7 +2756,10 @@ const makeVolume = (options: EngineOptions) =>
 		const commitResult = <A>(result: TransitionResult<A>): Effect.Effect<A> =>
 			Effect.sync(() => {
 				state = result.state;
-			}).pipe(Effect.andThen(publishWatchEvents(watchers, result.events)), Effect.as(result.value));
+			}).pipe(
+				Effect.andThen(publishWatchEvents(watchers, result.events, options.caseSensitive)),
+				Effect.as(result.value),
+			);
 
 		const commit = <A, E, R>(use: (state: State) => Effect.Effect<TransitionResult<A>, E, R>): Effect.Effect<A, E, R> =>
 			Effect.flatMap(
@@ -2923,6 +2926,7 @@ const collectEntrySnapshots = (state: State): Array<VolumeEntrySnapshot> => {
 		}
 		const name = frame.names[frame.index];
 		frame.index += 1;
+		// KIT EXTENSION (case folding — adaptation ledger entry 11): `name` is a stored key; exact hit.
 		const inode = findEntry(state, frame.directory, name);
 		const entry = inode === undefined ? undefined : findInode(state, inode);
 		if (entry === undefined) {
