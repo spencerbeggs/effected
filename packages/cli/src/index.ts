@@ -80,7 +80,7 @@ export {
 export { Fmt, type PercentOptions, type TruncateOptions } from "./Fmt.js";
 export { type GlyphSet, Glyphs } from "./Glyphs.js";
 export { NotInteractive } from "./NotInteractive.js";
-export type { RenderContext } from "./Render.js";
+export { Render, type RenderContext } from "./Render.js";
 export { SchemaIssueRenderer } from "./SchemaIssueRenderer.js";
 export { type CoreStatusName, Status, type StatusDef } from "./Status.js";
 export { type NamedColor, type Style, Token, type TokenName } from "./Token.js";

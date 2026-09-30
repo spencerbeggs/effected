@@ -64,6 +64,7 @@ describe("entrypoint boundary", () => {
 			"Fmt",
 			"Glyphs",
 			"NotInteractive",
+			"Render",
 			"SchemaIssueRenderer",
 			"Status",
 			"Token",

@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T23:14:09Z
-  body_sha256: a62d67406224d38befc4448d794f04db6051700a3d56b2f4a712e8f82317619b
+  at: 2026-09-30T23:18:07Z
+  body_sha256: d96c8a12cd68aeab52330415013228ee88c297564ef23adf8d83c627c099c127
 ---
 
 # @effected/cli
@@ -127,7 +127,7 @@ for why the package owns them.
 | `CliPrompt.gateTerminal` | `Layer<Terminal, never, Terminal>`, deciding on EVERY call from the current `CliInteractive`, not at build, so a later narrowing (an audience flag under `CliAudience.runWith`) reaches it. Not interactive, it behaves as a quiet `Terminal` (input an already-ended queue, `readLine` a quit, `display` a no-op) that delegates `columns` and `rows` to the real one; interactive, the real terminal passes through. It exists because core runs `Prompt.run` even on an answered fallback, and on the real Node terminal subscribing the input attaches a readline to stdin, dropping piped bytes and putting a TTY into raw mode. `CliEnv.layer` installs it (and `gateWizard`) after `TerminalEnv` is built from the real terminal, so consumers never compose it. |
 | `CliPrompt.gateWizard` | A layer that drops core's `--wizard` built-in from the run when it is not interactive. |
 | `Doc` | Planned, landing in P3: the document IR, plain frozen nodes discriminated by `_tag` and built by constructors (`Doc.text`, `code`, `link`, `status`, `path`, `heading`, `paragraph`, `list`, `table`, `tree`, `collapsible`, `callout`, `codeBlock`, `diff`, `section`, `counts`). A status node stores a `Status.resolve` definition. See [the IR decision](../decisions/doc-ir-is-plain-data.md). |
-| `Render` | Planned, landing in P3: pure `plain`, `ansi`, `markdown` and `githubLog` renderers over a `RenderContext`, and `Render.context(stream)` to build one. No JSON renderer ([decision](../decisions/no-json-renderer.md)). |
+| `Render` | Landing in P3: pure `plain`, `ansi`, `markdown` and `githubLog` renderers over a `RenderContext`, and `Render.context(stream)` to build one. `Render.plain` (for agents) is built: no escape of any kind, a path joined with `>`, a link as its label plus the target in parentheses, a long URL kept whole. No JSON renderer ([decision](../decisions/no-json-renderer.md)). |
 | `GithubAnnotation` | Planned, landing in P3: `format(properties, message)` for GitHub workflow-command annotations. |
 | `CliLinks` | Planned, landing in P3: a service for editor-aware links. It finds the editor directory with its own bounded ascent, not `@effected/walker` ([decision](../decisions/cli-links-inline-ascent.md)). |
 | `CliFailure` | Planned, landing in P3: failure rendering on the IR (`CliFailure.toDoc`), with the two schema-issue renderers moving onto its `Tree`. |
