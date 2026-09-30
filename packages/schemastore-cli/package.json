@@ -37,6 +37,7 @@
 	"dependencies": {
 		"@effect/platform-node": "catalog:effect",
 		"@effected/cli": "workspace:^",
+		"@effected/env": "workspace:^",
 		"ajv": "^8.20.0",
 		"ajv-formats": "^3.0.1",
 		"jiti": "^2.6.0"

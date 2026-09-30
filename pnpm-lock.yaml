@@ -969,6 +969,9 @@ importers:
       '@effected/cli':
         specifier: workspace:^
         version: link:../cli/dist/dev/pkg
+      '@effected/env':
+        specifier: workspace:^
+        version: link:../env/dist/dev/pkg
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
