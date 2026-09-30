@@ -8,8 +8,8 @@ resource: ../../packages/cli
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T21:58:13Z
-  body_sha256: 4d47d6395e307b8b941cfd203a07036f45491ee662704fb0669695f6590882c8
+  at: 2026-09-30T22:58:53Z
+  body_sha256: 77b547a436fc97888047e0ae89ff50b870adb6b141980225276d1c30e4c60580
 ---
 
 # @effected/cli
@@ -115,8 +115,8 @@ for why the package owns them.
 | `CliAudience.runWith`, `CliAudience.run` | THE wiring for the audience flag: `Command.make(...).pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([...]))`, then `CliRuntime.main(CliAudience.run(root, { version }), { platform, env })`. `runWith(root, config)(argv)` and `run(root, config)` (reads `Stdio.args` like `Command.run`) scan argv for the four flags BEFORE core parses, apply `provide` themselves, and run core inside a provided `Audience` (`{ kind, source: "flag" }` for exactly one flag) and a `CliInteractive` narrowed to match (a non-human flag or a conflict makes it false, never on), with `--wizard` dropped and diagnostics switched to NDJSON. A root without the shared flags does not compile (`RequiresAudienceFlags`). The scan and the resolver share one counting rule (true occurrences only). |
 | `CliInteractive` | A `Context.Reference<boolean>` defaulting to `false`, read with `yield* CliInteractive` and never in `R`: `Audience` is `human`, stdin is a terminal and stdout is a terminal. Static `layer` (from `Audience` and `TerminalEnv`), `layerTest(value)` and `unless(condition)`, a scoped override that can only turn it off. Both layers are typed `Layer<never>` because they set the reference. |
 | `Token`, `Style`, `TokenName` | A token is a style; applying it is identity when colour is `none`. `TokenName` is `success`, `failure`, `warning`, `info`, `error`, `muted`, `accent` or `emphasis`. `Token.hex`, `Token.named` and `Token.style` build custom styles. |
-| `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `worst(names)` takes a non-empty list and returns the highest rank, ties to the first; `worstOption(names)` takes any array and returns an `Option`, `None` when empty. Names are typed, so a misspelt one is a compile error. |
-| `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis and spinner frames. ASCII is chosen under `TERM=dumb` or by option. |
+| `Status` | An open vocabulary: `Status.core` (`success`, `failure`, `warning`, `info`, `skip`, `pending`) and `Status.extend(extra)`, each entry a glyph, an ASCII glyph, a token and a rank. `resolve(name)` returns the full definition as a frozen copy, which the document IR stores. `worst(names)` takes a non-empty list and returns the highest rank, ties to the first; `worstOption(names)` takes any array and returns an `Option`, `None` when empty. Names are typed, so a misspelt one is a compile error. |
+| `Glyphs` | `Glyphs.unicode` and `Glyphs.ascii`: the status glyphs, bullet, arrow, ellipsis, spinner frames, `spinnerIntervalMs` (80) and `pathSeparator` (`human`, `agent`: `›` and ` > `, or `>` and ` > ` in ASCII). ASCII is chosen under `TERM=dumb` or by option. |
 | `CliTheme` | A `Context.Service` with `paint`, `sgr`, `glyphs`, `color` and `status` (the stdout ones) and `forStream("stdout" \| "stderr")`, a `StreamTheme` painting with THAT stream's colour from `TerminalEnv.stderr.color` or `.stdout.color`; anything written to stderr is painted through `forStream("stderr")`, as `CliMessage` does. `layer({ tokens?, glyphs? })` needs `TerminalEnv`; `layerTest` fixes the colour level; `promptTheme` sets core's `Prompt.Theme` from the tokens, with empty colour strings when colour is `none`. |
 | `Fmt` | `width`, `truncate` (grapheme-safe, ANSI-safe, result never wider than asked), `duration` (`250ms`, `1.2s`, `1m 3s`, `1h 2m`), `percent` and `plural`. Width comes from [the package's own implementation](../decisions/own-display-width.md). |
 | `CliMessage` | `success`, `info`, `warning`, `failure` and `status(vocab, name, text)`: one themed line each through `Console`, never the logger, so no log level silences them. `warning` and `failure` go to stderr; the others to stdout, and `status` defaults to stderr for a rank at or above `warning`'s. Only the glyph is painted and the text stays plain; an `agent` audience gets the glyph and text, never colour, even when the theme has colour. A `ci` audience is themed like a human, with colour still gated by `TerminalEnv`. Empty text prints the glyph alone. |
@@ -126,8 +126,11 @@ for why the package owns them.
 | `CliPrompt.fallback` | `(prompt, { flag \| argument, otherwise? }) => Param.FallbackPrompt` — prompts only when `CliInteractive` is true, else returns `otherwise` (`undefined` counts as not given), else fails as a missing flag or argument built from the given name (exit 64). The prompt runs inside the fallback so a quit becomes `Cancelled` (exit 130) instead of core's missing-flag error; `Cancelled` travels as a defect, so a handler's `catchTag` cannot see it and only `CliRuntime.main` renders it as one line. |
 | `CliPrompt.gateTerminal` | `Layer<Terminal, never, Terminal>`, deciding on EVERY call from the current `CliInteractive`, not at build, so a later narrowing (an audience flag under `CliAudience.runWith`) reaches it. Not interactive, it behaves as a quiet `Terminal` (input an already-ended queue, `readLine` a quit, `display` a no-op) that delegates `columns` and `rows` to the real one; interactive, the real terminal passes through. It exists because core runs `Prompt.run` even on an answered fallback, and on the real Node terminal subscribing the input attaches a readline to stdin, dropping piped bytes and putting a TTY into raw mode. `CliEnv.layer` installs it (and `gateWizard`) after `TerminalEnv` is built from the real terminal, so consumers never compose it. |
 | `CliPrompt.gateWizard` | A layer that drops core's `--wizard` built-in from the run when it is not interactive. |
-| `Doc`, `Render`, `GithubAnnotation` | Planned (P3): the document IR, its plain, ANSI, markdown and GitHub-log renderers, and workflow-command annotations. |
-| `CliLinks`, `CliFailure` | Planned (P3): editor links, and failure rendering on the IR, with the two schema-issue renderers moving onto its `Tree`. |
+| `Doc` | Planned, landing in P3: the document IR, plain frozen nodes discriminated by `_tag` and built by constructors (`Doc.text`, `code`, `link`, `status`, `path`, `heading`, `paragraph`, `list`, `table`, `tree`, `collapsible`, `callout`, `codeBlock`, `diff`, `section`, `counts`). A status node stores a `Status.resolve` definition. See [the IR decision](../decisions/doc-ir-is-plain-data.md). |
+| `Render` | Planned, landing in P3: pure `plain`, `ansi`, `markdown` and `githubLog` renderers over a `RenderContext`, and `Render.context(stream)` to build one. No JSON renderer ([decision](../decisions/no-json-renderer.md)). |
+| `GithubAnnotation` | Planned, landing in P3: `format(properties, message)` for GitHub workflow-command annotations. |
+| `CliLinks` | Planned, landing in P3: a service for editor-aware links. It finds the editor directory with its own bounded ascent, not `@effected/walker` ([decision](../decisions/cli-links-inline-ascent.md)). |
+| `CliFailure` | Planned, landing in P3: failure rendering on the IR (`CliFailure.toDoc`), with the two schema-issue renderers moving onto its `Tree`. |
 | `./ui`, `./ui/testing` | Planned (P4): interactive Ink screens, widgets and a live view, behind optional peers the root never reaches. |
 
 ### `@effected/cli/testing` (new subpath)
@@ -279,6 +282,10 @@ The presentation layer adds its own:
 - [two prompt engines raise one `Cancelled`](../decisions/one-cancelled-for-two-prompt-engines.md)
 - [the audience flag is four shared root flags](../decisions/audience-flag-is-shared-root-flags.md)
 - [the package owns its display width](../decisions/own-display-width.md)
+- [the document IR is plain data](../decisions/doc-ir-is-plain-data.md),
+  [it has no JSON renderer](../decisions/no-json-renderer.md) and
+  [links find the editor directory inline](../decisions/cli-links-inline-ascent.md)
+  (all three drafts, landing in P3)
 - [`FORCE_COLOR` is honoured](../decisions/force-color-honoured-node-precedence.md)
   and [`@effected/env` is its own package](../decisions/env-is-its-own-package.md),
   both recorded against the [`env` Module](env.md)
