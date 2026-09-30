@@ -14,9 +14,10 @@ versus in `@effected/cli` or `@effected/engine`.
 dependency.** `@effected/workspaces` is a devDependency for the `SourceBoundary`
 purity test only.
 
-- `src/` has no `process` reads, no `node:` imports and no `console.*` or
-  stdout writes. A `SourceBoundary` test enforces this. `node:` imports are
-  allowed in `__test__/`.
+- `src/` has no `process` reads, no `node:`, `@effect/platform*` or
+  `@effected/*` imports, and no `console.*` or stdout writes.
+  `__test__/purity.test.ts` runs a `SourceBoundary` scan that enforces exactly
+  this. `node:` imports are allowed in `__test__/`.
 - Nothing is read at import time. Every read happens inside a layer's
   construction Effect, through `Config`.
 - House style: static classes with private constructors, or `Context.Service`
