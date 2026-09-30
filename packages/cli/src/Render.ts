@@ -56,8 +56,8 @@ export class Render {
 	 * - A paragraph wraps to the width and is never truncated; a word longer than the width, such as a URL, stays
 	 *   whole on its own line.
 	 * - A list uses `- ` items, and past its cap the overflow row. A table is aligned text columns with a rule under
-	 *   the header; a short row is padded with empty cells, and cells are truncated only when the table is wider than
-	 *   the context, widest column first. A tree uses the glyph set's tree segments.
+	 *   the header; a short row is padded with empty cells, a cell holding line breaks shows its first line and an
+	 *   ellipsis, and cells are truncated only when the table is wider than the context, widest column first. A tree uses the glyph set's tree segments.
 	 * - A collapsible is its title and the indented body, a callout its upper-case kind and the body, a code block
 	 *   four-space indented, and a diff `- expected` lines then `+ received` lines, the cap limiting each side.
 	 * - Counts take their total and their visible counters from {@link Doc.total} and {@link Doc.visibleCounters}.

@@ -100,8 +100,17 @@ const tableLines = (block: Extract<Block, { readonly _tag: "Table" }>, ctx: Rend
 	if (columns === 0) return [];
 	const cap = capOf(block.cap);
 	const shown = cap === undefined ? block.rows : block.rows.slice(0, cap);
-	const cell = (inlines: ReadonlyArray<Inline> | undefined): string =>
-		inlines === undefined ? "" : inlineText(inlines, ctx);
+	// A cell is one line: a line break is width 0 to a measure but breaks the row, so take the first line, with an
+	// ellipsis to say there was more, before anything measures or cuts it.
+	const cell = (inlines: ReadonlyArray<Inline> | undefined): string => {
+		if (inlines === undefined) return "";
+		const raw = inlineSpans(inlines, ctx)
+			.map((span) => span.text)
+			.join("")
+			.replace(/(?:\r\n|\r|\n)+$/, "");
+		const lines = raw.split(/\r\n|\r|\n/);
+		return lines.length > 1 ? `${lines[0]}${ctx.glyphs.ellipsis}` : raw;
+	};
 	const cells = (row: ReadonlyArray<ReadonlyArray<Inline>>): Array<string> =>
 		Array.from({ length: columns }, (_, index) => cell(row[index]));
 	const header = Array.from({ length: columns }, (_, index) => cell(block.columns[index]?.header));

@@ -333,6 +333,44 @@ describe("Render.plain: tables", () => {
 		}),
 	);
 
+	it.effect("a cell holding line breaks shows its first line and an ellipsis, so every row stays one line", () =>
+		Effect.gen(function* () {
+			const doc = Doc.table(
+				[{ header: "what" }, { header: "where" }],
+				[
+					["first\nsecond\nthird", "a.ts"],
+					["one\r\ntwo", "b.ts"],
+					["\nleading", "c.ts"],
+					["trailing\n\n", "d.ts"],
+					["plain", "e.ts"],
+				],
+			);
+			const out = yield* linesOf([doc]);
+			assert.deepStrictEqual(out, [
+				"what      where",
+				"--------  -----",
+				"first…    a.ts",
+				"one…      b.ts",
+				"…         c.ts",
+				"trailing  d.ts",
+				"plain     e.ts",
+			]);
+			const ascii = yield* linesOf([doc], { glyphs: Glyphs.ascii });
+			assert.strictEqual(ascii[2], "first...  a.ts");
+		}),
+	);
+
+	it.effect("a cell that has a line break and is then too wide is cut after taking its first line", () =>
+		Effect.gen(function* () {
+			const doc = Doc.table([{ header: "msg" }, { header: "id" }], [["a rather long first line\nsecond", "1"]]);
+			const out = yield* linesOf([doc], { width: 12 });
+			assert.strictEqual(out.length, 3);
+			for (const line of out) assert.isAtMost(displayWidth(line), 12);
+			assert.match(out[2] ?? "", /^a rathe…/);
+			assert.notInclude(out.join("\n"), "second");
+		}),
+	);
+
 	it.effect("never cuts below one column per cell, even when nothing fits", () =>
 		Effect.gen(function* () {
 			const out = yield* linesOf([Doc.table([{ header: "a" }, { header: "b" }], [["xxxxxx", "yyyyyy"]])], { width: 3 });
