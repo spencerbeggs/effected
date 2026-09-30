@@ -43,6 +43,13 @@ export { CliColor } from "./CliColor.js";
 export { CliEnv, type CliEnvOptions, type CliEnvServices } from "./CliEnv.js";
 export { CliExit, type CliExitShape } from "./CliExit.js";
 export { CliInteractive } from "./CliInteractive.js";
+export {
+	CliLinks,
+	type CliLinksLinkerOptions,
+	type CliLinksOptions,
+	type CliLinksShape,
+	type EditorLinks,
+} from "./CliLinks.js";
 export { CliLog, type CliLogFile, type CliLogFileOptions, type CliLogOptions } from "./CliLog.js";
 export { CliLogger, type CliLoggerOptions } from "./CliLogger.js";
 export { CliMessage, type CliMessageOptions } from "./CliMessage.js";

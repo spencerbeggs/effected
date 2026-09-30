@@ -2,6 +2,8 @@ import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import type { Effect, Layer, Stdio, Terminal } from "effect";
 import { Layer as LayerModule } from "effect";
 import { CliInteractive } from "./CliInteractive.js";
+import type { CliLinks, EditorLinks } from "./CliLinks.js";
+import { ambientLinksLayer } from "./CliLinks.js";
 import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
 import { CliPrompt } from "./CliPrompt.js";
 import type { CliThemeOptions } from "./CliTheme.js";
@@ -28,6 +30,10 @@ export interface CliEnvOptions {
 	 * `FileSystem` and `Path`, and `main`'s type says so when it does not.
 	 */
 	readonly log?: CliLogOptions | CliLogFileOptions | undefined;
+	/** Whether file links open in an editor; `auto` by default. See {@link CliLinks}. */
+	readonly editorLinks?: EditorLinks | undefined;
+	/** The environment variable that overrides `editorLinks`, read through `Config`. Not read unless named. */
+	readonly editorLinksEnvVar?: string | undefined;
 }
 
 /**
@@ -35,13 +41,13 @@ export interface CliEnvOptions {
  *
  * @public
  */
-export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliTheme | Terminal.Terminal;
+export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliTheme | CliLinks | Terminal.Terminal;
 
 /**
  * The environment services a CLI reads, built once and in the right order.
  *
  * @remarks
- * Builds `CurrentRuntimeEnv`, `TerminalEnv`, `Audience`, `CliTheme` and sets `CliInteractive` from them, then
+ * Builds `CurrentRuntimeEnv`, `TerminalEnv`, `Audience`, `CliTheme` and `CliLinks`, and sets `CliInteractive` from them, then
  * installs the two gates for the program: `CliPrompt.gateTerminal`, which replaces `Terminal` with a quiet one when
  * the run is not interactive so no prompt runner ever attaches to stdin, and `CliPrompt.gateWizard`, which drops
  * `--wizard` then. `TerminalEnv` is built from the real terminal first. The layer therefore also outputs
@@ -82,8 +88,14 @@ export class CliEnv {
 			options.audienceEnvVar === undefined ? undefined : { envVar: options.audienceEnvVar },
 		).pipe(LayerModule.provideMerge(base));
 		const withTheme = CliTheme.layer(options.theme).pipe(LayerModule.provideMerge(withAudience));
+		// `FileSystem` and `Path` are read from the environment if it has them, not required, so this layer and every
+		// `CliRuntime.main` overload keep their requirements; without them `auto` is `vscode` on the terminal signal only.
+		const withLinks = ambientLinksLayer({
+			...(options.editorLinks === undefined ? {} : { editorLinks: options.editorLinks }),
+			...(options.editorLinksEnvVar === undefined ? {} : { envVar: options.editorLinksEnvVar }),
+		}).pipe(LayerModule.provideMerge(withTheme));
 		// Sets the CliInteractive reference from the audience and terminal; it has no output type of its own.
-		const withInteractive = CliInteractive.layer.pipe(LayerModule.provideMerge(withTheme));
+		const withInteractive = CliInteractive.layer.pipe(LayerModule.provideMerge(withLinks));
 		// The gates read CliInteractive when built, and the terminal gate wraps the REAL Terminal, which the
 		// environment layers above have already read.
 		// `promptTheme` bridges the theme to core's prompts, so they follow the terminal's colour too.

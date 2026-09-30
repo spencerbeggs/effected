@@ -2,10 +2,10 @@ import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Queue, Runtime, Stdio, Terminal } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Path, Queue, Runtime, Stdio, Terminal } from "effect";
 import { CliConfig, Command, GlobalFlag, Prompt } from "effect/cli";
 import type { CliEnvOptions } from "../src/index.js";
-import { CliEnv, CliInteractive, CliRuntime, CliTheme } from "../src/index.js";
+import { CliEnv, CliInteractive, CliLinks, CliRuntime, CliTheme } from "../src/index.js";
 import { TestTerminal } from "../src/testing.js";
 
 const capturing = () => {
@@ -441,6 +441,51 @@ describe("CliRuntime.main with the env option", () => {
 		}),
 	);
 
+	it.effect(
+		"provides CliLinks: file by default, vscode on the terminal signal, and the option and env var decide",
+		() =>
+			Effect.gen(function* () {
+				const modeOf = (options: CliEnvOptions, env: Record<string, string>) =>
+					Effect.gen(function* () {
+						return (yield* CliLinks).mode;
+					}).pipe(
+						Effect.provide(CliEnv.layer(options)),
+						Effect.provide(TTY),
+						Effect.provideService(ConfigProvider.ConfigProvider, withEnv(env)),
+					);
+				assert.strictEqual(yield* modeOf({}, {}), "file");
+				assert.strictEqual(yield* modeOf({}, { TERM_PROGRAM: "vscode" }), "vscode");
+				assert.strictEqual(yield* modeOf({ editorLinks: "off" }, { TERM_PROGRAM: "vscode" }), "off");
+				assert.strictEqual(yield* modeOf({ editorLinks: "vscode" }, {}), "vscode");
+				assert.strictEqual(
+					yield* modeOf({ editorLinks: "file", editorLinksEnvVar: "TOOL_EDITOR_LINKS" }, { TOOL_EDITOR_LINKS: "off" }),
+					"off",
+				);
+			}),
+	);
+
+	it.effect("finds .vscode through the FileSystem and Path the platform provides, but does not require them", () =>
+		Effect.gen(function* () {
+			const seed = { "/repo/.git": MemoryFileSystem.directory(), "/repo/.vscode": MemoryFileSystem.directory() };
+			const mode = Effect.gen(function* () {
+				return (yield* CliLinks).mode;
+			}).pipe(
+				Effect.provide(CliEnv.layer()),
+				Effect.provide(TTY),
+				Effect.provideService(ConfigProvider.ConfigProvider, withEnv({ PWD: "/repo" })),
+			);
+			assert.strictEqual(
+				yield* mode.pipe(Effect.provide(Layer.mergeAll(MemoryFileSystem.layerWith(seed), Path.layer))),
+				"vscode",
+			);
+			assert.strictEqual(
+				yield* mode,
+				"file",
+				"without them the layer still builds, and only the terminal signal applies",
+			);
+		}),
+	);
+
 	it("a CliEnvOptions-typed env, which may carry a file sink, requires FileSystem and Path from the platform", () => {
 		const env: CliEnvOptions = { log: { envVar: "TOOL_LOG", file: { path: "/x" } } };
 		const program = CliRuntime.main(Effect.void, { platform: TTY, env });
@@ -450,6 +495,15 @@ describe("CliRuntime.main with the env option", () => {
 		// A literal env with no file stays free of them.
 		const plain = CliRuntime.main(Effect.void, { platform: TTY, env: { log: { envVar: "TOOL_LOG" } } });
 		const ok: Effect.Effect<void, Error, never> = plain;
+		assert.isDefined(ok);
+	});
+
+	it("CliLinks is one of the env services: a program that reads it needs nothing more from the platform", () => {
+		const program = Effect.gen(function* () {
+			yield* CliLinks;
+		});
+		const main = CliRuntime.main(program, { platform: TTY, env: { editorLinks: "off" } });
+		const ok: Effect.Effect<void, Error, never> = main;
 		assert.isDefined(ok);
 	});
 });

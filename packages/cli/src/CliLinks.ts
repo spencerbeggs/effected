@@ -1,0 +1,267 @@
+import type { AudienceKind } from "@effected/env";
+import { CurrentRuntimeEnv } from "@effected/env";
+import type { Layer as LayerType } from "effect";
+import { Config, Context, Effect, FileSystem, Layer, Option, Path } from "effect";
+import type { LinkTarget } from "./Doc.js";
+import { sanitize } from "./internal/layout.js";
+
+/**
+ * Whether file links open in an editor.
+ *
+ * @remarks
+ * `vscode` writes `vscode://file/<path>:<line>:<col>`, `file` writes `file://<path>`, `off` writes no file link, and
+ * `auto` picks `vscode` when it finds a signal of VS Code and `file` otherwise.
+ *
+ * @public
+ */
+export type EditorLinks = "auto" | "vscode" | "file" | "off";
+
+/**
+ * The shape of the {@link CliLinks} service: the mode decided, and the URL a link target becomes.
+ *
+ * @public
+ */
+export interface CliLinksShape {
+	/** The mode `auto` resolved to, or the one that was asked for. */
+	readonly mode: "vscode" | "file" | "off";
+	/**
+	 * The URL a target opens, or `None` when it has none.
+	 *
+	 * @remarks
+	 * A `{ url }` target is its URL, whatever the mode. A `{ file }` target is `vscode://file/<path>:<line>:<col>` or
+	 * `file://<path>`, with the path URL-encoded; `off` gives it none, and so does a relative path when the layer
+	 * has no working directory to resolve it against. A column needs a line.
+	 */
+	readonly target: (target: LinkTarget) => Option.Option<string>;
+}
+
+/**
+ * Options for {@link CliLinks.layer}.
+ *
+ * @public
+ */
+export interface CliLinksOptions {
+	/** The setting, `auto` by default. An environment variable the consumer names beats it. */
+	readonly editorLinks?: EditorLinks | undefined;
+	/** The environment variable that overrides the setting, read through `Config`. Not read unless named. */
+	readonly envVar?: string | undefined;
+	/** The working directory; `PWD` through `Config`, then `Path.resolve(".")`, when omitted. */
+	readonly cwd?: string | undefined;
+}
+
+/**
+ * The options of {@link CliLinks.linker}.
+ *
+ * @public
+ */
+export interface CliLinksLinkerOptions {
+	/** The service that turns a target into a URL. */
+	readonly links: CliLinksShape;
+	/** Whether the stream's terminal renders OSC 8 hyperlinks. */
+	readonly hyperlinks: boolean;
+	/** Who the output is for. */
+	readonly audience: AudienceKind;
+}
+
+/** The most directories the ascent climbs above the working directory. */
+const MAX_ASCENT = 64;
+
+const MODES: ReadonlyArray<EditorLinks> = ["auto", "vscode", "file", "off"];
+
+const parseSetting = (raw: string): EditorLinks | undefined => MODES.find((mode) => mode === raw.trim().toLowerCase());
+
+// A lone surrogate makes `encodeURIComponent` throw, so it becomes U+FFFD first.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/** RFC 3986: everything but the unreserved characters is percent-encoded, in each segment, and `/` is kept. */
+const encodePath = (path: string): string =>
+	path
+		.replace(LONE_SURROGATE, "�")
+		.split("/")
+		.map((segment) =>
+			encodeURIComponent(segment).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`),
+		)
+		.join("/");
+
+/** A URL with its control characters and line breaks removed: none is legal in one, and each could end an OSC 8 early. */
+const cleanUrl = (url: string): string => sanitize(url).replace(/[\r\n]/g, "");
+
+const makeTarget =
+	(mode: "vscode" | "file" | "off", absolute: (file: string) => string | undefined) =>
+	(target: LinkTarget): Option.Option<string> => {
+		if ("url" in target) {
+			const url = cleanUrl(target.url);
+			return url === "" ? Option.none() : Option.some(url);
+		}
+		if (mode === "off") return Option.none();
+		const resolved = absolute(target.file);
+		if (resolved === undefined) return Option.none();
+		const path = encodePath(resolved.startsWith("/") ? resolved : `/${resolved.replace(/\\/g, "/")}`);
+		if (mode === "file") return Option.some(`file://${path}`);
+		const position =
+			target.line === undefined ? "" : target.col === undefined ? `:${target.line}` : `:${target.line}:${target.col}`;
+		return Option.some(`vscode://file${path}${position}`);
+	};
+
+const isDirectory = (fs: FileSystem.FileSystem, path: string): Effect.Effect<boolean> =>
+	fs.stat(path).pipe(
+		Effect.map((info) => info.type === "Directory"),
+		Effect.orElseSucceed(() => false),
+	);
+
+const exists = (fs: FileSystem.FileSystem, path: string): Effect.Effect<boolean> =>
+	fs.exists(path).pipe(Effect.orElseSucceed(() => false));
+
+/**
+ * The nearest directory, from `cwd` up, that holds `.git` or `pnpm-workspace.yaml`.
+ *
+ * It looks at `cwd` and then climbs at most {@link MAX_ASCENT} directories, stopping early where `dirname` reaches a
+ * fixpoint (the filesystem root). `None` when there is none.
+ */
+const findRoot = (fs: FileSystem.FileSystem, path: Path.Path, cwd: string): Effect.Effect<Option.Option<string>> =>
+	Effect.gen(function* () {
+		let directory = cwd;
+		for (let step = 0; step <= MAX_ASCENT; step++) {
+			if (
+				(yield* exists(fs, path.join(directory, ".git"))) ||
+				(yield* exists(fs, path.join(directory, "pnpm-workspace.yaml")))
+			) {
+				return Option.some(directory);
+			}
+			const parent = path.dirname(directory);
+			if (parent === directory) return Option.none();
+			directory = parent;
+		}
+		return Option.none();
+	});
+
+const readOption = (name: string): Effect.Effect<Option.Option<string>> =>
+	Config.option(Config.String(name)).pipe(Effect.orElseSucceed(() => Option.none<string>()));
+
+interface Ambient {
+	readonly fs: Option.Option<FileSystem.FileSystem>;
+	readonly path: Option.Option<Path.Path>;
+}
+
+const build = (options: CliLinksOptions, ambient: Ambient): Effect.Effect<CliLinksShape, never, CurrentRuntimeEnv> =>
+	Effect.gen(function* () {
+		const runtime = yield* CurrentRuntimeEnv;
+		const fromEnv =
+			options.envVar === undefined
+				? undefined
+				: parseSetting(Option.getOrElse(yield* readOption(options.envVar), () => ""));
+		const setting = fromEnv ?? options.editorLinks ?? "auto";
+
+		// The working directory: the option, else PWD, else where the path service resolves ".".
+		const pwd = options.cwd === undefined ? yield* readOption("PWD") : Option.none<string>();
+		const cwd =
+			options.cwd ??
+			Option.getOrUndefined(pwd) ??
+			(Option.isSome(ambient.path) ? ambient.path.value.resolve(".") : undefined);
+		const path = Option.getOrUndefined(ambient.path);
+		const absolute = (file: string): string | undefined => {
+			if (path === undefined) return file.startsWith("/") ? file : undefined;
+			if (path.isAbsolute(file)) return file;
+			return cwd === undefined ? undefined : path.resolve(cwd, file);
+		};
+
+		const mode: "vscode" | "file" | "off" =
+			setting !== "auto"
+				? setting
+				: Option.exists(runtime.terminal, (terminal) => terminal.name === "vscode")
+					? "vscode"
+					: yield* Effect.gen(function* () {
+							if (Option.isNone(ambient.fs) || path === undefined || cwd === undefined) return "file" as const;
+							const root = yield* findRoot(ambient.fs.value, path, cwd);
+							const base = Option.getOrElse(root, () => cwd);
+							return (yield* isDirectory(ambient.fs.value, path.join(base, ".vscode")))
+								? ("vscode" as const)
+								: ("file" as const);
+						});
+		return { mode, target: makeTarget(mode, absolute) };
+	});
+
+/**
+ * Editor-aware links for file targets: where a link to a file opens.
+ *
+ * @remarks
+ * The mode is decided once, when the layer is built. `auto` is `vscode` when `CurrentRuntimeEnv.terminal` is
+ * `vscode` (`TERM_PROGRAM=vscode`) or a `.vscode/` directory sits at the project root, and `file` otherwise. The
+ * root is the nearest directory, from the working directory up, that holds `.git` or `pnpm-workspace.yaml`; the
+ * climb is bounded, at most 64 directories above the working directory, and stops where `Path.dirname` reaches the
+ * filesystem root. With no root, the working directory itself is checked.
+ *
+ * Whether a link is written at all is a separate question, answered by {@link CliLinks.linker}.
+ *
+ * @public
+ */
+export class CliLinks extends Context.Service<CliLinks, CliLinksShape>()("@effected/cli/CliLinks") {
+	/**
+	 * The links for the working directory, reading the filesystem for a `.vscode/` directory.
+	 *
+	 * @remarks
+	 * A layer-returning function mints a fresh layer per call: call it once and bind the result to a constant.
+	 *
+	 * @param options - the setting, the environment variable that overrides it, and the working directory
+	 */
+	static readonly layer = (
+		options: CliLinksOptions = {},
+	): LayerType.Layer<CliLinks, never, FileSystem.FileSystem | Path.Path | CurrentRuntimeEnv> =>
+		Layer.effect(
+			CliLinks,
+			Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem;
+				const path = yield* Path.Path;
+				return yield* build(options, { fs: Option.some(fs), path: Option.some(path) });
+			}),
+		);
+
+	/**
+	 * Links fixed to a mode, with no filesystem: a relative path has no link, since there is no working directory.
+	 *
+	 * @param mode - `vscode`, `file` or `off`
+	 */
+	static readonly layerTest = (mode: "vscode" | "file" | "off"): LayerType.Layer<CliLinks> =>
+		Layer.succeed(CliLinks, { mode, target: makeTarget(mode, (file) => (file.startsWith("/") ? file : undefined)) });
+
+	/**
+	 * The function that writes a link: a target and a label in, the label out, wrapped in OSC 8 when it should be.
+	 *
+	 * @remarks
+	 * It writes the hyperlink `ESC ] 8 ; ; URL ESC \ label ESC ] 8 ; ; ESC \` only when the stream's terminal can
+	 * render it (`hyperlinks`) and the audience is not an agent, which never gets an escape of any kind; in every other
+	 * case, and whenever the target has no URL, it returns the label unchanged. The URL has its control characters
+	 * removed again here, so a hostile target cannot end the sequence early or start another. It is pure and cheap,
+	 * which {@link RenderContext}'s `link` requires.
+	 *
+	 * @param options - the links, whether hyperlinks are available, and the audience
+	 */
+	static readonly linker =
+		(options: CliLinksLinkerOptions) =>
+		(target: LinkTarget, label: string): string => {
+			if (!options.hyperlinks || options.audience === "agent") return label;
+			const url = options.links.target(target);
+			if (Option.isNone(url)) return label;
+			return `\u001B]8;;${cleanUrl(url.value)}\u001B\\${label}\u001B]8;;\u001B\\`;
+		};
+}
+
+/**
+ * The links for {@link CliEnv.layer}: the same as {@link CliLinks.layer}, except that `FileSystem` and `Path` are
+ * taken from the environment if it has them, not required.
+ *
+ * Without them there is no `.vscode/` to look for and no working directory to resolve a relative path against, so
+ * `auto` is `vscode` only on the terminal signal. This keeps the requirements of `CliEnv.layer` and of every
+ * `CliRuntime.main` overload as they were.
+ *
+ * @internal
+ */
+export const ambientLinksLayer = (options: CliLinksOptions = {}): LayerType.Layer<CliLinks, never, CurrentRuntimeEnv> =>
+	Layer.effect(
+		CliLinks,
+		Effect.gen(function* () {
+			const fs = yield* Effect.serviceOption(FileSystem.FileSystem);
+			const path = yield* Effect.serviceOption(Path.Path);
+			return yield* build(options, { fs, path });
+		}),
+	);
