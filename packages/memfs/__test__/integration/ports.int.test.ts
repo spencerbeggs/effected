@@ -201,6 +201,15 @@ describe("handle mutators under a dangling or looping parent link, as the host r
 				return (e as { code: string; syscall: string }).code;
 			}
 		};
+		const hostCall = (f: () => void) => {
+			try {
+				f();
+				return "ok";
+			} catch (e) {
+				const { code, syscall } = e as { code: string; syscall: string };
+				return `${code} ${syscall}`;
+			}
+		};
 		try {
 			symlinkSync(join(base, "missing"), join(base, "dang"));
 			symlinkSync(join(base, "loop"), join(base, "loop"));
@@ -211,6 +220,23 @@ describe("handle mutators under a dangling or looping parent link, as the host r
 			assert.strictEqual(
 				hostCode(() => writeFileSync(`${base}/loop/x.txt`, "")),
 				"ELOOP",
+			);
+			// A dangling or looping link ABOVE the direct parent.
+			assert.strictEqual(
+				hostCall(() => writeFileSync(`${base}/dang/sub/x.txt`, "")),
+				"ENOENT open",
+			);
+			assert.strictEqual(
+				hostCall(() => writeFileSync(`${base}/loop/sub/x.txt`, "")),
+				"ELOOP open",
+			);
+			assert.strictEqual(
+				hostCall(() => symlinkSync("t", `${base}/dang/sub/x.txt`)),
+				"ENOENT symlink",
+			);
+			assert.strictEqual(
+				hostCall(() => symlinkSync("t", `${base}/loop/sub/x.txt`)),
+				"ELOOP symlink",
 			);
 		} finally {
 			rmSync(base, { recursive: true, force: true });
@@ -234,6 +260,31 @@ describe("handle mutators under a dangling or looping parent link, as the host r
 		assert.strictEqual(
 			memCode(() => vol.write("loop/x.txt", "")),
 			"ELOOP",
+		);
+		const memCall = (f: () => void) => {
+			try {
+				f();
+				return "ok";
+			} catch (e) {
+				const { code, syscall } = e as { code: string; syscall: string };
+				return `${code} ${syscall}`;
+			}
+		};
+		assert.strictEqual(
+			memCall(() => vol.write("dang/sub/x.txt", "")),
+			"ENOENT open",
+		);
+		assert.strictEqual(
+			memCall(() => vol.write("loop/sub/x.txt", "")),
+			"ELOOP open",
+		);
+		assert.strictEqual(
+			memCall(() => vol.symlink("t", "dang/sub/x.txt")),
+			"ENOENT symlink",
+		);
+		assert.strictEqual(
+			memCall(() => vol.symlink("t", "loop/sub/x.txt")),
+			"ELOOP symlink",
 		);
 	});
 });

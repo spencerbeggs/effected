@@ -301,10 +301,18 @@ export type MemoryFileSystemReadFileEncoding = "utf8" | "utf-8" | { readonly enc
  * @public
  */
 export type MemoryFileSystemPromisesFaults = {
-	readonly [K in Exclude<keyof MemoryFileSystemPromisesFileSystem, "readFile">]?: (
+	readonly [K in Exclude<keyof MemoryFileSystemPromisesFileSystem, "readdir" | "readFile">]?: (
 		...args: Parameters<MemoryFileSystemPromisesFileSystem[K]>
 	) => ReturnType<MemoryFileSystemPromisesFileSystem[K]> | undefined;
 } & {
+	/**
+	 * Receives `options` as given; a replacement should match them (names
+	 * without `withFileTypes`, dirents with it).
+	 */
+	readonly readdir?: (
+		path: string,
+		options?: { readonly withFileTypes: true },
+	) => Promise<ReadonlyArray<string> | ReadonlyArray<MemoryFileSystemDirent>> | undefined;
 	/** Receives `encoding` as given; a replacement should match it (bytes without, a string with). */
 	readonly readFile?: (
 		path: string,
@@ -518,7 +526,9 @@ export interface MemoryFileSystemOptions {
 	 * The root is a join base, not a jail: a key is joined to it lexically, as
 	 * `path.posix.join` does, so `"../extra/a.ts"` under `root: "/ws/repo"`
 	 * lands at `/ws/extra/a.ts`. A handle's mutators join relative paths to it
-	 * the same way. A relative root, or an absolute seed key alongside a root,
+	 * too, but UNNORMALIZED, so `.` and `..` resolve after links are followed
+	 * (see {@link MemoryFileSystemHandle.root}). A relative root, or an
+	 * absolute seed key alongside a root,
 	 * is a typed `BadArgument` naming the offending value (`makeSync` throws
 	 * `EINVAL` with it in the path slot).
 	 */
@@ -695,9 +705,19 @@ const buildHandle = (
 				return false;
 			}
 		};
+		// A dangling or looping link HIGHER up makes `lstat` of the parent fail
+		// too, and the recursive mkdir then trips over that link with EEXIST
+		// (where the host says ENOENT / ELOOP). EEXIST from a recursive mkdir
+		// only ever means some component exists as a non-directory, so the call
+		// that follows is bound to fail on it: swallow it and let that call
+		// report node's own errno and syscall.
 		const ensureParent = (path: string) => {
 			const parent = parentOf(path);
-			return present(parent) ? Effect.void : raw.makeDirectory(parent, { recursive: true });
+			return present(parent)
+				? Effect.void
+				: raw
+						.makeDirectory(parent, { recursive: true })
+						.pipe(Effect.catch((error) => (error.reason._tag === "AlreadyExists" ? Effect.void : Effect.fail(error))));
 		};
 		const handle: MemoryFileSystemHandle = {
 			fileSystem,

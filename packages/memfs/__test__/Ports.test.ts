@@ -278,6 +278,24 @@ describe("promises port", () => {
 		}),
 	);
 
+	it.effect("a plain readdir fault may replace the result with a names array", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* tree;
+			const fsp = MemoryFileSystem.promisesFileSystem(volume, {
+				faults: {
+					readdir: (path, options) =>
+						path === "/r/dir" && options === undefined ? Promise.resolve(["fake.txt"]) : undefined,
+				},
+			});
+			assert.deepStrictEqual(yield* Effect.promise(() => fsp.readdir("/r/dir")), ["fake.txt"]);
+			const dirents = yield* Effect.promise(() => fsp.readdir("/r/dir", { withFileTypes: true }));
+			assert.deepStrictEqual(
+				dirents.map((d) => d.name),
+				["inner.txt"],
+			);
+		}),
+	);
+
 	it.effect("readFile without an encoding resolves bytes, with one a string — node's overloads", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* tree;

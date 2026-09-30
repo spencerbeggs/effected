@@ -212,6 +212,36 @@ describe("MemoryFileSystem.makeSync", () => {
 		assert.strictEqual(vol.volume.readLink("/r/loop"), "/r/loop");
 	});
 
+	it("a dangling or looping link ABOVE the parent reaches the call itself: ENOENT / ELOOP on open and symlink", () => {
+		const vol = MemoryFileSystem.makeSync(
+			{ dang: MemoryFileSystem.symlink("/missing"), loop: MemoryFileSystem.symlink("/r/loop") },
+			{ root: "/r" },
+		);
+		const cases = [
+			["dang/sub/x.txt", "ENOENT"],
+			["loop/sub/x.txt", "ELOOP"],
+		] as const;
+		for (const [path, code] of cases) {
+			const written = thrown(() => vol.write(path, ""));
+			assert.strictEqual(written.code, code, `write ${path}`);
+			assert.strictEqual(written.syscall, "open", `write ${path}`);
+			assert.strictEqual(written.path, path);
+			const linked = thrown(() => vol.symlink("t", path));
+			assert.strictEqual(linked.code, code, `symlink ${path}`);
+			assert.strictEqual(linked.syscall, "symlink", `symlink ${path}`);
+			assert.strictEqual(linked.path, path);
+		}
+		assert.isFalse(vol.volume.has("/missing"));
+		assert.strictEqual(vol.volume.readLink("/r/dang"), "/missing");
+		assert.strictEqual(vol.volume.readLink("/r/loop"), "/r/loop");
+		// A genuinely absent ancestor chain is still created.
+		vol.write("a/b/c/x.txt", "x");
+		assert.strictEqual(vol.volume.text("/r/a/b/c/x.txt"), "x");
+		// A file two levels up is still ENOTDIR, as writeFileSync reports.
+		vol.write("f", "");
+		assert.strictEqual(thrown(() => vol.write("f/a/b.txt", "")).code, "ENOTDIR");
+	});
+
 	it("without a root, a relative mutator path resolves from / and creates nothing else", () => {
 		const vol = MemoryFileSystem.makeSync();
 		assert.isUndefined(vol.root);
