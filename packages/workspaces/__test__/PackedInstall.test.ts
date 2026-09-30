@@ -374,7 +374,7 @@ describe("PackedInstall.run past the pack", () => {
 				assert.deepStrictEqual(npmManifest.overrides, { "@x/lib": `file:${LIB_TGZ}` });
 				assert.strictEqual(
 					yield* fs.readFileString("/scratch/consumer-pnpm/pnpm-workspace.yaml"),
-					`overrides:\n  "@x/lib": "file:${LIB_TGZ}"\n`,
+					`minimumReleaseAge: 0\noverrides:\n  "@x/lib": "file:${LIB_TGZ}"\n`,
 				);
 			}),
 		);
@@ -678,7 +678,7 @@ describe("PackedInstall.run past the pack", () => {
 					const fs = yield* FileSystem.FileSystem;
 					assert.strictEqual(
 						yield* fs.readFileString("/scratch/consumer-pnpm/pnpm-workspace.yaml"),
-						`overrides:\n${Object.entries(specs)
+						`minimumReleaseAge: 0\noverrides:\n${Object.entries(specs)
 							.map(([name, spec]) => `  "${name}": "${spec}"`)
 							.join("\n")}\n`,
 					);

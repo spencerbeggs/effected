@@ -100,15 +100,32 @@ export interface ConsumerInput {
 
 const major = (version: string): number => Number.parseInt(version.split(".")[0] ?? "", 10);
 
+const minor = (version: string): number => Number.parseInt(version.split(".")[1] ?? "", 10);
+
 const YARNRC =
 	"nodeLinker: node-modules\nenableImmutableInstalls: false\nenableScripts: false\nenableTelemetry: false\n";
 
-/** JSON strings are valid YAML double-quoted scalars. */
+/**
+ * Berry's release-age gate, off: the consumer installs packages its caller
+ * has just released, so the gate only ever quarantines them. 4.10 introduced
+ * the setting, and Berry fails every command on a setting it does not know.
+ */
+const YARNRC_AGE_GATE = "npmMinimalAgeGate: 0\n";
+
+const yarnrc = (version: string): string =>
+	major(version) > 4 || (major(version) === 4 && minor(version) >= 10) ? `${YARNRC}${YARNRC_AGE_GATE}` : YARNRC;
+
+/**
+ * JSON strings are valid YAML double-quoted scalars. `minimumReleaseAge: 0`
+ * switches off pnpm's release-age gate, on by default in pnpm 11 and 12 and
+ * non-strict: it would rewrite this file with exclusions for fresh packages,
+ * and resolve a range to an older, mature match where one exists.
+ */
 const pnpmWorkspaceYaml = (specs: Readonly<Record<string, string>>): string => {
 	const entries = Object.entries(specs);
 	return entries.length === 0
-		? "overrides: {}\n"
-		: `overrides:\n${entries.map(([name, spec]) => `  ${JSON.stringify(name)}: ${JSON.stringify(spec)}`).join("\n")}\n`;
+		? "minimumReleaseAge: 0\noverrides: {}\n"
+		: `minimumReleaseAge: 0\noverrides:\n${entries.map(([name, spec]) => `  ${JSON.stringify(name)}: ${JSON.stringify(spec)}`).join("\n")}\n`;
 };
 
 /**
@@ -154,7 +171,8 @@ export const consumerFiles = (
 	};
 	const files = [{ file: "package.json", content: `${JSON.stringify(manifest, null, 2)}\n` }];
 	if (input.manager === "pnpm") files.push({ file: "pnpm-workspace.yaml", content: pnpmWorkspaceYaml(specs) });
-	if (input.manager === "yarn" && major(input.version) >= 2) files.push({ file: ".yarnrc.yml", content: YARNRC });
+	if (input.manager === "yarn" && major(input.version) >= 2)
+		files.push({ file: ".yarnrc.yml", content: yarnrc(input.version) });
 	return files;
 };
 

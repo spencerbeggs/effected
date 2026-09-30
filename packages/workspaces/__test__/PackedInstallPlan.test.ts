@@ -128,9 +128,14 @@ describe("consumerFiles", () => {
 		assert.deepStrictEqual(manifest.devEngines, {
 			packageManager: { name: "pnpm", version: "12.5.1", onFail: "ignore" },
 		});
-		assert.strictEqual(files["pnpm-workspace.yaml"], 'overrides:\n  "@x/lib": "file:/t/lib.tgz"\n');
+		// pnpm 12's default release-age gate is non-strict: without minimumReleaseAge: 0
+		// it rewrites this file with exclusions and can pick an older, mature match for a range.
+		assert.strictEqual(
+			files["pnpm-workspace.yaml"],
+			'minimumReleaseAge: 0\noverrides:\n  "@x/lib": "file:/t/lib.tgz"\n',
+		);
 		const empty = fileMap(consumerFiles({ ...INPUT, overrides: {}, manager: "pnpm", version: "12.5.1" }));
-		assert.strictEqual(empty["pnpm-workspace.yaml"], "overrides: {}\n");
+		assert.strictEqual(empty["pnpm-workspace.yaml"], "minimumReleaseAge: 0\noverrides: {}\n");
 	});
 
 	it("yarn: resolutions, plus the node-modules linker for Berry only", () => {
@@ -143,6 +148,24 @@ describe("consumerFiles", () => {
 			"nodeLinker: node-modules\nenableImmutableInstalls: false\nenableScripts: false\nenableTelemetry: false\n",
 		);
 		assert.isUndefined(fileMap(consumerFiles({ ...INPUT, manager: "yarn", version: "1.22.22" }))[".yarnrc.yml"]);
+	});
+
+	it("yarn: Berry 4.10+ turns the release-age gate off, older Berry never sees the key it would reject", () => {
+		const gated = "npmMinimalAgeGate: 0\n";
+		for (const version of ["4.10.0", "4.18.1", "5.0.0"]) {
+			assert.isTrue(
+				fileMap(consumerFiles({ ...INPUT, manager: "yarn", version }))[".yarnrc.yml"]?.endsWith(gated),
+				version,
+			);
+		}
+		// Berry fails every command on a setting it does not know, and 4.9 predates this one.
+		for (const version of ["4.9.4", "3.8.7", "2.4.3"]) {
+			assert.notInclude(
+				fileMap(consumerFiles({ ...INPUT, manager: "yarn", version }))[".yarnrc.yml"] ?? "",
+				"npmMinimalAgeGate",
+				version,
+			);
+		}
 	});
 
 	it("a consumer dependency naming a packed package is written as that package's tarball, for every manager", () => {
