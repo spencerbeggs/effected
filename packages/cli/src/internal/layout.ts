@@ -1,0 +1,247 @@
+import type { Inline, LinkTarget } from "../Doc.js";
+import type { RenderContext } from "../Render.js";
+import type { Style, TokenName } from "../Token.js";
+import { displayWidth, graphemes, stripAnsi } from "./displayWidth.js";
+
+/**
+ * A run of text with one style and one link: the unit a renderer lays out.
+ *
+ * @remarks
+ * `text` is plain: flattening removes any escape sequence it carried. Spans that came from one `Link` inline share
+ * the same `link` object, which is how painting wraps them in a single hyperlink.
+ *
+ * @internal
+ */
+export interface Span {
+	/** The plain text. */
+	readonly text: string;
+	/** The token or style it is painted with. */
+	readonly token?: TokenName | Style;
+	/** The link it belongs to. */
+	readonly link?: LinkTarget;
+	/** It came from a `Code` inline; a renderer adds its own code markers. */
+	readonly code?: true;
+}
+
+const pathSeparator = (ctx: RenderContext): string =>
+	ctx.audience === "agent" ? ctx.glyphs.pathSeparator.agent : ` ${ctx.glyphs.pathSeparator.human} `;
+
+const spansOf = (inline: Inline, ctx: RenderContext): ReadonlyArray<Span> => {
+	switch (inline._tag) {
+		case "Text":
+			return [{ text: stripAnsi(inline.value), ...(inline.token === undefined ? {} : { token: inline.token }) }];
+		case "Code":
+			return [{ text: stripAnsi(inline.value), code: true }];
+		case "Link":
+			// Links do not nest: the outer target wins over one inside the label.
+			return inline.label.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, link: inline.target }));
+		case "StatusMark":
+			return [{ text: ctx.glyphs.kind === "ascii" ? inline.def.ascii : inline.def.glyph, token: inline.def.token }];
+		case "Path":
+			return [{ text: inline.segments.map(stripAnsi).join(pathSeparator(ctx)) }];
+	}
+};
+
+/**
+ * Flatten inline nodes into spans.
+ *
+ * @remarks
+ * A `Path` becomes its segments joined by the audience's separator (`›` with spaces around it for a person, ` > `
+ * for an agent), a `StatusMark` its glyph from the context's glyph set painted with the definition's token, and a
+ * `Code` its text with `code` set. Escape sequences in content are removed and empty spans dropped.
+ *
+ * @internal
+ */
+export const flatten = (inlines: ReadonlyArray<Inline>, ctx: RenderContext): ReadonlyArray<Span> =>
+	inlines.flatMap((inline) => spansOf(inline, ctx)).filter((span) => span.text !== "");
+
+/**
+ * The display width of spans in terminal columns.
+ *
+ * @internal
+ */
+export const widthOf = (spans: ReadonlyArray<Span>): number =>
+	spans.reduce((sum, span) => sum + displayWidth(span.text), 0);
+
+/** One grapheme with its width and the span it came from. */
+interface Cell {
+	readonly grapheme: string;
+	readonly width: number;
+	readonly span: Span;
+}
+
+const cellsOf = (spans: ReadonlyArray<Span>): ReadonlyArray<Cell> =>
+	spans.flatMap((span) => graphemes(span.text).map((grapheme) => ({ grapheme, width: displayWidth(grapheme), span })));
+
+/** Rebuild spans from cells, merging a run that came from the same span. */
+const spansFromCells = (cells: ReadonlyArray<Cell>): ReadonlyArray<Span> => {
+	const out: Array<Span> = [];
+	let current: Cell["span"] | undefined;
+	for (const cell of cells) {
+		if (cell.span === current) {
+			const last = out[out.length - 1] as Span;
+			out[out.length - 1] = { ...last, text: last.text + cell.grapheme };
+		} else {
+			current = cell.span;
+			out.push({ ...cell.span, text: cell.grapheme });
+		}
+	}
+	return out;
+};
+
+/**
+ * Cut spans to at most `width` columns, marking the cut with `ellipsis`.
+ *
+ * @remarks
+ * Cuts on grapheme boundaries and before any painting, so a colour or hyperlink is never cut in half: the kept
+ * text keeps its span's token and link, and the marker joins the last kept span (or follows a `Code` span as plain
+ * text under the same link). When nothing but the marker fits, it takes the first span's token and link, as it
+ * stands for the whole label. Spans that already fit are returned as they are. An ellipsis that cannot fit is
+ * omitted, and a `width` of 0 or less gives no spans.
+ *
+ * @internal
+ */
+export const truncateSpans = (spans: ReadonlyArray<Span>, width: number, ellipsis: string): ReadonlyArray<Span> => {
+	const limit = Number.isNaN(width) ? 0 : Math.floor(width);
+	if (limit <= 0) return [];
+	if (widthOf(spans) <= limit) return spans;
+
+	const ellipsisWidth = displayWidth(ellipsis);
+	const useEllipsis = ellipsis !== "" && ellipsisWidth <= limit;
+	const budget = useEllipsis ? limit - ellipsisWidth : limit;
+
+	const kept: Array<Cell> = [];
+	let used = 0;
+	for (const cell of cellsOf(spans)) {
+		if (used + cell.width > budget) break;
+		kept.push(cell);
+		used += cell.width;
+	}
+	const out = spansFromCells(kept);
+	if (!useEllipsis) return out;
+
+	const last = out[out.length - 1];
+	if (last === undefined) {
+		// Nothing but the marker fits: it stands for the whole label, so it keeps the first span's style and link.
+		const first = spans[0] as Span;
+		return [
+			{
+				text: ellipsis,
+				...(first.token === undefined ? {} : { token: first.token }),
+				...(first.link === undefined ? {} : { link: first.link }),
+			},
+		];
+	}
+	if (last.code === true) {
+		return [...out, { text: ellipsis, ...(last.link === undefined ? {} : { link: last.link }) }];
+	}
+	return [...out.slice(0, -1), { ...last, text: last.text + ellipsis }];
+};
+
+/**
+ * Paint spans, then link them: the string a terminal shows.
+ *
+ * @remarks
+ * Each span is painted with its token, and consecutive spans that share a link (by identity) are wrapped in one
+ * hyperlink. Truncate and wrap first: painting is last, so an escape sequence is never cut.
+ *
+ * @internal
+ */
+export const paintSpans = (spans: ReadonlyArray<Span>, ctx: RenderContext): string => {
+	const paint = (span: Span): string => (span.token === undefined ? span.text : ctx.paint(span.token, span.text));
+	let out = "";
+	let i = 0;
+	while (i < spans.length) {
+		const start = spans[i] as Span;
+		let run = paint(start);
+		i++;
+		if (start.link === undefined) {
+			out += run;
+			continue;
+		}
+		while (i < spans.length && (spans[i] as Span).link === start.link) {
+			run += paint(spans[i] as Span);
+			i++;
+		}
+		out += ctx.link(start.link, run);
+	}
+	return out;
+};
+
+const isLineBreak = (grapheme: string): boolean => grapheme === "\n" || grapheme === "\r\n" || grapheme === "\r";
+
+const cellsWidth = (cells: ReadonlyArray<Cell>): number => cells.reduce((sum, cell) => sum + cell.width, 0);
+
+/**
+ * Word-wrap spans to `width` columns.
+ *
+ * @remarks
+ * Spaces are the break points, and the space at a break is dropped, as are trailing spaces; spaces inside a line,
+ * and the indentation of the first line or one after a newline, are kept. A newline is a forced break. A word
+ * longer than the width starts on a line of its own and is broken at the edge, never inside a grapheme, so a wide
+ * character never straddles it. A grapheme wider than the width (a width of 1 and a wide character) takes a line
+ * to itself, the only way to make progress. A `width` under 1 is treated as 1. Each character keeps its span's
+ * token and link.
+ *
+ * @internal
+ */
+export const wrapSpans = (spans: ReadonlyArray<Span>, width: number): ReadonlyArray<ReadonlyArray<Span>> => {
+	const limit = Number.isNaN(width) ? 1 : Math.max(1, Math.floor(width));
+	const cells = cellsOf(spans);
+	const lines: Array<ReadonlyArray<Cell>> = [];
+	let line: Array<Cell> = [];
+	let used = 0;
+	let keepLeading = true;
+	const flush = (): void => {
+		lines.push(line);
+		line = [];
+		used = 0;
+	};
+
+	let i = 0;
+	while (i < cells.length) {
+		if (isLineBreak((cells[i] as Cell).grapheme)) {
+			flush();
+			keepLeading = true;
+			i++;
+			continue;
+		}
+		const spaces: Array<Cell> = [];
+		while (i < cells.length && (cells[i] as Cell).grapheme === " ") spaces.push(cells[i++] as Cell);
+		const word: Array<Cell> = [];
+		while (i < cells.length) {
+			const { grapheme } = cells[i] as Cell;
+			if (grapheme === " " || isLineBreak(grapheme)) break;
+			word.push(cells[i++] as Cell);
+		}
+		if (word.length === 0) continue;
+
+		const lead = line.length > 0 || keepLeading ? spaces : [];
+		const leadWidth = cellsWidth(lead);
+		const wordWidth = cellsWidth(word);
+		if (used + leadWidth + wordWidth <= limit) {
+			line.push(...lead, ...word);
+			used += leadWidth + wordWidth;
+			continue;
+		}
+		if (line.length > 0) {
+			flush();
+			keepLeading = false;
+		}
+		if (wordWidth <= limit) {
+			line.push(...word);
+			used = wordWidth;
+			continue;
+		}
+		for (const cell of word) {
+			if (used + cell.width > limit && line.length > 0) {
+				flush();
+				keepLeading = false;
+			}
+			line.push(cell);
+			used += cell.width;
+		}
+	}
+	if (line.length > 0 || lines.length === 0) flush();
+	return lines.map(spansFromCells);
+};
