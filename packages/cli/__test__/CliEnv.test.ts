@@ -1,6 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
+import { MemoryFileSystem } from "@effected/memfs";
 import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Queue, Runtime, Stdio, Terminal } from "effect";
 import { Command } from "effect/cli";
 import { CliEnv, CliInteractive, CliRuntime, CliTheme } from "../src/index.js";
@@ -311,6 +312,29 @@ describe("CliRuntime.main with the env option", () => {
 				});
 			assert.notInclude(yield* helpOn(PIPED), "--wizard");
 			assert.include(yield* helpOn(TTY), "--wizard");
+		}),
+	);
+
+	it.effect("env.log accepts the file option when the platform provides FileSystem and Path", () =>
+		Effect.gen(function* () {
+			const handle = MemoryFileSystem.makeSync();
+			const { double } = capturing();
+			yield* CliRuntime.main(
+				Effect.gen(function* () {
+					yield* Effect.logDebug("recorded");
+				}),
+				{
+					platform: Layer.mergeAll(TTY, handle.layer),
+					env: { log: { envVar: "TOOL_LOG", file: { path: "/logs/tool.ndjson" } } },
+				},
+			).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, withEnv({ TOOL_LOG: "debug" })),
+				Effect.provideService(Console.Console, double),
+			);
+			const text = handle.volume.text("/logs/tool.ndjson") ?? "";
+			assert.include(text, '"message":"recorded"');
+			assert.include(text, '"level":"DEBUG"');
 		}),
 	);
 });

@@ -1,4 +1,5 @@
-import type { Stdio, Terminal } from "effect";
+import type { Audience, TerminalEnv } from "@effected/env";
+import type { FileSystem, Path, Stdio, Terminal } from "effect";
 import { Cause, Effect, Layer, MutableRef, Runtime } from "effect";
 import { CliError } from "effect/cli";
 import { Cancelled } from "./Cancelled.js";
@@ -6,6 +7,7 @@ import { CliColor } from "./CliColor.js";
 import type { CliEnvOptions, CliEnvServices } from "./CliEnv.js";
 import { CliEnv } from "./CliEnv.js";
 import { CliExit } from "./CliExit.js";
+import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
 import { CliLog } from "./CliLog.js";
 import { CliLogger } from "./CliLogger.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
@@ -106,8 +108,12 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * @remarks
 	 * The program may then require `CurrentRuntimeEnv`, `TerminalEnv`, `Audience` and `CliTheme` and read
 	 * `CliInteractive`. Without it `CliInteractive` keeps its non-interactive default, so forgetting this wiring
-	 * gives a CLI that never prompts. With `env.log`, `main` uses `CliLog.layer` as the logger set. A failure
-	 * building the env layer renders as one line and exits through `exitCode`.
+	 * gives a CLI that never prompts. With `env.log`, `main` uses `CliLog.layer` as the logger set, and `env.log`
+	 * may carry the `file` option when the platform provides `FileSystem` and `Path`. A failure building the env
+	 * layer renders as one line and exits through `exitCode`.
+	 *
+	 * Not interactive, the `Terminal` the program sees is gated: its `readLine` fails as a quit and its input is
+	 * already ended. A program that reads piped data must read `Stdio.stdin`, never `Terminal`.
 	 */
 	readonly env?: CliEnvOptions | undefined;
 	/**
@@ -316,6 +322,15 @@ export class CliRuntime {
 	): Effect.Effect<void, Error, Exclude<Exclude<R, CliExit>, RP>>;
 	static main<A, E, R, RP, EP>(
 		program: Effect.Effect<A, E, R>,
+		options: MainOptions<RP, EP> & { readonly env: CliEnvOptions & { readonly log: CliLogFileOptions } },
+	): Effect.Effect<
+		void,
+		Error,
+		| Exclude<Exclude<R, CliExit | CliEnvServices>, RP>
+		| Exclude<Stdio.Stdio | Terminal.Terminal | FileSystem.FileSystem | Path.Path, RP>
+	>;
+	static main<A, E, R, RP, EP>(
+		program: Effect.Effect<A, E, R>,
 		options: MainOptions<RP, EP> & { readonly env: CliEnvOptions },
 	): Effect.Effect<
 		void,
@@ -336,7 +351,11 @@ export class CliRuntime {
 				: // The logger needs Audience and TerminalEnv, so it is built over the env layer; the same layer is provided
 					// again inside failure reporting, where a failure to build it is reported. If it cannot be built here, fall
 					// back to the plain CliLogger so that report has a logger.
-					CliLog.layer(envLog).pipe(
+					(
+						CliLog.layer as (
+							options: CliLogOptions | CliLogFileOptions,
+						) => Layer.Layer<never, never, Audience | TerminalEnv | FileSystem.FileSystem | Path.Path>
+					)(envLog).pipe(
 						Layer.provide(env),
 						Layer.provide(options.platform),
 						Layer.catchCause(() => CliLogger.layer(envLog.logger)),

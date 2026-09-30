@@ -1,7 +1,14 @@
 // Real-process regression for the Critical finding on the non-interactive prompt path: core runs `Prompt.run` on the
 // answered fallback, and on the real NodeTerminal that attaches a readline to stdin, so piped bytes vanished when a
 // handler did anything before reading them. This spawns a real child with real piped stdin and the real terminal,
-// running the package sources through Node's type stripping (fixtures/ts-resolve-hooks.mjs), so it needs no build.
+// running the package sources through Node's type stripping (fixtures/register-ts.mjs).
+//
+// Two preconditions, neither of which is checked for you:
+// - It is NOT build-free. The sources import `@effected/env`, which resolves to that package's BUILT output, so
+//   `@effected/env` must have been built (`pnpm build --filter @effected/env`, or the `prepare` build on install).
+// - Every module reachable from the fixture must be type-strip-clean: no parameter properties, enums or namespaces.
+//   Node's plain type stripping rejects them with ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX, which shows up here as a failed
+//   child exit, not as a test of the stdin behaviour.
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";

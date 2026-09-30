@@ -2,7 +2,7 @@ import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import type { Effect, Layer, Stdio, Terminal } from "effect";
 import { Layer as LayerModule } from "effect";
 import { CliInteractive } from "./CliInteractive.js";
-import type { CliLogOptions } from "./CliLog.js";
+import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
 import { CliPrompt } from "./CliPrompt.js";
 import type { CliThemeOptions } from "./CliTheme.js";
 import { CliTheme } from "./CliTheme.js";
@@ -22,8 +22,12 @@ export interface CliEnvOptions {
 	/**
 	 * Diagnostics options. Only `CliRuntime.main` reads this: when given, `main` uses `CliLog.layer` with these
 	 * options as the program's logger, instead of the default `CliLogger.layer()`.
+	 *
+	 * @remarks
+	 * It may carry the `file` option, which also writes an async NDJSON file. The platform must then provide
+	 * `FileSystem` and `Path`, and `main`'s type says so when it does not.
 	 */
-	readonly log?: CliLogOptions | undefined;
+	readonly log?: CliLogOptions | CliLogFileOptions | undefined;
 }
 
 /**
@@ -46,6 +50,9 @@ export type CliEnvServices = CurrentRuntimeEnv | TerminalEnv | Audience | CliThe
  * the reference rather than providing a service. Every read of the environment goes through `Config` and
  * degrades to "unset" when it fails, so building the layer does not fail on a bad provider; it fails only when
  * `Stdio` or `Terminal` do.
+ *
+ * Not interactive, the gated `Terminal`'s `readLine` fails as a quit and its input is already ended. A program that
+ * reads piped data must read `Stdio.stdin`, never `Terminal`.
  *
  * @public
  */
