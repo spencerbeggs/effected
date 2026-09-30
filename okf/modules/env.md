@@ -13,8 +13,8 @@ sources:
     title: Interactive CLI kit design, section 4
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T19:43:46Z
-  body_sha256: 438ba01e29ad1d657d4ca022c903062805a91f7c7d92834940796a3fc09b5e50
+  at: 2026-09-30T19:52:41Z
+  body_sha256: bbdb44a98aa179b3987227348995a21d71d2712b2ed91589576fa21460fab929
 ---
 
 # @effected/env
@@ -23,10 +23,11 @@ generated:
 running this* and *what can the terminal do*.[^interactive-cli-kit-design]
 It is a [boundary-tier](../glossary/library-tier.md) package with `effect` as
 its only peer, no `node:` import, and nothing read at import time. Every
-environment variable goes through `Config`, so a test controls it. Services
-are static classes with private constructors, each shipping `.layer` and
-`.layerTest(partial)`; `layerTest` is the only way a test changes the
-environment.
+environment variable goes through `Config`, so a test controls it. Each
+service is a `Context.Service` class with a static `layer` and `layerTest`;
+`layerTest` is the only way a test changes the environment. `RuntimeEnv`
+itself is a `Schema.Class` data snapshot, carried by the `CurrentRuntimeEnv`
+service.
 
 It is its own package, and a required peer of `@effected/cli`, so that MCP
 servers, engines and a Vitest plugin can detect without a CLI dependency; see

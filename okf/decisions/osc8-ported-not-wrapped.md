@@ -6,15 +6,15 @@ status: draft
 tags: [architecture, bundle, deps]
 sources:
   - id: std-osc8-constants
-    resource: https://github.com/spencerbeggs/std-osc8/blob/main/src/constants.ts
+    resource: https://github.com/spencerbeggs/std-osc8/blob/0.2.0/src/constants.ts#L6-L7
     title: std-osc8 src/constants.ts, lines 6 and 7
   - id: interactive-cli-kit-design
     resource: ../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md
     title: Interactive CLI kit design, sections 4.2 and 10
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T19:32:46Z
-  body_sha256: c20819cbcc43100d399a910da35e2164a335cf17fd6a28998f75423ebda29a32
+  at: 2026-09-30T19:52:41Z
+  body_sha256: d0cfc8034ab1fb462f8ed70c4ecac2844394ab9bab24d9d53c5d9ddc2a79fb30
 ---
 
 # std-osc8's pure core is ported into env, not wrapped
@@ -49,5 +49,5 @@ detector is read through `Config`, so every variable it consults is
 controllable by `layerTest`. See [`env.md`](../modules/env.md) and
 [`dependency-policy`](../conventions/dependency-policy.md).
 
-[^std-osc8-constants]: `https://github.com/spencerbeggs/std-osc8/blob/main/src/constants.ts`
+[^std-osc8-constants]: `https://github.com/spencerbeggs/std-osc8/blob/0.2.0/src/constants.ts#L6-L7`
 [^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`

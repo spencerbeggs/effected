@@ -10,8 +10,8 @@ sources:
     title: Interactive CLI kit design, sections 4 and 10
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T19:32:46Z
-  body_sha256: a2efe53979f162417cb333de5a94a062633b849ec432485294bc22749dbb22e8
+  at: 2026-09-30T19:52:41Z
+  body_sha256: 127a715c3d8cbcae4e5bdbc4bb1d9b136327e5200bb068daafe94f5bb6dd7015
 ---
 
 # @effected/env is its own boundary package, a required peer of cli
@@ -44,8 +44,8 @@ lives in `cli`. See [`env.md`](../modules/env.md).
 
 `cli` declares `@effected/env` as a peer under
 [`peer-dependency-discipline`](../conventions/peer-dependency-discipline.md),
-so a consumer resolves one copy of the `RuntimeEnv` and `Audience` service
-tags. A second resolved copy would be two distinct tags and a layer built
+so a consumer resolves one copy of the `CurrentRuntimeEnv`, `TerminalEnv` and
+`Audience` service tags. A second resolved copy would be two distinct tags and a layer built
 from one would not satisfy the other.
 
 [^interactive-cli-kit-design]: `../../docs/superpowers/specs/2026-09-30-interactive-cli-kit-design.md`
