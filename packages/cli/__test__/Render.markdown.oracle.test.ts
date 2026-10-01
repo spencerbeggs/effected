@@ -693,10 +693,7 @@ describe("Render.markdown: links", () => {
 				const types = descendantTypes(kids(root)[0] as N);
 				assert.notInclude(types, "link", url);
 				assert.include(types, "inlineCode", url);
-				assert.strictEqual(
-					textOf(kids(root)[0] as N),
-					`click (${url.replace(/\s+/g, " ")})`.replace(" (", " (").replace("click (", "click ("),
-				);
+				assert.strictEqual(textOf(kids(root)[0] as N), `click (${url.replace(/\s+/g, " ")})`);
 			}
 		}),
 	);
