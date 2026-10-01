@@ -6,9 +6,12 @@ import { escapeData } from "./workflowCommand.js";
 
 /**
  * A line the runner reads as a command: after its leading whitespace it starts with `::`, or with `##`, the legacy
- * prefix of `##[error]` and `##vso[...]`.
+ * prefix of `##[error]` and `##vso[...]`. The whitespace is .NET's, which is JavaScript's `\s` plus U+0085.
  */
-const COMMAND = /^\s*(?:::|##)/;
+const COMMAND = /^[\s\u0085]*(?:::|##)/;
+
+/** The runner's line breaks: it splits at a lone CR as well as at LF and CRLF. */
+const LINE_BREAK = /\r\n|\r|\n/;
 
 /** U+200B, written by code point so the source carries no invisible character. */
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
@@ -19,8 +22,15 @@ const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
  */
 const neutralize = (line: string): string => (COMMAND.test(line) ? `${ZERO_WIDTH_SPACE}${line}` : line);
 
+/**
+ * Split text at the runner's line breaks and neutralize each line that would be read as a command.
+ *
+ * @internal
+ */
+export const neutralizeLines = (text: string): ReadonlyArray<string> => text.split(LINE_BREAK).map(neutralize);
+
 const plainLines = (blocks: ReadonlyArray<Block>, ctx: RenderContext): ReadonlyArray<string> =>
-	blocks.length === 0 ? [] : renderPlain(blocks, ctx).split("\n").map(neutralize);
+	blocks.length === 0 ? [] : neutralizeLines(renderPlain(blocks, ctx));
 
 const blockLines = (block: Block, ctx: RenderContext): ReadonlyArray<string> => {
 	switch (block._tag) {

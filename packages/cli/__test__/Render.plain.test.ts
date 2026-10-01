@@ -574,6 +574,21 @@ describe("Render.plain: Counts", () => {
 		}),
 	);
 
+	it.effect("a line break in a counter label is a space: every layout stays on its own lines", () =>
+		Effect.gen(function* () {
+			const counter = (label: string) => Doc.counter(Status.core, "failure", { key: "f", label, n: 1 });
+			for (const label of ["a\r\nb", "a\rb", "a\nb", "\r::x", "x\n# h", "x\n---"]) {
+				const flat = label.replace(/\r\n|\r|\n/g, " ");
+				const inline = yield* linesOf([Doc.counts({ counters: [counter(label)], layout: "inline" })]);
+				assert.deepStrictEqual(inline, [`1/1 ${flat}`], JSON.stringify(label));
+				const row = yield* linesOf([Doc.counts({ counters: [counter(label)], layout: "row" })]);
+				assert.deepStrictEqual(row, [`1/1 ${flat}`], JSON.stringify(label));
+				const columns = yield* linesOf([Doc.counts({ counters: [counter(label)], layout: "columns" })]);
+				assert.deepStrictEqual(columns, [`${flat}  1`], JSON.stringify(label));
+			}
+		}),
+	);
+
 	it.effect("row: one line of cells", () =>
 		Effect.gen(function* () {
 			const out = yield* linesOf([Doc.counts({ label: "Widgets", counters, durationMs: 61000, layout: "row" })]);

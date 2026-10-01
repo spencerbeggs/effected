@@ -233,9 +233,11 @@ const countsLines = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts"
 	const label = block.label === undefined ? [] : toned(oneLine(inline(walk, block.label)), "emphasis");
 	const qualifier = block.qualifier === undefined ? [] : toned(oneLine(inline(walk, block.qualifier)), "muted");
 	const duration = block.durationMs === undefined ? "" : Fmt.duration(block.durationMs);
+	// A counter's label is one line, like the block's own label: a line break in it would start a line of its own.
+	const nameOf = (counter: (typeof visible)[number]): string => sanitize(counter.label).replace(/\r\n|\r|\n/g, " ");
 	// The first counter is the headline: it shows its share of the total.
 	const counters = visible.map((counter, index): Line => {
-		const name = sanitize(counter.label);
+		const name = nameOf(counter);
 		return [span(index === 0 ? `${counter.n}/${total} ${name}` : `${counter.n} ${name}`, counter.status.def.token)];
 	});
 
@@ -245,13 +247,13 @@ const countsLines = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts"
 		];
 	}
 	if (block.layout === "columns") {
-		const labelWidth = Math.max(0, ...visible.map((counter) => widthOf([span(sanitize(counter.label))])));
+		const labelWidth = Math.max(0, ...visible.map((counter) => widthOf([span(nameOf(counter))])));
 		const numberWidth = Math.max(0, ...visible.map((counter) => String(counter.n).length));
 		return [
 			...(label.length === 0 ? [] : [label]),
 			...visible.map((counter) =>
 				trimLine([
-					...pad([span(sanitize(counter.label), counter.status.def.token)], labelWidth, "left"),
+					...pad([span(nameOf(counter), counter.status.def.token)], labelWidth, "left"),
 					span("  "),
 					...pad([span(String(counter.n), counter.status.def.token)], numberWidth, "right"),
 				]),

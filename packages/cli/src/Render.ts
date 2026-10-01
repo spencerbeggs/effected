@@ -156,8 +156,9 @@ export class Render {
 	 * The runner reads a line as a command when, after its leading whitespace, it starts with `::` or `##`. A
 	 * document's text must not be able to do that (`::add-mask::`, `::error::`, `##[error]`), so such a line gets a
 	 * zero-width space in front, which the runner does not treat as whitespace. The text is otherwise unchanged. A
-	 * group's title is a command's data, so its `%`, CR and LF are escaped. There is no ANSI and `paint` and `link`
-	 * are never called.
+	 * group's title is a command's data, so its `%`, CR and LF are escaped. Lines are split at CR, LF and CRLF before
+	 * that check, as the runner splits them. There is no ANSI and `paint` and `link` are never called, and the audience
+	 * is treated as `agent`, as `plain` does.
 	 *
 	 * @param doc - the document
 	 * @param ctx - where the output is going; the width, glyph set and `displayPath` are used as plain uses them

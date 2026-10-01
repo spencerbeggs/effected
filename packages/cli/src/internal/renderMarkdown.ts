@@ -171,7 +171,8 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 	const label = block.label === undefined ? "" : inlineMd(block.label, ctx, "line").trim();
 	const qualifier = block.qualifier === undefined ? "" : inlineMd(block.qualifier, ctx, "line").trim();
 	const duration = block.durationMs === undefined ? "" : Fmt.duration(block.durationMs);
-	const name = (counter: (typeof visible)[number]): string => escapeText(sanitize(counter.label));
+	const name = (counter: (typeof visible)[number]): string =>
+		escapeText(sanitize(counter.label).replace(/\r\n|\r|\n/g, " "));
 
 	if (block.layout === "row") {
 		const header = [

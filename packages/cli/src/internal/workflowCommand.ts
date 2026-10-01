@@ -1,3 +1,7 @@
+// These two functions repeat the escaping in `@effected/github-actions`' `WorkflowCommand` on purpose: `@effected/cli`
+// is a boundary package and must not depend on `github-actions`, which peers on `@effect/platform-node`. A test in
+// this package compares the output of both against each other, so the two cannot drift apart unnoticed.
+
 /**
  * Escape a workflow command's data (its message): `%`, then CR, then LF.
  *

@@ -838,6 +838,34 @@ describe("Render.markdown: lists, trees and counts", () => {
 		}),
 	);
 
+	it.effect("a line break in a counter label cannot start a block: no heading, setext heading, rule or extra row", () =>
+		Effect.gen(function* () {
+			const counter = (label: string) => Doc.counter(Status.core, "failure", { key: "f", label, n: 1 });
+			for (const label of ["x\n# h", "x\n---", "x\r\n===", "\r# h", "x\r- item", "x\n> q", "x\n```"]) {
+				const inline = yield* treeOf([Doc.counts({ counters: [counter(label)], layout: "inline" })]);
+				assert.deepStrictEqual(
+					kids(inline).map((n) => n.type),
+					["paragraph"],
+					`inline ${JSON.stringify(label)}`,
+				);
+				const columns = yield* treeOf([Doc.counts({ counters: [counter(label)], layout: "columns" })]);
+				assert.deepStrictEqual(
+					kids(columns).map((n) => n.type),
+					["list"],
+					`columns ${JSON.stringify(label)}`,
+				);
+				assert.strictEqual(kids(kids(columns)[0]).length, 1, `columns ${JSON.stringify(label)}: one item`);
+				const row = yield* treeOf([Doc.counts({ counters: [counter(label)], layout: "row" })]);
+				assert.deepStrictEqual(
+					kids(row).map((n) => n.type),
+					["table"],
+					`row ${JSON.stringify(label)}`,
+				);
+				assert.strictEqual(kids(tableOf(row)).length, 2, `row ${JSON.stringify(label)}: a header and one row`);
+			}
+		}),
+	);
+
 	it.effect("Counts as a row is a table of one row: a header of the counter labels over their numbers", () =>
 		Effect.gen(function* () {
 			const table = tableOf(

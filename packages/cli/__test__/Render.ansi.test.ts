@@ -382,6 +382,21 @@ describe("Render.ansi: layout under colour (paint after cut)", () => {
 		}),
 	);
 
+	it.effect("a line break in a counter label is a space in ansi too: Counts equal plain in every layout", () =>
+		Effect.gen(function* () {
+			for (const label of ["a\r\nb", "a\rb", "\r::x", "x\n# h"]) {
+				for (const layout of ["inline", "columns", "row"] as const) {
+					const doc = [
+						Doc.counts({ counters: [Doc.counter(Status.core, "failure", { key: "f", label, n: 1 })], layout }),
+					];
+					const a = yield* ansi(doc, OFF);
+					assert.notMatch(a, /[\r\n]/, `${layout} ${JSON.stringify(label)}: one line`);
+					assert.strictEqual(a, yield* plain(doc, OFF), `${layout} ${JSON.stringify(label)}`);
+				}
+			}
+		}),
+	);
+
 	it.effect("a line break in a link target cannot split the suffix or reach ctx.link", () =>
 		Effect.gen(function* () {
 			const seen: Array<string> = [];
