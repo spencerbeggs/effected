@@ -5,7 +5,7 @@ import type { KeyName, Screen, ScreenControl } from "@effected/cli/ui";
 import type { ColorLevel } from "@effected/env";
 import { TerminalEnv } from "@effected/env";
 import type { Scope } from "effect";
-import { Console, Effect, Fiber, Layer, Option } from "effect";
+import { Console, Effect, Fiber, Inspectable, Layer, Option } from "effect";
 import type { ReactElement } from "react";
 import { CliInteractive } from "../../CliInteractive.js";
 import { CliTheme } from "../../CliTheme.js";
@@ -51,7 +51,8 @@ export interface CliUiTestScreen {
 	/**
 	 * Press named keys, one after another. Each waits until the screen draws its next frame or 50 ms pass with
 	 * nothing written; `"escape"` first waits a real 30 ms, because Ink holds a lone ESC for 20 ms before reporting
-	 * it.
+	 * it. Pressing, typing or chunking on a screen that has ended is a defect, not a key for whatever screen is mounted
+	 * now.
 	 */
 	readonly press: (...keys: ReadonlyArray<KeyName>) => Effect.Effect<void>;
 	/** Type text, one character at a time, each settling like a key. */
@@ -64,9 +65,10 @@ export interface CliUiTestScreen {
 	 * Ink dispatches every key of one read before React re-renders, so a handler that steps from state its render
 	 * captured repeats the first key's move; {@link CliUiTestScreen.press}, which writes and settles key by key, can
 	 * never show that. Use `chunk` to test a key handler against it. An `"escape"` inside a chunk joins the bytes after
-	 * it, as on a real terminal; only a trailing one waits out Ink's ESC hold.
+	 * it, as on a real terminal; only a trailing one waits out Ink's ESC hold. A `{ char }` writes its text as typed:
+	 * Ink hands text read in one go to `useInput` as one string, `"yy"` or `"y\r"`, which `useKeys` splits into keys.
 	 */
-	readonly chunk: (...keys: ReadonlyArray<KeyName>) => Effect.Effect<void>;
+	readonly chunk: (...keys: ReadonlyArray<KeyName | { readonly char: string }>) => Effect.Effect<void>;
 	/** Resize the terminal and emit `resize`, as a real one does, settling like a key. */
 	readonly resize: (columns: number, rows: number) => Effect.Effect<void>;
 	/** The latest frame as token markup ({@link CliUiTest.styled}), each line's trailing spaces trimmed. */
@@ -106,7 +108,10 @@ export interface CliUiTestHandle<A> extends CliUiTestScreen {
  * @public
  */
 export interface CliUiTestNextOptions {
-	/** Text the screen must show (in plain text) before `next` returns it. */
+	/**
+	 * Text the screen must have shown, in plain text, before `next` returns it: in any frame since its mount, not
+	 * necessarily the latest one. Read `plainFrame` to check what it shows now.
+	 */
 	readonly contains?: string;
 }
 
@@ -300,6 +305,9 @@ const RERENDER_AFTER_END = "@effected/cli/ui/testing: rerender after the screen 
 const RERENDER_BEFORE_MOUNT =
 	"@effected/cli/ui/testing: rerender before the screen mounted (waited 2 s; is another screen still mounted?)";
 
+const SCREEN_ENDED =
+	"@effected/cli/ui/testing: a key was sent to a screen that has ended; take the screen mounted now with session.next()";
+
 const NEXT_DIED = (index: number, contains: string | undefined, mounted: number, why: string): string =>
 	`@effected/cli/ui/testing: next waited for screen ${index + 1} to mount and ${
 		contains === undefined ? "draw" : `show "${contains}"`
@@ -380,6 +388,9 @@ const makeTerminal = (options: CliUiTestOptions) => {
 		const after = (before: number, since: number) => settle(raws, ended, before, since);
 		const send = (bytes: string, flushMs = 0): Effect.Effect<void> =>
 			Effect.suspend(() => {
+				// A key for an ended screen would land in whichever screen is mounted now: a test that does that has lost
+				// track of its screens, so it is a defect, not a key.
+				if (ended()) return Effect.die(new Error(SCREEN_ENDED));
 				const before = raws().length;
 				fake.input(bytes);
 				const sent = Date.now();
@@ -393,7 +404,10 @@ const makeTerminal = (options: CliUiTestOptions) => {
 				}),
 			type: (text) => Effect.forEach([...text], (character) => send(character), { discard: true }),
 			chunk: (...keys) =>
-				send(keys.map((key) => KEY_BYTES[key]).join(""), keys.at(-1) === "escape" ? ESCAPE_FLUSH_MS : 0),
+				send(
+					keys.map((key) => (typeof key === "string" ? KEY_BYTES[key] : key.char)).join(""),
+					keys.at(-1) === "escape" ? ESCAPE_FLUSH_MS : 0,
+				),
 			resize: (nextColumns, nextRows) =>
 				Effect.suspend(() => {
 					const before = raws().length;
@@ -419,7 +433,8 @@ const capturingConsole = (ambient: Console.Console) => {
 	const line =
 		(sink: Array<string>) =>
 		(...args: ReadonlyArray<unknown>): void => {
-			sink.push(`${args.map(String).join(" ")}\n`);
+			// Formatted as data, as a console would show it: an object as JSON, never "[object Object]".
+			sink.push(`${args.map((arg) => Inspectable.toStringUnknown(arg, 0)).join(" ")}\n`);
 		};
 	// Over the ambient Console, so every method this does not keep still behaves as it did.
 	const writer: Console.Console = Object.assign(Object.create(ambient) as Console.Console, {

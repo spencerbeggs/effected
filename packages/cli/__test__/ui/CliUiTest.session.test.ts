@@ -89,3 +89,46 @@ describe("CliUiTest.session", () => {
 		}).pipe(Effect.scoped),
 	);
 });
+
+describe("CliUiTest.session carry-ins", () => {
+	it.effect("the captured console formats objects as data, not [object Object]", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			yield* Console.log("x", { a: 1 }, [2, "b"]).pipe(Effect.provide(session.layer));
+			yield* Console.error(new Map([["k", 1]]).size, null).pipe(Effect.provide(session.layer));
+			assert.strictEqual(yield* session.stdout, 'x {"a":1} [2,"b"]\n');
+			assert.strictEqual(yield* session.stderr, "1 null\n");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a screen that has ended dies on press, type or chunk, rather than typing into the next one", () =>
+		Effect.gen(function* () {
+			const session = yield* CliUiTest.session();
+			const fiber = yield* Effect.forkScoped(twoScreens.pipe(Effect.provide(session.layer)));
+			const first = yield* session.next({ contains: "Profile" });
+			yield* first.press("enter");
+			const second = yield* session.next({ contains: "Bundle directory" });
+			for (const send of [first.press("down"), first.type("x"), first.chunk("down", "up")]) {
+				const exit = yield* Effect.exit(send);
+				if (Exit.isFailure(exit)) {
+					assert.include(String((Cause.squash(exit.cause) as Error).message), "has ended");
+				} else {
+					assert.fail("expected a defect: the screen had ended");
+				}
+			}
+			assert.notInclude(yield* second.plainFrame, "docsx", "nothing reached the screen mounted now");
+			yield* second.press("enter");
+			yield* Fiber.join(fiber);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("render's handle dies the same way once its screen has ended", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(profile);
+			yield* handle.press("enter");
+			assert.strictEqual(yield* handle.result, "software-project");
+			const exit = yield* Effect.exit(handle.press("down"));
+			assert.isTrue(Exit.isFailure(exit) && Cause.hasDies(exit.cause), "a key after the end is a defect");
+		}).pipe(Effect.scoped),
+	);
+});

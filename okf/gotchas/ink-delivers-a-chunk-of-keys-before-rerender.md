@@ -17,13 +17,17 @@ sources:
     resource: "../../packages/cli/__test__/ui/CliUiTest.chunk.test.ts"
     author: "agent:claude-code"
     last_modified: "2026-10-01T05:29:00Z"
+  - id: char-probe
+    resource: "../../packages/cli/__test__/ui/CliUiTest.chunk.test.ts"
+    author: "agent:claude-code"
+    last_modified: "2026-10-01T05:50:00Z"
   - id: ink-input-parser
     resource: "npm:ink@7.1.1/build/input-parser.js"
     last_modified: "2026-10-01T05:17:00Z"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T05:29:59Z
-  body_sha256: 7d66889748ddb00b0561f437b1f888490a34ac947038987633c32304c5e2127a
+  at: 2026-10-01T05:50:58Z
+  body_sha256: c1b7b52a274fd521de49541581b30f3e24167d152524485998aa1f4b0d3727f2
 ---
 
 # Ink delivers every key in one stdin read before React re-renders
@@ -60,7 +64,17 @@ Two related facts bound the trap:
 - **Plain text is never split.** Ink leaves `\t` and `\r` together
   because they can appear inside pasted text, so `\t\t` in one read
   reaches `useInput` as a single two-character string rather than as two
-  Tab keys[^ink-input-parser].
+  Tab keys[^ink-input-parser]. A probe of single reads found Ink drops
+  nothing either: `"yy"`, `"y\r"` and `"\t\t"` each arrive as one input
+  string with no `return` or `tab` flag, and only a backspace byte is
+  split out as its own key[^char-probe]. `useKeys` therefore splits text
+  of more than one code point into a key per code point (`\r` as enter,
+  `\t` as tab, a space as space), so `{ char: "y" }` matches each `y` of
+  `"yy"`.
+- **The known limit is `TextInput`.** It inserts typed text whole, which
+  is right for a paste, but text holding a control character is not text
+  it inserts: `"y\r"` read in one go into a `TextInput` loses both the
+  `y` and the enter.
 - **`press` and `type` cannot show it.** They write each key as its own
   chunk and settle between them, so every key meets a fresh render. The
   screen handles of `CliUiTest.render` and `CliUiTest.session` also have
@@ -84,4 +98,5 @@ cover it with a one-chunk test of two keys: `handle.chunk("right",
 
 [^tabs-one-chunk-probe]: `__test__/ui/Tabs.test.ts`, "Tabs input in one chunk"
 [^chunk-test]: `__test__/ui/CliUiTest.chunk.test.ts`
+[^char-probe]: `__test__/ui/CliUiTest.chunk.test.ts`, "coalesced characters"; the raw probe recorded `useInput`'s `(input, key)` on fake streams
 [^ink-input-parser]: Ink 7.1.1, `build/input-parser.js`, `splitBackspaceBytes`

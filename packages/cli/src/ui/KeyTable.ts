@@ -149,11 +149,63 @@ export class KeyTable<Action> {
 	};
 }
 
+/** What a character of coalesced text is as a key: a line break is enter, and so on; another control is nothing. */
+const keyOfCharacter = (character: string): UiKey | undefined => {
+	if (character === "\r" || character === "\n") return UiKey.named("enter");
+	if (character === "\t") return UiKey.named("tab");
+	if (character === " ") return UiKey.named("space");
+	if (character === "\u007f" || character === "\b") return UiKey.named("backspace");
+	return UiKey.fromInk(character, PLAIN);
+};
+
+/** Ink's key flags for plain typed text: none set. */
+const PLAIN = {
+	upArrow: false,
+	downArrow: false,
+	leftArrow: false,
+	rightArrow: false,
+	pageDown: false,
+	pageUp: false,
+	home: false,
+	end: false,
+	return: false,
+	escape: false,
+	ctrl: false,
+	shift: false,
+	tab: false,
+	backspace: false,
+	delete: false,
+	meta: false,
+	super: false,
+	hyper: false,
+	capsLock: false,
+	numLock: false,
+} as Parameters<typeof UiKey.fromInk>[1];
+
+/**
+ * The keys in one Ink input. Ink hands text read in one go to `useInput` as one string with no key flag (`"yy"`, or
+ * `"y\r"` with no `return`), so text of more than one code point is split into a key per code point; a named key,
+ * or a Ctrl or Meta combination, is the one key it is.
+ */
+const keysOf = (input: string, key: Parameters<typeof UiKey.fromInk>[1]): ReadonlyArray<UiKey> => {
+	const single = UiKey.fromInk(input, key);
+	if (single?._tag === "Named" || key.ctrl || key.meta) return single === undefined ? [] : [single];
+	const characters = [...input];
+	if (characters.length <= 1) return single === undefined ? [] : [single];
+	return characters.flatMap((character) => {
+		const pressed = keyOfCharacter(character);
+		return pressed === undefined ? [] : [pressed];
+	});
+};
+
 /**
  * Read the keys of `table` and dispatch the action each one matches; keys the table does not bind are ignored.
  *
  * @remarks
  * One Ink `useInput` per call, and nothing else reads input.
+ *
+ * Text read in one go (`"yy"`, `"y\r"`) reaches Ink's `useInput` as one string; it is split here into a key per
+ * character, a line break as enter, a tab as tab, a space as space, so `{ char: "y" }` matches each `y`.
  *
  * Several keys from one stdin read (a fast typist, a held arrow, a terminal that batches) are each dispatched
  * before React re-renders, so `dispatch` must never step from state captured in the render that created it: the
@@ -173,10 +225,10 @@ export const useKeys = <Action>(
 ): void => {
 	inkModules().ink.useInput(
 		(input, key) => {
-			const pressed = UiKey.fromInk(input, key);
-			if (pressed === undefined) return;
-			const action = table.match(pressed);
-			if (Option.isSome(action)) dispatch(action.value);
+			for (const pressed of keysOf(input, key)) {
+				const action = table.match(pressed);
+				if (Option.isSome(action)) dispatch(action.value);
+			}
 		},
 		{ isActive: options.isActive ?? true },
 	);
