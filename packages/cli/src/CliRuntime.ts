@@ -139,6 +139,10 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * Not interactive, the `Terminal` the program sees is gated: its `readLine` fails as a quit, its input is
 	 * already ended and its `display` writes nothing. A program that reads piped data must read `Stdio.stdin`, and
 	 * one that writes output must use `Console` or `Stdio`, never `Terminal`.
+	 *
+	 * Stderr's colour mirrors stdout's terminal check unless `env.stderrIsTerminal` says otherwise, so with stderr
+	 * redirected and stdout a terminal the failure report is painted into the file. On Node, pass the real check:
+	 * `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }`.
 	 */
 	readonly env?: CliEnvOptions | undefined;
 	/**

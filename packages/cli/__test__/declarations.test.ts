@@ -459,7 +459,7 @@ describe("the reviewed ./ui and ./ui/testing surfaces", () => {
 		);
 	});
 
-	it("each built module exports exactly the reviewed values, and importing ./ui loads no Ink", async () => {
+	it("each built module exports exactly the reviewed values", async () => {
 		const ui = (await import(join(BUILT, "pkg", "ui.js"))) as Record<string, unknown>;
 		const testing = (await import(join(BUILT, "pkg", "ui-testing.js"))) as Record<string, unknown>;
 		assert.deepStrictEqual(Object.keys(ui).sort(), UI_VALUES);

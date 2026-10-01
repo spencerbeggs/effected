@@ -18,7 +18,14 @@ import { CliTheme } from "./CliTheme.js";
 export interface CliEnvOptions {
 	/** The environment variable that overrides the audience, read through `Config`; see `Audience.layer`. */
 	readonly audienceEnvVar?: string | undefined;
-	/** Overrides the stderr terminal check; `Stdio` reports only stdout, so stderr mirrors it otherwise. */
+	/**
+	 * Overrides the stderr terminal check; `Stdio` reports only stdout, so stderr mirrors it otherwise.
+	 *
+	 * @remarks
+	 * Mirroring means a program whose stdout is a terminal but whose stderr is redirected to a file still paints
+	 * stderr (a failure report, a warning) with colour escapes. A Node host that redirects stderr passes the real
+	 * answer: `env: { stderrIsTerminal: Effect.sync(() => process.stderr.isTTY === true) }`.
+	 */
 	readonly stderrIsTerminal?: Effect.Effect<boolean> | undefined;
 	/** Options for the theme; see {@link CliThemeOptions}. */
 	readonly theme?: CliThemeOptions | undefined;
