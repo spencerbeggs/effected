@@ -435,3 +435,30 @@ describe("CliRuntime.main: the audience-override warning goes to stderr alone (r
 		);
 	}
 });
+
+describe("CliRuntime.main: only the env build is pinned to stderr; the platform's build follows stderrFrom (nit 2 scope)", () => {
+	it.effect("human, stderrFrom Error: the override warning on stderr, a platform Warning at build time on stdout", () =>
+		Effect.gen(function* () {
+			const { double, out, err } = capturing();
+			const warning = Layer.mergeAll(io, Layer.effectDiscard(Effect.logWarning("platform warned")));
+			yield* CliRuntime.main(Effect.void, {
+				platform: warning,
+				env: { audienceEnvVar: "TOOL_AUDIENCE", log: { logger: { stderrFrom: "Error" } } },
+			}).pipe(
+				Effect.provideService(Console.Console, double),
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ TOOL_AUDIENCE: "bogus" })),
+			);
+			assert.isTrue(
+				err.some((line) => line.includes("TOOL_AUDIENCE=bogus")),
+				`the override warning is on stderr: ${JSON.stringify({ out, err })}`,
+			);
+			assert.isFalse(out.some((line) => line.includes("TOOL_AUDIENCE")));
+			// The host chose to route warnings below Error to stdout, and the platform's own build-time line honours it.
+			assert.isTrue(
+				out.some((line) => line.includes("platform warned")),
+				`the platform warning follows stderrFrom: ${JSON.stringify({ out, err })}`,
+			);
+			assert.isFalse(err.some((line) => line.includes("platform warned")));
+		}),
+	);
+});

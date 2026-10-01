@@ -43,7 +43,7 @@ export interface CliEnvOptions {
 	 * diagnostics go silent with no error: do not install one. See `CliLog.layer`. Only `CliLog`'s own records can be
 	 * silenced (`plainLogger: false`): what the platform logs while it builds goes through the full `CliLog` when its
 	 * build-time format is NDJSON (`json`, or `auto` for an agent or a CI; see `CliLogOptions.format`) and through a plain
-	 * `CliLogger` otherwise. The audience-override warning is never silenced: it is written exactly once, in NDJSON when
+	 * `CliLogger` otherwise, routed by `logger.stderrFrom` as the host set it. The audience-override warning is never silenced: it is written exactly once, in NDJSON when
 	 * the build-time format is NDJSON and as a plain line otherwise, to stderr alone (never stdout, whatever
 	 * `logger.stderrFrom` says) and never to the host's `extraLoggers` or log file. The failure report and the `CliMessage` lines always
 	 * go through a plain `CliLogger`.

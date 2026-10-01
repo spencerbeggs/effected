@@ -55,7 +55,8 @@ export interface CliLogOptions {
 	 *
 	 * Only `CliLog`'s own records are silenced. Under `CliRuntime.main`, what the platform logs while it builds follows
 	 * the build-time format: in NDJSON (`json`, or `auto` for an agent or a CI) it goes through this layer, so `false`
-	 * silences it there as at runtime; otherwise it goes through a plain `CliLogger`. The audience-override warning is a
+	 * silences it there as at runtime; otherwise it goes through a plain `CliLogger`, routed by `logger.stderrFrom` as the
+	 * host set it. The audience-override warning is a
 	 * configuration error and is never silenced: it is written exactly once, as NDJSON when the build-time format is
 	 * NDJSON and as a plain line otherwise, whatever this option says, to stderr alone (never stdout, whatever
 	 * `logger.stderrFrom` says) and never to `extraLoggers` or the file sink. The failure report and the `CliMessage` lines
@@ -580,7 +581,8 @@ export const platformLogLayer = (
  * variable's value), so it is never silenced and never written twice: NDJSON alone for an agent or a CI (`json`, or
  * `auto` for that build-time audience), a plain `CliLogger` line otherwise, whatever `plainLogger` and the diagnostics
  * level say, and neutralized under GitHub Actions like the platform's lines. It goes to stderr alone, whatever
- * `stderrFrom` the program's `CliLogger` options raise, and never to `extraLoggers` or the file sink. It floors at `Warning` and installs no
+ * `stderrFrom` the program's `CliLogger` options raise, and never to `extraLoggers` or the file sink. Only this
+ * logger is pinned to stderr: the platform's build-time logger keeps the host's `stderrFrom`. It floors at `Warning` and installs no
  * `MinimumLogLevel`, so `CliLog.layer`'s own build, which shares this context, reads the ambient minimum as before.
  *
  * @internal
