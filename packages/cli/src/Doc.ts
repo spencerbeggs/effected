@@ -1,3 +1,10 @@
+import type { Audience, AudienceKind, TerminalEnv } from "@effected/env";
+import { CurrentRuntimeEnv } from "@effected/env";
+import { Console, Effect, Option } from "effect";
+import type { CliLinks } from "./CliLinks.js";
+import type { CliTheme } from "./CliTheme.js";
+import { totalOf, visibleCountersOf } from "./internal/counts.js";
+import { Render } from "./Render.js";
 import type { Status, StatusDef } from "./Status.js";
 import type { Style, TokenName } from "./Token.js";
 
@@ -255,6 +262,32 @@ const counterOf = (counter: Counter): Counter =>
 		status: freeze({ name: counter.status.name, def: freeze({ ...counter.status.def }) }),
 	});
 
+/** The renderer an audience gets when `Doc.print` is not told: a person is painted, a machine reads plain text. */
+const autoFormat = (audience: AudienceKind): Effect.Effect<"plain" | "ansi" | "githubLog"> =>
+	Effect.gen(function* () {
+		if (audience === "human") return "ansi";
+		if (audience === "agent") return "plain";
+		// A CI gets GitHub's log format only where `CurrentRuntimeEnv` says it is GitHub Actions; it is not required.
+		const runtime = yield* Effect.serviceOption(CurrentRuntimeEnv);
+		const ci = Option.flatMap(runtime, (env) => env.ci);
+		return Option.contains(ci, "github-actions") ? "githubLog" : "plain";
+	});
+
+/**
+ * Options for {@link Doc.print}.
+ *
+ * @public
+ */
+export interface DocPrintOptions {
+	/** The stream to write to; `stdout` by default. */
+	readonly stream?: "stdout" | "stderr" | undefined;
+	/**
+	 * The renderer. `auto`, the default, is chosen from the audience: `plain` for an agent, `githubLog` for a CI
+	 * that `CurrentRuntimeEnv` says is GitHub Actions and `plain` for any other, and `ansi` for a human.
+	 */
+	readonly format?: "auto" | "plain" | "ansi" | "markdown" | "githubLog" | undefined;
+}
+
 /**
  * Constructors for the document IR, and two helpers a renderer shares.
  *
@@ -511,9 +544,7 @@ export class Doc {
 	 * @param block - the `Counts` block
 	 */
 	static total(block: BlockOf<"Counts">): number {
-		return block.total === undefined
-			? block.counters.reduce((sum, counter) => sum + counter.n, 0)
-			: block.total(block.counters);
+		return totalOf(block);
 	}
 
 	/**
@@ -522,6 +553,35 @@ export class Doc {
 	 * @param block - the `Counts` block
 	 */
 	static visibleCounters(block: BlockOf<"Counts">): ReadonlyArray<Counter> {
-		return block.counters.filter((counter) => counter.n !== 0 || counter.showZero === true);
+		return visibleCountersOf(block);
 	}
+
+	/**
+	 * Render a document for whoever is running the program and write it to a stream.
+	 *
+	 * @remarks
+	 * The context is {@link Render.context} for the stream, so the width, the colour, the links and the audience
+	 * come from the services the program already has, and the text is written with `Console.log` or
+	 * `Console.error`: a test captures it by swapping the `Console`. With `format: "auto"` the renderer follows
+	 * the audience, and the width is unbounded for an agent and a CI.
+	 *
+	 * `CurrentRuntimeEnv` is read if the environment has one and is not required: a `ci` audience prints
+	 * GitHub's log format only when it says GitHub Actions, and plain text otherwise, including when it is
+	 * absent. An explicit `format` is honoured whatever the audience.
+	 *
+	 * @param doc - the document
+	 * @param options - the stream and the format
+	 */
+	static readonly print = (
+		doc: Document,
+		options?: DocPrintOptions,
+	): Effect.Effect<void, never, CliTheme | TerminalEnv | Audience | CliLinks> =>
+		Effect.gen(function* () {
+			const stream = options?.stream ?? "stdout";
+			const ctx = yield* Render.context(stream);
+			const requested = options?.format ?? "auto";
+			const format = requested === "auto" ? yield* autoFormat(ctx.audience) : requested;
+			const text = Render[format](doc, ctx);
+			yield* stream === "stderr" ? Console.error(text) : Console.log(text);
+		});
 }

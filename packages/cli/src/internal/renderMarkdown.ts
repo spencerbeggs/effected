@@ -1,7 +1,7 @@
 import type { Block, Document, Inline, LinkTarget } from "../Doc.js";
-import { Doc } from "../Doc.js";
 import { Fmt } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
+import { totalOf, visibleCountersOf } from "./counts.js";
 import type { Span } from "./layout.js";
 import { flatten, sanitize } from "./layout.js";
 import { isAllowedLinkUrl } from "./linkScheme.js";
@@ -164,8 +164,8 @@ interface Walk {
 
 const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>): ReadonlyArray<Lines> => {
 	const { ctx } = walk;
-	const visible = Doc.visibleCounters(block);
-	const total = Doc.total(block);
+	const visible = visibleCountersOf(block);
+	const total = totalOf(block);
 	const label = block.label === undefined ? "" : inlineMd(block.label, ctx, "line").trim();
 	const qualifier = block.qualifier === undefined ? "" : inlineMd(block.qualifier, ctx, "line").trim();
 	const duration = block.durationMs === undefined ? "" : Fmt.duration(block.durationMs);

@@ -1,8 +1,8 @@
 import type { Block, Document, Inline, LinkTarget } from "../Doc.js";
-import { Doc } from "../Doc.js";
 import { Fmt } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
 import type { Style, TokenName } from "../Token.js";
+import { totalOf, visibleCountersOf } from "./counts.js";
 import type { Span } from "./layout.js";
 import { sanitize, truncateSpans, widthOf, wrapSpans } from "./layout.js";
 
@@ -228,8 +228,8 @@ const diffSide = (
 };
 
 const countsLines = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>): ReadonlyArray<Line> => {
-	const visible = Doc.visibleCounters(block);
-	const total = Doc.total(block);
+	const visible = visibleCountersOf(block);
+	const total = totalOf(block);
 	const label = block.label === undefined ? [] : toned(oneLine(inline(walk, block.label)), "emphasis");
 	const qualifier = block.qualifier === undefined ? [] : toned(oneLine(inline(walk, block.qualifier)), "muted");
 	const duration = block.durationMs === undefined ? "" : Fmt.duration(block.durationMs);

@@ -1,4 +1,8 @@
 import type { AudienceKind, ColorLevel } from "@effected/env";
+import { Audience, TerminalEnv } from "@effected/env";
+import { Effect } from "effect";
+import { CliLinks } from "./CliLinks.js";
+import { CliTheme } from "./CliTheme.js";
 import type { Document, LinkTarget } from "./Doc.js";
 import type { GlyphSet } from "./Glyphs.js";
 import { renderAnsi } from "./internal/renderAnsi.js";
@@ -43,6 +47,21 @@ export interface RenderContext {
 }
 
 /**
+ * Options for {@link Render.context}.
+ *
+ * @public
+ */
+export interface RenderContextOptions {
+	/**
+	 * The display columns to lay out at. By default a human gets `TerminalEnv.width()` and an agent or a CI gets
+	 * no limit at all.
+	 */
+	readonly width?: number | undefined;
+	/** Turns an absolute path into its display form, for example relative to the working directory; the identity by default. */
+	readonly displayPath?: ((absolute: string) => string) | undefined;
+}
+
+/**
  * Pure renderers of a document: `(doc, context) => string`.
  *
  * @remarks
@@ -53,6 +72,43 @@ export interface RenderContext {
  */
 export class Render {
 	private constructor() {}
+
+	/**
+	 * The {@link RenderContext} for a stream, from the services a CLI already has.
+	 *
+	 * @remarks
+	 * Everything is read once, here, so the renderers stay pure:
+	 *
+	 * - `audience` is the `Audience` in force, so an audience flag is honoured;
+	 * - `color`, `paint` and `glyphs` are the `CliTheme`'s for THAT stream, so redirecting stdout does not quiet
+	 *   stderr;
+	 * - `link` is `CliLinks.linker` over that stream's hyperlink support and the audience, so an agent never
+	 *   gets an escape and a terminal without OSC 8 gets the label;
+	 * - `width` is the option, else `TerminalEnv.width()` for a human, and **unbounded** (`Infinity`) for an agent
+	 *   or a CI, so nothing a reader needs is truncated or wrapped for a terminal that is not there.
+	 *
+	 * @param stream - the stream the output is for
+	 * @param options - an explicit width and a path display function
+	 */
+	static readonly context = (
+		stream: "stdout" | "stderr",
+		options?: RenderContextOptions,
+	): Effect.Effect<RenderContext, never, CliTheme | TerminalEnv | Audience | CliLinks> =>
+		Effect.gen(function* () {
+			const theme = (yield* CliTheme).forStream(stream);
+			const terminal = yield* TerminalEnv;
+			const { kind } = yield* Audience;
+			const links = yield* CliLinks;
+			return {
+				width: options?.width ?? (kind === "human" ? terminal.width() : Number.POSITIVE_INFINITY),
+				audience: kind,
+				color: theme.color,
+				paint: theme.paint,
+				glyphs: theme.glyphs,
+				link: CliLinks.linker({ links, hyperlinks: terminal[stream].hyperlinks, audience: kind }),
+				displayPath: options?.displayPath ?? ((absolute: string) => absolute),
+			};
+		});
 
 	/**
 	 * Render a document as plain text for an agent.

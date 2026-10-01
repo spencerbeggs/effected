@@ -1,5 +1,4 @@
 import type { Block, Document } from "../Doc.js";
-import { Doc } from "../Doc.js";
 import type { RenderContext } from "../Render.js";
 import { plainInline, renderPlain } from "./renderPlain.js";
 import { escapeData } from "./workflowCommand.js";
@@ -45,7 +44,7 @@ const blockLines = (block: Block, ctx: RenderContext): ReadonlyArray<string> => 
 		case "Section": {
 			// A section's children start a line, so they may be groups. Everything else is plain text.
 			const groups: Array<ReadonlyArray<string>> = [
-				...(block.title === undefined ? [] : [plainLines([Doc.heading(1, block.title)], ctx)]),
+				...(block.title === undefined ? [] : [plainLines([{ _tag: "Heading", level: 1, content: block.title }], ctx)]),
 				...block.children.map((child) => blockLines(child, ctx)),
 			];
 			return groups.flatMap((group, index) => (index === 0 ? group : ["", ...group]));
