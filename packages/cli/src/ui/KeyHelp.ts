@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Fmt } from "../Fmt.js";
 import { inkModules } from "./internal/ink.js";
+import { lineText } from "./internal/lineText.js";
 import { KeyTable } from "./KeyTable.js";
 import { Styled, useGlyphs, useTerminalSize } from "./UiTheme.js";
 
@@ -40,7 +41,8 @@ export const KeyHelp = (props: KeyHelpProps): ReactElement => {
 	const rowsOf = (tables: ReadonlyArray<KeyTable<unknown>>): Array<{ label: string; help: string }> => {
 		// Neighbouring rows that say the same thing share one entry: ↑ move, ↓ move reads ↑/↓ move.
 		const rows: Array<{ label: string; help: string }> = [];
-		for (const row of tables.flatMap((table) => table.help(glyphs))) {
+		for (const drawn of tables.flatMap((table) => table.help(glyphs))) {
+			const row = { label: lineText(drawn.label), help: lineText(drawn.help) };
 			const previous = rows.at(-1);
 			if (previous !== undefined && previous.help === row.help) previous.label = `${previous.label}/${row.label}`;
 			else rows.push({ ...row });

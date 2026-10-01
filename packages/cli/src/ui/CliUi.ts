@@ -37,6 +37,10 @@ export interface ScreenControl<A> {
 /**
  * A screen: given its control, the React element to mount, or a promise of one.
  *
+ * @remarks
+ * The kit's widgets sanitise the text they draw from data; a screen's own components (Ink's `Text`, `Styled`) draw
+ * what they are given, so text from data in them is the screen author's to pass through `Fmt.sanitize` first.
+ *
  * @public
  */
 export type Screen<A> = (control: ScreenControl<A>) => ReactElement | Promise<ReactElement>;

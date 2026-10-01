@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Fmt } from "../Fmt.js";
 import type { Screen } from "./CliUi.js";
 import { inkModules } from "./internal/ink.js";
+import { lineText } from "./internal/lineText.js";
 import { useScreenCancel } from "./internal/ScreenContext.js";
 import { KeyHelp } from "./KeyHelp.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
@@ -261,7 +262,7 @@ export class Confirm {
 		return react.createElement(
 			ink.Box,
 			{ flexDirection: "column" },
-			react.createElement(Styled, { token: "emphasis" }, Fmt.truncate(props.message, columns, ellipsis)),
+			react.createElement(Styled, { token: "emphasis" }, Fmt.truncate(lineText(props.message), columns, ellipsis)),
 			react.createElement(
 				ink.Text,
 				null,

@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Fmt } from "../Fmt.js";
 import { inkModules } from "./internal/ink.js";
+import { lineText } from "./internal/lineText.js";
 import type { Binding } from "./KeyTable.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
 import { Styled, useGlyphs, useTerminalSize, useTheme } from "./UiTheme.js";
@@ -180,7 +181,7 @@ export class Tabs {
 			{ isActive: focused },
 		);
 		const labelOf = (position: number): string =>
-			`${props.showIndex === true ? `${position + 1}. ` : ""}${props.tabs[position]?.label ?? ""}`;
+			`${props.showIndex === true ? `${position + 1}. ` : ""}${lineText(props.tabs[position]?.label ?? "")}`;
 		// At colour none, accent, bold and underline all vanish: the active tab is bracketed instead, and the others
 		// padded a space each side so a tab's width does not change as it becomes active.
 		const plain = theme.color === "none";
@@ -222,7 +223,7 @@ export class Tabs {
 				),
 			);
 		}
-		const separator = props.separator ?? (glyphs.kind === "unicode" ? " │ " : " | ");
+		const separator = lineText(props.separator ?? (glyphs.kind === "unicode" ? " │ " : " | "));
 		const labels = props.tabs.map((_, position) => marked(position, labelOf(position)));
 		const mark = Fmt.width(glyphs.ellipsis);
 		const total = labels.reduce((sum, label) => sum + Fmt.width(label), 0) + Fmt.width(separator) * (labels.length - 1);

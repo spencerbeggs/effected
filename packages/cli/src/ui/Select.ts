@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { Fmt } from "../Fmt.js";
 import type { Screen } from "./CliUi.js";
 import { inkModules } from "./internal/ink.js";
+import { lineText } from "./internal/lineText.js";
 import { useScreenCancel } from "./internal/ScreenContext.js";
 import { KeyHelp } from "./KeyHelp.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
@@ -239,7 +240,7 @@ export class Select {
 		const blank = " ".repeat(Fmt.width(glyphs.arrow));
 		const renderRow = (row: ViewportRow, highlighted: boolean): ReactElement => {
 			const choice = row._tag === "Item" ? props.choices[Number(row.key)] : undefined;
-			const text = Fmt.truncate(`${highlighted ? glyphs.arrow : blank} ${choice?.label ?? ""}`, columns, {
+			const text = Fmt.truncate(`${highlighted ? glyphs.arrow : blank} ${lineText(choice?.label ?? "")}`, columns, {
 				ellipsis: glyphs.ellipsis,
 			});
 			if (highlighted) return react.createElement(Styled, { token: "accent" }, text);
@@ -253,12 +254,16 @@ export class Select {
 			react.createElement(
 				Styled,
 				{ token: "emphasis" },
-				Fmt.truncate(props.message, columns, { ellipsis: glyphs.ellipsis }),
+				Fmt.truncate(lineText(props.message), columns, { ellipsis: glyphs.ellipsis }),
 			),
 			react.createElement(Viewport.View, { rows, state: state.viewport, renderRow, reserved: RESERVED }),
 			detail === undefined
 				? null
-				: react.createElement(Styled, { token: "muted" }, Fmt.truncate(detail, columns, { ellipsis: glyphs.ellipsis })),
+				: react.createElement(
+						Styled,
+						{ token: "muted" },
+						Fmt.truncate(lineText(detail), columns, { ellipsis: glyphs.ellipsis }),
+					),
 			react.createElement(KeyHelp, { tables: [KEYS] }),
 		);
 	};

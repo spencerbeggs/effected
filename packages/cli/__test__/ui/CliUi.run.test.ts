@@ -13,7 +13,7 @@ import { useScreenGuard } from "../../src/ui/internal/ScreenContext.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import type { Screen } from "../../src/ui.js";
-import { CliUi, KeyTable, UiStreams, useKeys } from "../../src/ui.js";
+import { CliUi, KeyTable, Select, UiStreams, useKeys } from "../../src/ui.js";
 
 // Count loads of the peers through the kit's one loader, without changing what it does.
 const { loads } = vi.hoisted(() => ({ loads: { count: 0 } }));
@@ -454,6 +454,37 @@ describe("a throwing input handler is a defect, never an uncaught exception or a
 			const defect = defectOf(exit);
 			assert.strictEqual(defect instanceof Error ? defect.message : String(defect), "paste handler threw");
 			restored(fake);
+		}),
+	);
+});
+
+describe("a widget's text from data cannot push the frame past the terminal (production path)", () => {
+	const WIPE = new RegExp(`${ESC}\\[[23]J`);
+	const pick = (detail: string) =>
+		Effect.gen(function* () {
+			const fake = makeFakeStreams({ columns: 40, rows: 10 });
+			const choices = Array.from({ length: 30 }, (_, index) => ({ label: `choice ${index}`, value: index, detail }));
+			const fiber = yield* Effect.forkChild(runOn(fake, Select.screen({ message: "Pick one", choices })));
+			yield* until(() => fake.stdout().includes("choice 0"));
+			fake.input(`${ESC}[B`);
+			yield* until(() => fake.stdout().includes("choice 1"));
+			fake.input("\r");
+			assert.strictEqual(yield* Fiber.join(fiber), 1);
+			return fake.stdout();
+		});
+
+	it.live("a one-line detail draws without wiping the screen (the control)", () =>
+		Effect.gen(function* () {
+			const written = yield* pick("the detail");
+			assert.notMatch(written, WIPE);
+		}),
+	);
+
+	it.live("a two-line detail is folded onto one line, so the screen is not wiped either", () =>
+		Effect.gen(function* () {
+			const written = yield* pick("first\nsecond");
+			assert.notMatch(written, WIPE);
+			assert.include(written, "first second");
 		}),
 	);
 });

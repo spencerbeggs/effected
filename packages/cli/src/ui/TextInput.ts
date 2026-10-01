@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Fmt } from "../Fmt.js";
 import type { Screen } from "./CliUi.js";
 import { inkModules } from "./internal/ink.js";
+import { lineText } from "./internal/lineText.js";
 import { useScreenGuard } from "./internal/ScreenContext.js";
 import { KeyHelp } from "./KeyHelp.js";
 import { KeyTable } from "./KeyTable.js";
@@ -299,7 +300,7 @@ export class TextInput {
 			react.createElement(
 				Styled,
 				{ token: "emphasis" },
-				Fmt.truncate(props.message, columns, { ellipsis: glyphs.ellipsis }),
+				Fmt.truncate(lineText(props.message), columns, { ellipsis: glyphs.ellipsis }),
 			),
 			react.createElement(
 				ink.Text,
@@ -311,7 +312,7 @@ export class TextInput {
 					? react.createElement(
 							Styled,
 							{ token: "muted" },
-							Fmt.truncate(props.placeholder, Math.max(0, columns - Fmt.width(cursorGlyph)), {
+							Fmt.truncate(lineText(props.placeholder), Math.max(0, columns - Fmt.width(cursorGlyph)), {
 								ellipsis: glyphs.ellipsis,
 							}),
 						)
@@ -319,7 +320,11 @@ export class TextInput {
 			),
 			error === undefined
 				? null
-				: react.createElement(Styled, { token: "error" }, Fmt.truncate(error, columns, { ellipsis: glyphs.ellipsis })),
+				: react.createElement(
+						Styled,
+						{ token: "error" },
+						Fmt.truncate(lineText(error), columns, { ellipsis: glyphs.ellipsis }),
+					),
 			react.createElement(KeyHelp, { tables: [HELP] }),
 		);
 	};

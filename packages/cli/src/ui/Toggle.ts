@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Fmt } from "../Fmt.js";
 import { inkModules } from "./internal/ink.js";
+import { lineText } from "./internal/lineText.js";
 import { Styled, useGlyphs, useTerminalSize } from "./UiTheme.js";
 
 /**
@@ -37,7 +38,7 @@ export class Toggle {
 		const { columns } = useTerminalSize();
 		const check = props.value ? (glyphs.kind === "unicode" ? "◉" : "[x]") : glyphs.kind === "unicode" ? "◯" : "[ ]";
 		const lead = props.highlighted ? glyphs.arrow : " ".repeat(Fmt.width(glyphs.arrow));
-		const text = Fmt.truncate(`${lead} ${check} ${props.label}`, columns, { ellipsis: glyphs.ellipsis });
+		const text = Fmt.truncate(`${lead} ${check} ${lineText(props.label)}`, columns, { ellipsis: glyphs.ellipsis });
 		return props.highlighted
 			? react.createElement(Styled, { token: "accent" }, text)
 			: react.createElement(ink.Text, null, text);

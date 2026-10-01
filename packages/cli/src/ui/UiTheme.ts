@@ -101,6 +101,13 @@ export const useGlyphs = (): Cli.GlyphSet => useScreen().glyphs;
 /**
  * Text painted with a theme token or style, through the mounted screen's theme.
  *
+ * @remarks
+ * Its children are drawn as given. The kit's widgets sanitise every string they draw from data (escapes removed,
+ * line breaks folded) before handing it here; text a consumer passes to `Styled`, or to Ink's own `Text`, is the
+ * consumer's to sanitise, with `Fmt.sanitize`. Ink keeps the escape sequences it is handed, so text from data drawn
+ * unsanitised can paint colour at colour `none` or plant a hyperlink, and a line break in it adds a row the screen's
+ * height budget did not count.
+ *
  * @param props - the token or style, and the text
  *
  * @public

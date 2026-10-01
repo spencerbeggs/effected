@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Fmt } from "../Fmt.js";
 import type { Screen } from "./CliUi.js";
 import { inkModules } from "./internal/ink.js";
+import { lineText } from "./internal/lineText.js";
 import { useScreenCancel } from "./internal/ScreenContext.js";
 import { KeyHelp } from "./KeyHelp.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
@@ -266,11 +267,11 @@ export class MultiSelect {
 		const ellipsis = { ellipsis: glyphs.ellipsis };
 		const renderRow = (row: ViewportRow, highlighted: boolean): ReactElement => {
 			if (row._tag === "Header")
-				return react.createElement(Styled, { token: "emphasis" }, Fmt.truncate(row.label, columns, ellipsis));
+				return react.createElement(Styled, { token: "emphasis" }, Fmt.truncate(lineText(row.label), columns, ellipsis));
 			const index = numberOf.get(row.key) ?? -1;
 			const entry = items[index];
 			const text = Fmt.truncate(
-				`${highlighted ? glyphs.arrow : blank} ${state.chosen.has(index) ? on : off} ${entry?.item.label ?? ""}`,
+				`${highlighted ? glyphs.arrow : blank} ${state.chosen.has(index) ? on : off} ${lineText(entry?.item.label ?? "")}`,
 				columns,
 				ellipsis,
 			);
@@ -282,11 +283,11 @@ export class MultiSelect {
 		return react.createElement(
 			ink.Box,
 			{ flexDirection: "column" },
-			react.createElement(Styled, { token: "emphasis" }, Fmt.truncate(props.message, columns, ellipsis)),
+			react.createElement(Styled, { token: "emphasis" }, Fmt.truncate(lineText(props.message), columns, ellipsis)),
 			react.createElement(Viewport.View, { rows, state: state.viewport, renderRow, reserved: RESERVED }),
 			detail === undefined
 				? null
-				: react.createElement(Styled, { token: "muted" }, Fmt.truncate(detail, columns, ellipsis)),
+				: react.createElement(Styled, { token: "muted" }, Fmt.truncate(lineText(detail), columns, ellipsis)),
 			react.createElement(KeyHelp, { tables: [KEYS] }),
 		);
 	};
