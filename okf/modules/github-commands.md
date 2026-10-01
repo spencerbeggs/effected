@@ -8,8 +8,8 @@ resource: ../../packages/github-commands
 tags: [github, security, bundle]
 generated:
   by: okfit/claude-code
-  at: 2026-10-01T01:26:10Z
-  body_sha256: d15974f84f33b2e6fb92dc22444492950242e5b0bf7787973a96d2969b32006d
+  at: 2026-10-01T01:56:30Z
+  body_sha256: ec00324a9e2bb4b2908ade3b8697523de66dc5420fdb5933d3cffabc3946c445
 ---
 
 # @effected/github-commands
@@ -58,9 +58,9 @@ layer. Zero regular dependencies and no peer: nothing in it needs `effect`.
 It takes no `@effected/*` edge, ever, so any package at any tier can depend on
 it.
 
-Consumers: `@effected/github-actions` (a required peer: `ActionLogger`
+Consumers: `@effected/github-actions` (a regular dependency: `ActionLogger`
 neutralizes the log text it writes, and the whole actions runtime emits commands
-through `WorkflowCommand`) and `@effected/cli` (a required peer: the renderers,
+through `WorkflowCommand`) and `@effected/cli` (a regular dependency: the renderers,
 `CliMessage`, the failure report and the loggers neutralize under GitHub
 Actions). See [why the grammar left `github-actions`](../decisions/github-commands-extracted-from-actions.md).
 

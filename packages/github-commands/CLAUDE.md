@@ -2,7 +2,7 @@
 
 The GitHub Actions workflow-command grammar as pure functions: `WorkflowCommand` renders a command with the runner's escaping, and `CommandNeutralizer` makes arbitrary text safe to write to a log. Extracted from `@effected/github-actions` so a boundary-tier package can neutralize without the integrated tier.
 
-**Tier: pure.** No `effect` (it is not even a peer), no `node:` import, no service, no regular dependency, no `@effected/*` edge, `"sideEffects": false`. Never add one: any package at any tier depends on this one, and that only works while it asks for nothing.
+**Tier: pure.** No `effect` (it is not even a peer), no `node:` import, no service, no regular dependency, no `@effected/*` edge, `"sideEffects": false`. Never add one: any package at any tier depends on this one, and that only works while it asks for nothing. Its consumers take it as a REGULAR dependency, never a peer: it has no shared-instance contract (static functions, no tag, no `instanceof`), so two copies in a tree are harmless.
 
 **Design doc:** `@./okf/modules/github-commands.md` — Load when: changing either module, or ruling on what the runner reads as a command. The reason it exists is `@./okf/decisions/github-commands-extracted-from-actions.md`.
 

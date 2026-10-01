@@ -10,8 +10,8 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T01:36:24Z
-  body_sha256: bb0197aa1f71f647fef133ab4236e4a473fb5a85a9386335f6522101b851c0f4
+  at: 2026-10-01T01:56:30Z
+  body_sha256: f10e59943a6f54802073740255a9eb6d28cdceba0116a3905f243ddabf38a5e2
 ---
 
 # github-actions
@@ -27,7 +27,7 @@ command. The two meet at exactly two seams, both living here: the App-token
 bridge and the `Logger` that maps Effect logs onto workflow commands. The
 workflow-command grammar itself, `WorkflowCommand` and the `CommandNeutralizer`
 the logger uses, is the pure [`@effected/github-commands`](github-commands.md),
-a required peer that this entrypoint re-exports `WorkflowCommand` from.
+a regular dependency (it has no shared-instance contract, so a duplicate is harmless) that this entrypoint re-exports `WorkflowCommand` from.
 
 The package covers four subsystems, each with its own contract doc: the
 runner runtime ([`actions-runtime`](../interfaces/actions-runtime.md)),

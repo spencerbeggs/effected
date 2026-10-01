@@ -287,6 +287,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/cli:
+    dependencies:
+      '@effected/github-commands':
+        specifier: workspace:^
+        version: link:../github-commands/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effect
@@ -300,9 +304,6 @@ importers:
       '@effected/env':
         specifier: workspace:*
         version: link:../env/dist/dev/pkg
-      '@effected/github-commands':
-        specifier: workspace:*
-        version: link:../github-commands/dist/dev/pkg
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob/dist/dev/pkg
@@ -533,6 +534,9 @@ importers:
       '@effected/github':
         specifier: workspace:^
         version: link:../github/dist/dev/pkg
+      '@effected/github-commands':
+        specifier: workspace:^
+        version: link:../github-commands/dist/dev/pkg
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob/dist/dev/pkg
@@ -561,9 +565,6 @@ importers:
       '@effect/vitest':
         specifier: catalog:effect
         version: 4.0.0-rc.118(effect@4.0.0-rc.118)(vitest@5.0.2)
-      '@effected/github-commands':
-        specifier: workspace:*
-        version: link:../github-commands/dist/dev/pkg
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -1000,9 +1001,6 @@ importers:
       '@effected/env':
         specifier: workspace:^
         version: link:../env/dist/dev/pkg
-      '@effected/github-commands':
-        specifier: workspace:^
-        version: link:../github-commands/dist/dev/pkg
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob/dist/dev/pkg

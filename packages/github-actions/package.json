@@ -34,6 +34,7 @@
 	"dependencies": {
 		"@azure/storage-blob": "^12.33.0",
 		"@effected/github": "workspace:^",
+		"@effected/github-commands": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/markdown": "workspace:^",
 		"@effected/npm": "workspace:^",
@@ -45,7 +46,6 @@
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effect",
 		"@effect/vitest": "catalog:effect",
-		"@effected/github-commands": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@savvy-web/bundler": "^2.4.18",
 		"@types/node": "catalog:build",
@@ -54,7 +54,6 @@
 	},
 	"peerDependencies": {
 		"@effect/platform-node": "catalog:effect:peers",
-		"@effected/github-commands": "workspace:^",
 		"effect": "catalog:effect:peers"
 	},
 	"engines": {

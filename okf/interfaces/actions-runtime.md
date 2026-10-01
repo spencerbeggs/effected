@@ -10,8 +10,8 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T01:36:24Z
-  body_sha256: e30036a2a998ee49ac8cd81bbf413ce736db06264bb87a11a5f4ef334710e87a
+  at: 2026-10-01T01:56:30Z
+  body_sha256: 6f14830f05c4f2fa996315769f22d1b5cc051f4107d34ee125057638187f5b4a
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:31.377Z
@@ -112,7 +112,7 @@ a hand-written `INPUT_BIOME_VERSION` reads as absent on a real runner.
 `WorkflowCommand` is pure: it renders the wire protocol with the required
 escaping and nothing else. It lives in the pure
 [`@effected/github-commands`](../modules/github-commands.md), which this
-package takes as a required peer and re-exports it from, so existing imports
+package takes as a regular dependency and re-exports it from, so existing imports
 keep working; the grammar left so a package that is not an Actions runtime can
 use it without the integrated tier. `ActionLogger` owns groups, the buffered
 step renderer and annotations, and ships the `Logger` that maps every kit
