@@ -11,8 +11,8 @@ sources:
     title: "The colour-depth precedence tests: FORCE_COLOR ahead of NO_COLOR, NODE_DISABLE_COLORS, TERM=dumb and the TTY gate"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: d3960108c1a73553760c405f8289cc4ed4029751bf81f4c7d326c93fd4d48d13
+  at: 2026-10-01T15:30:50Z
+  body_sha256: f592932ed3c63fce4e1d5a78425dea3418dc4998feb16481480eef48510039ff
 ---
 
 # FORCE_COLOR is honoured, with Node's getColorDepth precedence
@@ -36,7 +36,10 @@ posture.[^boundary-test]
    `'3'` gives truecolor, and any other value gives none.
 2. A non-empty `NO_COLOR` or `NODE_DISABLE_COLORS`, and `TERM=dumb`.
 3. The TTY gate: a stream that is not a terminal has no colour.
-4. Node's environment table (`TERM`, `COLORTERM`, `TERM_PROGRAM`, CI
+4. Node's win32 branch, keyed on `OS=Windows_NT` in place of
+   `process.platform`: truecolor, approximating Node on Windows 10 build
+   14931 and later.
+5. Node's environment table (`TERM`, `COLORTERM`, `TERM_PROGRAM`, CI
    vendors).
 
 `FORCE_COLOR` beating `NO_COLOR` matches Node, which is the point: a

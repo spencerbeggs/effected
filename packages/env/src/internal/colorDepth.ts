@@ -1,5 +1,5 @@
-// Port of Node v26.10.0 lib/internal/tty.js getColorDepth (MIT). Differences: no win32 branch (no
-// process.platform read), no warning side effect, TTY gate applied here.
+// Port of Node v26.10.0 lib/internal/tty.js getColorDepth (MIT). Differences: the win32 branch reads OS=Windows_NT
+// rather than process.platform and the OS release, no warning side effect, TTY gate applied here.
 import type { ColorLevel } from "../ColorLevel.js";
 import type { Env } from "./types.js";
 
@@ -52,9 +52,21 @@ const TERM_ENVS_REG_EXP: ReadonlyArray<RegExp> = [
 
 const isSet = (value: string | undefined): boolean => value !== undefined && value !== "";
 
-/** The table: Node's getColorDepth with the FORCE_COLOR branch, win32 branch and warning removed. */
+/**
+ * The table: Node's getColorDepth with the FORCE_COLOR branch and warning removed, and its win32 branch keyed on
+ * `OS=Windows_NT`.
+ *
+ * @remarks
+ * Node's win32 branch reads `process.platform` and the OS release: truecolor from Windows 10 build 14931, 256 colours
+ * from build 10586, 16 before. Here the environment is read only through `Config`, so `OS=Windows_NT`, which Windows
+ * sets system-wide and Git Bash keeps, stands in for the platform, and the branch gives truecolor. That approximates
+ * Node on Windows 10 build 14931 and later; an older build gets more colour than Node would give it.
+ */
 const fromTable = (env: Env): ColorLevel => {
 	if (isSet(env.NODE_DISABLE_COLORS) || isSet(env.NO_COLOR) || env.TERM === "dumb") return "none";
+
+	// Where Node's win32 branch sits: after the disable checks, before every TMUX, CI and TERM row.
+	if (env.OS === "Windows_NT") return "truecolor";
 
 	if (env.TMUX) return "truecolor";
 
@@ -103,7 +115,8 @@ const fromTable = (env: Env): ColorLevel => {
 
 /**
  * The colour level of one stream. `FORCE_COLOR`, when present, decides alone (it beats `NO_COLOR`, as in
- * Node); otherwise a stream that is not a TTY has none; otherwise the terminal table decides.
+ * Node); otherwise a stream that is not a TTY has none; otherwise the terminal table decides, which gives a Windows
+ * terminal (`OS=Windows_NT`) truecolor unless colour is disabled.
  *
  * @internal
  */
@@ -135,6 +148,7 @@ export const colorKeys: ReadonlyArray<string> = [
 	"FORCE_COLOR",
 	"NO_COLOR",
 	"NODE_DISABLE_COLORS",
+	"OS",
 	"TERM",
 	"TMUX",
 	"TF_BUILD",

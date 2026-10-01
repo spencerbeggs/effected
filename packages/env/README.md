@@ -19,9 +19,9 @@ Effect-native environment detection for any front end of a tool: **who is runnin
 
 ## Why @effected/env
 
-Every tool that prints ends up asking these questions, usually by reading `process.env` and `process.stdout.isTTY` wherever the answer is needed. The answers then drift (the help text and the report disagree about colour), they cannot be tested without mutating globals, and the rules are subtle: `FORCE_COLOR` beats `NO_COLOR`, an empty `NO_COLOR` means unset, `TERM=dumb` is a terminal that cannot move the cursor, and an agent running inside CI should get agent output.
+Every tool that prints ends up asking these questions, usually by reading `process.env` and `process.stdout.isTTY` wherever the answer is needed. The answers then drift (the help text and the report disagree about colour), they cannot be tested without mutating globals, and the rules are subtle: `FORCE_COLOR` beats `NO_COLOR`, an empty `NO_COLOR` means unset, `TERM=dumb` is a terminal that cannot move the cursor, a Windows console sets no `TERM` at all yet draws truecolor, and an agent running inside CI should get agent output.
 
-This package makes each decision once, as a service, from rules taken from established sources: colour depth from Node's own `getColorDepth`, hyperlink support from std-osc8's terminal table, and agent detection from std-env's table.
+This package makes each decision once, as a service, from rules taken from established sources: colour depth from Node's own `getColorDepth` (with `OS=Windows_NT` standing in for its platform check, which gives a Windows terminal truecolor as Node does from Windows 10 build 14931), hyperlink support from std-osc8's terminal table, and agent detection from std-env's table.
 
 ## Install
 

@@ -13,8 +13,8 @@ sources:
     title: "env purity: no process read, node: import, platform or kit import, or console write in src"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
-  body_sha256: c7cc9376861e4f39c168600c229cbe3c219ef92e216863d20ae36a549db72061
+  at: 2026-10-01T15:30:50Z
+  body_sha256: 610207b5c161bf36106aba97830e7658da704c3e9ef8a23fb86429b044908753
 ---
 
 # @effected/env
@@ -43,7 +43,12 @@ servers, engines and a Vitest plugin can detect without a CLI dependency; see
 | `EnvOverride` | Reads a variable that picks a mode *within* an audience. `readResult` returns `{ audience, accepted, rejected }` and never logs, so a host owns the wording, the stream and any dedupe; `read` is the logging convenience over it. Without its `source` option `readResult` reads the fiber's `ConfigProvider` on every call, so a reader built once at module level is tested by providing a provider around the read; `source` (a record re-read per call, or a provider) is for a long-lived host, and a host that wants it and testability builds the options inside a function that takes the source (vitest-agent A8). An invalid value logs one warning and yields `None`; it never fails the run. Warnings go through `Effect.logWarning`, which writes to stdout unless `References.LogToStderr` is set, so a stdio-sensitive host routes logs to stderr. The kit never learns a consumer's literals. |
 
 Colour follows Node's `getColorDepth` precedence
-([decision](../decisions/force-color-honoured-node-precedence.md)). Hyperlink
+([decision](../decisions/force-color-honoured-node-precedence.md)). Node's
+win32 branch reads `process.platform`, which this package never touches, so
+`OS=Windows_NT` stands in for it at the same place in the order: after the
+disable checks and the TTY gate, before `TMUX`, CI and `TERM`, and always
+truecolor. That approximates Node on Windows 10 build 14931 and later; an
+older build gets more colour than Node would give. Hyperlink
 detection is a port of std-osc8's pure core
 ([decision](../decisions/osc8-ported-not-wrapped.md)); hyperlinks being off
 for the agent audience is applied in `cli`, where the audience is known, not

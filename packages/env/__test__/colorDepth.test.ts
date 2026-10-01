@@ -133,6 +133,44 @@ describe("colorDepth", () => {
 		},
 	);
 
+	// Node's win32 branch sits after the FORCE_COLOR and disable checks and before every other row, and gives truecolor
+	// from Windows 10 build 14931. Env is read only through Config, so `OS=Windows_NT`, which Windows sets system-wide
+	// and Git Bash keeps, stands in for the platform. The Node oracle reads `process.platform`, so these rows are pinned
+	// against colorDepth only.
+	describe("on Windows (OS=Windows_NT)", () => {
+		const OS = "Windows_NT";
+
+		it("a TTY with no TERM is truecolor, as in cmd.exe, PowerShell and Windows Terminal", () => {
+			assert.strictEqual(colorDepth({ OS }, true), "truecolor");
+		});
+
+		it("the Windows branch comes before TERM, CI and the rest of the table", () => {
+			for (const env of [
+				{ OS, TERM: "xterm" },
+				{ OS, TERM: "cygwin" },
+				{ OS, CI: "true" },
+				{ OS, TF_BUILD: "True", AGENT_NAME: "x" },
+				{ OS, TERM_PROGRAM: "Apple_Terminal" },
+			]) {
+				assert.strictEqual(colorDepth(env, true), "truecolor", JSON.stringify(env));
+			}
+		});
+
+		it("FORCE_COLOR, NO_COLOR, NODE_DISABLE_COLORS and TERM=dumb still win, and a stream that is not a TTY is none", () => {
+			assert.strictEqual(colorDepth({ OS, FORCE_COLOR: "0" }, true), "none");
+			assert.strictEqual(colorDepth({ OS, FORCE_COLOR: "1" }, true), "basic");
+			assert.strictEqual(colorDepth({ OS, NO_COLOR: "1" }, true), "none");
+			assert.strictEqual(colorDepth({ OS, NODE_DISABLE_COLORS: "1" }, true), "none");
+			assert.strictEqual(colorDepth({ OS, TERM: "dumb" }, true), "none");
+			assert.strictEqual(colorDepth({ OS }, false), "none");
+		});
+
+		it("another OS value is not Windows", () => {
+			assert.strictEqual(colorDepth({ OS: "Linux" }, true), "none");
+			assert.strictEqual(colorDepth({ OS: "windows_nt" }, true), "none");
+		});
+	});
+
 	it("colorKeys lists every env key the detector reads", () => {
 		const dir = fileURLToPath(new URL("../src/internal/", import.meta.url));
 		const source = readFileSync(`${dir}colorDepth.ts`, "utf8");
