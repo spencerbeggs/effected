@@ -1,4 +1,4 @@
-import { WorkflowCommand } from "@effected/github-commands";
+import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
 import { Console, Context, Effect, FileSystem, Layer, Schema } from "effect";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 import { heredocBlock, isUsableName } from "./internal/runnerFile.js";
@@ -325,7 +325,7 @@ export class ActionOutputs extends Context.Service<ActionOutputs, ActionOutputsS
 		summary: () => Effect.fail(new DetachedOutputError({ file: RUNNER_FILE.summary })),
 		exportVariable: (name) => Effect.fail(new DetachedOutputError({ file: RUNNER_FILE.exportVariable, name })),
 		addPath: () => Effect.fail(new DetachedOutputError({ file: RUNNER_FILE.addPath })),
-		setFailed: (message) => Console.error(message),
+		setFailed: (message) => Console.error(CommandNeutralizer.text(message)),
 		setSecret: () => Effect.void,
 	} satisfies ActionOutputsShape);
 

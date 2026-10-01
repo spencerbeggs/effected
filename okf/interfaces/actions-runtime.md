@@ -10,8 +10,8 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-29T01:39:10Z
-  body_sha256: 35d0b244f09be3414afff1f4d7c8e7194da2074d78b53ac8173cebfd14bb1cd4
+  at: 2026-10-01T01:36:24Z
+  body_sha256: e30036a2a998ee49ac8cd81bbf413ce736db06264bb87a11a5f4ef334710e87a
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:31.377Z
@@ -110,11 +110,21 @@ a hand-written `INPUT_BIOME_VERSION` reads as absent on a real runner.
 ### Logging and the workflow-command protocol
 
 `WorkflowCommand` is pure: it renders the wire protocol with the required
-escaping and nothing else, and is the one piece of this package a
-non-Actions consumer might legitimately want. `ActionLogger` owns groups,
-the buffered step renderer and annotations, and ships the `Logger` that
-maps every kit package's `Effect.log*` calls onto workflow commands — the
-mapping belongs to one `Logger` at the edge, not to each library.
+escaping and nothing else. It lives in the pure
+[`@effected/github-commands`](../modules/github-commands.md), which this
+package takes as a required peer and re-exports it from, so existing imports
+keep working; the grammar left so a package that is not an Actions runtime can
+use it without the integrated tier. `ActionLogger` owns groups, the buffered
+step renderer and annotations, and ships the `Logger` that maps every kit
+package's `Effect.log*` calls onto workflow commands — the mapping belongs to
+one `Logger` at the edge, not to each library.
+
+The same logger neutralizes the plain text it writes (`CommandNeutralizer`):
+the runner reads every line of stdout, so an `Info` message carrying `::` at the
+start of a line, or `##[` anywhere, would be a command. The levels that render AS
+a command escape their data instead, the buffered transcript and the
+`withStep` failure line are neutralized, and the deliberate commands (`group`,
+`notice`, `setFailed`, `setSecret`) are not routed through it.
 
 A silent layer is a named constant, not a no-arg factory (which would mint
 a fresh layer per call and defeat memoization). Buffering is opt-in and

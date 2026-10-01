@@ -1,5 +1,5 @@
 import type { AnnotationProperties } from "@effected/github-commands";
-import { WorkflowCommand } from "@effected/github-commands";
+import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
 import { Console, Context, Effect, Exit, Inspectable, Layer, LogLevel, Logger, References } from "effect";
 import { ActionEnvironment } from "./ActionEnvironment.js";
 
@@ -76,7 +76,11 @@ const annotationRecord = (properties: AnnotationProperties): Record<string, unkn
  * @remarks
  * `Info` is deliberately plain text with no command prefix — it is ordinary
  * step output, and prefixing it would make every informational line an
- * annotation in the workflow summary.
+ * annotation in the workflow summary. It is neutralized, though: the text is
+ * whatever the program logged, and the runner reads every line of stdout, so a
+ * message carrying `::add-mask::` or a `##[` would be a command. The levels that
+ * render AS a command escape their data instead, and a line that starts `::` is
+ * read by the runner as that command alone.
  */
 const renderEntry = (
 	level: LogLevel.LogLevel,
@@ -90,7 +94,7 @@ const renderEntry = (
 			? WorkflowCommand.error(text, properties)
 			: WorkflowCommand.warning(text, properties);
 	}
-	return LogLevel.isGreaterThanOrEqualTo(level, "Info") ? text : WorkflowCommand.debug(text);
+	return LogLevel.isGreaterThanOrEqualTo(level, "Info") ? CommandNeutralizer.text(text) : WorkflowCommand.debug(text);
 };
 
 /** The line the runner should see for one log event, with the fiber's annotations. */
@@ -140,7 +144,8 @@ const flush = (state: BufferState): Effect.Effect<void> =>
 			`--- End buffered output for "${state.label}" ---`,
 		];
 		state.entries.length = 0;
-		return Effect.forEach(body, (line) => Console.log(line), { discard: true });
+		// The transcript is the program's own log text and the label a step name: neutralized, as the live lines were.
+		return Effect.forEach(body, (line) => Console.log(CommandNeutralizer.text(line)), { discard: true });
 	});
 
 /**
@@ -330,7 +335,7 @@ const make = Effect.gen(function* () {
 				// ahead of the flush instead of into the buffer it is announcing — and
 				// so a failed step does not mint a second `::error::` beside the one
 				// `Action.run` already renders for the failure itself.
-				Effect.tapCause(effect, () => Console.log(`❌ ${name}`)),
+				Effect.tapCause(effect, () => Console.log(CommandNeutralizer.text(`❌ ${name}`))),
 				{ onSuccess: "discard" },
 			).pipe(
 				// Outside the buffered region on purpose: a line emitted inside it is
