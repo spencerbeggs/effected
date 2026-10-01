@@ -131,7 +131,9 @@ const known = (reported: number | undefined, fallback: number): number =>
  *
  * @remarks
  * A width or height the stream does not report, or reports as 0 (a pty that `script` opens says `0 0`), is unknown and
- * reads as 80 columns by 24 rows, so a screen never lays itself out at width 0.
+ * reads as 80 columns by 24 rows, so a screen never lays itself out at width 0. This is not Ink's own fallback, which
+ * first asks the process's terminal (`terminal-size`: the tty, `COLUMNS`, `tput`) and only then uses 80x24; the kit
+ * reads no `process` here. On a 0x0 pty with `COLUMNS=50`, Ink lays out at 50 while these rows are cut at 79.
  *
  * A React hook: call it from a component rendered inside a `CliUi.run` screen.
  *

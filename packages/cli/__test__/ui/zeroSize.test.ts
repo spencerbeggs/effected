@@ -28,12 +28,10 @@ const drawn = (columns: number, rows: number) =>
 				Effect.provide(CliTheme.layerTest()),
 			),
 		);
-		yield* Effect.suspend(() => (fake.rawModes.includes(true) ? Effect.void : Effect.fail("not yet"))).pipe(
-			Effect.retry(Schedule.spaced("5 millis")),
-			Effect.timeout("2 seconds"),
-			Effect.orDie,
-		);
-		yield* Effect.sleep("80 millis");
+		// Polled, not slept: the first frame is drawn once its message is on stdout, however loaded the runner is.
+		yield* Effect.suspend(() =>
+			stripAnsi(fake.stdout()).includes("Attest which?") ? Effect.void : Effect.fail("not yet"),
+		).pipe(Effect.retry(Schedule.spaced("5 millis")), Effect.timeout("2 seconds"), Effect.orDie);
 		yield* Fiber.interrupt(fiber);
 		return stripAnsi(fake.stdout());
 	});

@@ -53,9 +53,10 @@ export interface CliLogOptions {
 	 * no output. An invalid level in `envVar` still prints its one warning line, through a private `CliLogger`,
 	 * since that is a configuration error the host should see.
 	 *
-	 * Only `CliLog`'s own records are silenced. Under `CliRuntime.main`, what the platform logs while it builds and
-	 * the audience-override warning still go through a plain `CliLogger`, and so do the failure report and the
-	 * `CliMessage` lines.
+	 * Only `CliLog`'s own records are silenced. Under `CliRuntime.main`, what the platform logs while it builds follows
+	 * the build-time format: in NDJSON (`json`, or `auto` for an agent or a CI) it goes through this layer, so `false`
+	 * silences it there as at runtime; otherwise it goes through a plain `CliLogger`. The audience-override warning, the
+	 * failure report and the `CliMessage` lines always go through a plain `CliLogger`.
 	 */
 	readonly plainLogger?: boolean | undefined;
 	/**
@@ -107,6 +108,11 @@ export interface CliLogOptions {
 	 * logging fiber's own `CurrentRuntimeEnv` still comes first. The capture is invisible in the layer's type (it is read
 	 * if present, never required), so a host that builds this layer outside its environment either passes the snapshot
 	 * here, for example `RuntimeEnv.fromRecord(process.env)`, or provides `CurrentRuntimeEnv` around the layer.
+	 *
+	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then this option, then the
+	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
+	 * this option, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`. Every `CliLog.layer`
+	 * overload points here.
 	 */
 	readonly runtimeEnv?: RuntimeEnv | undefined;
 }
@@ -284,9 +290,7 @@ export class CliLog {
 	 * does it require `FileSystem` and `Path`, and it leaves them in `R` unprovided: the platform supplies them, or
 	 * a test supplies a memory filesystem, so a host never provides Node inside its own layer.
 	 *
-	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
-	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
-	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 * Without a `CurrentRuntimeEnv` around the layer, `"auto"` does not neutralize: see {@link CliLogOptions.runtimeEnv}.
 	 *
 	 * @param options - the level, the env var, the format, the `CliLogger` options and the optional file sink
 	 */
@@ -297,9 +301,7 @@ export class CliLog {
 	 * The logger set with NDJSON diagnostics and a file sink; see the first overload.
 	 *
 	 * @remarks
-	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
-	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
-	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 * Without a `CurrentRuntimeEnv` around the layer, `"auto"` does not neutralize: see {@link CliLogOptions.runtimeEnv}.
 	 *
 	 * @param options - the level, the env var, the `CliLogger` options and the file sink
 	 */
@@ -310,9 +312,7 @@ export class CliLog {
 	 * The logger set with pretty diagnostics; see the first overload.
 	 *
 	 * @remarks
-	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
-	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
-	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 * Without a `CurrentRuntimeEnv` around the layer, `"auto"` does not neutralize: see {@link CliLogOptions.runtimeEnv}.
 	 *
 	 * @param options - the level, the env var and the `CliLogger` options
 	 */
@@ -323,9 +323,7 @@ export class CliLog {
 	 * The logger set with pretty diagnostics and a file sink; see the first overload.
 	 *
 	 * @remarks
-	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
-	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
-	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 * Without a `CurrentRuntimeEnv` around the layer, `"auto"` does not neutralize: see {@link CliLogOptions.runtimeEnv}.
 	 *
 	 * @param options - the level, the env var, the `CliLogger` options and the file sink
 	 */
@@ -336,9 +334,7 @@ export class CliLog {
 	 * The logger set with the format decided by the audience; see the first overload.
 	 *
 	 * @remarks
-	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
-	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
-	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 * Without a `CurrentRuntimeEnv` around the layer, `"auto"` does not neutralize: see {@link CliLogOptions.runtimeEnv}.
 	 *
 	 * @param options - the level, the env var, the format and the `CliLogger` options
 	 */
@@ -349,9 +345,7 @@ export class CliLog {
 	 * The logger set with the format decided by the audience, and a file sink; see the first overload.
 	 *
 	 * @remarks
-	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
-	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
-	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 * Without a `CurrentRuntimeEnv` around the layer, `"auto"` does not neutralize: see {@link CliLogOptions.runtimeEnv}.
 	 *
 	 * @param options - the level, the env var, the format, the `CliLogger` options and the file sink
 	 */

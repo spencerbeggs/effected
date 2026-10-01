@@ -1,9 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
-import { Cause, ConfigProvider, Console, Effect, Layer, Stdio, Terminal } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Option, Stdio, Terminal } from "effect";
 import type { Document, FailureDetails, ReportFailuresOptions } from "../src/index.js";
-import { CliDoc, CliLinks, CliRuntime, CliTheme, Doc, Render } from "../src/index.js";
+import { CliDoc, CliLinks, CliLogger, CliRuntime, CliTheme, Doc, Render } from "../src/index.js";
 import { commandLines } from "./helpers/runnerCommands.js";
 
 const ESC = String.fromCharCode(0x1b);
@@ -430,5 +430,41 @@ describe("main's env.stackFrames (A3)", () => {
 				assert.notInclude(text, "/repo/");
 			}
 		}),
+	);
+});
+
+describe("a report target that cannot be built falls back to plain (r4 fix 4, minor 2)", () => {
+	it.effect(
+		"bare reportFailures with services whose terminal width throws: the plain report, not an escaped defect",
+		() =>
+			Effect.gen(function* () {
+				const { double, err } = capturing();
+				const stream = { isTerminal: true, color: "none" as const, hyperlinks: false, columns: Option.none<number>() };
+				const hostileTerminal = Layer.succeed(TerminalEnv, {
+					stdinIsTerminal: true,
+					stdout: stream,
+					stderr: stream,
+					width: () => {
+						throw new Error("width exploded");
+					},
+				});
+				const services = Layer.mergeAll(
+					hostileTerminal,
+					CliTheme.layer({ glyphs: "unicode" }).pipe(Layer.provide(TerminalEnv.layerTest())),
+					Audience.layerTest("human"),
+					CliLinks.layerTest("off"),
+				);
+				const exit = yield* Effect.fail(new Error("disk full")).pipe(
+					CliRuntime.reportFailures(),
+					Effect.provide(services),
+					Effect.provide(CliLogger.layer()),
+					Effect.provideService(Console.Console, double),
+					Effect.exit,
+				);
+				assert.isTrue(Exit.isFailure(exit));
+				const squashed = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+				assert.include(String(squashed), "disk full", "the program's own failure, not the target's defect");
+				assert.include(err.join("\n"), "disk full");
+			}),
 	);
 });

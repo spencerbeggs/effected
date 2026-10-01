@@ -16,6 +16,7 @@ import type { FailureTarget } from "./internal/failureTarget.js";
 import {
 	FailureTargetCell,
 	currentTarget,
+	fallbackTarget,
 	guardConsumerLines,
 	linesOf,
 	plainFailureLines,
@@ -369,7 +370,8 @@ export class CliRuntime {
 						// The failure's document in the renderer the audience gets: the report itself without a `render`, and
 						// `details.defaultLines` with one. If the document cannot be rendered for the audience, the plain path;
 						// if that dies too, the message alone, still sanitised and neutralized: the last resort keeps the policy.
-						const target = yield* currentTarget;
+						// The target is built from the services in context when there is no cell: if that dies, the plain fallback.
+						const target = yield* currentTarget.pipe(Effect.catchCause(() => Effect.succeed(fallbackTarget)));
 						const reportLines = (status: boolean): ReadonlyArray<string> => {
 							try {
 								return linesOf(cause, target, status);
