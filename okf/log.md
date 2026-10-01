@@ -1,5 +1,24 @@
 # Log
 
+## 2026-10-01
+
+* Updated @effected/env
+* Updated The audience flag is four shared root flags resolved into env's Audience
+* Updated Peer-dependency discipline
+* Updated @effected/cli
+* Added @effected/github-commands
+* Added The workflow-command grammar left github-actions for its own pure package
+* Updated actions-runtime
+* Updated effected
+* Updated github-actions
+* Added Only ./ui may bind Node's process streams, and only in three named files
+* Added The Ink layer is a ./ui subpath of cli, with ink and react as optional peers
+* Updated The cli root boundary is a module-graph walk, not a per-file scan
+* Updated The cli root stays boundary, and ./ui is integrated only for consumers who opt in
+* Added The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
+* Updated Ink delivers every key in one stdin read before React re-renders
+* Added The ui declarations reference the root's types by the package's own name
+
 ## 2026-09-30
 
 * Updated @effected/jsonl
@@ -17,6 +36,14 @@
 * Updated @effected/env is its own boundary package, a required peer of cli
 * Updated FORCE_COLOR is honoured, with Node's getColorDepth precedence
 * Updated std-osc8's pure core is ported into env, not wrapped
+* Updated @effected/cli grows a presentation layer and interactive UI
+* Updated The audience flag is four shared root flags resolved into env's Audience
+* Updated The cli package owns its display-width function
+* Updated Two prompt engines raise one Cancelled error
+* Updated CliLinks finds the editor directory with its own bounded ascent
+* Added CliLinks finds the project root with @effected/walker
+* Added The cli renderers have no JSON output
+* Added The document IR is plain frozen data, not Schema classes
 
 ## 2026-09-29
 
