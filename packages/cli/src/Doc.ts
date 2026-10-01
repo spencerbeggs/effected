@@ -795,6 +795,9 @@ export class Doc {
 	 * it; an agent's or a CI's width is unbounded, so nothing is cut for them unless the context gives a finite width.
 	 * Markdown keeps every line whole. Inside a compact list item a blank line of the diff keeps the item's indent.
 	 *
+	 * A trailing line break ends the last line, as in a unified diff file, and adds no blank line after it: `"a\n"` is
+	 * one line. To end on a blank line, end the text with two line breaks.
+	 *
 	 * @param unified - the diff
 	 * @param options - `cap`, the most lines shown; `truncate`, to cut each line to the width
 	 */
