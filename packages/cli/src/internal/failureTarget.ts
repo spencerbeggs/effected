@@ -23,6 +23,18 @@ export interface FailureTarget {
 	readonly format: "plain" | "ansi" | "githubLog";
 	/** `true` for the fallback: nothing is known of the audience or the runner, so it is assumed, not read. */
 	readonly assumed?: boolean;
+	/** Which stack frames a defect's report shows; `app` when absent. */
+	readonly stackFrames?: "app" | "all";
+}
+
+/**
+ * The run's report settings `CliRuntime.main` takes from `env`, recorded with the target.
+ *
+ * @internal
+ */
+export interface FailureSettings {
+	readonly displayPath?: ((absolute: string) => string) | undefined;
+	readonly stackFrames?: "app" | "all" | undefined;
 }
 
 /**
@@ -66,10 +78,7 @@ export const fallbackTarget: FailureTarget = {
  * Each is read with `serviceOption`, so this never adds a requirement. `audience` overrides the one in context: an
  * audience flag is provided deeper than the environment layer, where the report cannot see it.
  */
-const build = (
-	audience?: AudienceShape,
-	displayPath?: (absolute: string) => string,
-): Effect.Effect<FailureTarget | undefined> =>
+const build = (audience?: AudienceShape, settings: FailureSettings = {}): Effect.Effect<FailureTarget | undefined> =>
 	Effect.gen(function* () {
 		const theme = yield* Effect.serviceOption(CliTheme);
 		const terminal = yield* Effect.serviceOption(TerminalEnv);
@@ -78,13 +87,15 @@ const build = (
 		if (Option.isNone(theme) || Option.isNone(terminal) || Option.isNone(links)) return undefined;
 		const shape = audience ?? (Option.isSome(current) ? current.value : undefined);
 		if (shape === undefined) return undefined;
+		const { displayPath, stackFrames } = settings;
 		const ctx = yield* Render.context("stderr", displayPath === undefined ? undefined : { displayPath }).pipe(
 			Effect.provideService(CliTheme, theme.value),
 			Effect.provideService(TerminalEnv, terminal.value),
 			Effect.provideService(CliLinks, links.value),
 			Effect.provideService(Audience, shape),
 		);
-		return { ctx, format: yield* autoFormat(ctx.audience) };
+		const format = yield* autoFormat(ctx.audience);
+		return stackFrames === undefined ? { ctx, format } : { ctx, format, stackFrames };
 	});
 
 /**
@@ -92,16 +103,16 @@ const build = (
  *
  * @internal
  */
-export const refreshFailureTarget = (
-	audience?: AudienceShape,
-	displayPath?: (absolute: string) => string,
-): Effect.Effect<void> =>
+export const refreshFailureTarget = (audience?: AudienceShape, settings?: FailureSettings): Effect.Effect<void> =>
 	Effect.gen(function* () {
 		const cell = yield* FailureTargetCell;
 		if (cell === undefined) return;
-		// A rewrite for an audience flag keeps the path display the environment layer recorded.
+		// A rewrite for an audience flag keeps the settings the environment layer recorded.
 		const recorded = MutableRef.get(cell);
-		const target = yield* build(audience, displayPath ?? recorded?.ctx.displayPath);
+		const target = yield* build(
+			audience,
+			settings ?? { displayPath: recorded?.ctx.displayPath, stackFrames: recorded?.stackFrames },
+		);
 		if (target !== undefined) MutableRef.set(cell, target);
 	});
 
@@ -141,7 +152,10 @@ const withoutStatus = (doc: Document): Document =>
  * @internal
  */
 export const linesOf = (cause: Cause.Cause<unknown>, target: FailureTarget, status = true): ReadonlyArray<string> => {
-	const full = CliFailure.toDoc(cause, { displayPath: target.ctx.displayPath });
+	const full = CliFailure.toDoc(cause, {
+		displayPath: target.ctx.displayPath,
+		...(target.stackFrames === undefined ? {} : { stackFrames: target.stackFrames }),
+	});
 	const doc = status ? full : withoutStatus(full);
 	const text = Render[target.format](doc, target.ctx);
 	return text === "" ? [] : text.split("\n");

@@ -59,6 +59,13 @@ export interface CliEnvOptions {
 	 * default failure report are shown through it. Only `CliRuntime.main` reads this. The identity by default.
 	 */
 	readonly displayPath?: ((absolute: string) => string) | undefined;
+	/**
+	 * Which frames of a defect's stack the default failure report shows: `app`, the default, leaves out every
+	 * `node_modules` frame (Effect's and any other dependency's) and the runtime's own, and counts them; `all` shows
+	 * every frame. Applies to the report `main` writes, `FailureDetails.defaultLines` and `FailureDetails.lines`. Only
+	 * `CliRuntime.main` reads this.
+	 */
+	readonly stackFrames?: "app" | "all" | undefined;
 	/** Whether file links open in an editor; `auto` by default. See {@link CliLinks}. */
 	readonly editorLinks?: EditorLinks | undefined;
 	/** The environment variable that overrides `editorLinks`, read through `Config`. Not read unless named. */

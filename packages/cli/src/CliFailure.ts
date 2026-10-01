@@ -43,6 +43,12 @@ export interface CliFailureOptions {
 	readonly render?: Readonly<Record<string, (error: unknown) => Document>> | undefined;
 	/** Turns an absolute path into its display form, for the stack frames; the identity by default. */
 	readonly displayPath?: ((absolute: string) => string) | undefined;
+	/**
+	 * Which frames of a defect's stack are shown. `app`, the default, shows the program's own: every `node_modules`
+	 * frame (Effect's and any other dependency's), `node:internal` and the runtime's generator frames are left out and
+	 * counted. `all` shows every frame, unfiltered.
+	 */
+	readonly stackFrames?: "app" | "all" | undefined;
 }
 
 /** The deepest an `Error.cause` chain, or a stack, is followed. */
@@ -141,18 +147,21 @@ const parseFrame = (raw: string): Frame => {
 	};
 };
 
-/** A frame that is the runtime's or Effect's, not the program's. */
+/** A frame that is the runtime's or a dependency's (Effect's or any other in `node_modules`), not the program's. */
 const isInternal = (raw: string): boolean =>
 	/node:internal\//.test(raw) ||
-	/[\\/]node_modules[\\/]effect[\\/]/.test(raw) ||
+	/[\\/]node_modules[\\/]/.test(raw) ||
 	/[\\/]packages[\\/]effect[\\/]src[\\/]/.test(raw) ||
 	/Generator\.next|~effect\//.test(raw);
 
 /** The frames of a stack that belong to the program, and how many were left out. */
-const cleanStack = (stack: unknown): { readonly frames: ReadonlyArray<Frame>; readonly hidden: number } => {
+const cleanStack = (
+	stack: unknown,
+	mode: "app" | "all",
+): { readonly frames: ReadonlyArray<Frame>; readonly hidden: number } => {
 	if (typeof stack !== "string") return { frames: [], hidden: 0 };
 	const lines = stack.split(/\r\n|\r|\n/).filter((line) => /^\s*at\s/.test(line));
-	const kept = lines.filter((line) => !isInternal(line));
+	const kept = mode === "all" ? lines : lines.filter((line) => !isInternal(line));
 	return { frames: kept.map(parseFrame), hidden: lines.length - kept.length };
 };
 
@@ -171,8 +180,8 @@ const frameBlock = (frame: Frame, displayPath: (absolute: string) => string): Bl
 	);
 };
 
-const stackBlock = (defect: Error, displayPath: (absolute: string) => string): Block => {
-	const { frames, hidden } = cleanStack(defect.stack);
+const stackBlock = (defect: Error, displayPath: (absolute: string) => string, mode: "app" | "all"): Block => {
+	const { frames, hidden } = cleanStack(defect.stack, mode);
 	if (frames.length > 0)
 		return Doc.collapsible(
 			"stack",
@@ -205,13 +214,14 @@ const dieBlocks = (
 	defect: unknown,
 	spans: ReadonlyArray<Block>,
 	displayPath: (absolute: string) => string,
+	mode: "app" | "all",
 ): ReadonlyArray<Block> => {
 	// A prompt that was cancelled, or refused for want of a terminal, is a defect to the runtime and a fixed line to a person.
 	if (defect instanceof Cancelled || defect instanceof NotInteractive) return [Doc.paragraph(defect.message)];
 	const header = failureBlocks(describe(defect));
 	if (!(defect instanceof Error)) return [...header, ...spans];
 	const chain = causeTree(defect);
-	return [...header, ...spans, stackBlock(defect, displayPath), ...(chain === undefined ? [] : [chain])];
+	return [...header, ...spans, stackBlock(defect, displayPath, mode), ...(chain === undefined ? [] : [chain])];
 };
 
 const failBlocks = (
@@ -264,7 +274,8 @@ const spanBlocks = (reason: CauseType.Reason<unknown>): ReadonlyArray<Block> => 
  * implements {@link CliDoc}; the document `options.render` holds for its `_tag`; for `Cancelled` and
  * `NotInteractive`, their one fixed line; a `Tree` of the rejected values, for a schema error or issue; else a failure
  * status line with its message. A defect is its message followed by a collapsible `stack` of the program's own frames,
- * each a file link (so a terminal can open it in an editor), with `node:internal` and Effect's frames left out, then an
+ * each a file link (so a terminal can open it in an editor) shown through `displayPath`, with `node:internal` and every
+ * `node_modules` frame (Effect's and any other dependency's) left out unless `stackFrames` is `all`, then an
  * `Error.cause` chain as a tree. When cleaning leaves no frame the stack says
  * `no user frames (N internal frames hidden)`, never an empty block. A reason that ran under spans is followed by
  * `in: outer › inner`. Interrupts are not rendered beside a real failure, and a cause with only interrupts is the
@@ -290,7 +301,8 @@ export class CliFailure {
 		const displayPath = options?.displayPath ?? ((absolute: string) => absolute);
 		return reasons.flatMap((reason): ReadonlyArray<Block> => {
 			if (Cause.isFailReason(reason)) return failBlocks(reason.error, spanBlocks(reason), options);
-			if (Cause.isDieReason(reason)) return dieBlocks(reason.defect, spanBlocks(reason), displayPath);
+			if (Cause.isDieReason(reason))
+				return dieBlocks(reason.defect, spanBlocks(reason), displayPath, options?.stackFrames ?? "app");
 			return [];
 		});
 	};

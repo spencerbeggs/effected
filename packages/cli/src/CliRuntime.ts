@@ -502,7 +502,12 @@ export class CliRuntime {
 				: Layer.mergeAll(
 						CliColor.formatterLayer(options.env?.formatter),
 						// Records how a failure is rendered, from the services this layer provides, for the report outside it.
-						Layer.effectDiscard(refreshFailureTarget(undefined, options.env?.displayPath)),
+						Layer.effectDiscard(
+							refreshFailureTarget(undefined, {
+								displayPath: options.env?.displayPath,
+								stackFrames: options.env?.stackFrames,
+							}),
+						),
 					).pipe(Layer.provideMerge(env));
 
 		const run = Effect.gen(function* () {

@@ -554,6 +554,40 @@ describe("CliRuntime: the default failure path", () => {
 			assert.include(silent, "flagged");
 		}),
 	);
+
+	it.effect('--agent rewrites the report target and keeps stackFrames: "all"', () =>
+		Effect.gen(function* () {
+			const runTool = (stackFrames: "app" | "all") =>
+				Effect.gen(function* () {
+					const { double, err } = capturing();
+					const vendorDefect = Effect.suspend(() => {
+						const error = new Error("kaboom");
+						error.stack = `Error: kaboom\n    at run (${USER}:3:4)\n    at vendor (/repo/node_modules/vendor/x.js:7:8)`;
+						return Effect.die(error);
+					});
+					const tool = Command.make("tool").pipe(
+						Command.withSharedFlags(CliAudience.flags()),
+						Command.withSubcommands([Command.make("go", {}, () => vendorDefect)]),
+					);
+					yield* CliRuntime.main(
+						CliAudience.runWith(tool, { version: "1.0.0" })(["--agent", "go"]).pipe(Effect.provide(NodeServices.layer)),
+						{ platform: platform(true), env: { stackFrames } },
+					).pipe(
+						Effect.exit,
+						Effect.provideService(
+							ConfigProvider.ConfigProvider,
+							ConfigProvider.fromUnknown({ TERM: "xterm-256color" }),
+						),
+						Effect.provideService(Console.Console, double),
+					);
+					return err.join("\n");
+				});
+			const all = yield* runTool("all");
+			assert.notInclude(all, ESC, "control: the flag made it an agent's report");
+			assert.include(all, "node_modules/vendor/x.js:7:8");
+			assert.notInclude(yield* runTool("app"), "node_modules/vendor", "control: app hides it");
+		}),
+	);
 });
 
 describe("CliRuntime.defaultRender", () => {
@@ -575,3 +609,32 @@ describe("CliRuntime.defaultRender", () => {
 });
 
 void ({} as RenderContext);
+
+describe("CliFailure.toDoc: third-party frames (A3)", () => {
+	const THIRD_PARTY = [
+		"runTest (file:///repo/node_modules/.pnpm/@vitest+runner@4.0.0/node_modules/@vitest/runner/dist/run.B2x.js:1:2)",
+		"/repo/node_modules/tinypool/dist/entry.js:3:4",
+		"C:\\repo\\node_modules\\vitest\\dist\\worker.js:5:6",
+	];
+
+	it("hides every node_modules frame by default, not only Effect's", () => {
+		const error = errorWithStack("boom", [`run (${USER}:3:4)`, ...THIRD_PARTY, `main (${USER}:9:1)`]);
+		const text = plain(CliFailure.toDoc(Cause.die(error)));
+		assert.include(text, `${USER}:3:4`);
+		assert.include(text, `${USER}:9:1`);
+		for (const frame of ["@vitest", "tinypool", "worker.js"]) assert.notInclude(text, frame);
+	});
+
+	it("counts them in the hidden note when nothing of the program's is left", () => {
+		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", [...THIRD_PARTY, ...INTERNAL_FRAMES]))));
+		assert.include(text, `no user frames (${THIRD_PARTY.length + INTERNAL_FRAMES.length} internal frames hidden)`);
+	});
+
+	it('stackFrames: "all" keeps every frame', () => {
+		const error = errorWithStack("boom", [`run (${USER}:3:4)`, ...THIRD_PARTY, ...INTERNAL_FRAMES]);
+		const text = plain(CliFailure.toDoc(Cause.die(error), { stackFrames: "all" }));
+		for (const frame of ["@vitest", "tinypool", "worker.js", "node:internal", "Generator.next", `${USER}:3:4`]) {
+			assert.include(text, frame);
+		}
+	});
+});

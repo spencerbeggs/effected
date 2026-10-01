@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
 import { Cause, ConfigProvider, Console, Effect, Layer, Stdio, Terminal } from "effect";
-import type { Document, ReportFailuresOptions } from "../src/index.js";
+import type { Document, FailureDetails, ReportFailuresOptions } from "../src/index.js";
 import { CliDoc, CliLinks, CliRuntime, CliTheme, Doc, Render } from "../src/index.js";
 import { commandLines } from "./helpers/runnerCommands.js";
 
@@ -383,6 +383,52 @@ describe("details.lines: the run's report, with or without its status (A2)", () 
 			});
 			assert.isDefined(pair);
 			assert.deepStrictEqual(pair?.[0], pair?.[1]);
+		}),
+	);
+});
+
+describe("main's env.stackFrames (A3)", () => {
+	const VENDOR = "/repo/node_modules/vendor/dist/run.js";
+	const dyingThroughVendor = Effect.suspend(() => {
+		const error = new Error("kaboom");
+		error.stack = `Error: kaboom\n    at run (${USER}:3:4)\n    at vendor (${VENDOR}:7:8)`;
+		return Effect.die(error);
+	});
+	const run = (stackFrames: "app" | "all" | undefined, render?: NonNullable<ReportFailuresOptions["render"]>) =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			yield* CliRuntime.main(dyingThroughVendor, {
+				platform,
+				env: { displayPath: (p) => p.replace("/repo/", ""), ...(stackFrames === undefined ? {} : { stackFrames }) },
+				...(render === undefined ? {} : { render }),
+			}).pipe(
+				Effect.exit,
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ AI_AGENT: "x" })),
+				Effect.provideService(Console.Console, double),
+			);
+			return err.join("\n");
+		});
+
+	it.effect("the default report hides a node_modules frame, and shows the program's through displayPath", () =>
+		Effect.gen(function* () {
+			const text = yield* run(undefined);
+			assert.include(text, "src/run.ts:3:4");
+			assert.notInclude(text, "/repo/");
+			assert.notInclude(text, "vendor");
+		}),
+	);
+
+	it.effect('"all" keeps it in the default report, in defaultLines and in lines(), through displayPath', () =>
+		Effect.gen(function* () {
+			for (const render of [
+				undefined,
+				(_e: unknown, d: FailureDetails) => d.defaultLines,
+				(_e: unknown, d: FailureDetails) => d.lines({ status: false }),
+			]) {
+				const text = yield* run("all", render);
+				assert.include(text, "node_modules/vendor/dist/run.js:7:8");
+				assert.notInclude(text, "/repo/");
+			}
 		}),
 	);
 });
