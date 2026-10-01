@@ -167,13 +167,28 @@ const ENTRIES: ReadonlyArray<{ readonly source: string; readonly built: string; 
  * self-referencing import), so this re-pins it: every declaration of every exported name must be preceded by a TSDoc
  * block with `@public`, `@beta`, `@alpha` or `@internal`.
  */
-const untaggedExports = (dts: string): ReadonlyArray<string> =>
-	builtExports(dts)
-		.filter((name) => {
+const untaggedExports = (dts: string): ReadonlyArray<string> => {
+	// Each export by its public name, with the rollup-local name its declaration carries (`export { Foo$1 as Foo }`).
+	const bindings = new Map<string, string>();
+	for (const match of dts.matchAll(TOP_LEVEL_DECLARATION)) {
+		if (match[1] !== undefined) bindings.set(match[2] ?? "", match[2] ?? "");
+	}
+	for (const match of dts.matchAll(EXPORT_LIST)) {
+		for (const entry of (match[1] ?? "").split(",")) {
+			const [local, exported] = entry
+				.trim()
+				.replace(/^type\s+/, "")
+				.split(/\s+as\s+/);
+			if (local !== undefined && local !== "") bindings.set((exported ?? local).trim(), local.trim());
+		}
+	}
+	const escapeRegex = (name: string): string => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	return [...bindings]
+		.filter(([, local]) => {
 			const declarations = [
 				...dts.matchAll(
 					new RegExp(
-						`(\\/\\*\\*(?:(?!\\*\\/)[\\s\\S])*\\*\\/\\s*)?^(?:export\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:class|interface|type|const|let|var|function|enum|namespace)\\s+${name}\\b`,
+						`(\\/\\*\\*(?:(?!\\*\\/)[\\s\\S])*\\*\\/\\s*)?^(?:export\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:class|interface|type|const|let|var|function|enum|namespace)\\s+${escapeRegex(local)}(?![\\w$])`,
 						"gm",
 					),
 				),
@@ -183,7 +198,9 @@ const untaggedExports = (dts: string): ReadonlyArray<string> =>
 				declarations.some((match) => !/@(?:public|beta|alpha|internal)\b/.test(match[1] ?? ""))
 			);
 		})
+		.map(([exported]) => exported)
 		.sort();
+};
 
 describe("the built declarations", () => {
 	it("match the source entrypoints they were built from, or the gates below would read a stale build", () => {
@@ -273,6 +290,15 @@ describe("the built declarations", () => {
 			["B"],
 			"a tag in a block that does not immediately precede the declaration does not count",
 		);
+	});
+
+	it("mutation control: a name with regex characters, and an export renamed from a rollup-local name, resolve", () => {
+		const dollar = "/** A dollar name. @public */\nexport declare const a$b: number;";
+		assert.deepStrictEqual(untaggedExports(dollar), [], "a $ in a name is matched literally");
+		assert.deepStrictEqual(untaggedExports("export declare const a$b: number;"), ["a$b"]);
+		const aliased = "/**\n * Foo.\n * @public\n */\ndeclare class Foo$1 {}\nexport { Foo$1 as Foo };";
+		assert.deepStrictEqual(untaggedExports(aliased), [], "the alias resolves to the local declaration");
+		assert.deepStrictEqual(untaggedExports("declare class Foo$1 {}\nexport { Foo$1 as Foo };"), ["Foo"]);
 	});
 
 	it("mutation control: an unexported ui-local declaration is flagged, an exported or _base one is not", () => {
