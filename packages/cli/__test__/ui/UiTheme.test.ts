@@ -20,6 +20,18 @@ describe("inkProps", () => {
 	it("gives no styling props at all when colour is none", () => {
 		assert.deepStrictEqual(inkProps({ fg: "red", bold: true, dim: true, italic: true, underline: true }, "none"), {});
 	});
+
+	it("with the colour omitted emits every prop, as at truecolor, for Ink's own chalk to gate (A7)", () => {
+		const style = { fg: "red", bold: true, dim: true, italic: true, underline: true } as const;
+		assert.deepStrictEqual(inkProps(style), inkProps(style, "truecolor"));
+		assert.deepStrictEqual(inkProps(style), {
+			color: "red",
+			bold: true,
+			dimColor: true,
+			italic: true,
+			underline: true,
+		});
+	});
 });
 
 describe("the theme bridge under CliUiTest", () => {

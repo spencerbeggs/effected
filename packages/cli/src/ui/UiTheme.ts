@@ -62,12 +62,15 @@ const useScreen = (): ScreenContextValue => {
  * At `"none"` it gives no styling props at all, not even bold or dim, so a frame is escape-free by construction;
  * Ink's colour level held at 0 is the backstop. A flag set to `false` adds no prop.
  *
+ * Omit `color` in an Ink tree the kit did not mount, which has no colour level of its own to pass: every prop is
+ * emitted, as at any level but `"none"`, and Ink's own chalk gates what reaches the terminal.
+ *
  * @param style - the resolved style
- * @param color - the stream's colour level
+ * @param color - the stream's colour level; omitted, every prop is emitted for Ink's chalk to gate
  *
  * @public
  */
-export const inkProps = (style: Cli.Style, color: ColorLevel): InkTextProps =>
+export const inkProps = (style: Cli.Style, color?: ColorLevel): InkTextProps =>
 	color === "none"
 		? {}
 		: {
