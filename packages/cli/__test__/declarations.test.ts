@@ -30,7 +30,7 @@ const sourceExports = (text: string): ReadonlyArray<string> =>
 
 const CONSUMER = `import { CliTheme, Doc, Render } from "@effected/cli";
 import type { KeyName, LiveOptions, Screen } from "@effected/cli/ui";
-import { CliUi, Confirm, DocView } from "@effected/cli/ui";
+import { CliUi, Confirm, DocView, UiProvider } from "@effected/cli/ui";
 import { CliUiTest } from "@effected/cli/ui/testing";
 import type { Scope } from "effect";
 import { Console, Effect, Exit, Fiber, Option, Stream } from "effect";
@@ -100,6 +100,22 @@ export const docProps: Parameters<typeof DocView>[0] = {
 	doc: [Doc.heading(2, "Results"), Doc.paragraph("a body")],
 	ctx: Render.contextOf({ audience: "human", width: 40 }),
 };
+
+// A live view whose frame is a DocView, and a tree the kit did not mount under UiProvider with CliUi.context's value.
+export const documented: Effect.Effect<void, never, Scope.Scope> = Effect.gen(function* () {
+	const view = yield* CliUi.live({
+		events: Stream.make<Array<number>>(1, 2, 3),
+		initial: 0,
+		reduce: (total: number, n: number) => total + n,
+		render: (total: number) => DocView({ doc: [Doc.paragraph(\`total \${total}\`)] }),
+		isStart: () => false,
+		isTerminal: () => false,
+	});
+	yield* view.done;
+}).pipe(Effect.provide(CliTheme.layerTest()));
+export const hosted = Effect.map(CliUi.context, (value) =>
+	UiProvider({ value: { ...value, size: { columns: 40, rows: 10 } }, children: DocView({ doc: Doc.paragraph("x") }) }),
+).pipe(Effect.provide(CliTheme.layerTest()));
 
 // A live view over a stream (vitest-agent's reporter), and the same view driven by the harness.
 type Ev = { readonly _tag: "Start" } | { readonly _tag: "Tick" } | { readonly _tag: "End" };

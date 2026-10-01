@@ -49,12 +49,12 @@ plane, `cli` the presentation boundary, and neither imports the other.
 ## The `./ui` and `./ui/testing` subpaths
 
 `./ui` holds the interactive screens: `CliUi` (`run`, `prompt`, `fallback`,
-`lazy`), the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
+`lazy`, `live`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
 `Toggle`, `Tabs`, `Viewport`), the key layer (`UiKey`, `KeyTable`, `useKeys`,
 `KeyHelp`) and the theme bridge (`Styled`, `inkProps`, `useTheme`,
 `useGlyphs`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`
 for one screen, `view` for a display-only element (no `result`), `session`
-for a program that runs several, and `chunk` on every handle to send keys in
+for a program that runs several, `live` for a live view, and `chunk` on every handle to send keys in
 one read. `okf/modules/cli.md` has the rows.
 
 - **Optional peers `ink` (^7.1.1) and `react` (^19.2.0).** The root never
@@ -77,6 +77,41 @@ one read. `okf/modules/cli.md` has the rows.
   `dist/dev` resolves `CliTheme` from the root. `tsdocLinks.test.ts` keeps
   `{@link}` targets resolvable. The two "could not harvest per-module source
   locations" build warnings are those entries and are accepted.
+- **`CliUi.live` is a scoped live view over a `Stream`, not a screen.** It folds
+  events into state in a fiber of the caller's scope and draws runs: a run starts
+  at `isStart` (or the first other event while nothing is drawn) and ends at
+  `isTerminal`, where Ink's own unmount leaves its frame on the terminal; the next
+  run mounts afresh below, and `clear()` is never called —
+  `@./okf/decisions/live-view-runs-and-modes.md`, `live-never-clears.md` — Load
+  when: changing how runs start, end or redraw. One controller fiber owns every
+  transition (events, the run's `Schedule.spaced` tick in the run's scope, render
+  failures, the stream ending or dying); a failed render degrades the run (unmount
+  first, then one warning, the last good frame kept), never kills the view.
+  - **Modes** differ only when not interactive: `owned` prints each run's final
+    frame once as a string at stdout's width, `hosted` prints nothing. Neither
+    mounts input: Ctrl-C stays the platform's SIGINT and closes the scope.
+  - **Subscription:** `live` makes the stream's first pull before returning, so
+    `Stream.fromPubSub` is subscribed; a stream that forks its upstream
+    (`merge`, `buffer`) is not — subscribe first and pass
+    `Stream.fromSubscription`.
+  - **Height, not width:** the frame is clipped to `rows - 1` (its content keeps
+    its height and is clipped, never squeezed); the root takes no width at all —
+    `@./okf/decisions/live-height-clamp-not-width.md` — Load when: touching the
+    clamp or a widget's width.
+  - **Logging while drawn goes through `handle.logConsole`**, which writes every
+    `Console` method through Ink's own writers so lines land above the frame, and
+    straight to `UiStreams` otherwise; any other write tears the frame —
+    `@./okf/decisions/live-logs-through-ink.md`.
+  - **An agent and the Actions runner:** an agent gets the colourless theme
+    (`themeForAudience`, the same rule `Render.context` uses) in every tree the
+    kit mounts; under GitHub Actions `DocView` neutralizes workflow commands and a
+    printed frame is neutralized whole.
+  - **`DocView`** draws the `Doc` IR through `Render.ansi`/`Render.plain` as
+    `truncate-end` rows, byte for byte the static output; **`UiProvider`** gives a
+    tree the kit did not mount the same context (value from `CliUi.context`).
+  - **`CliUiTest.live`** drives a view on the production render path under
+    `it.effect` (`advance` moves the `TestClock`); `transcript` models the
+    terminal, `written` is every raw byte.
 - **Ink hands every key of one stdin read over before React re-renders.** A
   key handler must step from current state (a functional update, a reducer
   or a ref), never render-closure state; test it with `chunk` —
