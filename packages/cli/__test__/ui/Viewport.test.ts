@@ -122,6 +122,45 @@ describe("Viewport.View under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("in a sectioned list, moving up inside the window moves the highlight, not the window", () =>
+		Effect.gen(function* () {
+			const rows: ReadonlyArray<ViewportRow> = [
+				{ _tag: "Header", label: "A" },
+				...items(5, "a"),
+				{ _tag: "Header", label: "B" },
+				...items(5, "b"),
+				{ _tag: "Header", label: "C" },
+				...items(5, "c"),
+			];
+			const handle = yield* CliUiTest.render(scrolling(rows, 4));
+			yield* handle.press("end");
+			const unmarked = (frame: string): ReadonlyArray<string> =>
+				frame.split("\n").map((line) => line.replace(/^>/, " "));
+			const atBottom = yield* handle.plainFrame;
+			yield* handle.press("up");
+			const afterUp = yield* handle.plainFrame;
+			assert.deepStrictEqual(unmarked(afterUp), unmarked(atBottom), "the window did not move");
+			assert.notStrictEqual(afterUp, atBottom, "the highlight did");
+			assert.include(afterUp, "> c3");
+			yield* handle.press("up");
+			assert.include(yield* handle.plainFrame, "> c2", "the cursor reaches the top row of the window");
+			assert.deepStrictEqual(unmarked(yield* handle.plainFrame), unmarked(atBottom), "and the window still holds");
+			yield* handle.press("up");
+			assert.include(yield* handle.plainFrame, "> c1", "leaving the top of the window scrolls it by one");
+			assert.notDeepEqual(unmarked(yield* handle.plainFrame), unmarked(atBottom));
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("highlights the last item when the state's cursor runs past the rows", () =>
+		Effect.gen(function* () {
+			const rows = items(3);
+			const Mismatched = (): ReactElement =>
+				createElement(Viewport.View, { rows, state: Viewport.init(10, 5, 9), renderRow });
+			const handle = yield* CliUiTest.render(() => createElement(Mismatched));
+			assert.include(yield* handle.plainFrame, "> item2");
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("on a 10-row terminal, a 200-row viewport never draws a frame taller than 9 lines", () =>
 		Effect.gen(function* () {
 			const handle = yield* CliUiTest.render(scrolling(items(200), 50), { rows: 10 });
@@ -143,15 +182,18 @@ describe("Viewport.View under CliUiTest", () => {
 
 	it.effect("on a 20-column terminal no line is wider than 19 cells", () =>
 		Effect.gen(function* () {
+			// At colour none the styled frames carry no markup, so each line is measured exactly as drawn.
 			const handle = yield* CliUiTest.render(scrolling(items(30, "a-very-long-row-name-", 60), 5), {
 				columns: 20,
 				rows: 10,
+				color: "none",
 			});
 			yield* handle.press("down", "pagedown");
 			assert.include(yield* handle.plainFrame, "a-very", "the long rows were drawn");
 			assert.strictEqual(lineCount(yield* handle.plainFrame), 5, "each long row is clipped to one line, not wrapped");
 			for (const frame of yield* handle.frames) {
-				for (const line of frame.split("\n")) assert.isAtMost(Fmt.width(CliUiTest.styled(line)), 19, line);
+				assert.notInclude(frame, "[", "no markup at colour none, so the width is the drawn width");
+				for (const line of frame.split("\n")) assert.isAtMost(Fmt.width(line), 19, line);
 			}
 			for (const line of (yield* handle.plainFrame).split("\n")) assert.isAtMost(Fmt.width(line), 19, line);
 		}).pipe(Effect.scoped),

@@ -116,22 +116,36 @@ const linesFrom = (rows: ReadonlyArray<ViewportRow>, items: ReadonlyArray<number
 	return lines;
 };
 
+/** What the view draws: the row indexes, the item the window starts at, and the selected row (or -1). */
+interface Slice {
+	readonly lines: ReadonlyArray<number>;
+	readonly start: number;
+	readonly selected: number;
+}
+
 /**
- * The visible slice: from the state's offset, moved on as far as needed so the selected item is drawn when headers
- * take lines the item window did not count.
+ * The visible slice, starting where the window last started (`previous`, or the state's offset on first draw) and
+ * moving only as far as the selected item needs: back to it when it is above the window, forward until it is drawn
+ * when it is below. So moving inside the window moves only the highlight, even when headers take lines the
+ * item-counting reducer does not. The cursor is clamped into the items here, for both the slice and the highlight.
  */
-const slice = (rows: ReadonlyArray<ViewportRow>, state: ViewportState, budget: number): ReadonlyArray<number> => {
+const slice = (
+	rows: ReadonlyArray<ViewportRow>,
+	state: ViewportState,
+	budget: number,
+	previous: number | undefined,
+): Slice => {
 	const items = rows.flatMap((row, index) => (row._tag === "Item" ? [index] : []));
-	if (items.length === 0) return rows.slice(0, budget).map((_, index) => index);
+	if (items.length === 0) return { lines: rows.slice(0, budget).map((_, index) => index), start: 0, selected: -1 };
 	const cursor = clamp(state.cursor, 0, items.length - 1);
 	const selected = items[cursor] ?? 0;
-	let start = clamp(state.offset, 0, cursor);
+	let start = clamp(previous ?? state.offset, 0, cursor);
 	let lines = linesFrom(rows, items, start, budget);
 	while (!lines.includes(selected) && start < cursor) {
 		start++;
 		lines = linesFrom(rows, items, start, budget);
 	}
-	return lines;
+	return { lines, start, selected };
 };
 
 /**
@@ -192,11 +206,15 @@ export class Viewport {
 		const { ink, react } = inkModules();
 		const size = useTerminalSize();
 		const budget = Math.max(1, Math.min(props.state.height, size.rows - (props.reserved ?? 0)));
-		const selected = props.rows.flatMap((row, index) => (row._tag === "Item" ? [index] : []))[props.state.cursor];
+		// The window's start is the view's own memory: it depends on the lines headers take, which the reducer
+		// cannot see. Recomputed from the same inputs it is the same, so writing it during render is idempotent.
+		const started = react.useRef<number | undefined>(undefined);
+		const { lines, start, selected } = slice(props.rows, props.state, budget, started.current);
+		started.current = start;
 		return react.createElement(
 			ink.Box,
 			{ flexDirection: "column", width: size.columns },
-			...slice(props.rows, props.state, budget).map((index) => {
+			...lines.map((index) => {
 				const row = props.rows[index] as ViewportRow;
 				return react.createElement(
 					ink.Box,
