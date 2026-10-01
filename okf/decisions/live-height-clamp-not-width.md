@@ -13,8 +13,8 @@ sources:
     title: "Ink 7.1.1, build/ink.js:89-112,763-768 (clear-terminal for a tall frame) and 264-290 (resize re-layout)"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T09:31:36Z
-  body_sha256: fec29e2ad7f782af985ab712915e7dd5358d4f591bfd1c34178ace9b2193fbc2
+  at: 2026-10-01T10:14:10Z
+  body_sha256: f7a6bc95f68899b97ab9903715cbb41e830fcce0ac9381e6a3f33b0a936df38d
 ---
 
 # The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook
@@ -57,6 +57,13 @@ terminal.
   user's history; a consumer that cares windows its own rows (`Viewport`).
 - A glyph some emulator draws wider than `string-width` counts can still
   strand a copy; `marginRight: 1` is the hedge if one turns up.
+- The height clamp is itself hook-derived (`useTerminalSize().rows`), so it
+  carries L8's lag in the other dimension: on a resize Ink re-lays out and
+  repaints the tree it has before React re-renders, so after a **height**
+  shrink a frame already at its full height is painted once taller than the
+  terminal and takes the clear-terminal path. Yoga cannot read the terminal,
+  so this is documented on `CliUi.live`, not fixed; a frame with spare rows
+  never meets it.
 
 [^p5-probes]: `docs/superpowers/specs/2026-10-01-p5-probes.md`, sections L2 and L8
 [^ink-resize]: `npm:ink@7.1.1`, `build/ink.js:89-112`, `763-768` and `264-290`

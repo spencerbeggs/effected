@@ -282,7 +282,11 @@ export class CliUi {
 	 * The state is never reset by the kit: a reducer that wants a fresh run resets it on the start.
 	 *
 	 * The frame is at most the terminal's rows less one, re-read on every render and on a resize, so a tall frame never
-	 * makes Ink wipe the scrollback; its width is Ink's own (`okf/decisions/live-height-clamp-not-width.md`).
+	 * makes Ink wipe the scrollback; its width is Ink's own (`okf/decisions/live-height-clamp-not-width.md`). The clamp
+	 * lags one paint when the terminal gets shorter: Ink re-lays out and repaints the tree it already has on a resize,
+	 * before React re-renders with the new row count, so a frame already at the old height can be drawn once taller
+	 * than the terminal, which Ink answers by clearing the screen and its scrollback. Only a shrink in height while
+	 * the frame is at its full height does it; a frame that keeps a few rows spare never meets it.
 	 *
 	 * No input is mounted: the view reads no keys and never enters raw mode, so Ctrl-C stays the platform's SIGINT,
 	 * which interrupts the program and so closes the scope. Each run holds the process-wide mount permit from its
