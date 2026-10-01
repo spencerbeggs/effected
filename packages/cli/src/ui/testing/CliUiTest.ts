@@ -211,7 +211,10 @@ export interface CliUiTestLive<E, S> {
 	readonly rawFrame: Effect.Effect<string>;
 	/** The last frame drawn, as plain text. */
 	readonly plainFrame: Effect.Effect<string>;
-	/** Every frame drawn, across every run, as token markup, oldest first. */
+	/**
+	 * The frames drawn, across every run, as token markup, oldest first: best-effort, as `frame` says (an unchanged or
+	 * empty render adds none, and a printed string is not a frame); `transcript` and `written` are the authority.
+	 */
 	readonly frames: Effect.Effect<ReadonlyArray<string>>;
 	/**
 	 * What the terminal shows now, scrollback included, as plain text: every committed frame, every line logged above a
