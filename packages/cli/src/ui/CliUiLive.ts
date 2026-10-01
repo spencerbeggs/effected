@@ -144,6 +144,9 @@ export interface LiveHandle<S> {
 	 * `PubSub.shutdown`. With a stream, it is what the view has already pulled; elements the stream holds and has not
 	 * yielded are the stream's own.
 	 *
+	 * Safe from the moment `live` returns, before Ink has loaded: a run whose mount is still under way is mounted and
+	 * then ended, and a view with no run to end loads nothing.
+	 *
 	 * Idempotent: a second `close`, concurrent or later, waits for the same end and writes nothing more. After the events
 	 * have ended it only waits for `done`. It dies as `done` does (a `reduce` that threw, a stream that died). Closing
 	 * the caller's scope instead stops the view at once (nothing still queued is folded); after `close` it releases what

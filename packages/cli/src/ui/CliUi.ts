@@ -321,6 +321,12 @@ export class CliUi {
 	 * then; one that forks its upstream (`Stream.merge`, `buffer`, a concurrent `flatMap`) subscribes later, and loses
 	 * what is published before.
 	 *
+	 * `live` returns its handle at once, before Ink has loaded: it loads Ink when a run first mounts (or, when not
+	 * interactive, when an owned run prints its final frame), and it waits on nothing asynchronous before returning, so
+	 * a host outside Effect can take the handle with `Effect.runSync`. The handle works from the start: a `close`
+	 * before any run has mounted folds what is queued and ends the view as the events ending would, waiting for a mount
+	 * already under way, and one with no run to end loads nothing.
+	 *
 	 * End the view with `handle.close`: it stops taking events, folds what is still queued (a subscription's queued
 	 * messages included), commits or prints the run as the events ending would, and waits for `done`. Then close the
 	 * scope. A publisher may instead end a subscription with `PubSub.end(pubsub, last)`, which keeps everything: the view
