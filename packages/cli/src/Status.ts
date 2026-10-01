@@ -1,4 +1,5 @@
 import { Array as Arr, Option } from "effect";
+import type { GlyphSet } from "./Glyphs.js";
 import type { Style, TokenName } from "./Token.js";
 
 /**
@@ -105,6 +106,21 @@ export class Status<Names extends string> {
 	 */
 	resolve(name: Names): StatusDef {
 		return Object.freeze({ ...this.def(name) });
+	}
+
+	/**
+	 * A status's glyph from a glyph set: `def.ascii` for an ASCII set, `def.glyph` otherwise. Unpainted, for a caller
+	 * that draws it itself (an Ink tree, a reporter).
+	 *
+	 * @remarks
+	 * Throws on an unknown name, as {@link Status.def} does.
+	 *
+	 * @param name - a name in this vocabulary
+	 * @param glyphs - the glyph set, such as `Glyphs.unicode`, `Glyphs.ascii` or a theme's
+	 */
+	glyph(name: Names, glyphs: GlyphSet): string {
+		const def = this.def(name);
+		return glyphs.kind === "ascii" ? def.ascii : def.glyph;
 	}
 
 	/**

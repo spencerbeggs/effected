@@ -1,4 +1,4 @@
-import { sanitize } from "./layout.js";
+import { sanitize } from "../Fmt.js";
 
 /** The URL schemes a link may have, besides a relative URL. */
 const ALLOWED = new Set(["http", "https", "mailto", "file", "vscode", "vscode-insiders"]);

@@ -25,6 +25,24 @@ export interface PercentOptions {
 	readonly scale?: 1 | 100 | undefined;
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
+
+/**
+ * Text made safe to lay out and print: complete ANSI and OSC sequences removed, every remaining control character
+ * removed (a stray ESC, BEL, BS, DEL, the C1 range) except line feed and carriage return, and a tab turned into a
+ * space.
+ *
+ * @remarks
+ * Stripping complete sequences is not enough on its own: a lone ESC survives it, and so does whatever would
+ * complete a sequence once two adjacent pieces of text are joined (`ESC` in one node, `[31m` in the next). With
+ * every ESC and C0 or C1 control gone after the strip, nothing can reassemble, so the width of the text equals what
+ * a terminal shows. A tab counts as no columns but draws up to eight, hence the space.
+ *
+ * @internal
+ */
+export const sanitize = (input: string): string => stripAnsi(input).replace(/\t/g, " ").replace(CONTROL, "");
+
 /**
  * Small, pure formatting primitives for terminal output.
  *
@@ -32,6 +50,19 @@ export interface PercentOptions {
  */
 export class Fmt {
 	private constructor() {}
+
+	/**
+	 * Text made safe to lay out and print, exactly as the renderers make it: complete ANSI and OSC sequences removed,
+	 * every other control character removed (a stray ESC, BEL, BS, DEL, the C1 range) except line feed and carriage
+	 * return, and a tab turned into a space.
+	 *
+	 * @remarks
+	 * For a `render` or any other text a program builds by hand from data it does not control: an error message, a
+	 * file name, a value from the environment. Line breaks are kept, so split on them if the text must be one line.
+	 *
+	 * @param text - the text
+	 */
+	static readonly sanitize: (text: string) => string = sanitize;
 
 	/**
 	 * The display width of `text` in terminal columns: wide East Asian characters and emoji count two,

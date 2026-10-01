@@ -1,7 +1,7 @@
 import { CurrentRuntimeEnv } from "@effected/env";
 import type { Fiber } from "effect";
 import { Context, Option } from "effect";
-import { sanitize } from "./layout.js";
+import { sanitize } from "../Fmt.js";
 
 /**
  * Marks a log line the kit has already rendered, so the logger does not strip the escapes the kit painted into it.

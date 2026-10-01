@@ -1,10 +1,10 @@
 import type { Block, Document, Inline, LinkTarget } from "../Doc.js";
-import { Fmt } from "../Fmt.js";
+import { Fmt, sanitize } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
 import type { Style, TokenName } from "../Token.js";
 import { countsTableOf, totalOf, visibleCountersOf } from "./counts.js";
 import type { Span } from "./layout.js";
-import { sanitize, truncateSpans, widthOf, wrapSpans } from "./layout.js";
+import { truncateSpans, widthOf, wrapSpans } from "./layout.js";
 
 /** One output line as spans; each span keeps its token and link until the line is finished. */
 export type Line = ReadonlyArray<Span>;

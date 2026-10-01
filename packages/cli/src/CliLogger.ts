@@ -1,7 +1,7 @@
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { Layer } from "effect";
 import { Console, LogLevel, Logger, References } from "effect";
-import { sanitize } from "./internal/layout.js";
+import { sanitize } from "./Fmt.js";
 import { TrustedLine, sanitizeParts, underActionsIn } from "./internal/logSafety.js";
 
 /**

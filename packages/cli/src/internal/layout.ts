@@ -1,7 +1,8 @@
 import type { Inline, LinkTarget } from "../Doc.js";
+import { sanitize } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
 import type { Style, TokenName } from "../Token.js";
-import { displayWidth, graphemes, stripAnsi } from "./displayWidth.js";
+import { displayWidth, graphemes } from "./displayWidth.js";
 
 /**
  * A run of text with one style and one link: the unit a renderer lays out.
@@ -33,24 +34,6 @@ export interface Span {
 	/** It came from inside an `Emphasis`: italic in `ansi`, `_` in markdown. */
 	readonly em?: true;
 }
-
-// biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
-const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
-
-/**
- * Text made safe to lay out and print: complete ANSI and OSC sequences removed, every remaining control character
- * removed (a stray ESC, BEL, BS, DEL, the C1 range) except line feed and carriage return, and a tab turned into a
- * space.
- *
- * @remarks
- * Stripping complete sequences is not enough on its own: a lone ESC survives it, and so does whatever would
- * complete a sequence once two adjacent pieces of text are joined (`ESC` in one node, `[31m` in the next). With
- * every ESC and C0 or C1 control gone after the strip, nothing can reassemble, so the width of the text equals what
- * a terminal shows. A tab counts as no columns but draws up to eight, hence the space.
- *
- * @internal
- */
-export const sanitize = (input: string): string => stripAnsi(input).replace(/\t/g, " ").replace(CONTROL, "");
 
 const pathSeparator = (ctx: RenderContext): string =>
 	ctx.audience === "agent" ? ctx.glyphs.pathSeparator.agent : ` ${ctx.glyphs.pathSeparator.human} `;

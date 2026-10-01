@@ -1,7 +1,7 @@
 import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
 import type { Block, Document } from "../Doc.js";
+import { sanitize } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
-import { sanitize } from "./layout.js";
 import { plainInline, renderPlain } from "./renderPlain.js";
 
 const plainLines = (blocks: ReadonlyArray<Block>, ctx: RenderContext): ReadonlyArray<string> =>

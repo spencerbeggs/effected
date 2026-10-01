@@ -4,7 +4,7 @@ import { Walker } from "@effected/walker";
 import type { Layer as LayerType } from "effect";
 import { Config, Context, Effect, FileSystem, Layer, Option, Path } from "effect";
 import type { LinkTarget } from "./Doc.js";
-import { sanitize } from "./internal/layout.js";
+import { sanitize } from "./Fmt.js";
 import { isAllowedLinkUrl } from "./internal/linkScheme.js";
 import { DRIVE, UNC, encodeForOsc8, fileUrlPath } from "./internal/linkTarget.js";
 

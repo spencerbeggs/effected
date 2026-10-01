@@ -10,6 +10,7 @@ import { CliExit } from "./CliExit.js";
 import type { CliLogFileOptions, CliLogOptions } from "./CliLog.js";
 import { CliLog, platformLogLayer } from "./CliLog.js";
 import { CliLogger } from "./CliLogger.js";
+import { sanitize } from "./Fmt.js";
 import { ExitRequested } from "./internal/ExitRequested.js";
 import type { FailureTarget } from "./internal/failureTarget.js";
 import {
@@ -21,7 +22,6 @@ import {
 } from "./internal/failureTarget.js";
 import { routeHelpOnUsageError } from "./internal/HelpRouting.js";
 import { isExitCode } from "./internal/isExitCode.js";
-import { sanitize } from "./internal/layout.js";
 import { TrustedLine } from "./internal/logSafety.js";
 
 const isShowHelp = (u: unknown): u is CliError.ShowHelp => CliError.isCliError(u) && u._tag === "ShowHelp";

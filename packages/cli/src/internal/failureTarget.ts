@@ -7,11 +7,11 @@ import { CliFailure } from "../CliFailure.js";
 import { CliLinks } from "../CliLinks.js";
 import { CliTheme } from "../CliTheme.js";
 import type { Block, Document, Inline } from "../Doc.js";
+import { sanitize } from "../Fmt.js";
 import { Glyphs } from "../Glyphs.js";
 import type { RenderContext } from "../Render.js";
 import { Render } from "../Render.js";
 import { autoFormat } from "./autoFormat.js";
-import { sanitize } from "./layout.js";
 
 /**
  * Where a failure report is written to: the context the renderer lays out for, and which renderer.

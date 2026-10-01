@@ -2,8 +2,8 @@ import { Audience } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import { Console, Effect } from "effect";
 import { CliTheme } from "./CliTheme.js";
+import { sanitize } from "./Fmt.js";
 import { underGithubActions } from "./internal/autoFormat.js";
-import { sanitize } from "./internal/layout.js";
 import { Status } from "./Status.js";
 
 /**

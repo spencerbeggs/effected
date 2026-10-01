@@ -1,10 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
+import { sanitize } from "../src/Fmt.js";
 import type { Inline, RenderContext } from "../src/index.js";
 import { Doc, Glyphs, Status } from "../src/index.js";
 import { displayWidth, graphemes, stripAnsi } from "../src/internal/displayWidth.js";
 import type { Span } from "../src/internal/layout.js";
-import { flatten, paintSpans, sanitize, truncateSpans, widthOf, wrapSpans } from "../src/internal/layout.js";
+import { flatten, paintSpans, truncateSpans, widthOf, wrapSpans } from "../src/internal/layout.js";
 import { contextOf, linksOf, sgrProblems } from "./helpers/renderContext.js";
 
 const CASES: ReadonlyArray<readonly [string, string]> = [

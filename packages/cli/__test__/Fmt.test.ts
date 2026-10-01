@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Fmt } from "../src/index.js";
+import { Doc, Fmt, Render } from "../src/index.js";
 
 describe("Fmt.duration", () => {
 	const cases: ReadonlyArray<readonly [number, string]> = [
@@ -154,5 +154,18 @@ describe("Fmt.percent scale", () => {
 		assert.strictEqual(Fmt.percent(83.333, { scale: 100, digits: 2 }), "83.33%");
 		assert.strictEqual(Fmt.percent(83.3, { scale: 100, digits: 0 }), "83%");
 		assert.strictEqual(Fmt.percent(-0.001, { scale: 100, digits: 0 }), "0%");
+	});
+});
+
+describe("Fmt.sanitize (F6)", () => {
+	it("removes escapes and controls, turns a tab into a space, and keeps line breaks", () => {
+		assert.strictEqual(Fmt.sanitize("a\u001b[31mb\u001b[39m\tc\u0007\u009b\nd\r\ne"), "ab c\nd\r\ne");
+	});
+
+	it("is what the renderers use: plain text of a paragraph is the sanitized text", () => {
+		const ctx = Render.contextOf({ audience: "agent" });
+		for (const hostile of ["x\u001b]8;;https://evil\u0007y", "a\u0000b\u007fc", "tab\there", "\u001b[2Jclear"]) {
+			assert.strictEqual(Render.plain([Doc.paragraph(hostile)], ctx), Fmt.sanitize(hostile));
+		}
 	});
 });

@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import type { CoreStatusName } from "../src/index.js";
-import { Status, Token } from "../src/index.js";
+import { Glyphs, Status, Token } from "../src/index.js";
 
 describe("Status.core", () => {
 	it("holds the six core statuses with their ranks", () => {
@@ -117,5 +117,15 @@ describe("Status.def", () => {
 		for (const name of ["toString", "constructor", "__proto__", "hasOwnProperty"]) {
 			assert.throws(() => Status.core.def(name as CoreStatusName), Error, name);
 		}
+	});
+});
+
+describe("Status.glyph (F8)", () => {
+	it("is the status's glyph from the given set", () => {
+		assert.strictEqual(Status.core.glyph("failure", Glyphs.unicode), "✗");
+		assert.strictEqual(Status.core.glyph("failure", Glyphs.ascii), "[FAIL]");
+		const extended = Status.extend({ flaky: { glyph: "≈", ascii: "~", token: "warning", rank: 4 } });
+		assert.strictEqual(extended.glyph("flaky", Glyphs.ascii), "~");
+		assert.strictEqual(extended.glyph("flaky", Glyphs.unicode), "≈");
 	});
 });

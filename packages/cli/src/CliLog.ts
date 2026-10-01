@@ -16,10 +16,10 @@ import {
 } from "effect";
 import type { CliLoggerOptions } from "./CliLogger.js";
 import { CliLogger } from "./CliLogger.js";
+import { sanitize } from "./Fmt.js";
 import { paintStyle } from "./internal/ansi.js";
 import { Level, passes } from "./internal/diagnostics.js";
 import { makeFileSink } from "./internal/fileSink.js";
-import { sanitize } from "./internal/layout.js";
 import { neutralizeJson } from "./internal/logSafety.js";
 import type { Style } from "./Token.js";
 

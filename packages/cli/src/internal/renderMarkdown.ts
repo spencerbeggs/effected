@@ -1,9 +1,9 @@
 import type { Block, Document, Inline, LinkTarget } from "../Doc.js";
-import { Fmt } from "../Fmt.js";
+import { Fmt, sanitize } from "../Fmt.js";
 import type { RenderContext } from "../Render.js";
 import { countsTableOf, totalOf, visibleCountersOf } from "./counts.js";
 import type { Span } from "./layout.js";
-import { flatten, sanitize } from "./layout.js";
+import { flatten } from "./layout.js";
 import { isAllowedLinkUrl } from "./linkScheme.js";
 import { DRIVE, encodePath, fileUrlPath } from "./linkTarget.js";
 import { capOf, isAnnotation, showsSuffix, targetText, textLines } from "./renderDoc.js";
