@@ -95,10 +95,13 @@ const bound = (binding: KeyName | { readonly char: string }, key: UiKey): boolea
  * @public
  */
 export class KeyTable<Action> {
-	private constructor(
-		/** The bindings, in priority order. */
-		readonly bindings: ReadonlyArray<Binding<Action>>,
-	) {}
+	/** The bindings, in priority order. */
+	readonly bindings: ReadonlyArray<Binding<Action>>;
+
+	// A plain field and an assignment, not a parameter property: Node's strip-only TypeScript refuses those.
+	private constructor(bindings: ReadonlyArray<Binding<Action>>) {
+		this.bindings = bindings;
+	}
 
 	/**
 	 * A table from its bindings. When two bindings share a key, the first wins. A `{ char: " " }` key is stored as
