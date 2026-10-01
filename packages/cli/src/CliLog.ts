@@ -1,3 +1,4 @@
+import type { RuntimeEnv } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { CommandNeutralizer } from "@effected/github-commands";
 import type { Fiber, FileSystem } from "effect";
@@ -79,11 +80,21 @@ export interface CliLogOptions {
 	readonly extraLoggers?: ReadonlyArray<Logger.Logger<unknown, unknown>> | undefined;
 	/**
 	 * Whether a line the GitHub Actions runner would read as a workflow command is neutralized. `auto`, the default,
-	 * follows the `CurrentRuntimeEnv` of the fiber that logs, and where that fiber has none, the one the layer was
-	 * built with: a host that builds this layer over its environment covers records logged outside it too. `true`
-	 * always neutralizes, `false` never does.
+	 * follows the `CurrentRuntimeEnv` of the fiber that logs, and where that fiber has none, `runtimeEnv`, else the one
+	 * the layer was built with: a host that builds this layer over its environment covers records logged outside it
+	 * too. `true` always neutralizes, `false` never does.
 	 */
 	readonly neutralize?: boolean | "auto" | undefined;
+	/**
+	 * The runtime environment `neutralize: "auto"` falls back to for a record whose fiber has no `CurrentRuntimeEnv`.
+	 *
+	 * @remarks
+	 * Given, it is used in place of the `CurrentRuntimeEnv` the layer captured when it was built, and beats it; the
+	 * logging fiber's own `CurrentRuntimeEnv` still comes first. The capture is invisible in the layer's type (it is read
+	 * if present, never required), so a host that builds this layer outside its environment either passes the snapshot
+	 * here, for example `RuntimeEnv.fromRecord(process.env)`, or provides `CurrentRuntimeEnv` around the layer.
+	 */
+	readonly runtimeEnv?: RuntimeEnv | undefined;
 }
 
 /**
@@ -187,10 +198,10 @@ const readLevel = (
  * legacy parser reads `##[` anywhere in a line, so under Actions it is written as the JSON escape `#\u0023[`, which
  * decodes to the identical text. The file sink's lines are not read by the runner and are written as they are.
  *
- * `CurrentRuntimeEnv` is read from the logging fiber's context, and where that has none, from the layer's own build
- * context (captured if present, never required), so a host that builds the layer over its environment neutralizes
- * every record. A record with neither (a program with no `CurrentRuntimeEnv` anywhere) is sanitised but not
- * neutralized, unless the `neutralize` option says otherwise.
+ * `CurrentRuntimeEnv` is read from the logging fiber's context, and where that has none, from the `runtimeEnv` option,
+ * else from the layer's own build context (captured if present, never required), so a host that builds the layer over
+ * its environment, or names it with `runtimeEnv`, neutralizes every record. A record with none of the three (a program
+ * with no `CurrentRuntimeEnv` anywhere) is sanitised but not neutralized, unless the `neutralize` option says otherwise.
  *
  * Core's `--log-level` flag sets `MinimumLogLevel` inside the command. While it is set to something other than
  * the value this layer installed, the diagnostics logger follows the flag instead of its own level: it writes
@@ -243,23 +254,77 @@ export class CliLog {
 	 * does it require `FileSystem` and `Path`, and it leaves them in `R` unprovided: the platform supplies them, or
 	 * a test supplies a memory filesystem, so a host never provides Node inside its own layer.
 	 *
+	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
+	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
+	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 *
 	 * @param options - the level, the env var, the format, the `CliLogger` options and the optional file sink
 	 */
 	static layer(
 		options: CliLogOptions & { readonly format: "json"; readonly file?: undefined },
 	): Layer.Layer<never, never, never>;
+	/**
+	 * The logger set with NDJSON diagnostics and a file sink; see the first overload.
+	 *
+	 * @remarks
+	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
+	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
+	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 *
+	 * @param options - the level, the env var, the `CliLogger` options and the file sink
+	 */
 	static layer(
 		options: CliLogFileOptions & { readonly format: "json" },
 	): Layer.Layer<never, never, FileSystem.FileSystem | PathModule.Path>;
+	/**
+	 * The logger set with pretty diagnostics; see the first overload.
+	 *
+	 * @remarks
+	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
+	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
+	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 *
+	 * @param options - the level, the env var and the `CliLogger` options
+	 */
 	static layer(
 		options: CliLogOptions & { readonly format: "pretty"; readonly file?: undefined },
 	): Layer.Layer<never, never, TerminalEnv>;
+	/**
+	 * The logger set with pretty diagnostics and a file sink; see the first overload.
+	 *
+	 * @remarks
+	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
+	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
+	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 *
+	 * @param options - the level, the env var, the `CliLogger` options and the file sink
+	 */
 	static layer(
 		options: CliLogFileOptions & { readonly format: "pretty" },
 	): Layer.Layer<never, never, TerminalEnv | FileSystem.FileSystem | PathModule.Path>;
+	/**
+	 * The logger set with the format decided by the audience; see the first overload.
+	 *
+	 * @remarks
+	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
+	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
+	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 *
+	 * @param options - the level, the env var, the format and the `CliLogger` options
+	 */
 	static layer(
 		options?: CliLogOptions & { readonly file?: undefined },
 	): Layer.Layer<never, never, Audience | TerminalEnv>;
+	/**
+	 * The logger set with the format decided by the audience, and a file sink; see the first overload.
+	 *
+	 * @remarks
+	 * Neutralization under `"auto"` reads the logging fiber's `CurrentRuntimeEnv`, then `runtimeEnv`, then the
+	 * `CurrentRuntimeEnv` captured when the layer was built. With none of the three, a record is not neutralized: set
+	 * `runtimeEnv`, provide `CurrentRuntimeEnv` around the layer, or pass `neutralize: true`.
+	 *
+	 * @param options - the level, the env var, the format, the `CliLogger` options and the file sink
+	 */
 	static layer(
 		options: CliLogFileOptions,
 	): Layer.Layer<never, never, Audience | TerminalEnv | FileSystem.FileSystem | PathModule.Path>;
@@ -277,11 +342,13 @@ export class CliLog {
 				const ambient = yield* References.MinimumLogLevel;
 				// Captured here, not required: the fallback for a record whose own fiber has no CurrentRuntimeEnv.
 				const captured = yield* Effect.serviceOption(CurrentRuntimeEnv);
+				// The option beats the capture: a host that names its environment means it.
+				const fallback = options.runtimeEnv === undefined ? captured : Option.some(options.runtimeEnv);
 				const neutralize = options.neutralize ?? "auto";
 				const underActionsIn = (fiber: Fiber.Fiber<unknown, unknown>): boolean => {
 					if (neutralize !== "auto") return neutralize;
 					const inFiber = Context.getOption(fiber.context, CurrentRuntimeEnv);
-					const runtime = Option.isSome(inFiber) ? inFiber : captured;
+					const runtime = Option.isSome(inFiber) ? inFiber : fallback;
 					return Option.contains(
 						Option.flatMap(runtime, (env) => env.ci),
 						"github-actions",
@@ -419,6 +486,7 @@ export const platformLogLayer = (options: CliLogOptions | CliLogFileOptions): La
 					...(options.logger === undefined ? {} : { logger: options.logger }),
 					...(options.extraLoggers === undefined ? {} : { extraLoggers: options.extraLoggers }),
 					...(options.neutralize === undefined ? {} : { neutralize: options.neutralize }),
+					...(options.runtimeEnv === undefined ? {} : { runtimeEnv: options.runtimeEnv }),
 				});
 			}
 			const ambient = yield* References.MinimumLogLevel;

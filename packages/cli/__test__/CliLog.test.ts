@@ -1,7 +1,7 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
-import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
+import { Audience, CurrentRuntimeEnv, RuntimeEnv, TerminalEnv } from "@effected/env";
 import type { FileSystem, Path } from "effect";
 import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Logger, Option, Runtime } from "effect";
 import { Command } from "effect/cli";
@@ -490,6 +490,49 @@ describe("CliLog.layer under GitHub Actions captured when it was built (F2)", ()
 			assert.deepStrictEqual(commands(yield* written(bare)), []);
 			const control = CliLog.layer({ level: "Info", format: "json", plainLogger: false });
 			assert.isNotEmpty(commands(yield* written(control)), "control: off Actions, nothing captured, not neutralized");
+		}),
+	);
+});
+
+describe("CliLog.layer's runtimeEnv option (A9)", () => {
+	const hostile = Effect.logWarning("::error::injected\n##[warning]also");
+	const commands = (lines: ReadonlyArray<string>) => lines.flatMap((line) => line.split(LINE_BREAK)).filter(isCommand);
+	const actions = RuntimeEnv.fromRecord({ GITHUB_ACTIONS: "true" });
+	const local = RuntimeEnv.fromRecord({});
+	const written = (layer: Layer.Layer<never>, inFiber?: RuntimeEnv) =>
+		Effect.gen(function* () {
+			const { double, err } = capturing();
+			const program = inFiber === undefined ? hostile : Effect.provideService(hostile, CurrentRuntimeEnv, inFiber);
+			yield* program.pipe(Effect.provide(layer), Effect.provideService(Console.Console, double));
+			return err;
+		});
+
+	it.effect("with runtimeEnv saying GitHub Actions and no service anywhere, a record is neutralized", () =>
+		Effect.gen(function* () {
+			const err = yield* written(CliLog.layer({ level: "Info", format: "json", runtimeEnv: actions }));
+			assert.isAtLeast(err.length, 2, "the plain line and the NDJSON line were both written");
+			assert.deepStrictEqual(commands(err), []);
+			const control = yield* written(CliLog.layer({ level: "Info", format: "json" }));
+			assert.isNotEmpty(commands(control), "control: without it nothing says Actions, and nothing is neutralized");
+		}),
+	);
+
+	it.effect("it beats the captured service", () =>
+		Effect.gen(function* () {
+			const captured = CurrentRuntimeEnv.layerTest({ ci: Option.some("github-actions") });
+			const overridden = CliLog.layer({ level: "Info", format: "json", runtimeEnv: local }).pipe(
+				Layer.provide(captured),
+			);
+			assert.isNotEmpty(commands(yield* written(overridden)), "the option said not Actions");
+			const capturedOnly = CliLog.layer({ level: "Info", format: "json" }).pipe(Layer.provide(captured));
+			assert.deepStrictEqual(commands(yield* written(capturedOnly)), [], "control: the capture alone neutralizes");
+		}),
+	);
+
+	it.effect("the logging fiber's own CurrentRuntimeEnv still beats it", () =>
+		Effect.gen(function* () {
+			const layer = CliLog.layer({ level: "Info", format: "json", runtimeEnv: actions });
+			assert.isNotEmpty(commands(yield* written(layer, local)), "the fiber said not Actions");
 		}),
 	);
 });
