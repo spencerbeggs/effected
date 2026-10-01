@@ -73,9 +73,9 @@ export interface LiveHandle<S> {
 	/** The current state of the fold. */
 	readonly state: Effect.Effect<S>;
 	/**
-	 * A `Console` whose every method writes above the frame while a run is mounted, and straight to the stream
-	 * otherwise; none falls through to the program's own console. Output is split as Node's console splits it: `log`,
-	 * `info`, `debug`, `dir`, `dirxml`, `table`, `count`, `timeLog`, `timeEnd` and a group's label to stdout, and `error`,
+	 * A `Console` whose every method writes above the frame while a run is mounted, and straight to the stream otherwise;
+	 * none falls through to the program's own console. Output is split as Node's console splits it: `log`, `info`,
+	 * `debug`, `dir`, `dirxml`, `table`, `count`, `timeLog`, `timeEnd` and a group's label to stdout, and `error`,
 	 * `warn`, `trace` and a failed `assert` to stderr; a group indents what follows. An `Error` argument is written with
 	 * its stack. `clear` does nothing, since erasing the screen would take the scrollback above the frame. Provide it
 	 * around the work done while the view is mounted; a line written to the terminal any other way tears the frame.
@@ -232,6 +232,9 @@ export const live = <E, S>(
 			Effect.gen(function* () {
 				const scope = yield* Scope.make("sequential");
 				const slot = holderSlot();
+				// Recorded before anything is acquired, so the close-time finalizer finds and closes it however an interrupt
+				// lands: mid-acquisition, or after the acquisition returns and before this fiber resumes.
+				current.mounted = { scope, slot };
 				const report = (error: unknown): void => {
 					current.failed ??= { error };
 					Queue.offerUnsafe(inbox, { _tag: "Failed" });
@@ -319,9 +322,17 @@ export const live = <E, S>(
 				}).pipe(
 					Scope.provide(scope),
 					// A mount that fails or is interrupted partway releases what it took: the permit, the colour, the instance.
-					Effect.onExit((exit) => (Exit.isSuccess(exit) ? Effect.void : Scope.close(scope, exit))),
+					Effect.onExit((exit) =>
+						Exit.isSuccess(exit)
+							? Effect.void
+							: Effect.andThen(
+									Effect.sync(() => {
+										if (current.mounted?.scope === scope) current.mounted = undefined;
+									}),
+									Scope.close(scope, exit),
+								),
+					),
 				);
-				current.mounted = { scope, slot };
 				yield* checkFailure;
 			}).pipe(
 				Effect.catchCause((cause) =>

@@ -2,11 +2,11 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, PubSub, Queue, Stream } from "effect";
 import { Text, render } from "ink";
 import { createElement } from "react";
-import { CliTheme } from "../../src/index.js";
+import { CliInteractive, CliTheme } from "../../src/index.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import type { LiveHandle } from "../../src/ui.js";
-import { CliUi } from "../../src/ui.js";
+import { CliUi, UiStreams } from "../../src/ui.js";
 import type { Ev, State } from "../helpers/live.js";
 import {
 	CLEAR_SCREEN,
@@ -244,6 +244,35 @@ describe("CliUi.live: closing and failing (Task 3 review, minors 4 and 5a)", () 
 			assert.deepStrictEqual((yield* handle.state).seen, ["Start", "tick 1"], "nothing folded after the close began");
 			assert.strictEqual(mounts, 1, "no run mounted during the close");
 			assert.strictEqual(fake.stdout(), written, "nothing written after the close");
+		}),
+	);
+
+	it.live("a run still waiting for the permit when the scope closes takes nothing with it", () =>
+		Effect.gen(function* () {
+			// A screen that never ends holds the permit, so the live view's run waits for it.
+			const holding = makeFakeStreams({ columns: 40, rows: 20 });
+			const screen = yield* Effect.forkChild(
+				CliUi.run(() => createElement(Text, null, "holding the permit")).pipe(
+					Effect.provideService(UiStreams, holding.streams),
+					Effect.provideService(CliInteractive, true),
+					Effect.provide(CliTheme.layerTest()),
+				),
+			);
+			yield* until(() => holding.stdout().includes("holding the permit"));
+			const fake = makeFakeStreams({ columns: 40, rows: 20 });
+			let mounts = 0;
+			yield* Effect.scoped(
+				Effect.gen(function* () {
+					const queue = yield* queueOf();
+					yield* liveOn(fake, optionsOf(Stream.fromQueue(queue)), { onMount: () => mounts++ });
+					yield* Queue.offer(queue, Start);
+					yield* Effect.sleep("50 millis");
+				}),
+			);
+			yield* Fiber.interrupt(screen);
+			assert.strictEqual(mounts, 0, "the run never got the permit");
+			assert.strictEqual(fake.stdout(), "", "nothing drawn");
+			assert.strictEqual(yield* mountsAndResolves(makeFakeStreams()), "mounted", "no permit leaked");
 		}),
 	);
 
