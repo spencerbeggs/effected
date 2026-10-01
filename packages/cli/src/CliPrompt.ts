@@ -1,9 +1,10 @@
 import type { Cause } from "effect";
-import { Effect, Layer, Queue, Terminal } from "effect";
+import { Context, Effect, Layer, Queue, Terminal } from "effect";
 import type { Param } from "effect/cli";
 import { CliConfig, CliError, GlobalFlag, Prompt } from "effect/cli";
 import { Cancelled } from "./Cancelled.js";
 import { CliInteractive } from "./CliInteractive.js";
+import { WizardDropped } from "./internal/wizardGate.js";
 
 /**
  * Which missing parameter a fallback stands in for, so a non-interactive run can fail with core's own error.
@@ -124,15 +125,21 @@ export class CliPrompt {
 	 * The layer reads `CliInteractive` and the ambient `CliConfig` when it is built, so provide those first, for
 	 * example `CliPrompt.gateWizard.pipe(Layer.provide(CliInteractive.layer))`. It filters the ambient `CliConfig`,
 	 * so a consumer's own `builtIns` survive, and returns it untouched when interactive. An audience flag read
-	 * later is covered by `CliAudience.runWith`, which drops the wizard too.
+	 * later is covered by `CliAudience.runWith`, which drops the wizard too. When this layer removes the flag it records
+	 * that it did, so `runWith` puts it back only when a flag turns interactivity on where this took it away: a
+	 * consumer who never had `Wizard` in their `builtIns` keeps it out.
 	 */
-	static readonly gateWizard: Layer.Layer<never> = Layer.effect(
-		CliConfig.CliConfig,
+	static readonly gateWizard: Layer.Layer<never> = Layer.effectContext(
 		Effect.gen(function* () {
 			// The ambient config, never core's full list: a consumer's own `builtIns` (from `CliConfig.layer`) survive.
 			const ambient = yield* CliConfig.CliConfig;
-			if (yield* CliInteractive) return ambient;
-			return CliConfig.make({ builtIns: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard) });
+			const unchanged = Context.make(CliConfig.CliConfig, ambient);
+			if ((yield* CliInteractive) || !ambient.builtIns.includes(GlobalFlag.Wizard)) return unchanged;
+			// Recorded, so an audience flag that later makes the run interactive restores the wizard only where this took it.
+			return Context.make(
+				CliConfig.CliConfig,
+				CliConfig.make({ builtIns: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard) }),
+			).pipe(Context.add(WizardDropped, true));
 		}),
 	);
 }

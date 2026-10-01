@@ -22,8 +22,8 @@ sources:
     title: CliRuntime, which remaps usage failures to exit 64
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T00:03:44Z
-  body_sha256: 44d4cd57c44273ed834272643c9de730a76a43edab64f370a1fda6ba461aa7c0
+  at: 2026-10-01T00:12:37Z
+  body_sha256: b766b6f754f2d10c23f963e95a326c04ae4c88db44ac264e06b6700f6abf39ac
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience
@@ -157,7 +157,7 @@ who runs the tool inside an agent (detected `agent`) on real terminals gets the 
 higher precedence over the environment variable already promised, and a pipe still cannot prompt, because the TTY
 requirement is unchanged and only the audience input moves. A non-human flag, or a conflict, still makes it false.
 Without `TerminalEnv` in the environment there are no facts to decide from and the flag only narrows. `--wizard`
-follows the decision: a run a flag makes interactive gets it back where the environment's gate had dropped it. This
+follows the decision: a run a flag makes interactive gets it back where the environment's gate had dropped it, and only there. `gateWizard` records that it removed the flag, so a consumer who left `Wizard` out of their own `builtIns` keeps it out. This
 came from okfit's round-2 adoption, where `--human` under Claude Code skipped the prompt on a real pty.
 
 ## Consequences

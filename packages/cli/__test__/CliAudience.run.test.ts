@@ -6,7 +6,7 @@ import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";
 import { Cause, Console, Effect, Exit, Layer, Runtime } from "effect";
-import { Command, Flag, Prompt } from "effect/cli";
+import { CliConfig, Command, Flag, GlobalFlag, Prompt } from "effect/cli";
 import { CliAudience, CliInteractive, CliPrompt, CliRuntime } from "../src/index.js";
 import { TestTerminal } from "../src/testing.js";
 
@@ -200,6 +200,7 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 		via: "runWith" | "core" = "runWith",
 		gateWizard = false,
 		endInput = false,
+		builtIns: ReadonlyArray<GlobalFlag.BuiltIn> | undefined = undefined,
 	) =>
 		Effect.gen(function* () {
 			const terminal = yield* TestTerminal.make();
@@ -217,6 +218,8 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				Effect.exit,
 				Effect.provideService(Console.Console, double),
 				gateWizard ? Effect.provide(CliPrompt.gateWizard) : (self) => self,
+				// The consumer's own config, provided under the gate: it filters whatever `builtIns` it finds.
+				builtIns === undefined ? (self) => self : Effect.provide(CliConfig.layer({ builtIns })),
 				Effect.provide(CliInteractive.layerTest(facts.ambient)),
 				Effect.provide(TerminalEnv.layerTest({ stdinIsTerminal: facts.stdin, stdout: { isTerminal: facts.stdout } })),
 				Effect.provide(Audience.layerTest(facts.detected, "detected")),
@@ -305,6 +308,45 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 			// Without a terminal the gate's drop stands: the wizard is an unknown flag.
 			const piped = yield* runUnder({ ...agentOnTtys, stdin: false }, ["--human", "--wizard", "init"], "runWith", true);
 			assert.strictEqual(piped.code, 64);
+		}),
+	);
+
+	it.effect(
+		"a consumer who left --wizard out of their own builtIns keeps it out: only a drop by the gate is restored",
+		() =>
+			Effect.gen(function* () {
+				const noWizard = GlobalFlag.BuiltIns.filter((flag) => flag !== GlobalFlag.Wizard);
+				assert.isFalse(noWizard.includes(GlobalFlag.Wizard));
+				// Under a detected agent the gate has nothing to drop, and --human on real TTYs must not invent a wizard.
+				const { err, code, reads } = yield* runUnder(
+					agentOnTtys,
+					["--human", "--wizard", "init"],
+					"runWith",
+					true,
+					true,
+					noWizard,
+				);
+				assert.strictEqual(code, 64, err.join("\n"));
+				assert.isTrue(
+					err.some((line) => /unrecogni[sz]ed.*wizard/i.test(line)),
+					err.join("\n"),
+				);
+				assert.strictEqual(reads.subscriptions, 0, "the wizard never ran");
+				// The same consumer's --human still widens the prompt itself.
+				const prompted = yield* runUnder(agentOnTtys, ["--human", "init"], "runWith", true, false, noWizard);
+				assert.deepStrictEqual(prompted.out, ["profile=library audience=human/flag"]);
+			}),
+	);
+
+	it.effect("the gate's drop is restored, and a second flag-driven narrowing then drops it again", () =>
+		Effect.gen(function* () {
+			// Gate dropped it (ambient non-interactive, full builtIns): --human on TTYs brings it back.
+			const back = yield* runUnder(agentOnTtys, ["--human", "--wizard", "init"], "runWith", true, true);
+			assert.isTrue(back.reads.subscriptions >= 1, "the wizard ran");
+			// A non-human flag drops it whatever the ambient config had.
+			const humanOnTtys: Facts = { detected: "human", stdin: true, stdout: true, ambient: true };
+			const dropped = yield* runUnder(humanOnTtys, ["--agent", "--wizard", "init"], "runWith", true);
+			assert.strictEqual(dropped.code, 64);
 		}),
 	);
 

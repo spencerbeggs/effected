@@ -6,6 +6,7 @@ import type { Command } from "effect/cli";
 import { CliConfig, CliError, Command as CommandModule, Flag, GlobalFlag } from "effect/cli";
 import { CliInteractive } from "./CliInteractive.js";
 import { scanAudience, tallyAudience } from "./internal/scanAudience.js";
+import { WizardDropped } from "./internal/wizardGate.js";
 
 const KINDS: ReadonlyArray<AudienceKind> = ["human", "agent", "ci"];
 
@@ -109,7 +110,8 @@ const resolve = (input: AudienceFlagInput): Effect.Effect<AudienceShape, CliErro
  * non-human flag (`--agent`, `--ci`, `--audience agent|ci`) turns it off and drops `--wizard`, and switches
  * diagnostics to NDJSON, for the whole run including the parse step where a fallback prompt fires. Without
  * `TerminalEnv` in the environment a flag only narrows. `--wizard` follows the decision: a run a flag makes
- * interactive gets it back where the environment's gate had dropped it.
+ * interactive gets it back where the environment's gate had dropped it, and only there: a consumer's own `builtIns`
+ * without it stay without it.
  * {@link CliAudience.provide} on its own, the path for a bare `Command.run`, acts only on the subcommand handler,
  * because core parses the root flags into a local context before any of it is visible.
  *
@@ -226,7 +228,10 @@ export class CliAudience {
 				// before the flag was read. A non-interactive run drops it, and a run the flag has made interactive
 				// where the gate had dropped it gets it back.
 				const hasWizard = ambient.builtIns.includes(GlobalFlag.Wizard);
-				if (interactive === hasWizard) return yield* decided;
+				// Restored only where the gate took it: a consumer's own `builtIns` without it stay without it.
+				const restore = interactive && !hasWizard && (yield* WizardDropped);
+				const drop = !interactive && hasWizard;
+				if (!restore && !drop) return yield* decided;
 				const builtIns = interactive
 					? [...ambient.builtIns, GlobalFlag.Wizard]
 					: ambient.builtIns.filter((flag) => flag !== GlobalFlag.Wizard);
