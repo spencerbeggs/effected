@@ -202,6 +202,8 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 		endInput = false,
 		builtIns: ReadonlyArray<GlobalFlag.BuiltIn> | undefined = undefined,
 		innerBuiltIns: ReadonlyArray<GlobalFlag.BuiltIn> | undefined = undefined,
+		// The environment, fixed, never the host's: `TERM` decides interactivity on two terminals.
+		env: Record<string, string> = {},
 	) =>
 		Effect.gen(function* () {
 			const terminal = yield* TestTerminal.make();
@@ -227,6 +229,7 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 				Effect.provide(CliInteractive.layerTest(facts.ambient)),
 				Effect.provide(TerminalEnv.layerTest({ stdinIsTerminal: facts.stdin, stdout: { isTerminal: facts.stdout } })),
 				Effect.provide(Audience.layerTest(facts.detected, "detected")),
+				Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env)),
 			);
 			const code = Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
 			return { out, err, code, reads: yield* terminal.reads };
@@ -261,13 +264,13 @@ describe("CliAudience: a flag decides CliInteractive from the TTY facts", () => 
 	it.effect("--human cannot prompt on a TERM=dumb terminal, through runWith and through a bare provide", () =>
 		Effect.gen(function* () {
 			for (const via of ["runWith", "core"] as const) {
-				const dumb = yield* runUnder(agentOnTtys, ["--human", "probe"], via).pipe(
-					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ TERM: "dumb" })),
-				);
+				const dumb = yield* runUnder(agentOnTtys, ["--human", "probe"], via, false, false, undefined, undefined, {
+					TERM: "dumb",
+				});
 				assert.deepStrictEqual(dumb.out, ["interactive=false audience=human/flag"], via);
-				const real = yield* runUnder(agentOnTtys, ["--human", "probe"], via).pipe(
-					Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown({ TERM: "xterm" })),
-				);
+				const real = yield* runUnder(agentOnTtys, ["--human", "probe"], via, false, false, undefined, undefined, {
+					TERM: "xterm",
+				});
 				assert.deepStrictEqual(real.out, ["interactive=true audience=human/flag"], `${via} control`);
 			}
 		}),
