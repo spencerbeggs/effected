@@ -725,3 +725,30 @@ describe("CliFailure.toDoc: frames are classified by file path, never by name (r
 		for (const hidden of ["node:fs", "node:internal", "new Promise", "Array.map"]) assert.notInclude(text, hidden);
 	});
 });
+
+describe("CliFailure.toDoc: the hidden-frame count (r5 F1)", () => {
+	it("a mixed stack shows its app frames and, after them, how many internal frames were hidden", () => {
+		const frames = [
+			`run (${USER}:3:4)`,
+			...INTERNAL_FRAMES,
+			"FSReqCallback.oncomplete (node:fs:197:5)",
+			`main (${USER}:9:1)`,
+		];
+		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", frames))));
+		assert.include(text, `${USER}:3:4`);
+		assert.include(text, `${USER}:9:1`);
+		const note = `(+${INTERNAL_FRAMES.length + 1} internal frames hidden)`;
+		assert.include(text, note);
+		assert.isAbove(text.indexOf(note), text.indexOf(`${USER}:9:1`), "the note follows the frames");
+	});
+
+	it("nothing hidden prints no note", () => {
+		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", [`run (${USER}:3:4)`]))));
+		assert.notInclude(text, "hidden");
+	});
+
+	it('stackFrames: "all" hides nothing and prints no note', () => {
+		const error = errorWithStack("boom", [`run (${USER}:3:4)`, ...INTERNAL_FRAMES]);
+		assert.notInclude(plain(CliFailure.toDoc(Cause.die(error), { stackFrames: "all" })), "hidden");
+	});
+});

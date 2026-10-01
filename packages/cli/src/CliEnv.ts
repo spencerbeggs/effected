@@ -64,7 +64,9 @@ export interface CliEnvOptions {
 	readonly displayPath?: ((absolute: string) => string) | undefined;
 	/**
 	 * Which frames of a defect's stack the default failure report shows: `app`, the default, leaves out every
-	 * `node_modules` frame (Effect's and any other dependency's) and the runtime's own, and counts them; `all` shows
+	 * `node_modules` frame (Effect's and any other dependency's) and the runtime's own (every `node:` frame and every
+	 * frame with no file), and prints how many it left out after the frames it shows, as
+	 * `(+N internal frames hidden)`, or `no user frames (N internal frames hidden)` when none is left; `all` shows
 	 * every frame. Applies to the report `main` writes, `FailureDetails.defaultLines` and `FailureDetails.lines`. Only
 	 * `CliRuntime.main` reads this.
 	 */

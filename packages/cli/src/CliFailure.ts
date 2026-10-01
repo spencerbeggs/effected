@@ -217,12 +217,11 @@ const frameBlock = (frame: Frame, displayPath: (absolute: string) => string): Bl
 
 const stackBlock = (defect: Error, displayPath: (absolute: string) => string, mode: "app" | "all"): Block => {
 	const { frames, hidden } = cleanStack(defect.stack, mode);
-	if (frames.length > 0)
-		return Doc.collapsible(
-			"stack",
-			frames.map((frame) => frameBlock(frame, displayPath)),
-			{ open: true },
-		);
+	if (frames.length > 0) {
+		const shown = frames.map((frame) => frameBlock(frame, displayPath));
+		const note = hidden === 0 ? [] : [Doc.paragraph(Doc.text(`(+${hidden} internal frames hidden)`, "muted"))];
+		return Doc.collapsible("stack", [...shown, ...note], { open: true });
+	}
 	const note = hidden === 0 ? "no stack" : `no user frames (${hidden} internal frames hidden)`;
 	return Doc.collapsible("stack", [Doc.paragraph(Doc.text(note, "muted"))], { open: true });
 };
@@ -316,7 +315,8 @@ const spanBlocks = (reason: CauseType.Reason<unknown>): ReadonlyArray<Block> => 
  * leave no frame at all, as for a program run from its own install under `node_modules`, only the runtime's and
  * Effect's are left out. Then an
  * `Error.cause` chain as a tree. When cleaning leaves no frame the stack says
- * `no user frames (N internal frames hidden)`, never an empty block. A reason that ran under spans is followed by
+ * `no user frames (N internal frames hidden)`, never an empty block; when frames survive and some were left out, the
+ * count follows them as `(+N internal frames hidden)`. A reason that ran under spans is followed by
  * `in: outer › inner`. Interrupts are not rendered beside a real failure, and a cause with only interrupts is the
  * one line `interrupted`.
  *
