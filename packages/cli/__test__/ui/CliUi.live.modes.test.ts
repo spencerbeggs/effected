@@ -123,14 +123,22 @@ describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruli
 					keep(...args);
 				},
 			});
-			// One event per chunk, so every state is drawn: a chunk is folded whole and drawn once.
-			const options = optionsOf(Stream.fromIterable([Start, tick(1), tick(2), tick(3), End]).pipe(Stream.rechunk(1)), {
+			// Paced, so every state is drawn: events that arrive together are folded at once and drawn once, which in a
+			// cold run can fold `tick 2` away before it is ever rendered.
+			const queue = yield* queueOf();
+			const options = optionsOf(Stream.fromQueue(queue), {
 				render: (state) => {
 					if (state.last === "tick 2") throw new Error("render threw");
 					return frameOf(state);
 				},
 			});
 			const handle = yield* liveOn(fake, options, { console, onUnmount: () => timeline.push("unmount") });
+			yield* Queue.offerAll(queue, [Start, tick(1)]);
+			yield* until(() => screenAfter(fake.stdout()).includes("tick 1"));
+			yield* Queue.offer(queue, tick(2));
+			yield* until(() => warningsIn(log.lines).length > 0);
+			yield* Queue.offerAll(queue, [tick(3), End]);
+			yield* Queue.end(queue);
 			yield* handle.done.pipe(Effect.timeout("2 seconds"));
 			assert.strictEqual((yield* handle.state).last, "ended", "the fold went on");
 			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
@@ -182,14 +190,21 @@ describe("CliUi.live: a render that fails degrades the run (Review Focus 2, ruli
 		Effect.gen(function* () {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });
 			const log = capturing();
-			const events = Stream.fromIterable([Start, tick(1), tick(2), End, Start, tick(5), End]).pipe(Stream.rechunk(1));
-			const options = optionsOf(events, {
+			// Paced, so `tick 2` is drawn (and throws) on its own.
+			const queue = yield* queueOf();
+			const options = optionsOf(Stream.fromQueue(queue), {
 				render: (state) => {
 					if (state.last === "tick 2") throw new Error("render threw");
 					return frameOf(state);
 				},
 			});
 			const handle = yield* liveOn(fake, options, { console: log.console });
+			yield* Queue.offerAll(queue, [Start, tick(1)]);
+			yield* until(() => screenAfter(fake.stdout()).includes("tick 1"));
+			yield* Queue.offer(queue, tick(2));
+			yield* until(() => warningsIn(log.lines).length > 0);
+			yield* Queue.offerAll(queue, [End, Start, tick(5), End]);
+			yield* Queue.end(queue);
 			yield* handle.done.pipe(Effect.timeout("2 seconds"));
 			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "tick 1", "RUN 2", "ended"]);
 			assert.strictEqual(warningsIn(log.lines).length, 1);
@@ -460,7 +475,9 @@ describe("CliUi.live: Task 4 review fixes", () => {
 			const fake = makeFakeStreams({ columns: 40, rows: 20 });
 			const log = capturing();
 			const drawn = new Set<string>();
-			const options = optionsOf(Stream.fromIterable([Start, tick(1), tick(2), End]).pipe(Stream.rechunk(1)), {
+			// Paced, so `tick 1` is the last good frame and `tick 2` is drawn (and throws) on its own.
+			const queue = yield* queueOf();
+			const options = optionsOf(Stream.fromQueue(queue), {
 				render: (state) => {
 					if (state.last === "tick 2") throw new Error("render threw");
 					// The fallback draws the last good state again: this time it throws as well.
@@ -470,6 +487,12 @@ describe("CliUi.live: Task 4 review fixes", () => {
 				},
 			});
 			const handle = yield* liveOn(fake, options, { console: log.console });
+			yield* Queue.offerAll(queue, [Start, tick(1)]);
+			yield* until(() => screenAfter(fake.stdout()).includes("tick 1"));
+			yield* Queue.offer(queue, tick(2));
+			yield* until(() => warningsIn(log.lines).length > 0);
+			yield* Queue.offer(queue, End);
+			yield* Queue.end(queue);
 			yield* handle.done.pipe(Effect.timeout("2 seconds"));
 			assert.strictEqual(warningsIn(log.lines).length, 1, log.lines.join("\n"));
 			assert.deepStrictEqual(screenAfter(fake.stdout()), ["RUN 1", "ended"], "the final frame, once");
