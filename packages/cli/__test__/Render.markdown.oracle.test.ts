@@ -648,6 +648,38 @@ describe("Render.markdown: links", () => {
 		}),
 	);
 
+	it.effect("a URL holding a pipe or a backtick stays one link in a table cell: both are percent-encoded", () =>
+		Effect.gen(function* () {
+			// GFM splits a row into cells before it reads inlines, so a raw `|` in a destination splits the row, and a
+			// backtick can open a code span that swallows the link. Percent-encoding either is the same URL.
+			const urls = [
+				"https://x.test/a|b",
+				"https://x.test/a`b",
+				"https://x.test/a`b`c|d",
+				"https://x.test/a b|c",
+				"https://x.test/a(b)|`c",
+			];
+			const root = yield* treeOf([
+				Doc.table(
+					[{ header: "h" }, { header: "after" }],
+					urls.map((url) => [[Doc.link({ url }, "l")], "z"]),
+				),
+			]);
+			const rows = kids(tableOf(root)).slice(1);
+			assert.strictEqual(rows.length, urls.length);
+			urls.forEach((url, index) => {
+				const cells = kids(rows[index]);
+				assert.strictEqual(cells.length, 2, `${url}: the row keeps its two cells`);
+				assert.deepStrictEqual(
+					kids(cells[0]).map((n) => [n.type, n.url, textOf(n)]),
+					[["link", url.replaceAll("|", "%7C").replaceAll("`", "%60"), "l"]],
+					url,
+				);
+				assert.strictEqual(textOf(cells[1] as N), "z", url);
+			});
+		}),
+	);
+
 	it.effect("a URL with an unsafe scheme is not a link: the target is shown as code", () =>
 		Effect.gen(function* () {
 			for (const url of [

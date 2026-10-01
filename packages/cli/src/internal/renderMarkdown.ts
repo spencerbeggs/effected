@@ -86,9 +86,13 @@ const linkUrl = (target: LinkTarget, ctx: RenderContext): string | undefined => 
 	return path === undefined ? undefined : `file://${path}`;
 };
 
-/** A link destination. `&` is escaped so a reader does not decode an entity into something other than what was written. */
+/**
+ * A link destination. `&` is escaped so a reader does not decode an entity into something other than what was written.
+ * `|` and the backtick are percent-encoded, which is the same URL: GFM splits a table row into cells before it reads
+ * inlines, so a raw `|` would split the row however the destination is written, and a backtick can open a code span.
+ */
 const destination = (raw: string): string => {
-	const url = raw.replace(/&/g, "&amp;");
+	const url = raw.replace(/&/g, "&amp;").replace(/\|/g, "%7C").replace(/`/g, "%60");
 	return /^[^\s()<>\\]*$/.test(url)
 		? url
 		: `<${url
