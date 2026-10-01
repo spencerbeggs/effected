@@ -40,6 +40,7 @@ export {
 	type SelectState,
 	type SelectViewProps,
 } from "./ui/Select.js";
+export { type Tab, Tabs, type TabsAction, type TabsProps } from "./ui/Tabs.js";
 export {
 	TextInput,
 	type TextInputInitOptions,
