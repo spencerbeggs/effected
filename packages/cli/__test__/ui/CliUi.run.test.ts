@@ -38,12 +38,9 @@ type ThemeOptions = Parameters<typeof CliTheme.layerTest>[0];
 const runOn = <A>(
 	fake: FakeStreams,
 	screen: Screen<A>,
-	options: { readonly stream?: "stdout" | "stderr"; readonly theme?: ThemeOptions; readonly clear?: boolean } = {},
+	options: { readonly theme?: ThemeOptions; readonly clear?: boolean } = {},
 ): Effect.Effect<A, Cancelled | NotInteractive> =>
-	CliUi.run(screen, {
-		...(options.stream === undefined ? {} : { stream: options.stream }),
-		...(options.clear === undefined ? {} : { clear: options.clear }),
-	}).pipe(
+	CliUi.run(screen, options.clear === undefined ? undefined : { clear: options.clear }).pipe(
 		Effect.provideService(UiStreams, fake.streams),
 		Effect.provideService(CliInteractive, true),
 		Effect.provide(CliTheme.layerTest(options.theme)),
@@ -118,20 +115,6 @@ describe("CliUi.run", () => {
 				createElement(OnMount, { onMount: () => control.resolve([] as ReadonlyArray<string>) }),
 			);
 			assert.deepStrictEqual(value, []);
-		}),
-	);
-
-	it.live("a screen on stderr draws its frames on stderr, and stdout receives nothing", () =>
-		Effect.gen(function* () {
-			const fake = makeFakeStreams();
-			const value = yield* runOn(
-				fake,
-				(control) => createElement(OnMount, { onMount: () => control.resolve("drawn"), label: "on-stderr" }),
-				{ stream: "stderr" },
-			);
-			assert.strictEqual(value, "drawn");
-			assert.include(fake.stderr(), "on-stderr", "the frame reached stderr");
-			assert.strictEqual(fake.stdout(), "", "stdout carries only what the program writes");
 		}),
 	);
 
@@ -282,7 +265,7 @@ describe("CliUi.run", () => {
 					runOn(fake, () => createElement(Tracked), { theme: { color: "truecolor" } }),
 				);
 				yield* until(() => fake.rawModes.includes(true));
-				assert.strictEqual(instance.level, 3, "the screen holds the stream's level while mounted");
+				assert.strictEqual(instance.level, 3, "the screen holds stdout's level while mounted");
 				yield* Fiber.interrupt(fiber);
 				assert.isTrue(unmounted, "the tree was unmounted");
 				assert.deepStrictEqual(fake.rawModes, [true, false]);
@@ -337,9 +320,12 @@ describe("CliUi.run", () => {
 					};
 					return createElement(Timed);
 				};
-			const theme = { color: "none", stderrColor: "truecolor" } as const;
+			// Two levels, so each mount's save-and-restore of Ink's level must nest for the level to end where it began.
 			const results = yield* Effect.all(
-				[runOn(fake, screen("a"), { stream: "stdout", theme }), runOn(fake, screen("b"), { stream: "stderr", theme })],
+				[
+					runOn(fake, screen("a"), { theme: { color: "none" } }),
+					runOn(fake, screen("b"), { theme: { color: "truecolor" } }),
+				],
 				{ concurrency: "unbounded" },
 			);
 			assert.deepStrictEqual([...results].sort(), ["a", "b"]);

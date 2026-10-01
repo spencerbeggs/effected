@@ -51,8 +51,6 @@ export type Screen<A> = (control: ScreenControl<A>) => ReactElement | Promise<Re
  * @public
  */
 export interface CliUiRunOptions {
-	/** The stream the screen draws on, which decides its colour level; `"stdout"` by default. */
-	readonly stream?: "stdout" | "stderr";
 	/**
 	 * Erase the screen's last frame as it unmounts, however it ended; `false` by default, which leaves the last frame
 	 * on the terminal, as a record of the answer.
@@ -107,7 +105,6 @@ const SCREEN_EXITED = "@effected/cli/ui: the screen exited without resolving or 
 const mount = <A>(
 	screen: Screen<A>,
 	theme: Cli.StreamTheme,
-	stream: "stdout" | "stderr",
 	clear: boolean,
 ): Effect.Effect<A, Cli.Cancelled, Scope.Scope> =>
 	Effect.gen(function* () {
@@ -141,8 +138,7 @@ const mount = <A>(
 				overrides.onMount?.();
 				return ink.render(tree, {
 					stdin: streams.stdin,
-					// Ink draws its frames on what it calls stdout, so a screen on stderr hands it stderr there.
-					stdout: stream === "stderr" ? streams.stderr : streams.stdout,
+					stdout: streams.stdout,
 					stderr: streams.stderr,
 					interactive: true,
 					exitOnCtrlC: false,
@@ -187,7 +183,7 @@ export class CliUi {
 	 *
 	 * @remarks
 	 * When `CliInteractive` is false it fails with `NotInteractive` and mounts nothing; Ink and React are not even
-	 * loaded. Otherwise it loads them, holds Ink's colour level at the stream's level, and mounts the screen on
+	 * loaded. Otherwise it loads them, holds Ink's colour level at stdout's, and mounts the screen on
 	 * `UiStreams` with Ink's own Ctrl-C exit off: Ctrl-C cancels with `"interrupt"` and Esc with `"escape"`.
 	 *
 	 * Mounting is one scoped resource. However the screen ends (resolved, cancelled, crashed, or the fiber
@@ -196,8 +192,7 @@ export class CliUi {
 	 * stdout. So is a `useKeys` handler that throws; a handler a consumer registers with Ink's own `useInput` or
 	 * `usePaste` is outside the kit, and what it throws escapes as Ink leaves it.
 	 *
-	 * With `stream: "stderr"` the frames, like the colour level, follow stderr, so stdout carries only what the
-	 * program itself writes.
+	 * A screen draws on stdout, and is interactive when `CliInteractive` is, which reads stdout's terminal.
 	 *
 	 * Screens run one at a time, process-wide: Ink owns raw mode on the one terminal, so a second `run` waits until
 	 * the first is released. A screen that itself awaits another `CliUi.run` therefore deadlocks, and nothing guards
@@ -207,11 +202,11 @@ export class CliUi {
 	 * mounted with `patchConsole` off, so a line written to the terminal from elsewhere (an `Effect.log`, `CliLog`, a
 	 * background fiber) lands inside the frame and tears it. Log before the screen mounts or after it resolves.
 	 *
-	 * @param screen - builds the element to mount from its {@link ScreenControl}
 	 * With `clear` the last frame is erased as the screen unmounts, so a wizard of several screens leaves only what the
 	 * program prints; without it the last frame stays, with the highlight where the answer was.
 	 *
-	 * @param options - the stream to draw on, and whether to erase the last frame
+	 * @param screen - builds the element to mount from its {@link ScreenControl}
+	 * @param options - whether to erase the last frame
 	 */
 	static readonly run = <A>(
 		screen: Screen<A>,
@@ -219,9 +214,8 @@ export class CliUi {
 	): Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive, Cli.CliTheme> =>
 		Effect.gen(function* () {
 			if (!(yield* CliInteractive)) return yield* Effect.fail(new NotInteractive());
-			const stream = options?.stream ?? "stdout";
-			const theme = (yield* CliTheme).forStream(stream);
-			return yield* Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, stream, options?.clear === true)));
+			const theme = (yield* CliTheme).forStream("stdout");
+			return yield* Semaphore.withPermit(mounts, Effect.scoped(mount(screen, theme, options?.clear === true)));
 		});
 
 	/**

@@ -44,6 +44,10 @@ const screen: Screen<number> = () => {
 	throw new Error("never mounted");
 };
 const keys: ReadonlyArray<KeyName> = ["up", "enter"];
+
+// A screen draws on stdout: no stream option until interactivity can be read per stream.
+// @ts-expect-error CliUiRunOptions has no stream
+export const onStderr = CliUi.run(screen, { stream: "stderr" });
 export const driven: Effect.Effect<number, unknown, never> = Effect.scoped(
 	Effect.flatMap(CliUiTest.render(screen), (handle) => Effect.andThen(handle.press(...keys), handle.result)),
 );
