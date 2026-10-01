@@ -25,7 +25,7 @@ export interface ViewportState {
 
 /**
  * A row a viewport shows: a section header, or an item. Only items are selectable. An item's `key` is its React
- * key in the view, so keys should be unique within one list.
+ * key in the view, so keys must be unique within one list: `Viewport.View` dies on a repeat.
  *
  * @public
  */
@@ -55,6 +55,19 @@ export interface ViewportViewProps {
 	/** Lines the rest of the screen uses (a title, a help line), taken off the terminal height; 0 by default. */
 	readonly reserved?: number;
 }
+
+/**
+ * Throws on a repeated item key. Checked before React sees the rows: React reports a duplicate key on
+ * `console.error`, which under a screen's unpatched console lands on the real stderr, over the frame.
+ */
+const assertUniqueItemKeys = (rows: ReadonlyArray<ViewportRow>): void => {
+	const seen = new Set<string>();
+	for (const row of rows) {
+		if (row._tag !== "Item") continue;
+		if (seen.has(row.key)) throw new Error(`@effected/cli/ui: Viewport item keys must be unique; "${row.key}" repeats`);
+		seen.add(row.key);
+	}
+};
 
 const clamp = (value: number, low: number, high: number): number => Math.min(Math.max(value, low), high);
 
@@ -207,11 +220,13 @@ export class Viewport {
 	]);
 
 	/**
-	 * Draw the window: the visible rows, each clipped to one line.
+	 * Draw the window: the visible rows, each clipped to one line. A repeated item key is a defect: the view throws, so
+	 * the screen dies with the reason.
 	 *
 	 * @param props - the rows, the state, how to draw a row, and the lines reserved for the rest of the screen
 	 */
 	static readonly View = (props: ViewportViewProps): ReactElement => {
+		assertUniqueItemKeys(props.rows);
 		const { ink, react } = inkModules();
 		const size = useTerminalSize();
 		const budget = Math.max(1, Math.min(props.state.height, size.rows - (props.reserved ?? 0)));

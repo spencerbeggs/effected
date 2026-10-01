@@ -129,6 +129,46 @@ describe("Confirm.screen under CliUiTest", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("with no toggles the help names no row or toggle keys", () =>
+		Effect.gen(function* () {
+			const handle = yield* CliUiTest.render(Confirm.screen({ message: "Go?", toggles: promote(0) }));
+			const help = (yield* handle.plainFrame).trimEnd().split("\n").at(-1) ?? "";
+			assert.notInclude(help, "row", help);
+			assert.notInclude(help, "toggle", help);
+			for (const part of ["y yes", "n no", "←/→ flip", "enter submit", "q/esc cancel"])
+				assert.include(help, part, help);
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("twenty toggles on a 10-row terminal scroll in a window that never fills the terminal", () =>
+		Effect.gen(function* () {
+			const many = Array.from({ length: 20 }, (_, index) => ({
+				key: `t${index}`,
+				label: `toggle ${index}`,
+				value: false,
+			}));
+			const handle = yield* CliUiTest.render(Confirm.screen({ message: "Go?", toggles: many }), {
+				rows: 10,
+				color: "none",
+			});
+			const lines = (frame: string) => frame.trimEnd().split("\n");
+			const first = lines(yield* handle.plainFrame);
+			assert.isAtMost(first.length, 9, first.join(" / "));
+			assert.include(first.join("\n"), "Go?");
+			assert.include(first.at(-1) ?? "", "enter submit", "the help line stays on screen");
+			for (let press = 0; press < 15; press++) yield* handle.press("down");
+			const scrolled = lines(yield* handle.plainFrame);
+			assert.isAtMost(scrolled.length, 9, scrolled.join(" / "));
+			assert.include(scrolled.join("\n"), "→ ◯ toggle 14", "the highlighted toggle is in view");
+			assert.include(scrolled[0] ?? "", "Go?", "the question stays on top");
+			yield* handle.press("space", "enter");
+			const result = yield* handle.result;
+			assert.strictEqual(Object.keys(result.toggles).length, 20);
+			assert.isTrue(result.toggles.t14);
+			assert.isFalse(result.toggles.t13);
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("toggle rows: ASCII check glyphs, accent when highlighted, and labels cut to the width", () =>
 		Effect.gen(function* () {
 			const ascii = yield* Effect.scoped(

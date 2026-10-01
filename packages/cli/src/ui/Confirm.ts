@@ -7,6 +7,8 @@ import { KeyHelp } from "./KeyHelp.js";
 import { KeyTable, useKeys } from "./KeyTable.js";
 import { Toggle } from "./Toggle.js";
 import { Styled, useGlyphs, useTerminalSize } from "./UiTheme.js";
+import type { ViewportRow } from "./Viewport.js";
+import { Viewport } from "./Viewport.js";
 
 /**
  * An extra on/off row a {@link Confirm} hosts beneath its yes/no answer.
@@ -142,17 +144,25 @@ const result = <K extends string>(state: ConfirmState<K>): ConfirmResult<K> => (
 	toggles: Object.fromEntries(state.toggles.map((toggle) => [toggle.key, toggle.value])) as Partial<Record<K, boolean>>,
 });
 
-const KEYS: KeyTable<ConfirmAction> = KeyTable.make<ConfirmAction>([
-	{ keys: [{ char: "y" }], action: "yes", help: "yes" },
-	{ keys: [{ char: "n" }], action: "no", help: "no" },
-	{ keys: ["left"], action: "flip", help: "flip" },
-	{ keys: ["right"], action: "flip", help: "flip" },
-	{ keys: ["up"], action: "up", help: "row" },
-	{ keys: ["down"], action: "down", help: "row" },
-	{ keys: ["space"], action: "toggle", help: "toggle" },
-	{ keys: ["enter"], action: "submit", help: "submit" },
-	{ keys: [{ char: "q" }], action: "cancel", help: "cancel" },
-]);
+/** The bindings; with no toggles the row and toggle keys stay bound (they do nothing) but leave the help line. */
+const bindings = (toggles: boolean): KeyTable<ConfirmAction> =>
+	KeyTable.make<ConfirmAction>([
+		{ keys: [{ char: "y" }], action: "yes", help: "yes" },
+		{ keys: [{ char: "n" }], action: "no", help: "no" },
+		{ keys: ["left"], action: "flip", help: "flip" },
+		{ keys: ["right"], action: "flip", help: "flip" },
+		{ keys: ["up"], action: "up", help: "row", hidden: !toggles },
+		{ keys: ["down"], action: "down", help: "row", hidden: !toggles },
+		{ keys: ["space"], action: "toggle", help: "toggle", hidden: !toggles },
+		{ keys: ["enter"], action: "submit", help: "submit" },
+		{ keys: [{ char: "q" }], action: "cancel", help: "cancel" },
+	]);
+
+const KEYS = bindings(true);
+const ANSWER_KEYS = bindings(false);
+
+/** The lines around the toggle rows: the question, the answer row and the help line. */
+const RESERVED = 3;
 
 /**
  * A yes/no question, optionally with extra on/off rows beneath it: a pure reducer, its key table, a view and a
@@ -162,6 +172,8 @@ const KEYS: KeyTable<ConfirmAction> = KeyTable.make<ConfirmAction>([
  * The rows are the yes/no row first, then each toggle. `y` and `n` set the answer and `←`/`→` flip it, from any
  * row; `↑`/`↓` move between rows; space flips the highlighted toggle and does nothing on the yes/no row; enter
  * submits; `q` cancels with `"escape"`. Toggle keys must be unique; `init` throws, and `screen` dies, on a repeat.
+ * With no toggles, the help line leaves out the row and toggle keys. Toggles that do not fit the terminal scroll
+ * in a window under the answer row, so the question, the answer and the help line stay on screen.
  * The answer starts as no unless `initial` says otherwise, and `←`/`→` flip it whichever row is highlighted.
  *
  * okfit's verify step passes one toggle when it has drafts, and reads it back with a fallback, since with no drafts
@@ -204,7 +216,7 @@ export class Confirm {
 	 */
 	static readonly result: <K extends string>(state: ConfirmState<K>) => ConfirmResult<K> = result;
 
-	/** The keys: y yes, n no, ←/→ flip, ↑/↓ row, space toggle, enter submit, q cancel. */
+	/** The keys: y yes, n no, ←/→ flip, ↑/↓ row, space toggle, enter submit, q cancel (the view hides row and toggle from its help when there are no toggles). */
 	static readonly keys: KeyTable<ConfirmAction> = KEYS;
 
 	/**
@@ -233,10 +245,13 @@ export class Confirm {
 		react.useEffect(() => {
 			if (state.submitted) onSubmit(result(state));
 		}, [state.submitted]);
-		useKeys(KEYS, (action) => {
+		const keys = state.toggles.length === 0 ? ANSWER_KEYS : KEYS;
+		useKeys(keys, (action) => {
 			if (action === "cancel") cancel("escape");
 			else setState((current) => step(current, action));
 		});
+		const toggleRows: ReadonlyArray<ViewportRow> = state.toggles.map((toggle) => ({ _tag: "Item", key: toggle.key }));
+		const numberOf = new Map(state.toggles.map((toggle, index) => [toggle.key as string, index]));
 		const ellipsis = { ellipsis: glyphs.ellipsis };
 		const lead = state.row === 0 ? glyphs.arrow : " ".repeat(Fmt.width(glyphs.arrow));
 		const answer = (label: string, chosen: boolean): ReactElement =>
@@ -255,15 +270,23 @@ export class Confirm {
 				" ",
 				answer("No", !state.confirmed),
 			),
-			...state.toggles.map((toggle, index) =>
-				react.createElement(Toggle.View, {
-					key: toggle.key,
-					label: toggle.label,
-					value: toggle.value,
-					highlighted: state.row === index + 1,
-				}),
-			),
-			react.createElement(KeyHelp, { tables: [KEYS] }),
+			state.toggles.length === 0
+				? null
+				: react.createElement(Viewport.View, {
+						rows: toggleRows,
+						state: Viewport.init(state.toggles.length, state.toggles.length, Math.max(0, state.row - 1)),
+						reserved: RESERVED,
+						renderRow: (row: ViewportRow) => {
+							const index = row._tag === "Item" ? (numberOf.get(row.key) ?? 0) : 0;
+							const toggle = state.toggles[index];
+							return react.createElement(Toggle.View, {
+								label: toggle?.label ?? "",
+								value: toggle?.value ?? false,
+								highlighted: state.row === index + 1,
+							});
+						},
+					}),
+			react.createElement(KeyHelp, { tables: [keys] }),
 		);
 	};
 

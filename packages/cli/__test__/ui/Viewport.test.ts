@@ -1,5 +1,5 @@
-import { assert, describe, it } from "@effect/vitest";
-import { Effect, Fiber, Schedule, Schema } from "effect";
+import { assert, describe, it, vi } from "@effect/vitest";
+import { Cause, Effect, Exit, Fiber, Schedule, Schema } from "effect";
 import { Text } from "ink";
 import type { ReactElement } from "react";
 import { createElement, useState } from "react";
@@ -172,6 +172,34 @@ describe("Viewport.View under CliUiTest", () => {
 			const handle = yield* CliUiTest.render(() => createElement(Mismatched));
 			assert.include(yield* handle.plainFrame, "> item2");
 		}).pipe(Effect.scoped),
+	);
+
+	it.live("a repeated item key dies with the reason, before React can warn on the real stderr", () =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => vi.spyOn(console, "error").mockImplementation(() => undefined)),
+			(spy) =>
+				Effect.gen(function* () {
+					const rows: ReadonlyArray<ViewportRow> = [
+						{ _tag: "Item", key: "same" },
+						{ _tag: "Item", key: "other" },
+						{ _tag: "Item", key: "same" },
+					];
+					const handle = yield* CliUiTest.render(() =>
+						createElement(Viewport.View, { rows, state: Viewport.init(3, 5), renderRow }),
+					);
+					const exit = yield* Effect.exit(handle.result.pipe(Effect.timeout("1 second")));
+					const warned = spy.mock.calls.map((call) => String(call[0])).join(" | ");
+					assert.strictEqual(spy.mock.calls.length, 0, `nothing reaches console.error: ${warned}`);
+					if (Exit.isFailure(exit)) {
+						const defect = Cause.squash(exit.cause);
+						assert.include(defect instanceof Error ? defect.message : String(defect), "unique");
+						assert.include(defect instanceof Error ? defect.message : String(defect), '"same"');
+					} else {
+						assert.fail("expected a defect, but the viewport resolved");
+					}
+				}).pipe(Effect.scoped),
+			(spy) => Effect.sync(() => spy.mockRestore()),
+		),
 	);
 
 	it.effect("on a 10-row terminal, a 200-row viewport never draws a frame taller than 9 lines", () =>

@@ -30,7 +30,7 @@ const sourceExports = (text: string): ReadonlyArray<string> =>
 
 const CONSUMER = `import { CliTheme } from "@effected/cli";
 import type { KeyName, Screen } from "@effected/cli/ui";
-import { CliUi } from "@effected/cli/ui";
+import { CliUi, Confirm } from "@effected/cli/ui";
 import { CliUiTest } from "@effected/cli/ui/testing";
 import { Effect } from "effect";
 
@@ -46,6 +46,22 @@ const keys: ReadonlyArray<KeyName> = ["up", "enter"];
 export const driven: Effect.Effect<number, unknown, never> = Effect.scoped(
 	Effect.flatMap(CliUiTest.render(screen), (handle) => Effect.andThen(handle.press(...keys), handle.result)),
 );
+
+// okfit's verify step, verbatim: one toggle only when there are drafts, read back with a fallback.
+declare const drafts: number;
+export const verify = Effect.gen(function* () {
+	const { confirmed, toggles } = yield* CliUi.run(
+		Confirm.screen({
+			message: "Publish the release?",
+			toggles: drafts > 0 ? [{ key: "promote", label: \`promote \${drafts} drafts to stable\`, value: true }] : [],
+		}),
+	);
+	const promote = toggles.promote ?? false;
+	const mayBeAbsent: undefined extends typeof toggles.promote ? true : false = true;
+	return { confirmed, promote, mayBeAbsent };
+}).pipe(Effect.provide(CliTheme.layerTest()));
+export const verified: Effect.Effect<{ confirmed: boolean; promote: boolean; mayBeAbsent: true }, unknown, never> =
+	verify;
 `;
 
 /** The live control: a requirement left unprovided must be reported, or the gate cannot fail. */
@@ -242,7 +258,7 @@ describe("the built declarations", () => {
 		const diagnostics = compileConsumers();
 		const consumer = diagnostics.filter((line) => line.startsWith("consumer.ts"));
 		const unprovided = diagnostics.filter((line) => line.startsWith("unprovided.ts"));
-		assert.deepStrictEqual(consumer, [], "the root's CliTheme layer satisfies ./ui's requirement");
+		assert.deepStrictEqual(consumer, [], "the root's CliTheme satisfies ./ui, and okfit's Confirm snippet types");
 		assert.isNotEmpty(unprovided, "live control: an unprovided CliTheme is reported, so the gate can fail");
 		assert.isTrue(
 			unprovided.some((line) => line.includes("CliTheme")),
