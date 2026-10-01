@@ -327,9 +327,10 @@ export class CliUi {
 	 * While a run is drawn the view also redraws on a tick of `tickMillis` (80 by default), a schedule in the run's
 	 * scope: interrupted with the run or the scope, it never outlives them. Its timer is not unref'd, so while a run is
 	 * drawn it keeps the process alive: the run's terminal event, or the scope's close, is what lets the process exit
-	 * (`okf/decisions/live-tick-is-a-scoped-schedule.md`). The frame index never steps back. Events that arrive at once, in one chunk or in several the view had not yet caught up with, are
-	 * folded together and drawn once. The view takes events from `events` as fast as the stream yields them, so a
-	 * stream that applies backpressure buffers in the view while it draws.
+	 * (`okf/decisions/live-tick-is-a-scoped-schedule.md`). The frame index never steps back. Events that arrive at
+	 * once, in one chunk or in several the view had not yet caught up with, are folded together and drawn once. The view
+	 * takes events from `events` as fast as the stream yields them, so a stream that applies backpressure buffers in the
+	 * view while it draws.
 	 *
 	 * A run whose drawing fails (a `render` that throws, or a mount that fails) degrades rather than ending the view:
 	 * it is unmounted, leaving its last good frame on the terminal, then one warning is logged (`Effect.logWarning`),
