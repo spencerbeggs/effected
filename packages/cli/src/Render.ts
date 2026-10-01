@@ -56,9 +56,10 @@ export interface RenderContext {
 	/**
 	 * Whether the output will be read by the GitHub Actions runner, which has two command parsers: a line is a command
 	 * if, after .NET whitespace, it starts with `::`, or if `##[` occurs ANYWHERE in it (a bare `##` is not one). When
-	 * `true`, every renderer puts a zero-width space in front of such a `::` line and between `##` and `[` at each
-	 * `##[`, so a document's text, an error message, say, can never inject a command. Unset or `false` leaves the text
-	 * alone.
+	 * `true`, `plain`, `ansi` and `markdown` put a zero-width space in front of such a `::` line and between `##` and
+	 * `[` at each `##[`, so a document's text, an error message, say, can never inject a command. Unset or `false`
+	 * leaves their text alone. `Render.githubLog` ignores it and always neutralizes: its output is for the runner by
+	 * definition.
 	 *
 	 * @remarks
 	 * The trigger is the runner, not the audience: a person or an agent whose output lands in an Actions log is read
@@ -163,7 +164,9 @@ export class Render {
 	 *   four-space indented, and a diff `- expected` lines then `+ received` lines, the cap limiting each side.
 	 * - Counts take their total and their visible counters from {@link Doc.total} and {@link Doc.visibleCounters}.
 	 *   Inline gives `3/5 passed, 1 failed (1.2s)`: the first counter is the headline and shows its share of the
-	 *   total. Columns gives aligned label and number pairs, and row one line of cells.
+	 *   total, unless `share` is `false`. Columns gives aligned label and number pairs, and row one line of cells.
+	 * - A link with `suffix: false` never has its target after the label, and one with `suffix: true` always does.
+	 * - Verbatim text is its lines exactly, each indented by `indent` spaces, never wrapped; an annotation is nothing.
 	 * - Top-level blocks are consecutive lines; a section separates its title and children with blank lines.
 	 *
 	 * @param doc - the document
@@ -183,7 +186,8 @@ export class Render {
 	 *   lines and overflow rows are `muted`;
 	 * - a status glyph takes its definition's token, and a diff's `-` lines are `failure` and `+` lines `success`;
 	 * - a callout's label takes its kind's token (`note` info, `tip` success, `important` accent, `warning` warning,
-	 *   `caution` error), and a counter the token of its status, with the qualifier and the duration `muted`.
+	 *   `caution` error), and a counter the token of its status, with the qualifier and the duration `muted`. A
+	 *   `Counts` with `paint: "none"` paints none of it, and with `paint: "glyph"` only a status glyph.
 	 *
 	 * A link goes through `ctx.link`, which makes an OSC 8 hyperlink only when the policy allows it. When it does
 	 * not (it returns the label unchanged), the target follows the label in parentheses, muted, as in plain text.
@@ -233,6 +237,7 @@ export class Render {
 	 * - A list is bullets, a tree a nested bullet list under its root label, and overflow rows paragraphs after what
 	 *   they cap. Counts inline is a paragraph, columns a list of `label: n` and row a one-row table of the counter
 	 *   labels over their numbers.
+	 * - Verbatim text is a fenced code block, so its indentation survives; an annotation is nothing.
 	 *
 	 * @param doc - the document
 	 * @param ctx - where the output is going; its glyph set, audience and `displayPath` are used
@@ -243,8 +248,11 @@ export class Render {
 	 * Render a document for a GitHub Actions log.
 	 *
 	 * @remarks
-	 * Everything is what {@link Render.plain} renders, except a collapsible that starts a line, which is a group:
-	 * `::group::title`, its body, `::endgroup::`. That is a top-level collapsible, or one that is a direct child of a
+	 * Everything is what {@link Render.plain} renders, except an annotation, which is one workflow command
+	 * (`::error file=…,line=…::message`), and a collapsible that starts a line, which is a group: `::group::title`, its
+	 * body, `::endgroup::`. An annotation is a command at the top level, as a section's child, and inside a group's body;
+	 * inside a list or callout it is nothing, as in plain. Its message and properties are escaped, so no text can end
+	 * the command or start another, and the kit's own command is never neutralized. That is a top-level collapsible, or one that is a direct child of a
 	 * top-level section. GitHub does not nest groups, so a collapsible inside a group, or inside a list or callout
 	 * (where it would not start a line), keeps plain's rendering: its title on a line and its body indented.
 	 *

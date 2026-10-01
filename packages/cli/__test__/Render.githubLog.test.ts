@@ -287,3 +287,68 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 		}),
 	);
 });
+
+describe("Render.githubLog: annotations (okfit's trial)", () => {
+	/** The documented wire grammar, read independently of the renderer. */
+	const decode = (command: string) => {
+		const match = /^::(error|warning|notice)(?: ([^:]*))?::([\s\S]*)$/.exec(command);
+		if (match === null) return undefined;
+		const data = (text: string): string => text.replace(/%0D/g, "\r").replace(/%0A/g, "\n").replace(/%25/g, "%");
+		const property = (text: string): string => data(text.replace(/%3A/g, ":").replace(/%2C/g, ","));
+		const properties: Record<string, string> = {};
+		for (const pair of match[2] === undefined || match[2] === "" ? [] : match[2].split(",")) {
+			const at = pair.indexOf("=");
+			properties[pair.slice(0, at)] = property(pair.slice(at + 1));
+		}
+		return { level: match[1], properties, message: data(match[3] as string) };
+	};
+	const commands = (text: string): ReadonlyArray<string> => text.split(LINE_BREAK).filter(isCommand);
+
+	it.effect("an annotation is exactly one command line, with its level, properties and message", () =>
+		Effect.gen(function* () {
+			const out = yield* log([
+				Doc.annotation(
+					{ level: "error", file: "src/a.ts", line: 3, col: 2, endLine: 4, endColumn: 9, title: "Type error" },
+					"boom",
+				),
+			]);
+			assert.lengthOf(out.split(LINE_BREAK), 1);
+			assert.deepStrictEqual(decode(out), {
+				level: "error",
+				properties: { title: "Type error", file: "src/a.ts", line: "3", endLine: "4", col: "2", endColumn: "9" },
+				message: "boom",
+			});
+		}),
+	);
+
+	it.effect("a hostile message, title or file still makes exactly one command, carrying the text intact", () =>
+		Effect.gen(function* () {
+			const message = "first\r\nsecond\n::error::injected ##[warning]x %0A";
+			const title = "t, x::y\nz";
+			const out = yield* log([Doc.annotation({ level: "warning", file: "a,b:c.ts", title }, message)]);
+			assert.lengthOf(commands(out), 1, out);
+			assert.lengthOf(out.split(LINE_BREAK), 1, "one line");
+			const decoded = decode(out);
+			assert.strictEqual(decoded?.message, message);
+			assert.strictEqual(decoded?.properties["title"], title);
+			assert.strictEqual(decoded?.properties["file"], "a,b:c.ts");
+		}),
+	);
+
+	it.effect("the kit's own command is never neutralized, while the text around it is", () =>
+		Effect.gen(function* () {
+			const out = yield* log([Doc.paragraph("::warning::from text"), Doc.annotation({ level: "notice" }, "real")]);
+			assert.deepStrictEqual(commands(out), ["::notice::real"]);
+		}),
+	);
+
+	it.effect("an annotation inside a group or a top-level section is a command; inside a list it is nothing", () =>
+		Effect.gen(function* () {
+			const annotation = Doc.annotation({ level: "error" }, "x");
+			const grouped = (yield* log([Doc.collapsible("G", [Doc.paragraph("a"), annotation])])).split("\n");
+			assert.deepStrictEqual(grouped, ["::group::G", "a", "::error::x", "::endgroup::"]);
+			assert.include((yield* log([Doc.section("S", [annotation])])).split("\n"), "::error::x");
+			assert.deepStrictEqual(commands(yield* log([Doc.list([Doc.paragraph("a"), annotation])])), []);
+		}),
+	);
+});

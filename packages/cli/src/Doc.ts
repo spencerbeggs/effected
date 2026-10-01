@@ -47,7 +47,16 @@ export type LinkTarget =
 export type Inline =
 	| { readonly _tag: "Text"; readonly value: string; readonly token?: TokenName | Style }
 	| { readonly _tag: "Code"; readonly value: string }
-	| { readonly _tag: "Link"; readonly target: LinkTarget; readonly label: ReadonlyArray<Inline> }
+	| {
+			readonly _tag: "Link";
+			readonly target: LinkTarget;
+			readonly label: ReadonlyArray<Inline>;
+			/**
+			 * Whether plain text (and `ansi` with links off, and markdown with no URL) follows the label with the target in
+			 * parentheses. Unset, it does so only when the label does not already show the target's display form.
+			 */
+			readonly suffix?: boolean;
+	  }
 	| { readonly _tag: "StatusMark"; readonly name: string; readonly def: StatusDef }
 	| { readonly _tag: "Path"; readonly segments: ReadonlyArray<string> };
 
@@ -107,7 +116,10 @@ export interface Counter {
  * - `Diff`: expected against received text, with an optional cap on the lines shown.
  * - `Section`: children under an optional title.
  * - `Counts`: labelled counters in one of three layouts. `total` replaces the default sum of every counter, and
- *   `durationMs` is how long it took.
+ *   `durationMs` is how long it took. `share: false` drops the headline's share of the total, and `paint` limits what
+ *   is painted.
+ * - `Verbatim`: lines kept exactly, each indented, never wrapped.
+ * - `Annotation`: a GitHub Actions annotation, which only `Render.githubLog` writes.
  *
  * Nodes are plain data and nothing decodes them, so a function field such as `overflow` or `total` is fine.
  *
@@ -152,7 +164,47 @@ export type Block =
 			readonly qualifier?: ReadonlyArray<Inline>;
 			readonly durationMs?: number;
 			readonly layout: "inline" | "columns" | "row";
-	  };
+			readonly share?: boolean;
+			readonly paint?: "all" | "glyph" | "none";
+	  }
+	| { readonly _tag: "Verbatim"; readonly text: string; readonly indent?: number }
+	| ({ readonly _tag: "Annotation"; readonly message: string } & AnnotationOptions);
+
+/**
+ * Where and how a GitHub Actions annotation is shown: its level, and an optional position and title.
+ *
+ * @public
+ */
+export interface AnnotationOptions {
+	/** `error`, `warning` or `notice`. */
+	readonly level: "error" | "warning" | "notice";
+	/** The file it points at, as the runner should show it (relative to the workspace). */
+	readonly file?: string;
+	/** The line it starts on. */
+	readonly line?: number;
+	/** The column it starts at. */
+	readonly col?: number;
+	/** The line it ends on. */
+	readonly endLine?: number;
+	/** The column it ends at. */
+	readonly endColumn?: number;
+	/** Its title. */
+	readonly title?: string;
+}
+
+/**
+ * Options for `Doc.link`.
+ *
+ * @public
+ */
+export interface LinkOptions {
+	/**
+	 * Whether the target follows the label in parentheses where a link cannot be followed: plain text, `ansi` with
+	 * links off, markdown with no URL. `true` always, `false` never; unset, only when the label does not already show
+	 * the target's display form (`displayPath(file)`, then `:line` and `:col` when present).
+	 */
+	readonly suffix?: boolean;
+}
 
 /**
  * A whole document: its blocks, in order.
@@ -227,6 +279,13 @@ export interface CountsOptions {
 	readonly durationMs?: number;
 	/** How the counters are laid out. */
 	readonly layout: "inline" | "columns" | "row";
+	/** Whether the first counter shows its share of the total, `n/total`; `true` by default. `false` shows `n label`. */
+	readonly share?: boolean;
+	/**
+	 * What is painted: `all` (the default) paints the counters, the label, the qualifier and the duration; `glyph`
+	 * paints only a status glyph, if one is shown; `none` paints nothing.
+	 */
+	readonly paint?: "all" | "glyph" | "none";
 }
 
 const isList = (input: InlineInput): input is ReadonlyArray<string | Inline> => Array.isArray(input);
@@ -324,10 +383,27 @@ export class Doc {
 	 *
 	 * @param target - `{ url }` or `{ file, line?, col? }`
 	 * @param label - what the link says; when omitted, the bare URL or file path, which leaves out `line` and `col`
+	 * @param options - `suffix`, whether the target follows the label where the link cannot be followed
 	 */
-	static link(target: LinkTarget, label?: InlineInput): InlineOf<"Link"> {
+	static link(target: LinkTarget, label?: InlineInput, options?: LinkOptions): InlineOf<"Link">;
+	/**
+	 * A link when there is a target, and its label alone when there is none: a string label as a `Text`, any other
+	 * inline as itself.
+	 *
+	 * @param target - `{ url }`, `{ file, line?, col? }`, or `undefined` for no link
+	 * @param label - what the link says
+	 * @param options - `suffix`, whether the target follows the label where the link cannot be followed
+	 */
+	static link(target: LinkTarget | undefined, label: string | Inline, options?: LinkOptions): Inline;
+	static link(target: LinkTarget | undefined, label?: InlineInput, options?: LinkOptions): Inline {
+		if (target === undefined) return typeof label === "string" ? text(label) : (label as Inline);
 		const fallback = "url" in target ? target.url : target.file;
-		return freeze({ _tag: "Link", target: freeze({ ...target }), label: inlines(label ?? fallback) });
+		return freeze({
+			_tag: "Link",
+			target: freeze({ ...target }),
+			label: inlines(label ?? fallback),
+			...(options?.suffix === undefined ? {} : { suffix: options.suffix }),
+		});
 	}
 
 	/**
@@ -525,6 +601,46 @@ export class Doc {
 			...(options.qualifier === undefined ? {} : { qualifier: inlines(options.qualifier) }),
 			...(options.durationMs === undefined ? {} : { durationMs: options.durationMs }),
 			layout: options.layout,
+			...(options.share === undefined ? {} : { share: options.share }),
+			...(options.paint === undefined ? {} : { paint: options.paint }),
+		});
+	}
+
+	/**
+	 * Lines kept exactly: each indented by `indent` spaces, sanitized, and never wrapped.
+	 *
+	 * @remarks
+	 * Plain, `ansi` and `githubLog` write the lines as they are; markdown fences them, so the indentation survives.
+	 *
+	 * @param text - the lines
+	 * @param options - `indent`, the spaces in front of every line; none by default
+	 */
+	static verbatim(text: string, options?: { readonly indent?: number }): BlockOf<"Verbatim"> {
+		return freeze({ _tag: "Verbatim", text, ...(options?.indent === undefined ? {} : { indent: options.indent }) });
+	}
+
+	/**
+	 * A GitHub Actions annotation: `Render.githubLog` writes it as one workflow command (`::error file=…::message`),
+	 * and every other renderer writes nothing.
+	 *
+	 * @remarks
+	 * It is the kit's own command, so `githubLog` does not neutralize it; its message and properties are escaped, so
+	 * no text in them can end the command or start another.
+	 *
+	 * @param options - the level, and the optional file, position and title
+	 * @param message - what it says
+	 */
+	static annotation(options: AnnotationOptions, message: string): BlockOf<"Annotation"> {
+		return freeze({
+			_tag: "Annotation",
+			level: options.level,
+			...(options.file === undefined ? {} : { file: options.file }),
+			...(options.line === undefined ? {} : { line: options.line }),
+			...(options.col === undefined ? {} : { col: options.col }),
+			...(options.endLine === undefined ? {} : { endLine: options.endLine }),
+			...(options.endColumn === undefined ? {} : { endColumn: options.endColumn }),
+			...(options.title === undefined ? {} : { title: options.title }),
+			message,
 		});
 	}
 

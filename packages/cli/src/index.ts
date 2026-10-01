@@ -69,6 +69,7 @@ export {
 } from "./CliTheme.js";
 export { ConfigIssueRenderer } from "./ConfigIssueRenderer.js";
 export {
+	type AnnotationOptions,
 	type Block,
 	type BlockOf,
 	type Column,
@@ -80,6 +81,7 @@ export {
 	type Inline,
 	type InlineInput,
 	type InlineOf,
+	type LinkOptions,
 	type LinkTarget,
 	type OverflowOptions,
 	type StatusRef,

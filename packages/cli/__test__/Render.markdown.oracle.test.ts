@@ -1027,3 +1027,54 @@ function* descendants(n: N): Generator<N> {
 		yield* descendants(child);
 	}
 }
+
+describe("Render.markdown: okfit's trial (verbatim, link suffix, counts share, annotations)", () => {
+	it.effect("verbatim is one fenced code block whose text is the indented lines exactly", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([Doc.verbatim("verified:\n  - by: x ```\n  at: y", { indent: 2 })]);
+			const code = kids(root);
+			assert.lengthOf(code, 1);
+			assert.strictEqual(code[0]?.type, "code");
+			// The parser keeps the fence's final line break in the value, as the code-block tests above note.
+			assert.strictEqual((code[0]?.value ?? "").replace(/\n$/, ""), "  verified:\n    - by: x ```\n    at: y");
+		}),
+	);
+
+	it.effect("a file link with no URL form drops its suffix with suffix: false, and a missing target is text", () =>
+		Effect.gen(function* () {
+			const root = yield* treeOf([
+				Doc.paragraph(
+					Doc.link({ file: "a.md", line: 2 }, "here", { suffix: false }),
+					" and ",
+					Doc.link(undefined, "(bundle)"),
+				),
+			]);
+			assert.deepStrictEqual(descendantTypes(root), ["root", "paragraph", "text"]);
+			assert.strictEqual(textOf(root), "here and (bundle)");
+		}),
+	);
+
+	it.effect("share: false drops the headline share", () =>
+		Effect.gen(function* () {
+			const counters = [
+				Doc.counter(Status.core, "failure", { key: "error", label: "errors", n: 2 }),
+				Doc.counter(Status.core, "warning", { key: "warning", label: "warnings", n: 1 }),
+			];
+			assert.strictEqual(
+				textOf(yield* treeOf([Doc.counts({ layout: "inline", counters, share: false })])),
+				"2 errors, 1 warnings",
+			);
+		}),
+	);
+
+	it.effect("an annotation renders nothing, and adds no blank block", () =>
+		Effect.gen(function* () {
+			const annotation = Doc.annotation({ level: "error" }, "x");
+			assert.strictEqual(yield* render([annotation]), "");
+			assert.strictEqual(
+				yield* render([Doc.paragraph("a"), annotation, Doc.paragraph("b")]),
+				yield* render([Doc.paragraph("a"), Doc.paragraph("b")]),
+			);
+		}),
+	);
+});

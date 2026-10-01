@@ -52,9 +52,9 @@ describe("flatten", () => {
 		Effect.gen(function* () {
 			const mark = Doc.status(Status.core, "failure");
 			const unicode = yield* contextOf();
-			assert.deepStrictEqual(flatten([mark], unicode), [{ text: "✗", token: "failure" }]);
+			assert.deepStrictEqual(flatten([mark], unicode), [{ text: "✗", token: "failure", glyph: true }]);
 			const ascii = yield* contextOf({ glyphs: Glyphs.ascii });
-			assert.deepStrictEqual(flatten([mark], ascii), [{ text: "[FAIL]", token: "failure" }]);
+			assert.deepStrictEqual(flatten([mark], ascii), [{ text: "[FAIL]", token: "failure", glyph: true }]);
 		}),
 	);
 

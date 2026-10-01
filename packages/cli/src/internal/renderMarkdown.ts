@@ -6,7 +6,7 @@ import type { Span } from "./layout.js";
 import { flatten, sanitize } from "./layout.js";
 import { isAllowedLinkUrl } from "./linkScheme.js";
 import { DRIVE, fileUrlPath } from "./linkTarget.js";
-import { capOf, targetText, textLines } from "./renderDoc.js";
+import { capOf, isAnnotation, showsSuffix, targetText, textLines } from "./renderDoc.js";
 
 type Lines = ReadonlyArray<string>;
 
@@ -112,7 +112,7 @@ const inlineMd = (inlines: ReadonlyArray<Inline>, ctx: RenderContext, mode: Mode
 		const url = linkUrl(link);
 		const target = targetText(link, ctx);
 		if (url !== undefined) out += `[${label}](${destination(url)})`;
-		else out += raw === target ? label : `${label} (${codeSpan(target, mode)})`;
+		else out += showsSuffix((flat[i - 1] as Span).suffix, raw, target) ? `${label} (${codeSpan(target, mode)})` : label;
 	}
 	return out;
 };
@@ -184,7 +184,9 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 		];
 		const cells = [
 			...(label === "" ? [] : [label]),
-			...visible.map((counter, index) => (index === 0 ? `${counter.n}/${total}` : String(counter.n))),
+			...visible.map((counter, index) =>
+				index === 0 && block.share !== false ? `${counter.n}/${total}` : String(counter.n),
+			),
 			...(qualifier === "" ? [] : [qualifier]),
 			...(duration === "" ? [] : [duration]),
 		];
@@ -214,7 +216,9 @@ const countsMd = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>
 		];
 	}
 	const tally = visible
-		.map((counter, index) => (index === 0 ? `${counter.n}/${total} ${name(counter)}` : `${counter.n} ${name(counter)}`))
+		.map((counter, index) =>
+			index === 0 && block.share !== false ? `${counter.n}/${total} ${name(counter)}` : `${counter.n} ${name(counter)}`,
+		)
 		.join(", ");
 	const head = [label === "" ? "" : `${label}:`, tally].filter((part) => part !== "").join(" ");
 	const line = [head, qualifier, duration === "" ? "" : `(${duration})`].filter((part) => part !== "").join(" ");
@@ -235,7 +239,9 @@ const blockMd = (walk: Walk, block: Block, depth: number): Lines => {
 		case "List": {
 			const cap = capOf(block.cap);
 			const shown = cap === undefined ? block.items : block.items.slice(0, cap);
-			const items = shown.flatMap((item) => hang(blockMd(walk, item, depth), "- ", "  "));
+			const items = shown
+				.filter((item) => !isAnnotation(item))
+				.flatMap((item) => hang(blockMd(walk, item, depth), "- ", "  "));
 			const hidden = block.items.length - shown.length;
 			return joinBlocks([items, hidden > 0 ? overflowMd(block.overflow, hidden, ctx) : []]);
 		}
@@ -324,6 +330,13 @@ const blockMd = (walk: Walk, block: Block, depth: number): Lines => {
 		}
 		case "Counts":
 			return joinBlocks(countsMd(walk, block));
+		case "Verbatim": {
+			// Fenced, so the indentation survives: markdown would drop it from text, or read four spaces as code.
+			const indent = " ".repeat(Math.max(0, Math.floor(block.indent ?? 0)));
+			return fenced(block.text === "" ? [] : textLines(block.text).map((line) => `${indent}${line}`), "");
+		}
+		case "Annotation":
+			return [];
 	}
 };
 

@@ -36,6 +36,13 @@ export const targetText = (target: LinkTarget, ctx: RenderContext): string => {
 	return target.col === undefined ? `${path}:${target.line}` : `${path}:${target.line}:${target.col}`;
 };
 
+/**
+ * Whether a link's target follows its label where the link cannot be followed: the link's own `suffix` when it set one,
+ * otherwise only when the label is not already the target's display form.
+ */
+export const showsSuffix = (suffix: boolean | undefined, label: string, target: string): boolean =>
+	suffix ?? label !== target;
+
 /** Drop trailing spaces, and any span they empty, so a line never ends in padding. */
 export const trimLine = (line: Line): Line => {
 	const out = [...line];
@@ -227,7 +234,23 @@ const diffSide = (
 	];
 };
 
-const countsLines = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>): ReadonlyArray<Line> => {
+/** What a `Counts` block's `paint` keeps: every token, only a status glyph's, or none. */
+const keepPaint = (paint: "all" | "glyph" | "none" | undefined, lines: ReadonlyArray<Line>): ReadonlyArray<Line> => {
+	if (paint === undefined || paint === "all") return lines;
+	const unpainted = (s: Span): Span => {
+		const { token: _token, ...rest } = s;
+		return rest;
+	};
+	return lines.map((line) => line.map((s) => (paint === "glyph" && s.glyph === true ? s : unpainted(s))));
+};
+
+/** An annotation is only `githubLog`'s; every other renderer skips it, without leaving a gap where it stood. */
+export const isAnnotation = (block: Block): boolean => block._tag === "Annotation";
+
+const countsLines = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>): ReadonlyArray<Line> =>
+	keepPaint(block.paint, countsLayout(walk, block));
+
+const countsLayout = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts" }>): ReadonlyArray<Line> => {
 	const visible = visibleCountersOf(block);
 	const total = totalOf(block);
 	const label = block.label === undefined ? [] : toned(oneLine(inline(walk, block.label)), "emphasis");
@@ -238,7 +261,8 @@ const countsLines = (walk: Walk, block: Extract<Block, { readonly _tag: "Counts"
 	// The first counter is the headline: it shows its share of the total.
 	const counters = visible.map((counter, index): Line => {
 		const name = nameOf(counter);
-		return [span(index === 0 ? `${counter.n}/${total} ${name}` : `${counter.n} ${name}`, counter.status.def.token)];
+		const share = index === 0 && block.share !== false;
+		return [span(share ? `${counter.n}/${total} ${name}` : `${counter.n} ${name}`, counter.status.def.token)];
 	});
 
 	if (block.layout === "row") {
@@ -285,9 +309,10 @@ const blockLines = (walk: Walk, block: Block, width: number): ReadonlyArray<Line
 		}
 		case "List": {
 			const cap = capOf(block.cap);
-			const shown = cap === undefined ? block.items : block.items.slice(0, cap);
+			const items = block.items.filter((item) => !isAnnotation(item));
+			const shown = cap === undefined ? items : items.slice(0, cap);
 			const lines = shown.flatMap((item) => hang(blockLines(walk, item, width - 2), [span("- ")], [span("  ")]));
-			const hidden = block.items.length - shown.length;
+			const hidden = items.length - shown.length;
 			return hidden > 0 ? [...lines, overflowLine(walk, block.overflow, hidden)] : lines;
 		}
 		case "Table":
@@ -320,12 +345,19 @@ const blockLines = (walk: Walk, block: Block, width: number): ReadonlyArray<Line
 		case "Section": {
 			const groups: Array<ReadonlyArray<Line>> = [
 				...(block.title === undefined ? [] : [[trimLine(toned(oneLine(inline(walk, block.title)), "emphasis"))]]),
-				...block.children.map((child) => blockLines(walk, child, width)),
+				...block.children.filter((child) => !isAnnotation(child)).map((child) => blockLines(walk, child, width)),
 			];
 			return groups.flatMap((group, index) => (index === 0 ? group : [[], ...group]));
 		}
 		case "Counts":
 			return countsLines(walk, block);
+		case "Verbatim": {
+			// Kept exactly: sanitized line by line, indented, and never wrapped or cut.
+			const indent = " ".repeat(Math.max(0, Math.floor(block.indent ?? 0)));
+			return textLines(block.text).map((line) => trimLine([span(`${indent}${line}`)]));
+		}
+		case "Annotation":
+			return [];
 	}
 };
 

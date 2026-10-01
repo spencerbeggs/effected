@@ -335,3 +335,53 @@ describe("Doc.counter", () => {
 		assert.isFunction(bad);
 	});
 });
+
+describe("Doc: okfit's trial additions", () => {
+	it("link takes a suffix option, kept only when given, and stays frozen", () => {
+		const off = Doc.link({ file: "/a.md", line: 1 }, "x", { suffix: false });
+		assert.strictEqual(off._tag === "Link" ? off.suffix : undefined, false);
+		assert.notProperty(Doc.link({ url: "https://x.test" }, "x"), "suffix");
+		assert.isTrue(deepFrozen(off));
+	});
+
+	it("a link with no target is its label, never a link", () => {
+		assert.deepStrictEqual(Doc.link(undefined, "(bundle)"), { _tag: "Text", value: "(bundle)" });
+		const code = Doc.code("x");
+		assert.strictEqual(Doc.link(undefined, code), code);
+	});
+
+	it("verbatim keeps its text and an indent only when given, frozen", () => {
+		const block = Doc.verbatim("a\n  b", { indent: 2 });
+		assert.deepStrictEqual(block, { _tag: "Verbatim", text: "a\n  b", indent: 2 });
+		assert.notProperty(Doc.verbatim("a"), "indent");
+		assert.isTrue(deepFrozen(block));
+	});
+
+	it("counts carry share and paint only when given", () => {
+		const given = Doc.counts({ layout: "inline", counters: [counter("a", 1, "success")], share: false, paint: "none" });
+		assert.strictEqual(given.share, false);
+		assert.strictEqual(given.paint, "none");
+		const bare = Doc.counts({ layout: "inline", counters: [] });
+		assert.notProperty(bare, "share");
+		assert.notProperty(bare, "paint");
+	});
+
+	it("annotation carries its level, its position and title when given, and its message, frozen", () => {
+		const block = Doc.annotation({ level: "error", file: "a.ts", line: 3, col: 2, title: "T" }, "boom");
+		assert.deepStrictEqual(block, {
+			_tag: "Annotation",
+			level: "error",
+			file: "a.ts",
+			line: 3,
+			col: 2,
+			title: "T",
+			message: "boom",
+		});
+		assert.deepStrictEqual(Doc.annotation({ level: "notice" }, "m"), {
+			_tag: "Annotation",
+			level: "notice",
+			message: "m",
+		});
+		assert.isTrue(deepFrozen(block));
+	});
+});

@@ -3,7 +3,7 @@ import type { RenderContext } from "../Render.js";
 import type { Span } from "./layout.js";
 import { flatten } from "./layout.js";
 import type { Flavour } from "./renderDoc.js";
-import { renderDoc, targetText } from "./renderDoc.js";
+import { renderDoc, showsSuffix, targetText } from "./renderDoc.js";
 
 /**
  * Inline content as spans of plain text: code in backticks, and a link as its label followed by its target in
@@ -24,7 +24,7 @@ export const plainInline = (inlines: ReadonlyArray<Inline>, ctx: RenderContext):
 		} while (link !== undefined && i < flat.length && (flat[i] as Span).link === link);
 		if (link !== undefined) {
 			const target = targetText(link, ctx);
-			if (label !== target) out.push({ text: ` (${target})` });
+			if (showsSuffix((flat[i - 1] as Span).suffix, label, target)) out.push({ text: ` (${target})` });
 		}
 	}
 	return out;

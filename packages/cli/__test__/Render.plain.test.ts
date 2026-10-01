@@ -666,3 +666,70 @@ describe("Render.plain: a failure row built from nodes (the vitest-agent composi
 		}),
 	);
 });
+
+describe("Render.plain: okfit's trial (link suffix, verbatim, counts options, annotations)", () => {
+	const bundle = (absolute: string): string => absolute.replace("/repo/okf/", "");
+	const counters = [
+		Doc.counter(Status.core, "failure", { key: "error", label: "errors", n: 2 }),
+		Doc.counter(Status.core, "warning", { key: "warning", label: "warnings", n: 1 }),
+	];
+
+	it.effect("okfit's diagnostic: a label that shows the target's display form gets no suffix", () =>
+		Effect.gen(function* () {
+			const doc = [
+				Doc.paragraph(Doc.link({ file: "/repo/okf/modules/a.md", line: 5, col: 3 }, "modules/a.md:5:3"), " error x"),
+			];
+			assert.strictEqual(yield* plain(doc, { displayPath: bundle }), "modules/a.md:5:3 error x");
+		}),
+	);
+
+	it.effect("suffix: false never appends the target, and suffix: true always does", () =>
+		Effect.gen(function* () {
+			const target = { file: "/repo/okf/modules/a.md", line: 5 };
+			assert.strictEqual(yield* plain([Doc.paragraph(Doc.link(target, "here", { suffix: false }))]), "here");
+			assert.strictEqual(
+				yield* plain([Doc.paragraph(Doc.link(target, "modules/a.md:5", { suffix: true }))], { displayPath: bundle }),
+				"modules/a.md:5 (modules/a.md:5)",
+			);
+		}),
+	);
+
+	it.effect("a link with no target renders as its label", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(
+				yield* plain([Doc.paragraph(Doc.link(undefined, "(bundle)"), " error x")]),
+				"(bundle) error x",
+			);
+		}),
+	);
+
+	it.effect("verbatim keeps every line exactly, indented and sanitized, and never wraps", () =>
+		Effect.gen(function* () {
+			const text = `verified:\n  - by: human:x${ESC}[31m\n    at: 2026-10-01T00:00:00Z`;
+			const out = yield* plain([Doc.verbatim(text, { indent: 2 })], { width: 10 });
+			assert.deepStrictEqual(out.split("\n"), ["  verified:", "    - by: human:x", "      at: 2026-10-01T00:00:00Z"]);
+		}),
+	);
+
+	it.effect("share: false drops the headline's share of the total", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* plain([Doc.counts({ layout: "inline", counters })]), "2/3 errors, 1 warnings");
+			assert.strictEqual(
+				yield* plain([Doc.counts({ layout: "inline", counters, share: false, qualifier: "in 3 concepts" })]),
+				"2 errors, 1 warnings in 3 concepts",
+			);
+		}),
+	);
+
+	it.effect("an annotation renders nothing, and leaves a section's spacing as it was", () =>
+		Effect.gen(function* () {
+			const annotation = Doc.annotation({ level: "error", file: "a.ts", line: 1 }, "boom");
+			assert.strictEqual(yield* plain([annotation]), "");
+			const without = yield* plain([Doc.section("T", [Doc.paragraph("a"), Doc.paragraph("b")])]);
+			const within = yield* plain([Doc.section("T", [Doc.paragraph("a"), annotation, Doc.paragraph("b")])]);
+			assert.strictEqual(within, without);
+			const list = yield* plain([Doc.list([Doc.paragraph("a"), annotation])]);
+			assert.strictEqual(list, "- a");
+		}),
+	);
+});

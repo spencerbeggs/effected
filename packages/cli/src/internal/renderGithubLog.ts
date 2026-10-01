@@ -1,20 +1,38 @@
 import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
 import type { Block, Document } from "../Doc.js";
 import type { RenderContext } from "../Render.js";
+import { sanitize } from "./layout.js";
 import { plainInline, renderPlain } from "./renderPlain.js";
 
 const plainLines = (blocks: ReadonlyArray<Block>, ctx: RenderContext): ReadonlyArray<string> =>
 	blocks.length === 0 ? [] : CommandNeutralizer.lines(renderPlain(blocks, ctx));
 
+/** An annotation as the kit's own command, on the trusted path: escaped by `WorkflowCommand`, never neutralized. */
+const annotationLine = (block: Extract<Block, { readonly _tag: "Annotation" }>): string =>
+	WorkflowCommand[block.level](sanitize(block.message), {
+		...(block.title === undefined ? {} : { title: sanitize(block.title) }),
+		...(block.file === undefined ? {} : { file: sanitize(block.file) }),
+		...(block.line === undefined ? {} : { startLine: block.line }),
+		...(block.endLine === undefined ? {} : { endLine: block.endLine }),
+		...(block.col === undefined ? {} : { startColumn: block.col }),
+		...(block.endColumn === undefined ? {} : { endColumn: block.endColumn }),
+	});
+
+/** A group's body: plain text, except an annotation, which is still a command inside a group. */
+const bodyLines = (blocks: ReadonlyArray<Block>, ctx: RenderContext): ReadonlyArray<string> =>
+	blocks.flatMap((block) => (block._tag === "Annotation" ? [annotationLine(block)] : plainLines([block], ctx)));
+
 const blockLines = (block: Block, ctx: RenderContext): ReadonlyArray<string> => {
 	switch (block._tag) {
+		case "Annotation":
+			return [annotationLine(block)];
 		case "Collapsible": {
 			// The title is a command's data, so its line breaks are escaped: a raw one would end the command.
 			const title = plainInline(block.title, ctx)
 				.map((span) => span.text)
 				.join("");
 			// Groups do not nest: inside this one a collapsible is plain text, its title and its indented body.
-			return [WorkflowCommand.group(title), ...plainLines(block.body, ctx), WorkflowCommand.endGroup()];
+			return [WorkflowCommand.group(title), ...bodyLines(block.body, ctx), WorkflowCommand.endGroup()];
 		}
 		case "Section": {
 			// A section's children start a line, so they may be groups. Everything else is plain text.

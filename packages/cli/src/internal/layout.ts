@@ -24,6 +24,10 @@ export interface Span {
 	 * an ellipsis after a code span is plain text beside it, not inside it.
 	 */
 	readonly code?: true;
+	/** The `suffix` option of the link it belongs to, when the `Link` set one. */
+	readonly suffix?: boolean;
+	/** It came from a `StatusMark`: a glyph, which `Counts` with `paint: "glyph"` keeps painted. */
+	readonly glyph?: true;
 }
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
@@ -63,11 +67,16 @@ const spansOf = (inline: Inline, ctx: RenderContext): ReadonlyArray<Span> => {
 			// Links do not nest: the outer target wins over one inside the label. The target is sanitized like content,
 			// since a control character in a URL ends an OSC 8 early; one copy is shared by every span of the link.
 			const link = safeTarget(inline.target);
-			return inline.label.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, link }));
+			const suffix = inline.suffix === undefined ? {} : { suffix: inline.suffix };
+			return inline.label.flatMap((part) => spansOf(part, ctx)).map((span) => ({ ...span, link, ...suffix }));
 		}
 		case "StatusMark":
 			return [
-				{ text: sanitize(ctx.glyphs.kind === "ascii" ? inline.def.ascii : inline.def.glyph), token: inline.def.token },
+				{
+					text: sanitize(ctx.glyphs.kind === "ascii" ? inline.def.ascii : inline.def.glyph),
+					token: inline.def.token,
+					glyph: true,
+				},
 			];
 		case "Path":
 			return [{ text: inline.segments.map(sanitize).join(pathSeparator(ctx)) }];

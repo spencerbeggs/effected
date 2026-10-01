@@ -3,7 +3,7 @@ import type { RenderContext } from "../Render.js";
 import type { Span } from "./layout.js";
 import { flatten, paintSpans } from "./layout.js";
 import type { Flavour } from "./renderDoc.js";
-import { renderDoc, targetText } from "./renderDoc.js";
+import { renderDoc, showsSuffix, targetText } from "./renderDoc.js";
 
 /**
  * Inline content as styled spans: code painted `accent` with no backticks, and links kept on their spans so that
@@ -28,7 +28,7 @@ const inline = (inlines: ReadonlyArray<Inline>, ctx: RenderContext): ReadonlyArr
 		} while (link !== undefined && i < flat.length && (flat[i] as Span).link === link);
 		if (link !== undefined && ctx.link(link, label) === label) {
 			const target = targetText(link, ctx);
-			if (label !== target) out.push({ text: ` (${target})`, token: "muted" });
+			if (showsSuffix((flat[i - 1] as Span).suffix, label, target)) out.push({ text: ` (${target})`, token: "muted" });
 		}
 	}
 	return out;

@@ -453,3 +453,43 @@ describe("Render.ansi: layout under colour (paint after cut)", () => {
 		}),
 	);
 });
+
+describe("Render.ansi: okfit's trial (counts paint, link suffix, annotations)", () => {
+	const counters = [
+		Doc.counter(Status.core, "failure", { key: "error", label: "errors", n: 2 }),
+		Doc.counter(Status.core, "warning", { key: "warning", label: "warnings", n: 1 }),
+	];
+	const label = [Doc.status(Status.core, "failure"), " summary"];
+
+	it.effect("paint: all paints every counter, none paints nothing, glyph paints only a status glyph", () =>
+		Effect.gen(function* () {
+			const painted = (paint?: "all" | "glyph" | "none") =>
+				tokensOf([
+					Doc.counts({ layout: "inline", label, counters, durationMs: 5, ...(paint === undefined ? {} : { paint }) }),
+				]);
+			const all = (yield* painted()).flat();
+			assert.isTrue(all.some(([token, text]) => token === "failure" && text.includes("errors")));
+			const none = (yield* painted("none")).flat();
+			assert.deepStrictEqual(
+				none.filter(([token]) => token !== undefined),
+				[],
+				"nothing is painted",
+			);
+			const glyph = (yield* painted("glyph")).flat().filter(([token]) => token !== undefined);
+			assert.deepStrictEqual(glyph, [["failure", "✗"]], "only the status glyph keeps its token");
+		}),
+	);
+
+	it.effect("with links off, suffix: false drops the target after the label", () =>
+		Effect.gen(function* () {
+			const out = yield* ansi([Doc.paragraph(Doc.link({ file: "/r/a.md", line: 2 }, "here", { suffix: false }))], OFF);
+			assert.strictEqual(out, "here");
+		}),
+	);
+
+	it.effect("an annotation renders nothing", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* ansi([Doc.annotation({ level: "warning" }, "careful")]), "");
+		}),
+	);
+});
