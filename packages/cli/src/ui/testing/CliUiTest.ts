@@ -477,6 +477,8 @@ export class CliUiTest {
 	 *
 	 * Debug frames bypass Ink's erase-and-redraw path, so a harness frame says nothing about what Ink writes between
 	 * frames on a real terminal (a screen clear, for instance); a test of that needs the production render path.
+	 * For the same reason `CliUi.run`'s `clear` has no visible effect on a harness frame, since Ink's `clear` does
+	 * nothing in debug mode: test `clear` on the production render path, as the kit's own tests do.
 	 * Unmounting is the scope's close; to draw a different screen, render it in a new scope.
 	 *
 	 * @param screen - the screen to mount
@@ -554,6 +556,9 @@ export class CliUiTest {
 	 * Run the program forked (`Effect.forkScoped`) and drive it from the test: `next` returns each screen once it has
 	 * mounted and drawn, `press` and `type` settle as they do on a rendered screen, and joining the program's fiber
 	 * gives its exit. Screens still run one at a time, process-wide, so `next` sees them in the order they mount.
+	 *
+	 * As with `render`, a screen run with `clear` leaves its frames unchanged here: Ink renders in debug mode, where its
+	 * `clear` does nothing, so test `clear` on the production render path.
 	 *
 	 * @param options - the terminal's size, colour and glyphs, and whether the run is interactive
 	 */
