@@ -84,6 +84,10 @@ const bound = (binding: KeyName | { readonly char: string }, key: UiKey): boolea
  * The keys a widget understands, as data: the one source both for dispatching input and for the help line, so the
  * two cannot drift apart.
  *
+ * @remarks
+ * Read it with {@link useKeys}, whose handler must step from current state, never render-closure state: several keys
+ * from one stdin read are dispatched before React re-renders.
+ *
  * @public
  */
 export class KeyTable<Action> {
@@ -150,6 +154,11 @@ export class KeyTable<Action> {
  *
  * @remarks
  * One Ink `useInput` per call, and nothing else reads input.
+ *
+ * Several keys from one stdin read (a fast typist, a held arrow, a terminal that batches) are each dispatched
+ * before React re-renders, so `dispatch` must never step from state captured in the render that created it: the
+ * second key would see the first key's starting point and repeat its move. Step with a functional update
+ * (`setState((current) => step(current, action))`), a `useReducer` dispatch, or a ref the handler itself advances.
  *
  * @param table - the keys to read
  * @param dispatch - receives each matched action

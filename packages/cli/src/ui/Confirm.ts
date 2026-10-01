@@ -274,6 +274,9 @@ export class Confirm {
 				? null
 				: react.createElement(Viewport.View, {
 						rows: toggleRows,
+						// A fresh state each render is safe: the window's position is not in this state but in Viewport.View's
+						// own sticky ref, which starts where the window last started and moves only as far as the cursor
+						// needs. This state carries only the cursor and the counts, both derived from Confirm's own row.
 						state: Viewport.init(state.toggles.length, state.toggles.length, Math.max(0, state.row - 1)),
 						reserved: RESERVED,
 						renderRow: (row: ViewportRow) => {
