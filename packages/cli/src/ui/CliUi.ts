@@ -284,6 +284,19 @@ export class CliUi {
 	 * @remarks
 	 * Hand it to {@link UiProvider}. It loads Ink and React, as a screen's mount does, so the provider and the kit's
 	 * hooks can render; a missing peer is a defect naming both. It is the only way to get a `UiContextValue`.
+	 *
+	 * Ink loads asynchronously, so this is an `Effect` that must run before the first render. A renderer that is itself
+	 * synchronous (a test helper, a report-time `renderToString`) runs it once, with a top-level `await` at module
+	 * scope, and then renders synchronously from the value as often as it likes:
+	 *
+	 * ```ts
+	 * const value = await Effect.runPromise(CliUi.context.pipe(Effect.provide(themeLayer)))
+	 *
+	 * // later, synchronously:
+	 * const text = renderToString(createElement(UiProvider, { value: { ...value, size: { columns, rows } } }, tree), {
+	 *   columns,
+	 * })
+	 * ```
 	 */
 	static readonly context: Effect.Effect<UiContextValue, never, Cli.CliTheme> = Effect.gen(function* () {
 		const theme = yield* audienceTheme;
