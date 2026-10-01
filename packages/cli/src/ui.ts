@@ -6,6 +6,10 @@
  * loaded when a screen first mounts. The package root never reaches this entrypoint, which a reachability test
  * pins.
  *
+ * A TypeScript consumer also needs the types its declarations name: `@types/react` (an optional peer, since React
+ * ships no types of its own) and `@types/node` (`UiStreams` is typed with Node's streams). Without `@types/react`,
+ * a program compiled with `skipLibCheck` gets `any` for `Screen` and for every view, silently.
+ *
  * @packageDocumentation
  */
 export {

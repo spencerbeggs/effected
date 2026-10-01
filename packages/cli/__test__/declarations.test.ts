@@ -451,6 +451,20 @@ const UI_TESTING_TYPES_AND_VALUES = [
 	"CliUiTestSession",
 ];
 
+describe("the published manifest", () => {
+	it("declares every type package ui.d.ts imports as an optional peer, beside the runtime peers it types", () => {
+		const ui = readFileSync(join(BUILT, "pkg", "ui.d.ts"), "utf8");
+		assert.match(ui, /from "react"/, "the control: ui.d.ts names React's types");
+		const manifest = JSON.parse(readFileSync(join(BUILT, "pkg", "package.json"), "utf8")) as {
+			readonly peerDependencies?: Record<string, string>;
+			readonly peerDependenciesMeta?: Record<string, { readonly optional?: boolean }>;
+		};
+		// React ships no types, so without @types/react a consumer under skipLibCheck silently gets any for every view.
+		assert.strictEqual(manifest.peerDependencies?.["@types/react"], manifest.peerDependencies?.react);
+		assert.isTrue(manifest.peerDependenciesMeta?.["@types/react"]?.optional === true, "optional, as react is");
+	});
+});
+
 describe("the reviewed ./ui and ./ui/testing surfaces", () => {
 	it("each built .d.ts exports exactly the reviewed names", () => {
 		assert.deepStrictEqual(builtExports(readFileSync(join(BUILT, "pkg", "ui.d.ts"), "utf8")), UI_TYPES_AND_VALUES);

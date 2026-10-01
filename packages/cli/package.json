@@ -64,12 +64,16 @@
 		"@effected/env": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/walker": "workspace:^",
+		"@types/react": "^19.2.0",
 		"effect": "catalog:effect:peers",
 		"ink": "^7.1.1",
 		"react": "^19.2.0"
 	},
 	"peerDependenciesMeta": {
 		"@effected/config-file": {
+			"optional": true
+		},
+		"@types/react": {
 			"optional": true
 		},
 		"ink": {

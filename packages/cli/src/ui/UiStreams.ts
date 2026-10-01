@@ -9,7 +9,7 @@ import { processStreams } from "./internal/processStreams.js";
  * `columns`, `rows`, `isTTY` and `write`, and emit `resize`.
  *
  * The members are typed with Node's own stream types (`NodeJS.ReadStream`, `NodeJS.WriteStream`), as Ink's are, so a
- * TypeScript consumer of `./ui` needs `@types/node`.
+ * TypeScript consumer of `./ui` needs `@types/node`, beside the optional peer `@types/react` for its React types.
  *
  * @public
  */
