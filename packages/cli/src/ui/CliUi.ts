@@ -189,8 +189,11 @@ const mount = <A>(
 				Effect.promise(async () => {
 					// Erases the last frame and marks it written, so the unmount's final render draws nothing over it.
 					if (clear) instance.clear();
+					// Taken before `unmount()`, which removes the `beforeExit` listener this registers; taken after, the listener
+					// would outlive the instance and hold it, one more per screen.
+					const exited = instance.waitUntilExit();
 					instance.unmount();
-					await instance.waitUntilExit().catch(() => undefined);
+					await exited.catch(() => undefined);
 				}),
 		);
 		const exited: Effect.Effect<A, Cli.Cancelled> = Effect.tryPromise({

@@ -418,10 +418,13 @@ export const live = <E, S>(
 							Effect.promise(async () => {
 								// Ink drops a hook write once it has unmounted: the console goes back to the streams first.
 								bridge.detach();
+								// Taken before `unmount()`, which removes the `beforeExit` listener this registers; taken after, the
+								// listener would outlive the instance and hold it, one more per run.
+								const exited = instance.waitUntilExit();
 								// Ink's own unmount commits the last frame to the terminal; `clear()` is never called.
 								instance.unmount();
 								drainPerformance(drain);
-								await instance.waitUntilExit().catch(() => undefined);
+								await exited.catch(() => undefined);
 							}),
 					);
 					// The tick, in the run's scope: interrupted with the run, so no timer outlives it (`okf/decisions/live-tick-is-a-scoped-schedule.md`).
