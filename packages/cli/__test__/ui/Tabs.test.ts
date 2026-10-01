@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Fiber, Option, Schedule } from "effect";
 import { Text } from "ink";
 import type { ReactElement } from "react";
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { CliInteractive, CliTheme, Fmt } from "../../src/index.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import type { Screen, TabsProps } from "../../src/ui.js";
@@ -108,6 +108,72 @@ describe("Tabs.View, controlled", () => {
 			assert.strictEqual(active(yield* handle.frame), "Alpha", "still the controlled value");
 			yield* handle.rerender(hosting({ tabs: three, value: "beta" }, calls));
 			assert.strictEqual(active(yield* handle.frame), "Beta");
+		}).pipe(Effect.scoped),
+	);
+});
+
+/** A parent that holds `value` in state and accepts every change, recording each `onChange`. */
+const accepting =
+	(calls: Array<readonly [Name, number]>): Screen<never> =>
+	() => {
+		const Parent = (): ReactElement => {
+			const [value, setValue] = useState<Name>("alpha");
+			return createElement(Tabs.View<Name>, {
+				tabs: three,
+				value,
+				onChange: (name: Name, index: number) => {
+					calls.push([name, index]);
+					setValue(name);
+				},
+			});
+		};
+		return createElement(Parent);
+	};
+
+describe("Tabs.View, controlled, when the parent rejects or accepts a change", () => {
+	it.effect("a parent that rejects: each key in its own read steps from value again, so Alpha stays drawn", () =>
+		Effect.gen(function* () {
+			const calls: Array<readonly [Name, number]> = [];
+			const handle = yield* CliUiTest.render(hosting({ tabs: three, value: "alpha" }, calls));
+			yield* handle.press("right");
+			yield* handle.press("right");
+			assert.deepStrictEqual(calls, [
+				["alpha", 0],
+				["beta", 1],
+				["beta", 1],
+			]);
+			assert.strictEqual(active(yield* handle.frame), "Alpha");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a parent that accepts: keys in separate reads advance it", () =>
+		Effect.gen(function* () {
+			const calls: Array<readonly [Name, number]> = [];
+			const handle = yield* CliUiTest.render(accepting(calls));
+			yield* handle.press("right");
+			yield* handle.press("right");
+			assert.deepStrictEqual(calls, [
+				["alpha", 0],
+				["beta", 1],
+				["gamma", 2],
+			]);
+			assert.strictEqual(active(yield* handle.frame), "Gamma");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("a parent that accepts: two keys in one read still reach the second tab", () =>
+		Effect.gen(function* () {
+			const calls: Array<readonly [Name, number]> = [];
+			const handle = yield* CliUiTest.render(accepting(calls));
+			yield* handle.chunk("right", "right");
+			assert.deepStrictEqual(calls, [
+				["alpha", 0],
+				["beta", 1],
+				["gamma", 2],
+			]);
+			assert.strictEqual(active(yield* handle.frame), "Gamma");
+			yield* handle.press("right");
+			assert.strictEqual(active(yield* handle.frame), "Alpha", "a later read steps from the accepted value");
 		}).pipe(Effect.scoped),
 	);
 });

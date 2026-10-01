@@ -158,6 +158,11 @@ export class Tabs {
 		// keys arriving in one stdin chunk (handled before React re-renders) each step from the last one's tab.
 		const at = react.useRef(index);
 		at.current = index;
+		// The tab the last render drew. Controlled, the handler's move only lasts out the read it came in: Ink dispatches
+		// a read's keys synchronously, so a microtask runs once they are all handled and puts the next read back on
+		// `value`. A parent that rejects a change never re-renders, and without this its tabs would drift from `value`.
+		const drawn = react.useRef(index);
+		drawn.current = index;
 		// Fires once, on mount, with the starting tab; later changes are reported from the key handler. The ref keeps
 		// it to once even if React runs mount effects twice.
 		const announced = react.useRef(false);
@@ -175,7 +180,11 @@ export class Tabs {
 				const tab = props.tabs[next];
 				if (next === from || tab === undefined) return;
 				at.current = next;
-				if (!controlled) setOwn(next);
+				if (controlled) {
+					queueMicrotask(() => {
+						at.current = drawn.current;
+					});
+				} else setOwn(next);
 				onChange?.(tab.name, next);
 			},
 			{ isActive: focused },
