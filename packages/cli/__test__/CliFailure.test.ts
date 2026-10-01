@@ -625,9 +625,11 @@ describe("CliFailure.toDoc: third-party frames (A3)", () => {
 		for (const frame of ["@vitest", "tinypool", "worker.js"]) assert.notInclude(text, frame);
 	});
 
-	it("counts them in the hidden note when nothing of the program's is left", () => {
+	it("when they are all that is left, they are shown rather than hidden, and the runtime's still are not (fix 2)", () => {
 		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", [...THIRD_PARTY, ...INTERNAL_FRAMES]))));
-		assert.include(text, `no user frames (${THIRD_PARTY.length + INTERNAL_FRAMES.length} internal frames hidden)`);
+		for (const frame of ["@vitest", "tinypool", "worker.js"]) assert.include(text, frame);
+		for (const hidden of ["node:internal", "node_modules/effect", "Generator.next"]) assert.notInclude(text, hidden);
+		assert.notInclude(text, "no user frames");
 	});
 
 	it('stackFrames: "all" keeps every frame', () => {
@@ -636,5 +638,36 @@ describe("CliFailure.toDoc: third-party frames (A3)", () => {
 		for (const frame of ["@vitest", "tinypool", "worker.js", "node:internal", "Generator.next", `${USER}:3:4`]) {
 			assert.include(text, frame);
 		}
+	});
+});
+
+describe("CliFailure.toDoc: an installed program's own frames (r4 fix 2)", () => {
+	const INSTALLED = [
+		"main (/usr/lib/node_modules/my-cli/dist/main.js:10:3)",
+		"run (file:///home/me/.local/share/pnpm/store/node_modules/.pnpm/my-cli@1.0.0/node_modules/my-cli/dist/run.js:4:7)",
+	];
+
+	it("when every non-runtime frame is under node_modules, the program's are shown and Effect's still hidden", () => {
+		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", [...INSTALLED, ...INTERNAL_FRAMES]))));
+		assert.include(text, "my-cli/dist/main.js:10:3");
+		assert.include(text, "my-cli/dist/run.js:4:7");
+		for (const hidden of ["node:internal", "node_modules/effect", "effect/src", "Generator.next"]) {
+			assert.notInclude(text, hidden);
+		}
+		assert.notInclude(text, "no user frames");
+	});
+
+	it("a mixed stack shows only the app's frames", () => {
+		const text = plain(
+			CliFailure.toDoc(Cause.die(errorWithStack("boom", [`run (${USER}:3:4)`, ...INSTALLED, ...INTERNAL_FRAMES]))),
+		);
+		assert.include(text, `${USER}:3:4`);
+		assert.notInclude(text, "my-cli");
+		assert.notInclude(text, "node_modules/effect");
+	});
+
+	it("a stack of nothing but runtime and Effect frames still says no user frames, with the count", () => {
+		const text = plain(CliFailure.toDoc(Cause.die(errorWithStack("boom", INTERNAL_FRAMES))));
+		assert.include(text, `no user frames (${INTERNAL_FRAMES.length} internal frames hidden)`);
 	});
 });

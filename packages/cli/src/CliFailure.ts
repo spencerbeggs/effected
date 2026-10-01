@@ -46,7 +46,9 @@ export interface CliFailureOptions {
 	/**
 	 * Which frames of a defect's stack are shown. `app`, the default, shows the program's own: every `node_modules`
 	 * frame (Effect's and any other dependency's), `node:internal` and the runtime's generator frames are left out and
-	 * counted. `all` shows every frame, unfiltered.
+	 * counted. When that leaves no frame, as for a program run from its install under `node_modules` (a global
+	 * install, `npx`, a pnpm store), only the runtime's and Effect's are left out, so its own frames still show. `all`
+	 * shows every frame, unfiltered.
 	 */
 	readonly stackFrames?: "app" | "all" | undefined;
 }
@@ -147,10 +149,13 @@ const parseFrame = (raw: string): Frame => {
 	};
 };
 
-/** A frame that is the runtime's or a dependency's (Effect's or any other in `node_modules`), not the program's. */
-const isInternal = (raw: string): boolean =>
+/** A frame under `node_modules`: a dependency's, or an installed program's own. */
+const isDependency = (raw: string): boolean => /[\\/]node_modules[\\/]/.test(raw);
+
+/** A frame that is the runtime's or Effect's, never the program's, wherever the program is installed. */
+const isRuntime = (raw: string): boolean =>
 	/node:internal\//.test(raw) ||
-	/[\\/]node_modules[\\/]/.test(raw) ||
+	/[\\/]node_modules[\\/]effect[\\/]/.test(raw) ||
 	/[\\/]packages[\\/]effect[\\/]src[\\/]/.test(raw) ||
 	/Generator\.next|~effect\//.test(raw);
 
@@ -161,7 +166,10 @@ const cleanStack = (
 ): { readonly frames: ReadonlyArray<Frame>; readonly hidden: number } => {
 	if (typeof stack !== "string") return { frames: [], hidden: 0 };
 	const lines = stack.split(/\r\n|\r|\n/).filter((line) => /^\s*at\s/.test(line));
-	const kept = mode === "all" ? lines : lines.filter((line) => !isInternal(line));
+	const app = lines.filter((line) => !isRuntime(line) && !isDependency(line));
+	// An installed program (a global install, `npx`, a pnpm store) has every frame of its own under `node_modules`:
+	// when dropping dependencies leaves nothing, keep everything but the runtime's and Effect's, as before.
+	const kept = mode === "all" ? lines : app.length > 0 ? app : lines.filter((line) => !isRuntime(line));
 	return { frames: kept.map(parseFrame), hidden: lines.length - kept.length };
 };
 
@@ -275,7 +283,9 @@ const spanBlocks = (reason: CauseType.Reason<unknown>): ReadonlyArray<Block> => 
  * `NotInteractive`, their one fixed line; a `Tree` of the rejected values, for a schema error or issue; else a failure
  * status line with its message. A defect is its message followed by a collapsible `stack` of the program's own frames,
  * each a file link (so a terminal can open it in an editor) shown through `displayPath`, with `node:internal` and every
- * `node_modules` frame (Effect's and any other dependency's) left out unless `stackFrames` is `all`, then an
+ * `node_modules` frame (Effect's and any other dependency's) left out unless `stackFrames` is `all`; when that would
+ * leave no frame at all, as for a program run from its own install under `node_modules`, only the runtime's and
+ * Effect's are left out. Then an
  * `Error.cause` chain as a tree. When cleaning leaves no frame the stack says
  * `no user frames (N internal frames hidden)`, never an empty block. A reason that ran under spans is followed by
  * `in: outer › inner`. Interrupts are not rendered beside a real failure, and a cause with only interrupts is the
