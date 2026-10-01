@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Fiber, PubSub, Queue, Stream } from "effect";
+import { Effect, Exit, Fiber, PubSub, Queue, Scheduler, Scope, Semaphore, Stream } from "effect";
 import { Box, Text, render } from "ink";
 import { createElement } from "react";
 import { CliInteractive, CliTheme } from "../../src/index.js";
+import { mountPermit } from "../../src/ui/internal/mountPermit.js";
 import { UiRenderOptions } from "../../src/ui/internal/renderOptions.js";
 import type { FakeStreams } from "../../src/ui/testing/fakeStreams.js";
 import { makeFakeStreams } from "../../src/ui/testing/fakeStreams.js";
@@ -469,5 +470,42 @@ describe("CliUi.live: what begins a run (Task 7 review, I1)", () => {
 			assert.strictEqual(mounts, 0);
 			assert.deepStrictEqual(shown, []);
 		}),
+	);
+});
+
+describe("CliUi.live: an interrupt while a run ends (final review, I1)", () => {
+	it.live(
+		"closing the scope as a run ends never orphans the run: no permit or Ink instance is left behind, at any yield",
+		() =>
+			Effect.gen(function* () {
+				let mounts = 0;
+				let unmounts = 0;
+				let leaked: number | undefined;
+				// A tiny scheduler budget yields between nearly every two steps, so the close lands in every gap there is.
+				for (let attempt = 0; attempt < 80 && leaked === undefined; attempt++) {
+					const fake = makeFakeStreams({ columns: 40, rows: 20 });
+					const queue = yield* queueOf();
+					const scope = yield* Scope.make();
+					const before = mounts;
+					yield* liveOn(fake, optionsOf(Stream.fromQueue(queue)), {
+						onMount: () => mounts++,
+						onUnmount: () => unmounts++,
+					}).pipe(Scope.provide(scope), Effect.provideService(Scheduler.MaxOpsBeforeYield, 4));
+					yield* Queue.offer(queue, Start);
+					yield* until(() => mounts > before);
+					yield* Effect.forkChild(Queue.offer(queue, End));
+					for (let step = 0; step < attempt % 20; step++) yield* Effect.yieldNow;
+					yield* Scope.close(scope, Exit.void);
+					if (yield* Semaphore.takeIfAvailable(mountPermit, 1)) yield* Semaphore.release(mountPermit, 1);
+					else {
+						leaked = attempt;
+						// Free it for the tests after this one; the leak is what this test reports.
+						yield* Semaphore.release(mountPermit, 1);
+					}
+				}
+				assert.isUndefined(leaked, `the mount permit leaked at attempt ${leaked}`);
+				assert.strictEqual(unmounts, mounts, "every Ink instance mounted was unmounted");
+			}),
+		{ timeout: 30_000 },
 	);
 });

@@ -201,13 +201,28 @@ export const live = <E, S>(
 		const elementOf = (shown: S, frame: number): ReactElement =>
 			inkModules().react.createElement(Frame, { state: shown, frame });
 
-		/** Unmount what a run has mounted: Ink's own unmount commits the last frame. Nothing is written after it. */
+		/**
+		 * Unmount what a run has mounted: Ink's own unmount commits the last frame. Nothing is written after it. The clear
+		 * and the close are one uninterruptible step: an interrupt landing between them would leave a scope nobody closes,
+		 * its permit held, its instance mounted and its tick running.
+		 */
 		const unmount = (current: Run<S>): Effect.Effect<void> =>
+			Effect.uninterruptible(
+				Effect.suspend(() => {
+					const mounted = current.mounted;
+					current.mounted = undefined;
+					return mounted === undefined ? Effect.void : Scope.close(mounted.scope, Exit.void);
+				}),
+			);
+
+		/** Take the run off and unmount it, in one step an interrupt cannot split; the run taken, if any. */
+		const takeRun: Effect.Effect<Run<S> | undefined> = Effect.uninterruptible(
 			Effect.suspend(() => {
-				const mounted = current.mounted;
-				current.mounted = undefined;
-				return mounted === undefined ? Effect.void : Scope.close(mounted.scope, Exit.void);
-			});
+				const current = run;
+				run = undefined;
+				return current === undefined ? Effect.succeed(undefined) : Effect.as(unmount(current), current);
+			}),
+		);
 
 		/** Stop drawing a run: unmount first, so the one warning never lands inside a frame (ruling P1), then warn. */
 		const degrade = (current: Run<S>, error: unknown): Effect.Effect<void> =>
@@ -403,12 +418,11 @@ export const live = <E, S>(
 		const draw = drawAt(undefined);
 
 		/** End the run: unmount, which commits its frame; a degraded run that never painted prints its frame instead. */
-		const endRun: Effect.Effect<void> = Effect.suspend(() => {
-			const current = run;
-			run = undefined;
+		const endRun: Effect.Effect<void> = Effect.flatMap(takeRun, (current) => {
 			if (current === undefined) return Effect.void;
 			if (!interactive) return options.mode === "hosted" ? Effect.void : printFrame(current);
-			return Effect.andThen(unmount(current), current.painted ? Effect.void : printFrame(current));
+			// Read after the unmount, which is what settles whether anything of the run is left on the terminal.
+			return Effect.suspend(() => (current.painted ? Effect.void : printFrame(current)));
 		});
 
 		const beginRun: Effect.Effect<void> = Effect.suspend(() => {
@@ -493,11 +507,7 @@ export const live = <E, S>(
 							return yield* endRun;
 						case "Died":
 							// The stream died: unmount first, as for a reducer that throws, then die with its cause.
-							yield* Effect.suspend(() => {
-								const current = run;
-								run = undefined;
-								return current === undefined ? Effect.void : unmount(current);
-							});
+							yield* takeRun;
 							return yield* Effect.failCause(message.cause);
 					}
 				}
@@ -518,16 +528,7 @@ export const live = <E, S>(
 		const controlling = yield* Effect.forkScoped(Effect.onExit(control, () => Fiber.interrupt(pumping)));
 		// Registered last, so it runs first when the caller's scope closes: stop the fold, then unmount what is drawn.
 		// Nothing more is written: a run cut off by the close prints nothing.
-		yield* Effect.addFinalizer(() =>
-			Effect.andThen(
-				Fiber.interruptAll([controlling, pumping]),
-				Effect.suspend(() => {
-					const current = run;
-					run = undefined;
-					return current === undefined ? Effect.void : unmount(current);
-				}),
-			),
-		);
+		yield* Effect.addFinalizer(() => Effect.andThen(Fiber.interruptAll([controlling, pumping]), takeRun));
 		return {
 			state: Effect.sync(() => state),
 			logConsole: bridge.writer,
