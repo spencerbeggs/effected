@@ -11,14 +11,15 @@ const NAMED: Readonly<Record<NamedColor, number>> = {
 	magenta: 35,
 	cyan: 36,
 	white: 37,
-	brightBlack: 90,
-	brightRed: 91,
-	brightGreen: 92,
-	brightYellow: 93,
-	brightBlue: 94,
-	brightMagenta: 95,
-	brightCyan: 96,
-	brightWhite: 97,
+	blackBright: 90,
+	redBright: 91,
+	greenBright: 92,
+	yellowBright: 93,
+	blueBright: 94,
+	magentaBright: 95,
+	cyanBright: 96,
+	whiteBright: 97,
+	gray: 90,
 };
 
 /** The 16 ANSI colours as xterm draws them, in SGR order (0 to 7, then bright 8 to 15), for the basic fallback. */
@@ -103,7 +104,8 @@ const nearest16 = (rgb: Rgb): number => {
 /** The foreground SGR parameters for a colour at a level, or `undefined` for none. */
 const foreground = (fg: NonNullable<Style["fg"]>, level: ColorLevel): string | undefined => {
 	if (level === "none") return undefined;
-	if (!fg.startsWith("#")) return String(NAMED[fg as NamedColor]);
+	// A name that is not a colour is ignored, as a malformed hex is, rather than printing `undefined` into an escape.
+	if (!fg.startsWith("#")) return Object.hasOwn(NAMED, fg) ? String(NAMED[fg as NamedColor]) : undefined;
 	const rgb = parseHex(fg);
 	if (rgb === undefined) return undefined;
 	if (level === "truecolor") return `38;2;${rgb[0]};${rgb[1]};${rgb[2]}`;

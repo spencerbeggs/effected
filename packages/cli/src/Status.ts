@@ -114,6 +114,10 @@ export class Status<Names extends string> {
 	 * The status with the highest rank; a tie goes to the one that comes first in `names`.
 	 *
 	 * @remarks
+	 * `rank` is SEVERITY, not an aggregation policy: the higher rank wins, so in `Status.core` a `skip` outranks a
+	 * `success`. A consumer whose aggregate differs (a test run where passes dominate skips, say) folds its own
+	 * rule over the names instead of reading this.
+	 *
 	 * Takes at least one name, so the answer is always a name. For an array that may be empty, use
 	 * {@link Status.worstOption}. They are two methods because a literal and an array variable are the same
 	 * array at runtime, so one method could not return a name for one and an `Option` for the other.
@@ -130,7 +134,8 @@ export class Status<Names extends string> {
 
 	/**
 	 * The status with the highest rank of an array that may be empty: `None` when it is, otherwise `Some` of
-	 * the worst, a tie going to the one that comes first in `names`.
+	 * the worst, a tie going to the one that comes first in `names`. Rank is severity, not an aggregation policy; see
+	 * {@link Status.worst}.
 	 *
 	 * @param names - the statuses to compare
 	 */

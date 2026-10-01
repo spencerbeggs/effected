@@ -18,6 +18,11 @@ export interface TruncateOptions {
 export interface PercentOptions {
 	/** Decimal places to round to; `1` by default. A trailing zero decimal is dropped. */
 	readonly digits?: number | undefined;
+	/**
+	 * What the input is scaled to: `1` (the default) is a ratio from 0 to 1, `100` is already a percentage from 0
+	 * to 100, as istanbul's coverage numbers are.
+	 */
+	readonly scale?: 1 | 100 | undefined;
 }
 
 /**
@@ -102,18 +107,20 @@ export class Fmt {
 	};
 
 	/**
-	 * A ratio from 0 to 1 as a percentage: `83.3%`, `50%`, `100%`.
+	 * A ratio from 0 to 1 as a percentage, or a number already from 0 to 100 with `scale: 100`: `83.3%`, `50%`,
+	 * `100%`.
 	 *
 	 * @remarks
 	 * Rounded to `digits` decimal places (one by default) with trailing zeros dropped, so whole values print
 	 * without a decimal. A value that rounds to zero prints `0%`, never `-0%`. The input is not validated.
 	 *
-	 * @param n - the ratio, 0 to 1
-	 * @param options - the decimal places
+	 * @param n - the ratio, 0 to 1 (0 to 100 with `scale: 100`)
+	 * @param options - the decimal places and the scale
 	 */
 	static readonly percent = (n: number, options?: PercentOptions): string => {
 		const digits = Math.min(10, Math.max(0, Math.floor(options?.digits ?? 1)));
-		return `${Number((n * 100).toFixed(digits))}%`;
+		const percent = options?.scale === 100 ? n : n * 100;
+		return `${Number(percent.toFixed(digits))}%`;
 	};
 
 	/**

@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
+import type { NamedColor, Style, TokenName } from "../src/index.js";
 import { Token } from "../src/index.js";
 import { nearest256, paintStyle } from "../src/internal/ansi.js";
 
@@ -10,6 +11,80 @@ describe("Token", () => {
 	});
 });
 
+const TOKENS: ReadonlyArray<TokenName> = [
+	"success",
+	"failure",
+	"warning",
+	"info",
+	"error",
+	"muted",
+	"accent",
+	"emphasis",
+];
+
+describe("Token.defaults and Token.resolve", () => {
+	it("defaults has exactly the eight tokens, and is frozen all the way down", () => {
+		assert.deepStrictEqual(Object.keys(Token.defaults).sort(), [...TOKENS].sort());
+		assert.isTrue(Object.isFrozen(Token.defaults));
+		for (const token of TOKENS) assert.isTrue(Object.isFrozen(Token.defaults[token]), token);
+	});
+
+	it("a token name resolves to its default, and an explicit style resolves to itself", () => {
+		for (const token of TOKENS) assert.deepStrictEqual(Token.resolve(token), Token.defaults[token]);
+		const style: Style = { fg: "#e09a4e", underline: true };
+		assert.strictEqual(Token.resolve(style), style);
+	});
+
+	it("an override replaces one token and leaves the rest, and never touches the defaults", () => {
+		const before = JSON.stringify(Token.defaults);
+		const overrides = { success: { fg: "#00ff00", bold: true } } as const;
+		assert.deepStrictEqual(Token.resolve("success", overrides), overrides.success);
+		for (const token of TOKENS.filter((name) => name !== "success")) {
+			assert.deepStrictEqual(Token.resolve(token, overrides), Token.defaults[token], token);
+		}
+		assert.strictEqual(JSON.stringify(Token.defaults), before);
+	});
+
+	it("a name that is not a token, including an Object.prototype member, is the empty style", () => {
+		for (const name of ["", "nope", "__proto__", "constructor", "toString", "hasOwnProperty"]) {
+			assert.deepStrictEqual(Token.resolve(name as TokenName), {}, name);
+		}
+	});
+
+	it("an override named like a prototype member does not leak into another token", () => {
+		assert.deepStrictEqual(Token.resolve("info", JSON.parse('{"__proto__":{"fg":"red"}}')), Token.defaults.info);
+	});
+});
+
+describe("NamedColor spells the bright variants as chalk and Ink do", () => {
+	const bright: ReadonlyArray<readonly [NamedColor, number]> = [
+		["blackBright", 90],
+		["redBright", 91],
+		["greenBright", 92],
+		["yellowBright", 93],
+		["blueBright", 94],
+		["magentaBright", 95],
+		["cyanBright", 96],
+		["whiteBright", 97],
+		["gray", 90],
+	];
+	for (const [color, code] of bright) {
+		it(`${color} is SGR ${code}`, () => {
+			assert.strictEqual(paintStyle({ fg: color }, "basic", "x"), `\x1b[${code}mx\x1b[39m`);
+		});
+	}
+
+	it("the old brightX spellings are gone", () => {
+		// @ts-expect-error renamed to cyanBright
+		const old: NamedColor = "brightCyan";
+		// Rendered as an unknown name, it is ignored rather than guessed at.
+		assert.strictEqual(paintStyle({ fg: old }, "basic", "x"), "x");
+		for (const name of ["constructor", "__proto__", "toString", ""]) {
+			assert.strictEqual(paintStyle({ fg: name as NamedColor }, "truecolor", "x"), "x", name);
+		}
+	});
+});
+
 describe("paintStyle", () => {
 	it("is the identity at none, and for empty text", () => {
 		assert.strictEqual(paintStyle({ fg: "red", bold: true }, "none", "x"), "x");
@@ -18,7 +93,7 @@ describe("paintStyle", () => {
 
 	it("basic uses 16-colour SGR with a per-attribute closer", () => {
 		assert.strictEqual(paintStyle({ fg: "red" }, "basic", "x"), "\x1b[31mx\x1b[39m");
-		assert.strictEqual(paintStyle({ fg: "brightCyan" }, "basic", "x"), "\x1b[96mx\x1b[39m");
+		assert.strictEqual(paintStyle({ fg: "cyanBright" }, "basic", "x"), "\x1b[96mx\x1b[39m");
 	});
 
 	it("truecolor uses 38;2;r;g;b", () => {

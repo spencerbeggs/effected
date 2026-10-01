@@ -129,3 +129,30 @@ describe("Fmt.truncate", () => {
 		assert.strictEqual(Fmt.truncate("hello", -3), "");
 	});
 });
+
+describe("Fmt.percent scale", () => {
+	it("scale 100 takes a 0 to 100 number as it is", () => {
+		assert.strictEqual(Fmt.percent(83.3, { scale: 100 }), "83.3%");
+		assert.strictEqual(Fmt.percent(100, { scale: 100 }), "100%");
+		assert.strictEqual(Fmt.percent(0, { scale: 100 }), "0%");
+		assert.strictEqual(Fmt.percent(50, { scale: 100 }), "50%");
+	});
+
+	it("scale 1 and an omitted scale are the ratio, exactly as before", () => {
+		for (const n of [0, 0.5, 0.8333, 1, 0.12345]) {
+			assert.strictEqual(Fmt.percent(n, { scale: 1 }), Fmt.percent(n));
+		}
+	});
+
+	it("scale 100 agrees with the ratio form on the same number divided by 100", () => {
+		for (const n of [0, 12.5, 33.333, 83.3, 99.95, 100]) {
+			assert.strictEqual(Fmt.percent(n, { scale: 100 }), Fmt.percent(n / 100), String(n));
+		}
+	});
+
+	it("digits compose with scale, and a value rounding to zero is 0%, never -0%", () => {
+		assert.strictEqual(Fmt.percent(83.333, { scale: 100, digits: 2 }), "83.33%");
+		assert.strictEqual(Fmt.percent(83.3, { scale: 100, digits: 0 }), "83%");
+		assert.strictEqual(Fmt.percent(-0.001, { scale: 100, digits: 0 }), "0%");
+	});
+});

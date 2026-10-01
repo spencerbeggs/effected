@@ -7,18 +7,7 @@ import { Glyphs } from "./Glyphs.js";
 import { openSequence, paintStyle } from "./internal/ansi.js";
 import type { Status } from "./Status.js";
 import type { Style, TokenName } from "./Token.js";
-
-/** The default style of every token. */
-const DEFAULT_TOKENS: Readonly<Record<TokenName, Style>> = {
-	success: { fg: "green" },
-	failure: { fg: "red" },
-	error: { fg: "red", bold: true },
-	warning: { fg: "yellow" },
-	info: { fg: "cyan" },
-	muted: { dim: true },
-	accent: { fg: "cyan" },
-	emphasis: { bold: true },
-};
+import { Token } from "./Token.js";
 
 /**
  * The shape of the {@link CliTheme} service: a colour level, a glyph set and the functions that use them.
@@ -49,6 +38,14 @@ export interface CliThemeShape extends StreamTheme {
 export interface StreamTheme {
 	/** Render `text` in a token or an explicit style; the identity when colour is `none`. */
 	readonly paint: (token: TokenName | Style, text: string) => string;
+	/**
+	 * The resolved {@link Style} of a token or style: the one `paint` renders, whatever the colour level.
+	 *
+	 * @remarks
+	 * Pure data, for a renderer that is not ANSI (an Ink component maps it to its own props). It applies this
+	 * theme's token overrides, so it is `Token.resolve` with them.
+	 */
+	readonly style: (token: TokenName | Style) => Style;
 	/** The raw opening SGR sequence of a token or style; `""` when colour is `none`. */
 	readonly sgr: (token: TokenName | Style) => string;
 	/** The glyph set in use. */
@@ -90,12 +87,12 @@ const make = (
 	glyphs: GlyphSet,
 	overrides: Partial<Record<TokenName, Style>> | undefined,
 ): CliThemeShape => {
-	const tokens = { ...DEFAULT_TOKENS, ...overrides };
-	const resolve = (token: TokenName | Style): Style => (typeof token === "string" ? tokens[token] : token);
+	const resolve = (token: TokenName | Style): Style => Token.resolve(token, overrides);
 	const forColor = (color: ColorLevel): StreamTheme => {
 		const paint = (token: TokenName | Style, text: string): string => paintStyle(resolve(token), color, text);
 		return {
 			paint,
+			style: resolve,
 			sgr: (token) => openSequence(resolve(token), color),
 			glyphs,
 			color,
@@ -150,14 +147,17 @@ export class CliTheme extends Context.Service<CliTheme, CliThemeShape>()("@effec
 			Effect.gen(function* () {
 				const terminal = yield* TerminalEnv;
 				const choice = options?.glyphs ?? "auto";
-				const dumb =
+				// TERM is read through Config (never process) only when it can matter, and handed to the pure selection.
+				const term =
 					choice === "auto"
-						? Option.contains(
+						? Option.getOrUndefined(
 								yield* Config.option(Config.String("TERM")).pipe(Effect.orElseSucceed(() => Option.none<string>())),
-								"dumb",
 							)
-						: false;
-				const glyphs = choice === "ascii" || dumb ? Glyphs.ascii : Glyphs.unicode;
+						: undefined;
+				const glyphs = Glyphs.select({
+					ascii: choice === "ascii" ? true : choice === "unicode" ? false : "auto",
+					...(term === undefined ? {} : { term }),
+				});
 				return make({ stdout: terminal.stdout.color, stderr: terminal.stderr.color }, glyphs, options?.tokens);
 			}),
 		);

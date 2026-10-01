@@ -53,3 +53,36 @@ describe("Glyphs", () => {
 		for (const ch of Object.values(Glyphs.ascii.tree).join("")) assert.isBelow(ch.codePointAt(0) ?? 0, 128);
 	});
 });
+
+describe("Glyphs.select", () => {
+	it("is Unicode unless told otherwise", () => {
+		assert.strictEqual(Glyphs.select(), Glyphs.unicode);
+		assert.strictEqual(Glyphs.select({}), Glyphs.unicode);
+		assert.strictEqual(Glyphs.select({ term: "xterm-256color" }), Glyphs.unicode);
+	});
+
+	it("ascii: true and ascii: false decide, whatever TERM says", () => {
+		assert.strictEqual(Glyphs.select({ ascii: true }), Glyphs.ascii);
+		assert.strictEqual(Glyphs.select({ ascii: true, term: "xterm" }), Glyphs.ascii);
+		assert.strictEqual(Glyphs.select({ ascii: false, term: "dumb" }), Glyphs.unicode);
+	});
+
+	it("auto, the default, is ASCII only for TERM=dumb, from the term the caller passes", () => {
+		assert.strictEqual(Glyphs.select({ ascii: "auto", term: "dumb" }), Glyphs.ascii);
+		assert.strictEqual(Glyphs.select({ term: "dumb" }), Glyphs.ascii);
+		assert.strictEqual(Glyphs.select({ ascii: "auto", term: "xterm" }), Glyphs.unicode);
+		assert.strictEqual(Glyphs.select({ ascii: "auto", term: "DUMB" }), Glyphs.unicode, "TERM is case-sensitive");
+		assert.strictEqual(Glyphs.select({ ascii: "auto" }), Glyphs.unicode, "no term is not dumb");
+	});
+
+	it("never reads the process: TERM=dumb in process.env changes nothing", () => {
+		const before = process.env.TERM;
+		process.env.TERM = "dumb";
+		try {
+			assert.strictEqual(Glyphs.select({ ascii: "auto" }), Glyphs.unicode);
+		} finally {
+			if (before === undefined) delete process.env.TERM;
+			else process.env.TERM = before;
+		}
+	});
+});
