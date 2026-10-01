@@ -51,9 +51,11 @@ export interface RenderContext {
 	/** Turns an absolute path into its display form; the identity by default. */
 	readonly displayPath: (absolute: string) => string;
 	/**
-	 * Whether the output will be read by the GitHub Actions runner, which treats a line that starts with `::` or `##`
-	 * as a workflow command. When `true`, every renderer puts a zero-width space in front of such a line, so a
-	 * document's text, an error message, say, can never inject a command. Unset or `false` leaves the text alone.
+	 * Whether the output will be read by the GitHub Actions runner, which has two command parsers: a line is a command
+	 * if, after .NET whitespace, it starts with `::`, or if `##[` occurs ANYWHERE in it (a bare `##` is not one). When
+	 * `true`, every renderer puts a zero-width space in front of such a `::` line and between `##` and `[` at each
+	 * `##[`, so a document's text, an error message, say, can never inject a command. Unset or `false` leaves the text
+	 * alone.
 	 *
 	 * @remarks
 	 * The trigger is the runner, not the audience: a person or an agent whose output lands in an Actions log is read
@@ -208,6 +210,11 @@ export class Render {
 	 * email address is not escaped: a reader may make a `mailto:` link of it, which is harmless. A leading indent is
 	 * dropped, since markdown would read it as code.
 	 *
+	 * Under GitHub Actions (`neutralizeWorkflowCommands`) the same neutralizing applies, since markdown can be printed
+	 * to the log. Markdown escapes `[` in text, so `##[` cannot appear outside code and the headings are untouched
+	 * (a bare `##` is not a command); code spans and blocks, which are not escaped, get the zero-width space, which can
+	 * also land inside code or table text where it would otherwise have formed a command.
+	 *
 	 * GitHub also turns `@user`, `@org/team`, `#123` and commit SHAs in rendered markdown into mentions and references.
 	 * Nothing here escapes them: in a step summary they do not notify, but markdown posted as a comment could ping
 	 * whoever the text names.
@@ -242,9 +249,11 @@ export class Render {
 	 * top-level section. GitHub does not nest groups, so a collapsible inside a group, or inside a list or callout
 	 * (where it would not start a line), keeps plain's rendering: its title on a line and its body indented.
 	 *
-	 * The runner reads a line as a command when, after its leading whitespace, it starts with `::` or `##`. A
-	 * document's text must not be able to do that (`::add-mask::`, `::error::`, `##[error]`), so such a line gets a
-	 * zero-width space in front, which the runner does not treat as whitespace. The text is otherwise unchanged. A
+	 * The runner has two command parsers, and a line is a command if either accepts it: after its leading whitespace it
+	 * starts with `::`, or `##[` occurs ANYWHERE in it (a bare `##` is not one). A document's text must not be able to
+	 * do that (`::add-mask::`, `::error::`, `##[error]`), so such a `::` line gets a zero-width space in front, which
+	 * the runner does not treat as whitespace, and every `##[` gets one between the `##` and the `[`. The text is
+	 * otherwise unchanged. A
 	 * group's title is a command's data, so its `%`, CR and LF are escaped. Lines are split at CR, LF and CRLF before
 	 * that check, as the runner splits them. There is no ANSI and `paint` and `link` are never called, and the audience
 	 * is treated as `agent`, as `plain` does.

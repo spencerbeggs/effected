@@ -1,25 +1,20 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
+import { Markdown } from "@effected/markdown";
 import { Cause, ConfigProvider, Console, Effect, Layer, Option, Stdio, Terminal } from "effect";
 import type { Document } from "../src/index.js";
 import { CliFailure, CliLinks, CliRuntime, CliTheme, Doc, Render } from "../src/index.js";
+import { commandLines } from "./helpers/runnerCommands.js";
 
 const ZWSP = String.fromCodePoint(0x200b);
 const ESC = String.fromCharCode(0x1b);
 
-/** The runner's line breaks, and .NET's whitespace: an independent reading of what makes a line a command. */
-const LINE_BREAK = /\r\n|\r|\n/;
-const NET_SPACE = /^[\s\u0085]*/;
-const commandLines = (text: string): ReadonlyArray<string> =>
-	text.split(LINE_BREAK).filter((line) => {
-		const rest = line.replace(NET_SPACE, "");
-		return rest.startsWith("::") || rest.startsWith("##");
-	});
-
 const HOSTILE = [
 	`x\r::error::injected\n##[error]y`,
-	`a\r\n::add-mask::secret\r\n  ##vso[task.setvariable]b`,
+	`a\r\n::add-mask::secret\r\n  ##[add-mask]b`,
+	`prefix ##[add-mask]secret`,
+	`mid ##[error]line and ##[stop-commands]tok`,
 	`b\u0085::warning::nel`,
 	`c\n\u0085 ::error::after nel space\n\t## spaced`,
 	`::notice::leading`,
@@ -104,6 +99,50 @@ describe("under GitHub Actions no format emits a line the runner would read as a
 		const out = Render.githubLog(docOf("::error::x"), contextFor("ci", "github-actions"));
 		assert.strictEqual(out.split(ZWSP).length - 1, 1);
 		assert.notInclude(out, `${ZWSP}${ZWSP}`);
+	});
+});
+
+describe("Render.markdown under GitHub Actions", () => {
+	const sectioned: Document = [
+		Doc.section("Results", [
+			Doc.paragraph("ok"),
+			Doc.section("Coverage", [Doc.paragraph("fine"), Doc.section("Detail", [Doc.paragraph("deep")])]),
+		]),
+		Doc.heading(3, "Loose heading"),
+	];
+
+	const headingsOf = (markdown: string): ReadonlyArray<string> => {
+		const parsed = Markdown.parseResult(markdown);
+		if (parsed._tag === "Failure") throw new Error("the markdown did not parse");
+		return parsed.success.children.filter((node) => node.type === "heading").map((node) => node.type);
+	};
+
+	it("every heading survives: a bare ## is not a command, so the facade leaves it alone", () => {
+		for (const audience of ["human", "agent", "ci"] as const) {
+			const under = Render.markdown(sectioned, contextFor(audience, "github-actions"));
+			const outside = Render.markdown(sectioned, contextFor(audience, "none"));
+			assert.strictEqual(headingsOf(under).length, 4, `${audience}: ${JSON.stringify(under)}`);
+			assert.strictEqual(under, outside, `${audience}: markdown without a ##[ in it is identical under Actions`);
+		}
+	});
+
+	it("text can not make ##[ appear outside code: markdown escapes the bracket", () => {
+		const text = "see ##[add-mask]secret and ##[error]x";
+		const out = Render.markdown(
+			[Doc.paragraph(text), Doc.list([Doc.paragraph("a ##[b]")])],
+			contextFor("agent", "none"),
+		);
+		assert.notInclude(out, "##[");
+	});
+
+	it("code, which markdown does not escape, gets the zero-width space under Actions, and only there", () => {
+		const doc: Document = [Doc.paragraph(Doc.code("##[error]x")), Doc.codeBlock("a ##[add-mask]b\n::error::c", "txt")];
+		const under = Render.markdown(doc, contextFor("agent", "github-actions"));
+		assert.deepStrictEqual(commandLines(under), []);
+		assert.include(under, `##${ZWSP}[error]x`);
+		const outside = Render.markdown(doc, contextFor("agent", "none"));
+		assert.include(outside, "##[error]x");
+		assert.notInclude(outside, ZWSP);
 	});
 });
 

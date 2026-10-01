@@ -5,45 +5,14 @@ import { Doc, Render, Status } from "../src/index.js";
 import { neutralizeLines } from "../src/internal/neutralize.js";
 import { ESC, composite } from "./helpers/hostileDoc.js";
 import { contextOf } from "./helpers/renderContext.js";
+import { LINE_BREAK, isCommand } from "./helpers/runnerCommands.js";
 
 const log = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
 	Effect.map(contextOf(overrides), (ctx) => Render.githubLog(doc, ctx));
 const plain = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
 	Effect.map(contextOf(overrides), (ctx) => Render.plain(doc, ctx));
-/** The runner's own line breaks: it splits at a lone CR as well as at LF and CRLF. */
-const LINE_BREAK = /\r\n|\r|\n/;
-
 const linesOf = (doc: ReadonlyArray<Block>, overrides: Partial<RenderContext> = {}) =>
 	Effect.map(log(doc, overrides), (out) => out.split(LINE_BREAK));
-
-/**
- * .NET's `Char.IsWhiteSpace`: what the runner's `TrimStart` removes before it looks for `::` or `##`. Written out from
- * that documented behaviour, not borrowed from the implementation. Note U+0085 is in it and U+200B and U+FEFF are not.
- */
-const isDotNetWhitespace = (ch: string): boolean => {
-	const code = ch.codePointAt(0) ?? 0;
-	return (
-		(code >= 0x09 && code <= 0x0d) ||
-		code === 0x20 ||
-		code === 0x85 ||
-		code === 0xa0 ||
-		code === 0x1680 ||
-		(code >= 0x2000 && code <= 0x200a) ||
-		code === 0x2028 ||
-		code === 0x2029 ||
-		code === 0x202f ||
-		code === 0x205f ||
-		code === 0x3000
-	);
-};
-
-/** Would the runner read this line as a command: trim .NET whitespace, then `::` or a legacy `##` prefix. */
-const isCommand = (line: string): boolean => {
-	let i = 0;
-	while (i < line.length && isDotNetWhitespace(line.charAt(i))) i++;
-	const rest = line.slice(i);
-	return rest.startsWith("::") || rest.startsWith("##");
-};
 
 describe("Render.githubLog: groups", () => {
 	it.effect("a top-level collapsible is ::group:: title, its body, ::endgroup::", () =>
@@ -260,10 +229,37 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 		assert.strictEqual(out.length, 7);
 		assert.deepStrictEqual(out.filter(isCommand), []);
 		assert.deepStrictEqual(
-			out.map((line) => line.replace(/^\u200B/, "")),
+			out.map((line) => line.replaceAll("\u200B", "")),
 			["a", "::error::x", "##[group]y", "  ::add-mask::z", "plain text", "\u00A0::warning::w", "\u0085::error::n"],
 		);
 		assert.deepStrictEqual(neutralizeLines("no command\nhere: ::"), ["no command", "here: ::"]);
+	});
+
+	it("the legacy ##[ form is a command anywhere in a line: every occurrence is broken, a bare ## is left alone", () => {
+		const hostile = [
+			"prefix ##[add-mask]secret",
+			"a ##[error]b and ##[stop-commands]tok",
+			"##[group]x",
+			"x##[warning]y",
+			"\u0085  ##[error]nel",
+		];
+		for (const line of hostile) {
+			assert.isTrue(isCommand(line), `the oracle flags it first: ${JSON.stringify(line)}`);
+			const out = neutralizeLines(line);
+			assert.deepStrictEqual(out.filter(isCommand), [], JSON.stringify(line));
+			assert.strictEqual(out.join("").replaceAll("\u200B", ""), line, "only a zero-width space is added");
+		}
+		assert.strictEqual(neutralizeLines("a ##[x] b ##[y]").join(""), "a ##\u200B[x] b ##\u200B[y]");
+		for (const bare of ["## Heading", "a ## b", "##", "###", "## [link]", "#[x]", "# #[x]", "##x[y]"]) {
+			assert.deepStrictEqual(neutralizeLines(bare), [bare], JSON.stringify(bare));
+		}
+	});
+
+	it("neutralizing is idempotent, so githubLog's own pass and the facade's never double up", () => {
+		for (const text of ["::error::x\n a ##[b]\n##[c]", "plain", "::a::##[b]##[c]", "x\r\n::y"]) {
+			const once = neutralizeLines(text).join("\n");
+			assert.strictEqual(neutralizeLines(once).join("\n"), once, JSON.stringify(text));
+		}
 	});
 
 	it("the detector itself: it finds a command behind every .NET whitespace and not behind U+200B or BOM", () => {
@@ -275,6 +271,13 @@ describe("Render.githubLog: document text cannot become a workflow command", () 
 			assert.isFalse(isCommand(`${prefix}::error::x`), JSON.stringify(prefix));
 		assert.isFalse(isCommand("a :: b"));
 		assert.isFalse(isCommand(": :error"));
+	});
+
+	it("the detector's mutation controls: a mid-line ##[ is flagged, a bare ## and an ## [ are not", () => {
+		assert.isTrue(isCommand("prefix ##[add-mask]secret"));
+		assert.isTrue(isCommand("x##[error]y"));
+		for (const quiet of ["## Heading", "a ## b", "## [x]", "#[x]", "##\u200B[x]"])
+			assert.isFalse(isCommand(quiet), quiet);
 	});
 
 	it.effect("an ordinary line is left exactly as plain renders it, so only a command-looking one changes", () =>
