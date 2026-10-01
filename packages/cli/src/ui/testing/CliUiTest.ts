@@ -917,7 +917,8 @@ export class CliUiTest {
 	 *
 	 * Write live tests with `it.effect`: the view's tick runs on the `TestClock`, so `advance` (or `TestClock.adjust`)
 	 * drives it frame by frame, and the frame index is `floor(now / tickMillis)` from the clock's epoch. The waits after
-	 * `publish`, `advance` and `resize` are real time, which the `TestClock` does not hold.
+	 * `publish`, `advance` and `resize` are real time, which the `TestClock` does not hold. Without `@effect/vitest`'s
+	 * `it.effect`, provide the clock yourself: `Effect.provide(test, TestClock.layer())` (from `effect/testing`).
 	 *
 	 * @example
 	 * ```ts
